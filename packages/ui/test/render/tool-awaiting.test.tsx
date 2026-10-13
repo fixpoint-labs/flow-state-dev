@@ -33,21 +33,25 @@ const waiting = call("setRepository", {
 } as Partial<ToolOutputItem>);
 
 describe("a tool call waiting on an answer", () => {
-  it("reads Awaiting approval, with no error", () => {
+  it("says it is waiting, with no error", () => {
     render(<Tool item={waiting} />);
-    expect(screen.getByText("Awaiting approval")).toBeTruthy();
+    const line = screen.getByTestId("tool-group");
+    expect(line.getAttribute("data-state-kind")).toBe("waiting");
+    fireEvent.click(screen.getByRole("button", { name: /\(waiting\)$/ }));
     expect(screen.queryByText("Error")).toBeNull();
     expect(screen.queryByText(/Approve setting the repository/)).toBeNull();
   });
 
   it("an ordinary failure still reads as an error", () => {
     render(<Tool item={call("setRepository", { status: "failed", output: undefined, error: { message: "boom" } } as Partial<ToolOutputItem>)} />);
+    expect(screen.getByTestId("tool-group").getAttribute("data-state-kind")).toBe("error");
+    fireEvent.click(screen.getByRole("button", { name: /\(failed\)$/ }));
     expect(screen.getAllByText("Error").length).toBeGreaterThan(0);
   });
 
   it("a group holding one waits, not completes", () => {
-    const { container } = render(<ToolGroup items={[call("listProjects"), waiting]} />);
-    fireEvent.click(container.querySelector("button")!);
-    expect(container.querySelector(".bg-attention")).not.toBeNull();
+    render(<ToolGroup items={[call("listProjects"), waiting]} />);
+    expect(screen.getByTestId("tool-group").getAttribute("data-state-kind")).toBe("waiting");
+    expect(screen.getByRole("button", { name: /\(1 waiting\)$/ })).toBeTruthy();
   });
 });

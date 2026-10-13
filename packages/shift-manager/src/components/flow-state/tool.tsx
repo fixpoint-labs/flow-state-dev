@@ -3,17 +3,12 @@
 /**
  * Tool call rendering for block_trace and tool_output items.
  *
- * Two presentations:
+ * A call is a muted line with a chevron. A run is one line, labelled from
+ * each call's stated intent, or the name-based phrase when none stated one.
+ * Running ends in "…", waiting says "(waiting)", failure says so and turns
+ * destructive. No status badge on the line.
  *
- *  - <Tool> — standalone card used when a single tool call is rendered
- *    outside the main item stream (e.g. agent response cards).
- *
- *  - <ToolGroup> — Claude-Code-style two-level collapsible: a summary row
- *    labels the batch ("Ran 3 searches, wrote a file") and expands to show
- *    each individual tool call as its own collapsible detail row.
- *
- * Consecutive `tool_output` items in the chat stream are wrapped in a
- * <ToolGroup>. Singletons use the same wrapper for visual consistency.
+ * Consecutive `tool_output` items are wrapped via ItemsRenderer's `toolGroupRenderer`.
  */
 
 import { Fragment, isValidElement, type ComponentProps, type ReactNode } from "react";
@@ -28,20 +23,24 @@ import {
 import { cn } from "@/lib/utils";
 import {
   CheckCircleIcon,
-  ChevronDownIcon,
+  ChevronRightIcon,
   CircleIcon,
   ClockIcon,
-  WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
 
 import { CodeBlock } from "./code-block";
-import { composeToolGroupLabel } from "./tool-grouping";
+import { composeToolCallsLabel, toolIntent } from "./tool-grouping";
 
 export {
+  composeToolCallsLabel,
   composeToolGroupLabel,
+  toolIntent,
   TOOL_GROUP_DISTINCT_CAP,
+  TOOL_GROUP_INTENT_CAP,
+  TOOL_INTENT_ARG,
   TOOL_VERB_MAP,
+  type ToolCallLabelInput,
   type ToolVerbs,
 } from "./tool-grouping";
 
@@ -57,22 +56,6 @@ export type ToolState =
   | "completed"    // finished successfully
   | "error"        // failed
   | "denied";      // user rejected
-
-export type ToolProps = ComponentProps<typeof Collapsible>;
-
-export const ToolShell = ({ className, ...props }: ToolProps) => (
-  <Collapsible
-    className={cn("group not-prose mb-2 w-full rounded-md border", className)}
-    {...props}
-  />
-);
-
-export type ToolHeaderProps = {
-  name: string;
-  state: ToolState;
-  title?: string;
-  className?: string;
-};
 
 const statusLabels: Record<ToolState, string> = {
   pending: "Pending",
@@ -99,41 +82,6 @@ export const getStatusBadge = (state: ToolState) => (
     {statusIcons[state]}
     {statusLabels[state]}
   </Badge>
-);
-
-export const ToolHeader = ({
-  className,
-  title,
-  name,
-  state,
-  ...props
-}: ToolHeaderProps) => (
-  <CollapsibleTrigger
-    className={cn(
-      "flex w-full items-center justify-between gap-4 p-3",
-      className
-    )}
-    {...props}
-  >
-    <div className="flex items-center gap-2">
-      <WrenchIcon className="size-4 text-muted-foreground" />
-      <span className="font-medium text-sm">{title ?? name}</span>
-      {getStatusBadge(state)}
-    </div>
-    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-  </CollapsibleTrigger>
-);
-
-export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
-
-export const ToolContent = ({ className, ...props }: ToolContentProps) => (
-  <CollapsibleContent
-    className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 space-y-4 p-4 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-      className
-    )}
-    {...props}
-  />
 );
 
 export type ToolInputProps = ComponentProps<"div"> & {
@@ -247,164 +195,175 @@ function getToolErrorText(item: ToolItem): string | undefined {
   return raw === undefined ? undefined : String(raw);
 }
 
-export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
-  if (!item.toolCall) return null;
+type LineState = "running" | "waiting" | "completed" | "error";
+
+function lineState(item: ToolItem): LineState {
   const state = mapToolStatus(item);
-  const name = getToolName(item);
-  const args = getToolArgs(item);
-  return (
-    <ToolShell>
-      <ToolHeader name={name} state={state} />
-      <ToolContent>
-        <ToolInput input={args} />
-        {item.status !== "in_progress" && (
-          <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
-        )}
-      </ToolContent>
-    </ToolShell>
-  );
+  if (state === "error") return "error";
+  if (state === "awaiting") return "waiting";
+  if (state === "completed") return "completed";
+  return "running";
 }
 
-// ---------------------------------------------------------------------------
-// <ToolGroup> / <ToolRow> — Level-1 / Level-2 rendering.
-// ---------------------------------------------------------------------------
-
-/** Worst status in a batch, used to color the group summary. */
-function aggregateGroupState(items: ToolOutputItem[]): ToolState {
-  let hasError = false;
-  let hasAwaiting = false;
-  let hasRunning = false;
-  for (const item of items) {
-    const state = mapToolStatus(item);
-    if (state === "error") hasError = true;
-    else if (state === "awaiting") hasAwaiting = true;
-    else if (state === "running" || state === "streaming" || state === "pending") hasRunning = true;
-  }
-  if (hasError) return "error";
-  if (hasAwaiting) return "awaiting";
-  if (hasRunning) return "running";
+function runState(items: readonly ToolItem[]): LineState {
+  const states = items.map(lineState);
+  if (states.includes("error")) return "error";
+  if (states.includes("waiting")) return "waiting";
+  if (states.includes("running")) return "running";
   return "completed";
 }
 
-const groupStateIndicator: Record<ToolState, ReactNode> = {
-  pending: <CircleIcon className="size-4 text-muted-foreground" />,
-  streaming: <ClockIcon className="size-4 animate-pulse text-muted-foreground" />,
-  running: <ClockIcon className="size-4 animate-pulse text-muted-foreground" />,
-  awaiting: <ClockIcon className="size-4 bg-attention text-attention-foreground" />,
-  completed: <CheckCircleIcon className="size-4 text-success" />,
-  error: <XCircleIcon className="size-4 text-destructive" />,
-  denied: <XCircleIcon className="size-4 text-warning" />,
+function labelInput(item: ToolItem) {
+  const name = getToolName(item);
+  return { name, intent: toolIntent(name, getToolArgs(item)) };
+}
+
+function ToolCallDetails({ item }: { item: ToolItem }) {
+  const args = getToolArgs(item);
+  const output = getToolOutput(item);
+  const errorText = getToolErrorText(item);
+  const entries: Array<[string, string]> = [];
+  if (item.blockName) entries.push(["Block", item.blockName]);
+  entries.push(["Item", item.id]);
+
+  return (
+    <div className="space-y-3">
+      {args !== undefined && <ToolInput input={args} />}
+      {item.status !== "in_progress" && (output !== undefined || errorText !== undefined) && (
+        <ToolOutput output={output} errorText={errorText} />
+      )}
+      <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-muted-foreground text-xs">
+        {entries.map(([k, v]) => (
+          <Fragment key={k}>
+            <dt className="uppercase tracking-wide">{k}</dt>
+            <dd className="truncate font-mono">{v}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+type ToolLineProps = {
+  label: string;
+  state: LineState;
+  nested?: boolean;
+  mono?: boolean;
+  defaultOpen?: boolean;
+  className?: string;
+  children: ReactNode;
 };
 
+function ToolLine({ label, state, nested = false, mono = false, defaultOpen = false, className, children }: ToolLineProps) {
+  return (
+    <Collapsible
+      defaultOpen={defaultOpen}
+      data-testid={nested ? "tool-row" : "tool-group"}
+      data-state-kind={state}
+      // Named apart, so an open group doesn't turn its closed rows' chevrons.
+      className={cn("not-prose w-full", nested ? "group/tool-row" : "group/tool mb-2", className)}
+    >
+      <CollapsibleTrigger className="inline-flex max-w-full items-center gap-1 text-left text-muted-foreground text-sm hover:text-foreground">
+        <span className={cn("truncate", state === "error" && "text-destructive", mono && "font-mono text-xs")}>
+          {label}
+        </span>
+        <ChevronRightIcon
+          className={cn(
+            "size-3.5 shrink-0 transition-transform",
+            nested ? "group-data-[state=open]/tool-row:rotate-90" : "group-data-[state=open]/tool:rotate-90"
+          )}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-1.5 ml-1 border-l pl-3 outline-none">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function withState(label: string, state: LineState, count = 1, total = 1): string {
+  if (state === "running") return `${label}…`;
+  if (state === "error" || state === "waiting") {
+    const word = state === "error" ? "failed" : "waiting";
+    return total > 1 ? `${label} (${count} ${word})` : `${label} (${word})`;
+  }
+  return label;
+}
+
+/** One call. A missing tool call renders nothing. */
+export function Tool({ item }: { item: BlockTraceItem | ToolOutputItem }) {
+  if (!item.toolCall) return null;
+  return <ToolGroup items={[item]} />;
+}
+
 export type ToolGroupProps = {
-  items: ToolOutputItem[];
+  items: readonly ToolItem[];
   /** Default-open state. Defaults to false (collapsed). */
   defaultOpen?: boolean;
   className?: string;
 };
 
-/**
- * Level-1 collapsible group header + Level-2 rows for a batch of tool calls.
- * Accepts >= 1 item; singletons are wrapped for visual consistency.
- */
+/** One call opens to its details. While a run is going, the line names the call in flight. */
 export function ToolGroup({ items, defaultOpen = false, className }: ToolGroupProps) {
   if (items.length === 0) return null;
 
-  const label = composeToolGroupLabel(items.map((i) => i.toolCall.name));
-  const aggregateState = aggregateGroupState(items);
+  const state = runState(items);
+  const inputs = items.map(labelInput);
+  const one = items.length === 1;
+
+  let label: string;
+  if (!one && state === "running") {
+    let current = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (lineState(items[i]!) === "running") {
+        current = i;
+        break;
+      }
+    }
+    label =
+      current >= 0
+        ? withState(composeToolCallsLabel([inputs[current]!]), "running")
+        : withState(composeToolCallsLabel(inputs), state);
+  } else {
+    const count = one ? 1 : items.filter((item) => lineState(item) === state).length;
+    label = withState(composeToolCallsLabel(inputs), state, count, items.length);
+  }
 
   return (
-    <Collapsible
-      defaultOpen={defaultOpen}
-      data-testid="tool-group"
-      className={cn("group not-prose mb-2 w-full rounded-md border bg-card", className)}
-    >
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-4 p-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium text-sm">{label}</span>
-          <span className="shrink-0">{groupStateIndicator[aggregateState]}</span>
-        </div>
-        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-      </CollapsibleTrigger>
-      <CollapsibleContent
-        className={cn(
-          "data-[state=closed]:fade-out-0 data-[state=open]:slide-in-from-top-2 border-t outline-none",
-          "data-[state=closed]:animate-out data-[state=open]:animate-in"
-        )}
-      >
-        <ul className="divide-y">
+    <ToolLine label={label} state={state} defaultOpen={defaultOpen} className={className}>
+      {one ? (
+        <ToolCallDetails item={items[0]!} />
+      ) : (
+        <ul className="space-y-1.5">
           {items.map((item) => (
             <li key={item.id}>
               <ToolRow item={item} />
             </li>
           ))}
         </ul>
-      </CollapsibleContent>
-    </Collapsible>
+      )}
+    </ToolLine>
   );
 }
 
 export type ToolRowProps = {
-  item: ToolOutputItem;
+  item: ToolItem;
   defaultOpen?: boolean;
   className?: string;
 };
 
-/**
- * Level-2 individual tool call row — a compact, independently collapsible
- * line that expands to the Level-3 detail (input args, output, metadata).
- */
+/** Intent, or the tool name in mono when the call stated none. */
 export function ToolRow({ item, defaultOpen = false, className }: ToolRowProps) {
-  const state = mapToolStatus(item);
-  const name = item.toolCall.name;
-  const args = getToolArgs(item);
-  const output = getToolOutput(item);
-  const errorText = getToolErrorText(item);
-
+  const state = lineState(item);
+  const { name, intent } = labelInput(item);
   return (
-    <Collapsible defaultOpen={defaultOpen} className={cn("group/row", className)}>
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/40">
-        <div className="flex min-w-0 items-center gap-2">
-          <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate font-mono text-xs">{name}</span>
-          <ToolRowStatus state={state} />
-        </div>
-        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/row:rotate-180" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-3 px-3 pt-2 pb-3">
-        {args !== undefined && <ToolInput input={args} />}
-        {item.status !== "in_progress" && (output !== undefined || errorText !== undefined) && (
-          <ToolOutput output={output} errorText={errorText} />
-        )}
-        <ToolRowMetadata item={item} />
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function ToolRowStatus({ state }: { state: ToolState }) {
-  return (
-    <span className="flex items-center gap-1 text-muted-foreground text-xs">
-      {statusIcons[state]}
-      <span>{statusLabels[state]}</span>
-    </span>
-  );
-}
-
-function ToolRowMetadata({ item }: { item: ToolOutputItem }) {
-  const entries: Array<[string, string]> = [];
-  if (item.blockName) entries.push(["Block", item.blockName]);
-  entries.push(["Item", item.id]);
-
-  return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-muted-foreground text-xs">
-      {entries.map(([k, v]) => (
-        <Fragment key={k}>
-          <dt className="uppercase tracking-wide">{k}</dt>
-          <dd className="truncate font-mono">{v}</dd>
-        </Fragment>
-      ))}
-    </dl>
+    <ToolLine
+      label={withState(intent ?? name, state)}
+      state={state}
+      nested
+      mono={intent === undefined}
+      defaultOpen={defaultOpen}
+      className={className}
+    >
+      <ToolCallDetails item={item} />
+    </ToolLine>
   );
 }

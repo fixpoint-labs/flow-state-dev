@@ -6,8 +6,11 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  composeToolCallsLabel,
   composeToolGroupLabel,
+  toolIntent,
   TOOL_GROUP_DISTINCT_CAP,
+  TOOL_GROUP_INTENT_CAP,
 } from "../registry/components/tool-grouping";
 
 describe("composeToolGroupLabel", () => {
@@ -68,5 +71,59 @@ describe("composeToolGroupLabel", () => {
     const label = composeToolGroupLabel(["web_search", "write_file"]);
     expect(label.charAt(0)).toBe(label.charAt(0).toUpperCase());
     expect(label).toBe("Ran a search and wrote a file");
+  });
+});
+
+describe("toolIntent", () => {
+  it("reads Bash's description as the call's intent", () => {
+    expect(toolIntent("Bash", { command: "ls src", description: "List files in src" })).toBe(
+      "List files in src"
+    );
+  });
+
+  it("has no intent when the description is missing or blank", () => {
+    expect(toolIntent("Bash", { command: "ls" })).toBeUndefined();
+    expect(toolIntent("Bash", { command: "ls", description: "   " })).toBeUndefined();
+  });
+
+  // A `description` on an arbitrary tool can be a payload (an issue body),
+  // so only tools known to state intent there are read.
+  it("ignores a description argument on a tool that does not state intent", () => {
+    expect(toolIntent("create_issue", { description: "## Problem\n..." })).toBeUndefined();
+  });
+});
+
+describe("composeToolCallsLabel", () => {
+  it("is the name-based label when no call stated an intent", () => {
+    const calls = [{ name: "web_search" }, { name: "write_file" }];
+    expect(composeToolCallsLabel(calls)).toBe("Ran a search and wrote a file");
+    expect(composeToolCallsLabel([{ name: "Bash" }, { name: "Bash" }])).toBe("Ran `Bash` 2 times");
+  });
+
+  it("labels a run with what each call said it was doing", () => {
+    expect(
+      composeToolCallsLabel([
+        { name: "Bash", intent: "List files" },
+        { name: "Bash", intent: "Run tests" },
+      ])
+    ).toBe("List files · Run tests");
+  });
+
+  it("folds consecutive calls without an intent into one name-based phrase", () => {
+    expect(
+      composeToolCallsLabel([
+        { name: "Bash", intent: "List files" },
+        { name: "web_search" },
+        { name: "web_search" },
+        { name: "Bash", intent: "Run tests" },
+      ])
+    ).toBe("List files · Ran 2 searches · Run tests");
+  });
+
+  it("counts the phrases past the cap instead of listing them", () => {
+    const calls = Array.from({ length: 10 }, (_, i) => ({ name: "Bash", intent: `Step ${i + 1}` }));
+    expect(composeToolCallsLabel(calls)).toBe(
+      `Step 1 · Step 2 · Step 3 · +${10 - TOOL_GROUP_INTENT_CAP} more`
+    );
   });
 });
