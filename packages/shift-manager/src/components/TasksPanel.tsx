@@ -15,6 +15,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { columnFor } from "../lib/columns";
+import { workerLabel } from "../lib/derive";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
@@ -113,7 +114,7 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
           <span className="min-w-0">
             <span className="line-clamp-2">{task.goal}</span>
             <span className="block text-xs text-muted-foreground">
-              {task.status} · {task.assignee ?? "unassigned"}
+              {task.status} · {task.assignee == null ? "unassigned" : workerLabel(task.assignee)}
             </span>
           </span>
         </li>

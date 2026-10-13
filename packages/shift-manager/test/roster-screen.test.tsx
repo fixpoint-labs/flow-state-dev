@@ -313,6 +313,20 @@ describe("Tasks (BR-14)", () => {
     expect(cell("E-2", "task-row-time")).toBe("—");
   });
 
+  it("names a task the chief-of-staff worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
+    const snapshot = lab();
+    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
+    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, row("s_eng", "E-4", "in_progress", "chief-of-staff")];
+    await open("/tasks", snapshot);
+    const table = await screen.findByTestId("tasks-table");
+    const e4 = within(table).getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-4")!;
+    expect(within(e4).getByTestId("task-row-worker").textContent).toBe("Shift Coordinator");
+    act(() => fireEvent.click(screen.getAllByRole("tab").find((t) => t.getAttribute("data-grouping") === "worker")!));
+    const group = screen.getAllByTestId("tasks-group").find((g) => g.getAttribute("data-group") === "chief-of-staff")!;
+    expect(group.textContent).toMatch(/^Shift Coordinator/);
+    expect(screen.getByTestId("tasks-table").textContent).not.toMatch(/chief[ -]of[ -]staff/i);
+  });
+
   it("groups by stream one group per workstream, not per lead, when one worker leads two (BR-40)", async () => {
     const snapshot = lab();
     if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the fixture loads");

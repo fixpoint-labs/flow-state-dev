@@ -93,7 +93,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           {read.list.delegates.map((delegate) => (
             <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="cos-delegate" data-worker={delegate.worker}>
               <span className="min-w-0 truncate" title={delegate.note}>
-                {delegate.worker}
+                {workerLabel(delegate.worker)}
               </span>
               <button
                 type="button"
