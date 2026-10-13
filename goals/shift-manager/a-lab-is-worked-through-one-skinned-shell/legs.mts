@@ -731,6 +731,7 @@ export async function legC(ctx: LegCtx): Promise<void> {
     for (const part of parts) {
       const entry = tally.get(part);
       if (entry === undefined || entry.elements === 0) report.fail("c:sweep", `[${shift}] ${part} never rendered in this pass (QR-13)`);
+      // The runtime counterpart of `devtool/` in FENCE_EXEMPT: rendered, not graded.
       if (part === "devtool") continue;
       for (const hit of (entry?.hits ?? []).slice(0, 4)) report.fail(`c:${part}`, `[${shift}] ${hit.el} ${hit.prop} → ${hit.value} is a Shift Manager value`);
       if ((entry?.hits.length ?? 0) > 4) report.fail(`c:${part}`, `[${shift}] … and ${entry!.hits.length - 4} more on ${part}`);

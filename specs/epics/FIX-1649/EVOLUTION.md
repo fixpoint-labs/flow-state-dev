@@ -79,3 +79,18 @@ closure; they are recorded here so no later Lab reopens them. The review records
 
 [The path](PLAN.md#the-path) is redrawn as it shipped. The set table stays the 30 September
 snapshot; live state is Linear and the implementation PRs.
+
+## Amendment · 2026-10-13 · the DevTool's brand
+
+The DevTool took the Flow State brand kit on [#3200](https://github.com/fixpoint-labs/flow-state-dev/pull/3200)
+(`78d57354`, FIX-1928). The Shift Manager theme uses that same brand, so their values overlap. #3200 exempted
+`packages/devtool` from FIX-1655's fence: *"The DevTool is FSD's own app, not a component a host
+skins."* The closure's leg c still graded both, and closure run 6 on `7ff0d4c0` went red there
+(FIX-1942). This amendment records that call in the set. The goal check follows it on
+[#3240](https://github.com/fixpoint-labs/flow-state-dev/pull/3240).
+
+| Prior intent in this set | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| *"Not done if … an App Lab skin value sits in an FSD package"* ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)), and leg c's *"none sits under `packages/`"* | **Amended**, one package exempt | The DevTool is FSD's own app and ships the brand itself. It is not a reused component a host skins, so the risk this line guards against (a host's skin leaking into a shared component) does not apply. #3200 (FIX-1928) made that call | No Shift Manager value sits under `packages/` outside `packages/devtool`, the fence's one exemption (`FENCE_EXEMPT` in `labs/design-system/test/theme.ts`, shared by FIX-1655's test and the closure's static half) | The registry, `react` and every other package keep neutral defaults; a value planted in `packages/ui` still fails the fence. FIX-1929 moves the DevTool onto shared token names, and both exemptions go with it |
+| Leg c's sweep includes *"the devtool page"* the trace link opens, graded for zero theme values ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met), as amended at wrap) | **Amended**, reached but not graded | The page is painted by the DevTool's own brand, the same values as the theme, so grading it measures the brand kit, not a leak. On `7ff0d4c0` it painted 388 matches per pass with the theme removed | Leg c still opens the devtool page through the trace link, and it must render each pass (QR-13); its values are not graded. The registry cards keep zero matches, day and night: [`goal.md`](../../../goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/goal.md) | `hardcoded-accent`, `static-names` and `no-org` each still fail at their own signal only. Back to graded when FIX-1929 lands |
+
