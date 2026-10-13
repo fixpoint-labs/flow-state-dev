@@ -103,6 +103,7 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
     ...(init.undispatched === true ? { undispatched: true } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
+    ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
     updatedAt: now,

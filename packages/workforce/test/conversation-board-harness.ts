@@ -141,7 +141,7 @@ function helperFlow(installation: WorkerInstallation) {
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
+    task: { actions: { onDelegatedPost: delegatedPostEntry(door) } }
   });
 }
 

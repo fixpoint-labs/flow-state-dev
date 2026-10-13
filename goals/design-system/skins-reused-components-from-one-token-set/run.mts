@@ -26,8 +26,8 @@
  *
  * Controls:
  *   GOAL_CONTROL=hardcoded-accent  restore one fixed colour class in the
- *                                  host's copy of the tool card; b:themed must
- *                                  FAIL naming tool:awaiting
+ *                                  host's copy of the tool line; b:themed must
+ *                                  FAIL naming tool:error
  *   GOAL_BASELINE=<git ref>        after installing, replace the host's copies
  *                                  of the 12 fixed files with that ref's
  *                                  versions (one-time evidence that `main`
@@ -442,7 +442,9 @@ await runGoal(async (failures) => {
     if (CONTROL === "hardcoded-accent") {
       const toolPath = join(host, "components/flow-state/tool.tsx");
       const src = readFileSync(toolPath, "utf8");
-      writeFileSync(toolPath, src.replace('ClockIcon className="size-4 text-attention"', 'ClockIcon className="size-4 text-yellow-600"'));
+      const failed = 'state === "error" && "text-destructive"';
+      if (!src.includes(failed)) return { failures: [`control: ${toolPath} has no ${failed} to replace`], evidence: "" };
+      writeFileSync(toolPath, src.replace(failed, 'state === "error" && "text-red-600"'));
     } else if (CONTROL !== undefined) {
       return { failures: [`unknown GOAL_CONTROL=${CONTROL}`], evidence: "" };
     }

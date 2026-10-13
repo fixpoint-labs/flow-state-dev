@@ -76,6 +76,9 @@ type RequestGroupRendererProps = {
  */
 export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFinishing = false }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
+  // Read over every item, not one request's: a task plan and its tasks' work
+  // can sit in different requests.
+  const owned = useMemo(() => collectTaskOwnedItemIds(items), [items]);
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
@@ -93,6 +96,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
         // the empty-segment case, which `groupItemsByRequest` does not produce.
         key={group.items[0]?.id ?? `${group.requestId}:${index}`}
         group={group}
+        owned={owned}
         isLast={isLast}
         isStreaming={isStreaming}
         statusMessage={statusMessage}
@@ -104,12 +108,15 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
 
 function RequestGroup({
   group,
+  owned,
   isLast,
   isStreaming,
   statusMessage,
   isFinishing,
 }: {
   group: RequestGroup;
+  /** Items that render under their task in `<TaskPlan />` (`collectTaskOwnedItemIds`). */
+  owned: ReadonlySet<string>;
   isLast: boolean;
   isStreaming: boolean;
   statusMessage?: string;
@@ -120,10 +127,9 @@ function RequestGroup({
   // <TaskPlan /> — hide them from the chat-thread stream so we don't
   // duplicate.
   const filteredItems = useMemo(() => {
-    const owned = collectTaskOwnedItemIds(group.items);
     if (owned.size === 0) return group.items;
     return group.items.filter((item) => !owned.has(item.id));
-  }, [group.items]);
+  }, [group.items, owned]);
 
   return (
     <div

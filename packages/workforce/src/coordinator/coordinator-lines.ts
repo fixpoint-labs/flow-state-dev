@@ -157,7 +157,8 @@ function writerOf(item: SessionItem, writers: LineWriters): string | undefined {
  *   turn's after it, so the model reads it as still waiting on it, and acts
  *   on it again. Right after it comes the coordinator's own account of what
  *   happened, as an assistant message: `Handed this post to <delegates> by
- *   its routing, with no turn of mine. …`, what its `handOff` would have said.
+ *   its routing, with no turn of mine. …`, what its post form of `dispatchTask`
+ *   would have said.
  *
  * `history` holds no writers or requests, so each of its messages is matched
  * to the first item with the same role and text that no earlier message took.

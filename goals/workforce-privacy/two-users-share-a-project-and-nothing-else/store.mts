@@ -6,6 +6,7 @@
  * session row. Opened read-only and closed after each read; never written.
  */
 import { DatabaseSync } from "node:sqlite";
+import { postDeliveries, type PostDelivery } from "../../lib/post-rows.mts";
 
 export type StoredTask = {
   partition: string;
@@ -66,14 +67,14 @@ export function sessionRows(file: string): StoredSession[] {
   );
 }
 
-export type Delivery = { postId: string; delegate: { worker: string }; status: string; sessionId?: string; round?: number };
+export type Delivery = PostDelivery;
 
-/** A coordinator conversation's record, from the row `userId` owns: its delegates, its ledger and best fit's hold. */
+/** A coordinator conversation's record, from the rows `userId` owns: its delegates, its post rows and best fit's hold. */
 export function conversationRecord(file: string, userId: string, sessionId: string): { delegates: Array<{ worker: string }> | null; ledger: Delivery[]; hold: unknown } {
   return open(file, (db) => {
     const row = db.prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?").get(sessionId, sessionId, userId) as { data: string } | undefined;
     const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return { delegates: state?.delegates ?? null, ledger: (state?.deliveries ?? []) as Delivery[], hold: state?.bestFitHold ?? null };
+    return { delegates: state?.delegates ?? null, ledger: postDeliveries(file, userId, sessionId), hold: state?.bestFitHold ?? null };
   });
 }
 

@@ -23,7 +23,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { Message } from "@/components/flow-state/message";
 import { Reasoning } from "@/components/flow-state/reasoning";
 import { CodeBlock } from "@/components/flow-state/code-block";
-import { Tool, ToolGroup, ToolHeader, ToolShell, type ToolState } from "@/components/flow-state/tool";
+import { Tool, ToolGroup } from "@/components/flow-state/tool";
 import { Approval } from "@/components/flow-state/approval";
 import { TaskPlan } from "@/components/flow-state/task-plan";
 import { AuditAnnotation } from "@/components/flow-state/audit-annotation";
@@ -131,14 +131,14 @@ const sessionItems: OutputItem[] = [
   ...boards.flatMap((b) => b.items),
 ];
 
-const toolStates: Array<[ToolState, "attention" | "warning" | undefined]> = [
-  ["pending", undefined],
-  ["running", undefined],
-  ["awaiting", "attention"],
-  ["completed", undefined],
-  ["error", undefined],
-  ["denied", "warning"],
-];
+// One call in each state the tool line shows. A call waiting on a person carries no
+// attention colour: the approval card it waits on does.
+const toolLines = [
+  ["running", f.tool("refund_order", { order: 118 }, undefined, "in_progress")],
+  ["waiting", f.tool("refund_order", { order: 118 }, undefined, "failed", { error: { code: "SUSPENSION", message: "Waiting for approval" } })],
+  ["completed", f.tool("refund_order", { order: 118 }, { refunded: true }, "completed")],
+  ["error", f.tool("refund_order", { order: 118 }, undefined, "failed", { error: { code: "TOOL_ERROR", message: "Payment provider timed out" } })],
+] as const;
 
 // --- chrome fixtures -------------------------------------------------------
 
@@ -189,11 +189,9 @@ function Page() {
             <CodeBlock code={"const total = 42;\nexport default total;"} language="ts" />
           </Part>
 
-          {toolStates.map(([state, means]) => (
-            <Part key={state} name={`tool:${state}`} component="tool.tsx" means={means}>
-              <ToolShell defaultOpen={false}>
-                <ToolHeader name="refund_order" state={state} />
-              </ToolShell>
+          {toolLines.map(([state, item]) => (
+            <Part key={state} name={`tool:${state}`} component="tool.tsx">
+              <Tool item={item} />
             </Part>
           ))}
           <Part name="tool:item" component="tool.tsx">

@@ -9,11 +9,13 @@
  *
  * A thrown send leaves the notice owed on the row for the board's next touch.
  * A refusal goes to the caller, which knows whether it means the conversation
- * is gone. Only the conversation's `onTaskSettled` clears a delivered notice.
+ * is gone. Only the conversation's `onTaskSettled` (or, for a post row,
+ * `onPostSettled`) clears a delivered notice.
  */
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import { owedNotices, type Task, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
+import { isPostRow } from "../coordinator/delegated-post";
 import { CONVERSATION_LEDGER_ID } from "./ledger";
 
 /**
@@ -21,6 +23,13 @@ import { CONVERSATION_LEDGER_ID } from "./ledger";
  * filed it. **Pinned** (FIX-1780): a goal check reads notices by it.
  */
 export const TASK_SETTLED_ENTRY = "onTaskSettled";
+
+/**
+ * The internal entry a post row's notice arrives on instead: a delegate's
+ * answer lands while the coordinator's reply runs, as it did before posts
+ * were rows. Only a task's notice waits for the reply.
+ */
+export const POST_SETTLED_ENTRY = "onPostSettled";
 
 /** Where a notice goes: the conversation's session, and its flow when it isn't the sender's own. */
 export interface NoticeAddress {
@@ -51,7 +60,7 @@ export async function sendOwedNotices(
     try {
       outcome = await dispatchThroughSeam(ctx, {
         type: "internal",
-        action: TASK_SETTLED_ENTRY,
+        action: isPostRow(row) ? POST_SETTLED_ENTRY : TASK_SETTLED_ENTRY,
         ...(address.flowKind !== undefined ? { flowKind: address.flowKind } : {}),
         session: address.session,
         payload: notice,

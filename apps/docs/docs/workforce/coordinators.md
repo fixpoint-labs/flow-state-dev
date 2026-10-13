@@ -48,7 +48,7 @@ Because `help` has a description, best fit can also pick `help` itself, for a qu
 | `minConfidence` | Under `best-fit`, the lowest confidence at which a delegate pick is used, from `0` to `1`. Left out, any pick is used. See [Picking the coordinator, and a confidence floor](#picking-the-coordinator-and-a-confidence-floor). |
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
 
-The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `handOff` come with the flow, whatever the coordinator's `tools:` line says. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
+The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
 
 Build the `coordinator` flow and register it beside the flows its delegates run on:
 
@@ -157,7 +157,7 @@ The example waits only for a delegate, and it takes the first delegate message a
 
 | `routing:` | Who gets a post |
 | --- | --- |
-| `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on with its `handOff` tool, to as many delegates as it likes, or answers itself. |
+| `judgment` (the default) | The coordinator's own turn reads the post and decides. It hands the post on by calling `dispatchTask` with `post: true` and a delegate as `assignee`, as many times as it likes, or answers itself. The delegate gets the post as you wrote it; the coordinator chooses who, not what they read. |
 | `best-fit` | One evaluator call, reading the post with the conversation's [recent lines](#follow-ups-and-recent-lines), picks who takes it: one of the delegates, by its note or else its description, or the coordinator itself, by its own description. A delegate with neither isn't offered. While a delegate is still working your last post, your next one goes to it too, with no call. |
 | `round-robin` | The next delegate in the list after the one your last post went to. |
 | `everyone` | Every delegate. |
@@ -289,7 +289,7 @@ A delegate is a worker on your own roster, one of yours or a standard one, whose
 | Removing a worker that isn't on the list | `"<id>" isn't a delegate in this conversation.` |
 | A fallback that isn't on the list | `"<id>" isn't a delegate in this conversation, so it can't be the fallback.` |
 
-A worker whose flow takes tasks but not posts can be added. A post handed to it is skipped, and the record's reason is `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the coordinator's own turn hands it a post with `handOff`, the refusal goes on to name the delegates in the conversation that do take posts, so the turn can pick one of them:
+A worker whose flow takes tasks but not posts can be added. A post handed to it is skipped, and the record's reason is `Worker "<id>" runs on flow "<flow>", which can't take a delegated post.` When the coordinator's own turn hands it a post with `dispatchTask`, the refusal goes on to name the delegates in the conversation that do take posts, so the turn can pick one of them:
 
 ```text
 Worker "eng.coder" runs on flow "coder", which can't take a delegated post. Delegates here that take posts: eng.em.
@@ -307,11 +307,23 @@ With `rounds: 0`, the default, a delegate's answer lands in the conversation and
 - `everyone` waits for the round to close, then hands each delegate the other delegates' answers from it in one delivery. A delegate with no other answer to get is skipped.
 - `judgment` waits for the round to close, then runs the coordinator's turn once with the round's answers. Its hand-offs in that turn go out in the next round.
 
-A round closes when every delivery in it has been answered or has failed, or at its deadline: five minutes, unless you set `roundDeadlineMs`. A delegate whose turn fails says so at once, so the round doesn't wait on it. One whose run is cancelled does the same when its flow sets [`delegatedPostOnFinished`](#making-your-own-flow-a-delegate), as the built-in `agent` flow does. One still working at the deadline keeps working, and its answer lands once when it comes, going no further. A delegate that never reports at all, because its process stopped, holds its round until the conversation's next activity after the deadline: a post, an answer, or another delegate's report.
+A round closes when every delegate in it has answered or failed, or at its deadline: five minutes, unless you set `roundDeadlineMs`. A delegate whose turn fails ends its [task](#how-a-post-is-tracked) at once, so the round doesn't wait on it. One whose run is cancelled does the same when its flow sets [`delegatedPostOnFinished`](#making-your-own-flow-a-delegate), as the built-in `agent` flow does. One still working at the deadline keeps working; the round closes without it, and its answer lands once when it comes, going no further. A delegate that never reports at all, because its process stopped, holds its round until the conversation's next activity after the deadline: a post, an answer, or another delegate's report.
 
 A conversation keeps at most 50 rounds open. A post past that is still delivered, but its round isn't opened: its answers land and go no further, and its routing record carries a `note` saying so.
 
 **What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one model call per round, or two when the evaluator call fails and it asks again as a language model, plus a coordinator turn for each post it picks the coordinator for, and for each it can't place when no fallback takes it.
+
+## How a post is tracked
+
+Each delegate a post goes to gets a task for it on the conversation's [task board](./delegating-work.md), one per delegate per round. It sits on the board next to the tasks you filed yourself, and it ends like any task: completed with the delegate's answer, which lands as the delegate's line, or failed.
+
+Each delegate's answer to a post lands once, even across a restart or a dropped connection. A delegate handed the same post twice in one round gets one task, and the record says the second was skipped.
+
+The task runs in the delegate's own session for this conversation, the same session every post from this conversation to that delegate runs in, so the delegate keeps what it was told before. A post to a [workstream](./projects.md#talking-to-a-project) runs in the workstream's own session.
+
+You can cancel a post's task from the board with `cancelTask_tasks`. That delegate's part ends with no line, and if its turn is still running, what it says afterwards doesn't land. Reassigning, completing, failing or blocking a post's task from the board is refused. The board answers task actions only while the conversation files tasks, which it does while at least one of its delegates takes tasks. So in a conversation whose delegates take only posts, a post's task can't be cancelled from the board: `cancelTask_tasks` and `listTasks_tasks` answer `{ "ok": false, "error": "no_delegation_board" }`.
+
+With 25 delegates, `everyone` and `rounds: 3`, one post adds up to 100 tasks to the board. They stay there like any finished task.
 
 ## What it records
 
@@ -566,13 +578,15 @@ const researchFlow = defineFlow({
   resources: { ...installation.resources },
   request: { onStarted: loadWorker, onFinished: delegatedPostOnFinished },
   actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(researchAnswer) } },
+  task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(researchAnswer) } },
 });
 ```
 
 Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the user's id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
 
-`delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
+If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form. Earlier versions also named the coordinator's hand-off tool `handOff`; a worker file whose `tools:` still names it is refused when the app loads, with a message pointing at `dispatchTask` and `post: true`.
+
+`delegatedPostOnFinished` ends a delegated run's task when the run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
 To show the model the conversation's [recent lines](#follow-ups-and-recent-lines), set the generator's `history` to `delegatedPostHistory`. It reads the session's history the same way `history: true` does. On a delegated post that came with lines, it also puts the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
 
@@ -620,7 +634,7 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 - **Hand a post to another user's worker.** Their workers aren't on your roster, and naming one gets the same answer as a worker that doesn't exist.
 - **Write a change back to the file.** A conversation's delegates are its own.
 - **Stop a delegate at the deadline.** The round closes without it; the delegate's turn runs on.
-- **Recall a post.** Removing a delegate doesn't take back what it was handed.
+- **Stop a delegate's turn.** Cancelling a post's task ends that delegate's part and drops anything it says afterwards, but the turn itself runs on.
 - **Pick by a delegate's instructions.** Best fit knows each delegate by its note, or else its description, and nothing else.
 - **Show a delegate another conversation.** A post's recent lines are its own conversation's, and the delegate's model sees them for that one turn.
 - **Let a delegate file tasks for workers it doesn't delegate to.** A task session files only when its own worker has a delegate that takes tasks, and what it files are [pieces of its task](./delegating-work.md#splitting-a-task). Otherwise its `addTask` is refused, from the delegate's tools and from your app alike, with `{ "ok": false, "error": "no_delegation_board" }`.
