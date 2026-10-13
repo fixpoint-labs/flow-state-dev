@@ -100,9 +100,18 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
       </p>
     );
   }
+  // Failed tasks are left out of the rail for now; the Tasks list still shows them with their error.
+  const listed = read.tasks.filter((task) => task.status !== "errored");
+  if (listed.length === 0) {
+    return (
+      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none-open">
+        Nothing open.
+      </p>
+    );
+  }
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">
-      {read.tasks.map((task) => (
+      {listed.map((task) => (
         <li
           key={task.id}
           className="flex items-start gap-2 px-1 py-1 text-sm"

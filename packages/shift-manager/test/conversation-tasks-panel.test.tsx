@@ -154,12 +154,32 @@ describe("the tasks panel (S11)", () => {
 
 describe("opening a task from the panel", () => {
   it("each task opens its own session on the conversation's board", async () => {
-    rows = [{ id: "t1", goal: "Audit the licenses", status: "errored", assignee: "licenses", attempts: 1 }];
+    rows = [{ id: "t1", goal: "Audit the licenses", status: "in_progress", assignee: "licenses", attempts: 1 }];
     window.history.pushState(null, "", "/");
     render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
     await settle();
     await act(async () => screen.getByTestId("cos-task-open").click());
-    // The route is the same one the Tasks list and JumpTo go to, so a failed task is reachable here too.
+    // The route is the same one the Tasks list and Jump to go to.
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
+  });
+});
+
+describe("a failed task in the panel", () => {
+  it("is left out of the rail, while the tasks that can still move stay", async () => {
+    rows = [
+      { id: "t1", goal: "Audit the licenses", status: "errored", assignee: "licenses", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "in_progress", assignee: "docs", attempts: 1 },
+    ];
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    expect(shown().map((t) => t.id)).toEqual(["t2"]);
+  });
+
+  it("says nothing is open, not that no task was filed, when every task has failed", async () => {
+    rows = [{ id: "t1", goal: "Audit the licenses", status: "errored", attempts: 1 }];
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    expect(screen.queryByTestId("cos-tasks-empty")).toBeNull();
+    expect(screen.getByTestId("cos-tasks-none-open").textContent).toBe("Nothing open.");
   });
 });
