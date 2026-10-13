@@ -32,3 +32,4 @@
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-13 | 653549d24 | n/a | NOT GRADED (host) | Container runs as root with no bwrap/socat and no Claude sign-in: the run stopped at **host** with "The server runs as root…". Needs a signed-in, non-root host (fsd-qa) for c, l, s, r, w, p and the three controls |
