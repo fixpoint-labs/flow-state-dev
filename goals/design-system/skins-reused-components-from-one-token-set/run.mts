@@ -442,7 +442,9 @@ await runGoal(async (failures) => {
     if (CONTROL === "hardcoded-accent") {
       const toolPath = join(host, "components/flow-state/tool.tsx");
       const src = readFileSync(toolPath, "utf8");
-      writeFileSync(toolPath, src.replace('ClockIcon className="size-4 text-attention"', 'ClockIcon className="size-4 text-yellow-600"'));
+      const attention = 'ClockIcon className="size-4 bg-attention text-attention-foreground"';
+      if (!src.includes(attention)) return { failures: [`control: ${toolPath} has no ${attention} to replace`], evidence: "" };
+      writeFileSync(toolPath, src.replace(attention, 'ClockIcon className="size-4 bg-yellow-600 text-attention-foreground"'));
     } else if (CONTROL !== undefined) {
       return { failures: [`unknown GOAL_CONTROL=${CONTROL}`], evidence: "" };
     }

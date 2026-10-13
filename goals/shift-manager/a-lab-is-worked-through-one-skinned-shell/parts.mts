@@ -79,7 +79,7 @@ function docsTokenBlock(): string {
 
 const J3_PAGE = `import { createRoot } from "react-dom/client";
 import { FlowProvider } from "@flow-state-dev/react";
-import { ToolShell, ToolHeader } from "@/components/flow-state/tool";
+import { getStatusBadge } from "@/components/flow-state/tool";
 import { Approval } from "@/components/flow-state/approval";
 import "./app/globals.css";
 
@@ -90,7 +90,7 @@ const ask = { id: "s1", type: "suspension", status: "completed", requestId: "r1"
 createRoot(document.getElementById("root")!).render(
   <FlowProvider flowKind="demo" userId="demo" baseUrl="">
     <main className="app-shell bg-background text-foreground">
-      <section data-part="tool"><ToolShell defaultOpen={false}><ToolHeader name="deploy" state="completed" /></ToolShell></section>
+      <section data-part="tool">{getStatusBadge("completed")}</section>
       <section data-part="approval"><Approval item={ask} /></section>
     </main>
   </FlowProvider>,

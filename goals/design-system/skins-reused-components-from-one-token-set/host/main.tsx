@@ -23,7 +23,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { Message } from "@/components/flow-state/message";
 import { Reasoning } from "@/components/flow-state/reasoning";
 import { CodeBlock } from "@/components/flow-state/code-block";
-import { Tool, ToolGroup, ToolHeader, ToolShell, type ToolState } from "@/components/flow-state/tool";
+import { Tool, ToolGroup, getStatusBadge, type ToolState } from "@/components/flow-state/tool";
 import { Approval } from "@/components/flow-state/approval";
 import { TaskPlan } from "@/components/flow-state/task-plan";
 import { AuditAnnotation } from "@/components/flow-state/audit-annotation";
@@ -191,9 +191,7 @@ function Page() {
 
           {toolStates.map(([state, means]) => (
             <Part key={state} name={`tool:${state}`} component="tool.tsx" means={means}>
-              <ToolShell defaultOpen={false}>
-                <ToolHeader name="refund_order" state={state} />
-              </ToolShell>
+              {getStatusBadge(state)}
             </Part>
           ))}
           <Part name="tool:item" component="tool.tsx">
