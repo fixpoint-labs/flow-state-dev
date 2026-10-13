@@ -232,6 +232,31 @@ describe("projectWorkspace for a task a conversation filed", () => {
     expect((run.answer as { message: string }).message).toContain("input.project");
   });
 
+  it("says an input that isn't an object names nothing, instead of reading as if the task named no project", async () => {
+    const h = await boot();
+    const run = await h.file("alice", await h.plainConversation("alice"), { input: "the project is fsd" });
+    expect(run.answer).toMatchObject({ kind: "refused", reason: "no-project" });
+    const message = (run.answer as { message: string }).message;
+    expect(message).toContain("not an object");
+    expect(message).toContain("input.project");
+  });
+
+  it("still works in the conversation's project when the task's input is a plain string", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    const run = await h.file("alice", await h.projectConversation("alice", storefront), { input: "the project is fsd" });
+    expect(run.answer).toMatchObject({ kind: "repo" });
+  });
+
+  it("works in the project a task names when the dispatcher passed its input as a string of JSON", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "sandbox", title: "Sandbox", repository: STOREFRONT_REPO });
+    const run = await h.file("alice", await h.plainConversation("alice"), {
+      input: JSON.stringify({ project: { visibility: "shared", id: "sandbox" } })
+    });
+    expect(run.answer).toMatchObject({ kind: "repo", projectId: "sandbox" });
+  });
+
   it("refuses a named project other than the project conversation's, naming both (BR-9)", async () => {
     const h = await boot();
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });

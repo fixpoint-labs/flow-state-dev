@@ -625,6 +625,26 @@ function isTakenTaskId(err: unknown): boolean {
 }
 
 /**
+ * A task's `input` as the worker should read it. The field is declared
+ * `unknown`, and a model sometimes passes a JSON object as a string of JSON
+ * (`'{"project":{...}}'`). Stored as given, that string is not the object the
+ * worker's readers look for, and they see no input at all. A string that
+ * parses to an object or array is stored as the parsed value; any other
+ * string, and every non-string, is stored untouched.
+ */
+function structuredInput(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text.startsWith("{") && !text.startsWith("[")) return value;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null ? parsed : value;
+  } catch {
+    return value;
+  }
+}
+
+/**
  * The refusal for reassigning a task an answer has re-queued and that hasn't
  * run again yet. Lifts once the re-entry is claimed.
  */
@@ -953,7 +973,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     input: z
       .unknown()
       .optional()
-      .describe("Structured payload handed to the worker as the task's input."),
+      .describe(
+        "Structured payload handed to the worker as the task's input: a JSON object, e.g. " +
+          '{ "project": { "visibility": "shared", "id": "<project>" } }. Pass the object itself, not a JSON string of it.',
+      ),
     metadata: z.record(z.string(), z.unknown()).optional(),
     followUpOf: z
       .string()
@@ -1045,7 +1068,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(followUp !== undefined ? { id: followUp.id, followUpOf: followUp.root } : {}),
         ...(input.deps !== undefined ? { deps: input.deps } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
-        ...(input.input !== undefined ? { input: input.input } : {}),
+        ...(input.input !== undefined ? { input: structuredInput(input.input) } : {}),
         ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
       },
       followUp,

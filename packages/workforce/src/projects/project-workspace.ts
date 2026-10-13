@@ -209,6 +209,14 @@ export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSour
       return otherProject(named, address) ?? fromProject(ctx, address, answer);
     }
     if (named.kind === "named") return fromProject(ctx, named.address, answer);
+    if (named.kind === "none" && named.inputIsNot !== undefined) {
+      return refused(
+        "no-project",
+        `this run's session works for no workstream or project, and its task's input is ${named.inputIsNot}, ` +
+          'not an object, so it names none. A task names a project as `input.project`, inside an input that is an object: ' +
+          '`{ "project": { "visibility": "shared", "id": "<project>" } }`.'
+      );
+    }
     return refused(
       "no-project",
       "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
@@ -220,7 +228,7 @@ export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSour
 
 /** What the task this run holds says about its project. */
 type NamedProject =
-  | { readonly kind: "none" }
+  | { readonly kind: "none"; readonly inputIsNot?: string }
   | { readonly kind: "named"; readonly address: ProjectAddress }
   | { readonly kind: "malformed"; readonly refusal: RunSourceRefusal };
 
@@ -234,7 +242,12 @@ type NamedProject =
 async function namedProjectOf(ctx: LooseBlockContext): Promise<NamedProject> {
   const held = await heldTask(ctx as unknown as BlockContext);
   const input = held?.row.input as { project?: unknown } | null | undefined;
-  if (input == null || typeof input !== "object" || input.project == null) return { kind: "none" };
+  if (input == null) return { kind: "none" };
+  // An input that isn't an object (a string of JSON, say) can't hold a project;
+  // say so, where the refusal would otherwise read as "the task named none".
+  if (typeof input !== "object") return { kind: "none", inputIsNot: `a ${typeof input}` };
+  if (Array.isArray(input)) return { kind: "none", inputIsNot: "an array" };
+  if (input.project == null) return { kind: "none" };
   const parsed = projectAddressSchema.safeParse(input.project);
   if (parsed.success) return { kind: "named", address: parsed.data };
   return {
