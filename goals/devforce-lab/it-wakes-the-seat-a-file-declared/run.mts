@@ -396,7 +396,7 @@ await runGoal(async (failures) => {
       );
     }
 
-    // ---- (b) BR-3, BR-4 — each seat's own view; the EM kind has no entry ---
+    // ---- (b) BR-3, BR-4 — each seat's own view; the EM kind only takes posts
     {
       for (const [seatId, expected] of Object.entries(fixture.seats)) {
         const read = await lab.inspect(seatId);
@@ -453,7 +453,9 @@ await runGoal(async (failures) => {
       if (emSource.includes("harnessManager")) {
         note(`the em kind's own file names harnessManager`);
       }
-      const harnessImports = HARNESS_PACKAGES.filter((pkg) => emSource.includes(`"${pkg}`));
+      const harnessImports = HARNESS_PACKAGES.filter((pkg) =>
+        [`"${pkg}`, `'${pkg}`].some((needle) => emSource.includes(needle)),
+      );
       if (harnessImports.length > 0) {
         note(`the em kind's own file imports ${JSON.stringify(harnessImports)}`);
       }
