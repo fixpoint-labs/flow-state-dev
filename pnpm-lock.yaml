@@ -142,6 +142,9 @@ importers:
       '@bull-board/express':
         specifier: ^7.1.5
         version: 7.1.5
+      '@cursor/sdk':
+        specifier: 1.0.31
+        version: 1.0.31
       '@flow-state-dev/bullmq':
         specifier: workspace:*
         version: link:../../packages/bullmq
@@ -154,6 +157,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@flow-state-dev/cursor':
+        specifier: workspace:*
+        version: link:../../packages/cursor
       '@flow-state-dev/devtool':
         specifier: workspace:*
         version: link:../../packages/devtool

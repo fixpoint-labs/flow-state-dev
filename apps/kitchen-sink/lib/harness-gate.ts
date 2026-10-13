@@ -24,6 +24,7 @@
  * yet" under it: there is nothing to open.
  */
 import { claudeCodeModeCheck } from "./claude-code-mode";
+import { cursorModeCheck } from "./cursor-mode";
 import { goalControl } from "./goal-control";
 import { readHarnessWorkspace, type HarnessWorkspace } from "./harness-workspace";
 import { MODES, isHarnessMode, type HarnessModeId, type KitchenSinkMode, type ModeId } from "./modes";
@@ -56,6 +57,7 @@ export type ModeCheck = (host: ModeCheckHost) => ModeAvailability | Promise<Mode
  */
 export const MODE_CHECKS: Partial<Record<HarnessModeId, ModeCheck>> = {
   "claude-code": claudeCodeModeCheck(),
+  cursor: cursorModeCheck(),
 };
 
 /** The reason a harness mode with no flow kind shows. */

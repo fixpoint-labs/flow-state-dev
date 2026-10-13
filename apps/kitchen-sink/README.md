@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), and Codex and Cursor, which say "not built yet" until each one lands.
+Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), [Cursor](#cursor-mode), and Codex, which says "not built yet" until it lands.
 
 Kitchen Sink sets up a session and keeps it in step with the harness. It doesn't plan work for a harness or move work between harnesses; that is [Shift Manager](../../packages/shift-manager/README.md).
 
@@ -210,11 +210,25 @@ The run starts with a short list of the server's environment variables: what Cla
 
 In local development the mode uses the checkout the server runs from. To point it at another checkout, or to turn it on for a production server, set `KITCHEN_SINK_HARNESS_WORKSPACE` to that checkout's top level.
 
-**Continuing.** A session is one Claude Code conversation. Stop a turn and the next one picks up the same conversation. If Claude Code can't continue it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. It never quietly starts a new conversation; start a new session for that. If Claude Code answers in a different conversation of its own accord, the session says it started a new one and follows it.
+**Continuing.** A session is one Claude Code conversation. Stop a turn and the next one picks up the same conversation. If Claude Code can't continue it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. A turn Claude Code ends in error shows as an error, and the next turn still continues the same conversation. It never quietly starts a new conversation; start a new session for that. If Claude Code answers in a different conversation of its own accord, the session says it started a new one and follows it.
 
 **The plan panel** shows what Claude Code recorded of its to-do list for the session's latest turn, read-only. If part of it couldn't be recorded, the panel says the plan may be incomplete, and why. Claude Code doesn't report its plan through the SDK yet, so the panel says "No plan recorded for this turn." Nothing in the panel starts work.
 
 Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across a restart.
+
+## Cursor mode
+
+Pick **Cursor** to work a Cursor session the way you would on its own. Each turn continues the same Cursor agent, its steps show while it works, and its to-do list sits beside it.
+
+It runs on your machine through the Cursor SDK, which brings its own runtime, so the Cursor editor isn't needed. Sign in the way the SDK does: set `CURSOR_API_KEY`, or log in once with the SDK's login. The mode uses Cursor's `composer-2.5` model. A host without the SDK at the version the mode is tested against, or without a key or a login, shows the mode as unavailable, with the reason.
+
+**Where it works.** Like every harness mode, each session gets its own git worktree and branch of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, on `kitchen-sink/cursor-session/<session>`, and every turn of that session works there (see [Claude Code mode](#claude-code-mode) for where worktrees live and how to clear them). Cursor runs with its sandbox on, which lets it edit files in that worktree and nowhere else, `.git` included, so its work waits uncommitted for you to review. A machine where Cursor's sandbox can't start fails each turn with Cursor's own error rather than running without it.
+
+Its commands start with only the environment variables Kitchen Sink passes it, not the server's whole environment: Cursor's runtime runs in a separate process that is handed only those. That is not a security boundary; the process runs as the server's OS user, so a command that goes looking can still read the server's environment on Linux. Containing that takes a separate user or a container. A command Cursor started can keep running briefly after you stop a turn.
+
+**Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. A run Cursor reports as errored shows as an error, and the next turn still continues the same agent. It never quietly starts a new agent; start a new session for that.
+
+**The plan panel** shows Cursor's to-do list for the session's latest turn, as Cursor last confirmed it, read-only. A turn where Cursor kept no list says "No plan recorded for this turn"; one where Cursor emptied its list says the turn's plan is empty. If the list couldn't be saved in full, the panel says the plan may be incomplete. When Cursor reorders its list, the rows follow their places, not the items. Nothing in the panel starts work.
 
 ## Flows
 

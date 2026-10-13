@@ -15,6 +15,7 @@
  *   - key the place by the raw session id: the hostile-ids case fails.
  *   - hand the run the repository itself: the main-checkout case fails.
  *   - leave `env` unset: the planted variable is handed to the run.
+ *   - record a failure only on a throw: the errored-result case reads "continued".
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -158,6 +159,25 @@ describe("which conversation a turn continues (V5)", () => {
     expect(record?.failure).not.toBe(UNKNOWN_CONVERSATION);
     expect(await noticeOf(stores, "s-late", failed.requestId, "failed")).toMatchObject({ kind: "error" });
     expect((await stateOf(stores, "s-late")).binding?.confirmed).toBe(bound);
+  });
+
+  it("a run Claude Code ends on an error result, not a throw, shows its error and keeps the id (BR-3, BR-10)", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-errored", "hello");
+    const bound = (await stateOf(stores, "s-errored")).binding?.confirmed;
+
+    const errored = await turn(stores, recorder, "s-errored", "[errored] go on");
+    const record = (await stateOf(stores, "s-errored")).turns?.[errored.requestId];
+    expect(record).toMatchObject({ asked: bound, confirmed: bound, failure: null });
+    expect(record?.error).toEqual(expect.any(String));
+    expect(await noticeOf(stores, "s-errored", errored.requestId, errored.status as "completed" | "failed")).toMatchObject({
+      kind: "error",
+    });
+    expect((await stateOf(stores, "s-errored")).binding?.confirmed).toBe(bound);
+
+    await turn(stores, recorder, "s-errored", "and again");
+    expect(recorder.runs.at(-1)?.resume).toBe(bound);
   });
 
   it("a failure before any confirmation for another reason is an error, and the id stays (BR-3)", async () => {
