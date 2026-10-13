@@ -89,6 +89,28 @@ function abortItemIdOf(requestId: string): string {
   return `item_status_aborted_${requestId}`;
 }
 
+/**
+ * Ask the server to stop `requestId`, and say whether it refused because the
+ * request already finished. A 409 can also mean the request was resumed before
+ * the stop reached it, which needs the stop sent again; a second 409 is a
+ * finished request. Other failures are best-effort: the server treats the
+ * disconnect that follows as "interrupted".
+ */
+async function serverRefusedStop(
+  client: { abortRequest(requestId: string): Promise<unknown> },
+  requestId: string
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await client.abortRequest(requestId);
+      return false;
+    } catch (cause) {
+      if (!(cause instanceof ClientHttpError && cause.status === 409)) return false;
+    }
+  }
+  return true;
+}
+
 /** The code of the status item that records a request was stopped. */
 const STOP_CODE = "system.request_aborted";
 
@@ -1824,7 +1846,13 @@ export function useSession(
         // don't pick the turn back up.
         if (stoppedRequestsRef.current.has(requestId)) {
           postResponse.body?.cancel().catch(() => {});
-          await client.abortRequest(requestId).catch(() => {});
+          if (await serverRefusedStop(client, requestId)) {
+            // The turn finished before the stop reached it: drop the view's
+            // stop record and read the finished turn.
+            stoppedRequestsRef.current.delete(requestId);
+            storeRef.current.deleteById(abortItemIdOf(requestId));
+            await refreshSnapshot();
+          }
           return accepted;
         }
 
@@ -1897,23 +1925,14 @@ export function useSession(
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
     stoppedRequestsRef.current.add(requestId);
-    let refused = false;
 
     // Mark the request as abort-requested in the persistent store. This
     // flag lets the server distinguish an intentional stop from an
-    // accidental disconnect (browser reload, network drop).
-    try {
-      await client.abortRequest(requestId);
-    } catch (cause) {
-      // Best-effort — if the endpoint is unreachable the server will
-      // treat the subsequent disconnect as "interrupted" instead. A 409
-      // means the request finished before the stop reached it: the
-      // server's account of it stands, so the view stops claiming a stop.
-      if (cause instanceof ClientHttpError && cause.status === 409) {
-        stoppedRequestsRef.current.delete(requestId);
-        refused = true;
-      }
-    }
+    // accidental disconnect (browser reload, network drop). A refused stop
+    // means the request finished first: the server's account of it stands,
+    // so the view stops claiming a stop.
+    const refused = await serverRefusedStop(client, requestId);
+    if (refused) stoppedRequestsRef.current.delete(requestId);
 
     // Close the SSE connection. On the server, request.signal fires
     // and the catch block checks the abortRequested flag to decide

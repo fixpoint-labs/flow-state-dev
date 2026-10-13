@@ -120,6 +120,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+/** The server's 409 to a stop: the request finished, or was resumed before the stop reached it. */
+async function conflict() {
+  const { ClientHttpError } = await import("@flow-state-dev/client");
+  return new ClientHttpError("Abort request failed (409)", { status: 409, body: "" });
+}
+
 async function mountIdle() {
   const hook = renderHook(() => useSession("sess1", { flowKind: "demo" }));
   await waitFor(() => expect(hook.result.current.isLoading).toBe(false));
@@ -255,11 +261,8 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
     });
     const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
 
-    // The turn finished first: the server refuses the stop.
-    const { ClientHttpError } = await import("@flow-state-dev/client");
-    clientMock.abortRequest.mockRejectedValueOnce(
-      new ClientHttpError("Abort request failed (409)", { status: 409, body: "" })
-    );
+    // The turn finished first: the server refuses the stop, and refuses it again.
+    clientMock.abortRequest.mockRejectedValue(await conflict());
     await act(async () => {
       await result.current.abortRequest();
     });
@@ -268,6 +271,59 @@ describe("useSession.abortRequest: a stop at any point stops the turn", () => {
 
     // The server's account of the finished turn wins at the next read.
     sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(stopItemsOf(result.current.items, requestId)).toHaveLength(0);
+  });
+  it("a stop that lands just after the turn was resumed is sent again, and stops the running turn", async () => {
+    clientMock.sendActionStream.mockResolvedValue(sseResponse());
+    const { result } = await mountIdle();
+
+    await act(async () => {
+      await result.current.sendAction("turn", { prompt: "begin" });
+    });
+    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+
+    // The first stop meets a gate that was just resumed; the second reaches the running turn.
+    clientMock.abortRequest.mockRejectedValueOnce(await conflict());
+    await act(async () => {
+      await result.current.abortRequest();
+    });
+
+    expect(clientMock.abortRequest).toHaveBeenCalledTimes(2);
+    expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
+  });
+
+  it("a stop pressed during the POST that the finished turn refuses leaves no stop behind", async () => {
+    const post = deferred<Response>();
+    clientMock.sendActionStream.mockReturnValue(post.promise);
+    // The server doesn't have the request yet, so the first abort reaches nothing.
+    clientMock.abortRequest.mockRejectedValueOnce(new Error("Abort request failed (404)"));
+
+    const { result } = await mountIdle();
+
+    let send!: Promise<unknown>;
+    act(() => {
+      send = result.current.sendAction("turn", { prompt: "begin" });
+    });
+    const requestId = (clientMock.sendActionStream.mock.calls[0]![2] as { requestId: string }).requestId;
+
+    await act(async () => {
+      await result.current.abortRequest();
+    });
+    expect(stopItemsOf(result.current.items, requestId)).toHaveLength(1);
+
+    // By the time the POST answers, the turn has finished: the server refuses the stop.
+    clientMock.abortRequest.mockRejectedValue(await conflict());
+    sessionClientMock.getSessionState.mockResolvedValue(snapshot([userMessage(requestId)]));
+    await act(async () => {
+      post.resolve(sseResponse());
+      await send;
+    });
+    expect(stopItemsOf(result.current.items, requestId)).toHaveLength(0);
+
+    // A later read doesn't bring the stop back.
     await act(async () => {
       await result.current.refresh();
     });
