@@ -189,15 +189,22 @@ is rarely what you want.
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
 
-Cursor fails a run whose sandbox can't start rather than running without it. To
-find out before a run, `probeCursorSandbox({ cwd, env })` asks the SDK the same
-question a run asks, without starting one, and returns `{ supported: false,
-reason }` with Cursor's own message when the answer is no. It takes about a
-second, so call it once, from a startup or health check. The sandbox depends on
-a helper binary from Cursor's platform package, which this package installs. A
-run with `env` set (next section) always finds it. A run in your own process
-finds it under pnpm only if your app depends on `@cursor/sdk-<platform>-<arch>`
-too.
+Cursor fails a run whose sandbox can't start rather than running without it.
+`probeCursorSandbox` reports whether the sandbox can start for a run in `cwd`
+with that `env`, without starting a run. It takes about a second, so call it
+once, from a startup or health check.
+
+```ts
+import { probeCursorSandbox } from "@flow-state-dev/cursor";
+
+const result = await probeCursorSandbox({ cwd: repoDir, env });
+// { supported: true } or { supported: false, reason: "<Cursor's message>" }
+```
+
+The sandbox needs a helper binary from Cursor's platform package, which this
+package installs. With `env` set (next section), no extra dependency is needed.
+Without `env`, under pnpm, add `@cursor/sdk-<platform>-<arch>` to your app's
+dependencies, or the sandbox can't start and the run fails.
 
 ## Choosing the environment the run starts with
 
