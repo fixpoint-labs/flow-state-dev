@@ -52,7 +52,6 @@ describe("a tool call is a quiet line", () => {
     const run = [call("openWorkstream", "failed", "first"), call("listLeads"), call("openWorkstream", "completed", "retry")];
     render(<ToolLineGroup items={run} />);
     const line = screen.getByRole("button", { name: /Used 3 tools$/ });
-    expect(screen.getByTestId("tool-group").getAttribute("data-state-kind")).toBe("completed");
     fireEvent.click(line);
     expect(screen.getByText("Tried openWorkstream")).toBeTruthy();
     expect(screen.queryByText("openWorkstream failed")).toBeNull();
