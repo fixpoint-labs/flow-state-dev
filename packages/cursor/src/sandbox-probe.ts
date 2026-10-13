@@ -1,12 +1,8 @@
 /**
- * Whether Cursor's local sandbox can start on this host, in Cursor's own
- * words, for a host check to read before it offers a sandboxed run.
- *
- * The SDK decides sandbox support only when a run prepares its workspace, and
- * fails the run when it can't start one. `probeCursorSandbox` asks the same
- * question ahead of time, in a process started the way the runtime's process
- * is (see `runtime/cursor-sandbox-probe.mjs`), so its answer is the one a run
- * would get. No agent and no run is started.
+ * Whether Cursor's local sandbox can start, in Cursor's words, before a host
+ * offers a sandboxed run. The SDK answers only while preparing a workspace,
+ * and only from the running script's folder, so {@link probeCursorSandbox}
+ * asks in `runtime/cursor-sandbox-probe.mjs`.
  */
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";

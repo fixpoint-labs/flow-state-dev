@@ -108,8 +108,6 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     // sandbox on the next turn.
     settingSources: [],
     env: claudeCodeEnv(),
-    // Unsandboxed on request only: with no sandbox and `bypassPermissions`,
-    // nothing confines the run (`lib/harness-sandbox.ts`).
     ...(harnessUnsandboxed()
       ? {}
       : {
@@ -192,9 +190,7 @@ export const HOST_CHECKS: ClaudeCodeHostChecks = {
  * Claude Code mode's own check, for the gate's mode-check slot: the server
  * isn't root, the sandbox can start, the worktree root can be made, and
  * Claude Code finds its SDK and a sign-in over the environment the run gets.
- * The first that fails is the reason. Under `KITCHEN_SINK_HARNESS_UNSANDBOXED=1`
- * the sandbox isn't checked, and the available mode's note says the run is
- * unsandboxed.
+ * The first that fails is the reason.
  */
 export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {

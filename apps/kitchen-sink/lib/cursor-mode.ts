@@ -196,13 +196,6 @@ export const HOST_CHECKS: CursorHostChecks = {
  * run's environment can start (the Cursor package runs the runtime in one),
  * Cursor is signed in over that environment, and Cursor's sandbox can start
  * here. The first that fails is the reason.
- *
- * Every run asks for the sandbox, and Cursor fails a run whose sandbox can't
- * start rather than running without it, so a host without one could run no
- * turn at all. The sandbox answer is the SDK's own, asked the way a run asks
- * it, with no run started (`probeCursorSandbox`). Under
- * `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` runs don't ask for it, so it isn't
- * checked, and the available mode's note says the run is unsandboxed.
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
