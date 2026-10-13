@@ -52,6 +52,20 @@ export interface IgnoredDirectory {
   why: string;
 }
 
+/**
+ * Git options that run none of the repository's hooks.
+ *
+ * `worktree add` runs `post-checkout` in the new tree, and cutting or deleting
+ * a branch runs `reference-transaction`. Those hooks are the operator's, written
+ * for their own checkout: a `pnpm build` in one fails in a fresh tree with no
+ * dependencies, and the provision fails with it. A run can also write into the
+ * repository's hooks directory, which its worktree shares, and have the host
+ * execute it outside the run's sandbox on the next provision. A hooks path of
+ * `/dev/null` holds no hooks on Linux or macOS, and the flag beats any
+ * `core.hooksPath` the repository sets.
+ */
+export const NO_HOOKS: readonly string[] = ["-c", "core.hooksPath=/dev/null"];
+
 /** One worktree to provision. */
 export interface WorktreeRequest {
   /** The repository worktrees are cut from, and where branches live. */
@@ -157,7 +171,7 @@ export async function provisionWorktree(request: WorktreeRequest): Promise<Workt
   const { repo, repoLabel, checkout, marker, branch, now } = request;
   const left = () => remainingBudget(request.deadline, now);
   const git = async (cwd: string, args: string[], timeoutMs: number): Promise<string> => {
-    const { stdout } = await run("git", args, {
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], {
       cwd,
       timeoutMs,
       ...(request.env !== undefined ? { env: request.env } : {}),

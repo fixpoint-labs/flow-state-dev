@@ -87,7 +87,7 @@ import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, type All
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
 import { readFetchPins } from "./repository";
-import { firstLine, gitAnsweredNo, ignoredProblem, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
+import { firstLine, gitAnsweredNo, ignoredProblem, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -1210,7 +1210,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const g = heldGit(left);
     await branchAside(clone, branch, [held.base, held.head], left);
     mkdirSync(dirname(checkout), { recursive: true });
-    await g(clone, ["worktree", "add", "--quiet", "-B", branch, checkout, held.base]);
+    await g(clone, [...NO_HOOKS, "worktree", "add", "--quiet", "-B", branch, checkout, held.base]);
     const scratch = scratchDir();
     try {
       await g(checkout, ["read-tree", "-u", "--reset", held.snapshot]);

@@ -171,6 +171,56 @@ describe("V6 · a harness mode's frame", () => {
   });
 });
 
+describe("FIX-1915 BR-6 · a reload comes back to the open session", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  /** A reload, as the frame sees one: everything drawn goes, the address stays. */
+  function reload(server: ReturnType<typeof fakeServer>) {
+    cleanup();
+    mount(server);
+  }
+
+  it("reopens a session started with New session", async () => {
+    const server = fakeServer([{ id: "c1", kind: "codex-session", title: "codex one" }]);
+    mount(server);
+    fireEvent.click(screen.getByTestId("new-session"));
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("new-1"));
+
+    reload(server);
+
+    await waitFor(() => expect(screen.getByTestId("stream").dataset.sessionId).toBe("new-1"));
+    expect(screen.getByTestId("opened").textContent).toBe("new-1");
+  });
+
+  it("reopens a session picked in the rail", async () => {
+    const server = fakeServer([
+      { id: "c1", kind: "codex-session", title: "codex one" },
+      { id: "c2", kind: "codex-session", title: "codex two" },
+    ]);
+    mount(server);
+    await openKind("codex-session");
+    fireEvent.click(await waitFor(() => within(screen.getByTestId("rail")).getByText("codex two")));
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("c2"));
+
+    reload(server);
+
+    await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("c2"));
+  });
+
+  it("opens nothing for an address naming a session that isn't this mode's", async () => {
+    const server = fakeServer([
+      { id: "c1", kind: "codex-session", title: "codex one" },
+      { id: "k1", kind: "claude-code-session", title: "claude one" },
+    ]);
+    window.history.replaceState(null, "", "/codex?session=k1");
+    mount(server);
+    await waitFor(() => expect(server.sessionSource.listSessions).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId("stream").dataset.sessionId).toBeUndefined();
+    expect(screen.getByText(/Pick a session/)).toBeTruthy();
+  });
+});
+
 describe("V6 · BR-19 · Flow State's rail", () => {
   it("lists no harness mode's sessions", () => {
     const listed = [...COORDINATOR_FLOWS, ...WORKER_FLOWS, SHELL_FLOW];
