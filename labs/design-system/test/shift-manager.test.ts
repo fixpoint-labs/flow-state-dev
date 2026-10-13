@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
-import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
+import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, fencedHits, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
 
 const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
@@ -170,16 +170,10 @@ describe("the fence", () => {
     expect(values).not.toContain("ui-monospace");
   });
 
-  // The DevTool is FSD's own app, not a component a host skins: it ships the brand
-  // look itself (FIX-1928). Only its package is exempt; the registry, react and
-  // every other package keep neutral defaults. FIX-1929 moves the DevTool onto
-  // the shared token names so this exemption can go.
-  const EXEMPT = ["devtool/"];
-
   it("finds no theme value anywhere under packages/, the DevTool aside", () => {
     const { walked, hits } = findThemeValues(join(REPO_ROOT, "packages"), values);
     expect(walked).toBeGreaterThan(500);
-    expect(hits.filter((hit) => !EXEMPT.some((prefix) => hit.startsWith(prefix)))).toEqual([]);
+    expect(fencedHits(hits)).toEqual([]);
   });
 
   it("names the file and value when one is planted in a package file", () => {

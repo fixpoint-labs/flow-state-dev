@@ -18,7 +18,7 @@
  * under it. It is exported for a screen that shows a named state in the same
  * column; split the feed or the composer out when a second view needs them apart.
  */
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer } from "@flow-state-dev/react";
@@ -108,11 +108,17 @@ export function Conversation({
   /** Prefix for every test id inside: `cos` gives `cos`, `cos-conversation`, `cos-item`. */
   testId?: string;
 }) {
-  const { clients, refresh } = useLab();
+  const { clients, refresh, answered } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
   // The feed opens where it starts, and follows once the user reaches the end or sends a line.
   const feed = useFollowLatest({ startAtEnd: false });
   const { sessionId, opened, read, failure, reread } = conversation;
+
+  // An ask in this conversation answered in Inbox or the summary: read the conversation back.
+  const answeredHere = answered !== undefined && answered.sessionId === sessionId ? answered.count : undefined;
+  useEffect(() => {
+    if (answeredHere !== undefined) reread();
+  }, [answeredHere, reread]);
 
   // A run of tool calls stays one segment: the feed draws it as one quiet line.
   const shown = useMemo(() => (read === undefined ? [] : buildItemRenderStream(read.items, shiftManagerRenderers)), [read]);

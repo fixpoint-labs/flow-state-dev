@@ -54,6 +54,20 @@ export function themeValues(css: string): string[] {
   return [...new Set([...colours, ...families])];
 }
 
+/**
+ * Package directories the fence leaves out, as prefixes of a hit's path under
+ * `packages/`. The DevTool is FSD's own app, not a component a host skins: it
+ * ships the brand look itself (FIX-1928). The registry, react and every other
+ * package keep neutral defaults. FIX-1929 moves the DevTool onto the shared
+ * token names so this exemption can go. Shared with the goals that run the fence.
+ */
+export const FENCE_EXEMPT: readonly string[] = ["devtool/"];
+
+/** `hits` from `findThemeValues` over `packages/`, less the exempt packages'. */
+export function fencedHits(hits: readonly string[]): string[] {
+  return hits.filter((hit) => !FENCE_EXEMPT.some((prefix) => hit.startsWith(prefix)));
+}
+
 /** Directories never searched: dependencies and build output. */
 const SKIP = new Set(["node_modules", "dist", "dist-client", "storybook-static", ".turbo", "coverage", ".next"]);
 
