@@ -923,7 +923,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         } catch (error) {
           skip(`could not fetch "${redactRemote(judged.url)}" (${firstLine(error)})`);
         } finally {
-          if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+          // Best effort: a leftover temp dir never decides the provision.
+          try {
+            if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+          } catch {}
         }
       }
     }
