@@ -76,6 +76,22 @@ describe("translateSdkMessage", () => {
     expect(events[1]).toEqual({ kind: "status", message: "Check devtool layout, theme toggle" });
   });
 
+  it("does not read another tool's `description` as intent", () => {
+    // `description` is a domain field on many tools (an issue body, a page, a
+    // calendar event). Only Bash defines it as the call's one-line intent, so
+    // anything else announced by name, never by whatever text it carries.
+    const body = "## Overview\n" + "long markdown body ".repeat(500);
+    const events = translateOne({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "toolu_s", name: "mcp__claude_ai_Linear__save_issue", input: { title: "t", description: body } },
+        ],
+      },
+    });
+    expect(events[1]).toEqual({ kind: "status", message: "Using mcp__claude_ai_Linear__save_issue…" });
+  });
+
   it("announces a tool call that states no intent by tool name, like the framework's own tool loop", () => {
     const events = translateOne({
       type: "assistant",

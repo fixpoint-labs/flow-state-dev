@@ -323,12 +323,19 @@ export function translateSdkMessage(
 }
 
 /**
+ * The tools whose `description` input is the agent's one-line statement of
+ * intent for the call. `description` is a domain field on many other tools (an
+ * issue body, a page, an event), so it is read by tool name, not by field name.
+ */
+const INTENT_DESCRIPTION_TOOLS = new Set(["Bash"]);
+
+/**
  * What a tool call tells the person while it runs: the call's own
- * `description` (Bash and a few others carry the agent's one-line statement of
- * intent), else `Using <tool>…`, the line the framework's own tool loop emits.
+ * `description` when the tool defines one as intent, else `Using <tool>…`, the
+ * line the framework's own tool loop emits.
  */
 function toolStatus(name: string, input: unknown): string {
-  const description = readString(input, "description")?.trim();
+  const description = INTENT_DESCRIPTION_TOOLS.has(name) ? readString(input, "description")?.trim() : undefined;
   return description !== undefined && description !== "" ? description : `Using ${name}…`;
 }
 
