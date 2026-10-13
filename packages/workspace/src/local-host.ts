@@ -62,8 +62,7 @@
  * ```
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import {
@@ -284,9 +283,8 @@ export interface WorkspacePlace {
     /** Whether this call cut the branch. `false` for a checkout handed back. */
     created: boolean;
     /**
-     * The branch the run's branch was cut from. Only when `created`. A local
-     * checkout with no base named records the branch its HEAD was on, or
-     * `"HEAD"` when detached.
+     * The ref the run's branch was cut from, as asked (`"HEAD"` when none was
+     * named). Only when `created`.
      */
     baseRef?: string;
     /** The commit it was cut at. Only when `created`. */
@@ -751,10 +749,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
         const branchRef = full.startsWith("refs/heads/") ? full : undefined;
         const local = await git(repo, ["rev-parse", "--verify", "--quiet", `${branchRef ?? base}^{commit}`], left());
-        // No base named: recorded as the branch HEAD is on, so a reader of the
-        // run's commits can leave out that branch. A detached HEAD is recorded
-        // as "HEAD".
-        const ref = baseRef ?? (branchRef !== undefined ? branchRef.slice("refs/heads/".length) : "HEAD");
+        // Recorded as asked (`HEAD` when no base is named); the commit cut at
+        // is recorded beside it.
+        const ref = base;
         // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
         const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
         // Equal, or local ahead: the person's branch, as it always was.
@@ -866,8 +863,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         // store: the person's config, which every run's worktree shares and can
         // rewrite at any moment, is never read, so no `url.insteadOf` added in
         // it can aim the fetch elsewhere. The tracking ref moves only after.
-        const scratch = mkdtempSync(join(tmpdir(), "fsd-fetch-"));
+        let scratch: string | undefined;
         try {
+          scratch = scratchDir();
           const objects = join(await git(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"], left()), "objects");
           const isolated = { ...env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: objects };
           await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env });
@@ -916,7 +914,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         } catch (error) {
           skip(`could not fetch "${redactRemote(judged.url)}" (${firstLine(error)})`);
         } finally {
-          rmSync(scratch, { recursive: true, force: true });
+          if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
         }
       }
     }
