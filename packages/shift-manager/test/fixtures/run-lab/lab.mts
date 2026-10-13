@@ -16,7 +16,7 @@
  * Workforce's task entry (`workerTaskEntry`).
  *
  * At boot, after the inventory, the Lab opens one conversation with the lead
- * and files its tasks there through the conversation's own `addTask_tasks`:
+ * and files its tasks there through the conversation's own `dispatchTask_tasks`:
  *
  * - one **held** task for each worker named first on its flow: its run
  *   narrates a step about every second and holds until it is aborted (or
@@ -24,7 +24,7 @@
  * - two **short** tasks for the other worker on the shared flow, which run
  *   two steps each and finish;
  * - with `asking`, one **asking** task for the worker on a flow of its own,
- *   whose run opens and then waits on a person's approval. With `holdAsk`, it
+ *   whose run opens and then waits on a user's approval. With `holdAsk`, it
  *   asks only once `releaseAsk()` is called, so a screen can be open first;
  * - one **waiting** task, filed last, which depends on the first held task,
  *   so nothing claims it while that task holds.
@@ -56,12 +56,12 @@ import {
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   createWorkerInstallation,
   defineCoordinatorFlow,
   defineSessionBoard,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
@@ -73,16 +73,16 @@ import { WORKER_ID_STATE_KEY } from "@flow-state-dev/workforce/browser";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { hearingDoor } from "../hearing-door.mts";
+import { hearingDoor } from "./hearing-door.mts";
 
 /** The tree this Lab reads. */
 const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
-/** The one person this Lab runs as. */
+/** The one user this Lab runs as. */
 export const RUN_LAB_USER_ID = "u_run_lab";
 /** The conversation with the lead the tasks are filed on. */
 const RUN_LAB_LEAD_SESSION = "s_run_lab_lead";
 /** The flow the inventory's worker rows are written from: the Lab's own, carrying the writer. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 /**
  * The model the coordinator's best-fit call would run on. `desk` routes to
  * everyone and never makes that call, but the flow names no default.
@@ -95,12 +95,12 @@ const STEP_MS = 1_000;
 const PROGRESS_COMPONENT = "run-lab-progress";
 const PROGRESS_KEY = "progress";
 
-/** What an asking run asks a person to approve. */
+/** What an asking run asks a user to approve. */
 export const RUN_LAB_ASK = "Write the audit note?";
 
 /**
  * What a task asks its scripted run to do, filed as the task's `input`; `ask`:
- * suspend on a person's approval of this, after the opening; `holdAsk`: only
+ * suspend on a user's approval of this, after the opening; `holdAsk`: only
  * once the Lab's `releaseAsk()` is called.
  */
 export type RunScript = { steps?: number; holdMs?: number; ask?: string; holdAsk?: boolean };
@@ -236,7 +236,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   // Its delegates are the workers it files for, each on the flow its own file names.
   const byId = new Map(tree.workers.map((w) => [w.id, w]));
   const lead = tree.workers.find(
-    (w) => w.declared.flow !== COORDINATOR_KIND && ((w.declared.delegates as string[] | undefined) ?? []).length > 0,
+    (w) => w.declared.flow !== COORDINATOR_FLOW && ((w.declared.delegates as string[] | undefined) ?? []).length > 0,
   );
   if (lead === undefined) throw new Error("the run-lab tree declares no worker that files for delegates");
   const leadFlow = String(lead.declared.flow);
@@ -260,7 +260,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   // conversation the task tools and actions, and the board hands each task
   // to a task session on its worker's flow.
   const board = defineSessionBoard({ installation, flowKind: leadFlow });
-  const leadKind = defineFlow({
+  const leadWorkerFlow = defineFlow({
     kind: leadFlow,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
@@ -271,9 +271,9 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   } as never);
   // Each worker's flow takes tasks through Workforce's task entry; the one on
   // a flow of its own also declares the collections a recording harness writes.
-  const workerKind = (kind: string, records: boolean) =>
+  const workerFlowName = (flow: string, records: boolean) =>
     defineFlow({
-      kind,
+      kind: flow,
       cardinality: "collection",
       configSchema: workerConfigSchema(),
       session: installation.session(),
@@ -282,30 +282,30 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
         ...(records ? { [OBSERVED_PLAN]: observedPlanCollection, [OBSERVED_FILE_OPS]: observedFileOpsCollection } : {}),
       },
       actions: { ...hearingDoor },
-      task: { actions: { work: workerTaskEntry({ name: `run-lab-${kind}-task`, turn: scriptedRun }) } },
+      task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
   const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL });
 
   workerFlows = {
-    [leadFlow]: leadKind,
-    [COORDINATOR_KIND]: coordinator,
-    ...Object.fromEntries(flowsOfWorkers.map((kind) => [kind, workerKind(kind, kind === ownWorker?.flow)])),
+    [leadFlow]: leadWorkerFlow,
+    [COORDINATOR_FLOW]: coordinator,
+    ...Object.fromEntries(flowsOfWorkers.map((flow) => [flow, workerFlowName(flow, flow === ownWorker?.flow)])),
   };
   const copies = hireWorkforce(installation);
-  // The seat write takes caller-supplied rows, so it is internal only.
+  // The worker write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
-    kind: INVENTORY_WRITER_KIND,
+    kind: INVENTORY_WRITER_FLOW,
     internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    [INVENTORY_WRITER_KIND]: writer,
+    [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
     flows,
     stores: { default: { primary: inMemoryStores() } },
     devtool: { userId: RUN_LAB_USER_ID },
-    // An asking run suspends until a person answers, which needs durable execution.
+    // An asking run suspends until a user answers, which needs durable execution.
     ...(options.asking === true ? { durable: true } : {}),
   } as never);
 
@@ -341,10 +341,10 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   };
 
   const inventory = await openInventory(
-    { seats: inventorySeats(installation) },
+    { workers: inventoryWorkers(installation) },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
-      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
+      workerWriter: { flowKind: INVENTORY_WRITER_FLOW },
       userId: RUN_LAB_USER_ID,
       orgId,
     },
@@ -360,7 +360,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
   if (opened.status !== 201) throw new Error(`the lead's conversation was not opened: ${opened.status} ${JSON.stringify(opened.body)}`);
   const conversation = RUN_LAB_LEAD_SESSION;
   const file = async (worker: (typeof workers)[number], goal: string, script: RunScript, deps?: string[]) => {
-    const out = (await act(flows[leadFlow]!, conversation, "addTask_tasks", {
+    const out = (await act(flows[leadFlow]!, conversation, "dispatchTask_tasks", {
       goal,
       assignee: worker.id,
       input: script,
@@ -376,7 +376,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     filed.push({ taskId: await file(worker, `${worker.name}: hold until stopped`, {}), workerId: worker.id, kind: "held" });
   }
   if (options.asking === true) {
-    // One more task for the worker on a flow of its own, whose run stops to ask a person.
+    // One more task for the worker on a flow of its own, whose run stops to ask a user.
     if (ownWorker === undefined) throw new Error("asking needs one of the lead's delegates on a flow of its own");
     filed.push({
       taskId: await file(ownWorker, `${ownWorker.name}: ask before writing`, { ask: RUN_LAB_ASK, ...(options.holdAsk === true ? { holdAsk: true } : {}) }),
@@ -396,7 +396,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
     kind: "waiting",
   });
 
-  /** Every row of the person's conversation boards, read from the store. */
+  /** Every row of the user's conversation boards, read from the store. */
   const storedRows = async (): Promise<Task[]> =>
     Object.values(await runtime.stores.resourceState.getByPrefix("user", `${RUN_LAB_USER_ID}:~org:${orgId}`, "tasks/")).map(
       (value) => value.state as unknown as Task,

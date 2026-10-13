@@ -1,6 +1,6 @@
 /**
  * The Node host has only the raw URL, still percent-encoded. A flow kind that
- * carries a literal `%XX` (a seat address whose org or user segment was
+ * carries a literal `%XX` (a worker address whose org or user segment was
  * escaped) must be decoded exactly once on the way to the router, the same as
  * on Next, where the framework does that decode.
  */
@@ -34,7 +34,7 @@ describe("createServerApp — a flow kind that carries percent escapes", () => {
     ["a plain kind", "plain-helper"],
   ])("dispatches an action on %s from the raw URL", async (_label, kind) => {
     const flowstate = createFlowState({
-      flows: { seat: runFlow(kind) },
+      flows: { worker: runFlow(kind) },
       stores: { default: { primary: inMemoryStores() } },
     });
     const server = createServerApp(flowstate);

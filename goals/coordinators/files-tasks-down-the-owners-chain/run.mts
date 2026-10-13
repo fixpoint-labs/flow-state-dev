@@ -178,7 +178,7 @@ function gradeA(o: any, store: string): LegResult {
 
   if (A.taskId === null || row === undefined || row.assignee !== "desk.alpha" || !row.partition.startsWith(`${A.conv}~`) || row.partition !== A.filingSessionId) {
     r.failures.push(
-      `a:filed — wanted the coordinator's own addTask to store a task for desk.alpha on this conversation's board (partition ${show(A.filingSessionId)}); its turn ${A.filing.status}, tools ${show(A.filed)}, row ${show(row)}`,
+      `a:filed — wanted the coordinator's own dispatchTask to store a task for desk.alpha on this conversation's board (partition ${show(A.filingSessionId)}); its turn ${A.filing.status}, tools ${show(A.filed)}, row ${show(row)}`,
     );
   }
   if (row === undefined || row.status !== "completed" || row.completedAt === undefined || row.completedAt - A.filing.startedAt > 60_000) {
@@ -223,7 +223,7 @@ function gradeA(o: any, store: string): LegResult {
   const subRow = rows.find((x) => x.id === S.taskId);
   const subSessions = all.filter((s) => s.state.taskId === S.taskId && S.taskId !== null);
   const sub = subSessions[0];
-  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => i.toolCall?.name === "addTask").map(toolOutput);
+  const subTool = sub === undefined ? [] : items(store, sub.id, "tool_output").filter((i) => i.toolCall?.name === "dispatchTask").map(toolOutput);
   const pieces = allTaskRows(store).filter((x) => sub !== undefined && x.partition.startsWith(`${sub.id}~`));
   const toolPiece = pieces.find((x) => x.goal === `a piece of: Plan the ${S.word} rollout`);
   const pieceRun = toolPiece === undefined ? undefined : all.find((s) => s.state.taskId === toolPiece.id);
@@ -244,7 +244,7 @@ function gradeA(o: any, store: string): LegResult {
     heardSub.length !== 1
   ) {
     r.failures.push(
-      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's addTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its addTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
+      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's dispatchTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its dispatchTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
     );
   } else {
     r.notes.push(`desk.sub split its task: one piece for desk.alpha, completed, then its task; the app's ${show(S.app)}`);
@@ -353,18 +353,18 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
   const messages = items(store, E.conv, "message");
-  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "addTask");
+  const firstCalls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
   // The leg proves a task that ends after its filing turn is heard (FIX-1794 BR-24). A filing that
   // waits for its answer hears the ending as the tool's result instead, and never reaches a notice.
   const waited = firstCalls.filter((i) => {
     try {
-      return (JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown }).waitForResponse === true;
+      return (JSON.parse(i.toolCall?.arguments ?? "{}") as { wait?: unknown }).wait === true;
     } catch {
       return false;
     }
   });
   if (waited.length > 0) {
-    r.failures.push(`e:filed-without-waiting — wanted the first turn to file with a plain addTask, so the ending arrives as a notice after the turn; ${waited.length} of its ${firstCalls.length} addTask calls set waitForResponse: ${show(waited.map((i) => i.toolCall?.arguments))}`);
+    r.failures.push(`e:filed-without-waiting — wanted the first turn to file with a plain dispatchTask, so the ending arrives as a notice after the turn; ${waited.length} of its ${firstCalls.length} dispatchTask calls set wait: ${show(waited.map((i) => i.toolCall?.arguments))}`);
     return r;
   }
   const firstFiled = firstCalls.map(toolOutput);
@@ -372,7 +372,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const task = rows.find((x) => filedIds.includes(x.id) && x.assignee === E.broken);
   const T = task?.id ?? "(none)";
   if (task === undefined || !task.partition.startsWith(`${E.conv}~`)) {
-    r.failures.push(`e:filed — wanted the chief of staff's first turn to file a task for ${E.broken} with addTask; the turn ${E.turn.status}, its addTask calls answered ${show(firstFiled)}; tools it called: ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted the chief of staff's first turn to file a task for ${E.broken} with dispatchTask; the turn ${E.turn.status}, its dispatchTask calls answered ${show(firstFiled)}; tools it called: ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   const maxAttempts = (task as StoredTask & { maxAttempts?: number }).maxAttempts ?? 2;
@@ -396,10 +396,10 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     r.failures.push(`e:no-turn-on-retry — wanted the first failure to run the task again with no line and no turn; retry lines ${retried.length}, notice requests that woke a turn with no ending ${turnsWithoutEnding.length}`);
   }
   const woke = heard[0]?.requestId;
-  const refiled = tools.filter((i) => i.requestId === woke && i.toolCall?.name === "addTask").map(toolOutput);
+  const refiled = tools.filter((i) => i.requestId === woke && i.toolCall?.name === "dispatchTask").map(toolOutput);
   const again = rows.filter((x) => refiled.some((y) => y?.ok === true && y.taskId === x.id) && x.partition === task.partition && x.goal.includes(E.goalWord));
   if (woke === undefined || again.length === 0) {
-    r.failures.push(`e:refiled — wanted the turn the notice woke to file the task again with addTask; its addTask calls answered ${show(refiled)}; tools it called ${show(tools.filter((i) => i.requestId === woke).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:refiled — wanted the turn the notice woke to file the task again with dispatchTask; its dispatchTask calls answered ${show(refiled)}; tools it called ${show(tools.filter((i) => i.requestId === woke).map((i) => i.toolCall?.name))}`);
   }
   const reply = messages
     .filter((m) => m.requestId === woke && m.role === "assistant" && m.agentName !== E.broken && m.agentName !== E.helper)

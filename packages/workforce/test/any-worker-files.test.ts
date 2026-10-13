@@ -105,7 +105,7 @@ function fileScript(marker: string, goal: string, assignee: string): MockGenerat
   return [
     on("completed by", { text: "Heard it." }),
     on("failed for good", { text: "Heard it failed." }),
-    ...callOnce(marker, { toolName: "addTask", args: { goal, assignee } }, "Filed."),
+    ...callOnce(marker, { toolName: "dispatchTask", args: { goal, assignee } }, "Filed."),
     on("TASK:", { text: "Done the task." }),
     { when: () => true, then: { text: "OK." } }
   ];
@@ -136,7 +136,7 @@ async function agentSession(h: BoardHost, userId: string, workerId: string): Pro
 }
 
 const file = async (h: BoardHost, userId: string, sessionId: string, input: Record<string, unknown>, flow: string) => {
-  const result = await h.act(userId, sessionId, "addTask_tasks", input, flow);
+  const result = await h.act(userId, sessionId, "dispatchTask_tasks", input, flow);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -302,7 +302,7 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       const [after] = turnsAbout(h.seen, "turn after the add") as [Seen];
       expect(taskToolsIn(after.names).sort()).toEqual([...TASK_TOOLS].sort());
 
-      const filed = await file(h, "alice", talk, { goal: "Count seats [slow:100]", assignee: "eng.tasker" }, "agent");
+      const filed = await file(h, "alice", talk, { goal: "Count workers [slow:100]", assignee: "eng.tasker" }, "agent");
       expect(filed.ok).toBe(true);
       const removed = await h.act("alice", talk, "removeDelegate", { worker: "eng.tasker" }, "agent");
       expect(removed.error, messageOf(removed.error)).toBeUndefined();
@@ -315,7 +315,7 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       // The row filed while it could still file runs, settles and is heard.
       await h.settled();
       const rows = await h.rows("alice");
-      expect(rows.map((row) => [row.goal, row.status])).toEqual([["Count seats [slow:100]", "completed"]]);
+      expect(rows.map((row) => [row.goal, row.status])).toEqual([["Count workers [slow:100]", "completed"]]);
       const heard = (await h.requestsOf(talk)).filter((request) => request.actionName === "onTaskSettled");
       expect(heard).toHaveLength(1);
     } finally {
@@ -397,7 +397,7 @@ describe("the grant is server-written, never input (BR-6)", () => {
       const forged = await h.act(
         "alice",
         talk,
-        "addTask_tasks",
+        "dispatchTask_tasks",
         { goal: "sneak it in", assignee: "eng.writer", delegates: [{ worker: "eng.writer" }] },
         "agent"
       );
@@ -478,14 +478,14 @@ describe("who it files for, and which board (V2)", () => {
         ...callOnce("plan the launch", { toolName: "handOff", args: { worker: "ana" } }, "Handed on."),
         { when: () => true, then: { text: "OK." } }
       ],
-      agentScript: fileScript("plan the launch", "Book the room", "eng.tasker")
+      agentScript: fileScript("plan the launch", "Book the venue", "eng.tasker")
     });
     try {
       const conv = await h.conversation("alice", "chief");
       expect((await h.act("alice", conv, "run", { message: "plan the launch" })).error).toBeUndefined();
       await h.settled();
       const rows = await h.rows("alice");
-      expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Book the room", "eng.tasker", "completed"]]);
+      expect(rows.map((row) => [row.goal, row.assignee, row.status])).toEqual([["Book the venue", "eng.tasker", "completed"]]);
       // On ana's delegate session's board, not the conversation's.
       const chiefFiling = await h.filingOf("alice", conv);
       expect(rows[0]!.partition).not.toBe(encodeUserSegment(chiefFiling));

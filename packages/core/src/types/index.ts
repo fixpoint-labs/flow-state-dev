@@ -42,8 +42,8 @@ export { NoRequestHostError, requireRequestHost } from "./request-host";
 export type { AskEndingErrorCode, AskGateBinding, AskOutcome, ParkOnAskInput } from "./ask-gate";
 export {
   ASK_GATE_REASON,
-  AskEndedError,
-  AskStoppedError,
+  WaitEndedError,
+  WaitStoppedError,
   isAskGate,
   isExpiredApproval,
   parkOnAsk,
@@ -72,8 +72,11 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
+  TaskEntryChoice,
   TaskFlowTarget,
   TaskStateTarget,
+  KeyedTaskSessionPolicy,
+  TaskSessionChoice,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./dispatch";
@@ -89,7 +92,11 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  addressEntries,
+  describeAction,
+  resolveTaskAction,
   resolveTaskFlowKind,
+  resolveTaskSessionTarget,
   resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
@@ -402,14 +409,33 @@ export type {
 export { applyGetOrPatchState, defineResource, resource } from "./resource";
 
 /**
+ * The run's plan record, also exported here (it is on the package root too)
+ * so browser code can read its keys without importing the root, which pulls
+ * in server-only modules.
+ */
+export {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  observedPlanCollection,
+  observedPlanItemStateSchema,
+  observedPlanListCollection,
+  observedPlanListStateSchema,
+  planKeySegment,
+  planRowsPrefix,
+} from "./harness-plan";
+export type { ObservedOutcome, ObservedPlanListStatus, PlanListItem } from "./harness-plan";
+
+/**
  * The coding-harness contract (LAB-152) — what a harness block is handed and
  * what it hands back, plus the signatures a host feeds it configuration
  * through. The matching runtime schemas are exported from the package root.
  */
 export type {
+  ClassifiedHarnessError,
   HarnessBlock,
   HarnessCallbackContext,
   HarnessCostBasis,
+  HarnessFailureKind,
   HarnessResolver,
   HarnessRunCost,
   HarnessRunEnvelope,

@@ -57,11 +57,23 @@
  * visibility: the answer names the project's id as the key prefix, so a host
  * hydrates and saves `project-files/<projectId>/…` and nothing else.
  *
+ * **A checkout on this machine, for the projects the operator names.** With
+ * `checkouts`, a shared project an entry names, by its organization and id
+ * (and tenant, exactly), whose row's `repository` is the entry's `remote`,
+ * is answered with the entry's `checkout` path instead of the remote, for a
+ * host that lists that path in `localRepositories`. The organization and
+ * tenant are the run's session's, from its verified principal
+ * (`principalFromContext`), never anything on the task. A private project, a
+ * project in another organization or tenant, and a session with no
+ * organization are never mapped: they get the answer they would without
+ * `checkouts`. The row still names its remote; the path is the operator's.
+ *
  * The collections are reached through {@link projectWorkspaceCapability},
  * which the block that asks the source must hold: pass it on the manager's
  * `uses`.
  */
 
+import { isAbsolute } from "node:path";
 import { defineCapability, type LooseBlockContext } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
@@ -70,7 +82,8 @@ import {
   type ProjectedEntryState,
   type RunSource,
   type RunSourceAnswer,
-  type RunSourceRefusal
+  type RunSourceRefusal,
+  type ScopePrincipal
 } from "@flow-state-dev/workspace";
 import { filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
 import { conversationLedgerResources } from "../conversation-board/ledger";
@@ -85,6 +98,7 @@ import {
   type ProjectVisibility
 } from "./collections";
 import { isMember } from "./membership-gate";
+import { repositoryProblem } from "./repository-value";
 import {
   collectionAt,
   projectFilesAccessor,
@@ -129,15 +143,46 @@ export const projectWorkspaceCapability = defineCapability({
 });
 
 /**
+ * A checkout on the server's machine that some shared projects' runs work in,
+ * instead of a clone of their remote. The operator's config, never a row.
+ */
+export interface ProjectCheckout {
+  /** The remote, exactly as the projects' rows store it in `repository`. */
+  remote: string;
+  /** The checkout's absolute path. List it in the host's `localRepositories` too. */
+  checkout: string;
+  /**
+   * The shared projects whose runs work here, each by its organization and
+   * id. `tenantId` is matched exactly: an entry that names one matches only a
+   * run in that tenant, and one that names none only a run with none.
+   */
+  projects: readonly { orgId: string; id: string; tenantId?: string }[];
+  /** The branch a run's branch is cut from. Omitted: whatever the checkout has checked out (`HEAD`). */
+  baseRef?: string;
+}
+
+/** Options for {@link projectWorkspace}. */
+export interface ProjectWorkspaceOptions {
+  /** Checkouts on this machine, and the shared projects whose runs work in each. */
+  checkouts?: readonly ProjectCheckout[];
+}
+
+/**
  * The run source for coding runs on a project.
  *
  * Answers `{ kind: "repo", repo, projectId, files }` for a project with a
  * repository, `{ kind: "files", projectId, files }` for one with none, or a
- * refusal ({@link ProjectWorkspaceRefusalReason}).
+ * refusal ({@link ProjectWorkspaceRefusalReason}). A shared project named in
+ * `checkouts`, in the run's own organization and tenant and on the entry's
+ * remote, is answered with the entry's `checkout` as its `repo` and the
+ * entry's `baseRef`.
  *
+ * @param options `checkouts`: see {@link ProjectCheckout}.
  * @returns A `RunSource` to hand `localWorkspaceHost({ source })`.
- * @throws When asked, if the block asking does not hold
- *   {@link projectWorkspaceCapability}.
+ * @throws When called, for a checkout that isn't an absolute path, a remote
+ *   a project's row couldn't store, or a project (organization, tenant and
+ *   id) named twice, naming the entry. When asked, if the block asking does
+ *   not hold {@link projectWorkspaceCapability}.
  * @example
  *   harnessManager({
  *     workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace() }),
@@ -145,22 +190,25 @@ export const projectWorkspaceCapability = defineCapability({
  *     // ...
  *   });
  */
-export function projectWorkspace(): RunSource {
+export function projectWorkspace(options: ProjectWorkspaceOptions = {}): RunSource {
+  const checkouts = checkedCheckouts(options.checkouts ?? []);
+  const answer = (ctx: LooseBlockContext, visibility: ProjectVisibility, project: ProjectRow): RunSourceAnswer =>
+    answerFor(ctx, visibility, project, checkouts);
   const source: RunSource = async (ctx): Promise<RunSourceAnswer> => {
     const named = await namedProjectOf(ctx);
     if (named.kind === "malformed") return named.refusal;
     const link = filingWorkstreamOf(ctx.session?.state);
     if (link !== undefined) {
       const conflict = otherProject(named, parseWorkstreamRef(link)?.project);
-      return conflict ?? fromWorkstream(ctx, link);
+      return conflict ?? fromWorkstream(ctx, link, answer);
     }
     const filedIn = filingProjectOf(ctx.session?.state);
     if (filedIn !== undefined) {
       const address = parseProjectRef(filedIn);
       if (address === undefined) return refused("no-project", `this run's session names project "${filedIn}", which names no project.`);
-      return otherProject(named, address) ?? fromProject(ctx, address);
+      return otherProject(named, address) ?? fromProject(ctx, address, answer);
     }
-    if (named.kind === "named") return fromProject(ctx, named.address);
+    if (named.kind === "named") return fromProject(ctx, named.address, answer);
     return refused(
       "no-project",
       "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
@@ -220,8 +268,11 @@ function runOwnerOf(ctx: LooseBlockContext): string | undefined {
   return ctx.user?.identity?.userId;
 }
 
+/** The answer for a project at its visibility, once the project is found and the run allowed. */
+type Answer = (ctx: LooseBlockContext, visibility: ProjectVisibility, project: ProjectRow) => RunSourceAnswer;
+
 /** A run for the workstream its session leads. */
-async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<RunSourceAnswer> {
+async function fromWorkstream(ctx: LooseBlockContext, link: string, answer: Answer): Promise<RunSourceAnswer> {
   const address: WorkstreamAddress | undefined = parseWorkstreamRef(link);
   const owner = ctx.session.identity.userId;
   if (address === undefined || owner === undefined || owner.length === 0) {
@@ -252,7 +303,7 @@ async function fromWorkstream(ctx: LooseBlockContext, link: string): Promise<Run
  * private project in the run owner's own scope), and the run's owner must be
  * one of a shared project's members, or a private project's owner.
  */
-async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Promise<RunSourceAnswer> {
+async function fromProject(ctx: LooseBlockContext, address: ProjectAddress, answer: Answer): Promise<RunSourceAnswer> {
   const stored = await projectRowsAt(ctx, address.visibility, notHeld).getOptional(address.id);
   if (stored === undefined) {
     return refused("no-project", `there is no ${address.visibility} project "${address.id}" this run can work in.`);
@@ -269,16 +320,82 @@ async function fromProject(ctx: LooseBlockContext, address: ProjectAddress): Pro
   return answer(ctx, address.visibility, project);
 }
 
-/** The answer for `project` at `visibility`: its repository, or its files, with its kept files beside either. */
-function answer(ctx: LooseBlockContext, visibility: ProjectVisibility, project: ProjectRow): RunSourceAnswer {
+/**
+ * The answer for `project` at `visibility`: its repository, or its files, with
+ * its kept files beside either. A shared project a checkout entry maps, in
+ * the run's own organization and tenant, gets the checkout instead of its
+ * remote.
+ */
+function answerFor(
+  ctx: LooseBlockContext,
+  visibility: ProjectVisibility,
+  project: ProjectRow,
+  checkouts: readonly ProjectCheckout[]
+): RunSourceAnswer {
   const declaration = visibility === "private" ? definePrivateProjectFilesCollection() : defineProjectFilesCollection();
+  const principal = principalFromContext(ctx);
   const kept = {
     collection: collectionAt<ProjectedEntryState>(ctx, projectFilesAccessor(visibility), notHeld),
-    collectionId: collectionIdFor(declaration, principalFromContext(ctx))
+    collectionId: collectionIdFor(declaration, principal)
   };
-  return project.repository == null
-    ? { kind: "files", projectId: project.id, files: kept }
-    : { kind: "repo", repo: project.repository, projectId: project.id, files: kept };
+  if (project.repository == null) return { kind: "files", projectId: project.id, files: kept };
+  const mapped = checkoutFor(checkouts, visibility, project, principal);
+  if (mapped !== undefined) {
+    return {
+      kind: "repo",
+      repo: mapped.checkout,
+      ...(mapped.baseRef !== undefined ? { baseRef: mapped.baseRef } : {}),
+      projectId: project.id,
+      files: kept
+    };
+  }
+  return { kind: "repo", repo: project.repository, projectId: project.id, files: kept };
+}
+
+/**
+ * The checkout entry that maps `project`, or `undefined`. Only a shared row,
+ * only in a run whose session names an organization, matched on the stored
+ * row's id and repository and the session's organization and tenant (BP-031).
+ * Exported for its tests.
+ */
+export function checkoutFor(
+  checkouts: readonly ProjectCheckout[],
+  visibility: ProjectVisibility,
+  project: Pick<ProjectRow, "id" | "repository">,
+  principal: Pick<ScopePrincipal, "orgId" | "tenantId">
+): ProjectCheckout | undefined {
+  const { orgId, tenantId } = principal;
+  if (visibility !== "shared" || orgId === undefined) return undefined;
+  return checkouts.find(
+    (entry) =>
+      entry.remote === project.repository &&
+      entry.projects.some((named) => named.id === project.id && named.orgId === orgId && named.tenantId === tenantId)
+  );
+}
+
+/** `checkouts`, checked once when the source is built (BR-6). Each refusal names the entry. */
+function checkedCheckouts(checkouts: readonly ProjectCheckout[]): readonly ProjectCheckout[] {
+  const seen = new Set<string>();
+  checkouts.forEach((entry, index) => {
+    const at = `projectWorkspace: checkouts[${index}]`;
+    if (!isAbsolute(entry.checkout)) {
+      throw new Error(`${at}: the checkout ${JSON.stringify(entry.checkout)} must be an absolute path.`);
+    }
+    const problem = repositoryProblem(entry.remote);
+    if (problem !== undefined) throw new Error(`${at}: its remote can't be a project's repository: ${problem}.`);
+    for (const named of entry.projects) {
+      const key = JSON.stringify([named.orgId, named.tenantId ?? null, named.id]);
+      if (seen.has(key)) {
+        throw new Error(
+          `${at}: project "${named.id}" of organization "${named.orgId}"` +
+            `${named.tenantId !== undefined ? ` in tenant "${named.tenantId}"` : ""} is already named. ` +
+            `A project's runs work in one checkout.`
+        );
+      }
+      seen.add(key);
+    }
+  });
+  return checkouts;
 }
 
 /** A refusal answer. */

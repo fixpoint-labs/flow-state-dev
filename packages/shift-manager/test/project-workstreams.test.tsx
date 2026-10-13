@@ -1,9 +1,8 @@
 /**
  * A project's workstreams in Shift Manager, on the DevTeam Lab, which
- * installs the project coordinator and the standard workstream coordinator
- * (FIX-1793 S8, S9).
+ * installs the project coordinator (FIX-1793 S8, S9).
  *
- * Two people in one shared project: the Lab's owner ("Alice") and a member
+ * Two people in one shared project: the Lab's owner ("Alice") and a project member
  * ("Bob"), and an organization member on no project, each with a secret of
  * their own. Everything goes through Shift Manager's own code
  * (`lib/projects.ts`, the project view) against the Lab's shipped routes.
@@ -12,12 +11,13 @@
  * (`coordinator-judgment`) makes the tool calls a test names, then stops; an
  * `agent` worker's turn answers with a fixed line.
  *
- * Checks (`specs/issues/FIX-1793/`): V8a (BR-35 to BR-37: opening a workstream
- * forks one coordinator of its own, which leads it, is its session's worker
- * and its owner's delegate record, and takes the project coordinator's post),
- * and V8 (BR-12, BR-18: a project view opens on the row and one entry prefix,
+ * Checks (`specs/issues/FIX-1793/`): V8b (BR-38, BR-39, BR-40, BR-42: the
+ * user asks their project coordinator for work, and it opens a workstream
+ * led by a worker on their roster that can lead, the EM, and hands the ask
+ * into its session in the same turn; nothing is added to the roster), and
+ * V8 (BR-12, BR-18: a project view opens on the row and one entry prefix,
  * its Board reads only the viewer's own workstream sessions, and another
- * person's entry is read, never their session).
+ * user's entry is read, never their session).
  *
  * **Node first, then a DOM.** The DevTeam host's modules resolve files beside
  * them with `new URL(path, import.meta.url)`, which a DOM test file's
@@ -33,17 +33,10 @@ import { builtinEnvironments } from "vitest/environments";
 import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { WORKER_ID_STATE_KEY, type RosterEntry } from "@flow-state-dev/workforce/browser";
-import { ActionRefused, runAction } from "../src/lib/action";
+import { runAction } from "../src/lib/action";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import {
-  openWorkstreamWithCoordinator,
-  readProject,
-  readProjectSetup,
-  workstreamCoordinatorId,
-  type ProjectAddress,
-  type ProjectSetup,
-} from "../src/lib/projects";
-import { createLabReader, PROJECT_READER_KIND, readerSessionId } from "../src/lib/reads";
+import { readProject, readProjectSetup, type ProjectAddress, type ProjectSetup } from "../src/lib/projects";
+import { createLabReader, PROJECT_READER_FLOW, readerSessionId } from "../src/lib/reads";
 import { readSessionItems } from "../src/lib/run";
 import { workforceClientFor } from "../src/lib/workforce";
 import { selectHarness } from "../teams/devteam/harness.mts";
@@ -112,11 +105,11 @@ afterEach(async () => {
   root = undefined;
 });
 
-/** One person at the Lab: their connection, their workforce client, and their roster reading session. */
-type Person = { clients: LabClients; reader: string; roster: () => Promise<RosterEntry[]> };
+/** One user at the Lab: their connection, their workforce client, and their roster reading session. */
+type User = { clients: LabClients; reader: string; roster: () => Promise<RosterEntry[]> };
 
-/** The DevTeam Lab with one shared project, Apollo, whose members are Alice and Bob. */
-async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user: { userId: string; bearer: string }) => Promise<Person> }> {
+/** The DevTeam Lab with one shared project, Apollo, whose project members are Alice and Bob. */
+async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user: { userId: string; bearer: string }) => Promise<User> }> {
   const harness = selectHarness();
   root = mkdtempSync(join(tmpdir(), "sm-project-workstreams-"));
   lab = await openLab({
@@ -125,7 +118,7 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root, remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
     projects: [{ id: APOLLO.id, title: "Apollo", members: [BOB.userId] }],
   });
@@ -133,154 +126,184 @@ async function open(): Promise<{ baseUrl: string; setup: ProjectSetup; as: (user
   const baseUrl = served.baseUrl;
   // With a DOM in place, the page is on the Lab's origin, as the shift-manager command serves it.
   if (typeof window !== "undefined") (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
-  const as = async (user: { userId: string; bearer: string }): Promise<Person> => {
+  const as = async (user: { userId: string; bearer: string }): Promise<User> => {
     const clients = createLabClients({ userId: user.userId, baseUrl, bearerToken: user.bearer });
-    // The Lab read opens the person's reading session on the roster flow, as the app does.
+    // The Lab read opens the user's reading session on the roster flow, as the app does.
     await createLabReader(clients).read();
     const workforce = workforceClientFor(clients);
-    return { clients, reader: readerSessionId(user.userId, PROJECT_READER_KIND), roster: () => workforce.roster() };
+    return { clients, reader: readerSessionId(user.userId, PROJECT_READER_FLOW), roster: () => workforce.roster() };
   };
   const setup = await readProjectSetup((await as(ALICE)).clients);
   if (setup === null) throw new Error("the DevTeam Lab answers no project setup");
   return { baseUrl, setup, as };
 }
 
-/** The person's own workers, by id. */
-async function ownWorkers(person: Person): Promise<RosterEntry[]> {
-  return (await person.roster()).filter((entry) => !entry.standard).sort((a, b) => a.id.localeCompare(b.id));
+/** The user's own workers, by id. */
+async function ownWorkers(user: User): Promise<RosterEntry[]> {
+  return (await user.roster()).filter((entry) => !entry.standard).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-async function openAs(person: Person, setup: ProjectSetup, id: string, project: ProjectAddress = APOLLO) {
-  return openWorkstreamWithCoordinator(person.clients, workforceClientFor(person.clients), setup, person.reader, { project, id, title: `The ${id}` });
+/** The DevTeam's one worker that can lead a workstream. */
+const EM = "eng.em";
+
+/** Open a workstream over HTTP, as an app may, naming the EM as its lead. */
+async function openAs(user: User, setup: ProjectSetup, id: string, project: ProjectAddress = APOLLO) {
+  return runAction(user.clients, setup.flow, readerSessionId(user.clients.userId, setup.flow), "openWorkstream", {
+    project,
+    id,
+    title: `The ${id}`,
+    lead: EM,
+  });
 }
 
-/** The person's project coordinator session for Apollo, found or started as the Stream tab does. */
-async function projectCoordinator(person: Person, setup: ProjectSetup): Promise<string> {
-  return (await workforceClientFor(person.clients).ensureWorkerSession({ worker: setup.projectCoordinator!, projectId: APOLLO })).id;
+/**
+ * Ask the user's project coordinator for work, its judgment scripted to
+ * read the leads, open `id` with `lead`, and hand the ask in, in one turn.
+ */
+async function askFor(user: User, setup: ProjectSetup, id: string, message: string, lead = EM) {
+  judgmentCalls = [
+    { toolName: "listLeads", args: {} },
+    { toolName: "openWorkstream", args: { project: APOLLO, id, title: `The ${id}`, lead, objectives: [message] } },
+    { toolName: "handOff", args: { worker: lead, target: `shared/apollo/${id}` } },
+  ];
+  const pc = await projectCoordinator(user, setup);
+  await runAction(user.clients, "coordinator", pc, "run", { message });
+  return pc;
 }
 
-async function delegatesOf(person: Person, sessionId: string) {
-  const { output } = await runAction(person.clients, "coordinator", sessionId, "listDelegates", {});
+/** Whether a session's items carry `word`. */
+async function holds(user: User, sessionId: string, word: string): Promise<boolean> {
+  const { items } = await readSessionItems(user.clients, sessionId);
+  return JSON.stringify(items).includes(word);
+}
+
+/** What `listLeads` answered in a conversation, each call's lead ids. */
+async function leadsOffered(user: User, sessionId: string): Promise<string[][]> {
+  const { items } = await readSessionItems(user.clients, sessionId);
+  return (items as Array<{ type?: string; blockName?: string; output?: { leads?: Array<{ id: string }> } }>)
+    .filter((item) => item.type === "tool_output" && item.blockName === "listLeads")
+    .map((item) => (item.output?.leads ?? []).map((lead) => lead.id));
+}
+
+/** The user's project coordinator session for Apollo, found or started as the Stream tab does. */
+async function projectCoordinator(user: User, setup: ProjectSetup): Promise<string> {
+  return (await workforceClientFor(user.clients).ensureWorkerSession({ worker: setup.projectCoordinator!, projectId: APOLLO })).id;
+}
+
+async function delegatesOf(user: User, sessionId: string) {
+  const { output } = await runAction(user.clients, "coordinator", sessionId, "listDelegates", {});
   return (output as { delegates: Array<{ worker: string; target?: string; takes: string }> }).delegates;
 }
 
 describe("the Lab's project setup (S9)", () => {
-  it("names the standard project coordinator and workstream coordinator, from the projects flow", async () => {
+  it("names the standard project coordinator, from the projects flow, and no workstream coordinator", async () => {
     const { setup } = await open();
-    expect(setup).toEqual({ flow: "projects", projectCoordinator: "project-coordinator", workstreamCoordinator: "workstream-coordinator" });
+    expect(setup).toEqual({ flow: "projects", projectCoordinator: "project-coordinator" });
   });
 });
 
-describe("opening a workstream from a project (V8a: BR-35 to BR-37)", () => {
-  it("forks exactly one coordinator onto her roster, which leads it, is its session's worker and her delegate record, and takes a post", async () => {
+describe("opening a workstream by asking the project coordinator (V8b: BR-38 to BR-40, BR-42)", () => {
+  it("reads workers only through listLeads: its discovery lists none of the workers that can't lead", async () => {
+    // A coordinator that could list every worker once picked itself as a lead, was refused, and retried.
+    const { setup, as } = await open();
+    const alice = await as(ALICE);
+    judgmentCalls = [{ toolName: "discover", args: { domain: "workers", detail: "full" } }];
+    const pc = await projectCoordinator(alice, setup);
+    await runAction(alice.clients, "coordinator", pc, "run", { message: "Who can lead a research workstream?" });
+    const { items } = await readSessionItems(alice.clients, pc);
+    const found = (items as Array<{ type?: string; toolCall?: { name?: string }; output?: unknown }>).filter(
+      (item) => item.type === "tool_output" && item.toolCall?.name === "discover",
+    );
+    expect(found).toHaveLength(1);
+    const domains = (found[0]!.output as { domains: Array<{ domain: string; entries: unknown[] }> }).domains;
+    expect(domains.flatMap((d) => d.entries)).toEqual([]);
+  });
+
+  it("opens one led by the EM and hands the ask into its session in the same turn, adding nobody to her roster", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
     expect(await ownWorkers(alice)).toEqual([]);
 
-    const opened = await openAs(alice, setup, "checkout");
-    expect(opened.forked).toBe(true);
-    const lead = workstreamCoordinatorId(APOLLO, "checkout");
-    // One new worker of hers, forked from the standard workstream coordinator, on the flow it names.
-    expect((await ownWorkers(alice)).map((w) => [w.id, w.flow, w.forkedFrom])).toEqual([[lead, "agent", "workstream-coordinator"]]);
+    const pc = await askFor(alice, setup, "checkout", "Please add guest checkout, PERIWINKLE-7319.");
+    // It was offered only the worker that can lead: the coder, the reviewer and the coordinators lead nothing (BR-42).
+    await eventually(async () => ((await leadsOffered(alice, pc)).length > 0 ? true : undefined), "the leads read");
+    expect(await leadsOffered(alice, pc)).toEqual([[EM]]);
+    expect(await ownWorkers(alice)).toEqual([]);
 
-    // It leads the entry, and its session is the workstream session.
+    // The EM leads the entry, and its session is the workstream session.
     const read = await readProject(alice.clients, alice.reader, APOLLO);
     const entry = read!.entries.find((e) => e.id === "checkout")!;
-    expect(entry).toMatchObject({ owner: ALICE.userId, lead });
-    expect(entry.sessionId).not.toBeNull();
+    expect(entry).toMatchObject({ owner: ALICE.userId, lead: EM });
     const session = await alice.clients.sessions.getSession(entry.sessionId!);
-    expect(session.state?.[WORKER_ID_STATE_KEY]).toBe(lead);
+    expect(session.state?.[WORKER_ID_STATE_KEY]).toBe(EM);
 
-    // Her project coordinator holds one record for it, addressed to the workstream, as a delegate that takes posts.
-    const pc = await projectCoordinator(alice, setup);
+    // Her project coordinator holds one record for it, and the hand-off in that turn reached the workstream session.
     const records = await delegatesOf(alice, pc);
-    expect(records.map(({ worker, target }) => ({ worker, target }))).toEqual([{ worker: lead, target: "shared/apollo/checkout" }]);
-    // Its flow takes posts (and tasks): the record is one a post can be handed to.
-    expect(["posts", "both"]).toContain(records[0]!.takes);
-
-    // A post the project coordinator hands to it lands in its workstream session.
-    judgmentCalls = [{ toolName: "handOff", args: { worker: lead, target: "shared/apollo/checkout" } }];
-    await runAction(alice.clients, "coordinator", pc, "run", { message: "Please add guest checkout, PERIWINKLE-7319." });
-    await eventually(async () => {
-      const { items } = await readSessionItems(alice.clients, entry.sessionId!);
-      return JSON.stringify(items).includes("PERIWINKLE-7319") ? true : undefined;
-    }, "the handed post in the workstream session");
+    expect(records.map(({ worker, target }) => ({ worker, target }))).toEqual([{ worker: EM, target: "shared/apollo/checkout" }]);
+    await eventually(async () => ((await holds(alice, entry.sessionId!, "PERIWINKLE-7319")) ? true : undefined), "the ask in the workstream session");
   });
 
-  it("gives her second workstream a second coordinator, and leaves Bob's roster as it was", async () => {
+  it("opens a second with the same lead as a second session and record, and a post to one lands only there (BR-40)", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
-    const bob = await as(BOB);
-    const bobBefore = await ownWorkers(bob);
-    await openAs(alice, setup, "checkout");
-    await openAs(alice, setup, "search");
-    expect((await ownWorkers(alice)).map((w) => w.id)).toEqual(
-      [workstreamCoordinatorId(APOLLO, "checkout"), workstreamCoordinatorId(APOLLO, "search")].sort(),
-    );
-    expect(await ownWorkers(bob)).toEqual(bobBefore);
-    // Hers alone: naming it as Bob's lead is refused like a missing worker.
+    await askFor(alice, setup, "checkout", "Please add guest checkout.");
+    const pc = await askFor(alice, setup, "search", "Make search fuzzy, CINDER-0612.");
+    const entries = (await readProject(alice.clients, alice.reader, APOLLO))!.entries;
+    const checkout = entries.find((e) => e.id === "checkout")!;
+    const search = entries.find((e) => e.id === "search")!;
+    expect([checkout.lead, search.lead]).toEqual([EM, EM]);
+    expect(checkout.sessionId).not.toBe(search.sessionId);
+    expect((await delegatesOf(alice, pc)).map(({ worker, target }) => ({ worker, target }))).toEqual([
+      { worker: EM, target: "shared/apollo/checkout" },
+      { worker: EM, target: "shared/apollo/search" },
+    ]);
+    await eventually(async () => ((await holds(alice, search.sessionId!, "CINDER-0612")) ? true : undefined), "the ask in search's session");
+    expect(await holds(alice, checkout.sessionId!, "CINDER-0612")).toBe(false);
+  });
+
+  it("lets a worker the chief of staff hired for her lead, and refuses the coder (BR-38, BR-42)", async () => {
+    const { setup, as } = await open();
+    const alice = await as(ALICE);
+    await runAction(alice.clients, PROJECT_READER_FLOW, alice.reader, "hire", {
+      id: "release-lead",
+      flow: "agent",
+      description: "Runs a release.",
+      settings: { delegates: ["eng.coder"] },
+    });
+    const pc = await askFor(alice, setup, "release", "Cut the release, AMBER-4410.", "release-lead");
+    await eventually(async () => ((await leadsOffered(alice, pc)).length > 0 ? true : undefined), "the leads read");
+    expect(await leadsOffered(alice, pc)).toEqual([[EM, "release-lead"].sort()]);
+    const entry = (await readProject(alice.clients, alice.reader, APOLLO))!.entries.find((e) => e.id === "release")!;
+    expect(entry.lead).toBe("release-lead");
+    await eventually(async () => ((await holds(alice, entry.sessionId!, "AMBER-4410")) ? true : undefined), "the ask in the hired lead's session");
+
+    // The coder leads no workstream: it runs on `coder`, and lists no delegates.
     await expect(
-      runAction(bob.clients, setup.flow, readerSessionId(BOB.userId, setup.flow), "openWorkstream", {
+      runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "openWorkstream", {
         project: APOLLO,
-        id: "borrowed",
-        title: "Borrowed",
-        lead: workstreamCoordinatorId(APOLLO, "checkout"),
+        id: "coded",
+        title: "Coded",
+        lead: "eng.coder",
       }),
-    ).rejects.toThrow(ActionRefused);
-    expect(await ownWorkers(bob)).toEqual(bobBefore);
+    ).rejects.toThrow(/cannot-lead/);
+    expect((await readProject(alice.clients, alice.reader, APOLLO))!.entries.map((e) => e.id)).toEqual(["release"]);
   });
 
-  it("forks once for a repeated open and for two opens at once", async () => {
+  it("drops the record when she marks the workstream done, and moving it back out of done restores it", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
-    const first = await openAs(alice, setup, "checkout");
-    const again = await openAs(alice, setup, "checkout");
-    expect([first.forked, again.forked]).toEqual([true, false]);
-    const both = await Promise.all([openAs(alice, setup, "search"), openAs(alice, setup, "search")]);
-    expect(both.filter((b) => b.forked)).toHaveLength(1);
-    expect((await ownWorkers(alice)).map((w) => w.id)).toEqual(
-      [workstreamCoordinatorId(APOLLO, "checkout"), workstreamCoordinatorId(APOLLO, "search")].sort(),
-    );
-    const read = await readProject(alice.clients, alice.reader, APOLLO);
-    expect(read!.entries.map((e) => e.id).sort()).toEqual(["checkout", "search"]);
-  });
-
-  it("refuses an open over another worker of hers at that id, naming it, and writes nothing", async () => {
-    const { setup, as } = await open();
-    const alice = await as(ALICE);
-    const lead = workstreamCoordinatorId(APOLLO, "checkout");
-    await runAction(alice.clients, PROJECT_READER_KIND, alice.reader, "hire", { id: lead });
-    await expect(openAs(alice, setup, "checkout")).rejects.toThrow(new RegExp(`"${lead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" is already a worker of yours`));
-    expect((await readProject(alice.clients, alice.reader, APOLLO))!.entries).toEqual([]);
-  });
-
-  it("a refused open (not-a-member) fires the coordinator it forked, so the roster is as it was", async () => {
-    const { setup, as } = await open();
-    const outsider = await as(OUTSIDER);
-    const before = await ownWorkers(outsider);
-    await expect(openAs(outsider, setup, "sneak")).rejects.toThrow(/member/);
-    expect(await ownWorkers(outsider)).toEqual(before);
-  });
-
-  it("keeps the coordinator when she marks the workstream done, and moving it back out of done restores the record", async () => {
-    const { setup, as } = await open();
-    const alice = await as(ALICE);
-    await openAs(alice, setup, "checkout");
-    const lead = workstreamCoordinatorId(APOLLO, "checkout");
-    const pc = await projectCoordinator(alice, setup);
+    const pc = await askFor(alice, setup, "checkout", "Please add guest checkout.");
     const update = (status: string) =>
       runAction(alice.clients, setup.flow, readerSessionId(ALICE.userId, setup.flow), "updateWorkstream", { project: APOLLO, id: "checkout", status });
 
     await update("done");
     await eventually(async () => ((await delegatesOf(alice, pc)).length === 0 ? true : undefined), "the record removed");
-    expect((await ownWorkers(alice)).map((w) => w.id)).toEqual([lead]);
-
     await update("on-track");
     await eventually(
-      async () => ((await delegatesOf(alice, pc)).some((d) => d.worker === lead && d.target === "shared/apollo/checkout") ? true : undefined),
+      async () => ((await delegatesOf(alice, pc)).some((d) => d.worker === EM && d.target === "shared/apollo/checkout") ? true : undefined),
       "the record restored",
     );
-    expect((await ownWorkers(alice)).map((w) => w.id)).toEqual([lead]);
+    expect(await ownWorkers(alice)).toEqual([]);
   });
 });
 
@@ -371,7 +394,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const bobs = (await screen.findAllByTestId("project-entry")).find((li) => li.getAttribute("data-owner") === BOB.userId)!;
     act(() => fireEvent.click(bobs.querySelector("button")!));
     const details = await screen.findByTestId("project-entry-details");
-    expect(details.textContent).toContain(`led by ${workstreamCoordinatorId(APOLLO, "search")}`);
+    expect(details.textContent).toContain(`led by ${EM}`);
     await eventually(async () => (/No report yet|didn't load/.test(screen.getByTestId("project-entry-report").textContent ?? "") ? true : undefined), "the report read");
     expect(seen.some((r) => r.path.includes(his.sessionId!) || r.body.includes(his.sessionId!))).toBe(false);
 
@@ -383,6 +406,44 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     expect(conversation.getAttribute("data-session-id")).toBe(own.sessionId);
   });
 
+  it("shows a workstream's objectives and which are met, on its row and on its owner's own view", async () => {
+    const { screen, act, fireEvent, within } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    const bob = await as(BOB);
+    const objectives = [
+      { text: "Survey the repo", met: true },
+      { text: "Write up findings", met: false },
+    ];
+    for (const user of [alice, bob]) {
+      await openAs(user, setup, "survey");
+      await runAction(user.clients, setup.flow, readerSessionId(user.clients.userId, setup.flow), "updateWorkstream", { project: APOLLO, id: "survey", objectives });
+    }
+    const marks = (root: HTMLElement) =>
+      within(root).getAllByTestId("project-entry-objective").map((li) => [li.textContent?.includes("Survey the repo") ? "survey" : "write-up", li.getAttribute("data-met")]);
+    const rowOf = async (owner: string) => (await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 })).find((li) => li.getAttribute("data-owner") === owner)!;
+
+    openApp(alice.clients, baseUrl, "/p/apollo/workstreams");
+    const hers = await rowOf(ALICE.userId);
+    expect(hers.textContent).toContain("1 of 2 objectives met");
+
+    act(() => fireEvent.click(hers.querySelector("button")!));
+    await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
+    expect(marks(screen.getByTestId("project-entry-own"))).toEqual([
+      ["survey", "true"],
+      ["write-up", "false"],
+    ]);
+
+    // Bob's entry draws the same list on its details.
+    act(() => fireEvent.click(screen.getByTestId("project-entry-back")));
+    const his = await rowOf(BOB.userId);
+    act(() => fireEvent.click(his.querySelector("button")!));
+    expect(marks(await screen.findByTestId("project-entry-details"))).toEqual([
+      ["survey", "true"],
+      ["write-up", "false"],
+    ]);
+  });
+
   it("its Stream is her project coordinator session, linked to the project", async () => {
     const { screen } = dom!;
     const { baseUrl, setup, as } = await open();
@@ -392,7 +453,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     openApp(alice.clients, baseUrl, "/p/apollo/stream");
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     expect(conversation.getAttribute("data-session-id")).toBe(await projectCoordinator(alice, setup));
-    expect(conversation.getAttribute("data-seat-id")).toBe("project-coordinator");
+    expect(conversation.getAttribute("data-worker-id")).toBe("project-coordinator");
     // Stream draws no entry, so it never reads them; nor does Brief.
     const entryReads = () => seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
     expect(entryReads()).toEqual([]);

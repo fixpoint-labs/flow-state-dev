@@ -14,7 +14,7 @@
  *
  * The slot is the whole of D2. Two checks drive the same tree, the same hire
  * and the same wiring and differ by this one expression — so a future change
- * that hard-codes a harness inside the `coder` kind breaks the gate, not just a
+ * that hard-codes a harness inside the `coder` worker flow breaks the gate, not just a
  * test.
  */
 
@@ -77,7 +77,7 @@ export interface HarnessStubOptions {
    */
   steps?: readonly string[];
   /**
-   * How long the run pauses before each of its `steps`, so a person watching
+   * How long the run pauses before each of its `steps`, so a user watching
    * the run's session sees them arrive. Abortable: an interrupt ends the wait.
    * Default 0.
    */

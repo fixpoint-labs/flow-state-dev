@@ -56,16 +56,16 @@ describe("a notice that has waited out its patience", () => {
   const script = () =>
     mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
-        { when: (input) => JSON.stringify(input).includes("and our seats"), then: { text: "Forty seats." } }
+        { when: (input) => JSON.stringify(input).includes("and our workers"), then: { text: "Forty workers." } }
       ]
     });
 
   /**
    * The filing reply (the first model call) is held until `first` opens, and
-   * the person's next reply (the second) until `second` opens. The next
+   * the user's next reply (the second) until `second` opens. The next
    * message is sent `nextAfterMs` after the notice arrives.
    */
   const twoReplies = async (nextAfterMs: number) => {
@@ -86,9 +86,9 @@ describe("a notice that has waited out its patience", () => {
     await host.post("alice", conv, "run", { message: "count our licenses" });
     expect(await until(async () => (await noticeRequests(host, conv)).length > 0)).toBe(true);
     await sleep(nextAfterMs);
-    await host.post("alice", conv, "run", { message: "and our seats?" });
+    await host.post("alice", conv, "run", { message: "and our workers?" });
     expect(await until(() => calls === 2)).toBe(true);
-    // The filing reply ends; the person's next reply is still running.
+    // The filing reply ends; the user's next reply is still running.
     first.open();
     const landedBesideNextReply = await until(async () => (await linesAbout(host, conv, "Count licenses")).length > 0, 500);
     second.open();
@@ -111,7 +111,7 @@ describe("a notice that has waited out its patience", () => {
     try {
       // The engine's rule against a stream of replies holding a notice back
       // forever: past its patience, a notice waits only for the replies it
-      // found, so the person's later reply is still running when it lands.
+      // found, so the user's later reply is still running when it lands.
       expect(landedBesideNextReply).toBe(true);
       expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
     } finally {
@@ -128,7 +128,7 @@ describe("more notices than may wait on a conversation", () => {
         {
           toolCalls: goals.map((goal, n) => ({
             toolCallId: `a${n}`,
-            toolName: "addTask",
+            toolName: "dispatchTask",
             args: { goal, assignee: "eng.tasker" }
           }))
         },

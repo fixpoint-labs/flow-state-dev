@@ -145,8 +145,8 @@ export type {
  */
 export {
   ASK_GATE_REASON,
-  AskEndedError,
-  AskStoppedError,
+  WaitEndedError,
+  WaitStoppedError,
   isAskGate,
   parkOnAsk,
   parseAskOutcome,
@@ -174,7 +174,11 @@ export {
   taskBindingOf,
   framed,
   readFramed,
+  addressEntries,
+  describeAction,
+  resolveTaskAction,
   resolveTaskFlowKind,
+  resolveTaskSessionTarget,
   resolveTaskState,
   taskDispatchInputSchema,
   taskSessionKeyFor
@@ -192,8 +196,11 @@ export type {
   TaskBinding,
   TaskDispatchInput,
   TaskEntry,
+  TaskEntryChoice,
   TaskFlowTarget,
   TaskStateTarget,
+  KeyedTaskSessionPolicy,
+  TaskSessionChoice,
   TaskSessionPolicy,
   TaskTargetQuery
 } from "./types/dispatch";
@@ -564,10 +571,37 @@ export type { ResumeAction, SuspensionSkipped } from "./types/suspension";
  * exported from `@flow-state-dev/core/types`.
  */
 export {
+  harnessFailureKind,
   harnessRunEnvelopeSchema,
   harnessRunHandleSchema,
   harnessRunInputSchema,
 } from "./types/harness";
+
+/**
+ * The run's plan record: the shape every harness writes its to-do list into,
+ * the per-run list marker, and the writer for whole-list plans.
+ */
+export {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  harnessRunNamespace,
+  observedOutcomeSchema,
+  observedPlanCollection,
+  observedPlanItemStateSchema,
+  observedPlanListCollection,
+  observedPlanListStateSchema,
+  planKeySegment,
+  planRowsPrefix,
+  replacePlanList,
+} from "./types/harness-plan";
+export type {
+  ObservedOutcome,
+  ObservedPlanListStatus,
+  PlanListCollection,
+  PlanListItem,
+  PlanListMarkerCollection,
+  ReplacePlanListResult,
+} from "./types/harness-plan";
 
 /** The allowlisted environment for a harness's child process. */
 export { harnessEnv } from "./helpers/harness-env";

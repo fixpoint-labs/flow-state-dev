@@ -9,7 +9,7 @@
  * only. Nothing else records an ending, so none is recorded twice.
  *
  * The resume recorder must fire on every way an asked row ends, a cancel and
- * the cancel its ask's timeout writes among them (`addTaskAndWait` cancels
+ * the cancel its ask's timeout writes among them (`dispatchAndWait` cancels
  * the row with {@link TIMEOUT_REASON} when its gate resumes it timed out).
  */
 import { describe, expect, it } from "vitest";
@@ -26,12 +26,12 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-/** The reason `addTaskAndWait` cancels its row with when the ask times out. */
+/** The reason `dispatchAndWait` cancels its row with when the ask times out. */
 const TIMEOUT_REASON = "The ask timed out before the task finished.";
 
 const NOW = 1_000_000;
 
-/** A row a turn is waiting on, as `addTaskAndWait` files it, now running. */
+/** A row a turn is waiting on, as `dispatchAndWait` files it, now running. */
 function askedRow(patch: Partial<Task> = {}): Task {
   return {
     id: "t1",

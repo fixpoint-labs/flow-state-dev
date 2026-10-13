@@ -8,8 +8,8 @@
  * delegate modules share one spelling of each.
  */
 
-/** The coordinator flow's kind. **Pinned**: a worker's `flow:` names it. */
-export const COORDINATOR_KIND = "coordinator";
+/** The coordinator flow's name. **Pinned**: a worker's `flow:` names it. */
+export const COORDINATOR_FLOW = "coordinator";
 
 /**
  * The component every routing decision is recorded under, and the name of
@@ -20,6 +20,9 @@ export const COORDINATOR_ROUTE = "coordinator-route";
 
 /** The judgment turn's generator block, which a scripted model resolves by name. */
 export const COORDINATOR_JUDGMENT = "coordinator-judgment";
+
+/** Best fit's generator when the evaluator call on a model id fails. A scripted model resolves it by name. */
+export const COORDINATOR_ROUTE_ASK = "coordinator-route-ask";
 
 /** The coordinator's tool that hands the post it is reading to one delegate. */
 export const HAND_OFF = "handOff";
@@ -51,11 +54,11 @@ export const MAX_ROUNDS = 3;
 /** How long a round waits for its answers before it closes without the rest, unless the flow sets its own. */
 export const ROUND_DEADLINE_MS = 5 * 60_000;
 
-/** Server-written session state: who best fit holds the person's next post for. */
+/** Server-written session state: who best fit holds the user's next post for. */
 export const HOLD_STATE = "bestFitHold";
 /** Server-written session state: the delivery ledger. */
 export const DELIVERIES_STATE = "deliveries";
-/** Server-written session state: the delegate round robin gave the person's last post to. */
+/** Server-written session state: the delegate round robin gave the user's last post to. */
 export const ROUND_ROBIN_STATE = "roundRobin";
 /** Server-written session state: the rounds still open, each waiting for its answers. */
 export const ROUNDS_STATE = "openRounds";

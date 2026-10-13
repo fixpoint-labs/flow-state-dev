@@ -65,7 +65,7 @@ Every run executes as a user in an organization, the same as a request to your s
 - `--org <id>` skips the resolver and runs as `--user` (default `cli-user`) in that organization. It may not be blank, not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag.
 - `--user` alone keeps the organization the resolver gives and replaces only the user.
 - `--session` / `--seed-session` on a session another user or organization owns is refused before anything is written, including the seed. Sessions keep the identity they were created with. A session stored before organizations were required is refused with the migration message.
-- A seat pinned to an owner refuses any identity outside its pin, before anything is written.
+- A worker pinned to an owner refuses any identity outside its pin, before anything is written.
 
 One stderr line names the identity, e.g. `[fsdev] running as devuser in organization acme (from the app's resolver)`; a user given with `--user` is marked `(named by --user)`. In the capture, `principal.from` names where the **organization** came from.
 
@@ -275,7 +275,7 @@ Runs the code generator one of your app's dependencies supplies, and writes the 
 `fsdev gen` has no convention of its own: the generator decides which folders it reads, what it
 refuses, and what the file contains. For a Workforce app the generator comes from
 `@flow-state-dev/workforce` and writes `workforce/workforce.gen.ts`; what it walks and refuses is in
-the [Workforce README](../workforce/README.md#kinds-and-blocks-from-files).
+the [Workforce README](../workforce/README.md#worker-flows-and-blocks-from-files).
 
 ```bash
 # Write the module from the tree

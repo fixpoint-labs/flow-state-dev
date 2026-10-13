@@ -55,12 +55,12 @@ export function resolveDispatcher(
  * Would this row's work be *routed* to a child session rather than run in the
  * drain that is asking (FIX-982)?
  *
- * A board with a `dispatcher({ type: "task" })` seat hands its claimed rows
+ * A board with a `dispatcher({ type: "task" })` assignee hands its claimed rows
  * to a child session, which settles them from its own session. The launching
  * request must not wait on those — waiting on them is precisely the thing the
  * hand-off exists to stop.
  *
- * Supplied by the board, which derives it from its own dispatcher seats, so a
+ * Supplied by the board, which derives it from its own dispatcher assignees, so a
  * board with none passes nothing and every count below is the
  * `count()` it always was.
  *
@@ -87,7 +87,7 @@ export type RunsElsewhere = (task: Task) => boolean;
  * a drain it correctly exited as a failure, or a genuinely stuck board as a
  * clean hand-off. One predicate, one answer (FIX-1074).
  *
- * `runsElsewhere` absent means the board has no dispatcher seat, so nothing
+ * `runsElsewhere` absent means the board has no dispatcher assignee, so nothing
  * is ever handed off and every caller keeps its pre-hand-off behaviour
  * bit-for-bit.
  */
@@ -109,7 +109,7 @@ export function isHandedOff(
  * **Reads through `list` rather than `count` because `TaskFilter` has no
  * predicate slot** — it matches on status, assignee and labels only, and
  * "…and not running elsewhere" is expressible as none of the three. A handed-off
- * seat is usually an assignee and would *almost* fit `filter.assignee`,
+ * assignee is usually an assignee and would *almost* fit `filter.assignee`,
  * but the uniform and floor cases do not (a floor worker is defined by the
  * assignees it is NOT), so the predicate has to see the row. One pass either
  * way; both callers below already ran one.
@@ -131,7 +131,7 @@ export function isHandedOff(
  * this count. It drops `parked` rows, and it is a **predicate of its
  * own beside** the routing one rather than a widening of it, because the two
  * answer different questions. `runsElsewhere` asks *where this row's work
- * belongs*, derived from the board's dispatcher seats. This one asks
+ * belongs*, derived from the board's dispatcher assignees. This one asks
  * whether the row is waiting on a **human**, which is true on any board however
  * it dispatches.
  *

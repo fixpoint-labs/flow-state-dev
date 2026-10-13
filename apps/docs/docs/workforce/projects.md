@@ -7,13 +7,13 @@ description: "A project is a body of work, private to one user or shared with th
 
 # Projects
 
-A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a person.
+A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a user.
 
 The work inside a project is split into **workstreams**. Each workstream has one owner and a lead worker from that owner's roster. Everyone who can read the project can read every workstream's entry, so anyone can see how the project is going. Only the owner can change their workstream or hand it work.
 
-Each person talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that person's workstreams.
+Each user talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that user's workstreams.
 
-![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each person's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
+![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each user's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
 
 ## Private and shared
 
@@ -25,7 +25,7 @@ A **private** project lives with you. Nobody else can list, open or read it, its
 
 Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
 
-A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exceptions are the writes a project coordinator makes in its own project: `openWorkstream`, covered in [Opening one](#opening-one), and `setBrief` and `setRepository`, covered in [Managing the project from the coordinator](#managing-the-project-from-the-coordinator). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
@@ -45,8 +45,8 @@ Each workstream is its own entry, not part of the row, so two owners can update 
 
 Usually you don't declare anything. Shared projects live in the org's `projects` collection and private ones in each user's `privateProjects`, and three things declare both for you:
 
-- `hireWorkforce` returns a [roster flow](./durable-hire.md#hiring-a-worker), `workforce-roster`, with your worker flows, and you register it with them. It declares both collections, and a client lists a person's projects and reads a project's workstreams through it.
-- The blocks `defineProjectBlocks()` returns, and `openWorkstream` from `defineWorkstreamBlocks()`, declare both on themselves. A flow that holds one has the collections, whether you spread it as an action or put it in a worker kind's tool `catalog`.
+- `hireWorkforce` returns a [roster flow](./durable-hire.md#hiring-a-worker), `workforce-roster`, with your worker flows, and you register it with them. It declares both collections, and a client lists a user's projects and reads a project's workstreams through it.
+- The blocks `defineProjectBlocks()` returns, and `openWorkstream` from `defineWorkstreamBlocks()`, declare both on themselves. A flow that holds one has the collections, whether you spread it as an action or put it in a worker flow's tool `catalog`.
 - `defineCoordinatorFlow` declares both on the coordinator flow.
 
 Otherwise, on a flow of your own that reads or writes project rows without those blocks, put both in its `resources`, where you build the flow, under the keys the workforce's own flows use:
@@ -69,7 +69,7 @@ Every call returns the same declaration, so declaring the collections on several
 
 ## Creating a project
 
-`defineProjectBlocks()` gives you the project blocks, `createProject`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
+`defineProjectBlocks()` gives you the project blocks, `createProject`, `setBrief`, `setRepository`, `readProject` and `readProjectFiles`, and the same blocks as an `actions` map to spread into a flow:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -120,13 +120,29 @@ The write is a `create`, never an overwrite. If the same owner sends the same id
 | `private-has-members` | A private project names anyone besides its owner |
 | `invalid-repository` | The repository isn't a remote. See [A project's code and files](#a-projects-code-and-files) |
 
+### Changing the brief
+
+`setBrief` sets, changes or clears a project's brief. Send `null` to clear it:
+
+```ts
+await projects.sendAction(
+  "setBrief",
+  { project: { visibility: "shared", id: "apollo" }, brief: "Ship the new checkout before the holiday freeze." },
+  { sessionId }
+);
+```
+
+It returns `{ project }`, the row as written, and changes `brief` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+
+`project` is optional. Left out, it changes the project the calling conversation belongs to (`no-such-project` when it belongs to none). From a project's conversation, naming another project is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
+
 ### Default projects from app code
 
 If your app should start with some projects already there, create them from its own code at boot, through the same `createProject` action, when the rows are absent. A re-run finds the row it already made and hands it back, so a second boot changes nothing.
 
 ### Giving the writes to a worker
 
-A worker on the built-in `agent` kind can create projects and open workstreams for the person talking to it. Put the blocks in the kind's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
+A worker on the built-in `agent` worker flow can create projects and open workstreams for the user talking to it. Put the blocks in the flow's tool catalog, under the names a worker's `tools:` line spells. A catalog key must match the tool's own name, so give each block that name with `.as()`, along with the description the model reads:
 
 ```ts
 import { defineAgentWorkerFlow, defineProjectBlocks } from "@flow-state-dev/workforce";
@@ -139,19 +155,19 @@ const agent = defineAgentWorkerFlow({
   catalog: {
     createProject: projects.createProject.as({
       name: "createProject",
-      description: "Create a project for the person you're talking to. They own it; `members` adds the user ids they name.",
+      description: "Create a project for the user you're talking to. They own it; `members` adds the user ids they name.",
     }),
     openWorkstream: workstreams.openWorkstream.as({
       name: "openWorkstream",
-      description: "Open a workstream the person owns in a project, led by a worker on their roster.",
+      description: "Open a workstream the user owns in a project, led by a worker on their roster.",
     }),
   },
 });
 ```
 
-[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a person's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
+[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a user's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
 
-A worker calls them only when its own `tools:` names them. The owner is the person whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
+A worker calls them only when its own `tools:` names them. The owner is the user whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
 
 
 [The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
@@ -161,21 +177,21 @@ A worker calls them only when its own `tools:` names them. The owner is the pers
 A workstream is one area of a project with one owner. It's two things:
 
 - An **entry** on the project: its title, owner, lead, status, due date, objectives and latest report.
-- Its **workstream session**: a lasting session of the lead worker, owned by the workstream's owner. The lead is usually a worker with delegates it files tasks for, and the session's board holds the workstream's tasks.
+- Its **workstream session**: a lasting session of the lead worker, owned by the workstream's owner. The lead runs the workstream through its delegates, filing tasks for them on the session's board, so a lead must list delegates in its configuration.
 
 `defineWorkstreamBlocks` builds the workstream writes from your [worker installation](./workers-on-disk.md) and the worker flows a lead can run on:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
 import {
-  AGENT_KIND,
+  AGENT_FLOW,
   defineProjectBlocks,
   defineWorkstreamBlocks,
   WORKSTREAM_OPENED_ENTRY,
 } from "@flow-state-dev/workforce";
 
 // Describes the built-in agent flow (see below).
-const agentLeads = { kind: AGENT_KIND, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
+const agentLeads = { kind: AGENT_FLOW, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
 
 const projects = defineProjectBlocks();
 const workstreams = defineWorkstreamBlocks({ installation, leadFlows: [agentLeads] });
@@ -186,13 +202,15 @@ export const projectsFlow = defineFlow({
 });
 ```
 
-It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, and `updateWorkstreamTool` for a lead.
+It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, `updateWorkstreamTool` for a lead, and `listLeadsTool` for whoever picks a lead (see [Opening workstreams from the coordinator](#opening-workstreams-from-the-coordinator)).
 
 A lead flow must declare the internal entry `workstreamOpenedEntry()` returns, under `internal.actions[WORKSTREAM_OPENED_ENTRY]`. The built-in `agent` flow declares it, and a worker flow of your own spreads it in to let its workers lead. `leadFlows` reads only each flow's `kind` and that entry, so you can pass the flow itself or describe it, as above. A lead flow without the entry is refused when the blocks are built.
 
 ### Opening one
 
-Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives:
+Call `openWorkstream` with the project's address, an id, a title and a lead from your own roster, and optionally a due date and objectives.
+
+`project` is optional. Leave it out and the workstream opens in the project the calling conversation belongs to: a project coordinator's conversation belongs to its project; a user's own coordinator belongs to none. A conversation that belongs to a project opens workstreams only there, so naming a different project from it is refused.
 
 ```ts
 const apollo = { visibility: "shared", id: "apollo" } as const;
@@ -237,11 +255,12 @@ A workstream id is unique within a project for each owner, so Alice's `checkout`
 
 | `reason` | When |
 |----------|------|
-| `no-such-project` | The address names no project you can read |
+| `no-such-project` | The address names no project you can read, or you left `project` out in a conversation that belongs to no project |
+| `other-project` | The conversation belongs to one project and you named another |
 | `not-a-member` | On a shared project, you aren't one of its members |
 | `invalid-workstream-id` | The id is empty or holds a `/` |
 | `no-such-worker` | The lead isn't a worker on your roster. Another user's worker is refused the same way |
-| `cannot-lead` | The lead runs on a flow that isn't in `leadFlows` |
+| `cannot-lead` | The lead runs on a flow that isn't in `leadFlows`, or lists no `delegates:` |
 | `lead-differs` | You already have this workstream open, with another lead. A workstream's lead doesn't change |
 | `too-many-workstreams` | You already have 25 open workstreams in the project. Mark one done first. Applies when your installation names a [project coordinator](#talking-to-a-project) |
 
@@ -326,7 +345,7 @@ Name the worker when you build the installation. It must be a standard worker on
 ```ts
 const installation = createWorkerInstallation({
   standardWorkers: workers,
-  workerFlows: () => kinds,
+  workerFlows: () => workerFlows,
   projectCoordinator: "project-coordinator",
 });
 ```
@@ -352,7 +371,7 @@ routing: judgment
 tools: [readProject]
 ---
 
-When the person asks how the project is going, call `readProject` and answer
+When the user asks how the project is going, call `readProject` and answer
 from what it returns. When they ask for work, hand it to the delegate whose
 workstream it belongs to.
 ```
@@ -384,6 +403,99 @@ You never add or remove a project coordinator's workstream delegates yourself. T
 
 A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
 
+### Opening workstreams from the coordinator
+
+Your coordinator can open a workstream for you when you ask for work none of your workstreams in the project covers. Add these tools from `defineWorkstreamBlocks` to its catalog:
+
+- `listLeadsTool`, a tool named `listLeads`. It takes no input and returns `{ leads: [{ id, description }] }`: every worker on your roster, your own and the standard ones, that can lead a workstream, as the roster stands when the tool runs. `description` is `null` for a worker without one.
+- `openWorkstream`, the same block as the action, named for the catalog with `.as()`. Called without `project`, it opens the workstream in the coordinator's own project. Naming another project is refused with `other-project`, so tell the coordinator to leave `project` out, as the file below does.
+
+```ts
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    catalog: {
+      ...projectCoordinatorTools,
+      listLeads: workstreams.listLeadsTool,
+      openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" }),
+    },
+  },
+});
+```
+
+List both in the worker's `tools:` and tell it when to use them:
+
+```md title="workforce/org/workers/project-coordinator/WORKER.md"
+---
+description: Your coordinator for one project. Says how its workstreams are going, opens a workstream for new work, and hands your asks to the workstreams you own there.
+flow: coordinator
+routing: judgment
+tools: [readProject, listLeads, openWorkstream]
+---
+
+When the user asks for work none of their workstreams here holds, call
+`listLeads` and pick the worker whose description fits. Open a workstream
+with `openWorkstream`, that worker as `lead` and no `project`, then hand the
+ask to it, targeting `<project.visibility>/<project.id>/<id>` from the
+workstream it returns. When nobody fits, say so and open nothing.
+```
+
+When `openWorkstream` runs in your own coordinator's turn, the new workstream is already one of the coordinator's delegates when the open returns, so the coordinator can hand your ask to it in the same turn. The delegate's target is `<project.visibility>/<project.id>/<id>`, read from the `workstream` the open returns, for example `shared/apollo/checkout`. One worker can lead several of your workstreams, each with its own session and board.
+
+### Managing the project from the coordinator
+
+Your coordinator can keep its own project's row current: rewrite the brief when the goal shifts, or set the repository once there is one. Give its catalog `setBrief` and `setRepository` from `defineProjectBlocks()`, named for the catalog with `.as()`:
+
+```ts
+const projects = defineProjectBlocks();
+
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    catalog: {
+      ...projectCoordinatorTools,
+      setBrief: projects.setBrief.as({ name: "setBrief" }),
+      setRepository: projects.setRepository.as({ name: "setRepository" }),
+      listLeads: workstreams.listLeadsTool,
+      openWorkstream: workstreams.openWorkstream.as({ name: "openWorkstream" }),
+    },
+  },
+});
+```
+
+List them in the worker's `tools:` and tell it to leave `project` out:
+
+```md title="workforce/org/workers/project-coordinator/WORKER.md"
+---
+description: Your coordinator for one project. Says how its workstreams are going, keeps the project's brief and repository current, opens a workstream for new work, and hands your asks to the workstreams you own there.
+flow: coordinator
+routing: judgment
+tools: [readProject, setBrief, setRepository, listLeads, openWorkstream]
+---
+
+When the user changes what the project is for, call `setBrief` with the new
+brief and no `project`. When they name the project's repository, call
+`setRepository` with it and no `project`.
+```
+
+Left out, `project` is the coordinator's own project, and naming any other one is refused with `other-project`. Called from a conversation that belongs to no project, such as a user's own coordinator, a write without `project` is refused with `no-such-project`. Either way, only the project's members can change it.
+
+If a user should approve the repository before it's written, give the catalog a `setRepository` that asks first: a sequencer, a block that runs steps in order, with a step that waits for the user's approval before the write, as the [chief of staff](./chief-of-staff.md) does for `fire`. When the input leaves `project` out, that step can name the project with `linkedProjectOf(ctx.session.state)` from `@flow-state-dev/workforce`. It returns the session's `{ visibility, id }`, or `undefined` for a session that belongs to no project:
+
+```ts
+setRepository: sequencer({
+  name: "setRepository",
+  inputSchema: setRepositoryInputSchema,
+  outputSchema: setRepositoryOutputSchema,
+})
+  .tap(askToSetRepository) // reads input.project?.id ?? linkedProjectOf(ctx.session.state)?.id
+  .step(projects.setRepository),
+```
+
 ## A project's code and files
 
 A project can name the repository its code lives in. It's a remote, the address you'd pass to `git clone`, not a folder on some machine. Set it when you create the project, or later with `setRepository`. Send `null` to clear it:
@@ -400,6 +512,8 @@ A project can name the repository its code lives in. It's a remote, the address 
 A private project's repository and files are its owner's alone. On a shared project, everyone in the org can read the row, and so the repository's address.
 
 `setRepository` returns `{ project }`, the row as written. It changes `repository` and nothing else on the row. Only members can call it; anyone else is refused with `not-a-member`, and an address that names no project with `no-such-project`. When two members set it at the same moment, one of the two values is kept whole.
+
+`project` is optional. Left out, it changes the project the calling conversation belongs to (`no-such-project` when it belongs to none). From a project's conversation, naming another project is refused with `other-project`. See [Managing the project from the coordinator](#managing-the-project-from-the-coordinator).
 
 A value has to be a remote. Both writes refuse these with `invalid-repository`, and the refusal never repeats the value:
 
@@ -442,7 +556,7 @@ harnessManager({
 
 1. The workstream the task came from, when it was filed from one.
 2. The project the task came from, when it was filed from a project's conversation.
-3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the person's own coordinator.
+3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
 
 The run is refused, before any file is read, when:
 
@@ -451,11 +565,11 @@ The run is refused, before any file is read, when:
 | `other-project` | The task names a project other than the one its conversation belongs to. The refusal names both. |
 | `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
 | `no-project` | None of the three steps finds a project. The message says the task can name one in `input.project`. |
-| `not-a-member` | The person the run belongs to isn't one of the project's members. |
+| `not-a-member` | The user the run belongs to isn't one of the project's members. |
 | `not-the-owner` | The run is in a workstream whose owner is someone else. |
 | `no-such-workstream`, `no-such-project` | What the task or its session names is gone. |
 
-Membership is read from the person the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried. When the task came from a conversation, the task fails and the conversation hears why, in a line under the worker's name.
+Membership is read from the user the run belongs to; nothing the task says counts toward it. The host also refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried. When the task came from a conversation, the task fails and the conversation hears why, in a line under the worker's name.
 
 A coordinator filing for a coding worker from a conversation with no project names one:
 
@@ -464,6 +578,59 @@ A coordinator filing for a coding worker from a conversation with no project nam
 ```
 
 Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the example above.
+
+### Working in a checkout you already have
+
+By default a coding run gets a fresh branch in the host's own clone of the project's repository. That clone lives under the host's root, so to see what a run did you fetch from it. When the server runs on the machine where you already have the repository checked out, you can have runs work in that checkout instead. Each run gets a worktree of your checkout on a branch of its own, and the branch shows up in `git branch` there.
+
+The project's row names a remote, never a folder. The server's config says which projects are worked in which checkout:
+
+```ts
+harnessManager({
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: [] },
+    localRepositories: ["/home/me/acme"],
+    source: projectWorkspace({
+      checkouts: [
+        {
+          remote: "https://github.com/acme/acme.git",
+          checkout: "/home/me/acme",
+          projects: [
+            { orgId: "acme", id: "web" },
+            { orgId: "acme", id: "api" },
+          ],
+          baseRef: "main",
+        },
+      ],
+    }),
+  }),
+  uses: [projectWorkspaceCapability],
+});
+```
+
+Only shared projects can be listed, each by its organization and id. A run uses the checkout only when its project is listed, the run's session belongs to that organization, and the project's `repository` is exactly the `remote` given here. The organization comes from the server's verified identity for the session, never from anything a task says. A private project with the same id and remote, or a shared one in another organization on the same server, never touches your checkout. Neither does a listed project whose repository was changed to something else. On a multi-tenant server, add `tenantId` to an entry; an entry without one matches only runs with no tenant. Those runs go the usual way: a clone, if the host allows the remote, or a refusal.
+
+The checkout also has to be in the host's `localRepositories`. That list is what lets the host touch a folder on its machine at all. If the two disagree, the run is refused with `invalid-remote`, naming the path, before git runs. A relative `checkout` path, a `remote` a project couldn't store, or a project listed twice is refused when `projectWorkspace()` is called, naming the entry.
+
+Each run's place has the worktree in `checkout/` and the [project's files](#the-projects-own-files) in `project/` beside it, as for any other repository. The branch is cut from `baseRef`, or from whatever your checkout has checked out when `baseRef` is left out.
+
+Before the server cuts a new branch, it fetches that base's upstream, the remote branch it tracks, such as `origin/main`. Then it starts from whichever is newer: upstream when you haven't pulled, your own branch when it has commits you haven't pushed. Only the remote-tracking copy is updated. The server never switches, resets or cleans your working tree, and never moves your branch.
+
+A few cases go differently:
+
+- **Your branch and its upstream have each moved.** The run is refused with `base-diverged`, naming both commits, and nothing is made. Pull or rebase, or push, and the next run starts.
+- **The fetch fails**, because you're offline, a credential is refused, or it times out. The comparison uses the copy you last fetched, and the server logs a warning naming the checkout and git's error.
+- **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
+- **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
+
+Listing the checkout is what allows the fetch, so the upstream doesn't need to be in `remotes.allow`. That list still decides which remotes the host clones. The upstream's URL is checked before git sees it: one that uses a transport helper such as `ext::`, starts with `-`, or uses a scheme other than `https`, `ssh` or `file` isn't fetched, and the server logs why.
+
+Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
+
+To review a run, open its worktree, or run `git log -p <branch> --not main main@{upstream}` from your checkout, with your base branch in place of `main`. For a base with no upstream, leave out `main@{upstream}`. That shows only the run's commits, whether it started from your base branch or from its upstream. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
+
+A fresh worktree has no `node_modules`. The coding agent installs them the way your repository tells it to. With pnpm that comes from the machine's shared store and takes seconds once the checkout has been installed.
 
 ### The project's own files
 

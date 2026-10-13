@@ -50,7 +50,7 @@ function emTurn(): GeneratorModel {
       const said = JSON.stringify(call.messages ?? []);
       const [, issue, goal] = /(report-[a-f0-9]{6}): ([^"\\]+)/.exec(said) ?? [];
       return {
-        toolCalls: [{ toolCallId: "em-1", toolName: "addTask", args: { goal, assignee: "eng.coder", input: { issue, phase: PHASE } } }],
+        toolCalls: [{ toolCallId: "em-1", toolName: "dispatchTask", args: { goal, assignee: "eng.coder", input: { issue, phase: PHASE } } }],
         finishReason: "tool-calls",
       };
     },
@@ -83,7 +83,7 @@ async function open(): Promise<Lab> {
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coordinator-workers-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
   });
   return opened;

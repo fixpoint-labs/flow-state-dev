@@ -69,13 +69,13 @@ function scriptedRoute(route: Route) {
     modelId: "test/route",
     supportedQuestionTypes: ["choice", "score", "boolean"],
     async doEvaluate(call: { questions: Record<string, { criteria?: Record<string, string> }> }) {
-      routeCalls.push(call.questions.member?.criteria ?? {});
+      routeCalls.push(call.questions.worker?.criteria ?? {});
       if ("fail" in route) throw new Error(route.fail);
       return {
-        answers: { member: { type: "choice", choice: route.choice } },
+        answers: { worker: { type: "choice", choice: route.choice } },
         usage: { inputTokens: 1, outputTokens: 1 },
         warnings: [],
-        providerMetadata: route.confidence === undefined ? undefined : { typesafe: { confidence: { member: route.confidence } } },
+        providerMetadata: route.confidence === undefined ? undefined : { typesafe: { confidence: { worker: route.confidence } } },
       };
     },
   };
@@ -143,7 +143,7 @@ async function open(stores: ReturnType<typeof inMemoryStores> = inMemoryStores()
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-cos-coordinator-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
   });
   return opened;
@@ -224,6 +224,23 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(onAgent.status).toBe(400);
   });
 
+  it("refuses a coder session seeded with server-only fields, naming the field, as the coordinator and the EM do", async () => {
+    const lab = await open();
+    // The coder's session has no delegate or board fields: without the refusal, the create answers 201 and drops them.
+    for (const field of ["delegates", "fallback", "taskNotices", "splitParent"]) {
+      const created = await lab.door("POST", `coder/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: "eng.coder", [field]: [] } } });
+      expect(created.status, `${field}: ${JSON.stringify(created.body)}`).toBe(400);
+      expect(created.body).toMatchObject({ field });
+    }
+    const seeded = await lab.door("POST", `coder/sessions`, {
+      body: { userId: LAB_USER_ID, state: { workerId: "eng.coder", filingSessionId: "someone-else~1" } },
+    });
+    expect(seeded.status).toBe(400);
+    expect(JSON.stringify(seeded.body)).toContain("filingSessionId");
+    const plain = await lab.door("POST", `coder/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: "eng.coder" } } });
+    expect(plain.status).toBe(201);
+  });
+
   it("hires a worker, adds it, and hands it the post, whose answer lands under its name (BR-34's mechanism, BR-20)", async () => {
     const lab = await open();
     const id = await conversation(lab);
@@ -268,7 +285,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
     model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], { choice: "eng.em", confidence: 0.9 }, [
       {
-        toolName: "addTask",
+        toolName: "dispatchTask",
         args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } },
       },
     ]);
@@ -279,7 +296,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(routeCalls).toEqual([
       {
         "eng.em": EM_DESCRIPTION,
-        [COS]: "The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
+        [COS]: "The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.",
       },
     ]);
     expect((model as any).judgmentSteps()).toBe(0);
@@ -326,7 +343,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
         return registry;
       },
     });
-    // A coordinator of the person's own, with a round to send answers on, and the EM as its delegate.
+    // A coordinator of the user's own, with a round to send answers on, and the EM as its delegate.
     const hired = await act(
       lab,
       "roster-cancel-test",
@@ -338,7 +355,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
     model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], undefined, [
-      { toolName: "addTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
+      { toolName: "dispatchTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
     ]);
     expect((await act(lab, id, "run", { message: `${issue}: the release notes` })).error).toBeUndefined();
 

@@ -84,10 +84,10 @@ describe("what a package's blocks folder registers", () => {
     ]);
   });
 
-  it("registers no package block as a seat block, so no worker can name one by registration", async () => {
+  it("registers no package block as a worker block, so no worker can name one by registration", async () => {
     await write("teams/support/workers/clerk/packages/refunds/blocks/issue-refund.ts");
     const found = await discoverWorkforceCode(root);
-    expect(found.seatBlocks).toEqual([]);
+    expect(found.workerBlocks).toEqual([]);
     expect(found.files).toEqual([]);
   });
 
@@ -121,17 +121,17 @@ describe("what a package's blocks folder registers", () => {
 
   it("does not descend into a worker folder whose name breaks the segment rules, as the loader does not", async () => {
     // The worker reader reports the bad folder; this walk must not register
-    // blocks for a package no seat could ever hold.
+    // blocks for a package no worker could ever hold.
     await write("teams/support/workers/Clerk/packages/refunds/blocks/issue-refund.ts");
     const found = await discoverPackageBlocks(root);
     expect(found.packageBlocks).toEqual([]);
     expect(found.problems).toEqual([]);
   });
 
-  it("registers a package in an org seat's own folder under its address", async () => {
-    // `org/workers/<w>/` is an org seat, and the loader reads its own
-    // `packages/` as it reads a team seat's; this door must find the blocks
-    // the seat then holds.
+  it("registers a package in an org worker's own folder under its address", async () => {
+    // `org/workers/<w>/` is an org worker, and the loader reads its own
+    // `packages/` as it reads a team worker's; this door must find the blocks
+    // the worker then holds.
     await write("org/workers/build/packages/kit/blocks/tool.ts");
     const found = await discoverWorkforceCode(root);
     expect(found.packageBlocks.map((entry) => `${entry.package}:${entry.name}`)).toEqual([
@@ -146,7 +146,7 @@ describe("the rendered packageBlocks map", () => {
     await write("teams/support/packages/escalation/blocks/page-oncall.ts");
 
     const found = await discoverWorkforceCode(root);
-    const text = renderWorkforceCode(found.files, found.resourceModules, found.seatBlocks, found.packageBlocks);
+    const text = renderWorkforceCode(found.files, found.resourceModules, found.workerBlocks, found.packageBlocks);
 
     expect(text).toContain(
       'import packageblock_teams__support__packages__escalation__page_oncall from "./teams/support/packages/escalation/blocks/page-oncall";',
@@ -166,7 +166,7 @@ describe("the rendered packageBlocks map", () => {
 
   it("renders an empty map for a tree with none", async () => {
     const found = await discoverWorkforceCode(root);
-    const text = renderWorkforceCode(found.files, found.resourceModules, found.seatBlocks, found.packageBlocks);
+    const text = renderWorkforceCode(found.files, found.resourceModules, found.workerBlocks, found.packageBlocks);
     expect(text).toContain("export const packageBlocks = {};");
     expect(text).not.toContain("BlockDefinition");
   });

@@ -134,6 +134,7 @@ export async function emitTranslatedEvent(
     // same translated event.
     case "run_usage":
     case "model":
+    case "plan_list":
       return;
   }
 }

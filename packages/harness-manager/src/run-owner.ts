@@ -5,7 +5,7 @@
  * and the branch carry the principal, and the run record and the run's
  * questions are user-scoped. On a user-scoped board that is the whole story,
  * because nobody else can see the row. On an **organization-scoped** board —
- * a mailbox's board, say — a second member can drain the same row, and before
+ * a shared board, say — a second user can drain the same row, and before
  * this rule their retry started over in a new checkout on a new branch without
  * the first attempt's record or agent session: one row, two runs.
  *
@@ -60,7 +60,12 @@ export function runOwnerOf(row: { metadata?: Record<string, unknown> } | undefin
   return parsed.success ? parsed.data : null;
 }
 
-/** The record for a principal, with no `tenantId` key when there is none. */
+/**
+ * The record for a principal, with no `tenantId` key when there is none.
+ *
+ * No organization: the record lives on a row of one organization's board, so
+ * the owner's organization is the board's.
+ */
 export function runOwnerFor(principal: RunPrincipal): RunOwner {
   return {
     userId: principal.userId,
@@ -96,6 +101,7 @@ export function foreignRunMessage(taskId: string, owner: RunOwner): string {
  */
 export interface RequestIdentityContext {
   user?: { identity?: unknown } | undefined;
+  request?: { identity?: unknown } | undefined;
 }
 
 /**
@@ -120,8 +126,18 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
         "isolated to one. Refusing rather than sharing a checkout across principals.",
     );
   }
+  // The organization is on the REQUEST identity, the one the request was
+  // admitted under; the user-scope identity does not carry it.
+  const orgId = (ctx.request?.identity as { orgId?: unknown } | undefined)?.orgId;
+  if (typeof orgId !== "string" || orgId === "") {
+    throw new Error(
+      "[harness-manager] this request has no resolved organization, so a run cannot be " +
+        "isolated to one. Refusing rather than sharing a checkout across organizations.",
+    );
+  }
   return {
     userId,
+    orgId,
     ...(typeof identity?.tenantId === "string" && identity.tenantId !== ""
       ? { tenantId: identity.tenantId }
       : {}),
@@ -133,7 +149,7 @@ export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
  * started — the half of the run-owner rule that charges nothing.
  *
  * Wire it on the board that drains rows a manager runs, when that board is
- * kept per organization (a mailbox's board): `taskBoard({ dispatcher:
+ * kept per organization (a shared board): `taskBoard({ dispatcher:
  * runOwnerDispatcher() })`. The claim is what spends an attempt, so refusing
  * here leaves the row exactly as it was: same status, same attempt count,
  * same lease. Readiness and order stay the collection's: the owner check is

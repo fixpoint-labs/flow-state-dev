@@ -217,7 +217,7 @@ with reason `terminal`.
 `setAssignee` is the one field mutator that refuses anything — it declines on a
 terminal task, and on a durable collection any hand-off board draws from it declines
 every reassignment whatever the task's status (see "Handing tasks off through a
-dispatcher seat" below).
+dispatcher assignee" below).
 `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
 a terminal task, so a post-drain failure audit can label what went wrong; those four
 answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
@@ -420,15 +420,15 @@ The recorders themselves (`createRecordSuccess` / `createRecordError`) **raise**
 failure by default; only a composition that supplies a tail able to read the report — which
 `taskBoard()`'s drain does — passes `recorderFailure: { onRecorderFailure: "defer" }`.
 
-#### Handing tasks off through a dispatcher seat
+#### Handing tasks off through a dispatcher assignee
 
-A seat under `workers` is a block. Put a `dispatcher({ action, session })`
-in that position and the seat hands its tasks off: the drain claims a row, sends a
+An assignee under `workers` is a block. Put a `dispatcher({ action, session })`
+in that position and the assignee hands its tasks off: the drain claims a row, sends a
 `task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
 entry's block runs in a **child session** of the session that drained — on a request
 of its own — and settles the row itself. Any other block in that position runs
 inline in the drain. The worker is declared once, on the flow, exactly like an
-action. A seat holding anything other than a block (an object such as
+action. An assignee holding anything other than a block (an object such as
 `{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
 ```ts
@@ -446,7 +446,7 @@ const issueLedger = defineTaskCollection({
 
 const board = taskBoard({
   name: "issue-work",
-  boardId: "issue-work",               // required once any seat hands off
+  boardId: "issue-work",               // required once any assignee hands off
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
     triage: triageBlock,               // runs inline
@@ -465,20 +465,21 @@ export default defineFlow({
 })();
 ```
 
-`session` decides which child session a seat's rows run in:
+`session` decides which child session an assignee's rows run in:
 
 | `session` | Child session | Use it when |
 |---|---|---|
 | `"per-task"` | one per row, keyed on the task id; a task filed with `followUpOf` runs in its root task's child | rows are independent |
-| `"per-worker"` | one per seat, shared by every row the seat runs | the worker should remember what it already did |
-| `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across seats |
+| `"per-worker"` | one per assignee, shared by every row the assignee runs | the worker should remember what it already did |
+| `{ key: (task: TaskWorkerInput) => string }` | keyed on what the function returns, verbatim | one issue across several phases, or a key shared across assignees |
+| `{ by: (task: TaskTargetQuery) => { key } \| { id } }` | chosen per row: a child keyed as `{ key }` would, or an existing session by id | some rows need a child of their own and others belong in a session that is already running |
 
 The presets include the board id in the key, so two boards' `per-task` children stay
 apart even when their task ids coincide. A custom `key` is used as returned, so two
-seats (or two boards) that return the same key share one child. A child that runs
-several rows runs them under its entry's concurrency policy. An entry a `per-worker`
-or `key` seat hands off to defaults to `queue`, so the rows run one at a time; a
-`per-task` seat's entry keeps the ordinary default (the flow's `request.concurrency`,
+assignees (or two boards) that return the same key share one child. A child that runs
+several rows runs them under its entry's concurrency policy. An entry a `per-worker`,
+`key` or `by` assignee hands off to defaults to `queue`, so the rows run one at a time; a
+`per-task` assignee's entry keeps the ordinary default (the flow's `request.concurrency`,
 else `allow`). An explicit `concurrency` on the entry wins:
 
 ```ts
@@ -489,7 +490,7 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 a lease backend. On a deployment that hands dispatches to an external queue without
 one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A named seat and `defaultWorker` can hand off. A uniform `workers` block can't: it has
+A named assignee and `defaultWorker` can hand off. A uniform `workers` block can't: it has
 no assignee to route by. A `defaultWorker` dispatcher hands each task the registry
 doesn't name over under the task's own assignee, and refuses a task with none
 (`flow-not-found`), which fails through the board's error path.
@@ -498,7 +499,7 @@ A task dispatcher's `flowKind` may be a function, `(task, ctx) => flowId | undef
 (sync or async; `task` is `{ assignee, taskId, input }`), called once per task at
 hand-over, and only with `session: "per-task"` (any other policy throws when the
 dispatcher is built). Answering `undefined` refuses the dispatch `flow-not-found`, naming the
-assignee. Put it at `defaultWorker` to send every assignee without a seat of its own
+assignee. Put it at `defaultWorker` to send every assignee without an entry of its own
 to a flow looked up at that moment:
 
 ```ts
@@ -510,10 +511,32 @@ defaultWorker: dispatcher({
 }),
 ```
 
+**Entry and session per row.** A task dispatcher's `action` may be `{ among, by }`:
+`by(task, ctx)` (sync or async; `task` is `{ assignee, taskId, input, filedBy? }`) returns
+one of the entry names in `among`. Every name in `among` is checked by `defineFlow` like a
+string `action`; an answer outside it refuses `no-entry` before anything is dispatched,
+and the row fails through the board's error path. Its `session` may be `{ by }`, which
+answers `{ key }` (a child, created with the dispatcher's `state` if it declares one) or
+`{ id }` (an existing session, delivered into and never created; a missing one refuses
+`session-not-found`, one this principal can't reach on this flow `session-not-found` or
+`session-not-addressable`). Read both answers off fields your code wrote on the row. One
+assignee can then send replies into a running session and other work to children:
+
+```ts
+// filed(task): the fields your code wrote on the row when it filed it.
+assistant: dispatcher({
+  name: "hand-off-assistant",
+  action: { among: ["work", "reply"], by: (task) => (filed(task).reply ? "reply" : "work") },
+  session: {
+    by: (task) => (filed(task).sessionId ? { id: filed(task).sessionId! } : { key: `work|${task.taskId}` }),
+  },
+}),
+```
+
 `defineFlow` refuses a hand-off whose entry the flow forgot to declare, a task
 entry no board hands off to and no `from` serves, a task dispatcher no board holds,
 two boards handing off to one entry, and an entry with `from` that a board in the
-same flow also hands off to. `board.handedOff` lists the seats that hand off, in
+same flow also hands off to. `board.handedOff` lists the assignees that hand off, in
 declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, label `floor`).
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
@@ -565,10 +588,10 @@ The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`
 JSON-serializable; a payload that is not fails the row in the drain. When the dispatch
 arrives, the entry re-reads the row and runs the worker only if the claim is still
 current: same attempt, same row (not deleted and recreated under the same id), still
-`in_progress`, still routed to this seat. Otherwise it throws
+`in_progress`, still routed to this assignee. Otherwise it throws
 `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing, so the row is
 left exactly as it was. If the row is still `in_progress`, whether a newer attempt,
-another seat, or a row recreated under the same id holds it, that claim runs until its
+another assignee, or a row recreated under the same id holds it, that claim runs until its
 lease runs out and the next drain reclaims it; a row that was deleted, or is already
 settled or parked, has no outstanding claim, so there is nothing to reclaim. On the drain
 side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,
@@ -710,13 +733,25 @@ refused when it loads; give the work to workers on a task board instead.
 
 `taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-`listTasks`, and `answerTask`. `createTaskToolsCapability(resolver, roster?)` points them at a
+`listTasks`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
+`createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
 context, read on each call that checks an assignee, for a board whose team changes
-while it is in use. `taskToolActions` exposes the same nine as flow
+while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+
+`dispatchTask` starts work now. Pass
+`createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
+ready row as soon as it's written, the way a Workforce conversation does. It takes `addTask`'s
+fields, or `taskId` for a recorded row, and with `wait` it parks the turn until the task ends
+([below](#asking-a-task-and-waiting-for-the-answer)). On such a board `addTask` and
+`assignTask` record rows that wait for a dispatch, and `addTask` answers
+`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`, so the
+standalone `taskTools` and a custom resolver offer no `dispatchTask`, and their `addTask` files a
+row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
+the `dispatchTask_<board>` action, which never waits.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
@@ -744,9 +779,10 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
-`session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`, plus the
-`wait_*` codes when `addTask` [waits](#asking-a-task-and-waiting-for-the-answer). A
-coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
+`session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`. `dispatchTask`
+adds its own (`assignee_required`, `task_not_dispatchable`, its target errors, and the `wait_*`
+codes when it [waits](#asking-a-task-and-waiting-for-the-answer)); the task board page lists
+them. A coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 `not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
 and [follow-ups](#following-up-on-a-finished-task), below.
 
@@ -801,42 +837,45 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 
 #### Asking a task and waiting for the answer
 
-`addTask` with `waitForResponse: true` files a task and parks the calling turn until it ends,
-then returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
-minutes by default). `listTasks` marks an asked row `asked: true`. An ask is refused on a turn
-that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. See
-[Task board → Asking, and waiting for the answer](https://flow-state.dev/docs/orchestration/task-board#asking-and-waiting-for-the-answer)
+`dispatchTask` with `wait: true` starts a task and parks the calling turn until it ends, then
+returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
+minutes by default). `listTasks` marks a waited-on row `asked: true`. A wait is refused on a
+turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. `addTask`
+never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name,
+`add_task_does_not_wait`, and nothing is filed. See
+[Task board → Giving another worker work](https://flow-state.dev/docs/orchestration/task-board#giving-another-worker-work)
 for limits and errors.
 
-The option is in the schema only on a board that resumes asks and a host
-that can hold one: pass `createTaskToolsCapability(resolver, roster, { resumesAsks: true })`
-only when whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn
-(a board run, a task's notice), and the host has durable execution and a running durability
-sweeper. `resumesAsks` defaults to `false`, so the standalone `taskTools` and a custom resolver
-never offer the option. A composing layer that builds its own capability gets the same per-turn
-list from `taskToolsForTurn(resolver, roster, { resumesAsks })`.
+`wait` and `timeoutMs` are in the schema only on a board that dispatches, also resumes asks,
+and runs on a host that can hold a wait: pass
+`createTaskToolsCapability(resolver, roster, { dispatches: true, resumesAsks: true })` only when
+whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn (a board
+run, a task's notice), and the host has durable execution and a running durability sweeper
+(`canHoldWait`). `resumesAsks` defaults to `false`. A composing layer that builds its own
+capability gets the same per-turn list from
+`taskToolsForTurn(resolver, roster, { dispatches, resumesAsks })`.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `addTaskAndWait(ctx, collection, init, { timeoutMs? })`, from
-  `@flow-state-dev/orchestration/task-board`, files `init` as an ask from inside a generator's
-  tool call and waits for its answer. Call it from your own tool when you don't use the task
-  tools' `addTask`. Before filing it refuses a host that can't bound the ask (`canHoldAsk(ctx)`,
+- `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
+  `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from inside
+  a generator's tool call. Call it from your own tool when you don't use the task tools'
+  `dispatchTask`. Before filing it refuses a host that can't bound the wait (`canHoldWait(ctx)`,
   on the same subpath, is false), an out-of-range `timeoutMs`, a call from a task turn, or a
-  second wait in the same step; check the assignee yourself first. The bounds are `MIN_ASK_TIMEOUT_MS`,
-  `MAX_ASK_TIMEOUT_MS` and `DEFAULT_ASK_TIMEOUT_MS` there too. It resolves to
-  `{ ok: true, taskId, answer }`, or `{ ok: false, error, taskId?, message? }` where `error`
-  is a bare `wait_*` code and `message` explains it. Only a direct caller sees `wait_stopped`:
-  the person stopped the turn, the task is cancelled and the request is stopped. Through the
-  task tools' `addTask` the turn ends there, so the model never reads it.
+  second wait in the same step; check the assignee yourself first. The bounds are
+  `MIN_WAIT_TIMEOUT_MS`, `MAX_WAIT_TIMEOUT_MS` and `DEFAULT_WAIT_TIMEOUT_MS` there too. It
+  resolves to `{ ok: true, taskId, answer }`, or `{ ok: false, error, taskId?, message? }` where
+  `error` is a bare `wait_*` code and `message` explains it. Only a direct caller sees
+  `wait_stopped`: the person stopped the turn, the task is cancelled and the request is
+  stopped. Through the task tools' `dispatchTask` the turn ends there, so the model never
+  reads it.
 - `resumeOwedAsks(ctx, collection)`, from `@flow-state-dev/orchestration`, resumes each
-  waiting turn whose asked task has ended. Call
-  it whenever your layer touches the board outside a turn (a board run, a task's notice), so an
-  answer whose resume was lost to a crash is still delivered. It returns at once when nothing
-  is owed. It also cancels each task whose ask was stopped or timed out while the ask's own
-  cancel failed (`Task.cancelOwed`). Until something touches the board, that task's worker may
-  keep running. It resolves to `{ resumed, stillOwed }`, task ids; a task still owed is retried
-  on the next call.
+  waiting turn whose task has ended. Call it whenever your layer touches the board outside a
+  turn (a board run, a task's notice), so an answer whose resume was lost to a crash is still
+  delivered. It returns at once when nothing is owed. It also cancels each task whose wait was
+  stopped or timed out while its own cancel failed (`Task.cancelOwed`). Until something touches
+  the board, that task's worker may keep running. It resolves to `{ resumed, stillOwed }`, task
+  ids; a task still owed is retried on the next call.
 
 #### When a task stops on a question
 
@@ -845,7 +884,7 @@ answers it. Anyone who can call `answerTask` on the board can answer.
 `createParkOnQuestion({ resolve })` builds the worker's side:
 `parkOnQuestion({ question })` parks the task the current turn is working on, and
 `offered(ctx)` says whether the turn gets the tool. It does on a task turn for a running
-task that wasn't filed with `waitForResponse`.
+task that no turn is waiting on (`dispatchTask` with `wait`).
 
 `answerTask({ taskId, answer })` answers a task parked on its worker's question:
 the task goes back to `pending` with the answer, its worker picks it up again in the
@@ -862,10 +901,10 @@ the answer reaches the session that asked.
 
 #### Following up on a finished task
 
-`addTask` takes `followUpOf` to file new work on a finished task: the follow-up
+`addTask` and `dispatchTask` take `followUpOf` to file new work on a finished task: the follow-up
 is a new task, with the same worker, that runs in the finished task's session. It
 keeps that worker: `assignTask` and `updateTask` won't move it
-(`follow_up_takes_no_assignee`). `addTask` refuses an `assignee` beside it
+(`follow_up_takes_no_assignee`). Both tools refuse an `assignee` beside it
 (`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
 (`follow_up_of_unfinished`), and a session that still has an unfinished task
 (`session_has_unfinished_task`), all before anything is filed. The finished task

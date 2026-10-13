@@ -1,5 +1,5 @@
 /**
- * `Roster` — the organization's seats, as the panel draws them (FIX-1477 S5).
+ * `Roster` — the organization's workers, as the panel draws them (FIX-1477 S5).
  *
  * It reads the standing roster collection and lists what is in it. **Nothing
  * here filters by organization, and there is no prop to do it with** (BR-24):
@@ -8,8 +8,8 @@
  * second opinion about a boundary the server already holds, and a filter that
  * silently does nothing is worse than none.
  *
- * **Skipped seats are shown, not only logged** (BR-20). A boot reload hands
- * back `{ seats, problems }` — the rows it could not turn into seats, named —
+ * **Skipped workers are shown, not only logged** (BR-20). A boot reload hands
+ * back `{ workers, problems }` — the rows it could not turn into workers, named —
  * and that is a server-side return value with no path to a browser, so the
  * host passes it in. "The roster" and "what answers" are two numbers, and a
  * warning in a log is not a report.
@@ -33,32 +33,32 @@ import {
 } from "./chrome";
 
 /**
- * One seat, as the roster collection publishes it.
+ * One worker, as the roster collection publishes it.
  *
  * The stored row carries a `settings` bag too; the collection's `expose`
  * deliberately withholds it, so this is the whole of what arrives.
  *
  * `instructions` is `string | null` and that is true of every row a consumer
- * is handed, including a row written before seats had instructions — those
+ * is handed, including a row written before workers had instructions — those
  * arrive with the key absent and are normalised to `null` on the way in
- * (see `normalizeSeat`). So a slot may compare against `null` and trust it.
+ * (see `normalizeWorker`). So a slot may compare against `null` and trust it.
  */
-export type RosterSeat = {
-  readonly seatId: string;
+export type RosterWorker = {
+  readonly workerId: string;
   readonly flow: string;
   readonly instructions: string | null;
 };
 
-/** A seat row, plus the topic it was stored under. */
-export type RosterSeatRow = {
+/** A worker row, plus the topic it was stored under. */
+export type RosterWorkerRow = {
   readonly topic: string;
-  readonly seat: RosterSeat;
+  readonly worker: RosterWorker;
 };
 
 /** The parts of the roster that belong to the host rather than to the component. */
 export type RosterSlots = {
-  /** Beside a seat's name — the host's own affordances, never the component's. */
-  readonly rowTrailing?: (row: RosterSeatRow) => ReactNode;
+  /** Beside a worker's name — the host's own affordances, never the component's. */
+  readonly rowTrailing?: (row: RosterWorkerRow) => ReactNode;
   /** What an empty roster says, when the host would rather say it itself. */
   readonly empty?: () => ReactNode;
 };
@@ -75,7 +75,7 @@ export type RosterProps = {
    */
   readonly collectionRef?: string;
   /**
-   * Seats a boot reload could not restore, in the dialect the reload returns
+   * Workers a boot reload could not restore, in the dialect the reload returns
    * them (BR-20). Held by the host, because the reload is a server-side call
    * whose result never crosses to a browser on its own.
    */
@@ -92,7 +92,7 @@ export type RosterProps = {
    */
   readonly resourceClient?: PanelRowSource;
   /**
-   * Seats to request per page: the size of each fetch, not a cap on what
+   * Workers to request per page: the size of each fetch, not a cap on what
    * renders. The panel follows the cursor for up to 1,000 pages; a collection
    * with pages left after that shows the error line and Retry, never the
    * rows read so far (BR-19). See `usePanelRows`.
@@ -118,24 +118,24 @@ export const rosterPropNames = [
   "slots"
 ] as const;
 
-/** The conventional key a flow declares the roster under. Shared with `SeatDetail` (FIX-1500 S5). */
+/** The conventional key a flow declares the roster under. Shared with `WorkerDetail` (FIX-1500 S5). */
 export const DEFAULT_ROSTER_REF = "roster";
 
 /**
- * Shared with `SeatDetail` (FIX-1500 S5), so a list read and a single-item read agree on what a seat row is.
+ * Shared with `WorkerDetail` (FIX-1500 S5), so a list read and a single-item read agree on what a worker row is.
  *
- * `instructions` is checked too, not just `seatId`/`flow` (FIX-1500 bug 2): a
+ * `instructions` is checked too, not just `workerId`/`flow` (FIX-1500 bug 2): a
  * row with e.g. `instructions: {}` would otherwise pass, get cast to
- * `RosterSeat`, and be handed to React as a child, which throws trying to
+ * `RosterWorker`, and be handed to React as a child, which throws trying to
  * render an object. The declared shape is `string | null`, and a row from
- * before seats had instructions carries the key absent — so `undefined` is
- * accepted as the legacy case (see `normalizeSeat`), and anything else
- * (an object, a number, …) is not a seat this version can read.
+ * before workers had instructions carries the key absent — so `undefined` is
+ * accepted as the legacy case (see `normalizeWorker`), and anything else
+ * (an object, a number, …) is not a worker this version can read.
  */
-export function isSeat(value: unknown): value is RosterSeat {
+export function isWorker(value: unknown): value is RosterWorker {
   if (value === null || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
-  if (typeof row.seatId !== "string" || typeof row.flow !== "string") return false;
+  if (typeof row.workerId !== "string" || typeof row.flow !== "string") return false;
   const { instructions } = row;
   return instructions === undefined || instructions === null || typeof instructions === "string";
 }
@@ -143,19 +143,19 @@ export function isSeat(value: unknown): value is RosterSeat {
 /**
  * Make a stored row match the declared shape, which for now means one field.
  *
- * `instructions` is declared `string | null`, and a row written before seats
+ * `instructions` is declared `string | null`, and a row written before workers
  * had instructions does not carry the key at all — the projection copies only
  * the keys a row has, so it arrives ABSENT rather than null (BP-030, and
  * BP-035's null boundary). A slot consumer trusting the declared type would
- * write `if (seat.instructions !== null) seat.instructions.trim()` and throw
+ * write `if (worker.instructions !== null) worker.instructions.trim()` and throw
  * on the oldest rows in the store. Normalising here means the type is true of
  * every row a consumer can be handed, rather than true of recent ones.
  *
- * Shared with `SeatDetail` (FIX-1500 S5) so the list and the detail agree on
+ * Shared with `WorkerDetail` (FIX-1500 S5) so the list and the detail agree on
  * how a missing `instructions` value is treated, rather than each deciding it
  * independently.
  */
-export function normalizeSeat(row: RosterSeat): RosterSeat {
+export function normalizeWorker(row: RosterWorker): RosterWorker {
   return row.instructions === undefined ? { ...row, instructions: null } : row;
 }
 
@@ -181,35 +181,35 @@ export function Roster(props: RosterProps): ReactNode {
 
   // A row whose shape the component cannot read is dropped rather than
   // rendered blank, and the count below says so — the same rule the boot
-  // reload applies to a row it cannot turn into a seat.
-  const seats = useMemo(
+  // reload applies to a row it cannot turn into a worker.
+  const workers = useMemo(
     () =>
       state.rows
-        .filter((row): row is { topic: string; clientData: RosterSeat } => isSeat(row.clientData))
-        .map((row) => ({ topic: row.topic, seat: normalizeSeat(row.clientData) })),
+        .filter((row): row is { topic: string; clientData: RosterWorker } => isWorker(row.clientData))
+        .map((row) => ({ topic: row.topic, worker: normalizeWorker(row.clientData) })),
     [state.rows]
   );
-  const unreadable = state.rows.length - seats.length;
+  const unreadable = state.rows.length - workers.length;
 
   const body =
     state.error !== null
       ? retryLine(state.error, state.refresh)
       : state.isLoading && state.rows.length === 0
         ? note("loading", "Loading the roster…")
-        : seats.length === 0
-          ? (slots.empty?.() ?? note("empty", "No seats have been hired in this organization yet."))
+        : workers.length === 0
+          ? (slots.empty?.() ?? note("empty", "No workers have been hired in this organization yet."))
           : createElement(
               "ul",
-              { style: bareList, "data-roster-seats": String(seats.length) },
-              ...seats.map((row) =>
+              { style: bareList, "data-roster-workers": String(workers.length) },
+              ...workers.map((row) =>
                 createElement(
                   "li",
-                  { key: row.topic, style: rowStyle, "data-seat-id": row.seat.seatId },
-                  createElement("span", { style: labelStyle }, row.seat.seatId),
+                  { key: row.topic, style: rowStyle, "data-worker-id": row.worker.workerId },
+                  createElement("span", { style: labelStyle }, row.worker.workerId),
                   createElement(
                     "span",
                     { style: { flexShrink: 0, color: "var(--fsd-panel-muted-fg, inherit)" } },
-                    row.seat.flow
+                    row.worker.flow
                   ),
                   slots.rowTrailing?.(row) ?? null
                 )
@@ -228,7 +228,7 @@ export function Roster(props: RosterProps): ReactNode {
           createElement(
             "h4",
             { style: headingStyle },
-            `${skipped.length + unreadable} seat${skipped.length + unreadable === 1 ? "" : "s"} could not be loaded`
+            `${skipped.length + unreadable} worker${skipped.length + unreadable === 1 ? "" : "s"} could not be loaded`
           ),
           createElement(
             "ul",
@@ -240,7 +240,7 @@ export function Roster(props: RosterProps): ReactNode {
               ? createElement(
                   "li",
                   { key: "unreadable", style: noteStyle },
-                  `${unreadable} stored row${unreadable === 1 ? "" : "s"} did not match the seat shape this version reads.`
+                  `${unreadable} stored row${unreadable === 1 ? "" : "s"} did not match the worker shape this version reads.`
                 )
               : null
           )

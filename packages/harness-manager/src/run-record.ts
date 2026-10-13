@@ -171,6 +171,13 @@ export const runRecordStateSchema = z.object({
   /** The branch {@link remote}'s run branch was cut from, recorded with it. */
   baseRef: z.string().nullable().default(null),
   /**
+   * The commit {@link baseRef} named when the run's branch was cut, recorded
+   * with it. Unlike a ref, nothing a run does can move it, so it is what a
+   * run's own commits are counted from. `null` on a row written before this
+   * field existed (BP-030).
+   */
+  baseCommit: z.string().nullable().default(null),
+  /**
    * The run was first provisioned with no repository: its kept files alone.
    * Kept across attempts for the reason {@link remote} is, so a project that
    * gains a repository later never moves a files run onto a checkout and away

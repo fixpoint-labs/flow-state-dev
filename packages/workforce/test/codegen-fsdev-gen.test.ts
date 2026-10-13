@@ -47,7 +47,7 @@ describe("the workforce generator", () => {
     expect(result.entries).toEqual(["blocks/triage.ts -> triage"]);
     expect(result.paths).toEqual(["blocks/triage.ts"]);
     expect(result.summary).toBe(
-      "0 worker kind(s), 1 block(s), 0 resource module(s), 0 seat block(s), 0 package block(s)",
+      "0 worker flow(s), 1 block(s), 0 resource module(s), 0 worker block(s), 0 package block(s)",
     );
   });
 

@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { COLUMNS, columnFor, readStatus } from "../lib/columns";
-import { holderOf, openRows, rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
+import { holderOf, openRows, rosterOf, workerFor, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
 import { elapsed, isQueued, tasksSummary } from "../lib/tasks";
@@ -37,7 +37,7 @@ function useNow(running: boolean): number {
 /** A mono cell: the id, NOW, STREAM, TIME and COST columns (v2:677-683). */
 const MONO_CELL = "py-2 pr-3 font-mono text-[11.5px] font-medium whitespace-nowrap";
 
-/** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<conversation id>`. */
+/** A row's stream as the table writes it: a conversation's `@<worker>` as it is, else `#<workstream>` or `#<conversation id>`. */
 function streamLabel(holder: string): string {
   return holder.startsWith("@") ? holder : `#${holder}`;
 }
@@ -53,7 +53,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : holderOf(snapshot, row);
+    by === "state" ? columnFor(row.status) : by === "worker" ? (workerFor(roster, row)?.id ?? row.assignee ?? "unassigned") : holderOf(snapshot, row);
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -159,7 +159,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                   </th>
                 </tr>
                 {groupRows.map((row) => {
-                  const seat = seatFor(roster, row);
+                  const worker = workerFor(roster, row);
                   const time = elapsed(row, now);
                   return (
                     <tr
@@ -186,8 +186,8 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
                         {streamLabel(holderOf(snapshot, row))}
                       </td>
-                      <td className="truncate py-2 pr-3 text-[13px]" title={seat?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
-                        {seat?.name ?? row.assignee ?? "—"}
+                      <td className="truncate py-2 pr-3 text-[13px]" title={worker?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
+                        {worker?.name ?? row.assignee ?? "—"}
                       </td>
                       <td className={cn(MONO_CELL, "text-muted-foreground")} data-testid="task-row-time">
                         {time ?? "—"}

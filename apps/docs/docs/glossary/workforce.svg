@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 628" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 576" role="img" aria-labelledby="title desc">
   <title id="title">Workforce: what each term is made of</title>
-  <desc id="desc">Each Workforce term beside what it is made of. A worker from WORKER.md is a flow instance. A roster row is a row of an org resource collection. A mailbox from MAILBOX.md is a session on the one mailbox flow. A mailbox board is an orchestration task collection. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator’s user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, plus its lead’s workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person’s open workstreams.</desc>
+  <desc id="desc">Each Workforce term beside what it is made of. A worker is a resource in one user’s scope that names its worker flow. A standard worker is read from the installation’s files, the same for every user. A roster is one user’s workers. A coordinator is a worker on the coordinator flow, with delegates from the same roster in its session. A project is one row, in the user’s scope or the org’s; a workstream is an entry in a shared project that only its owner writes, plus its lead’s session. A project coordinator is one session per user per project.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -42,74 +42,66 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="628" rx="16" class="bg"/>
+  <rect x="0" y="0" width="920" height="576" rx="16" class="bg"/>
   <text x="28" y="36" class="title">Workforce: what each term is made of</text>
   <text x="28" y="58" class="muted">Workforce adds files and rules. Everything lands in a Core or Orchestration piece on the right.</text>
   <text x="28" y="92" class="tag-org">WORKFORCE TERM</text>
   <text x="344" y="92" class="tag-sess">BUILT FROM</text>
   <rect x="28" y="104" width="268" height="52" rx="10" class="card-org"/>
   <text x="42" y="126" class="h">Worker</text>
-  <text x="42" y="144" class="code">WORKER.md</text>
+  <text x="42" y="144" class="code">a resource, one owner</text>
   <rect x="344" y="104" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="125" class="tag-sess">FLOW INSTANCE</text>
-  <text x="508" y="125" class="p">A flow instance of a kind, the built-in agent kind</text>
-  <text x="508" y="143" class="p">unless the file names another. Its id is team.name.</text>
+  <text x="358" y="125" class="tag-sess">RESOURCE</text>
+  <text x="508" y="125" class="p">A resource in one user’s scope that names its worker</text>
+  <text x="508" y="143" class="p">flow, with its own instructions, skills and tools.</text>
   <path d="M296 130 L342 130" class="edge"/>
   <rect x="28" y="166" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="188" class="h">Roster row</text>
-  <text x="42" y="206" class="code">hired while the app runs</text>
-  <rect x="344" y="166" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="187" class="tag-sess">RESOURCE COLL.</text>
-  <text x="508" y="187" class="p">A row of workforce/roster/*, so the worker</text>
-  <text x="508" y="205" class="p">comes back after a restart.</text>
+  <text x="42" y="188" class="h">Standard worker</text>
+  <text x="42" y="206" class="code">WORKER.md</text>
+  <rect x="344" y="166" width="548" height="52" rx="10" class="card"/>
+  <text x="358" y="187" class="tag-ink">FILES</text>
+  <text x="508" y="187" class="p">Read from the installation’s files, the same for every</text>
+  <text x="508" y="205" class="p">user. Fork one to make it a worker of your own.</text>
   <path d="M296 192 L342 192" class="edge"/>
   <rect x="28" y="228" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="250" class="h">Mailbox</text>
-  <text x="42" y="268" class="code">MAILBOX.md</text>
+  <text x="42" y="250" class="h">Roster</text>
+  <text x="42" y="268" class="code">one user’s workers</text>
   <rect x="344" y="228" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="249" class="tag-sess">SESSION</text>
-  <text x="508" y="249" class="p">A named session on the one mailbox flow. Members</text>
-  <text x="508" y="267" class="p">are worker ids; the transcript is the post items.</text>
+  <text x="358" y="249" class="tag-sess">RESOURCE COLL.</text>
+  <text x="508" y="249" class="p">One user’s workers, standard ones included. A user’s</text>
+  <text x="508" y="267" class="p">own workers come back after a restart.</text>
   <path d="M296 254 L342 254" class="edge"/>
   <rect x="28" y="290" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="312" class="h">Mailbox board</text>
-  <text x="42" y="330" class="code">boards: on a mailbox</text>
-  <rect x="344" y="290" width="548" height="52" rx="10" class="card-proc"/>
-  <text x="358" y="311" class="tag-proc">TASK COLLECTION</text>
-  <text x="508" y="311" class="p">A task collection the mailbox holds. A worker's</text>
-  <text x="508" y="329" class="p">kind runs the task board that drains it.</text>
+  <text x="42" y="312" class="h">Coordinator</text>
+  <text x="42" y="330" class="code">flow: coordinator</text>
+  <rect x="344" y="290" width="548" height="52" rx="10" class="card-org"/>
+  <text x="358" y="311" class="tag-org">WORKER</text>
+  <text x="508" y="311" class="p">A worker on the coordinator flow. Its delegates, from</text>
+  <text x="508" y="329" class="p">the same roster, are in its session.</text>
   <path d="M296 316 L342 316" class="edge"/>
   <rect x="28" y="352" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="374" class="h">Inventory</text>
-  <text x="42" y="392" class="code">org-wide records</text>
+  <text x="42" y="374" class="h">Project</text>
+  <text x="42" y="392" class="code">a body of work</text>
   <rect x="344" y="352" width="548" height="52" rx="10" class="card-sess"/>
   <text x="358" y="373" class="tag-sess">RESOURCE COLL.</text>
-  <text x="508" y="373" class="p">Three org collections: every worker, every mailbox,</text>
-  <text x="508" y="391" class="p">and who is a member where.</text>
+  <text x="508" y="373" class="p">One row, in the user’s scope when private or the</text>
+  <text x="508" y="391" class="p">org’s when shared: title, brief, owner.</text>
   <path d="M296 378 L342 378" class="edge"/>
   <rect x="28" y="414" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="436" class="h">Project</text>
-  <text x="42" y="454" class="code">a piece of work</text>
+  <text x="42" y="436" class="h">Workstream</text>
+  <text x="42" y="454" class="code">one owner each</text>
   <rect x="344" y="414" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="435" class="tag-sess">RESOURCE COLL.</text>
-  <text x="508" y="435" class="p">One row of projects/*, shared with the org or private</text>
-  <text x="508" y="453" class="p">to its creator: title, brief, owner, members.</text>
+  <text x="358" y="435" class="tag-sess">ENTRY + SESSION</text>
+  <text x="508" y="435" class="p">An entry in a shared project that only its owner</text>
+  <text x="508" y="453" class="p">writes, plus its lead’s workstream session.</text>
   <path d="M296 440 L342 440" class="edge"/>
   <rect x="28" y="476" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="498" class="h">Workstream</text>
-  <text x="42" y="516" class="code">one owner each</text>
-  <rect x="344" y="476" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="497" class="tag-sess">ENTRY + SESSION</text>
-  <text x="508" y="497" class="p">An entry everyone who reads the project reads and only</text>
-  <text x="508" y="515" class="p">its owner writes, and its lead’s workstream session.</text>
+  <text x="42" y="498" class="h">Project coordinator</text>
+  <text x="42" y="516" class="code">one per user per project</text>
+  <rect x="344" y="476" width="548" height="52" rx="10" class="card-org"/>
+  <text x="358" y="497" class="tag-org">WORKER SESSION</text>
+  <text x="508" y="497" class="p">A coordinator’s session, one per user per project. It</text>
+  <text x="508" y="515" class="p">hands work only to that user’s own workstreams.</text>
   <path d="M296 502 L342 502" class="edge"/>
-  <rect x="28" y="538" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="560" class="h">Project coordinator</text>
-  <text x="42" y="578" class="code">one per person per project</text>
-  <rect x="344" y="538" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="559" class="tag-org">WORKER SESSION</text>
-  <text x="508" y="559" class="p">A coordinator worker’s session. Its delegates are</text>
-  <text x="508" y="577" class="p">that person’s open workstreams in the project.</text>
-  <path d="M296 564 L342 564" class="edge"/>
-  <text x="28" y="612" class="muted">Blue: Core. Purple: Orchestration. Green: made of the Workforce terms above it.</text>
+  <text x="28" y="560" class="muted">Blue: Core. Grey: your files. Green: made of the Workforce terms above it.</text>
 </svg>

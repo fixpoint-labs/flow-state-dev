@@ -1,9 +1,9 @@
 /**
- * A message to an agent seat is kept as the caller's turn.
+ * A message to an agent worker is kept as the caller's turn.
  *
- * A seat is a direct conversation with that agent, so its session has to hold
- * both sides: what the person said and what the seat answered. Before this,
- * `run` recorded only the reply, and a page reloading a seat's conversation
+ * A worker is a direct conversation with that agent, so its session has to hold
+ * both sides: what the user said and what the worker answered. Before this,
+ * `run` recorded only the reply, and a page reloading a worker's conversation
  * showed answers to questions nobody could see.
  *
  * Red state produced before this was trusted: `run` without its
@@ -13,15 +13,15 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 
 const USER_ID = "u_person";
 
-describe("a message to an agent seat", () => {
-  it("is kept in the seat's conversation as the caller's turn, ahead of the reply", async () => {
-    const [seat] = mintSeats([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
+describe("a message to an agent worker", () => {
+  it("is kept in the worker's conversation as the caller's turn, ahead of the reply", async () => {
+    const [worker] = mintWorkers([{ id: "support.otto", declared: {}, body: "You answer questions." }]);
     const state = createFlowState({
-      flows: { [seat!.id]: seat! },
+      flows: { [worker!.id]: worker! },
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({
         generators: {
@@ -34,7 +34,7 @@ describe("a message to an agent seat", () => {
       const runtime = await state.getRuntime();
       const result = await runAction({
         orgId: DEFAULT_ORG_ID,
-        flow: seat!,
+        flow: worker!,
         actionName: "run",
         input: { message: "where is my refund?" },
         userId: USER_ID,

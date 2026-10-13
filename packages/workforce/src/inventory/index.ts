@@ -1,30 +1,30 @@
 /**
- * The live inventory: org-scoped rows for the seats registered in this org.
+ * The live inventory: org-scoped rows for the workers registered in this org.
  *
  * `collections.ts` owns the explanation — what the collection answers and who
  * may read it. `open-inventory.ts` owns the boot binder that fills it, and
- * `seat-writer.ts` the action it runs. This file only re-exports.
+ * `worker-writer.ts` the action it runs. This file only re-exports.
  */
 
 export {
-  INVENTORY_SEAT_WRITER_SESSION,
+  INVENTORY_WORKER_WRITER_SESSION,
   openInventory,
   type InventoryActionRequest,
   type InventoryBinding,
   type InventoryRoster,
-  type InventorySeat,
-  type InventorySeatWriter,
+  type InventoryWorker,
+  type InventoryWorkerWriter,
   type OpenInventoryOptions
 } from "./open-inventory";
 
 export {
-  INVENTORY_REGISTER_SEATS,
-  inventorySeatsRegisteredSchema,
+  INVENTORY_REGISTER_WORKERS,
+  inventoryWorkersRegisteredSchema,
   inventoryWriterActions
-} from "./seat-writer";
+} from "./worker-writer";
 
 export {
-  defineSeatInventoryCollection,
-  seatInventoryRowSchema,
-  type SeatInventoryRow
+  defineWorkerInventoryCollection,
+  workerInventoryRowSchema,
+  type WorkerInventoryRow
 } from "./collections";

@@ -24,7 +24,7 @@ Related, and deliberately not restated here:
   entries* — how a `task` or `internal` dispatch resolves its entry, and why
   neither is re-enterable from a public route.
 - `packages/orchestration/README.md` → *Handing tasks off through a dispatcher
-  seat* — the task-board surface that is the ordinary way to start one.
+  assignee* — the task-board surface that is the ordinary way to start one.
 - `apps/docs/docs/server/background-work.md` — the HTTP surface for reading a
   session's children afterwards.
 
@@ -45,7 +45,7 @@ address.
 What crosses, exactly:
 
 - **The payload.** A `dispatcher()` sends its `payload`; a board's dispatcher sends the
-  `TaskDispatchInput` envelope — `{ boardId, seat, taskId, attempt, createdAt,
+  `TaskDispatchInput` envelope — `{ boardId, assignee, taskId, attempt, createdAt,
   incarnationId?, partition?, payload }`, where `payload` is the worker input the drain
   packed at claim time, and `partition` is present when the board's ledger keeps
   one set of rows per partition (see below). The hand-off round-trips it through JSON before
@@ -189,7 +189,7 @@ as looked up per task; the entry it names is still declared. A function target r
 keep session state, so two tasks never share its child session. Only `task`
 dispatchers take a function — an `internal` address stays a string, refused at
 construction otherwise. The board's fallback (`defaultWorker`) may hold such a
-dispatcher: it hands every row its named seats do not route over under the
+dispatcher: it hands every row its named assignees do not route over under the
 assignee on the claim ticket, so the receiving gate's assignee arm holds, and
 refuses a row with no assignee before releasing the claim. A uniform `workers`
 dispatcher is still refused: it has no assignee to address the hand-over by.
@@ -227,8 +227,8 @@ gate reads its one ledger, this one reads the ledger the dispatch names. An id
 row is read, which keeps what the board-scoped input schema protects; then the
 arms below run on that ledger in the same order. The id travels on the
 envelope, so `resolve` must answer only for ledgers the running context may
-read — Workforce's mailbox-list source resolves only declared, org-scoped
-lists in the run's organization — and the row re-read there authorizes the
+read — a source that resolves only declared, org-scoped lists in the run's
+organization, say — and the row re-read there authorizes the
 run. The gate records the ledger id beside the claim (`currentLedger` on the
 worker-body state) so its recorders settle on the ledger they read from.
 `defineFlow` gates such an entry with no board in the flow; one a same-flow
@@ -295,9 +295,9 @@ the one row this request was dispatched for, `settleParentTask()` settles it,
 running, and `resumeAsk?()` resumes a turn in this session parked on an ask
 gate (present only with durable execution). Beside them, one fact:
 `hasAskSweeper`, true when this process runs a durability sweeper that times
-asks out. `addTask` offers `waitForResponse` only when both hold: the board
+asks out. `dispatchTask` offers `wait` only when both hold: the board
 opts in with `resumesAsks: true` (whatever runs it calls `resumeOwedAsks`), and
-the host reports `hasAskSweeper`. Identity is
+the host reports `hasAskSweeper`. `addTask` never waits. Identity is
 never a parameter to any of them.
 
 ## The rule that decides everything

@@ -288,11 +288,16 @@ jobs:
       - name: No doc teaches per-kind flowIsolation
         run: node scripts/check-isolation-coordinate.mjs
 
-      # Unconditional for the same reason: a surface that still calls the
-      # mailbox a channel is as wrong on main as on a PR. The script header
-      # owns what is in scope, the survivors and the allowlist.
-      - name: The mailbox is never called a channel
-        run: node scripts/check-mailbox-rename.mjs
+      # Unconditional for the same reason: a retired Workforce word is as
+      # wrong on main as on a PR. The script header owns the terms, the
+      # areas and the exceptions.
+      - name: No retired Workforce term
+        run: node scripts/check-retired-terms.mjs
+
+      # The plants must still be refused on the real tree, or the check above
+      # could pass because it stopped seeing a term.
+      - name: The retired-term guard refuses its plants
+        run: node scripts/check-retired-terms.mjs --control
 
   knip:
     name: Knip (unused files & broken imports)

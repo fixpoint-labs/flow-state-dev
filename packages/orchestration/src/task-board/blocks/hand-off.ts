@@ -1,16 +1,17 @@
 /**
  * The block that hands a claimed row off instead of running a worker.
  *
- * A board seat holding a `dispatcher({ type: "task" })` declares that its rows
- * run elsewhere. This block is what the drain installs at that seat: it takes
- * the dispatcher's address as declared — the entry it names and the session
- * policy — and adds the bookkeeping only the drain can do, because only the
+ * A board assignee holding a `dispatcher({ type: "task" })` declares that its rows
+ * run elsewhere. This block is what the drain installs at that assignee: it takes
+ * the dispatcher's address as declared — the entry it names (or chooses per
+ * row, among declared ones) and the session policy (a keyed child, or an
+ * existing session chosen per row) — and adds the bookkeeping only the drain can do, because only the
  * drain holds the claim: mint the envelope from the ticket, release the claim
  * before the point of no return, put the dispatch through the seam, hand the
  * claim back on refusal. The drain's shape is untouched — claim, route,
  * record. What changes is what the route does.
  *
- * The block carries the seat's address, so `defineFlow` verifies the flow
+ * The block carries the assignee's address, so `defineFlow` verifies the flow
  * declares `task: { actions: { [target]: { block } } }` and the board's roster shows the
  * hand-off statically; and it carries the board's **binding** — its id and the
  * claim gate — which `defineFlow` uses to put that entry behind the gate.
@@ -55,15 +56,20 @@ import {
   DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
+  resolveTaskAction,
   resolveTaskFlowKind,
-  resolveTaskState,
-  taskSessionKeyFor,
+  resolveTaskSessionTarget,
 } from "@flow-state-dev/core/types";
-import type { BlockDefinition, TaskBinding, TaskDispatchInput } from "@flow-state-dev/core/types";
+import type {
+  BlockDefinition,
+  TaskBinding,
+  TaskDispatchInput,
+  TaskTargetQuery,
+} from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskWorker, TaskWorkerInput } from "../../tasks";
-import type { TaskSeatAddress } from "../hand-off";
+import type { TaskAssigneeAddress } from "../hand-off";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
 
@@ -73,26 +79,26 @@ export interface HandOffOptions {
   /** The declaring board's stable id — half of the durable address. */
   boardId: string;
   /**
-   * The seat this hand-off stands in for — the row's assignee. Omitted for
+   * The assignee this hand-off stands in for — the row's assignee. Omitted for
    * the board's fallback, which stands in for every assignee the board does
    * not name: each row is handed over under the assignee it was claimed with.
    */
-  seat?: string;
-  /** The seat's dispatcher address: the entry it hands off to and the session policy. */
-  address: TaskSeatAddress;
+  assignee?: string;
+  /** The assignee's dispatcher address: the entry it hands off to and the session policy. */
+  address: TaskAssigneeAddress;
   /** The board's claim gate, bound onto this block for `defineFlow` to apply to the entry. */
   binding: TaskBinding;
 }
 
 /**
- * Build the block the drain installs at one dispatcher seat.
+ * Build the block the drain installs at one dispatcher assignee.
  *
  * Its input is the packed `TaskWorkerInput` the drain already materialized —
  * the same value an inline worker would have received, which is what makes the
  * handed-off and inline paths agree on what the worker sees.
  */
 export function createHandOff(options: HandOffOptions): TaskWorker {
-  const { name, boardId, seat, address, binding } = options;
+  const { name, boardId, assignee: named, address, binding } = options;
 
   const block = handler({
     name,
@@ -108,7 +114,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         // before any route runs. Named because reaching here would otherwise
         // dispatch a request with no row behind it.
         throw new Error(
-          `[task-board] "${boardId}" cannot hand off seat "${seat ?? "(fallback)"}": no claim is on the ` +
+          `[task-board] "${boardId}" cannot hand off assignee "${named ?? "(fallback)"}": no claim is on the ` +
             `worker body state. This block must run inside the board's drain, after the claim.`
         );
       }
@@ -116,7 +122,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
       // with, so the receiving gate's assignee check holds. A row with none has
       // nothing to address the hand-over by: refused with the claim still held,
       // so the row fails through the board's ordinary error path.
-      const assignee = seat ?? claim.assignee;
+      const assignee = named ?? claim.assignee;
       if (assignee === undefined) {
         throw new DispatchRefusedError(
           name,
@@ -146,7 +152,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
 
       const envelope: TaskDispatchInput = {
         boardId,
-        seat: assignee,
+        assignee,
         taskId: claim.taskId,
         // The claim's identity, carried so the child's gate can VERIFY it
         // against the row — not so it can trust it. Every field comes off the
@@ -164,44 +170,32 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         payload: snapshot,
       };
 
-      const key = taskSessionKeyFor(name, address.session, envelope, ctx);
-
-      // Which flow takes it, looked up now when the seat's target is per task.
-      // A refusal here is decided before anything is dispatched, with the
-      // claim still held, like the seam's own refusals below.
-      const flowKind = await resolveTaskFlowKind(
-        name,
-        address,
-        {
-          assignee,
-          taskId: claim.taskId,
-          input: snapshot,
-          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
-        },
-        ctx
-      );
-
-      // The child's initial state, when the seat names one: looked up now,
-      // like the flow, so a bad answer refuses with the claim still held.
-      const initialState = await resolveTaskState(
-        name,
-        address,
-        {
-          assignee,
-          taskId: claim.taskId,
-          input: snapshot,
-          ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
-        },
-        ctx
-      );
+      // Everything about where this row goes is looked up now, per row, from
+      // the row as it was claimed: the entry, the session, the flow, and the
+      // child's initial state. A bad answer refuses here, before anything is
+      // dispatched and with the claim still held, like the seam's own
+      // refusals below. All of it reads the packed row, never a store.
+      const task: TaskTargetQuery = {
+        assignee,
+        taskId: claim.taskId,
+        input: snapshot,
+        ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
+      };
+      const action = await resolveTaskAction(name, address, task, ctx);
+      // A keyed child, or an existing session by id when the assignee's
+      // policy chooses one. An id is delivered into, never created: the seam
+      // refuses a missing session `session-not-found` and one this request's
+      // principal cannot reach `session-not-addressable`, before dispatching.
+      const session = await resolveTaskSessionTarget(name, address, envelope, task, ctx);
+      const flowKind = await resolveTaskFlowKind(name, address, task, ctx);
 
       // Release BEFORE the point of no return — see the file header.
       await ctx.sequencer!.patchState({ currentClaim: undefined });
 
       const outcome = await dispatchThroughSeam(ctx, {
         type: "task",
-        action: address.action,
-        session: initialState === undefined ? { key } : { key, state: initialState },
+        action,
+        session,
         payload: envelope,
         from: name,
         // Stamped onto the dispatched REQUEST record, so a run can be correlated
@@ -209,7 +203,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         // Same source as every other field here: the claim ticket the board
         // minted from the row it had already claimed.
         provenance: { taskId: claim.taskId },
-        // A seat may name another flow. The author-facing dispatcher() already
+        // An assignee may name another flow. The author-facing dispatcher() already
         // forwards this; omitting it here made the seam resolve on the sender
         // and refuse `no-entry` against the wrong map.
         ...(flowKind !== undefined ? { flowKind } : {}),
@@ -228,7 +222,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
           name,
           address,
           outcome.refused,
-          `[task-board] "${boardId}" could not hand off task "${claim.taskId}" from seat ` +
+          `[task-board] "${boardId}" could not hand off task "${claim.taskId}" from assignee ` +
             `"${assignee}": ${outcome.detail}`
         );
       }
@@ -256,7 +250,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
     },
   });
 
-  // A fresh address object: the binding is keyed by it, so the seat's own
+  // A fresh address object: the binding is keyed by it, so the assignee's own
   // dispatcher stays unbound — reached outside this board it is refused as
   // held by no board, which is what it would be.
   markDispatcher(block, { ...address });

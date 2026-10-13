@@ -1,21 +1,23 @@
 /**
- * The project level (BR-12, BR-18, BR-22 to BR-28, BR-35 to BR-37): one
- * project the person reads, shared or their own private one, in four tabs.
+ * The project level (BR-12, BR-18, BR-22 to BR-28, BR-38): one
+ * project the user reads, shared or their own private one, in four tabs.
  *
- * - **Stream** is the person's conversation with their project coordinator:
+ * - **Stream** is the user's conversation with their project coordinator:
  *   a session of the standard coordinator worker the Lab's project setup
  *   names, linked to this project, found or started when the tab opens. It
- *   hands a line to the person's own workstreams in the project. A finished
+ *   hands a line to the user's own workstreams in the project. A finished
  *   turn reads the Lab again (BR-28), as every conversation does.
- * - **Board** draws the tasks of the person's own workstream sessions in the
+ * - **Board** draws the tasks of the user's own workstream sessions in the
  *   project, one panel per session, each read from that session alone. Another
- *   person's workstream sessions, and the Lab-wide inventory of boards, are
+ *   user's workstream sessions, and the Lab-wide inventory of boards, are
  *   never read here.
  * - **Workstreams** lists the project's workstreams as their entries say,
- *   with the progress worked out from them (BR-18, BR-19), and opens a new
- *   one led by a coordinator of its own (D2, `openWorkstreamWithCoordinator`).
- *   An entry opens on its own view: its owner talks with its lead in its
- *   workstream session; anyone else reads the entry (BR-12).
+ *   with the progress worked out from them (BR-18, BR-19). It opens none: a
+ *   workstream opens when the user asks their project coordinator in
+ *   Stream for the work, and it names the lead (BR-38).
+ *   Each row counts its objectives met. An entry opens on its own view,
+ *   under its objectives, each marked met or not: its owner talks with its
+ *   lead in its workstream session; anyone else reads the entry (BR-12).
  * - **Brief** is the row's brief, under the repository its code lives in, or
  *   a line saying it has none and its coding work runs on its files.
  *
@@ -23,20 +25,18 @@
  * prefix, when it opens and each time the Lab is read again; never a read of
  * the whole Lab of its own. The title comes from the snapshot every level shares.
  *
- * Above the tabs, the team strip from the seat inventory, as design v2 draws
+ * Above the tabs, the team strip from the worker inventory, as design v2 draws
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
- * seats are on shift and on call.
+ * workers are on shift and on call.
  */
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../components/Conversation";
 import { TasksPanel } from "../components/TasksPanel";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
-import { ActionRefused } from "../lib/action";
-import { projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import {
-  openWorkstreamWithCoordinator,
   projectReaderOf,
   readEntryReport,
   readProject,
@@ -46,7 +46,7 @@ import {
   type ProjectSetup,
   type WorkstreamEntry,
 } from "../lib/projects";
-import { describeFailure, type Failure, type Seat } from "../lib/reads";
+import { describeFailure, type Failure, type Worker } from "../lib/reads";
 import { useRoster, withRoster } from "../lib/roster";
 import { navigate, PROJECT_TABS, type ProjectTab, type Route } from "../lib/routes";
 import { useWorkforce } from "../lib/workforce";
@@ -71,8 +71,8 @@ function at(route: ProjectRoute, tab: ProjectTab, entry?: { owner: string; id: s
 export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: ProjectRoute; gaps: Gaps }) {
   const { refresh } = useLab();
   const { projectId, tab } = route;
-  const teams = snapshot.inventory.ok ? teamsOf(snapshot.inventory.value.seats) : [];
-  const states = seatStates(snapshot);
+  const teams = snapshot.inventory.ok ? teamsOf(snapshot.inventory.value.workers) : [];
+  const states = workerStates(snapshot);
   const view = projectsOf(snapshot);
   const address: ProjectAddress = { visibility: route.visibility ?? "shared", id: projectId };
 
@@ -150,7 +150,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
  * The project's own read, row and entries (BR-18), when the view opens and
  * each time the Lab is read again (`readAt`); `reread` reads it now, as after
  * an open. A read again keeps the last one on screen until it lands. No read
- * while `readerSessionId` is `null`: the person holds no reader session yet,
+ * while `readerSessionId` is `null`: the user holds no reader session yet,
  * or the tab on screen draws no entries.
  */
 function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
@@ -214,7 +214,7 @@ function ProjectBody({
   const { read, reread } = useProjectRead(address, needsEntries ? reader : null, snapshot.readAt);
   const { setup, retry: retrySetup } = useProjectSetup();
   const roster = useRoster(snapshot.readAt);
-  const { seats } = withRoster(snapshot, roster);
+  const { workers } = withRoster(snapshot, roster);
   const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
   const readFailure =
     reader === null ? (
@@ -237,7 +237,7 @@ function ProjectBody({
 
   switch (route.tab) {
     case "stream":
-      return <CoordinatorStream snapshot={snapshot} address={address} setup={setup} retrySetup={retrySetup} seats={seats} gaps={gaps} />;
+      return <CoordinatorStream snapshot={snapshot} address={address} setup={setup} retrySetup={retrySetup} workers={workers} gaps={gaps} />;
     case "brief":
       return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -256,7 +256,7 @@ function ProjectBody({
     case "board":
       if (readFailure !== null) return readFailure;
       if (entries === undefined) return reading;
-      return <OwnBoards entries={entries} roster={roster} seats={seats} readAt={snapshot.readAt} />;
+      return <OwnBoards entries={entries} roster={roster} workers={workers} readAt={snapshot.readAt} />;
     case "workstreams": {
       if (readFailure !== null) return readFailure;
       if (entries === undefined || read === undefined || !("value" in read) || read.value === null) return reading;
@@ -271,7 +271,7 @@ function ProjectBody({
             entry={entry}
             readerSessionId={reader!}
             roster={roster}
-            seats={seats}
+            workers={workers}
             gaps={gaps}
           />
         );
@@ -280,7 +280,7 @@ function ProjectBody({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
           <Progress read={read.value} />
           <EntryList entries={entries} route={route} />
-          <OpenWorkstream address={address} setup={setup} readerSessionId={reader!} entries={entries} onOpened={reread} route={route} />
+          <OpenHint route={route} setup={setup} />
         </div>
       );
     }
@@ -288,7 +288,7 @@ function ProjectBody({
 }
 
 /**
- * The person's conversation with their project coordinator (S5): found or
+ * The user's conversation with their project coordinator (S5): found or
  * started for this project when the tab opens, then the shared conversation
  * component pinned to it.
  */
@@ -297,33 +297,33 @@ function CoordinatorStream({
   address,
   setup,
   retrySetup,
-  seats,
+  workers,
   gaps,
 }: {
   snapshot: LoadedSnapshot;
   address: ProjectAddress;
   setup: Read<ProjectSetup | null>;
   retrySetup: () => void;
-  seats: readonly Seat[];
+  workers: readonly Worker[];
   gaps: Gaps;
 }) {
   const workforce = useWorkforce();
-  const worker = setup !== undefined && "value" in setup ? (setup.value?.projectCoordinator ?? null) : undefined;
+  const coordinatorId = setup !== undefined && "value" in setup ? (setup.value?.projectCoordinator ?? null) : undefined;
   const [session, setSession] = useState<Read<string>>(undefined);
   const [tries, setTries] = useState(0);
   useEffect(() => {
-    if (worker == null) return;
+    if (coordinatorId == null) return;
     let closed = false;
     setSession(undefined);
     workforce
-      .ensureWorkerSession({ worker, projectId: address })
+      .ensureWorkerSession({ worker: coordinatorId, projectId: address })
       .then((found) => !closed && setSession({ value: found.id }))
       .catch((error: unknown) => !closed && setSession({ failure: describeFailure(error) }));
     return () => {
       closed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workforce, worker, address.visibility, address.id, tries]);
+  }, [workforce, coordinatorId, address.visibility, address.id, tries]);
 
   if (setup !== undefined && "failure" in setup) {
     return (
@@ -332,7 +332,7 @@ function CoordinatorStream({
       </div>
     );
   }
-  if (worker === null) {
+  if (coordinatorId === null) {
     return (
       <EmptyState title="This Lab has no project coordinator" testId="project-stream-no-coordinator">
         The Lab names no worker to talk to a project through. Its workstreams are on the Workstreams tab.
@@ -346,15 +346,15 @@ function CoordinatorStream({
       </div>
     );
   }
-  const seat = seats.find((s) => s.id === worker);
-  if (worker === undefined || session === undefined || seat === undefined) {
+  const worker = workers.find((s) => s.id === coordinatorId);
+  if (coordinatorId === undefined || session === undefined || worker === undefined) {
     return <p className="p-4 text-sm text-muted-foreground" data-testid="project-stream-opening">Opening your project coordinator…</p>;
   }
   return (
     <Conversation
       key={session.value}
       testId="project-stream"
-      seat={seat}
+      worker={worker}
       session={session.value}
       sessions={snapshot.sessions}
       gaps={gaps}
@@ -412,6 +412,7 @@ function EntryList({ entries, route }: { entries: readonly WorkstreamEntry[]; ro
             <span className="truncate">{entry.title}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
               {entry.owner} · {entry.status}
+              {entry.objectives.length === 0 ? "" : ` · ${entry.objectives.filter((o) => o.met).length} of ${entry.objectives.length} objectives met`}
               {entry.stale ? " · gone quiet" : ""}
             </span>
           </button>
@@ -433,7 +434,7 @@ function EntryView({
   entry,
   readerSessionId,
   roster,
-  seats,
+  workers,
   gaps,
 }: {
   snapshot: LoadedSnapshot;
@@ -442,7 +443,7 @@ function EntryView({
   entry: WorkstreamEntry | undefined;
   readerSessionId: string;
   roster: ReturnType<typeof useRoster>;
-  seats: readonly Seat[];
+  workers: readonly Worker[];
   gaps: Gaps;
 }) {
   const { clients } = useLab();
@@ -467,15 +468,20 @@ function EntryView({
     );
   }
   if (entry.owner === clients.userId) {
-    const seat = leadSeat(entry, roster, seats);
+    const worker = leadWorker(entry, roster, workers);
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="project-entry-own" data-workstream-id={entry.id}>
         <div className="mx-auto w-full max-w-3xl px-4 pt-3">{back}</div>
+        {entry.sessionId === null || worker === undefined ? (
+          <div className="mx-auto w-full max-w-3xl px-4 text-sm">
+            <Objectives objectives={entry.objectives} />
+          </div>
+        ) : null}
         {entry.sessionId === null ? (
           <EmptyState title="This workstream's session isn't open yet" testId="project-entry-no-session">
             Its open hasn't finished. Open it again from the project to finish it.
           </EmptyState>
-        ) : seat === undefined ? (
+        ) : worker === undefined ? (
           <EmptyState title="Its lead isn't on your roster" testId="project-entry-no-lead">
             "{entry.lead}" leads this workstream, and your roster doesn't list it, so there is no one to talk to here.
           </EmptyState>
@@ -483,11 +489,12 @@ function EntryView({
           <Conversation
             key={entry.sessionId}
             testId="project-entry"
-            seat={seat}
+            worker={worker}
             session={entry.sessionId}
             sessions={snapshot.sessions}
             gaps={gaps}
             name={entry.title}
+            lead={<Objectives objectives={entry.objectives} />}
             emptyText="Nothing has been said in this workstream yet."
           />
         )}
@@ -497,7 +504,7 @@ function EntryView({
   return <EntryDetails address={address} entry={entry} readerSessionId={readerSessionId} back={back} />;
 }
 
-/** Another person's entry, as anyone who reads the project reads it (BR-12). */
+/** Another user's entry, as anyone who reads the project reads it (BR-12). */
 function EntryDetails({
   address,
   entry,
@@ -530,16 +537,7 @@ function EntryDetails({
         {entry.due === null ? "" : ` · due ${entry.due}`}
         {entry.stale ? " · gone quiet" : ""}
       </p>
-      {entry.objectives.length === 0 ? null : (
-        <ul className="list-inside list-disc" data-testid="project-entry-objectives">
-          {entry.objectives.map((objective, i) => (
-            <li key={i} data-met={objective.met ? "true" : undefined}>
-              {objective.text}
-              {objective.met ? " · met" : ""}
-            </li>
-          ))}
-        </ul>
-      )}
+      <Objectives objectives={entry.objectives} />
       <section aria-label="Latest report" data-testid="project-entry-report">
         {report === undefined ? (
           <p className="text-muted-foreground">Reading the latest report…</p>
@@ -555,26 +553,42 @@ function EntryDetails({
   );
 }
 
-/** The seat a workstream's lead talks through: its worker on the person's roster, on the flow the roster names. */
-function leadSeat(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, seats: readonly Seat[]): Seat | undefined {
+/** A workstream's objectives, each marked met or not; nothing when it has none. */
+function Objectives({ objectives }: { objectives: WorkstreamEntry["objectives"] }) {
+  if (objectives.length === 0) return null;
+  return (
+    <ul className="mt-2 space-y-0.5" aria-label="Objectives" data-testid="project-entry-objectives">
+      {objectives.map((objective, i) => (
+        <li key={i} data-testid="project-entry-objective" data-met={objective.met ? "true" : "false"}>
+          <span aria-hidden="true">{objective.met ? "✓ " : "○ "}</span>
+          {objective.text}
+          <span className="sr-only">{objective.met ? " (met)" : " (not met)"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The worker a workstream's lead talks through: its worker on the user's roster, on the flow the roster names. */
+function leadWorker(entry: WorkstreamEntry, roster: ReturnType<typeof useRoster>, workers: readonly Worker[]): Worker | undefined {
   const onRoster = roster !== undefined && "entries" in roster ? roster.entries.find((r: RosterEntry) => r.id === entry.lead) : undefined;
   if (onRoster === undefined) return undefined;
-  return seats.find((seat) => seat.id === entry.lead && seat.kind === onRoster.flow);
+  return workers.find((worker) => worker.id === entry.lead && worker.kind === onRoster.flow);
 }
 
 /**
- * The Board: the tasks of each of the person's own workstream sessions in the
+ * The Board: the tasks of each of the user's own workstream sessions in the
  * project, read from that session alone. Nobody else's sessions are read.
  */
 function OwnBoards({
   entries,
   roster,
-  seats,
+  workers,
   readAt,
 }: {
   entries: readonly WorkstreamEntry[];
   roster: ReturnType<typeof useRoster>;
-  seats: readonly Seat[];
+  workers: readonly Worker[];
   readAt: number;
 }) {
   const { clients } = useLab();
@@ -589,14 +603,14 @@ function OwnBoards({
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4" data-testid="project-board">
       {own.map((entry) => {
-        const seat = leadSeat(entry, roster, seats);
+        const worker = leadWorker(entry, roster, workers);
         return (
           <section key={entry.id} data-testid="project-lane" data-workstream-id={entry.id} data-session-id={entry.sessionId}>
             <h3 className="pb-1 text-xs font-medium">{entry.title}</h3>
-            {seat === undefined ? (
+            {worker === undefined ? (
               <p className="text-xs text-muted-foreground">Its lead "{entry.lead}" isn't on your roster.</p>
             ) : (
-              <TasksPanel seat={seat} sessionId={entry.sessionId} readAt={readAt} />
+              <TasksPanel worker={worker} sessionId={entry.sessionId} readAt={readAt} />
             )}
           </section>
         );
@@ -605,95 +619,28 @@ function OwnBoards({
   );
 }
 
-/** A workstream id from its title: lower case, words joined by `-`. */
-function idOf(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
-
 /**
- * Open a workstream in the project, led by a coordinator of its own (D2,
- * BR-35, BR-36). The view offers no choice of lead.
+ * Where a workstream comes from: the user asks their project coordinator, in
+ * Stream. A Lab that names no project coordinator says it opens none; while
+ * its setup is read, or when the read failed (Stream shows that), nothing.
  */
-function OpenWorkstream({
-  address,
-  setup,
-  readerSessionId,
-  entries,
-  onOpened,
-  route,
-}: {
-  address: ProjectAddress;
-  setup: Read<ProjectSetup | null>;
-  readerSessionId: string;
-  entries: readonly WorkstreamEntry[];
-  onOpened: () => void;
-  route: ProjectRoute;
-}) {
-  const { clients } = useLab();
-  const workforce = useWorkforce();
-  const [title, setTitle] = useState("");
-  const [state, setState] = useState<{ running: true } | { refused: string } | undefined>(undefined);
-  const value = setup !== undefined && "value" in setup ? setup.value : undefined;
-  if (value === undefined) return null;
-  if (value === null || value.workstreamCoordinator === null) {
+function OpenHint({ route, setup }: { route: ProjectRoute; setup: Read<ProjectSetup | null> }) {
+  if (setup === undefined || "failure" in setup) return null;
+  if (setup.value?.projectCoordinator == null) {
     return (
-      <p className="text-xs text-muted-foreground" data-testid="project-open-none">
-        This Lab names no workstream coordinator, so a workstream can't be opened here.
+      <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-none">
+        This Lab has no project coordinator, so workstreams can't be opened here.
       </p>
     );
   }
-  const id = idOf(title);
-  const own = entries.some((entry) => entry.owner === clients.userId && entry.id === id);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (id === "" || state !== undefined && "running" in state) return;
-    setState({ running: true });
-    try {
-      await openWorkstreamWithCoordinator(clients, workforce, value, readerSessionId, { project: address, id, title: title.trim() });
-      setState(undefined);
-      setTitle("");
-      onOpened();
-      navigate(at(route, "workstreams", { owner: clients.userId, id }));
-    } catch (error) {
-      setState({ refused: error instanceof ActionRefused ? error.message : describeFailure(error).message });
-    }
-  };
   return (
-    <form className="flex flex-col gap-1.5 border-t border-foreground/15 pt-3" data-testid="project-open" onSubmit={(event) => void submit(event)}>
-      <label className="text-[11px] font-semibold tracking-wider text-muted-foreground" htmlFor="project-open-title">
-        OPEN A WORKSTREAM
-      </label>
-      <div className="flex gap-2">
-        <input
-          id="project-open-title"
-          className="min-w-0 flex-1 border bg-background px-2 py-1 text-sm"
-          placeholder="What it's for"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          data-testid="project-open-title"
-        />
-        <button
-          type="submit"
-          className="border px-3 py-1 text-sm disabled:opacity-50"
-          disabled={id === "" || (state !== undefined && "running" in state)}
-          data-testid="project-open-submit"
-        >
-          {state !== undefined && "running" in state ? "Opening…" : own ? "Open again" : "Open"}
-        </button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {id === "" ? "Its id comes from its title." : <>Its id is <span className="font-mono">{id}</span>. A coordinator of its own leads it.</>}
-      </p>
-      {state !== undefined && "refused" in state ? (
-        <p role="alert" className="text-xs text-destructive" data-testid="project-open-refused">
-          {state.refused}
-        </p>
-      ) : null}
-    </form>
+    <p className="border-t border-foreground/15 pt-3 text-xs text-muted-foreground" data-testid="project-open-hint">
+      To open a workstream, ask your project coordinator for the work in{" "}
+      <button type="button" className="underline" onClick={() => navigate(at(route, "stream"))}>
+        Stream
+      </button>
+      . It picks the lead from your workers.
+    </p>
   );
 }
 

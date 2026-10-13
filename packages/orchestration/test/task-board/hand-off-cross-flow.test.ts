@@ -1,5 +1,5 @@
 /**
- * A task-board seat that names another flow must hand the row to that
+ * A task-board assignee that names another flow must hand the row to that
  * flow's worker, not look the entry up on the sender.
  *
  * The drain's hand-off is the path a real board takes. Omitting `flowKind`
@@ -12,7 +12,7 @@
  * orphan-task-entry / claim-gate guard). The legitimate setup is the same
  * logical board on both flows — same `boardId`, same user-scoped ledger —
  * so the recipient can gate the entry the way a same-flow board already
- * does, while the sender's seat names `flowKind: "task-recipient"`.
+ * does, while the sender's assignee names `flowKind: "task-recipient"`.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, SuspensionError } from "@flow-state-dev/core";

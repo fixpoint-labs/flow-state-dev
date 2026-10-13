@@ -148,7 +148,7 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 `readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
 describes its workers in folders (see [Workers on disk](/docs/workforce/workers-on-disk)), a
 worker on a team has its skills spread across three folders: the whole app's, its team's, and any
-sitting beside the worker itself. An org seat, one under `org/workers/`, has two: the whole
+sitting beside the worker itself. An org worker, one under `org/workers/`, has two: the whole
 app's and its own. The same tree holds a team's shared documents, in
 [`resources/`](/docs/workforce/documents-on-disk).
 
@@ -158,18 +158,18 @@ workforce/teams/pentest/skills/port-scan/SKILL.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` from `@flow-state-dev/workforce/loader` reads them for one worker:
+`readWorkerSkills` from `@flow-state-dev/workforce/loader` reads them for one worker:
 
 ```ts
-import { readSeatSkills } from "@flow-state-dev/workforce/loader";
+import { readWorkerSkills } from "@flow-state-dev/workforce/loader";
 
-const { skills, errors } = await readSeatSkills("./workforce", {
+const { skills, errors } = await readWorkerSkills("./workforce", {
   team: "pentest",
   worker: "recon",
 });
 ```
 
-Leave `team` out for an org seat, and it reads `org/skills/` and
+Leave `team` out for an org worker, and it reads `org/skills/` and
 `org/workers/<worker>/skills/` instead.
 
 Every skill folder at those levels is read, so nothing has to be listed anywhere for a skill to
@@ -207,9 +207,9 @@ it came from: a folder beside the worker does not override its team's, and a tea
 override the org's. `path` on that entry is `paths[0]`, the level the name was first seen at. Rename
 one or delete one to get the skill back.
 
-`readSeatSkills` returns records and installs nothing. Turning a set into a live catalog is the
+`readWorkerSkills` returns records and installs nothing. Turning a set into a live catalog is the
 caller's job: pass `skills` as the `initialSkills` of the capability you build for that worker. See
-the [`@flow-state-dev/workforce` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#reading-one-seats-skills)
+the [`@flow-state-dev/workforce` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/workforce#reading-one-workers-skills)
 for the full surface.
 
 ## What ships in the package
@@ -219,7 +219,7 @@ for the full surface.
 | `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.with({ runSkill: false })`. |
 | `createSkillActivator(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
-| `readSeatSkills(root, { team, worker })` | One worker's skills across the org, team and worker levels of a workforce tree. Ships from `@flow-state-dev/workforce/loader`. Node only. |
+| `readWorkerSkills(root, { team, worker })` | One worker's skills across the org, team and worker levels of a workforce tree. Ships from `@flow-state-dev/workforce/loader`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |
 | `inlineActivate` | The inline-mode handler, for custom wiring. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, for tools that build skills programmatically. |

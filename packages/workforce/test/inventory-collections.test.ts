@@ -1,5 +1,5 @@
 /**
- * The seat inventory collection — what it promises a reader that is not the
+ * The worker inventory collection — what it promises a reader that is not the
  * writer, and where the boundary around it actually falls.
  *
  * The collection is the floor the live inventory is written onto. Nothing
@@ -12,14 +12,14 @@
  * That last one is why every case here uses TWO flows. A collection read back
  * by the flow that wrote it proves nothing about sharing — it is green whether
  * the rows are shared or private, which is the exact shape of a check that
- * cannot fail. The reader flow is a different kind throughout.
+ * cannot fail. The reader flow is a different flow kind throughout.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { defineSeatInventoryCollection, seatInventoryRowSchema } from "../src/index";
+import { defineWorkerInventoryCollection, workerInventoryRowSchema } from "../src/index";
 
 const ORG = "org_acme";
 const OTHER_ORG = "org_other";
@@ -37,24 +37,24 @@ const inheritsIsolation = defineResourceCollection({
   stateSchema: z.object({ id: z.string() })
 });
 
-const seats = defineSeatInventoryCollection();
+const workers = defineWorkerInventoryCollection();
 
 type Rows = {
-  seats: unknown[];
+  workers: unknown[];
   control: unknown[];
 };
 
 const writeBlock = handler({
   name: "inventory-write",
-  inputSchema: z.object({ seats: z.array(seatInventoryRowSchema) }),
+  inputSchema: z.object({ workers: z.array(workerInventoryRowSchema) }),
   outputSchema: z.object({ written: z.number() }),
-  resources: { seats, control: inheritsIsolation },
+  resources: { workers, control: inheritsIsolation },
   execute: async (input: any, ctx: any) => {
-    for (const row of input.seats) {
-      await ctx.resources.seats.upsert(row.id, row);
+    for (const row of input.workers) {
+      await ctx.resources.workers.upsert(row.id, row);
     }
     await ctx.resources.control.upsert("probe", { id: "probe" });
-    return { written: input.seats.length };
+    return { written: input.workers.length };
   }
 });
 
@@ -62,14 +62,14 @@ const readBlock = handler({
   name: "inventory-read",
   inputSchema: z.object({}),
   outputSchema: z.object({
-    seats: z.array(z.unknown()),
+    workers: z.array(z.unknown()),
     control: z.array(z.unknown())
   }),
-  resources: { seats, control: inheritsIsolation },
+  resources: { workers, control: inheritsIsolation },
   execute: async (_input: any, ctx: any) => {
     const state = (ref: any): unknown => ref.state;
     return {
-      seats: (await ctx.resources.seats.list()).map(state),
+      workers: (await ctx.resources.workers.list()).map(state),
       control: (await ctx.resources.control.list()).map(state)
     };
   }
@@ -104,7 +104,7 @@ function twoFlows(options: { isolateOrgState?: boolean } = {}) {
 }
 
 const SEED = {
-  seats: [
+  workers: [
     { id: "eng.lead", kind: "agent" },
     { id: "eng.analyst", kind: "agent" }
   ]
@@ -143,7 +143,7 @@ async function read(
 
 describe("what the collections declare", () => {
   it("pins the storage pattern — a public key, breaking to move", () => {
-    expect(seats.pattern).toBe("inventory/seats/*");
+    expect(workers.pattern).toBe("inventory/workers/*");
   });
 
   it("declares flowIsolation as an explicit false, not an omission (BR-24)", () => {
@@ -151,8 +151,8 @@ describe("what the collections declare", () => {
     // whole mechanism: `effectiveStorageTuple` only consults the flow's
     // `isolateOrgState` when the entry left `flowIsolation` unset. A check
     // written as `toBeFalsy()` would pass on the omission and prove nothing.
-    expect(seats.scope).toBe("org");
-    expect(seats.flowIsolation).toBe(false);
+    expect(workers.scope).toBe("org");
+    expect(workers.flowIsolation).toBe(false);
     // The control collection is the omission, so the assertion above is known
     // to discriminate rather than merely to hold.
     expect(inheritsIsolation.flowIsolation).toBeUndefined();
@@ -166,8 +166,8 @@ describe("a flow that did not write the rows", () => {
 
     const rows = await read(ctx, { orgId: ORG });
 
-    expect(rows.seats).toHaveLength(2);
-    expect(byId(rows.seats)).toEqual({
+    expect(rows.workers).toHaveLength(2);
+    expect(byId(rows.workers)).toEqual({
       "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
       "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
     });
@@ -182,8 +182,8 @@ describe("a flow that did not write the rows", () => {
 
     // Both halves matter: the empty read is only evidence of a boundary if the
     // same process reads the rows under the org that wrote them.
-    expect(mine.seats).toHaveLength(2);
-    expect(theirs.seats).toEqual([]);
+    expect(mine.workers).toHaveLength(2);
+    expect(theirs.workers).toEqual([]);
   });
 
   it("still sees the rows when the app isolates its org state (BR-24)", async () => {
@@ -192,11 +192,11 @@ describe("a flow that did not write the rows", () => {
 
     const rows = await read(ctx, { orgId: ORG });
 
-    expect(rows.seats).toHaveLength(2);
-    expect(Object.keys(byId(rows.seats)).sort()).toEqual(["eng.analyst", "eng.lead"]);
+    expect(rows.workers).toHaveLength(2);
+    expect(Object.keys(byId(rows.workers)).sort()).toEqual(["eng.analyst", "eng.lead"]);
     // The red state, live in the same request: the control collection left
     // `flowIsolation` unset, so under this flag its row went private to the
-    // writer's flow and the reader sees none of it. That is what the seat
+    // writer's flow and the reader sees none of it. That is what the worker
     // collection would do if it stopped spelling `false`.
     expect(rows.control).toEqual([]);
   });
@@ -213,8 +213,8 @@ describe("a flow that did not write the rows", () => {
     // multi-tenant host therefore has to keep org ids distinct across tenants.
     // This check fails the day someone makes the org key tenant-aware, which
     // is the point: that change should be deliberate, not discovered.
-    expect(other.seats).toHaveLength(2);
-    expect(byId(other.seats)).toEqual({
+    expect(other.workers).toHaveLength(2);
+    expect(byId(other.workers)).toEqual({
       "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
       "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
     });
@@ -223,7 +223,7 @@ describe("a flow that did not write the rows", () => {
 
 describe("the row schemas", () => {
   it("drops a key the schema does not declare", () => {
-    const parsed = seatInventoryRowSchema.parse({
+    const parsed = workerInventoryRowSchema.parse({
       id: "eng.lead",
       kind: "agent",
       postCount: 7
@@ -236,7 +236,7 @@ describe("the row schemas", () => {
     // than defaulted, the framework's read path would fail the parse and hand
     // back the collection's default — so an older row would lose its `id` too,
     // not merely its new fields.
-    expect(seatInventoryRowSchema.parse({ id: "eng.lead", kind: "agent" })).toEqual({
+    expect(workerInventoryRowSchema.parse({ id: "eng.lead", kind: "agent" })).toEqual({
       id: "eng.lead",
       kind: "agent",
       door: null,

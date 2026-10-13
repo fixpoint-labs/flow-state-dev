@@ -55,7 +55,7 @@ import { harnessStub, type StubRun } from "../../../packages/shift-manager/teams
 import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab, type OpenLabOptions } from "../../../packages/shift-manager/teams/devteam/host.mts";
 import { EM_TURN, MESSAGE_ENTRY } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../../../packages/shift-manager/teams/devteam/scratch-repo.mts";
-import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
+import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 
 stripIntentOverrides();
 
@@ -146,7 +146,7 @@ async function open(
     stores: inMemoryStores(),
     harness,
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
-    coderSeatId: fixture.assignedSeat,
+    coderWorkerId: fixture.assignedSeat,
     logger: silentLogger,
     inventory: true,
     ask,
@@ -158,14 +158,14 @@ async function open(
 
 /** Find the pending approval where Inbox finds it, and approve it as Shift Manager does. */
 async function approve(lab: Lab): Promise<string | undefined> {
-  const session = seatSessionId(fixture.coordinatorSeat);
+  const session = workerSessionId(fixture.coordinatorSeat);
   const found = await lab.door("GET", `sessions/${session}/requests?include_items=true`);
   if (found.status !== 200) return `the EM session's requests answered ${found.status}`;
   const request = (found.body.requests as any[]).find((r) => r.status === "suspended");
   const suspension = (request?.items ?? []).filter((i: any) => i.type === "suspension").at(-1);
   if (suspension === undefined) return "no pending approval in the EM seat's session";
   // Through the flow the EM's session is on: a worker has no flow address of its own.
-  const approved = await lab.door("POST", `${lab.seats[fixture.coordinatorSeat]!.id}/requests/${request.id}/resume`, {
+  const approved = await lab.door("POST", `${lab.workers[fixture.coordinatorSeat]!.id}/requests/${request.id}/resume`, {
     body: { suspensionId: suspension.suspensionId, action: "approve" },
   });
   return approved.status === 202 ? undefined : `approve answered ${approved.status}`;
@@ -193,7 +193,7 @@ function scriptedEm(): ModelResolver {
         queue =
           line === null
             ? []
-            : [{ toolName: "addTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
+            : [{ toolName: "dispatchTask", args: { goal: line[2]!.trim(), assignee: fixture.assignedSeat, input: { issue: line[1], phase: "implement" } } }];
       }
       const call = queue.shift();
       step += 1;
@@ -222,7 +222,7 @@ async function postInWorkstream(lab: Lab, line: string): Promise<string | undefi
   if (session === undefined) return "opening Storefront's feature made no workstream session";
   const result = (await runAction({
     orgId: LAB_ORG_ID,
-    flow: lab.seats[fixture.coordinatorSeat] as FlowInstance,
+    flow: lab.workers[fixture.coordinatorSeat] as FlowInstance,
     actionName: MESSAGE_ENTRY,
     input: { message: line },
     userId: LAB_USER_ID,

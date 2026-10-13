@@ -140,7 +140,7 @@ export {
 } from "./refresh";
 
 // What a library is seeded FROM. Public because the resolver form is how a
-// consumer whose catalog is per-instance (a hired seat) says where its own set
+// consumer whose catalog is per-instance (a hired worker) says where its own set
 // lives without this layer learning what an instance is.
 export {
   resolveInitialSkills,

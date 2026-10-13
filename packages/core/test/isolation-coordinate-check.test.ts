@@ -59,7 +59,7 @@ describe("per-kind isolation — concepts co-occurring, not a phrase list", () =
 describe("wrapped prose — a claim is a sentence, not a line", () => {
   // Split where wrapping actually splits it: neither physical line carries all
   // three concepts, so the pre-change line scan matched nothing here.
-  const wrapped = "Each user-scoped resource is namespaced\nby the flow kind, so two seats share a row.";
+  const wrapped = "Each user-scoped resource is namespaced\nby the flow kind, so two workers share a row.";
 
   it("fires on a stale claim that ordinary wrapping split across two lines", () => {
     expect(lines(wrapped)).toHaveLength(1);
@@ -87,23 +87,23 @@ const figure = (label: string, visible: string) =>
  * rule matched it, and the guard printed OK with the drift in place.
  */
 describe("figure drift — the label must name the coordinate its diagram commits to", () => {
-  it("fires when the visible text says per seat and the label does not", () => {
-    expect(drift(figure("Resource rows keyed by member identity", "RESOURCE STORED PER SEAT"))).toHaveLength(1);
+  it("fires when the visible text says per worker and the label does not", () => {
+    expect(drift(figure("Resource rows keyed by member identity", "RESOURCE STORED PER WORKER"))).toHaveLength(1);
   });
 
   it("stays silent when the label names the same coordinate", () => {
-    expect(drift(figure("A resource row stored per seat", "RESOURCE STORED PER SEAT"))).toEqual([]);
+    expect(drift(figure("A resource row stored per worker", "RESOURCE STORED PER WORKER"))).toEqual([]);
   });
 
   it("stays silent on a figure committing to no storage coordinate at all", () => {
-    expect(drift(figure("One child session per seat", "ONE CHILD PER SEAT"))).toEqual([]);
+    expect(drift(figure("One child session per worker", "ONE CHILD PER WORKER"))).toEqual([]);
   });
 
   it("recognises a keying word the figure gate only knows through the shared constant", () => {
     // `namespac` lives in KEYING and was absent from the gate's old
     // hand-written list — the exact duplication that let the two scanners
     // diverge. Deriving the gate from KEYING is what makes this fire.
-    expect(drift(figure("Rows land under a member handle", "ROWS NAMESPACED PER SEAT"))).toHaveLength(1);
+    expect(drift(figure("Rows land under a member handle", "ROWS NAMESPACED PER WORKER"))).toHaveLength(1);
   });
 });
 

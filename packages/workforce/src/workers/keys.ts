@@ -1,7 +1,7 @@
 /**
  * The names the worker model pins: where a user's workers are stored, the
  * session-state field that binds a session to its worker, the roster flow's
- * kind, and the accessors a flow declares the two worker collections under.
+ * flow kind, and the accessors a flow declares the two worker collections under.
  *
  * A leaf module with no imports, so the browser entry, the client and the
  * server half share one spelling of each.
@@ -99,12 +99,12 @@ export const FILING_PROJECT_STATE_KEY = "filingProjectId";
 export const TASK_ID_STATE_KEY = "taskId";
 
 /**
- * The roster flow's kind: a flow that runs no worker and declares the two
+ * The roster flow's flow kind: a flow that runs no worker and declares the two
  * worker collections, so a client can read a user's roster through a session
  * of its own. Its own kind, so a listing of a worker flow's sessions never
  * shows a roster session.
  */
-export const ROSTER_FLOW_KIND = "workforce-roster";
+export const ROSTER_FLOW = "workforce-roster";
 
 /**
  * The session-state field that names the flow a task session's filer runs

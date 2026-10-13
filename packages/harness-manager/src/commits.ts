@@ -28,17 +28,29 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * The commits on `cwd`'s HEAD that `baseRef` does not have, in either copy:
- * the remote's (`origin/<baseRef>`) or the local branch. A local checkout
- * cuts the run's branch from the local branch and a clone from the remote's,
- * and either copy can be ahead of the other, so a commit either one has is
- * not the run's. No base, or no checkout git can read, answers none.
+ * The commits on `cwd`'s HEAD that the base does not have.
+ *
+ * With `baseCommit`, the commit the run's branch was cut at, that commit alone
+ * is the base. It comes from the run's record, never from the checkout: a run
+ * shares the checkout's refs and config, so any named copy of the base is one
+ * it could point at its own work. A record without it falls back to the named
+ * copies: the remote's (`origin/<baseRef>`) and the local branch. No base, or
+ * no checkout git can read, answers none.
  */
-export async function readRunCommits(cwd: string, baseRef: string | null): Promise<RunCommits> {
+export async function readRunCommits(
+  cwd: string,
+  baseRef: string | null,
+  baseCommit: string | null = null,
+): Promise<RunCommits> {
   if (baseRef === null) return { count: 0, subjects: [] };
   const bases: string[] = [];
   // In the run's own checkout, a bare `HEAD` is the run's branch, never its base.
-  const copies = baseRef === "HEAD" ? [`refs/remotes/origin/HEAD`] : [`refs/remotes/origin/${baseRef}`, baseRef];
+  const copies =
+    baseCommit !== null
+      ? [baseCommit]
+      : baseRef === "HEAD"
+        ? [`refs/remotes/origin/HEAD`]
+        : [`refs/remotes/origin/${baseRef}`, baseRef];
   for (const base of copies) {
     try {
       await git(cwd, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`]);

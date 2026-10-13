@@ -1,0 +1,76 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: seven rules by four issues, FIX-1906 the local checkout, FIX-1904 the dev profile, FIX-1905 project MCP settings, and the closure FIX-1919. FIX-1904 owns the dev profile with its two projects, which the others consume, and the coder default, which FIX-1905 and the closure consume. FIX-1906 owns worktrees from the checkout with the row naming a remote, which FIX-1904 and the closure consume, and two projects not colliding, which the closure consumes. FIX-1905 owns MCP servers read at run start, and no credential on a row with a missing one said aloud; FIX-1904 and the closure consume both. The closure owns the proof, and every other issue consumes it. Cells marked with a dash have no part.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .none  { fill:none; stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-no  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE</text>
+  <text class="t-col" x="316" y="44">FIX-1906 · checkout</text>
+  <text class="t-col" x="470" y="44">FIX-1904 · profile</text>
+  <text class="t-col" x="624" y="44">FIX-1905 · MCP</text>
+  <text class="t-col" x="778" y="44">FIX-1919 · closure</text>
+
+  <g id="er1">
+    <text class="t-row" x="16" y="80">ER-1 the dev profile, two projects</text>
+    <rect class="use" x="308" y="58" width="146" height="36" rx="3"/><text class="t-use" x="320" y="80">consumes</text>
+    <rect class="own" x="462" y="58" width="146" height="36" rx="3"/><text class="t-own" x="474" y="80">OWNS</text>
+    <rect class="use" x="616" y="58" width="146" height="36" rx="3"/><text class="t-use" x="628" y="80">consumes</text>
+    <rect class="use" x="770" y="58" width="146" height="36" rx="3"/><text class="t-use" x="782" y="80">consumes</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="124">ER-2 the coder default (Q1)</text>
+    <rect class="none" x="308" y="102" width="146" height="36" rx="3"/><text class="t-no" x="320" y="124">&#8212;</text>
+    <rect class="own" x="462" y="102" width="146" height="36" rx="3"/><text class="t-own" x="474" y="124">OWNS</text>
+    <rect class="use" x="616" y="102" width="146" height="36" rx="3"/><text class="t-use" x="628" y="124">consumes</text>
+    <rect class="use" x="770" y="102" width="146" height="36" rx="3"/><text class="t-use" x="782" y="124">consumes</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="168">ER-3 worktrees from your checkout</text>
+    <rect class="own" x="308" y="146" width="146" height="36" rx="3"/><text class="t-own" x="320" y="168">OWNS</text>
+    <rect class="use" x="462" y="146" width="146" height="36" rx="3"/><text class="t-use" x="474" y="168">consumes</text>
+    <rect class="none" x="616" y="146" width="146" height="36" rx="3"/><text class="t-no" x="628" y="168">&#8212;</text>
+    <rect class="use" x="770" y="146" width="146" height="36" rx="3"/><text class="t-use" x="782" y="168">consumes</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="212">ER-4 two projects, no collision</text>
+    <rect class="own" x="308" y="190" width="146" height="36" rx="3"/><text class="t-own" x="320" y="212">OWNS</text>
+    <rect class="none" x="462" y="190" width="146" height="36" rx="3"/><text class="t-no" x="474" y="212">&#8212;</text>
+    <rect class="none" x="616" y="190" width="146" height="36" rx="3"/><text class="t-no" x="628" y="212">&#8212;</text>
+    <rect class="use" x="770" y="190" width="146" height="36" rx="3"/><text class="t-use" x="782" y="212">consumes</text>
+  </g>
+  <g id="er5">
+    <text class="t-row" x="16" y="256">ER-5 MCP read at run start</text>
+    <rect class="none" x="308" y="234" width="146" height="36" rx="3"/><text class="t-no" x="320" y="256">&#8212;</text>
+    <rect class="use" x="462" y="234" width="146" height="36" rx="3"/><text class="t-use" x="474" y="256">consumes</text>
+    <rect class="own" x="616" y="234" width="146" height="36" rx="3"/><text class="t-own" x="628" y="256">OWNS</text>
+    <rect class="use" x="770" y="234" width="146" height="36" rx="3"/><text class="t-use" x="782" y="256">consumes</text>
+  </g>
+  <g id="er6">
+    <text class="t-row" x="16" y="300">ER-6, ER-7 no credential on a row</text>
+    <rect class="none" x="308" y="278" width="146" height="36" rx="3"/><text class="t-no" x="320" y="300">&#8212;</text>
+    <rect class="use" x="462" y="278" width="146" height="36" rx="3"/><text class="t-use" x="474" y="300">consumes</text>
+    <rect class="own" x="616" y="278" width="146" height="36" rx="3"/><text class="t-own" x="628" y="300">OWNS</text>
+    <rect class="use" x="770" y="278" width="146" height="36" rx="3"/><text class="t-use" x="782" y="300">consumes</text>
+  </g>
+  <g id="er16">
+    <text class="t-row" x="16" y="344">ER-20, ER-21 the proof</text>
+    <rect class="use" x="308" y="322" width="146" height="36" rx="3"/><text class="t-use" x="320" y="344">consumes</text>
+    <rect class="use" x="462" y="322" width="146" height="36" rx="3"/><text class="t-use" x="474" y="344">consumes</text>
+    <rect class="use" x="616" y="322" width="146" height="36" rx="3"/><text class="t-use" x="628" y="344">consumes</text>
+    <rect class="own" x="770" y="322" width="146" height="36" rx="3"/><text class="t-own" x="782" y="344">OWNS</text>
+  </g>
+</svg>

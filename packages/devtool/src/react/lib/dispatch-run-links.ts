@@ -17,9 +17,9 @@
  *
  * - `topic` is the **session key** the run was derived from. For a task
  *   board's hand-off that key is what `taskSessionKeyFor`
- *   (`core/src/types/dispatch.ts`) returns for the seat's session policy:
+ *   (`core/src/types/dispatch.ts`) returns for the assignee's session policy:
  *   - `per-task` → `task|framed(boardId)|framed(taskId)`
- *   - `per-worker` → `worker|framed(boardId)|framed(seat)`
+ *   - `per-worker` → `worker|framed(boardId)|framed(assignee)`
  *   - `{ key }` → whatever non-empty string the flow computed, used as returned
  *   where `framed(v)` is `` `${v.length}:${v}` ``.
  * - `coordinate` is `<dispatchType>:<target>` — the entry the run was
@@ -31,13 +31,13 @@
  *
  * ## What the key says, and what it cannot
  *
- * A preset key names the board and either the row (`per-task`) or the seat
+ * A preset key names the board and either the row (`per-task`) or the assignee
  * (`per-worker`), so the task side has something to compare on each:
  *
  * - **Task** (`per-task`) — comparable. A task carries `id`, and exactly one row
  *   on the run's board has it.
- * - **Seat** (`per-worker`) — comparable. A task carries `assignee`, and the
- *   run is shared by every row the seat runs, so it pairs with all of them.
+ * - **Assignee** (`per-worker`) — comparable. A task carries `assignee`, and the
+ *   run is shared by every row the assignee runs, so it pairs with all of them.
  * - **Board** — NOT comparable, in either direction of the data. The key carries
  *   `boardId`, but nothing on the task side does: `task-change` and
  *   `task-board-meta` emit `collectionId`, which `taskBoard` documents as a
@@ -69,7 +69,7 @@
  * as strong as the data permits and no stronger. Contention between claimants is
  * detected and refused, but a SINGLE claimant is taken as the owner — and a
  * single *wrong* claimant is undetectable: a collection from another board that
- * happens to hold the same task id, or a seat of the same name, is the sole
+ * happens to hold the same task id, or an assignee of the same name, is the sole
  * claimant when the run's own board is not in the item stream, and it gets
  * the link.
  *
@@ -80,7 +80,7 @@
  * That bound is about identity, and it is separate from FRESHNESS. Everything
  * here resolves against whatever snapshot of a task `groupCollections` produced,
  * and that fold keeps the newest change per task (see `task-collection-state`),
- * so a row reassigned between two requests pairs on the seat it has now, not
+ * so a row reassigned between two requests pairs on the assignee it has now, not
  * the one it had. An unverifiable board is unverifiable however fresh the row
  * is, but ambiguity reflects a real gap in the data rather than a stale read.
  *
@@ -115,8 +115,8 @@ export type DispatchRunKey =
       policy: "per-worker";
       /** The declaring board's stable id. */
       boardId: string;
-      /** The seat whose every row this run runs — the task's `assignee`. */
-      seat: string;
+      /** The assignee whose every row this run runs — the task's `assignee`. */
+      assignee: string;
     };
 
 /** A dispatch run's `coordinate` label, split into the entry it was dispatched for. */
@@ -142,7 +142,7 @@ function readFramed(input: string, at: number): { value: string; next: number } 
  * Decode a `topic` label as a task board's session key.
  *
  * Accepts exactly the two preset spellings of `taskSessionKeyFor` —
- * `task|framed(boardId)|framed(taskId)` and `worker|framed(boardId)|framed(seat)`
+ * `task|framed(boardId)|framed(taskId)` and `worker|framed(boardId)|framed(assignee)`
  * — with nothing trailing. `null` for an absent label and for anything else:
  * a `{ key }` policy's string, another dispatcher's key, a label the framing
  * does not fit. Guessing at a half-parsed value would name a board or a row
@@ -172,7 +172,7 @@ export function decodeDispatchRunKey(
 
   return tag === "per-task"
     ? { policy: "per-task", boardId: board.value, taskId: second.value }
-    : { policy: "per-worker", boardId: board.value, seat: second.value };
+    : { policy: "per-worker", boardId: board.value, assignee: second.value };
 }
 
 /**
@@ -202,16 +202,16 @@ export type LinkedTask = {
 /**
  * Does this task fit the decoded key?
  *
- * A `per-task` key names one row by id. A `per-worker` key names a seat, and a
- * task sits on it when its `assignee` is that seat — `== null`-guarded, since a
+ * A `per-task` key names one row by id. A `per-worker` key names an assignee, and a
+ * task sits on it when its `assignee` is that assignee — `== null`-guarded, since a
  * store that writes absent keys as `null` hands one back (BP-030). An
- * unassigned row fits no seat: the board routes a row to a seat's dispatcher
+ * unassigned row fits no assignee: the board routes a row to an assignee's dispatcher
  * only once it is assigned there, so the absence is a statement about where
  * the row has not gone, not a gap in what is known.
  */
 function fits(key: DispatchRunKey, task: Task): boolean {
   if (key.policy === "per-task") return task.id === key.taskId;
-  return task.assignee != null && task.assignee === key.seat;
+  return task.assignee != null && task.assignee === key.assignee;
 }
 
 /**
@@ -229,7 +229,7 @@ export function linkDispatchRunsToTasks(
   /** Every task one dispatch run covers, keyed by dispatchRun id. */
   byDispatchRun: Map<string, LinkedTask[]>;
 } {
-  // Pass 1 — the parts that CAN be compared: the row (`per-task`) or the seat
+  // Pass 1 — the parts that CAN be compared: the row (`per-task`) or the assignee
   // (`per-worker`) the run's key names, against every task in every
   // collection. A run whose key does not decode contributes nothing.
   const claims: Array<{ collectionId: string; task: Task; dispatchRun: ChildSessionSummary }> = [];
@@ -247,11 +247,11 @@ export function linkDispatchRunsToTasks(
   // Pass 2 — the BOARD leg, which cannot be compared and so is detected instead.
   //
   // A dispatch run belongs to exactly one board: its key frames `boardId` in
-  // beside the row or the seat. The board id is on the key, but NOTHING on the
+  // beside the row or the assignee. The board id is on the key, but NOTHING on the
   // task side carries one — `task-change` and `task-board-meta` emit
   // `collectionId`, and `taskBoard` documents that as a deliberately different
   // string from `boardId`. So board equality can never be verified the way the
-  // row and the seat can.
+  // row and the assignee can.
   //
   // What is observable is CONTENTION, in both directions:
   //
@@ -259,7 +259,7 @@ export function linkDispatchRunsToTasks(
   //   of those boards owns it and nothing on the wire says which, so none of
   //   them gets a link.
   // - More than one dispatch run fits the same task — two boards each holding
-  //   a row with this id, or a seat of this name, and only one rendered
+  //   a row with this id, or an assignee of this name, and only one rendered
   //   collection to hang them on. At most one is running it, so neither is
   //   linked.
   //
@@ -323,7 +323,7 @@ export function taskLinkKey(collectionId: string, taskId: string): string {
  * looking at". What it can say — from the key alone, with nothing fetched — is
  * whether the run's session is one that is re-entered **by design**:
  *
- * - `per-worker` keys name a seat, and every row that seat runs lands in the
+ * - `per-worker` keys name an assignee, and every row that assignee runs lands in the
  *   same session. A reader looking at one is looking at a session being
  *   re-entered, which is exactly what they need to be told. → `re-used`.
  * - Everything else — a `per-task` key, a flow's own `{ key }` string, an

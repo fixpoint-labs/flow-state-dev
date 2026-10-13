@@ -4,7 +4,7 @@
  * Each reader already has its own symlink tests, and each of those checks the
  * level that reader happens to care about. That per-door shape is exactly how
  * this class of hole survived before: `read-resources-directory` grew a root
- * check while `read-workforce-directory` and `read-seat-skills` did not, and
+ * check while `read-workforce-directory` and `read-worker-skills` did not, and
  * nothing in the suite compared them. So this file is deliberately a matrix —
  * one symlinked tree per position, every door run over it — and its job is to
  * fail the moment one door stops agreeing with the others.
@@ -37,7 +37,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readPackagesDirectory,
   readResourcesDirectory,
-  readSeatSkills,
+  readWorkerSkills,
   readWorkforceDirectory,
 } from "../src/loader";
 import { discoverWorkforceCode } from "../src/codegen";
@@ -154,7 +154,7 @@ const DOORS: ReadonlyArray<{ name: string; open: (root: string) => Promise<unkno
   { name: "readWorkforceDirectory", open: (root) => readWorkforceDirectory(root) },
   { name: "readResourcesDirectory", open: (root) => readResourcesDirectory(root) },
   { name: "readPackagesDirectory", open: (root) => readPackagesDirectory(root) },
-  { name: "readSeatSkills", open: (root) => readSeatSkills(root, { team: TEAM, worker: WORKER }) },
+  { name: "readWorkerSkills", open: (root) => readWorkerSkills(root, { team: TEAM, worker: WORKER }) },
   { name: "discoverWorkforceCode", open: (root) => discoverWorkforceCode(root) },
   { name: "discoverResourceModules", open: (root) => discoverResourceModules(root) },
 ];
@@ -329,7 +329,7 @@ describe("no door follows a symlink out of the configured root", () => {
 
   it("refuses a symlinked ancestor of a level a reader jumps straight to", async () => {
     const { root, outside } = scaffold();
-    // `readSeatSkills` addresses `teams/<t>/workers/<w>/skills` by name instead
+    // `readWorkerSkills` addresses `teams/<t>/workers/<w>/skills` by name instead
     // of walking down to it, and `lstat` answers for the final component alone
     // — the OS resolves everything above it silently. Without an explicit
     // ancestor check this link is followed and the level loads from outside.

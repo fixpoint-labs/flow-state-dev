@@ -257,7 +257,7 @@ function migrateAddScheduleIndexOrgId(db: Database.Database): void {
  * `IMMEDIATE` transaction, is the one that decides: two processes starting on
  * one legacy file can both pass the first, and the one that takes the lock
  * second must see the finished migration rather than rebuild it — a rebuild
- * recomputes every cell from `user_id`, moving any seat row written since.
+ * recomputes every cell from `user_id`, moving any worker row written since.
  */
 function migrateScheduleIndexCell(db: Database.Database): void {
   const needsCell = (): boolean => {

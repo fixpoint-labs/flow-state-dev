@@ -1,5 +1,5 @@
 /**
- * A composer that sends a person's line to a worker (S11): a task's, and
+ * A composer that sends a user's line to a worker (S11): a task's, and
  * Inbox's reply box. Its send state is {@link useTurnSend} and
  * {@link TurnSendStatus}.
  *
@@ -8,12 +8,12 @@
  * composer shows *sending* until the worker's session holds the line. Then the
  * line leaves the draft, since the conversation now holds it, and the composer
  * says the worker is on it until the send resolves. It shows *delivered* only
- * when it does (BR-4), noting Inbox when the worker stopped on a person's ask
+ * when it does (BR-4), noting Inbox when the worker stopped on a user's ask
  * (a chief of staff's fire, say), or that it waits when it stopped on anything else. A refusal keeps the draft and shows the worker's reason
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice. A line that failed after it left the draft is put back, unless the
- * person has started another.
+ * user has started another.
  *
  * Every composer draws through {@link ComposerShell}, v2's composer: one line,
  * sent with ⏎ (Enter). Most composers are a
@@ -45,7 +45,11 @@ export type TurnSendState =
 export function useTurnSend() {
   const [state, setState] = useState<TurnSendState>({ kind: "idle" });
   const mounted = useRef(true);
-  useEffect(() => () => void (mounted.current = false), []);
+  // Set on every mount, not just the first: StrictMode unmounts and remounts once in dev.
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
   const run = useCallback(async (send: (held: () => void) => Promise<void | { stopped: TurnStop }>): Promise<boolean> => {
     setState({ kind: "sending" });
     try {
@@ -64,7 +68,7 @@ export function useTurnSend() {
       return false;
     }
   }, []);
-  /** Drop a *delivered* once the person starts a new line; a failure stays until the next send. */
+  /** Drop a *delivered* once the user starts a new line; a failure stays until the next send. */
   const reset = useCallback(() => setState((s) => (s.kind === "delivered" ? { kind: "idle" } : s)), []);
   /** Forget the last send, whatever it came to. */
   const clear = useCallback(() => setState({ kind: "idle" }), []);

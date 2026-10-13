@@ -1,8 +1,8 @@
 /**
  * FIX-982 — the launching request must return while its handed-off work runs.
  *
- * A board whose seat holds a `dispatcher({ type: "task", session: "per-task" })`
- * runs that seat's rows in a child session instead of inline. Everything about that hand-off already
+ * A board whose assignee holds a `dispatcher({ type: "task", session: "per-task" })`
+ * runs that assignee's rows in a child session instead of inline. Everything about that hand-off already
  * worked: the drain claims the row, dispatches to the child, clears its own
  * claim, and the row stays `in_progress` for the child session to settle.
  * What did not work was the *exit question*. `boardQuiescence` counted that
@@ -65,7 +65,7 @@ import { z } from "zod";
 /**
  * The transport provenance a hand-off dispatch carries. The engine's entry
  * resolution treats it as terminal — it resolves the flow's `task` entry for
- * the seat and never falls through to `flow.actions` — which is what makes
+ * the assignee and never falls through to `flow.actions` — which is what makes
  * the replay below enter the same path the real host would.
  *
  * Spelled literally because the constant is internal to `engine`. It is a wire

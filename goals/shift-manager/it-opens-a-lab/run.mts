@@ -61,9 +61,9 @@ import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../li
 import { launchChromium } from "../../lib/playwright.mts";
 import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-seat-collab/run-scenario.mts";
-import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
-import { PROJECTS_KIND as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { EM_KIND as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
+import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
+import { PROJECTS_FLOW as PROJECTS_FLOW } from "../../../packages/shift-manager/teams/devteam/host.mts";
+import { EM_FLOW as EM_FLOW } from "../../../packages/shift-manager/teams/devteam/workforce/flows/workers/em.mts";
 import { PHASE } from "../../../packages/shift-manager/teams/devteam/phase.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -95,8 +95,8 @@ const LABS = {
     tree: join(REPO_ROOT, "packages", "shift-manager", "teams", "devteam", "workforce"),
   },
   "multi-seat-collab": {
-    config: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "fsdev.config.mts"),
-    tree: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-seat-collab", "workforce"),
+    config: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "fsdev.config.mts"),
+    tree: join(REPO_ROOT, "packages", "shift-manager", "test", "fixtures", "multi-worker-collab", "workforce"),
   },
 } as const;
 type LabName = keyof typeof LABS;
@@ -315,14 +315,14 @@ async function readStore(api: LabApi, userId: string): Promise<Store> {
   // of the person's own sessions whose flow declares it.
   let host: string | undefined;
   for (const sessionId of await topLevelSessions(api, userId)) {
-    if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/seats/*")) {
+    if ((await declaredBy(api, sessionId)).some((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")) {
       host = sessionId;
       break;
     }
   }
   const declared = host === undefined ? [] : await declaredBy(api, host);
-  const seatsRef = declared.find((r) => r.kind === "collection" && r.pattern === "inventory/seats/*")?.ref;
-  const seats = seatsRef === undefined || host === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
+  const workersRef = declared.find((r) => r.kind === "collection" && r.pattern === "inventory/workers/*")?.ref;
+  const seats = workersRef === undefined || host === undefined ? [] : (await api.collection(host, workersRef)).map((r) => String(r.id));
 
   const rows = await conversationRows(api, userId);
 
@@ -412,7 +412,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     name,
     pages,
     // DevTeam on a fresh store each run, for a profile whose store outlives the process.
-    name === "multi-seat-collab" ? { MULTI_SEAT_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
+    name === "multi-seat-collab" ? { MULTI_WORKER_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
   );
   const browser = await launchChromium();
   try {
@@ -476,15 +476,15 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const status = await act(api, EM_FLOW, session, "file", { issue: fixture.devteam.issue, goal: fixture.devteam.text }, userId);
       if (status !== "completed") throw new Error(`${name}: the filing ended ${status}`);
       if (!(await waitForRow(api, () => true, userId))) throw new Error(`${name}: the filing put no row on a board`);
-      // A second piece that waits on the first, through the board's own task door: the board
-      // hands a row on as soon as it can start, so only a row with an unfinished dependency
-      // stays queued, and Tasks needs one to hide.
+      // A second piece that waits on the first, dispatched through the board's own task door:
+      // the board hands a dispatched row on as soon as it can start, so only one with an
+      // unfinished dependency stays queued, and Tasks needs one to hide.
       const first = Object.values((await readStore(api, userId)).rows).flat()[0]!;
       const followUp = await act(
         api,
         EM_FLOW,
         session,
-        "addTask_tasks",
+        "dispatchTask_tasks",
         {
           goal: fixture.devteam.followUp.text,
           assignee: first.assignee ?? undefined,
@@ -509,11 +509,11 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     await open(page, served.origin, "/inbox");
 
     // ---- TEAMS: one status square per seat, under its team's row -------------
-    const shownSeats = await attr(page, "worker", "data-seat-id");
+    const shownSeats = await attr(page, "worker", "data-worker-id");
     if (!same(shownSeats, store.seats)) fail("TEAMS equals the store's seats", diff(store.seats, shownSeats));
     for (const team of await attr(page, "team", "data-team")) {
       const under = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) =>
-        els.map((e) => e.getAttribute("data-seat-id") ?? ""),
+        els.map((e) => e.getAttribute("data-worker-id") ?? ""),
       );
       // A seat with no team (an org seat) sits in the Staff row.
       const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);

@@ -1,5 +1,5 @@
 /**
- * Memory attaching to the built-in `agent` kind by composition — the three
+ * Memory attaching to the built-in `agent` worker flow by composition — the three
  * app-level doors, and whether a worker built to the documented recipe
  * actually remembers.
  *
@@ -15,7 +15,7 @@
  *
  * Two harness notes:
  *
- * - The seats are driven through `testFlow` with their sessions pre-seeded,
+ * - The workers are driven through `testFlow` with their sessions pre-seeded,
  *   because `testFlow` seeds a session naming no owning instance and a
  *   collection flow's ownership check refuses that run. Tracked as FIX-1397.
  * - The fence test resolves its own model so it can read the tool list handed
@@ -32,8 +32,8 @@ import { createInMemoryStores } from "@flow-state-dev/engine";
 import { executeBlock } from "@flow-state-dev/engine";
 import { createTestContext, mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { system } from "@flow-state-dev/memory";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
-import { mintSeats, type HireOptions } from "../src/hire";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 
 const USER_ID = "one-human";
@@ -43,8 +43,8 @@ function record(over: Partial<WorkerManifest> & { id: string }): WorkerManifest 
   return { declared: {}, body: "", ...over };
 }
 
-function hire(manifests: WorkerManifest[], kinds: HireOptions["workerFlows"] = {}): FlowInstance[] {
-  return mintSeats(manifests, { workerFlows: kinds });
+function hire(manifests: WorkerManifest[], flows: HireOptions["workerFlows"] = {}): FlowInstance[] {
+  return mintWorkers(manifests, { workerFlows: flows });
 }
 
 /** The write-side entry point — `createMemoryCapability` would be read-only. */
@@ -64,12 +64,12 @@ function memory(semantic: { flowIsolation?: boolean } | true = true) {
  * and the capture pipeline in the post-answer door.
  */
 /**
- * The same kind with memory's tool-bearing presets left ON, so the capability
- * actually contributes a tool for the fence to act on. `rememberingKind` turns
+ * The same worker flow with memory's tool-bearing presets left ON, so the capability
+ * actually contributes a tool for the fence to act on. `rememberingFlow` turns
  * `recall`/`connect` off — which is the documented recipe, but it also means a
  * fence test built on it has nothing to observe and passes either way.
  */
-function toolBearingKind(mem: ReturnType<typeof memory>) {
+function toolBearingFlow(mem: ReturnType<typeof memory>) {
   return defineAgentWorkerFlow({
     uses: [
       mem.capability.presets({
@@ -84,7 +84,7 @@ function toolBearingKind(mem: ReturnType<typeof memory>) {
   });
 }
 
-function rememberingKind(mem: ReturnType<typeof memory>, isolateUserState: boolean) {
+function rememberingFlow(mem: ReturnType<typeof memory>, isolateUserState: boolean) {
   return defineAgentWorkerFlow({
     uses: [
       mem.capability.presets({
@@ -117,22 +117,22 @@ function observed(content: string) {
 }
 
 /**
- * Give a seat's session a record naming its owning instance. `testFlow` seeds
+ * Give a worker's session a record naming its owning instance. `testFlow` seeds
  * one without a `flowId`, which a collection flow reads as a pre-ownership row
  * and refuses; seeding first wins.
  */
 async function seedOwnedSession(
   stores: ReturnType<typeof createInMemoryStores>,
   sessionId: string,
-  seat: FlowInstance
+  worker: FlowInstance
 ): Promise<void> {
   const now = new Date().toISOString();
   await stores.session.set(
     sessionId,
     {
       id: sessionId,
-      flowKind: seat.kind,
-      flowId: seat.id,
+      flowKind: worker.kind,
+      flowId: worker.id,
       userId: USER_ID,
       orgId: "test-org",
       state: {},
@@ -146,7 +146,7 @@ async function seedOwnedSession(
 }
 
 /**
- * One turn against a seat, on shared stores. Returns everything the answer
+ * One turn against a worker, on shared stores. Returns everything the answer
  * generator was handed EXCEPT the user's own message — so a fact found in it
  * got there by injection from memory and not by the caller having just said
  * it. Without that filter the round-trip test passes on a worker with no
@@ -154,7 +154,7 @@ async function seedOwnedSession(
  */
 async function turn(
   stores: ReturnType<typeof createInMemoryStores>,
-  seat: FlowInstance,
+  worker: FlowInstance,
   sessionId: string,
   message: string,
   extract?: string
@@ -162,12 +162,12 @@ async function turn(
   const answer = mockGenerator({ name: "agent-answer", script: [{ text: "noted" }] });
   const result = await testFlow({
     sessionId,
-    flow: seat,
+    flow: worker,
     action: "run",
     userId: USER_ID,
     input: { message },
     stores,
-    // The skills collection every seat of this kind carries lives at org
+    // The skills collection every worker on this flow carries lives at org
     // scope, so a run without an org has nowhere to resolve it from.
     seed: { org: { state: {} } },
     generators: {
@@ -188,7 +188,7 @@ async function turn(
   return JSON.stringify(messages.filter((message) => message.role !== "user"));
 }
 
-describe("memory attaches to the built-in agent kind by composition", () => {
+describe("memory attaches to the built-in agent worker flow by composition", () => {
   // THE test. It fails against a read-only attach (nothing is ever recorded)
   // and against an attach that turns `recall` off without turning the durable
   // context presets on (the stores fill up and are never read back).
@@ -199,21 +199,21 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   // the check that looks green while the promise is broken.
   it("records what it is told in one conversation and reads it back in the next, with nothing seeded", async () => {
     const mem = memory();
-    const kind = rememberingKind(mem, false);
-    const [seat] = hire([record({ id: "engineering.lead", body: "You are the lead." })], {
-      [AGENT_KIND]: kind
+    const flow = rememberingFlow(mem, false);
+    const [worker] = hire([record({ id: "engineering.lead", body: "You are the lead." })], {
+      [AGENT_FLOW]: flow
     });
     const stores = createInMemoryStores();
-    await seedOwnedSession(stores, "first-conversation", seat!);
-    await seedOwnedSession(stores, "second-conversation", seat!);
+    await seedOwnedSession(stores, "first-conversation", worker!);
+    await seedOwnedSession(stores, "second-conversation", worker!);
 
     // Conversation one: the worker is told the fact, and knows nothing going in.
-    const first = await turn(stores, seat!, "first-conversation", FACT);
+    const first = await turn(stores, worker!, "first-conversation", FACT);
     expect(first).not.toContain(FACT);
 
     // Conversation two: the fact is back, and the only place it can have come
     // from is what the worker recorded for itself.
-    const second = await turn(stores, seat!, "second-conversation", "what do you know about me?");
+    const second = await turn(stores, worker!, "second-conversation", "what do you know about me?");
     expect(second).toContain(FACT);
   });
 
@@ -222,7 +222,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
 
     // The skills collection and the conversation ledger its task entry reads
     // tasks off are the whole resource surface — no memory store is declared
-    // anywhere in the default kind.
+    // anywhere in the default worker flow.
     expect(Object.keys(plain!.resources ?? {}).sort()).toEqual(["skills", "tasks"]);
     // Nothing runs after the answer — the sequence is what it was.
     const children = plain!.actions.run!.block.childBlocks?.map((b) => b.name) ?? [];
@@ -231,21 +231,21 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     expect(plain!.isolateUserState).toBe(false);
   });
 
-  // The control for the check above: the same assertions, run against a kind
+  // The control for the check above: the same assertions, run against a worker flow
   // that DID attach memory, so a green default is not a harness that sees
   // nothing either way.
   it("declares the memory stores and the capture step once memory is attached", () => {
     const mem = memory();
-    const [seat] = hire([record({ id: "engineering.lead", body: "Hello." })], {
-      [AGENT_KIND]: rememberingKind(mem, true)
+    const [worker] = hire([record({ id: "engineering.lead", body: "Hello." })], {
+      [AGENT_FLOW]: rememberingFlow(mem, true)
     });
 
-    expect(Object.keys(seat!.resources ?? {})).toEqual(
+    expect(Object.keys(worker!.resources ?? {})).toEqual(
       expect.arrayContaining(["workingMemory", "semanticMemory", "episodicMemory"])
     );
-    const children = seat!.actions.run!.block.childBlocks?.map((b) => b.name) ?? [];
+    const children = worker!.actions.run!.block.childBlocks?.map((b) => b.name) ?? [];
     expect(children.some((name) => name.startsWith("memory/"))).toBe(true);
-    expect(seat!.isolateUserState).toBe(true);
+    expect(worker!.isolateUserState).toBe(true);
   });
 
   // A capture call that times out is not a conversation failure. The docs say
@@ -261,23 +261,23 @@ describe("memory attaches to the built-in agent kind by composition", () => {
         throw new Error("the write side fell over");
       }
     });
-    const [seat] = hire([record({ id: "engineering.lead", body: "Lead." })], {
-      [AGENT_KIND]: defineAgentWorkerFlow({ afterAnswer: exploding })
+    const [worker] = hire([record({ id: "engineering.lead", body: "Lead." })], {
+      [AGENT_FLOW]: defineAgentWorkerFlow({ afterAnswer: exploding })
     });
 
     const answer = mockGenerator({ name: "agent-answer", script: [{ text: "answered anyway" }] });
     const runtime = await createTestContext({
-      flow: { ...seat!, cardinality: "singleton" },
+      flow: { ...worker!, cardinality: "singleton" },
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: seat!.actions.run!.block.name,
-      declaredResources: seat!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.run!.block.name,
+      declaredResources: worker!.actions.run!.block.declaredResources,
       generators: { "agent-answer": answer }
     });
 
     const result = await executeBlock({
-      block: seat!.actions.run.block,
+      block: worker!.actions.run.block,
       input: { message: "hello" },
       ctx: runtime.ctx
     });
@@ -288,7 +288,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
 
   // Covers the general guarantee now, not just the recipe: core fences a
   // capability's catalog tools behind a declared `tools:` (FIX-1393), and this
-  // kind declares one on every seat.
+  // worker flow declares one on every worker.
   //
   // **This test used to pass for the wrong reason.** It mocked `agent-answer`
   // through `generators:` and then wrapped `ctx.resolveModel` to watch the tool
@@ -299,13 +299,13 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   // observation happening. The fix is to let the real generator run against a
   // recording model resolver, and to assert the observation occurred at all —
   // an empty list is only evidence if something was there to see it.
-  it("sends zero tools to the model for a worker with an empty `tools:`, on the recipe's kind", async () => {
+  it("sends zero tools to the model for a worker with an empty `tools:`, on the recipe's worker flow", async () => {
     const mem = memory();
     // Tool-bearing presets ON. With them off (the recipe's own opt-out) the
     // capability contributes nothing and this test cannot fail — it would
     // observe an empty list whether the fence worked or not.
-    const [seat] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
-      [AGENT_KIND]: toolBearingKind(mem)
+    const [worker] = hire([record({ id: "engineering.ghost", body: "Says little." })], {
+      [AGENT_FLOW]: toolBearingFlow(mem)
     });
 
     const seen: string[] = [];
@@ -325,18 +325,18 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     recording.resolveId = (modelId: string) => modelId;
 
     const runtime = await createTestContext({
-      flow: { ...seat!, cardinality: "singleton" },
+      flow: { ...worker!, cardinality: "singleton" },
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: seat!.actions.run!.block.name,
-      declaredResources: seat!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.run!.block.name,
+      declaredResources: worker!.actions.run!.block.declaredResources,
       modelResolver: recording,
       unmockedGeneratorPolicy: "allow"
     });
 
     const result = await executeBlock({
-      block: seat!.actions.run.block,
+      block: worker!.actions.run.block,
       input: { message: "what do you remember?" },
       ctx: runtime.ctx
     });
@@ -350,15 +350,15 @@ describe("memory attaches to the built-in agent kind by composition", () => {
   });
 
   it("gives each worker its own memory when isolation is on, and one shared memory when it is off", async () => {
-    async function twoSeats(isolateUserState: boolean): Promise<string> {
+    async function twoWorkers(isolateUserState: boolean): Promise<string> {
       const mem = memory();
-      const kind = rememberingKind(mem, isolateUserState);
+      const flow = rememberingFlow(mem, isolateUserState);
       const [lead, designer] = hire(
         [
           record({ id: "engineering.lead", body: "Lead." }),
           record({ id: "engineering.designer", body: "Designer." })
         ],
-        { [AGENT_KIND]: kind }
+        { [AGENT_FLOW]: flow }
       );
       const stores = createInMemoryStores();
       await seedOwnedSession(stores, "sess-lead", lead!);
@@ -369,9 +369,9 @@ describe("memory attaches to the built-in agent kind by composition", () => {
     }
 
     // Isolated: the designer never sees what the lead was told.
-    expect(await twoSeats(true)).not.toContain(FACT);
+    expect(await twoWorkers(true)).not.toContain(FACT);
     // Control — without it, a harness that saw nothing either way would pass.
-    expect(await twoSeats(false)).toContain(FACT);
+    expect(await twoWorkers(false)).toContain(FACT);
   });
 
   // The tier mix on one isolated kind: each copy (here, one minted per worker)
@@ -389,7 +389,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
           record({ id: "engineering.lead", body: "Lead." }),
           record({ id: "engineering.designer", body: "Designer." })
         ],
-        { [AGENT_KIND]: rememberingKind(mem, true) }
+        { [AGENT_FLOW]: rememberingFlow(mem, true) }
       );
       const stores = createInMemoryStores();
       await seedOwnedSession(stores, "sess-lead", lead!);
@@ -419,7 +419,7 @@ describe("memory attaches to the built-in agent kind by composition", () => {
 
   it("keeps the skills library working alongside an attached memory capability", async () => {
     const mem = memory();
-    const kind = defineAgentWorkerFlow({
+    const flow = defineAgentWorkerFlow({
       skills: [
         {
           name: "shipping",
@@ -429,24 +429,24 @@ describe("memory attaches to the built-in agent kind by composition", () => {
       uses: [mem.capability.presets({ recall: false, connect: false, semantic: true, episodic: true })],
       afterAnswer: mem.captureFromItems
     });
-    const [seat] = hire([record({ id: "engineering.lead", body: "Lead." })], {
-      [AGENT_KIND]: kind
+    const [worker] = hire([record({ id: "engineering.lead", body: "Lead." })], {
+      [AGENT_FLOW]: flow
     });
 
     const answer = mockGenerator({ name: "agent-answer", script: [{ text: "done" }] });
     const runtime = await createTestContext({
-      flow: { ...seat!, cardinality: "singleton" },
+      flow: { ...worker!, cardinality: "singleton" },
       orgId: "test-org",
       org: { state: {} },
       sessionId: "test-session",
-      sequencerName: seat!.actions.run!.block.name,
-      declaredResources: seat!.actions.run!.block.declaredResources,
+      sequencerName: worker!.actions.run!.block.name,
+      declaredResources: worker!.actions.run!.block.declaredResources,
       generators: { "agent-answer": answer },
       unmockedGeneratorPolicy: "allow"
     });
 
     const result = await executeBlock({
-      block: seat!.actions.run.block,
+      block: worker!.actions.run.block,
       input: { message: "/shipping" },
       ctx: runtime.ctx
     });

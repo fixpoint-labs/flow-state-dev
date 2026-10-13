@@ -91,13 +91,15 @@ import {
   DispatchRefusedError,
   dispatchThroughSeam,
   markDispatcher,
+  resolveTaskAction,
   resolveTaskFlowKind,
-  resolveTaskState,
+  resolveTaskSessionTarget,
   taskDispatchInputSchema,
-  taskSessionKeyFor,
   type DispatchAddress,
   type SessionTarget,
+  type TaskEntryChoice,
   type TaskFlowTarget,
+  type TaskTargetQuery,
   type TaskStateTarget,
   type TaskSessionPolicy
 } from "../types/dispatch";
@@ -204,8 +206,16 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
    * off the block; callers do not set this.
    */
   type?: "task";
-  /** The entry name — resolves `flow.task.actions[action]`. Verified at `defineFlow` for a same-flow address, at the seam for a cross-flow one. */
-  action: string;
+  /**
+   * The entry name — resolves `flow.task.actions[action]`. Verified at
+   * `defineFlow` for a same-flow address, at the seam for a cross-flow one.
+   *
+   * Or `{ among, by }`, chosen per row: `by` is handed the row's assignee, id
+   * and input and answers one of the names in `among`. Every name in `among`
+   * is verified exactly as a string `action` is; an answer outside it refuses
+   * the dispatch `no-entry`. See {@link TaskEntryChoice}.
+   */
+  action: string | TaskEntryChoice;
   /**
    * The **other flow** this dispatcher hands off to. Omit for this flow's own
    * task entry. Same skip as an `internal` cross-flow address: `defineFlow`
@@ -260,8 +270,16 @@ export function dispatcher(
 ): BlockDefinition<any, typeof dispatchHandleSchema> {
   const { name, description, action, transient } = config;
   const type = resolveDispatcherType(config);
-  if (typeof action !== "string" || action.length === 0) {
-    throw new Error(`[dispatcher] "${name}" must name a non-empty action entry`);
+  if (typeof action === "object" && action !== null && type === "task") {
+    assertEntryChoice(name, action);
+  } else if (typeof action !== "string" || action.length === 0) {
+    throw new Error(
+      type === "task"
+        ? `[dispatcher] "${name}" must name a non-empty action entry, or a choice ` +
+            `{ among: [...names], by: (task) => name } among declared ones`
+        : `[dispatcher] "${name}" must name a non-empty action entry. Only a task ` +
+            `dispatcher chooses its entry per row.`
+    );
   }
   if (type !== "internal" && type !== "task") {
     throw new Error(
@@ -301,7 +319,7 @@ export function dispatcher(
     if (!isTaskSessionPolicy(session)) {
       throw new Error(
         `[dispatcher] "${name}" must declare a task session policy: "per-task", "per-worker", ` +
-          `or { key: (task) => string }.`
+          `{ key: (task) => string }, or { by: (task) => ({ key } | { id }) }.`
       );
     }
     // A target looked up per task runs each task in a session of its own. The
@@ -311,7 +329,7 @@ export function dispatcher(
     if (typeof flowKind === "function" && session !== "per-task") {
       throw new Error(
         `[dispatcher] "${name}" looks its flow up per task but declares session ` +
-          `${JSON.stringify(typeof session === "string" ? session : "{ key }")}. A per-task ` +
+          `${JSON.stringify(typeof session === "string" ? session : "by" in session ? "{ by }" : "{ key }")}. A per-task ` +
           `target hands each task over in a session of its own: declare \`session: "per-task"\`.`
       );
     }
@@ -328,15 +346,19 @@ export function dispatcher(
       inputSchema: taskDispatchInputSchema,
       outputSchema: dispatchHandleSchema,
       execute: async (envelope, ctx): Promise<DispatchHandle> => {
-        const key = taskSessionKeyFor(name, session, envelope, ctx);
-        const task = { assignee: envelope.seat, taskId: envelope.taskId, input: envelope.payload };
+        const task: TaskTargetQuery = {
+          assignee: envelope.assignee,
+          taskId: envelope.taskId,
+          input: envelope.payload
+        };
         const taskAddress = address as Extract<DispatchAddress, { type: "task" }>;
+        const entry = await resolveTaskAction(name, taskAddress, task, ctx);
+        const sessionTarget = await resolveTaskSessionTarget(name, taskAddress, envelope, task, ctx);
         const target = await resolveTaskFlowKind(name, taskAddress, task, ctx);
-        const initialState = await resolveTaskState(name, taskAddress, task, ctx);
         const outcome = await dispatchThroughSeam(ctx, {
           type: "task",
-          action,
-          session: initialState === undefined ? { key } : { key, state: initialState },
+          action: entry,
+          session: sessionTarget,
           payload: envelope,
           from: name,
           provenance: { taskId: envelope.taskId },
@@ -355,7 +377,7 @@ export function dispatcher(
   const { session, payload } = internal;
   const address: DispatchAddress = {
     type: "internal",
-    action,
+    action: action as string,
     ...(flowKind !== undefined ? { flowKind: flowKind as string } : {})
   };
   const inputSchema = internal.inputSchema ?? z.unknown();
@@ -387,24 +409,48 @@ function handleOf(outcome: { sessionId: string; requestId: string; adopted: bool
 
 function isTaskSessionPolicy(value: unknown): value is TaskSessionPolicy<any> {
   if (value === "per-task" || value === "per-worker") return true;
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { key?: unknown }).key === "function"
-  );
+  if (typeof value !== "object" || value === null) return false;
+  const { key, by } = value as { key?: unknown; by?: unknown };
+  // Exactly one of the two: a policy that both keys and chooses is ambiguous.
+  return typeof key === "function" ? by === undefined : typeof by === "function" && key === undefined;
+}
+
+/**
+ * Refuse a per-row entry choice that could not be verified: `among` must list
+ * at least one entry, each named once, and `by` must be the function that
+ * picks among them.
+ */
+function assertEntryChoice(name: string, choice: TaskEntryChoice): void {
+  const among: unknown = (choice as { among?: unknown }).among;
+  const valid =
+    Array.isArray(among) &&
+    among.length > 0 &&
+    among.every((entry) => typeof entry === "string" && entry.length > 0) &&
+    new Set(among).size === among.length &&
+    typeof choice.by === "function";
+  if (!valid) {
+    throw new Error(
+      `[dispatcher] "${name}" chooses its entry per row but declares ${JSON.stringify(among)} ` +
+        `as the entries it chooses among. Declare { among: ["entry", ...], by: (task) => entry }: ` +
+        `at least one entry, each named once, so every entry a row can land on is verified.`
+    );
+  }
 }
 
 /**
  * `type` is optional. A task-board session policy (`"per-task"`,
- * `"per-worker"`, or a bare `{ key }` with no internal fields) makes a task
- * dispatcher. Everything else — including `{ key }` plus `state`, `inputSchema` or `payload`
+ * `"per-worker"`, `{ by }`, or a bare `{ key }` with no internal fields), or an
+ * entry chosen per row, makes a task dispatcher. Everything else — including `{ key }` plus `state`, `inputSchema` or `payload`
  * — is `internal`.
  */
 function resolveDispatcherType(config: DispatcherConfig): string {
   if (config.type !== undefined) return config.type;
+  // Only a task dispatcher chooses its entry or its session per row.
+  if (typeof config.action === "object" && config.action !== null) return "task";
   const session = config.session;
   if (session === "per-task" || session === "per-worker") return "task";
   if (typeof session === "object" && session !== null) {
+    if ("by" in session) return "task";
     if ("id" in session || "from" in session || "state" in session) return "internal";
     if (typeof (session as { key?: unknown }).key === "function") {
       const keyed = config as InternalDispatcherConfig;

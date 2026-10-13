@@ -77,10 +77,10 @@ function sizeOf(root: unknown): { bytes: number; preview: string } | typeof UNSE
   };
   const writeAscii = (chunk: string): void => write(chunk, chunk.length);
   const writeString = (s: string): void => {
-    const room = OMITTED_PREVIEW_CHARS - preview.length;
+    const left = OMITTED_PREVIEW_CHARS - preview.length;
     // One extra code unit keeps a surrogate pair whole at the cut; the escaped
     // prefix is then trimmed by `write`.
-    const head = room > 0 ? JSON.stringify(s.slice(0, room + 1)) : "";
+    const head = left > 0 ? JSON.stringify(s.slice(0, left + 1)) : "";
     write(head, escapedStringBytes(s));
   };
 

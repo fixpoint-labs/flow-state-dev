@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor, isDone, readStatus } from "../lib/columns";
-import { asksOfTask, doorOf, rosterOf, seatFor, waited } from "../lib/derive";
+import { asksOfTask, doorOf, rosterOf, workerFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
@@ -41,9 +41,9 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   }
 
   // The same resolver the inspector and Tasks use, so a name two teams share
-  // resolves to no seat at all.
-  const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
-  const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
+  // resolves to no worker at all.
+  const found = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : workerFor(rosterOf(snapshot), row);
+  const worker = row?.assignee == null ? null : (found?.id ?? row.assignee);
 
   return (
     // Esc interrupts from anywhere in the frame, on every tab and from the
@@ -130,7 +130,7 @@ function runWord(status: string | undefined): string {
 
 /**
  * What the worker is doing, above the composer (v2:428-429): a mark (v2's
- * needs square while the run waits on the person, its run square while it
+ * needs square while the run waits on the user, its run square while it
  * runs), the worker and the run's state, and Esc while it can be stopped.
  */
 function Activity({ worker }: { worker: string | null }) {
@@ -245,12 +245,12 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();
   const { clients, snapshot, refresh } = useLab();
   const { row } = task;
-  const seats =
+  const workers =
     snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
       ? []
-      : rosterOf(snapshot).seats;
+      : rosterOf(snapshot).workers;
   const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
-  const door = flowId === undefined ? null : doorOf(seats, flowId);
+  const door = flowId === undefined ? null : doorOf(workers, flowId);
   const blocked =
     row === undefined
       ? "This task isn't on its board yet."

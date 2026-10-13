@@ -8,7 +8,7 @@
  * width they give up.
  *
  * A Lab that refuses the first read for want of a verified organization, or
- * that names no organization for the person, gets the refusal screen and
+ * that names no organization for the user, gets the refusal screen and
  * nothing else (BR-3): the sidebar, the tree and every other read wait behind
  * it.
  */
@@ -50,7 +50,7 @@ export function App({ clients, gaps = GAPS, devtoolUrl, look }: { clients: LabCl
 /**
  * The screen a Lab gets when Shift Manager has no organization to open it under, and
  * the only one: the Lab refused the first read, or served nothing that names
- * the person's organization.
+ * the user's organization.
  */
 function Refusal({ failure }: { failure: Failure }) {
   return (

@@ -1,6 +1,8 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a support team with a coordinator in front, and shows it in a shell whose navigator is imported from `@flow-state-dev/react` and whose roster is read through Workforce's client.
+Kitchen Sink is where you use each coding harness flow-state-dev supports, directly, and see whether its integration holds. It opens on a picker of modes. **Flow State** is the framework's own flows: the assistant, and the support desk with a coordinator and four specialists (see [The support team](#the-support-team-workforce)). The coding harness modes are listed beside it: [Claude Code](#claude-code-mode), [Cursor](#cursor-mode), and Codex, which says "not built yet" until it lands.
+
+Kitchen Sink sets up a session and keeps it in step with the harness. It doesn't plan work for a harness or move work between harnesses; that is [Shift Manager](../../packages/shift-manager/README.md).
 
 Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
 
@@ -25,6 +27,17 @@ PORT=3001 pnpm --filter @flow-state-dev/kitchen-sink dev
 
 The `curl` examples in this README use `localhost:3000`. Change the port to match.
 
+The front page is the picker. Pick **Flow State** for the assistant and the support desk, at [http://localhost:3000/flow-state](http://localhost:3000/flow-state). A mode this machine can't run is listed with the reason, and opening it does nothing.
+
+Coding harness modes work on a git repository. With `pnpm dev`, that is the checkout the server runs from, and you set nothing. To use another checkout, or to run them on a production server, name its top level:
+
+```bash
+# apps/kitchen-sink/.env.local
+KITCHEN_SINK_HARNESS_WORKSPACE=/Users/me/code/flow-state-dev
+```
+
+The path has to be the top level of an existing git checkout; anything else turns the modes off and says why. Each session gets its own worktree and branch of that repository, so it never edits your checkout or another session's work. A production server without the setting keeps the harness modes off, and so does Vercel, even with it, because Kitchen Sink has no sign-in and anyone who can reach it acts as the same user. Restart the server after changing the setting; the picker reads it once, at start.
+
 The `pnpm fsdev` commands below run from `apps/kitchen-sink`, where `fsdev.config.ts` gives the CLI the same flows, models and stores the app has.
 
 ### Without a model key
@@ -40,7 +53,7 @@ The specialists and the assistant all answer with the same placeholder, `Test mo
 ## What to read first
 
 - `workforce/`: the support team, four specialists and the coordinator that sends each post to one of them. This is the authoring path, and the shortest route to understanding the app.
-- `app/page.tsx`: the shell, with one navigator on the left, the stream in the middle, and the roster on the right.
+- `app/page.tsx`: the picker. `app/flow-state/page.tsx`: the Flow State shell, with one navigator on the left, the stream in the middle, and the roster on the right.
 - `flows/`: the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
 The chat agent either answers in the turn or files the work to a durable board, where a child session picks it up and the result comes back on a later turn. For coordination that happens inside a single request, see the [patterns documentation](../docs/docs/patterns/overview.md); each pattern page carries its own runnable example. The app uses one pattern, the response auditor, which annotates an answer after it's produced.
@@ -138,7 +151,7 @@ This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both
 
 ### Hiring while the app runs
 
-Seats can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A seat hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
+Workers can also be hired while the app is running, which is the other half of the demonstration. The four specialists are declared in files. A worker hired over `workforce-admin`'s `hire` action is written to the database instead, addressed with its organization and the admin user (`kitchen-sink.~workforce-admin.support.new-hire`). On a persistent store it is still there after `pnpm build && pnpm start`: set `STORE_TYPE=filesystem`, or point `FSD_DB_URL` at a database. The default store is in memory and starts empty.
 
 The admin flow is **not registered at all** unless `WORKFORCE_ADMIN_TOKENS` is set. The variable takes `<org>:<token>` pairs, and the organization a hire lands in is the one its token names, never what the request body says:
 
@@ -148,16 +161,16 @@ export WORKFORCE_ADMIN_TOKENS="kitchen-sink:dev-token"
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/hire \
   -H 'content-type: application/json' \
   -H "authorization: Bearer dev-token" \
-  -d '{"userId":"you","input":{"seatId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
+  -d '{"userId":"you","input":{"workerId":"support.new-hire","flow":"agent","instructions":"You take refund questions."}}'
 ```
 
 The admin hire goes over HTTP because the admin flow checks a token and the CLI carries none.
 
-The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
+The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A worker the admin action hires belongs to the operator who hired it.
 
-The admin flow also has a `fire` action, which removes a seat the admin action hired. A hired seat doesn't show in the rail and doesn't join `support.help`: a coordinator's delegates are the ones its file names. The page has no control for hiring.
+The admin flow also has a `fire` action, which removes a worker the admin action hired. A hired worker doesn't show in the rail and doesn't join `support.help`: a coordinator's delegates are the ones its file names. The page has no control for hiring.
 
-The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
+The worker answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the worker is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The worker carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
 
 ```bash
 curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.new-hire/actions/run \
@@ -166,14 +179,15 @@ curl -X POST localhost:3000/api/flows/kitchen-sink.~workforce-admin.support.new-
   -d '{"userId":"you","input":{"message":"Where is my order?"}}'
 ```
 
-Restart the app and ask the seat something. The reload runs at startup, before the app serves anything, and reports any seat it could not bring back.
+Restart the app and ask the worker something. The reload runs at startup, before the app serves anything, and reports any worker it could not bring back.
 
 ## The page (`app/`)
 
-- **Layout**: three columns. A `FlowNavigator` rail over your conversations with the coordinator, with workers, and with the assistant; the stream; and a standing panel with the roster (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
+- **Front page**: the picker. Each mode has its own address: `/flow-state`, `/claude-code`, `/codex`, `/cursor`. Every mode's rail opens with the mode's name and a link back here.
+- **Layout** (Flow State): three columns. A `FlowNavigator` rail over your conversations with the coordinator, with workers, and with the assistant; the stream; and a standing panel with the roster (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
 - **Coordinators**: Open `support.help` in the rail to read your conversation with it and post. Your post calls the coordinator flow's `run` action, the same one the [HTTP call above](#posting-to-the-coordinator-over-http) reaches, and appears as `devuser`, the one user this app runs as. Answers appear while the view is open, and the view shows which specialist is working.
-- **Seats**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
-- **Roster**: The team panel's roster lists seats [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no seats have been hired in this organization yet, while the rail lists the four specialists.
+- **Workers**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
+- **Roster**: The team panel's roster lists workers [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no workers have been hired in this organization yet, while the rail lists the four specialists.
 - **Session management**: Open the assistant in the rail and press the **+** on its row (New session) to start a session. Its sessions are listed under it; pick one to switch to it.
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
@@ -181,6 +195,40 @@ Restart the app and ask the seat something. The reload runs at startup, before t
 - **Mode selector**: Chat / Plan / Review tabs that feed into `sendAction`
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
 - **Streaming indicators**: PromptInputSubmit status, Shimmer for status items, skeleton cards for in-progress blocks
+
+## Claude Code mode
+
+Pick **Claude Code** to work a Claude Code session the way you would on its own. Each turn continues the same Claude Code conversation, its steps show while it works, and its to-do list sits beside it.
+
+It runs on your machine, through the Claude Code Agent SDK, signed in the way Claude Code is on its own. Sign in with the `claude` command first. A host that isn't signed in, a host without the SDK, a server running as root, or a machine where Claude Code's sandbox isn't available shows the mode as unavailable, with the reason. On Linux the sandbox needs `bwrap` (bubblewrap) and `socat` installed.
+
+**Where it works.** Claude Code works on this repository. Each session gets its own git worktree, cut from your checkout's `HEAD` on a branch named `kitchen-sink/claude-code-session/<session>`, and every turn of that session works there. Worktrees live outside the repository, under `~/.local/state/flow-state-dev/kitchen-sink-harness/` (or `$XDG_STATE_HOME` if you set it), in a folder named for the repository. Your own checkout is never touched, and two sessions never share a worktree. Your checkout's git hooks don't run when a worktree is made, so a `post-checkout` hook that builds or installs won't stop a session.
+
+Claude Code runs without asking for approval, inside its sandbox: it can write only in the session's worktree, and not to the worktree's `.git`, so it can't commit. Its changes wait, uncommitted, in the worktree for you to review and commit. Nothing is merged or pushed. Worktrees and branches stay until you remove them (`git worktree remove`, then delete the branch).
+
+The run starts with a short list of the server's environment variables: what Claude Code needs to find its tools, sign in and reach the network. That filters what it's handed, and nothing more: a command it runs as the same OS user as the server can still read the server's environment. Run the server as a separate OS user, or in a container, when that matters.
+
+In local development the mode uses the checkout the server runs from. To point it at another checkout, or to turn it on for a production server, set `KITCHEN_SINK_HARNESS_WORKSPACE` to that checkout's top level.
+
+**Continuing.** A session is one Claude Code conversation. Stop a turn and the next one picks up the same conversation. If Claude Code can't continue it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. A turn Claude Code ends in error shows as an error, and the next turn still continues the same conversation. It never quietly starts a new conversation; start a new session for that. If Claude Code answers in a different conversation of its own accord, the session says it started a new one and follows it. The page's address names the open session, so a reload comes back to it.
+
+**The plan panel** shows what Claude Code recorded of its to-do list for the session's latest turn, read-only. If part of it couldn't be recorded, the panel says the plan may be incomplete, and why. A turn where Claude Code kept no to-do list says "No plan recorded for this turn." Claude Code keeps one when the job is big enough to plan, or when you ask it to. Nothing in the panel starts work.
+
+Add `STORE_TYPE=filesystem` to keep sessions, and the conversations they're bound to, across a restart.
+
+## Cursor mode
+
+Pick **Cursor** to work a Cursor session the way you would on its own. Each turn continues the same Cursor agent, its steps show while it works, and its to-do list sits beside it.
+
+It runs on your machine through the Cursor SDK, which brings its own runtime, so the Cursor editor isn't needed. Sign in the way the SDK does: set `CURSOR_API_KEY`, or log in once with the SDK's login. The mode uses Cursor's `composer-2.5` model. A host without the SDK at the version the mode is tested against, or without a key or a login, shows the mode as unavailable, with the reason.
+
+**Where it works.** Like every harness mode, each session gets its own git worktree and branch of the repository `KITCHEN_SINK_HARNESS_WORKSPACE` names, on `kitchen-sink/cursor-session/<session>`, and every turn of that session works there (see [Claude Code mode](#claude-code-mode) for where worktrees live and how to clear them). Cursor runs with its sandbox on, which lets it edit files in that worktree and nowhere else, `.git` included, so its work waits uncommitted for you to review. A machine where Cursor's sandbox can't start fails each turn with Cursor's own error rather than running without it.
+
+Its commands start with only the environment variables Kitchen Sink passes it, not the server's whole environment: Cursor's runtime runs in a separate process that is handed only those. That is not a security boundary; the process runs as the server's OS user, so a command that goes looking can still read the server's environment on Linux. Containing that takes a separate user or a container. A command Cursor started can keep running briefly after you stop a turn.
+
+**Continuing.** A session is one Cursor agent. Stop a turn and the next one picks up the same agent. If Cursor won't resume it, the session says so on every turn and keeps trying. A turn you stopped shows as stopped, not refused. A run Cursor reports as errored shows as an error, and the next turn still continues the same agent. It never quietly starts a new agent; start a new session for that.
+
+**The plan panel** shows Cursor's to-do list for the session's latest turn, as Cursor last confirmed it, read-only. A turn where Cursor kept no list says "No plan recorded for this turn"; one where Cursor emptied its list says the turn's plan is empty. If the list couldn't be saved in full, the panel says the plan may be incomplete. When Cursor reorders its list, the rows follow their places, not the items. Nothing in the panel starts work.
 
 ## Flows
 
@@ -231,8 +279,9 @@ Most are optional. These are the ones you're likely to set:
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway key. Required for real answers: every model the app uses goes through the gateway. |
 | `OPENAI_API_KEY` | Optional. Enables voice. |
 | `KITCHEN_SINK_TEST_MODE` | `1` runs every model as a script and needs no key. See [Without a model key](#without-a-model-key). |
+| `KITCHEN_SINK_HARNESS_WORKSPACE` | The top level of the git checkout the coding harness modes work on. Each session gets its own worktree and branch of it, kept outside the checkout under `~/.local/state/flow-state-dev/kitchen-sink-harness/`. Unset, they use the checkout the server runs from in local development, and are off otherwise. Ignored on Vercel, where they're always off. |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
-| `STORE_TYPE` | `filesystem` keeps sessions and hired seats in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
+| `STORE_TYPE` | `filesystem` keeps sessions and hired workers in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
 | `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
 | `REDIS_URL` | Redis for BullMQ background jobs, local dev only. `docker compose -f docker-compose.dev.yml up -d`, run from `apps/kitchen-sink`, starts one. |
 | `FSD_BULLMQ_DISPATCH` | `1` sends every action dispatch through the BullMQ queue instead of running it in process. Needs `REDIS_URL`. |
@@ -288,7 +337,8 @@ pnpm --filter @flow-state-dev/kitchen-sink build
 apps/kitchen-sink/
   fsdev.config.ts            The FlowState: flows, stores, principal resolver (source of truth)
   app/                       Next.js App Router
-    page.tsx                 The shell: navigator rail, stream, standing panel
+    page.tsx                 The picker: four modes, each with its availability
+    flow-state/page.tsx      The Flow State shell: navigator rail, stream, standing panel
     layout.tsx               Root layout with Inter font
     api/flows/               Flow API routes (SSE streaming)
   flows/
@@ -305,7 +355,7 @@ apps/kitchen-sink/
     flow-state/              Shared item-renderer UI (installed from @flow-state-dev/ui)
     chat-agent/              chat-agent-specific renderers
     ui/                      shadcn/ui primitives
-    ...                      Shared app UI (team panel, seat pane, mode selector, etc.)
+    ...                      Shared app UI (team panel, worker pane, mode selector, etc.)
   lib/
     flowstate.ts             Re-exports the FlowState from fsdev.config.ts for routes and the CLI
     mcp.ts                   Optional MCP capability (env-gated)

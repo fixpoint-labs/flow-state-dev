@@ -1,21 +1,21 @@
 "use client";
 
 /**
- * A coordinator's or a seat's session, opened from the rail, with a composer
+ * A coordinator's or a worker's session, opened from the rail, with a composer
  * that talks to it.
  *
  * Every composer here calls an action the picked flow already declares, on the
  * picked session's own address — nothing is added for the page. A coordinator
  * is posted to through its door (`COORDINATOR_ASK`), with the post only: who
- * posted is the session's own user. A seat is sent the action its kind
- * answers with (`SEAT_ASKS`); a kind with none shows its reason and no
+ * posted is the session's own user. A worker is sent the action its kind
+ * answers with (`WORKER_ASKS`); a kind with none shows its reason and no
  * composer.
  *
- * A coordinator's panel shows its lines: the person's posts, under the
- * person's name, and each delegate's answer, under the delegate's. It reads
+ * A coordinator's panel shows its lines: the user's posts, under the
+ * user's name, and each delegate's answer, under the delegate's. It reads
  * the session's kept messages and nothing else: the routing records beside
  * them are bookkeeping, not lines. Only what the server kept is drawn. There
- * is no optimistic copy of the person's line or message, so what shows after
+ * is no optimistic copy of the user's line or message, so what shows after
  * a reload is what showed before it.
  *
  * Both panels show a `<worker> is working` row for each run under the session
@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import type { useSession } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { COORDINATOR_ASK, delegateOfRun, isCoordinatorKind, seatAskFor } from "@/lib/workforce-shell";
+import { COORDINATOR_ASK, delegateOfRun, isCoordinatorFlow, workerAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
 
@@ -39,21 +39,21 @@ export type RequestStatusLookup = (requestId: string) => Promise<string>;
 /** One line of a coordinator's conversation: who wrote it, and what it says. */
 interface CoordinatorLine {
   id: string;
-  /** A delegate's worker id, the person's id, or, for the coordinator's own word, the coordinator. */
+  /** A delegate's worker id, the user's id, or, for the coordinator's own word, the coordinator. */
   label: string;
   body: string;
 }
 
 /**
  * The conversation's kept messages as lines, in the order the session holds
- * them. A delegate's answer carries its name (`agentName`); the person's post
- * is a `user` message, under `person`; anything else the coordinator said
+ * them. A delegate's answer carries its name (`agentName`); the user's post
+ * is a `user` message, under `user`; anything else the coordinator said
  * itself is under `coordinator`. Transient messages are not lines.
  *
  * @param items The session's items.
- * @param person The name the person's own posts are drawn under.
+ * @param user The name the user's own posts are drawn under.
  */
-function coordinatorLines(items: Session["items"], person: string): CoordinatorLine[] {
+function coordinatorLines(items: Session["items"], user: string): CoordinatorLine[] {
   return items.flatMap((item) => {
     const message = item as {
       type: string;
@@ -65,7 +65,7 @@ function coordinatorLines(items: Session["items"], person: string): CoordinatorL
     };
     if (message.type !== "message" || message.transient === true || typeof message.id !== "string") return [];
     const body = (message.content ?? []).map((part) => part.text ?? "").join("");
-    const label = message.agentName ?? (message.role === "user" ? person : "coordinator");
+    const label = message.agentName ?? (message.role === "user" ? user : "coordinator");
     return [{ id: message.id, label, body }];
   });
 }
@@ -74,33 +74,33 @@ function coordinatorLines(items: Session["items"], person: string): CoordinatorL
  * The picked session's panel.
  *
  * @param session The picked session, as `useSession` returns it.
- * @param kind The picked flow's kind: a coordinator kind or a seat kind.
- * @param person The name the person's own posts are drawn under, on a coordinator.
+ * @param kind The picked flow's kind: a coordinator kind or a worker kind.
+ * @param user The name the user's own posts are drawn under, on a coordinator.
  * @param requestStatus Reads a sent request's own status, so a send settles
  *   on its request and not on whatever the session's stream did.
- * @param conversation The session's item stream, drawn for a seat. A
+ * @param conversation The session's item stream, drawn for a worker. A
  *   coordinator draws its lines instead, so the page need not build one for it.
  */
 export function PickedSessionPanel({
   session,
   kind,
-  person,
+  user,
   requestStatus,
   conversation,
 }: {
   session: Session;
   kind: string;
-  person: string;
+  user: string;
   requestStatus: RequestStatusLookup;
   conversation?: ReactNode;
 }) {
   // Each composer is keyed by the session it talks to, so a draft, a pending
   // send or a failure never carries over to the next pick.
   const composerKey = session.sessionId ?? "none";
-  if (isCoordinatorKind(kind)) {
+  if (isCoordinatorFlow(kind)) {
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
-        <CoordinatorTranscript session={session} person={person} />
+        <CoordinatorTranscript session={session} user={user} />
         <WorkingRows session={session} />
         <Composer
           key={composerKey}
@@ -114,22 +114,22 @@ export function PickedSessionPanel({
     );
   }
 
-  const ask = seatAskFor(kind);
+  const ask = workerAskFor(kind);
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
       {conversation}
       <WorkingRows session={session} />
       {ask === undefined || "none" in ask ? (
         <p className="border-t px-4 py-3 text-xs text-muted-foreground" data-testid="picked-read-only">
-          {ask?.none ?? `This ${kind} seat takes no messages from this page.`}
+          {ask?.none ?? `This ${kind} worker takes no messages from this page.`}
         </p>
       ) : (
         <Composer
           key={composerKey}
           session={session}
           requestStatus={requestStatus}
-          label="Message this seat"
-          placeholder="Write to this seat…"
+          label="Message this worker"
+          placeholder="Write to this worker…"
           send={(text) => session.sendAction(ask.action, { [ask.field]: text })}
         />
       )}
@@ -138,8 +138,8 @@ export function PickedSessionPanel({
 }
 
 /** A coordinator's conversation, oldest first, each line under who wrote it. */
-function CoordinatorTranscript({ session, person }: { session: Session; person: string }) {
-  const lines = useMemo(() => coordinatorLines(session.items, person), [session.items, person]);
+function CoordinatorTranscript({ session, user }: { session: Session; user: string }) {
+  const lines = useMemo(() => coordinatorLines(session.items, user), [session.items, user]);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="coordinator-transcript">
       <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 py-4 sm:px-4">
@@ -164,7 +164,7 @@ function CoordinatorTranscript({ session, person }: { session: Session; person: 
 /**
  * One row per run under the session that hasn't finished, named by the
  * delegate a coordinator handed a post to, or else by the run's flow; a run
- * with no recorded flow is background work, not a seat. A run waiting on an
+ * with no recorded flow is background work, not a worker. A run waiting on an
  * approval reads as working until it ends.
  *
  * While the list is stale (`childSessionsStale`: the last re-read failed, and

@@ -85,7 +85,7 @@ flowRegistry.registerMany(hireWorkforce(installation));
 | --- | --- |
 | `installation` | The installation the coordinator and its delegates belong to. Required. |
 | `delegateFlows` | The flows a post can be delivered to. Each must declare the delegated-post entry: the built-in `agent` does, and a flow of your own does once you [add it](#making-your-own-flow-a-delegate). A flow without it throws here. Required. |
-| `routeModel` | The model behind `best-fit`'s evaluator call: a model id your resolver knows, or an evaluation model. Required, even when no coordinator routes by best fit. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; the other evaluation models don't. |
+| `routeModel` | The model behind `best-fit`'s call: a model id your resolver knows (its provider package must be installed; see [Setting up models](../getting-started/setting-up-models.md#choose-a-provider)), or an evaluation model. Best fit asks it as an evaluation model first, and, when that call fails on a model id, once more as a language model, which is how `openai/gpt-5.4-mini` still routes through a gateway that serves it only as a language model. One value for the flow, shared by every coordinator on it. Required, even when none of them routes by best fit; then it is never called. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; a language model and the other evaluation models don't, so under a floor their delegate picks are never used. A pick of the coordinator itself is used at any confidence. |
 | `agent` | What the coordinator's own turn is built with: the options you'd give `defineAgentWorkerFlow`, such as `catalog` and `uses`. A coordinator's `tools:` line is read against this catalog. Left out, the built-in's defaults. |
 | `roundDeadlineMs` | How long a round waits for its answers. Five minutes by default. A value that isn't a positive whole number of milliseconds throws. |
 
@@ -105,6 +105,8 @@ const session = await workforce.ensureWorkerSession({ worker: "support.help" });
 const help = createClient({ flowKind: session.flowKind, userId, baseUrl });
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
+
+`ensureWorkerSession` returns your most recent session with the coordinator, or starts one if you have none.
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
@@ -127,7 +129,7 @@ Best fit asks its evaluation model one question: who should take this post? The 
 
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
-description: The person's one point of contact. Hires and fires workers, starts projects, and answers questions about the team.
+description: The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team.
 flow: coordinator
 routing: best-fit
 minConfidence: 0.7
@@ -221,7 +223,7 @@ Each action's output is the conversation's list as it stands after the call. `se
 ]
 ```
 
-`filingSessionId` identifies this conversation to its delegates. Each delegate works this conversation's posts in a session of its own, and `workforce.findWorkerSession({ worker, filingSessionId })` returns it. A lookup that names only the worker never does.
+`filingSessionId` identifies this conversation to its delegates. Each delegate works this conversation's posts in a session of its own, and `workforce.findWorkerSession({ worker, filingSessionId })` returns it. A lookup that names only the worker never does. Only the conversation opens a delegate's session: `ensureWorkerSession` with a `filingSessionId` finds it but never creates it, and a session create whose `state` carries `filingSessionId` is refused with a 400.
 
 A refused change writes nothing. Its request fails, and the refusal is in `result.error.message`.
 
@@ -258,7 +260,7 @@ Removing checks only the list, so you can remove a delegate that has since been 
 
 ## Letting delegates answer each other
 
-With `rounds: 0`, the default, a delegate's answer lands in the conversation and goes no further. Set `rounds:` to 1, 2 or 3 and each answer goes back out to the other delegates, by the same policy, for that many rounds. The person's post is round 0.
+With `rounds: 0`, the default, a delegate's answer lands in the conversation and goes no further. Set `rounds:` to 1, 2 or 3 and each answer goes back out to the other delegates, by the same policy, for that many rounds. The user's post is round 0.
 
 - `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
 - `everyone` waits for the round to close, then hands each delegate the other delegates' answers from it in one delivery. A delegate with no other answer to get is skipped.
@@ -268,7 +270,7 @@ A round closes when every delivery in it has been answered or has failed, or at 
 
 A conversation keeps at most 50 rounds open. A post past that is still delivered, but its round isn't opened: its answers land and go no further, and its routing record carries a `note` saying so.
 
-**What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one evaluator call per round, plus a coordinator turn for each post it picks the coordinator for, and for each it can't place when no fallback takes it.
+**What it costs.** Each delegate gets at most one delivery per post per round, so a post costs at most delegates × (rounds + 1) delegate turns: 100 at 25 delegates and 3 rounds. `judgment` adds up to rounds + 1 turns of the coordinator's own. `best-fit` adds at most one model call per round, or two when the evaluator call fails and it asks again as a language model, plus a coordinator turn for each post it picks the coordinator for, and for each it can't place when no fallback takes it.
 
 ## What it records
 
@@ -289,13 +291,14 @@ Every routing decision leaves one `coordinator-route` item in the conversation. 
 
 | Field | What it holds |
 | --- | --- |
-| `postId` | The post: the id of the request that carried the person's message. Answers going back out keep it. |
-| `round` | `0` for the person's post, one more each time answers go back out. |
+| `postId` | The post: the id of the request that carried the user's message. Answers going back out keep it. |
+| `round` | `0` for the user's post, one more each time answers go back out. |
 | `policy` | The conversation's `routing:`. |
 | `by` | How the delegates were found: `judgment` (the coordinator's own turn, chosen by `routing: judgment` or handed the post by best fit), `held` (best fit, still on your last post), `evaluated` (best fit's call), `fallback`, `round-robin`, `everyone`, or `unplaced` (nobody took it). |
 | `delegates` | Each delegate the decision touched: `worker`, `outcome` (`delivered`, `skipped` or `failed`), and `reason` when it wasn't delivered. |
 | `none` | Why nobody was delivered to, when nobody was. |
 | `fit` | Why best fit sent the post to the fallback or the coordinator's own turn: `reason` is `coordinator` (the call picked the coordinator), `below-floor`, `no-confidence`, `failed`, `not-a-choice` or `no-delegates`, with the `choice`, its `confidence` and the `minConfidence` in force where there are some. |
+| `evaluationFailed` | Best fit's evaluator error, when that call failed and best fit asked again as a language model. `by` and `fit` say what the second ask came to. |
 | `note` | Why this round's answers go no further: the conversation already had 50 rounds open. |
 
 A post best fit gave to the coordinator's own turn because its pick was below the floor reads like this:
@@ -334,19 +337,42 @@ export function SupportDesk({ children }: { children: ReactNode }) {
 
 Import names from `@flow-state-dev/workforce/browser` in a client component; the package root is server code. A type-only import from the root, as above, is fine.
 
+### Reading it from your app
+
+Outside a renderer, read the records from the conversation's requests. Continuing the [example above](#talking-to-it):
+
+```ts
+import { createSessionClient } from "@flow-state-dev/client";
+import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
+import type { CoordinatorRouteRecord } from "@flow-state-dev/workforce";
+
+const sessions = createSessionClient({ baseUrl });
+const requests = await sessions.listSessionRequests(session.id, { includeItems: true });
+
+const records = requests
+  .flatMap((request) => request.items ?? [])
+  .flatMap((item) =>
+    item.type === "component" && item.component === COORDINATOR_ROUTE
+      ? [item.data as CoordinatorRouteRecord]
+      : [],
+  );
+```
+
+Without `includeItems: true` a request carries no `items`, so you get no records. Each request a conversation runs carries the records made during it, so reading all of them gives you every decision. They come back most recently updated first, so sort them by `startedAtMs` before flattening if you want the decisions in the order they were made. `postId` and `round` say which post and round each record belongs to. In server code, `coordinatorRouteRecordSchema.parse(item.data)` from the package root checks the shape and returns a typed record, in place of the cast. See [`sessions.listSessionRequests`](../api/client.md#sessionslistsessionrequestssessionid-options) for its other options.
+
 ## Handing out tasks
 
-A post gets an answer. When work has to be done instead, a coordinator can file a **task** on its conversation's board, for one of its delegates that takes tasks. Filing works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
+A post gets an answer. When work has to be done instead, a coordinator can hand a **task** to one of its delegates that takes tasks, on its conversation's board. Handing out tasks works the same for every worker, so it has [a page of its own](./delegating-work.md); what follows is how it looks from a coordinator.
 
 ```ts
 await help.sendAction(
-  "addTask_tasks",
+  "dispatchTask_tasks",
   { goal: "Audit our dependencies' licenses", assignee: "licenses" },
   { sessionId: session.id },
 );
 ```
 
-These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools, so it files a task itself when you ask it for one.
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `dispatchTask_tasks`, `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools, so it hands out a task itself when you ask it for one.
 
 From your app or from the coordinator's own tools, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
 
@@ -360,9 +386,15 @@ A delegate whose `takes` is `nothing` is refused the same way, and the error say
 { "ok": false, "error": "unknown_assignee: \"eng.coder\" is not on this board's team. Available: support.devices, licenses. Not taking tasks now: eng.coder: Worker \"eng.coder\" runs on flow \"coder\", which takes no task. …" }
 ```
 
-A task with no assignee goes to the conversation's only delegate that takes tasks. With several, it waits on the board until you assign it.
+A task with no assignee goes to the conversation's only delegate that takes tasks. With several, `dispatchTask_tasks` answers `assignee_required` and stores nothing, so name one.
 
-`addTask` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts by itself: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
+`dispatchTask_tasks` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts at once: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
+
+`addTask_tasks` records a task and answers `{ ok: true, taskId, status: "recorded" }`. It doesn't start it, even with an assignee. A recorded task with no assignee, in a conversation with several delegates, waits on the board unassigned. To have a delegate start a recorded task, send `dispatchTask_tasks` with its `taskId`, and an `assignee` if it has none:
+
+```ts
+await help.sendAction("dispatchTask_tasks", { taskId }, { sessionId: session.id });
+```
 
 ### Hearing how it went
 
@@ -379,10 +411,11 @@ It hears when a task completes, with what came back; when it fails for good, wit
 | Action | What it does |
 | --- | --- |
 | `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
-| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id and starts at once |
+| `dispatchTask_tasks` | Starts a new task, or one you recorded, on a delegate now |
+| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A recorded task stays recorded until `dispatchTask_tasks` |
 | `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
 
-A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, file it again.
+A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
 
 To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
 
@@ -410,7 +443,7 @@ You can also just answer in chat: the coordinator passes your answer on with its
 
 An answer doesn't use up the task's retries, and the task can ask again. Until it picks up again, it can't be reassigned: `assignTask_tasks` answers `task_awaiting_answer`. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
 
-A task handed to a delegate by a coordinator that is [waiting for it](../orchestration/task-board.md#asking-and-waiting-for-the-answer) (`waitForResponse`) can't stop on a question. Its delegate answers with what it has, or fails.
+A task a coordinator dispatched and is [waiting for](../orchestration/task-board.md#giving-another-worker-work) (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
 
 ### After a task finishes
 
@@ -424,17 +457,17 @@ await licenses.sendAction("run", { message: "Which licenses did you flag?" }, { 
 
 It answers from what it did. The task itself doesn't change: a finished task stays finished.
 
-To build on the work, file a follow-up task that names it:
+To build on the work, dispatch a follow-up task that names it:
 
 ```ts
 await help.sendAction(
-  "addTask_tasks",
+  "dispatchTask_tasks",
   { goal: "Now write it up for the team", followUpOf: taskId },
   { sessionId: session.id },
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. `addTask` refuses the follow-up, filing nothing, if the task it names isn't finished or never ran, if that session still has an unfinished task, or if you pass an `assignee`:
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. `dispatchTask` refuses the follow-up, as `addTask` does, filing nothing, if the task it names isn't finished or never ran, if that session still has an unfinished task, or if you pass an `assignee`:
 
 ```json
 { "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" is in_progress. A follow-up names a finished task. Nothing was filed." }
@@ -442,50 +475,65 @@ The follow-up is a new task with its own id, and the conversation hears how it e
 
 ## Making your own flow a delegate
 
-A worker on the built-in `agent` flow can take posts as it is. A [worker flow of your own](./workers-on-disk.md#which-flows-can-run-workers) takes them once it declares the delegated-post entry around its door, the block its `run` action runs. Here `door` and `inputSchema` are that flow's own:
+A worker on the built-in `agent` flow can take posts as it is. A [worker flow of your own](./workers-on-disk.md#which-flows-can-run-workers) takes them once it declares the delegated-post entry around its door, the block its `run` action runs. Here the door is `researchAnswer`, a generator that answers with the worker's own instructions, the way the `agent` flow does:
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import {
   DELEGATED_POST_ENTRY,
   delegatedPostEntry,
+  delegatedPostHistory,
   delegatedPostOnFinished,
+  workerConfigOf,
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
+import { z } from "zod";
 
+const inputSchema = z.object({ message: z.string() });
+
+const loadWorker = handler({
+  name: "research-load-worker",
+  inputSchema: z.unknown(),
+  resources: { ...installation.resources },
+  execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "research")).id }),
+});
+
+const researchAnswer = generator({
+  name: "research-answer",
+  inputSchema,
+  model: "openai/gpt-5.4-mini",
+  history: delegatedPostHistory,
+  prompt: (_input, ctx) => {
+    const { instructions } = workerConfigOf(ctx);
+    return typeof instructions === "string" ? instructions : "You answer research questions in two or three sentences.";
+  },
+  user: (input) => input.message,
+});
+```
+
+`workerConfigOf(ctx)` returns the configuration of the worker the turn loaded, synchronously, so a prompt, a tool list or a step condition can read it. The turn loads its worker when `installation.resolveWorker(ctx, flowKind)` runs. `loadWorker` calls it from the flow's `request.onStarted`, so every turn has its worker loaded, a resumed one included. If the turn loaded no worker, `workerConfigOf` throws.
+
+The prompt is the worker's `WORKER.md` body, which arrives as its [`instructions` setting](./workers-on-disk.md#the-body-arrives-as-instructions). `workerConfigOf` types every setting as `unknown`, and a worker with an empty body has no `instructions` key at all, so the `typeof` check gives the prompt a string either way.
+
+The flow wires the two blocks in:
+
+```ts
 const researchFlow = defineFlow({
   kind: "research",
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  request: { onFinished: delegatedPostOnFinished },
-  actions: { run: { inputSchema, block: door, userMessage: (input) => input.message } },
-  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } },
+  request: { onStarted: loadWorker, onFinished: delegatedPostOnFinished },
+  actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
+  internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(researchAnswer) } },
 });
 ```
 
-Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the person's user id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
+Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the user's id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
 
 `delegatedPostOnFinished` tells the coordinator when a delegated run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
-To show your flow's model the conversation's [recent lines](#follow-ups-and-recent-lines), set the `history` of the generator your door runs to `delegatedPostHistory`, in place of `history: true`:
-
-```ts
-import { generator } from "@flow-state-dev/core";
-import { delegatedPostHistory } from "@flow-state-dev/workforce";
-import { z } from "zod";
-
-const door = generator({
-  name: "research-answer",
-  inputSchema: z.object({ message: z.string() }),
-  model: "openai/gpt-5.4-mini",
-  history: delegatedPostHistory,
-  prompt: "You answer research questions in two or three sentences.",
-  user: (input) => input.message,
-});
-```
-
-It's the session's history, as `history: true` reads it. On a delegated post that came with lines, the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) goes in just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
+To show the model the conversation's [recent lines](#follow-ups-and-recent-lines), set the generator's `history` to `delegatedPostHistory`. It reads the session's history the same way `history: true` does. On a delegated post that came with lines, it also puts the message shown in [Follow-ups and recent lines](#follow-ups-and-recent-lines) just before the post, with the `user` role: a heading naming the coordinator's worker id, then one `- <from>: <text>` per line, where `<from>` is your user id, the coordinator's worker id or the answering delegate's worker id. On any other turn, and on a post with no lines, it adds nothing.
 
 ### Taking a conversation's tasks
 
@@ -524,7 +572,7 @@ With `turn`, each task runs as one turn, in a task session of its own. The task 
 
 A coding worker built on the [harness manager](../orchestration/harness-manager.md) uses `block`: the manager takes the task, works it in its own checkout, and returns the answer. The conversation hears it the same way. The `claim` comes from the board, never from the task, so a task can't point its run at another board.
 
-A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, and `addTask` refuses them.
+A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, and `dispatchTask` and `addTask` refuse them.
 
 ## What it won't do
 
@@ -542,4 +590,4 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 - [The built-in worker](./built-in-worker.md): the `agent` flow, whose turn a coordinator runs when it routes by judgment.
 - [Delegating work](./delegating-work.md): how any worker files tasks for its delegates, splits a task, and how far a chain goes.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
-- [Hiring, forking and firing workers](./durable-hire.md): how a person's own workers get onto their roster.
+- [Hiring, forking and firing workers](./durable-hire.md): how a user's own workers get onto their roster.

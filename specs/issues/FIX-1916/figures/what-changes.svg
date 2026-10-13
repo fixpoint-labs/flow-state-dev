@@ -1,0 +1,82 @@
+<svg viewBox="0 0 940 372" role="img" aria-label="Before: Codex is reached only from a goal script that has never run on a real model, and nothing records a plan. After: Kitchen Sink's Codex mode is the codex-session flow from FIX-1915's shared factory, with the Codex block given its options only: its sandbox, no approval prompts, FIX-1915's working directory and an allowlisted environment. Its own availability check covers the pinned Codex SDK, sign-in and the sandbox. Turns continue the same Codex thread, items stream to the session, and the plan panel says Codex reports no plan, because Codex's headless runs offer the model no plan tool at the pinned version. The Codex package changes in one place only: its no-rollout resume error maps to the unknown-conversation classification, released as a codex patch changeset."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-in  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-out { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="24">BEFORE</text>
+    <rect class="n-box" x="16" y="36" width="280" height="64" rx="5"/>
+    <text class="t-b" x="30" y="60">A goal script, from a terminal</text>
+    <text class="t-s" x="30" y="78">dispatches and resumes once</text>
+    <text class="t-g" x="30" y="93">verdict log: not yet run on a real model</text>
+    <rect class="n-box" x="16" y="116" width="280" height="64" rx="5"/>
+    <text class="t-b" x="30" y="140">Codex package · one error mapping</text>
+    <text class="t-s" x="30" y="158">block · resume · onSession · handle</text>
+    <text class="t-s" x="30" y="173">a to-do list maps to a tool item</text>
+    <rect class="n-gone" x="16" y="196" width="280" height="56" rx="5"/>
+    <text class="t-b" x="30" y="220">No plan record for Codex</text>
+    <text class="t-s" x="30" y="238">and no app a person works in</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="336" y="24">AFTER · KITCHEN SINK, CODEX MODE</text>
+    <rect class="n-in" x="336" y="36" width="280" height="64" rx="5"/>
+    <text class="t-b" x="350" y="60">codex-session flow</text>
+    <text class="t-s" x="350" y="78">FIX-1915's factory · binding per turn</text>
+    <text class="t-s" x="350" y="93">workspace · stop · live items</text>
+    <rect class="n-new" x="336" y="116" width="280" height="80" rx="5"/>
+    <text class="t-b" x="350" y="140">The Codex block, options only</text>
+    <text class="t-s" x="350" y="158">its sandbox · no approval prompts</text>
+    <text class="t-s" x="350" y="173">in FIX-1915's working directory</text>
+    <text class="t-s" x="350" y="188">an allowlisted environment</text>
+    <rect class="n-new" x="336" y="212" width="280" height="64" rx="5"/>
+    <text class="t-b" x="350" y="236">Codex's own check</text>
+    <text class="t-s" x="350" y="254">pinned SDK · signed in · sandbox runs</text>
+    <text class="t-s" x="350" y="269">in FIX-1914's per-mode slot</text>
+    <path class="arr" d="M476 100 L476 116"/>
+  </g>
+
+  <g id="the-page">
+    <text class="t-lbl" x="656" y="24">WHAT A PERSON SEES</text>
+    <rect class="n-box" x="656" y="36" width="268" height="64" rx="5"/>
+    <text class="t-b" x="670" y="60">Turn 2 continues the thread</text>
+    <text class="t-s" x="670" y="78">same id · or refused, every turn</text>
+    <text class="t-s" x="670" y="93">a stopped turn stays continuable</text>
+    <rect class="n-box" x="656" y="116" width="268" height="56" rx="5"/>
+    <text class="t-b" x="670" y="140">Steps as Codex takes them</text>
+    <text class="t-s" x="670" y="158">a command shows when it starts</text>
+    <rect class="n-out" x="656" y="188" width="268" height="88" rx="5"/>
+    <text class="t-b" x="670" y="212">Plan panel</text>
+    <text class="t-s" x="670" y="230">"Codex reports no plan"</text>
+    <text class="t-s" x="670" y="248">its headless runs offer the model</text>
+    <text class="t-s" x="670" y="263">no plan tool at the pinned version</text>
+    <path class="arr" d="M616 68 L656 68"/>
+    <path class="arr" d="M616 156 L656 144"/>
+  </g>
+
+  <g id="foot">
+    <rect class="n-box" x="16" y="296" width="908" height="60" rx="5"/>
+    <text class="t-lbl" x="30" y="318">NOT IN THIS ISSUE</text>
+    <text class="t-s" x="30" y="338">A Codex plan writer: open question in DECISIONS.md · any other change to the Codex package (S5 maps one error) or its contract (epic ER-13)</text>
+    <text class="t-s" x="30" y="352">The picker and gate (FIX-1914) · the session flow, workspace and panel (FIX-1915)</text>
+  </g>
+</svg>

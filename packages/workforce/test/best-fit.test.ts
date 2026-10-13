@@ -35,13 +35,13 @@ const withSelf = (over: Partial<BestFitCase> = {}): BestFitCase => ({
 
 /** What the evaluator step leaves when the call answered. */
 const answered = (choice: unknown, confidence?: number) => ({
-  answers: { member: { type: "choice", choice, ...(confidence === undefined ? {} : { confidence }) } }
+  answers: { worker: { type: "choice", choice, ...(confidence === undefined ? {} : { confidence }) } }
 });
 
 describe("best fit's ladder (V1)", () => {
   it.each([
-    ["a delegate at the floor is used (BR-6)", withSelf(), answered("eng.em", 0.7), { by: "evaluated", member: "eng.em" }],
-    ["a delegate above the floor is used (BR-6)", withSelf(), answered("eng.lead", 0.95), { by: "evaluated", member: "eng.lead" }],
+    ["a delegate at the floor is used (BR-6)", withSelf(), answered("eng.em", 0.7), { by: "evaluated", worker: "eng.em" }],
+    ["a delegate above the floor is used (BR-6)", withSelf(), answered("eng.lead", 0.95), { by: "evaluated", worker: "eng.lead" }],
     [
       "a delegate below the floor is a miss, with the pick, its confidence and the floor (BR-8)",
       withSelf(),
@@ -70,38 +70,38 @@ describe("best fit's ladder (V1)", () => {
       "a below-floor miss goes to the fallback when it can be reached (BR-8)",
       withSelf({ fallback: "eng.lead" }),
       answered("eng.em", 0.2),
-      { by: "fallback", member: "eng.lead", miss: { kind: "below-floor", choice: "eng.em", confidence: 0.2, minConfidence: 0.7 } }
+      { by: "fallback", worker: "eng.lead", miss: { kind: "below-floor", choice: "eng.em", confidence: 0.2, minConfidence: 0.7 } }
     ],
     [
       "the coordinator's pick places it, and skips a reachable fallback (BR-7)",
       withSelf({ fallback: "eng.lead" }),
       answered("chief", 0.9),
-      { by: "coordinator", member: "chief", confidence: 0.9 }
+      { by: "coordinator", worker: "chief", confidence: 0.9 }
     ],
     [
       "the coordinator's pick is used below the floor (BR-11)",
       withSelf(),
       answered("chief", 0.12),
-      { by: "coordinator", member: "chief", confidence: 0.12 }
+      { by: "coordinator", worker: "chief", confidence: 0.12 }
     ],
-    ["the coordinator's pick is used with no confidence (BR-11)", withSelf(), answered("chief"), { by: "coordinator", member: "chief" }],
+    ["the coordinator's pick is used with no confidence (BR-11)", withSelf(), answered("chief"), { by: "coordinator", worker: "chief" }],
     [
       "with no floor, a delegate pick is used at any confidence (BR-10)",
       withSelf({ minConfidence: undefined }),
       answered("eng.em", 0.01),
-      { by: "evaluated", member: "eng.em" }
+      { by: "evaluated", worker: "eng.em" }
     ],
     [
       "with no floor, a delegate pick with no confidence is used (BR-10)",
       withSelf({ minConfidence: undefined }),
       answered("eng.em"),
-      { by: "evaluated", member: "eng.em" }
+      { by: "evaluated", worker: "eng.em" }
     ],
     [
       "a failed call goes down the ladder as today (BR-12)",
       withSelf({ fallback: "eng.lead" }),
       { failed: "gateway down" },
-      { by: "fallback", member: "eng.lead", miss: { kind: "evaluation-failed", message: "gateway down" } }
+      { by: "fallback", worker: "eng.lead", miss: { kind: "evaluation-failed", message: "gateway down" } }
     ],
     [
       "an answer that isn't a choice goes down the ladder as today (BR-12)",
@@ -119,7 +119,7 @@ describe("best fit's ladder (V1)", () => {
       "a holder takes the post, whatever the coordinator and the floor (BR-13)",
       withSelf({ held: "eng.lead" }),
       undefined,
-      { by: "held", member: "eng.lead" }
+      { by: "held", worker: "eng.lead" }
     ]
   ])("%s", (_name, bestFit, answer, placed) => {
     expect(placeBestFit(bestFit, answer)).toEqual(placed);
@@ -133,7 +133,7 @@ describe("best fit's ladder (V1)", () => {
   it("makes no call, and misses as today, when the coordinator is the only choice (BR-2)", () => {
     const described = withSelf({ reachable: ["eng.em"], options: { chief: "Hires." }, fallback: "eng.em" });
     expect(needsBestFitCall(described)).toBe(false);
-    expect(placeBestFit(described, undefined)).toEqual({ by: "fallback", member: "eng.em", miss: { kind: "none-described" } });
+    expect(placeBestFit(described, undefined)).toEqual({ by: "fallback", worker: "eng.em", miss: { kind: "none-described" } });
 
     const nobody = withSelf({ reachable: [], options: { chief: "Hires." } });
     expect(needsBestFitCall(nobody)).toBe(false);
@@ -142,9 +142,9 @@ describe("best fit's ladder (V1)", () => {
 
   it("places exactly as before for a caller that names no coordinator and no floor", () => {
     const plain: BestFitCase = { reachable: ["a", "b"], options: { a: "A.", b: "B." }, fallback: "b" };
-    expect(placeBestFit(plain, answered("a", 0.01))).toEqual({ by: "evaluated", member: "a" });
-    expect(placeBestFit(plain, answered("a"))).toEqual({ by: "evaluated", member: "a" });
-    expect(placeBestFit(plain, answered("z"))).toEqual({ by: "fallback", member: "b", miss: { kind: "not-an-option", choice: "z" } });
-    expect(placeBestFit(plain, { failed: "x" })).toEqual({ by: "fallback", member: "b", miss: { kind: "evaluation-failed", message: "x" } });
+    expect(placeBestFit(plain, answered("a", 0.01))).toEqual({ by: "evaluated", worker: "a" });
+    expect(placeBestFit(plain, answered("a"))).toEqual({ by: "evaluated", worker: "a" });
+    expect(placeBestFit(plain, answered("z"))).toEqual({ by: "fallback", worker: "b", miss: { kind: "not-an-option", choice: "z" } });
+    expect(placeBestFit(plain, { failed: "x" })).toEqual({ by: "fallback", worker: "b", miss: { kind: "evaluation-failed", message: "x" } });
   });
 });

@@ -281,12 +281,19 @@ export function sameSegment(a: string, b: string): boolean {
 }
 
 /**
- * Who a run belongs to. Both halves come from the request's resolved identity,
+ * Who a run belongs to. Every field comes from the request's resolved identity,
  * never from anything a caller supplies in a body.
  */
 export interface RunPrincipal {
   /** The authenticated user. */
   userId: string;
+  /**
+   * The organization the request was admitted under: the verified one, never a
+   * caller-supplied value. One person works in several organizations, and the
+   * filesystem and git do not partition by organization the way the run
+   * record does, so without it two of their runs on one host share a tree.
+   */
+  orgId: string;
   /** The tenant, on a multi-tenant deployment. */
   tenantId?: string;
 }
@@ -299,7 +306,10 @@ export interface RunPrincipal {
  * partitions them by principal for us. The filesystem and git partition nothing
  * — so unless the principal is in the path and in the branch, two users on one
  * host seeding the same issue-phase derive the *same* directory and the *same*
- * branch. The lock then serializes them rather than separating them: the second
+ * branch. So does one user working in two organizations, which is why the
+ * organization is a segment of its own: the tenant is optional and comes from
+ * a header, so it cannot stand in for the organization the request was
+ * admitted under. The lock then serializes them rather than separating them: the second
  * user's agent opens a tree holding the first user's commits and uncommitted
  * work, and a pull request on the shared branch can satisfy the second user's
  * completion check. One user's run reports success on another's work.
@@ -307,8 +317,11 @@ export interface RunPrincipal {
  * The invariant is **one job's state is isolated per principal**, and it ranges
  * over every store that job touches: collections, the filesystem, and git.
  */
-function principalSegments(principal: RunPrincipal): string[] {
-  return [tenantSegment(principal.tenantId), encodeSegment(principal.userId)];
+function principalSegments(location: RunLocation): string[] {
+  const { principal } = location;
+  return location.orgless === true
+    ? [tenantSegment(principal.tenantId), encodeSegment(principal.userId)]
+    : [tenantSegment(principal.tenantId), encodeSegment(principal.orgId), encodeSegment(principal.userId)];
 }
 
 /**
@@ -421,6 +434,15 @@ export interface RunLocation {
   epic: string;
   issue: string;
   phase: string;
+  /**
+   * Derive the place and branch without the organization, as they were
+   * derived before it was part of them. **Only for a run whose record already
+   * names that branch** ({@link locationFor} decides), so a run under way when
+   * the derivation changed keeps its tree, its commits and its uncommitted
+   * work. Never set it for a new run: it is the shape in which two
+   * organizations share one checkout.
+   */
+  orgless?: true;
 }
 
 /**
@@ -431,12 +453,33 @@ export interface RunLocation {
  */
 function locationSegments(location: RunLocation): string[] {
   return [
-    ...principalSegments(location.principal),
+    ...principalSegments(location),
     // The BOARD COLLECTION ID, not a bare epic name — it arrives already
     // joined, so it is checked as a finished identity rather than as a
     // component. See `assertDerivedIdentity`.
     assertDerivedIdentity("epic", location.epic),
   ];
+}
+
+/**
+ * The location a run works at, given the branch its run record already names.
+ *
+ * A run first opened before the organization was part of the derivation has
+ * that older branch on its record, and keeps it: deriving afresh would cut a
+ * new tree from the base and leave the run's work behind. Every other run,
+ * a new one included, derives with the organization.
+ *
+ * Reading the record here is safe as an isolation matter because the record
+ * is user-scoped, which the framework keeps per user AND organization: another
+ * organization's run never reads this one's record, so it never inherits the
+ * older place through it.
+ */
+export function locationFor(
+  location: Omit<RunLocation, "orgless">,
+  recordedBranch: string | null | undefined,
+): RunLocation {
+  const orgless: RunLocation = { ...location, orgless: true };
+  return recordedBranch != null && recordedBranch === branchFor(orgless) ? orgless : location;
 }
 
 /** The issue-phase leaf, shared by the path, the branch, and the board task id. */
@@ -552,8 +595,9 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
 /**
  * The workspace host a fixed repository runs through: `sourceRepo` is a
  * repository on this machine the operator named, so the host cuts worktrees
- * from it directly, keeps every run's branch in it, and reaches no remote.
- * The run source is constant.
+ * from it directly and keeps every run's branch in it. It reaches only the
+ * base's upstream, to cut a new branch from the newer of the two. The run
+ * source is constant.
  */
 export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
   // Absolute, because the host takes only an absolute path as a repository on

@@ -1,5 +1,5 @@
 /**
- * The live inventory's writer, on the real path: `openInventory` for the seat
+ * The live inventory's writer, on the real path: `openInventory` for the worker
  * rows, run through a flow that spreads `inventoryWriterActions()`.
  *
  * `inventory-collections.test.ts` covers the floor these rows land on — org
@@ -10,7 +10,7 @@
  * **Every assertion is paired with a control that would break it.** A row that
  * exists is only evidence of a writer if the same roster, in the same process,
  * produces no row when the writer is absent — so the off-state case runs the
- * identical roster through a kind that omits the writer. The reader is a flow
+ * identical roster through a flow that omits the writer. The reader is a flow
  * that is not the writer and declares its own collection instance, so nothing
  * here is green merely because the writer read back its own objects.
  */
@@ -20,25 +20,25 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import {
-  INVENTORY_REGISTER_SEATS,
-  INVENTORY_SEAT_WRITER_SESSION,
-  defineSeatInventoryCollection,
+  INVENTORY_REGISTER_WORKERS,
+  INVENTORY_WORKER_WRITER_SESSION,
+  defineWorkerInventoryCollection,
   inventoryWriterActions,
   openInventory,
   type InventoryBinding,
-  type InventorySeat
+  type InventoryWorker
 } from "../src/index";
 
 const USER_ID = "u_boot";
 const ORG_ID = DEFAULT_ORG_ID;
 const OTHER_ORG = "org_other";
 
-/** The kind carrying the seat writer. */
+/** The flow carrying the worker writer. */
 const WRITER_KIND = "inventory-writer";
-/** A kind that deliberately does NOT carry the inventory writer. */
-const SILENT_KIND = "silent";
+/** A flow that deliberately does NOT carry the inventory writer. */
+const SILENT_FLOW = "silent";
 
-/** A public action, so each kind is a flow a session can be opened on. */
+/** A public action, so each is a flow a session can be opened on. */
 const ping = {
   block: handler({
     name: "ping",
@@ -48,7 +48,7 @@ const ping = {
   })
 };
 
-/** The writer: one public no-op, and the seat write in `internal.actions`. */
+/** The writer: one public no-op, and the worker write in `internal.actions`. */
 const writerFlow = defineFlow({
   kind: WRITER_KIND,
   actions: { ping },
@@ -56,18 +56,18 @@ const writerFlow = defineFlow({
 } as never);
 
 /**
- * The control kind: identical to {@link writerFlow} but for the one line that
+ * The control flow: identical to {@link writerFlow} but for the one line that
  * carries the registration.
  *
  * It is a flow like any other — it simply has nowhere for the binder's run to
  * land. That is what makes "the row is there" an assertion about the writer
  * rather than about the roster.
  */
-const silentFlow = defineFlow({ kind: SILENT_KIND, actions: { ping } } as never);
+const silentFlow = defineFlow({ kind: SILENT_FLOW, actions: { ping } } as never);
 
 /**
  * The reader: a flow that is **not** the writer, declaring its own instance of
- * the seat collection.
+ * the worker collection.
  *
  * Its own instance on purpose. A collection is addressed by its pattern and
  * scope, and if that were not true this reader would come back empty — so
@@ -77,10 +77,10 @@ const silentFlow = defineFlow({ kind: SILENT_KIND, actions: { ping } } as never)
 const readInventory = handler({
   name: "read-inventory",
   inputSchema: z.object({}),
-  outputSchema: z.object({ seats: z.array(z.unknown()) }),
-  resources: { seats: defineSeatInventoryCollection() },
+  outputSchema: z.object({ workers: z.array(z.unknown()) }),
+  resources: { workers: defineWorkerInventoryCollection() },
   execute: async (_input: any, ctx: any) => ({
-    seats: (await ctx.resources.seats.list()).map((ref: any): unknown => ref.state)
+    workers: (await ctx.resources.workers.list()).map((ref: any): unknown => ref.state)
   })
 });
 
@@ -98,13 +98,13 @@ const readerFlow = defineFlow({
  * @param adapter Shared storage, so a second boot reads what the first wrote.
  */
 async function host(adapter: unknown = inMemoryStores()) {
-  const byKind: Record<string, any> = {
+  const byFlow: Record<string, any> = {
     [WRITER_KIND]: (writerFlow as any)(),
-    [SILENT_KIND]: (silentFlow as any)()
+    [SILENT_FLOW]: (silentFlow as any)()
   };
   const reader = (readerFlow as any)();
   const state = createFlowState({
-    flows: { ...byKind, [reader.kind]: reader },
+    flows: { ...byFlow, [reader.kind]: reader },
     stores: { default: { primary: adapter } }
   } as never);
   const runtime = await state.getRuntime();
@@ -115,7 +115,7 @@ async function host(adapter: unknown = inMemoryStores()) {
    * It REJECTS on a failed run, which is the contract `openInventory`'s
    * `run` states: the engine hands a refusal back as `{ error }` rather than
    * throwing, and a door that passed that through as an ordinary value would
-   * report every seat registered while writing nothing.
+   * report every worker registered while writing nothing.
    */
   const run = async (request: {
     action: string;
@@ -126,9 +126,9 @@ async function host(adapter: unknown = inMemoryStores()) {
     sessionId: string;
     source?: string;
   }): Promise<unknown> => {
-    const flow = byKind[request.flowKind];
+    const flow = byFlow[request.flowKind];
     if (flow === undefined) {
-      throw new Error(`no flow registered under kind "${request.flowKind}"`);
+      throw new Error(`no flow registered under flow kind "${request.flowKind}"`);
     }
     const result: any = await runAction({
       flow,
@@ -162,7 +162,7 @@ async function host(adapter: unknown = inMemoryStores()) {
         runtimeConfig: { ...runtime.runtimeConfig },
         ...opts
       } as never);
-      return (result.output ?? result) as { seats: any[] };
+      return (result.output ?? result) as { workers: any[] };
     },
     /** Every inventory key physically present in an org's storage. */
     keys: async (orgId: string = ORG_ID) =>
@@ -174,11 +174,11 @@ async function host(adapter: unknown = inMemoryStores()) {
       (await runtime.stores.resourceState.get("org", ORG_ID, key))?.state as
         | Record<string, unknown>
         | undefined,
-    /** Run an action on the writer kind the way a caller-addressed request would. */
+    /** Run an action on the writer flow the way a caller-addressed request would. */
     act: async (sessionId: string, actionName: string, input: unknown) => {
       try {
         return (await runAction({
-          flow: byKind[WRITER_KIND],
+          flow: byFlow[WRITER_KIND],
           actionName,
           input,
           userId: USER_ID,
@@ -195,44 +195,44 @@ async function host(adapter: unknown = inMemoryStores()) {
   };
 }
 
-const SEATS: InventorySeat[] = [
+const WORKERS: InventoryWorker[] = [
   { id: "eng.lead", kind: "agent", actions: {} },
   { id: "eng.coder", kind: "coder", actions: {} }
 ];
 
-/** The usual call: seats through the writer kind. */
+/** The usual call: workers through the writer flow. */
 function bind(
   lab: Awaited<ReturnType<typeof host>>,
   options: {
-    seats?: InventorySeat[];
+    workers?: InventoryWorker[];
     orgId?: string | undefined;
-    seatWriterKind?: string;
+    workerWriterFlow?: string;
   } = {}
 ): Promise<InventoryBinding> {
   return openInventory(
-    { seats: options.seats ?? SEATS },
+    { workers: options.workers ?? WORKERS },
     {
       run: lab.run as never,
       userId: USER_ID,
       orgId: "orgId" in options ? options.orgId : ORG_ID,
-      seatWriter: { flowKind: options.seatWriterKind ?? WRITER_KIND }
+      workerWriter: { flowKind: options.workerWriterKind ?? WRITER_KIND }
     }
   );
 }
 
 describe("what one boot writes", () => {
-  it("gives every seat a row, read back from a flow that is not the writer (BR-8, BR-14, BR-21)", async () => {
+  it("gives every worker a row, read back from a flow that is not the writer (BR-8, BR-14, BR-21)", async () => {
     const lab = await host();
     try {
       const result = await bind(lab);
       expect(result.problems).toEqual([]);
-      expect(result).toMatchObject({ seats: 2 });
+      expect(result).toMatchObject({ workers: 2 });
 
       const rows = await lab.read();
 
-      expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
-      // A seat whose actions declare no door is registered with none.
-      expect(rows.seats.find((row) => row.id === "eng.coder")).toEqual({
+      expect(rows.workers.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
+      // A worker whose actions declare no door is registered with none.
+      expect(rows.workers.find((row) => row.id === "eng.coder")).toEqual({
         id: "eng.coder",
         kind: "coder",
         door: null,
@@ -247,12 +247,12 @@ describe("what one boot writes", () => {
   it("puts the rows under the pinned storage keys (BR-16)", async () => {
     const lab = await host();
     try {
-      await bind(lab, { seats: [{ id: "eng.lead", kind: "agent", actions: {} }] });
+      await bind(lab, { workers: [{ id: "eng.lead", kind: "agent", actions: {} }] });
 
       // Read out of storage rather than through the collection, because what is
       // being pinned is the key an already-persisted org would have to keep.
-      expect(await lab.keys()).toEqual(["inventory/seats/eng.lead"]);
-      expect(await lab.row("inventory/seats/eng.lead")).toEqual({
+      expect(await lab.keys()).toEqual(["inventory/workers/eng.lead"]);
+      expect(await lab.row("inventory/workers/eng.lead")).toEqual({
         id: "eng.lead",
         kind: "agent",
         door: null,
@@ -298,12 +298,12 @@ describe("what the binder refuses to carry", () => {
     }
   });
 
-  it("refuses seats with no seatWriter, naming what to pass", async () => {
+  it("refuses workers with no workerWriter, naming what to pass", async () => {
     const lab = await host();
     try {
       await expect(
-        openInventory({ seats: SEATS }, { run: lab.run as never, userId: USER_ID, orgId: ORG_ID })
-      ).rejects.toThrow(/seatWriter/);
+        openInventory({ workers: WORKERS }, { run: lab.run as never, userId: USER_ID, orgId: ORG_ID })
+      ).rejects.toThrow(/workerWriter/);
       expect(await lab.keys()).toEqual([]);
     } finally {
       await lab.dispose();
@@ -319,7 +319,7 @@ describe("running it twice", () => {
     try {
       await bind(first);
       const keys = await first.keys();
-      expect(keys).toEqual(["inventory/seats/eng.coder", "inventory/seats/eng.lead"]);
+      expect(keys).toEqual(["inventory/workers/eng.coder", "inventory/workers/eng.lead"]);
 
       // Second run, same process, same roster: the red state is rows doubling.
       await bind(first);
@@ -328,33 +328,33 @@ describe("running it twice", () => {
       await first.dispose();
     }
 
-    // A second boot over the SAME storage, from a roster that lost a seat.
+    // A second boot over the SAME storage, from a roster that lost a worker.
     // Nothing is reconciled: a binder that dropped what its roster no longer
-    // names would take a live seat's row with it.
+    // names would take a live worker's row with it.
     const second = await host(adapter);
     try {
-      const result = await bind(second, { seats: [{ id: "eng.lead", kind: "agent", actions: {} }] });
+      const result = await bind(second, { workers: [{ id: "eng.lead", kind: "agent", actions: {} }] });
       expect(result.problems).toEqual([]);
 
       const rows = await second.read();
-      expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
+      expect(rows.workers.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
     } finally {
       await second.dispose();
     }
   });
 });
 
-describe("a seat writer kind that does not carry the writer", () => {
-  it("writes nothing and is named, where the kind that carries it writes (BR-13)", async () => {
-    // The control and the case are the same roster and the same code, one kind
+describe("a worker writer flow that does not carry the writer", () => {
+  it("writes nothing and is named, where the flow that carries it writes (BR-13)", async () => {
+    // The control and the case are the same roster and the same code, one flow
     // apart. Without the writer, there is no action to run, so the binder
     // reports the failure and no row exists anywhere.
     const off = await host();
     try {
-      const result = await bind(off, { seatWriterKind: SILENT_KIND });
-      expect(result.seats).toBe(0);
+      const result = await bind(off, { workerWriterKind: SILENT_FLOW });
+      expect(result.workers).toBe(0);
       expect(result.problems).toHaveLength(1);
-      expect(result.problems[0]).toContain("the seat rows could not be written");
+      expect(result.problems[0]).toContain("the worker rows could not be written");
       expect(await off.keys()).toEqual([]);
     } finally {
       await off.dispose();
@@ -372,21 +372,21 @@ describe("a seat writer kind that does not carry the writer", () => {
 });
 
 describe("the registration action itself", () => {
-  it("registerSeatsInInventory cannot be reached through the public door", async () => {
+  it("registerWorkersInInventory cannot be reached through the public door", async () => {
     const lab = await host();
     try {
       // `lab.act` dispatches exactly the way a caller-addressed HTTP/MCP
       // request would — no `source`, which resolves as `"http"` (public).
       // This action's whole input is the row data, so a public hit on it would
-      // let a caller write any seat it chose.
-      const attempt = await lab.act(INVENTORY_SEAT_WRITER_SESSION, INVENTORY_REGISTER_SEATS, {
-        seats: [{ id: "attacker.fake", kind: "agent" }]
+      // let a caller write any worker it chose.
+      const attempt = await lab.act(INVENTORY_WORKER_WRITER_SESSION, INVENTORY_REGISTER_WORKERS, {
+        workers: [{ id: "attacker.fake", kind: "agent" }]
       });
       expect(attempt.error).toBeDefined();
       expect(String((attempt.error as Error).message)).toContain(
-        `does not define action "${INVENTORY_REGISTER_SEATS}"`
+        `does not define action "${INVENTORY_REGISTER_WORKERS}"`
       );
-      expect(await lab.row("inventory/seats/attacker.fake")).toBeUndefined();
+      expect(await lab.row("inventory/workers/attacker.fake")).toBeUndefined();
     } finally {
       await lab.dispose();
     }

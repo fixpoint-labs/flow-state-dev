@@ -54,11 +54,11 @@ import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import { sessionIdOfFiling } from "@flow-state-dev/workforce/browser";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { LAB_ORG_ID, LAB_USER_ID } from "../../../packages/shift-manager/teams/devteam/host.mts";
-import { seatSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
+import { workerSessionId } from "../../../packages/shift-manager/teams/devteam/ask.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { SHIFT_MANAGER_COMMAND, servedAddresses } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { ASKER_KIND, heardLine } from "./lab/asker/asker.mts";
+import { ASKER_FLOW, heardLine } from "./lab/asker/asker.mts";
 import type { RecordedAttempt } from "./lab/recording-harness.mts";
 import { EM_ANSWER, ROWS, STORE_ENV } from "./lab/rows.mts";
 
@@ -397,9 +397,9 @@ await runGoal(async (failures) => {
   const devteam = await readDeclaredRoster(LABS.devteam.tree);
   const em = devteam.workers.find((w) => w.declared.flow === "em")!;
   // The rows are filed through the EM's own action, on its own session's board.
-  const where: Where = { sessionId: seatSessionId(em.id) };
+  const where: Where = { sessionId: workerSessionId(em.id) };
   // The asker lab's one worker on the asker kind; its coordinator, `desk.front`, is another worker file.
-  const asker = (await readDeclaredRoster(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_KIND)!;
+  const asker = (await readDeclaredRoster(LABS.asker.tree)).workers.find((w) => w.declared.flow === ASKER_FLOW)!;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const evidence: string[] = [];
@@ -451,7 +451,7 @@ await runGoal(async (failures) => {
     await leg("Inbox, EM door", async (fail) => {
       await open(page, served.devteam.origin, "/inbox");
       await page.getByTestId("inbox-item").first().click();
-      const emSession = seatSessionId(em.id);
+      const emSession = workerSessionId(em.id);
       const line = token("em");
       await page.getByTestId("inbox-reply-input").fill(line);
       const sent = await sendAndWatch(page, "inbox-reply", () => api.holds(emSession, "user", line));

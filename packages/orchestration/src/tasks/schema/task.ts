@@ -236,7 +236,7 @@ export const taskSchema = z.object({
    * **Written from inside the run.** The board's claim gate writes it in the
    * run's own session, through the claim-fenced `linkRun`, before the worker's
    * first step. Only the run knows for certain which session it landed in:
-   * that depends on the seat's session policy and on the conversation that
+   * that depends on the assignee's session policy and on the conversation that
    * drained the board, so nothing outside can rebuild it. Distinct from
    * `claimedBy`, which on a handed-off row names the *claiming* conversation.
    *
@@ -249,7 +249,7 @@ export const taskSchema = z.object({
    * **Client-visible**, unlike `claimedBy`: a UI opens the run from it. The
    * ids grant nothing; opening the session still passes the server's owner
    * check. The run's flow is not here: read it off the session (`flowId`),
-   * since a seat may hand off to another flow than the board's.
+   * since an assignee may hand off to another flow than the board's.
    *
    * Server-set: absent from `TaskInit` and every patch surface. **Absent on
    * rows stored before this shipped, on inline boards, and between a claim and
@@ -403,6 +403,30 @@ export const taskSchema = z.object({
    * cancel. **Absent reads as not owed** (BP-030).
    */
   cancelOwed: z.boolean().optional(),
+
+  /**
+   * The row is recorded but not dispatched (FIX-1875): written down, with its
+   * owner, and not to start until something dispatches it. The substrate's
+   * claim admission refuses such a row, so no board, dispatcher or row action
+   * claims it, whichever drains the collection. Cleared only by
+   * `TaskCollectionRef.dispatch`.
+   *
+   * Present only when true. **Absent means ready** (BP-030), so every row
+   * stored before this mark existed starts as it did. Top level and
+   * server-written for `abandonments`' reason (BP-031): it decides whether a
+   * row starts, so no caller-patchable surface reaches it.
+   */
+  undispatched: z.boolean().optional(),
+
+  /**
+   * The call that dispatched this row: the logical id of the tool call or
+   * action (FIX-1875). Written by `dispatch` in the same write that clears
+   * `undispatched`, or with the row when a dispatch files it ready, so the
+   * same call replayed after a crash finds its own write and answers as the
+   * first call did. **Absent** on every row no dispatch filed or readied
+   * (BP-030).
+   */
+  dispatchCall: z.string().optional(),
 
   createdAt: z.number(),
   updatedAt: z.number(),

@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: where FSD and Shift Manager live. Chosen: a dev profile of its own, beside DevTeam. Instead of: editing DevTeam&#x27;s default projects. It comes down to the first row, the goal checks that serve DevTeam&#x27;s config unedited: kept as they are, against at least two broken and rewritten. Second row, the price: two profiles on one team tree that can drift, against one. Third row: a fresh open shows only the two dev projects, against demo projects beside them or in their place. Locks in DevTeam served by --config and no child editing it. Flips if no goal check serves DevTeam&#x27;s config unedited."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Give shift-manager:dev a profile of its own, or change DevTeam&#x27;s projects?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">A dev profile of its own</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Edit DevTeam&#x27;s default projects</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">GOAL CHECKS THAT</text>
+    <text class="t-lbl" x="32" y="169">SERVE DEVTEAM</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Untouched</text>
+    <text class="t-s" x="248" y="179">five serve its config as it is</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">At least two break</text>
+    <text class="t-s" x="612" y="179">they read Storefront and its workstreams</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">PROFILES</text>
+    <text class="t-lbl" x="32" y="237">TO KEEP</text>
+    <text class="mark minus" x="228" y="226">−</text>
+    <text class="t-b" x="248" y="225">Two on one team tree</text>
+    <text class="t-s" x="248" y="243">they can drift apart</text>
+    <text class="mark plus" x="592" y="226">+</text>
+    <text class="t-b" x="612" y="225">One</text>
+    <text class="t-s" x="612" y="243">the dev Lab is the goal Lab</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">A FRESH</text>
+    <text class="t-lbl" x="32" y="295">OPEN SHOWS</text>
+    <text class="mark plus" x="228" y="284">+</text>
+    <text class="t-b" x="248" y="283">FSD and Shift Manager only</text>
+    <text class="t-s" x="248" y="301">no scratch repository</text>
+    <text class="mark minus" x="592" y="284">−</text>
+    <text class="t-b" x="612" y="283">Demo projects too, or rewritten</text>
+    <text class="t-s" x="612" y="301">or checks rewritten to match</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">DevTeam serves with --config</text>
+    <text class="t-s" x="32" y="389">no child edits it</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">No goal check serves DevTeam&#x27;s config</text>
+    <text class="t-s" x="494" y="389">then one profile is simpler</text>
+  </g>
+</svg>

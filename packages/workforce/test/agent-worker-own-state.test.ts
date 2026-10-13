@@ -3,7 +3,7 @@
  * V6: BR-9, BR-17, BR-18).
  *
  * Org scope is shared with every member of an org, so whatever a flow writes
- * there, every member's runs can read. The built-in `agent`'s own working
+ * there, every user's runs can read. The built-in `agent`'s own working
  * state, its skills drawer, belongs to the user the worker runs for. Graded on
  * the store after a real run, not on the flow's declaration: every write the
  * run makes is recorded with the scope it landed in.
@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 
 const ORG = "acme";
 const SKILL_MD = "---\nname: refunds\ndescription: How refunds work\n---\nRefunds take five days.";
@@ -19,7 +19,7 @@ const SKILL_MD = "---\nname: refunds\ndescription: How refunds work\n---\nRefund
 type Write = { scopeType: string; scopeId: string; key: string };
 
 async function runAs(users: readonly string[]): Promise<Write[]> {
-  const [seat] = mintSeats([
+  const [worker] = mintWorkers([
     {
       id: "support.otto",
       declared: {},
@@ -29,7 +29,7 @@ async function runAs(users: readonly string[]): Promise<Write[]> {
   ]);
   const writes: Write[] = [];
   const state = createFlowState({
-    flows: { [seat!.id]: seat! },
+    flows: { [worker!.id]: worker! },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {
@@ -49,7 +49,7 @@ async function runAs(users: readonly string[]): Promise<Write[]> {
     for (const user of users) {
       const result = await runAction({
         orgId: ORG,
-        flow: seat!,
+        flow: worker!,
         actionName: "run",
         input: { message: "how long do refunds take?" },
         userId: user,

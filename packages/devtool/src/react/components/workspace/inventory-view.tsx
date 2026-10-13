@@ -2,8 +2,8 @@
  * The Inventory tab — the organization's registered workers, read from one
  * session.
  *
- * Shown on any session whose flow declares the seat inventory as
- * browser-readable (a seat carrying the hire tools declares it). A flow that
+ * Shown on any session whose flow declares the worker inventory as
+ * browser-readable (a worker carrying the hire tools declares it). A flow that
  * does not declare it shows no tab, never an empty table.
  *
  * Every request — the manifest and every page of the collection — goes
@@ -25,17 +25,17 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Boxes } from "lucide-react";
 import { useDevTool } from "../../context/devtool-context";
-import { readEveryPage, seatInventoryRef, toSeatRow, type InventoryRead } from "../../lib/inventory";
+import { readEveryPage, workerInventoryRef, toWorkerRow, type InventoryRead } from "../../lib/inventory";
 import { TabsContent, TabsTrigger } from "../ui/tabs";
 
 /** The tab's value in the workspace `Tabs`. */
 const INVENTORY_TAB = "inventory";
 
-/** The seat inventory's ref, once the manifest says the tab belongs. `null` while loading, or when it does not. */
+/** The worker inventory's ref, once the manifest says the tab belongs. `null` while loading, or when it does not. */
 const InventoryContext = createContext<string | null>(null);
 
 /**
- * Read the session's resource manifest once and share the seat inventory's
+ * Read the session's resource manifest once and share the worker inventory's
  * ref. Renders its children immediately; the tab trigger and content appear
  * once the manifest says they belong.
  *
@@ -54,7 +54,7 @@ export function InventoryProvider({ sessionId, children }: { sessionId: string |
     resourceClient
       .getResourceManifest(sessionId)
       .then((manifest) => {
-        if (!cancelled) setRef(seatInventoryRef(manifest) ?? null);
+        if (!cancelled) setRef(workerInventoryRef(manifest) ?? null);
       })
       .catch(() => {
         if (!cancelled) setRef(null);
@@ -67,7 +67,7 @@ export function InventoryProvider({ sessionId, children }: { sessionId: string |
   return <InventoryContext.Provider value={ref}>{children}</InventoryContext.Provider>;
 }
 
-/** The tab's trigger, rendered only on a session that declares a readable seat inventory. */
+/** The tab's trigger, rendered only on a session that declares a readable worker inventory. */
 export function InventoryTabTrigger() {
   return useContext(InventoryContext) === null ? null : <TabsTrigger value={INVENTORY_TAB}>Inventory</TabsTrigger>;
 }
@@ -83,7 +83,7 @@ export function InventoryTabContent({ sessionId }: { sessionId: string | null })
   );
 }
 
-/** The seat section, for a session whose inventory ref is already known. */
+/** The worker section, for a session whose inventory ref is already known. */
 function InventoryView({ sessionId, inventoryRef }: { sessionId: string; inventoryRef: string }) {
   const { resourceClient } = useDevTool();
   const [read, setRead] = useState<InventoryRead | null>(null);
@@ -100,36 +100,36 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
   }, [resourceClient, sessionId, inventoryRef]);
 
   if (read === null) {
-    return <p className="p-3 text-xs text-slate-500">Reading the inventory…</p>;
+    return <p className="px-[18px] py-4 font-fs-mono text-[11.5px] text-fs-ink4">Reading the inventory…</p>;
   }
 
   return (
-    <div className="flex flex-col gap-3 p-3" data-inventory-view="">
-      <p className="text-[11px] text-slate-500">
+    <div className="flex flex-col gap-3.5 px-[18px] pt-4 pb-5" data-inventory-view="">
+      <p className="font-fs-mono text-[11.5px] leading-[1.6] text-fs-ink3">
         Everything registered in this session's organization. A row stays once it is written: a worker
         that was fired is still listed as registered.
       </p>
       {read.status === "loaded" && read.rows.length === 0 && (
-        <p className="rounded-md border border-slate-800 px-3 py-2 text-xs text-slate-300" role="status">
+        <p className="max-w-[560px] border border-dashed border-fs-ink/45 px-4 py-3 text-[13px] text-fs-ink2" role="status">
           Nothing is registered in this organization yet. An app registers its workers by calling{" "}
-          <code>openInventory</code> at boot.
+          <code className="font-fs-mono text-[12px] text-fs-ink">openInventory</code> at boot.
         </p>
       )}
 
-      <Section name="seats" title="Registered seats" read={read} noun="seats">
+      <Section name="workers" title="Registered workers" read={read} noun="workers">
         {(rows) => (
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-1.5 font-medium">Id</th>
-                <th className="py-1.5 pr-3 font-medium">Kind</th>
+              <tr className="border-b border-fs-ink/20 text-left font-fs-mono text-[10px] uppercase tracking-[.12em] text-fs-ink4">
+                <th className="px-3 py-[7px] font-medium">Id</th>
+                <th className="py-[7px] pr-3 font-medium">Kind</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(toSeatRow).map((seat) => (
-                <tr key={seat.id} className="border-b border-slate-800/50 align-top">
-                  <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">{seat.id}</td>
-                  <td className="py-1.5 pr-3 text-slate-300">{seat.kind ?? "unknown"}</td>
+              {rows.map(toWorkerRow).map((worker) => (
+                <tr key={worker.id} className="border-b border-fs-ink/12 align-top last:border-b-0 hover:bg-fs-ink/5">
+                  <td className="px-3 py-2 font-fs-mono text-[11.5px] text-fs-ink">{worker.id}</td>
+                  <td className="py-2 pr-3 font-fs-mono text-[11.5px] text-fs-ink2">{worker.kind ?? "unknown"}</td>
                 </tr>
               ))}
             </tbody>
@@ -141,7 +141,7 @@ function InventoryView({ sessionId, inventoryRef }: { sessionId: string; invento
 }
 
 /**
- * The seat section. Failed, empty and a table render three different ways,
+ * The worker section. Failed, empty and a table render three different ways,
  * and none of them as another.
  */
 function Section({
@@ -159,17 +159,17 @@ function Section({
 }) {
   return (
     <section
-      className="rounded-md border border-slate-800 bg-slate-900/40"
+      className="border border-fs-ink/30 bg-fs-card"
       data-inventory-section={name}
       data-inventory-status={read.status}
     >
-      <h3 className="flex items-center gap-1.5 border-b border-slate-800 px-3 py-2 text-xs font-medium text-slate-200">
-        <Boxes className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+      <h3 className="flex items-baseline gap-2 border-b border-fs-ink/20 px-3 py-2 font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">
+        <Boxes className="size-3 self-center text-fs-ink3" aria-hidden />
         {title}
-        {read.status === "loaded" && <span className="text-[10px] font-normal text-slate-500">{read.rows.length}</span>}
+        {read.status === "loaded" && <span className="font-normal tracking-normal text-fs-ink4">{read.rows.length}</span>}
       </h3>
       {read.status === "failed" ? (
-        <p className="px-3 py-2 text-xs text-rose-300" role="alert">
+        <p className="px-3 py-2 font-fs-mono text-[11.5px] leading-[1.6] text-fs-red" role="alert">
           {read.httpStatus === 403
             ? `The ${noun} read was refused (403): ${read.message}.`
             : read.httpStatus === 404
@@ -180,7 +180,7 @@ function Section({
           {" "}This is not an empty organization.
         </p>
       ) : read.rows.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-slate-500">No {noun} registered.</p>
+        <p className="px-3 py-2.5 font-fs-mono text-[11.5px] text-fs-ink4">No {noun} registered.</p>
       ) : (
         children(read.rows)
       )}

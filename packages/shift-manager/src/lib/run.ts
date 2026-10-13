@@ -4,17 +4,17 @@
  *
  * The row's run link names a session and a request, never a flow. The run's
  * flow is the one its session records as its owner (`flowId`), read once when
- * the task opens: a seat can hand its rows to another flow than the board's,
+ * the task opens: a worker can hand its rows to another flow than the board's,
  * and a flow-scoped route answers 404 for a request its flow does not own. So
  * the request's status, its live stream and the abort all go through that
  * flow, never the board's.
  *
  * Nothing here looks for a run any other way: no listing, no key rebuilt from
- * the task, no "latest session of this seat".
+ * the task, no "latest session of this worker".
  */
 import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
 import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
-import type { RequestStatus } from "@flow-state-dev/core/types";
+import { OBSERVED_PLAN, planKeySegment, type RequestStatus } from "@flow-state-dev/core/types";
 import type { LabClients } from "./connection";
 import { describeFailure, type Failure } from "./reads";
 
@@ -187,7 +187,7 @@ export async function interruptRun(
  * under, when it records them. Found in the run session's manifest by these
  * patterns; a flow that declares neither records neither.
  */
-const RECORDED = { plan: "observed-plan/**", files: "observed-file-ops/**" } as const;
+const RECORDED = { plan: `${OBSERVED_PLAN}/**`, files: "observed-file-ops/**" } as const;
 
 /** One step of the plan the run recorded. */
 export type PlanStep = { id: string; title: string; status: string | null };
@@ -223,7 +223,8 @@ export async function readRecordedWork(clients: LabClients, run: Pick<OpenRun, "
   const read = async (pattern: string) => {
     const ref = recordedRef(manifest, pattern);
     if (ref === undefined) return null;
-    const prefix = `${pattern.slice(0, -"/**".length)}/${run.requestId}/`;
+    // Escaped the way the recorder keys it, so a request id holding a `/` still selects its own rows.
+    const prefix = `${pattern.slice(0, -"/**".length)}/${planKeySegment(run.requestId)}/`;
     try {
       const page = await clients.resources.listCollectionItems(run.sessionId, ref, { limit: RECORDED_PAGE, topicPrefix: prefix });
       return { items: page.items, truncated: page.nextCursor != null };

@@ -1,11 +1,10 @@
 /**
- * `createWorkforceCapability` — the discovery door a workforce's seats read
+ * `createWorkforceCapability` — the discovery door a workforce's workers read
  * through.
  *
- * Compose it into a worker kind's `uses` and every seat of that kind gains one
+ * Compose it into a worker flow's `uses` and every worker on that flow gains one
  * tool: `discover`, which answers what is in scope for it right now. The
- * capability installs the workforce's own two domains (seats and mailboxes,
- * projected from the declared roster (files, and when asked the durable hired
+ * capability installs the workforce's own domain (workers, projected from the declared roster (files, and when asked the durable
  * roster) joined to FIX-1405's live inventory rows —
  * see `./manifest-sources`) and carries whatever other domains the app hands
  * it, so there is ONE registration point and one door rather than a second
@@ -14,15 +13,15 @@
  * ## What is a fence and what is a choice
  *
  * The **registry** is the fence, built once here from the sources the app
- * declared. It is the complete set of domains any seat of this kind can reach,
+ * declared. It is the complete set of domains any worker on this flow can reach,
  * and a domain that is not in it cannot be reached by naming it (BP-031).
  *
- * A **seat's own file** narrows that with `discover:` — a choice, resolved per
- * turn, that can only subtract. See `./seat-discovery`.
+ * A **worker's own file** narrows that with `discover:` — a choice, resolved per
+ * turn, that can only subtract. See `./worker-discovery`.
  *
- * The door is a `controlTool` rather than a catalog grant: a seat holds it
- * because its kind composed this capability at all, so there is nothing for a
- * `tools:` fence to check, and fencing it would leave a seat advertising a tool
+ * The door is a `controlTool` rather than a catalog grant: a worker holds it
+ * because its worker flow composed this capability at all, so there is nothing for a
+ * `tools:` fence to check, and fencing it would leave a worker advertising a tool
  * in its prompt it cannot call.
  *
  * ## What changed
@@ -48,7 +47,7 @@ import {
   type DeclaredWorkforce,
   type InventoryKeys,
 } from "./manifest-sources";
-import { narrowToSeatSelection, seatDiscoverSelection } from "./seat-discovery";
+import { narrowToWorkerSelection, workerDiscoverSelection } from "./worker-discovery";
 
 export interface WorkforceCapabilityOptions {
   /**
@@ -95,10 +94,10 @@ export interface WorkforceCapabilityOptions {
   /**
    * Removed (FIX-817). Nothing ever read it.
    *
-   * @deprecated Tool catalogs reach a worker kind through
+   * @deprecated Tool catalogs reach a worker flow through
    * `defineAgentWorkerFlow({ catalog })`.
    */
-  catalog?: "`catalog` was removed: it was never read. A tool catalog reaches a worker kind through defineAgentWorkerFlow({ catalog })";
+  catalog?: "`catalog` was removed: it was never read. A tool catalog reaches a worker flow through defineAgentWorkerFlow({ catalog })";
 }
 
 /**
@@ -114,9 +113,9 @@ export interface WorkforceCapabilityOptions {
 export function createWorkforceCapability(
   options: WorkforceCapabilityOptions,
 ): DefinedCapability {
-  // One registration point (tenet 5). The workforce's own two domains and the
+  // One registration point (tenet 5). The workforce's own domain and the
   // app's go into the same call, so a duplicate is refused in one place with
-  // both sites named rather than discovered when a seat asks.
+  // both sites named rather than discovered when a worker asks.
   const registry: ManifestRegistry = createManifestRegistry([
     ...workforceManifestSources({
       roster: options.roster,
@@ -125,24 +124,24 @@ export function createWorkforceCapability(
     ...(options.sources ?? []),
   ]);
 
-  // One door per distinct narrowing, built the first time a seat asks for it.
+  // One door per distinct narrowing, built the first time a worker asks for it.
   //
   // The resolver below runs on every render of the generator's bindings — once
   // before each step of a tool loop — and a registry is immutable, so what it
   // would build is the same object every time. A roster has few distinct
-  // `discover:` lists, so this is bounded by the kind rather than by traffic.
+  // `discover:` lists, so this is bounded by the roster rather than by traffic.
   // It caches the TOOL, never a domain's entries: a source is still called on
   // every `discover`, which is what "projected when asked" means.
   const doors = new Map<string, ReturnType<typeof discoveryTools>["discover"]>();
   const doorFor = (selection: readonly ManifestDomain[] | undefined) => {
-    // Sorted, because the key stands for a SET: a kind that writes
-    // `discover: [seats, mailboxes]` and one that writes `[mailboxes, seats]`
+    // Sorted, because the key stands for a SET: a worker that writes
+    // `discover: [workers, skills]` and one that writes `[skills, workers]`
     // narrow to the same door, and an order-sensitive key would build and hold
     // a second identical `discoveryTools` instance for the same scope.
     const key = selection === undefined ? "*" : [...selection].sort().join(",");
     let door = doors.get(key);
     if (door === undefined) {
-      door = discoveryTools(narrowToSeatSelection(registry, selection)).discover;
+      door = discoveryTools(narrowToWorkerSelection(registry, selection)).discover;
       doors.set(key, door);
     }
     return door;
@@ -153,22 +152,22 @@ export function createWorkforceCapability(
     presets: {
       /**
        * The door itself. On by default — composing this capability IS the
-       * declaration that a seat may ask what is around it, so there is nothing
+       * declaration that a worker may ask what is around it, so there is nothing
        * for a second switch to add. It is declared as a preset because that is
        * the only slot a capability has for a tool; an app that wants the
        * sources installed and the tool withheld turns it off here.
        */
       door: {
-        // Resolved per execution because the narrowing is per SEAT: a kind is
-        // built once and hired many times, so a seat's `discover:` cannot be
+        // Resolved per execution because the narrowing is per WORKER: a worker flow is
+        // built once and hired many times, so a worker's `discover:` cannot be
         // read where the registry is built. The work is one config read and a
         // map lookup — no source is touched until the model calls the tool.
         //
-        // A CONTROL rather than a catalog grant (FIX-1393): a seat holds it
-        // because its kind composed this capability, so there is nothing for a
-        // `tools:` fence to check, and fencing it would leave the seat
+        // A CONTROL rather than a catalog grant (FIX-1393): a worker holds it
+        // because its worker flow composed this capability, so there is nothing for a
+        // `tools:` fence to check, and fencing it would leave the worker
         // advertising a tool in its prompt that it cannot call.
-        controlTools: (ctx) => [doorFor(seatDiscoverSelection(ctx as unknown as BlockContext))],
+        controlTools: (ctx) => [doorFor(workerDiscoverSelection(ctx as unknown as BlockContext))],
       },
       default: ["door"],
     },

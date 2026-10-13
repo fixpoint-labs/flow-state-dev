@@ -1,12 +1,13 @@
 /**
- * Which harness this tree puts in the `coder` kind's slot when it is served
- * as the DevTeam team profile.
+ * Which harness this tree puts in the `coder` worker flow's slot when it is served
+ * as a team profile: DevTeam (`fsdev.config.mts`) or `fsd` (`fsd.fsdev.config.mts`).
  *
- *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start
+ *     DEVFORCE_LAB_HARNESS=stub pnpm --filter @flow-state-dev/shift-manager start
  *
- * Two choices, picked by {@link HARNESS_ENV} and nothing else:
+ * Two choices. Each profile names its default ({@link startHarness}); DevTeam's
+ * is `stub`, `fsd`'s is `claude-code`. {@link HARNESS_ENV} overrides it:
  *
- * - **`stub`** (the default): the lab's scripted run, no model. It says what it
+ * - **`stub`**: the lab's scripted run, no model. It says what it
  *   is doing in the run's session, then writes one file in its checkout and
  *   commits it, so the implement phase's done-condition (a commit the base ref
  *   does not have) is met and an approved row settles `completed`. It ends
@@ -18,18 +19,20 @@
  *   set up exactly as the honesty check (`it-commits-from-the-seats-own-file`)
  *   sets it up. Needs a signed-in SDK or an Anthropic key. Nothing falls back
  *   to the stub when it is not there: a run that quietly used the stub would be
- *   reported as a model's.
+ *   reported as a model's. At start, {@link startHarness} asks Claude Code for
+ *   an account (`probeClaudeAccount`) and refuses to start without one.
  *
  * An unknown value is refused at startup rather than read as the default.
+ * Either way, a start that goes ahead prints one line naming the coder.
  */
 
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import { claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
 import { harnessEnv } from "@flow-state-dev/core";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
-import { commitAll } from "./scratch-repo.mts";
+import { commitAll, hasChanges } from "./scratch-repo.mts";
 
 /** The environment variable that picks the harness. */
 export const HARNESS_ENV = "DEVFORCE_LAB_HARNESS";
@@ -86,6 +89,11 @@ const CLAUDE_CODE_PASS = [
   "NODE_EXTRA_CA_CERTS",
 ] as const;
 
+/** The environment a Claude Code run gets, and the one its account is probed with. */
+export function claudeCodeEnv(): Record<string, string> {
+  return harnessEnv({ pass: CLAUDE_CODE_PASS });
+}
+
 /**
  * Claude Code in the slot, as the honesty check runs it.
  *
@@ -98,7 +106,7 @@ const CLAUDE_CODE_PASS = [
 export function claudeCodeHarness(feeds: HarnessFeeds): HarnessBlock {
   return claudeCodeAgent({
     ...feeds,
-    env: harnessEnv({ pass: CLAUDE_CODE_PASS }),
+    env: claudeCodeEnv(),
     detached: true,
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
@@ -120,10 +128,18 @@ function rowLine(prompt: string): string {
  * What the scripted run does where it works: one file, committed when that is
  * a checkout. A project with no repository runs in its files (`workspace/`,
  * no git), where the file itself is the work and the manager saves it back.
+ *
+ * A retry runs in the checkout its first attempt left, where that attempt
+ * already committed this same file. With nothing new to commit, `git commit`
+ * fails, and that failure would replace why the first attempt was sent back
+ * (most often the judge's verdict). The commit is skipped instead: the
+ * attempt's work is already on the row's branch.
+ *
+ * @param run The attempt, as the stub hands it to `duringRun`.
  */
-function commitScriptedWork(run: StubRun): void {
+export function commitScriptedWork(run: StubRun): void {
   writeFileSync(join(run.cwd, "SCRIPTED-RUN.md"), `A scripted run, no model.\n\n${rowLine(run.prompt)}\n`);
-  if (existsSync(join(run.cwd, ".git"))) commitAll(run.cwd, "scripted run: note the row");
+  if (existsSync(join(run.cwd, ".git")) && hasChanges(run.cwd)) commitAll(run.cwd, "scripted run: note the row");
 }
 
 /**
@@ -155,7 +171,7 @@ export const CLAUDE_CODE_RUN_TIMEOUT_MS = 10 * 60_000;
 export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
   return harnessStub({
     steps: [
-      "Reading the seat's instructions, brief and conventions.",
+      "Reading the worker's instructions, brief and conventions.",
       "Planning the change for this row.",
       "Writing SCRIPTED-RUN.md in the checkout.",
       "Checking the checkout before committing.",
@@ -172,18 +188,21 @@ export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
  * Pick the harness from the environment.
  *
  * @param value The raw choice, `process.env[HARNESS_ENV]` by default. Empty or
- *   absent means `stub`.
+ *   absent means `defaultChoice`.
  * @param stepMs The stub's step pause, `process.env[STEP_MS_ENV]` by default.
  *   Empty or absent means {@link SCRIPTED_STEP_MS}.
- * @returns The chosen harness.
+ * @param defaultChoice The profile's coder when `value` names none; `stub` by default.
+ * @returns The chosen harness. No credential is checked here: a served Lab
+ *   starts through {@link startHarness}, which checks it.
  * @throws When the value names no harness this Lab can run, or `stepMs` is not
  *   a whole number of milliseconds.
  */
 export function selectHarness(
   value: string | undefined = process.env[HARNESS_ENV],
   stepMs: string | undefined = process.env[STEP_MS_ENV],
+  defaultChoice: HarnessChoice = "stub",
 ): SelectedHarness {
-  const choice = value === undefined || value.trim() === "" ? "stub" : value.trim();
+  const choice = value === undefined || value.trim() === "" ? defaultChoice : value.trim();
   switch (choice) {
     case "stub":
       return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: SCRIPTED_RUN_TIMEOUT_MS };
@@ -194,6 +213,56 @@ export function selectHarness(
         `${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`,
       );
   }
+}
+
+/** Options for {@link startHarness}. Each defaults to what a served Lab uses. */
+export interface StartHarnessOptions {
+  /** The raw choice; `process.env[HARNESS_ENV]` by default. */
+  value?: string | undefined;
+  /** The stub's step pause; `process.env[STEP_MS_ENV]` by default. */
+  stepMs?: string | undefined;
+  /** Asks Claude Code for an account; `probeClaudeAccount` over the run's own environment by default. */
+  probe?: () => Promise<ClaudeAccountProbe>;
+  /** Where the start line goes; stderr by default. */
+  log?: (line: string) => void;
+}
+
+/**
+ * Pick a served Lab's coder at start: {@link selectHarness} with the profile's
+ * default, then, on Claude Code, ask it for an account before the Lab listens.
+ *
+ * Two outcomes, run or refuse. With no account, or no Agent SDK, this throws a
+ * message naming what to set, and never hands back the scripted run instead.
+ * A start that goes ahead logs one line naming the coder.
+ *
+ * @param defaultChoice The profile's coder when {@link HARNESS_ENV} names none.
+ * @param options Seams for checks; a served Lab passes none.
+ * @returns The chosen harness.
+ * @throws When the choice is unknown, or Claude Code was chosen and has no
+ *   account or no SDK.
+ */
+export async function startHarness(defaultChoice: HarnessChoice, options: StartHarnessOptions = {}): Promise<SelectedHarness> {
+  const value = "value" in options ? options.value : process.env[HARNESS_ENV];
+  const stepMs = "stepMs" in options ? options.stepMs : process.env[STEP_MS_ENV];
+  const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
+  const harness = selectHarness(value, stepMs, defaultChoice);
+  if (harness.name === "stub") {
+    log(`Coder: the scripted run, no model (${HARNESS_ENV}=stub).`);
+    return harness;
+  }
+  const account = await (options.probe ?? (() => probeClaudeAccount({ env: claudeCodeEnv() })))();
+  if (account.status !== "account") throw new Error(refusalOf(account));
+  log(`Coder: Claude Code, on the credential from ${account.apiKeySource ?? account.tokenSource}.`);
+  return harness;
+}
+
+/** Why a Lab on Claude Code won't start, and what to set to start it. */
+function refusalOf(account: Exclude<ClaudeAccountProbe, { status: "account" }>): string {
+  const stub = `To run the scripted coder instead, which writes one file and needs no credential, set ${HARNESS_ENV}=stub.`;
+  if (account.status === "sdk-missing") {
+    return `The Claude Code Agent SDK is missing (${account.reason}), so this Lab's coder can't run. Install @anthropic-ai/claude-agent-sdk. ${stub}`;
+  }
+  return `${account.reason}, so this Lab's coder can't run. Sign in to Claude Code, or set ANTHROPIC_API_KEY, and start again. ${stub}`;
 }
 
 /** The step pause {@link STEP_MS_ENV} asks for, refused rather than guessed when malformed. */

@@ -21,6 +21,8 @@ export interface StepsRun {
   patches: string[];
   stores: Array<{ file: string; steps: string }>;
   ms: number;
+  /** The final run's legs: what each picked and made. */
+  legNotes?: string[];
 }
 
 export interface Report {
@@ -59,6 +61,7 @@ export function writeReport(scratch: string, r: Report): string {
       const f = run.facts;
       out.push(`Held out: word \`${f.word}\`; standard worker ${f.standard === undefined ? "none picked" : `\`${f.standard.id}\` on \`${f.standard.flow}\``}; Alice's worker ${f.aliceWorker === undefined ? "none made" : `\`${f.aliceWorker}\``}; Bob's ${f.bobWorker === undefined ? "none made" : `\`${f.bobWorker}\``}; made through ${f.madeThrough ?? "no action"}.`, "");
     }
+    for (const facts of run.legNotes ?? []) out.push(`Held out: \`${facts.slice(0, 1500)}\``, "");
     for (const boot of run.record.boots) out.push(`- boot "${boot.label}": \`${boot.config}\`, ${Math.round(boot.ms / 1000)} s`);
     out.push("", "| Step | Verdict | Surface | What it showed |", "|---|---|---|---|");
     for (const [id, e] of run.record.steps) out.push(`| ${id} | ${e.verdict} | ${[...e.surfaces].join(", ")} | ${cell(e.notes.join(" · ")).slice(0, 4000)} |`);

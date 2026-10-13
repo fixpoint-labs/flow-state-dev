@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/workforce",
   "version": "0.3.0",
-  "description": "The seat factory for flow-state-dev: worker records become configured flow instances.",
+  "description": "The worker factory for flow-state-dev: worker records become configured workers.",
   "keywords": [
     "ai",
     "agents",
@@ -101,7 +101,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",
-    "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json",
+    "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json && tsc -p tsconfig.test-d-strict.json",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."

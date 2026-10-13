@@ -1,7 +1,11 @@
 /**
  * The DevForce Lab's chief of staff and a project's repository: whichever way
- * it writes one, at create or later, it waits for a person in Inbox first.
+ * it writes one, at create or later, it waits for a user in Inbox first.
  * Approve writes it; Deny writes nothing.
+ *
+ * A project's own coordinator manages the project it runs: it sets the
+ * brief, and the repository through the same Inbox ask, without naming the
+ * project, and never changes another project.
  *
  * The Lab is opened the way DevTeam's config opens it, with its default
  * projects. The chief of staff's model is scripted to make one tool call, so
@@ -14,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FlowInstance, GeneratorModel, ModelResolver, SuspensionRecord } from "@flow-state-dev/core/types";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { selectHarness } from "../teams/devteam/harness.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 
@@ -43,7 +48,13 @@ function scripted(call: { toolName: string; args: Record<string, unknown> }): Mo
       return { toolCalls: [{ toolCallId: "t1", ...call }], finishReason: "tool-calls" };
     },
   };
-  return Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
+  // Best fit's question goes unanswered (the evaluator, too, has no model here),
+  // so the post reaches the chief of staff's own turn, which makes the call.
+  const resolve = (_id: string, blockName?: string): GeneratorModel => {
+    if (blockName === "coordinator-route-ask") throw new Error("no route model in this test");
+    return model;
+  };
+  return Object.assign(resolve, { resolveId: (id: string) => id }) as unknown as ModelResolver;
 }
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
@@ -62,23 +73,41 @@ async function open(): Promise<Lab> {
     harness: harness.slot,
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: mkdtempSync(join(tmpdir(), "devteam-repository-ask-")), remotes: { allow: ["file"] } },
-    coderSeatId: "eng.coder",
+    coderWorkerId: "eng.coder",
     inventory: true,
-    projects: [{ id: "storefront", title: "Storefront", repository: FIRST }],
+    projects: [
+      { id: "storefront", title: "Storefront", repository: FIRST },
+      { id: "billing", title: "Billing", brief: "Take payments." },
+    ],
   });
   return opened;
 }
 
-/** Ask the chief of staff, as the Lab's owner, with a model that makes `call`. */
-async function run(lab: Lab, call: ToolCall, message: string) {
+/** Open a session on the coordinator flow as the Lab's owner. */
+async function openSession(lab: Lab, sessionId: string, state: Record<string, unknown>): Promise<string> {
+  const opened = await lab.door("POST", `${COS_FLOW}/sessions`, { body: { userId: LAB_USER_ID, sessionId, state } });
+  expect(opened.status).toBe(201);
+  return sessionId;
+}
+
+/** The Lab owner's coordinator for one shared project: its derived session, linked to the project. */
+async function projectCoordinator(lab: Lab, id: string): Promise<string> {
+  const projectId = { visibility: "shared" as const, id };
+  const sessionId = await deriveWorkerSessionId({
+    userId: LAB_USER_ID,
+    orgId: LAB_ORG_ID,
+    flow: COS_FLOW,
+    criteria: { worker: "project-coordinator", projectId },
+  });
+  return openSession(lab, sessionId, { workerId: "project-coordinator", projectId: `shared/${id}` });
+}
+
+/** Ask a coordinator, as the Lab's owner, with a model that makes `call`: the chief of staff unless `session` names another's open session. */
+async function run(lab: Lab, call: ToolCall, message: string, session?: string) {
   const runtime = await lab.state.getRuntime();
   model = scripted(call);
-  // A conversation with the chief of staff: a session on its flow, naming it.
-  const sessionId = `s-cos-${globalThis.crypto.randomUUID()}`;
-  const opened = await lab.door("POST", `${COS_FLOW}/sessions`, {
-    body: { userId: LAB_USER_ID, sessionId, state: { workerId: COS } },
-  });
-  expect(opened.status).toBe(201);
+  // A conversation with the chief of staff, unless named: a session on its flow, naming it.
+  const sessionId = session ?? (await openSession(lab, `s-cos-${globalThis.crypto.randomUUID()}`, { workerId: COS }));
   return await runAction({
     orgId: LAB_ORG_ID,
     flow: runtime.registry.get(COS_FLOW) as FlowInstance,
@@ -91,10 +120,15 @@ async function run(lab: Lab, call: ToolCall, message: string) {
   } as never);
 }
 
-/** Ask the chief of staff, as the Lab's owner, and return its request and the one approval it raised. */
-async function ask(lab: Lab, call: ToolCall, message: string): Promise<{ requestId: string; suspension: SuspensionRecord }> {
+/** Ask a coordinator, as the Lab's owner, and return its request and the one approval it raised. */
+async function ask(
+  lab: Lab,
+  call: ToolCall,
+  message: string,
+  session?: string,
+): Promise<{ requestId: string; suspension: SuspensionRecord }> {
   const runtime = await lab.state.getRuntime();
-  const started = await run(lab, call, message);
+  const started = await run(lab, call, message, session);
   expect((await runtime.stores.request.get(started.requestId!))?.status).toBe("suspended");
   const pending = (await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[];
   expect(pending).toHaveLength(1);
@@ -118,16 +152,16 @@ async function answer(lab: Lab, asked: { requestId: string; suspension: Suspensi
 }
 
 /** The stored project rows, by id. */
-async function projects(lab: Lab): Promise<Record<string, { repository?: string | null }>> {
+async function projects(lab: Lab): Promise<Record<string, { repository?: string | null; brief?: string | null }>> {
   const rows = await lab.stored("org", "");
   return Object.fromEntries(
     Object.entries(rows)
       .filter(([key]) => /(^|\/)projects\/[^/]+$/.test(key))
-      .map(([key, state]) => [key.slice(key.lastIndexOf("/") + 1), state as { repository?: string | null }]),
+      .map(([key, state]) => [key.slice(key.lastIndexOf("/") + 1), state as { repository?: string | null; brief?: string | null }]),
   );
 }
 
-describe("the chief of staff's repository writes wait for a person", () => {
+describe("the chief of staff's repository writes wait for a user", () => {
   it("setRepository: nothing changes while it waits or on Deny; Approve writes it", async () => {
     const lab = await open();
     const call = { toolName: "setRepository", args: { project: { visibility: "shared", id: "storefront" }, repository: ASKED } };
@@ -161,7 +195,16 @@ describe("the chief of staff's repository writes wait for a person", () => {
     expect((await projects(lab)).notes).toMatchObject({ repository: null });
   }, 120_000);
 
-  it("shows a person the remote without a password it carries", async () => {
+  it("setRepository naming no project asks nothing and writes nothing: its conversation is no project's", async () => {
+    const lab = await open();
+    const done = await run(lab, { toolName: "setRepository", args: { repository: ASKED } }, "move it to the new repository");
+    const runtime = await lab.state.getRuntime();
+    expect(await runtime.stores.suspensions.list({ status: "pending" })).toHaveLength(0);
+    expect(JSON.stringify(done)).toContain("no-such-project");
+    expect((await projects(lab)).storefront?.repository).toBe(FIRST);
+  }, 120_000);
+
+  it("shows a user the remote without a password it carries", async () => {
     const lab = await open();
     const asked = await ask(
       lab,
@@ -174,14 +217,62 @@ describe("the chief of staff's repository writes wait for a person", () => {
   }, 120_000);
 });
 
+describe("a project's coordinator manages its own project", () => {
+  const BRIEF = "Ship guest checkout before the holidays.";
+
+  it("sets the brief at once, without naming the project", async () => {
+    const lab = await open();
+    const session = await projectCoordinator(lab, "storefront");
+    const done = await run(lab, { toolName: "setBrief", args: { brief: BRIEF } }, "make the brief: ship guest checkout", session);
+    expect(done.error).toBeUndefined();
+    expect((await projects(lab)).storefront?.brief).toBe(BRIEF);
+    const runtime = await lab.state.getRuntime();
+    expect(await runtime.stores.suspensions.list({ status: "pending" })).toHaveLength(0);
+  }, 120_000);
+
+  it("sets the repository after the user approves it in Inbox; Deny changes nothing", async () => {
+    const lab = await open();
+    const call = { toolName: "setRepository", args: { repository: ASKED } };
+    const session = await projectCoordinator(lab, "storefront");
+    const asked = await ask(lab, call, "move storefront to the new repository", session);
+    expect(asked.suspension.message).toBe(`Set the repository of project "storefront" to ${ASKED}?`);
+    expect((await projects(lab)).storefront?.repository).toBe(FIRST);
+    await answer(lab, asked, "reject");
+    expect((await projects(lab)).storefront?.repository).toBe(FIRST);
+
+    const again = await ask(lab, call, "move storefront to the new repository", session);
+    await answer(lab, again, "approve");
+    expect((await projects(lab)).storefront?.repository).toBe(ASKED);
+  }, 120_000);
+
+  it("never changes another project's brief", async () => {
+    const lab = await open();
+    const session = await projectCoordinator(lab, "storefront");
+    const call = { toolName: "setBrief", args: { project: { visibility: "shared", id: "billing" }, brief: BRIEF } };
+    await run(lab, call, "rewrite billing's brief", session);
+    expect((await projects(lab)).billing?.brief).toBe("Take payments.");
+  }, 120_000);
+
+  it("never asks to set another project's repository: the write it would approve is refused", async () => {
+    const lab = await open();
+    const session = await projectCoordinator(lab, "storefront");
+    const call = { toolName: "setRepository", args: { project: { visibility: "shared", id: "billing" }, repository: ASKED } };
+    const done = await run(lab, call, "point billing at the new repository", session);
+    const runtime = await lab.state.getRuntime();
+    expect(await runtime.stores.suspensions.list({ status: "pending" })).toHaveLength(0);
+    expect(JSON.stringify(done)).toContain("other-project");
+    expect((await projects(lab)).billing?.repository ?? null).toBeNull();
+  }, 120_000);
+});
+
 describe("the chief of staff's roster writes", () => {
-  /** The person's own workers, by id, as their roster holds them. */
+  /** The user's own workers, by id, as their roster holds them. */
   async function roster(lab: Lab): Promise<string[]> {
     const rows = await lab.stored("user", "workforce/workers/");
     return Object.keys(rows).map((key) => key.slice("workforce/workers/".length)).sort();
   }
 
-  it("hires a worker of the person's own at once; a fire waits for them, Deny keeps it, Approve removes it", async () => {
+  it("hires a worker of the user's own at once; a fire waits for them, Deny keeps it, Approve removes it", async () => {
     const lab = await open();
     const hired = await run(lab, { toolName: "hire", args: { id: "helper", flow: "agent" } }, "hire me a helper");
     expect(hired.error).toBeUndefined();

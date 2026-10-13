@@ -1,10 +1,10 @@
 /**
- * The `em` worker kind — one file under `workforce/flows/workers/`, basename =
- * the kind id every coordinating `WORKER.md` names in its `flow:` line.
+ * The `em` worker flow — one file under `workforce/flows/workers/`, basename =
+ * the flow name every coordinating `WORKER.md` names in its `flow:` line.
  *
- * **This kind declares no harness slot, and that is the point.** "The EM
+ * **This worker flow declares no harness slot, and that is the point.** "The EM
  * does no harness work" is a locked DevForce opinion, and it is graded on the
- * kind rather than on behaviour: there is no `task:` entry here and no option
+ * worker flow rather than on behaviour: there is no `task:` entry here and no option
  * through which one could be installed, so the worker cannot run a coding
  * harness — not merely "it happened not to". Search this file for the word
  * harness and the only hits are in this paragraph.
@@ -21,7 +21,7 @@
  * Two ways a task gets filed:
  *
  * - **The turn**: a model, with the nine task tools and the lead's
- *   `updateWorkstream`. It takes a person's line, the project coordinator's
+ *   `updateWorkstream`. It takes a user's line, the project coordinator's
  *   delegated post, and each task's notice. Its own file tells it to name the
  *   feature's `issue` and `phase` on every coder task: a task naming both is
  *   feature work and must end in a commit.
@@ -30,12 +30,12 @@
  *   judgement. They file through the same board, one row per feature, under
  *   the feature's canonical id so a second filing finds the first.
  *
- * Every EM worker runs on this kind's one copy. A session names its worker
+ * Every EM worker runs on this worker flow's one copy. A session names its worker
  * (`installation.session()`), and a block reads that worker's own settings
  * through the installation, never `ctx.flow.config`.
  *
  * Nothing under `flows/` is read as a convention file — the loader walks
- * `workers/`, `skills/`, `resources/` and `mailboxes/` and ignores the rest
+ * `workers/`, `skills/` and `resources/` and ignores the rest
  * (BR-16), which is why the code side of the fence can sit inside the tree.
  */
 
@@ -62,12 +62,12 @@ import {
   ASK_ENTRY,
   defineReadOwnFacts,
   INSPECT_ENTRY,
-  seatOf,
-  seatSettingsSchema,
-} from "../../../seat-config.mts";
+  workerOf,
+  workerSettingsSchema,
+} from "../../../worker-config.mts";
 
-/** The kind id the coordinating `WORKER.md` names. **Pinned** — the basename must match. */
-export const EM_KIND = "em";
+/** The flow name the coordinating `WORKER.md` names. **Pinned** — the basename must match. */
+export const EM_FLOW = "em";
 
 /** The action that turns one feature into one row on the session's board. */
 export const FILE_ENTRY = "file";
@@ -76,7 +76,7 @@ export const FILE_ENTRY = "file";
 export const DRAIN_ENTRY = "drain";
 
 /**
- * The worker's door: the action a person's own line in the EM's session
+ * The worker's door: the action a user's own line in the EM's session
  * reaches. Every worker flow has exactly one. The turn answers it.
  */
 export const MESSAGE_ENTRY = "message";
@@ -116,7 +116,7 @@ export const fileInputSchema = z.object({
 export const askInputSchema = z.object({
   /** The row's identity, as {@link fileInputSchema} takes it. */
   issue: z.string().min(1),
-  /** What the row is, in a sentence. Named in the ask so a person knows what they approve. */
+  /** What the row is, in a sentence. Named in the ask so a user knows what they approve. */
   goal: z.string().min(1),
   /** The project the row's coding run works in, as {@link fileInputSchema} takes it. */
   project: projectAddressSchema.optional(),
@@ -140,7 +140,7 @@ interface EmSettings {
 }
 
 export interface EmWorkerFlowOptions {
-  /** The installation whose workers run on this kind, and whose delegates take its tasks. */
+  /** The installation whose workers run on this worker flow, and whose delegates take its tasks. */
   installation: WorkerInstallation;
   /**
    * The worker the lab's doors file a feature for: a delegate of the EM that
@@ -158,21 +158,21 @@ export interface EmWorkerFlowOptions {
   /**
    * **Control only.** The asking door files its row *before* it suspends, so
    * a row exists while the ask is still pending. The red state of "nothing is
-   * filed until a person approves"; never set outside a goal control.
+   * filed until a user approves"; never set outside a goal control.
    */
   fileBeforeAsking?: boolean;
 }
 
 /**
- * Build the coordinating kind.
+ * Build the coordinating worker flow.
  *
  * @param options The installation, the coder worker, the documents and the tool catalog.
  * @returns The flow factory `hireWorkforce` registers one copy of, which every EM worker runs on.
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const { installation } = options;
-  const readOwnFacts = defineReadOwnFacts(seatOf(installation, EM_KIND));
-  const kit = defineSessionBoard({ installation, flowKind: EM_KIND });
+  const readOwnFacts = defineReadOwnFacts(workerOf(installation, EM_FLOW));
+  const kit = defineSessionBoard({ installation, flowKind: EM_FLOW });
   const toolNames = Object.keys(options.catalog);
   const settingsOf = (ctx: BlockContext): EmSettings => workerConfigOf(ctx) as EmSettings;
 
@@ -194,7 +194,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     ],
     model: (_input: unknown, ctx: BlockContext) => {
       const model = settingsOf(ctx).model;
-      if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).seatId}" names no \`model:\`, so its turn has nothing to run on.`);
+      if (model === undefined) throw new Error(`EM worker "${workerConfigOf(ctx).workerId}" names no \`model:\`, so its turn has nothing to run on.`);
       return model;
     },
     tools: (_input: unknown, ctx: BlockContext) => (settingsOf(ctx).tools ?? []).map((name) => options.catalog[name]!),
@@ -205,7 +205,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
    * Put one feature on the session's board, idempotently.
    *
    * Shared by the lab's doors rather than written per door: what a row IS
-   * does not depend on whether a caller handed it over or a person approved
+   * does not depend on whether a caller handed it over or a user approved
    * an ask. A feature already on the board, by its issue, is found rather
    * than filed again, so the same work never runs twice. The board mints the
    * row's id. The TYPED payload carries the issue and the phase, never
@@ -336,15 +336,15 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     inputSchema: z.unknown(),
     outputSchema: z.object({ worker: z.string() }),
     resources: { ...installation.resources },
-    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, EM_KIND)).id }),
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, EM_FLOW)).id }),
   });
 
   return defineFlow({
-    kind: EM_KIND,
-    // Registered once, at its kind; every EM worker's session runs on it.
+    kind: EM_FLOW,
+    // Registered once, under its flow name; every EM worker's session runs on it.
     cardinality: "collection",
     // A worker's `model:` and the tools its `tools:` line names from the catalog.
-    configSchema: seatSettingsSchema().extend({
+    configSchema: workerSettingsSchema().extend({
       model: z.string().min(1).optional(),
       tools: z.array(toolNames.length > 0 ? z.enum(toolNames as [string, ...string[]]) : z.never()).optional(),
     }),
@@ -365,7 +365,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       [ASK_ENTRY]: {
         block: askToFile,
         durable: true,
-        description: "Ask a person before filing one feature; on approval, file it and run the board.",
+        description: "Ask a user before filing one feature; on approval, file it and run the board.",
       },
       [INSPECT_ENTRY]: {
         block: readOwnFacts,
@@ -375,7 +375,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         block: turn,
         inputSchema: z.object({ message: z.string() }),
         userMessage: (input: { message: string }) => input.message,
-        description: "A person's line, which the EM answers, filing the coder's tasks it calls for.",
+        description: "A user's line, which the EM answers, filing the coder's tasks it calls for.",
       },
       // The nine task actions and the four delegate actions.
       ...kit.actions,

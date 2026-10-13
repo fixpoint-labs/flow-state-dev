@@ -2,7 +2,7 @@
  * An app's own worker flow files for its worker's delegates (FIX-1802 S1, V1
  * and the goal's leg b): the flow carries the session board's three parts
  * (the tools on its model block, the actions, the entries), keeps its own
- * kind, and its workers file exactly as an `agent` worker does.
+ * `kind`, and its workers file exactly as an `agent` worker does.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, generator, handler } from "@flow-state-dev/core";
@@ -27,7 +27,7 @@ const TASK_TOOLS = (() => {
 
 const doorInput = z.object({ message: z.string() });
 
-/** An app's worker flow, `em`, carrying the session board: its own kind and its own settings. */
+/** An app's worker flow, `em`, carrying the session board: its own `kind` and its own settings. */
 function emFlow(installation: WorkerInstallation) {
   const board = defineSessionBoard({ installation, flowKind: "em" });
   const resolveWorker = handler({
@@ -91,7 +91,7 @@ async function emSession(h: BoardHost, userId: string, workerId: string): Promis
 }
 
 const file = async (h: BoardHost, userId: string, sessionId: string, input: Record<string, unknown>) => {
-  const result = await h.act(userId, sessionId, "addTask_tasks", input, "em");
+  const result = await h.act(userId, sessionId, "dispatchTask_tasks", input, "em");
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -126,7 +126,7 @@ describe("a worker on an app's own flow files for its delegates (S1, the goal's 
           called = true;
           return true;
         },
-        then: { toolCalls: [{ toolCallId: "em-1", toolName: "addTask", args: { goal: "Ship the build", assignee: "otto" } }] }
+        then: { toolCalls: [{ toolCallId: "em-1", toolName: "dispatchTask", args: { goal: "Ship the build", assignee: "otto" } }] }
       },
       { when: () => true, then: { text: "OK." } }
     ] as never[]);

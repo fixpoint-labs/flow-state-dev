@@ -5,9 +5,9 @@ description: "The main terms in flow-state.dev, the package each comes from, and
 
 # Glossary
 
-flow-state.dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers and mailboxes out of flows and sessions, and Shift Manager is an app that reads what Workforce writes.
+flow-state.dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers, coordinators and projects out of flows, sessions and resources, and Shift Manager is an app that reads what Workforce writes.
 
-Most terms higher up are a lower term with a name and a rule added. A worker is a flow instance. A mailbox is a session. A project is one row of a resource collection. The Built from column tells you where each term's data lives.
+Most terms higher up are a lower term with a name and a rule added. A worker is a resource one user owns, naming the flow that runs it. A coordinator is a worker. A project is one row of a resource collection. The Built from column tells you where each term's data lives.
 
 Most terms link to their full page.
 
@@ -51,6 +51,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Harness block** | core | The shape every coding-agent block shares: it takes a prompt and returns a handle with an outcome, a final message, usage and cost. Claude Code, Codex and Cursor each ship one. See [Coding agents](./tools/coding-agents.md). | Block |
 | **Suspension** | core | A run that stops to wait for a person's approval or answer, then resumes where it stopped. | Item, session |
 | **Principal** | core | The verified caller of a request: a `userId` and an `orgId`. If you don't configure `resolvePrincipal`, every request runs in a built-in development organization. See [Authentication](./server/authentication.md). | None |
+| **User** | core | A person, signed in, always inside one org. Every action is taken by one user. The framework has no system users: an app can make one, and to the framework it is just another user. | Principal |
 
 ### Engine
 
@@ -76,7 +77,8 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Task collection** | orchestration | Where tasks are kept, with one API (add, claim, complete, fail, park) whichever store backs it. | State, or a resource collection |
 | **Task board** | orchestration | `taskBoard()`: drains a task collection with a pool of workers, holding back tasks whose dependencies aren't done. See [Task board](./orchestration/task-board.md). | Sequencer, task collection, capability |
 | **Board worker** | orchestration | A block that runs one claimed task. | Block |
-| **Assignee** | orchestration | A task's routing key into the board's workers. A task with no matching worker goes to the default worker, or fails. | None |
+| **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or hands it off to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
+| **Hand-off** | orchestration | Work leaves the current request for another session, and exactly one answer comes back later. A task whose assignee hands it off is one: the board tracks it until it's done. In Workforce, a hand-off to one of your workers is a delegation. | Dispatch, task |
 | **Dispatcher** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass in a classifier or event dispatcher. | Task collection |
 | **Goal-seek loop** | orchestration | Drains a board, asks a judge whether the goal is met, replans, and drains again. See [Goal-seek loop](./orchestration/goal-seek-loop.md). | Task board, sequencer |
 | **Flow policy** | orchestration | Which earlier tasks' results a worker sees. See [Flow policy](./orchestration/flow-policy.md). | Capability |
@@ -93,35 +95,36 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Memory tier** | memory | `working` (one session), `episodic`, `semantic` and `digest`. Each tier is one resource. See [Memory](./memory/overview.md). | Resource, capability |
 | **Place** | workspace | Wherever an agent actually works, such as a folder on the host or in memory. Files sync between a place and resources. See [Workspace](./tools/workspace.md). | Resource collection |
 
-## Workforce: workers, mailboxes, projects
+## Workforce: workers, coordinators, projects
 
-![Each Workforce term beside what it is made of. A worker, from WORKER.md, is a flow instance of a kind, the built-in agent kind unless it names another, with the address team.name. A hired roster row is a row of an org resource collection. A mailbox, from MAILBOX.md, is a session on the one mailbox flow; its members are worker ids and its transcript is the post items. A mailbox board is a task collection the mailbox holds but doesn't drain. The inventory is three org resource collections. A project is one row of a projects collection, in the organization when shared or in its creator's user scope when private. A workstream is an entry on the project, which everyone who reads the project reads and only its owner writes, together with its lead's workstream session. A project coordinator is one session per person per project of a coordinator worker, whose delegates are that person's open workstreams.](./glossary/workforce.svg)
+![Each Workforce term beside what it is made of. A worker is a resource in one user's scope that names its worker flow. A standard worker is read from the installation's files, the same for every user. A roster is one user's workers. A coordinator is a worker on the coordinator flow, with delegates from the same roster in its session. A project is one row, in the user's scope or the org's; a workstream is an entry in a shared project that only its owner writes, plus its lead's session. A project coordinator is one session per user per project.](./glossary/workforce.svg)
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
-| **Worker** | workforce | A configuration run by one shared copy of the flow it names: a `WORKER.md` (a standard worker every user has) or a row a user hired or forked for themselves. A session names its worker when it is created. See [Workers on disk](./workforce/workers-on-disk.md). | Flow, session state |
+| **Worker** | workforce | What you might call an agent: a configuration with an owner. It names the flow that runs it and carries its own instructions, skills and tools. A worker belongs to one user and acts as them. See [Workers on disk](./workforce/workers-on-disk.md). | A resource in the user's scope |
+| **Worker flow** | workforce | The flow a worker runs on: the built-in `agent`, the coordinator, or a flow your app registers as a worker flow. Each is registered once, and every worker that names it shares that copy. See [The built-in worker](./workforce/built-in-worker.md). | Flow |
+| **Standard worker** | workforce | A worker every user has, read from the installation's files and the same for everyone. Nobody can edit one. To change it for yourself, fork it. | Worker, the installation's files |
+| **Fork** | workforce | Copies a standard worker into a worker of your own, starting from its configuration. | Worker |
+| **Roster** | workforce | The workers one user has, standard ones included. See [Hiring and forking](./workforce/durable-hire.md). | Workers |
 | **Address** | workforce | A worker's id: `team.name` for a team worker, the bare name for an org worker. A user's own worker is addressed by the id it was hired or forked under, on that user's roster. | None |
 | **Team** | workforce | A folder of workers under `teams/<name>/`, with an optional `TEAM.md` whose body every worker on the team reads. A team is not a flow and has no address. | Workers |
-| **Org worker** | workforce | A worker under `org/workers/<name>/`. It belongs to no team. | Worker |
-| **Built-in worker** | workforce | The `agent` kind every worker runs on unless its file names another `flow:`. See [The built-in worker](./workforce/built-in-worker.md). | Flow (collection), generator, skills |
-| **Hire** | workforce | A user adds a worker of their own, as a row in their data. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Roster row |
-| **Roster** | workforce | A user's workers: their own, and the standard ones your files declare. See [Hiring and forking](./workforce/durable-hire.md). | User-scoped resource collection, standard workers from files |
-| **Fire** | workforce | Removes one of a user's own workers from their roster. A worker declared in a file leaves when its folder is deleted. | Roster row |
-| **Mailbox** | workforce | One `MAILBOX.md`: a named session on the shared `mailbox` flow, with members, a charter and a transcript. | Session, flow |
-| **Member** | workforce | A worker id on a mailbox's member list. A post wakes each member whose flow kind handles posts, or only the chosen one on a routed mailbox. | Worker address |
-| **Transcript** | workforce | The posts in a mailbox, rebuilt from the post items. | Items |
-| **Routed mailbox** | workforce | A mailbox that hands each post to one member, picked by a model call over the members' descriptions, or a fallback. | Mailbox, evaluator |
-| **Mailbox board** | workforce | A task collection a mailbox holds. The mailbox doesn't run a board over it. A worker whose flow runs a task board drains it, and that board's own board workers do the tasks. | Task collection |
-| **Inventory** | workforce | Org-wide records of every worker and mailbox registered, and who is a member where. See [Inventory](./workforce/inventory.md). | Three org resource collections |
-| **Project** | workforce | A row for a body of work: title, brief, owner and members. Shared with the org, or private to the user who created it. Its address is its visibility and its id. See [Projects](./workforce/projects.md). | One row of an org or user resource collection |
-| **Workstream** | workforce | One area of a project with one owner: an entry everyone who reads the project reads and only its owner writes, and its lead worker's workstream session, which only the owner opens. A shared project can also list declared mailboxes as workstreams. | Owner-writes resource collection row, session |
-| **Project coordinator** | workforce | A user's own session for talking to one project. It reads every workstream and hands work only to the user's own. | Coordinator worker, session |
-| **Chief of staff** | workforce | An org worker named `chief-of-staff` that a person asks who works here and asks to hire or fire. A fire waits for that person's approval. See [The chief of staff](./workforce/chief-of-staff.md). | Org worker, the hire tools |
+| **Org worker** | workforce | A standard worker under `org/workers/<name>/`. It belongs to no team. | Standard worker |
+| **Hire** | workforce | A user adds a worker of their own to their roster. `hireWorkforce` gives back one copy of each worker flow, which your app registers. | Worker |
+| **Fire** | workforce | Removes one of a user's own workers from their roster. A standard worker leaves when its folder is deleted. | Worker |
+| **Coordinator** | workforce | A worker that hands each post to other workers on the same roster, its delegates. It picks by its own judgment, by best fit, in turn, or sends to everyone. See [Coordinators](./workforce/coordinators.md). | Worker, the coordinator flow |
+| **Delegate** | workforce | A worker a conversation may delegate to. A worker's file lists its delegates under `delegates:`, and each conversation starts from that list. Always on the same user's roster; each works in its own session. | Worker |
+| **Delegation** | workforce | Handing work to one of your delegates: a hand-off to a worker on your roster, checked against your roster. A coordinator delegates a question as a post; any worker with a delegate that takes tasks delegates a task. See [Delegating work](./workforce/delegating-work.md). | Hand-off, roster |
+| **Door** | workforce | The one public action that takes a message to a worker. | Action |
+| **Inventory** | workforce | Org-wide records of every standard worker registered in an organization. See [Inventory](./workforce/inventory.md). | An org resource collection |
+| **Project** | workforce | A body of work, private to you or shared with your org. See [Projects](./workforce/projects.md). | One row, in user or org scope |
+| **Workstream** | workforce | One area of a shared project, with one owner. Its entry is read by the org and written only by its owner; its lead works it in a workstream session. | A resource row, a session |
+| **Project coordinator** | workforce | Your coordinator for one project: one session per user per project. It reads every workstream's entry and hands work only to your own. | Coordinator, session |
+| **Chief of staff** | workforce | The standard coordinator a user asks who works here, and asks to hire or fire. See [The chief of staff](./workforce/chief-of-staff.md). | Standard worker, coordinator |
 | **Package** | workforce | A `PACKAGE.md` folder of instructions and tools a worker can hold. See [Packages on disk](./workforce/packages-on-disk.md). | Tools, instructions |
 
 ## Shift Manager: screens over a Workforce
 
-![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a person's session with the Lab's chief of staff worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a person. Tasks lists tasks on every mailbox board. Roster lists the workers in the inventory, with on shift, on call and off shift worked out from their tasks and asks. A workstream view shows a mailbox and its boards. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
+![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a user's session with the Lab's chief of staff. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift, on call and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
 
 [Shift Manager](./shift-manager/overview.md) is a browser app, published as `@flow-state-dev/shift-manager`. It stores nothing of its own: every screen is a read of the Lab it serves.
 
@@ -129,19 +132,18 @@ These sit beside Orchestration on Core and don't use a task board.
 |---|---|---|---|
 | **Lab** | Shift Manager | The server one `fsdev.config.mts` default-exports, which Shift Manager serves and reads. | FlowState |
 | **Team profile** | Shift Manager | A Lab config kept beside Shift Manager in this repository, which its `start` and `dev` scripts open. `devteam` is the one there. It isn't in the published package. | Lab |
-| **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with the Lab's chief of staff. | Chief of staff, session |
-| **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a person. | Suspension |
-| **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. Asks in another member's sessions aren't listed. Inbox is not a mailbox. | Asks |
-| **Tasks** | Shift Manager | Every task not done, on every mailbox board, grouped by state, worker or workstream. | Task, mailbox board |
-| **Roster** | Shift Manager | Every worker, grouped as on shift (running a task), on call (a parked task or a pending ask) or off shift. The grouping is worked out on each read, not stored. | Inventory, tasks, asks |
+| **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with your chief of staff. | Chief of staff, session |
+| **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a user. | Suspension |
+| **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
+| **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |
+| **Roster** | Shift Manager | Your workers, grouped as on shift (running a task), on call (a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
 | **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
 
 ## Words that mean two things
 
 A few words are used in two places. The package tells you which one you're reading.
 
-- **Worker.** In Workforce, a hired `WORKER.md`. On a task board, the block that runs a task. A task's assignee names a board worker, or, on a board that asks Workforce's worker lookup, any Workforce worker. See [Giving a task to a worker](./workforce/overview.md#giving-a-task-to-a-worker).
-- **Member.** On a mailbox, a worker id. On a project, a person.
+- **Worker.** In Workforce, a configuration one user owns. On a task board, a board worker: the block that runs a task. A task's assignee names a board worker, or, on a board that asks Workforce's worker lookup, one of your workers.
+- **Kind.** A flow's `kind` is its name to the engine. Workforce calls the flow a worker runs on its worker flow.
 - **Dispatcher.** Core's `dispatcher()` is a block that sends to another flow. A task board's dispatcher is the rule that picks the next task.
-- **Roster.** The Workforce roster is who is hired. Shift Manager's Roster is a screen over the inventory.
-- **Inbox.** Shift Manager's list of asks. A mailbox is something else.
+- **Roster.** Your Workforce roster is your workers. Shift Manager's Roster screen shows them by what they are doing.

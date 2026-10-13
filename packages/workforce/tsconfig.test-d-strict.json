@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.test-d.json",
+  "compilerOptions": { "strict": true, "paths": {} },
+  "include": ["test/worker-flows-strict.test-d.ts"]
+}

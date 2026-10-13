@@ -39,6 +39,7 @@ import {
   type HarnessFeeds,
   type RunRecordState,
 } from "../src";
+import { RUNS, collectionRef } from "../src/run-record";
 import { seedRepo } from "./fixtures";
 
 export const ORG_ID = "org_claim_host";
@@ -48,8 +49,8 @@ export const FIXED_BOARD = "feature-board";
 /** The ledger kept per partition, one set of rows per conversation. */
 export const CONVERSATIONS = "tasks";
 export const PHASE = "implement";
-/** The seat the rows are assigned to, which the gate checks. */
-const SEAT = "coder";
+/** The assignee the rows are assigned to, which the gate checks. */
+const ASSIGNEE = "coder";
 
 const dirs: string[] = [];
 /** Remove every directory a host made. Call from `afterAll`. */
@@ -233,7 +234,7 @@ export function claimHost(options: HostOptions) {
         await ref.addTask({
           id: input.id,
           goal: input.goal,
-          assignee: SEAT,
+          assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
@@ -291,6 +292,17 @@ export function claimHost(options: HostOptions) {
     resources: { runs: runRecordCollection },
     execute: async (input, ctx) => (await readRunRow(ctx as never, input.topic)) ?? null,
   });
+  // Write a run record as it stands, as an earlier version of the manager left it.
+  const putRecordBlock = handler({
+    name: "claim-host-put-record",
+    inputSchema: z.object({ topic: z.string(), state: z.record(z.unknown()) }),
+    outputSchema: z.unknown(),
+    resources: { runs: runRecordCollection },
+    execute: async (input, ctx) => {
+      await collectionRef(ctx as never, RUNS).upsert(input.topic, input.state);
+      return null;
+    },
+  });
 
   const flow = defineFlow({
     kind: "claim-host",
@@ -301,6 +313,7 @@ export function claimHost(options: HostOptions) {
       answer: { block: answer },
       cancel: { block: cancel },
       records: { block: records },
+      putRecord: { block: putRecordBlock },
     },
     task: {
       actions: {
@@ -328,6 +341,8 @@ export function claimHost(options: HostOptions) {
   } as never);
 
   let sessions = 0;
+  // Every action runs in this organization; `inOrg` moves the host's person to another.
+  let orgId = ORG_ID;
   const act = async (action: string, input: unknown, sessionId = `s_${++sessions}`, source?: string) => {
     const runtime = await (state as unknown as {
       getRuntime(): Promise<{ stores: any; runtimeConfig: object }>;
@@ -337,7 +352,7 @@ export function claimHost(options: HostOptions) {
       actionName: action,
       input,
       userId: ALICE,
-      orgId: ORG_ID,
+      orgId,
       sessionId,
       ...(source !== undefined ? { source } : {}),
       stores: runtime.stores,
@@ -375,7 +390,7 @@ export function claimHost(options: HostOptions) {
       "work",
       {
         boardId: ledgerId,
-        seat: SEAT,
+        assignee: ASSIGNEE,
         taskId: id,
         attempt: claimed.attempts,
         createdAt: claimed.createdAt,
@@ -391,7 +406,7 @@ export function claimHost(options: HostOptions) {
           ...(onInput !== null ? { claim: onInput } : {}),
         },
       },
-      `s_task_${ledgerId}_${partition ?? "none"}_${id}`,
+      `s_task_${orgId === ORG_ID ? "" : `${orgId}_`}${ledgerId}_${partition ?? "none"}_${id}`,
       "task",
     );
     return { claimed, result };
@@ -400,7 +415,27 @@ export function claimHost(options: HostOptions) {
   const record = async (topic: string): Promise<RunRecordState | null> =>
     (await act("records", { topic })).output as RunRecordState | null;
 
-  return { act, ledgerAt, manager, seed: (input: Record<string, unknown>) => act("seed", input), row, runAttempt, record, seen, answersSeen, dir };
+  const putRecord = async (topic: string, state: Record<string, unknown>): Promise<void> => {
+    await act("putRecord", { topic, state });
+  };
+  const inOrg = (next: string): void => {
+    orgId = next;
+  };
+
+  return {
+    act,
+    ledgerAt,
+    manager,
+    seed: (input: Record<string, unknown>) => act("seed", input),
+    row,
+    runAttempt,
+    record,
+    putRecord,
+    inOrg,
+    seen,
+    answersSeen,
+    dir,
+  };
 }
 
 /** The message a failed action carries, however the engine wrapped it. */

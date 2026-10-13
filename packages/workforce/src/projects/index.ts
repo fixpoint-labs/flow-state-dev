@@ -37,11 +37,14 @@ export {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  setBriefInputSchema,
+  setBriefOutputSchema,
   setRepositoryInputSchema,
   setRepositoryOutputSchema,
   type CreateProjectInput,
   type CreateProjectOutput,
   type ProjectBlocks,
+  type SetBriefInput,
   type SetRepositoryInput
 } from "./project-writes";
 
@@ -108,11 +111,13 @@ export { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lea
 
 export {
   defineWorkstreamBlocks,
+  listLeadsOutputSchema,
   openWorkstreamInputSchema,
   openWorkstreamOutputSchema,
   updateOwnWorkstreamInputSchema,
   updateWorkstreamInputSchema,
   updateWorkstreamOutputSchema,
+  type ListLeadsOutput,
   type OpenWorkstreamInput,
   type OpenWorkstreamOutput,
   type UpdateOwnWorkstreamInput,
@@ -123,6 +128,7 @@ export {
 } from "./workstream-writes";
 
 export {
+  linkedProjectOf,
   projectCoordinatorTools,
   WORKSTREAM_DELEGATE_ACTION,
   workstreamDelegateChangeSchema,
@@ -132,5 +138,7 @@ export {
 export {
   projectWorkspace,
   projectWorkspaceCapability,
+  type ProjectCheckout,
+  type ProjectWorkspaceOptions,
   type ProjectWorkspaceRefusalReason
 } from "./project-workspace";

@@ -4,13 +4,13 @@
  *
  * A worker files when its session's delegate list holds one that takes a task
  * (D1): no flag. What its flow carries for that is three things, and this
- * builds them over one installation and one flow kind:
+ * builds them over one installation and one worker flow:
  *
  * - **The model's tools**: `tools`, one capability for the model block's
- *   `uses`, carrying Orchestration's nine task tools while the session
+ *   `uses`, carrying Orchestration's task tools, `dispatchTask` among them, while the session
  *   files and none otherwise, read before each model call. Compose it once
  *   per turn: core refuses a turn with two tools of one name.
- * - **The actions**: `actions`, the nine as public actions named
+ * - **The actions**: `actions`, the same tools as public actions named
  *   `<tool>_tasks`, which answer `no_delegation_board` while the session
  *   doesn't file, and the four delegate actions (`addDelegate`,
  *   `removeDelegate`, `setFallback`, `listDelegates`).
@@ -56,12 +56,19 @@ import {
   taskSettledEntry
 } from "./task-settled";
 
+/**
+ * The session-state fields this kit's delegate list and board write, and only
+ * they: what a flow declares as `session.serverOwned`. `installation.session()`
+ * declares the same set, so every worker flow refuses them on a caller's create.
+ */
+export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED];
+
 /** What a session board is built from. */
 export interface SessionBoardOptions {
   /** The worker installation the flow's workers, and their delegates, belong to. */
   readonly installation: WorkerInstallation;
   /**
-   * The kind of the flow that carries the board: its workers are loaded on
+   * The worker flow that carries the board: its workers are loaded on
    * it, and the tasks it hands over send their notices back to it.
    */
   readonly flowKind: string;
@@ -81,7 +88,7 @@ export interface SessionBoardOptions {
 /**
  * Build the filing kit for one worker flow.
  *
- * @param options The installation, the flow's kind, and the flows a post reaches.
+ * @param options The installation, the flow's name, and the flows a post reaches.
  */
 export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
@@ -96,7 +103,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     delegates,
     /** The board itself: its resolver, its roster and its run. */
     board,
-    /** The model's nine task tools, granted per call: one entry for the model block's `uses`. */
+    /** The model's task tools, granted per call: one entry for the model block's `uses`. */
     tools: board.tools,
     /**
      * `parkOnQuestion`, on a task turn that may park its row on a question
@@ -107,14 +114,14 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates: delegates.taskDelegates as (ctx: BlockContext) => Promise<TaskDelegates>,
-    /** The nine task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
+    /** The task actions (`<tool>_tasks`) and the four delegate actions, for the flow's `actions`. */
     actions: { ...board.actions, ...delegates.actions },
     /** The ledger, for the flow's `resources`. */
     resources: board.resources,
     /** The session state the delegates and the board keep, for `installation.session(...)`. */
     sessionStateShape: { ...delegateStateShape, ...conversationBoardStateShape },
     /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
-    serverOwned: [...DELEGATE_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED] as readonly string[],
+    serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow: a run of the board,
      * the notice of a task the session filed, and a split task's settle and

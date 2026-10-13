@@ -34,7 +34,7 @@ const HOOK_MODULES = [
 ];
 
 const FORBIDDEN_IMPORT = /from\s+["']@flow-state-dev\/(workforce|shift-manager)(\/[^"']*)?["']|import\(\s*["']@flow-state-dev\/(workforce|shift-manager)/;
-const FORBIDDEN_WORD = /\b(teams?|workers?|rosters?|shifts?|seats?|workforce|shift[- ]manager)\b/i;
+const FORBIDDEN_WORD = /\b(teams?|workers?|rosters?|shifts?|workers?|workforce|shift[- ]manager)\b/i;
 
 /** Each line of `source` that imports Workforce or Shift Manager, or names their concepts. */
 function layerViolations(source: string): string[] {

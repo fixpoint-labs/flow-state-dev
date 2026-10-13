@@ -29,10 +29,10 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { DeclaredResources, ResourceVisibilityRule } from "@flow-state-dev/core";
 import { z } from "zod";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../agent-worker-flow";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../agent-worker-flow";
 import {
   hireRefusalReasons,
-  mintSeats,
+  mintWorkers,
   resolveWorkerFlows,
   standardOnlyReason,
   type HireOptions,
@@ -42,6 +42,7 @@ import {
 import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./worker-flow";
 import type { PackageManifest, WorkerManifest } from "../manifest";
 import { taskChainSchema } from "../conversation-board/chain";
+import { SESSION_BOARD_SERVER_OWNED } from "../conversation-board/session-board";
 import { criteriaOfState, deriveWorkerSessionId, isDerivedWorkerSessionId } from "./derive-session-id";
 import {
   FILING_FLOW_STATE_KEY,
@@ -57,7 +58,7 @@ import {
   WORKER_ID_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "./keys";
-import { COORDINATOR_KIND } from "../coordinator/coordinator-keys";
+import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { PRIVATE_PROJECTS_RESOURCE, PROJECTS_RESOURCE } from "../projects/collections";
 import {
   PRIVATE_WORKSTREAMS_RESOURCE,
@@ -82,13 +83,13 @@ export interface WorkerInstallationOptions {
    */
   standardWorkers?: readonly WorkerManifest[];
   /**
-   * The worker flows, by kind, as `hireWorkforce` takes them. A function is
+   * The worker flows, by name, as `hireWorkforce` takes them. A function is
    * read when first needed, so a worker flow defined with this installation's
    * `session` and `resources` can be handed back to it.
    */
   workerFlows?: HireOptions["workerFlows"] | (() => HireOptions["workerFlows"]);
-  /** The blocks each standard worker's own folders register (`fsdev gen`'s `seatBlocks`). */
-  seatBlocks?: HireOptions["seatBlocks"];
+  /** The blocks each standard worker's own folders register (`fsdev gen`'s `workerBlocks`). */
+  workerBlocks?: HireOptions["workerBlocks"];
   /** The blocks each package carries (`fsdev gen`'s `packageBlocks`). */
   packageBlocks?: HireOptions["packageBlocks"];
   /** The documents a worker may be granted (`resourcesFromDocs(...)`). */
@@ -181,6 +182,8 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
+  /** The delegates its configuration lists (`delegates:`), by worker id; empty when it lists none. */
+  delegates: readonly string[];
   /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */
   problem?: string;
 }
@@ -248,13 +251,17 @@ export interface WorkerInstallation extends WorkerGrants {
   readonly createCheck: SessionCreateCheck;
   /**
    * A worker flow's `session` declaration: {@link sessionStateShape} plus
-   * `extraShape` as its `stateSchema`, and {@link createCheck}.
+   * `extraShape` as its `stateSchema`, {@link createCheck}, and as
+   * `serverOwned` the delegate and board fields only the server writes
+   * ({@link SESSION_BOARD_SERVER_OWNED}). A flow without those fields still refuses a
+   * create that seeds one, by name, rather than dropping it.
    */
   session<TShape extends z.ZodRawShape = Record<never, never>>(
     extraShape?: TShape
   ): {
     stateSchema: z.ZodObject<WorkerSessionStateShape & TShape>;
     createCheck: SessionCreateCheck;
+    serverOwned: readonly string[];
   };
   /**
    * The worker this turn runs as, loaded now: the session's worker read from
@@ -266,7 +273,7 @@ export interface WorkerInstallation extends WorkerGrants {
    * it, so the worker it loaded is gone on the resumed run.
    *
    * @param ctx The block's context. The block must declare {@link resources}.
-   * @param flowKind The running flow's kind.
+   * @param flowKind The running flow's name.
    * @throws WorkerTurnRefusedError when the turn can't run as the worker.
    */
   resolveWorker(ctx: WorkerTurnContext, flowKind: string): Promise<ResolvedWorker>;
@@ -281,6 +288,15 @@ export interface WorkerInstallation extends WorkerGrants {
    * @param ctx The block's context. The block must declare {@link resources}.
    */
   rosterWorker(ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined>;
+  /**
+   * The session user's whole roster, read now: their own workers (one list of
+   * their worker collection) and every standard worker, by id order. A
+   * standard worker of the same id as one of theirs is theirs: a hire can't
+   * take a standard id, so this only matters for a row written by hand.
+   *
+   * @param ctx The block's context. The block must declare {@link resources}.
+   */
+  roster(ctx: WorkerTurnContext): Promise<RosterWorker[]>;
   /** A standard worker by id, or `undefined`. */
   standardWorker(id: string): WorkerManifest | undefined;
   /** Every standard worker, by id order. */
@@ -310,6 +326,12 @@ export interface WorkerInstallation extends WorkerGrants {
   standardWorkerProblems(): string[];
 }
 
+/** The worker ids a configuration's `delegates:` lists, or none. */
+function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[] {
+  const listed = declared.delegates;
+  return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
+}
+
 /** The settings a row hands its flow: its own settings, keyed as a `WORKER.md` frontmatter. */
 function declaredOf(row: WorkerRow): Record<string, unknown> {
   const declared: Record<string, unknown> = { ...row.settings, flow: row.flow };
@@ -331,7 +353,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     if (standard.has(manifest.id)) {
       throw new Error(`createWorkerInstallation: standard worker "${manifest.id}" is declared twice.`);
     }
-    if (standardWorkerFlow(manifest, AGENT_KIND) === undefined) {
+    if (standardWorkerFlow(manifest, AGENT_FLOW) === undefined) {
       throw new Error(
         `createWorkerInstallation: standard worker "${manifest.id}" declares a \`flow:\` that names no flow.`
       );
@@ -361,10 +383,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           `Name one the installation's files declare.`
       );
     }
-    if (standardWorkerFlow(manifest, AGENT_KIND) !== COORDINATOR_KIND) {
+    if (standardWorkerFlow(manifest, AGENT_FLOW) !== COORDINATOR_FLOW) {
       throw new Error(
         `createWorkerInstallation: the project coordinator "${projectCoordinator}" runs on flow ` +
-          `"${standardWorkerFlow(manifest, AGENT_KIND)}"; a project coordinator runs on "${COORDINATOR_KIND}".`
+          `"${standardWorkerFlow(manifest, AGENT_FLOW)}"; a project coordinator runs on "${COORDINATOR_FLOW}".`
       );
     }
   }
@@ -387,10 +409,10 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
   const workerFlowsOption = (): HireOptions["workerFlows"] => {
     const read = typeof options.workerFlows === "function" ? options.workerFlows() : options.workerFlows;
     const given =
-      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([kind, entry]) => [kind, buildOf(entry)]));
-    if (given !== undefined && Object.hasOwn(given, AGENT_KIND)) return given;
+      read === undefined ? undefined : Object.fromEntries(Object.entries(read).map(([flow, entry]) => [flow, buildOf(entry)]));
+    if (given !== undefined && Object.hasOwn(given, AGENT_FLOW)) return given;
     boundAgent ??= defineAgentWorkerFlow({ installation });
-    return { [AGENT_KIND]: boundAgent as never, ...given };
+    return { [AGENT_FLOW]: boundAgent as never, ...given };
   };
   let resolvedFlows: Record<string, ResolvedWorkerFlow> | undefined;
   const workerFlows = (): Record<string, ResolvedWorkerFlow> =>
@@ -409,7 +431,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
   const resources = {
     [WORKERS_RESOURCE]: defineWorkerCollection(),
-    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_KIND),
+    [STANDARD_WORKERS_RESOURCE]: defineStandardWorkerCollection(() => standard, AGENT_FLOW),
     ...WORKSTREAM_RESOURCES
   } as const;
 
@@ -440,16 +462,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
    */
   const mint = (
     manifest: WorkerManifest
-  ): { ok: true; seat: FlowInstance } | { ok: false; problems: string[] } => {
+  ): { ok: true; worker: FlowInstance } | { ok: false; problems: string[] } => {
     try {
-      const [seat] = mintSeats([manifest], {
+      const [worker] = mintWorkers([manifest], {
         workerFlows: workerFlowsOption(),
-        ...(options.seatBlocks !== undefined ? { seatBlocks: options.seatBlocks } : {}),
+        ...(options.workerBlocks !== undefined ? { workerBlocks: options.workerBlocks } : {}),
         ...(options.packageBlocks !== undefined ? { packageBlocks: options.packageBlocks } : {}),
         ...(options.documents !== undefined ? { documents: options.documents } : {}),
         ...(options.references !== undefined ? { references: options.references } : {})
       });
-      return { ok: true, seat: seat! };
+      return { ok: true, worker: worker! };
     } catch (error) {
       return { ok: false, problems: hireRefusalReasons(error, manifest.id) };
     }
@@ -512,7 +534,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     }
     const file = standard.get(workerId);
     if (file === undefined) return { found: "none" };
-    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_KIND)! };
+    return { found: "standard", manifest: file, flow: standardWorkerFlow(file, AGENT_FLOW)! };
   };
 
   const configurationProblems = (id: string, row: WorkerRow): string[] => {
@@ -566,6 +588,16 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
           message: `"${key}" is set only when a session's board hands a task over; a caller cannot set it.`
         };
       }
+    }
+    // A conversation's delegate session is opened only by the coordinator's
+    // delivery, a dispatch into a child of the conversation. A caller naming
+    // a conversation would make a decoy that lookups by it can return.
+    if (input.state[FILING_SESSION_STATE_KEY] !== undefined && input.via !== "dispatch") {
+      return {
+        ok: false,
+        status: 400,
+        message: `"${FILING_SESSION_STATE_KEY}" is set only when a conversation opens the session; a caller cannot set it.`
+      };
     }
 
     // A derived id names its owner. Recomputed for this caller, so a create at
@@ -764,8 +796,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
 
     const minted = mint(manifest);
     if (!minted.ok) refuse(`Worker "${workerId}" can't run: ${minted.problems.join("; ")}.`);
-    const seat = (minted as { seat: FlowInstance }).seat;
-    const reached = (seat.resources ?? {}) as Record<string, unknown>;
+    const instance = (minted as { worker: FlowInstance }).worker;
+    const reached = (instance.resources ?? {}) as Record<string, unknown>;
 
     // What the worker's grants let its model do with each grantable resource:
     // the mint narrows a read-only grant by turning its write flags off.
@@ -775,23 +807,22 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       const entry = reached[accessor] as { llmWritable?: unknown; writable?: unknown };
       granted.set(accessor, entry.llmWritable === true && entry.writable !== false ? "visible" : "read-only");
     }
-    markVerifiedWorker(ctx.session as object, workerId, seat.config as Readonly<Record<string, unknown>>, granted);
+    markVerifiedWorker(ctx.session as object, workerId, instance.config as Readonly<Record<string, unknown>>, granted);
     return {
       id: workerId,
       standard: worker.found === "standard",
       flow,
       description,
-      config: seat.config as Readonly<Record<string, unknown>>,
+      config: instance.config as Readonly<Record<string, unknown>>,
       reaches: (accessor: string) => Object.hasOwn(reached, accessor)
     };
   };
 
-  const rosterWorker = async (ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined> => {
-    const collection = workerCollection(ctx, "rosterWorker");
-    const found = lookupWorker(workerId, (await collection.getOptional(workerId))?.state);
+  /** A worker as the roster reads it, from what `lookupWorker` found. */
+  const rosterEntry = (workerId: string, found: ReturnType<typeof lookupWorker>): RosterWorker | undefined => {
     if (found.found === "none") return undefined;
     if (found.found === "unreadable") {
-      return { id: workerId, standard: false, flow: "", description: null, problem: found.problem };
+      return { id: workerId, standard: false, flow: "", description: null, delegates: [], problem: found.problem };
     }
     if (found.found === "own") {
       return {
@@ -799,6 +830,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
         standard: false,
         flow: found.flow,
         description: found.row.description,
+        delegates: declaredDelegates(found.row.settings),
         ...(found.standardOnly ? { problem: standardOnlyReason(found.flow, false) } : {})
       };
     }
@@ -807,8 +839,28 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
       id: workerId,
       standard: true,
       flow: found.flow,
-      description: typeof declaredDescription === "string" ? declaredDescription : null
+      description: typeof declaredDescription === "string" ? declaredDescription : null,
+      delegates: declaredDelegates(found.manifest.declared)
     };
+  };
+
+  const rosterWorker = async (ctx: WorkerTurnContext, workerId: string): Promise<RosterWorker | undefined> => {
+    const collection = workerCollection(ctx, "rosterWorker");
+    return rosterEntry(workerId, lookupWorker(workerId, (await collection.getOptional(workerId))?.state));
+  };
+
+  const roster = async (ctx: WorkerTurnContext): Promise<RosterWorker[]> => {
+    const collection = workerCollection(ctx, "roster");
+    const byId = new Map<string, RosterWorker>();
+    for (const id of standard.keys()) byId.set(id, rosterEntry(id, lookupWorker(id, undefined))!);
+    for (const ref of (await collection.list()) as { path: string; state: unknown }[]) {
+      // A worker's id is its key's last segment, as the client's roster reads it.
+      const id = ref.path.slice(ref.path.lastIndexOf("/") + 1);
+      if (id.length === 0) continue;
+      const entry = rosterEntry(id, lookupWorker(id, ref.state));
+      if (entry !== undefined) byId.set(id, entry);
+    }
+    return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   };
 
   const installation: WorkerInstallation = {
@@ -819,10 +871,12 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     sessionStateShape,
     createCheck,
     rosterWorker,
+    roster,
     session(extraShape) {
       return {
         stateSchema: z.object({ ...sessionStateShape, ...(extraShape ?? {}) }) as never,
-        createCheck
+        createCheck,
+        serverOwned: SESSION_BOARD_SERVER_OWNED
       };
     },
     resolveWorker,
@@ -832,7 +886,7 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     projectCoordinator: () =>
       projectCoordinator === undefined
         ? undefined
-        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_KIND)! },
+        : { worker: projectCoordinator, flow: standardWorkerFlow(standard.get(projectCoordinator)!, AGENT_FLOW)! },
     configurationProblems,
     standardWorkerProblems
   };

@@ -1,0 +1,23 @@
+[
+  {
+    "name": "inventory",
+    "files": {
+      "package.json": "{\n  \"name\": \"inventory\",\n  \"version\": \"1.0.0\",\n  \"type\": \"module\"\n}\n",
+      "src/inventory.js": "export function addItem(stock, name, count) {\n  return { ...stock, [name]: (stock[name] ?? 0) + count };\n}\n",
+      "test/inventory.test.js": "import { addItem } from '../src/inventory.js';\nconst stock = addItem({}, 'apple', 2);\nif (stock.apple !== 2) throw new Error('addItem');\n",
+      "README.md": "# inventory\n\nFunctions:\n\n- `addItem(stock, name, count)`\n"
+    },
+    "prompt": "In this project, add a removeItem(stock, name, count) function to src/inventory.js that never lets a count go below zero and drops the name when it reaches zero. Add a case for it to test/inventory.test.js, list it in README.md, and write a CHANGELOG.md with an entry for version 1.1.0 describing the change."
+  },
+  {
+    "name": "greeter",
+    "files": {
+      "package.json": "{\n  \"name\": \"greeter\",\n  \"version\": \"0.3.0\",\n  \"type\": \"module\"\n}\n",
+      "src/greet.js": "export function greet(name) {\n  return `Hello, ${name}!`;\n}\n",
+      "src/cli.js": "import { greet } from './greet.js';\nconsole.log(greet(process.argv[2] ?? 'world'));\n",
+      "test/greet.test.js": "import { greet } from '../src/greet.js';\nif (greet('Ada') !== 'Hello, Ada!') throw new Error('greet');\n",
+      "README.md": "# greeter\n\nCall `greet(name)` to get a greeting.\n"
+    },
+    "prompt": "Rename the greet function to welcome everywhere in this project, including the file name, the CLI, the test and the README. Give welcome an optional second argument, a title such as \"Dr.\", that goes before the name when given. Cover the title in the test, and bump the version in package.json to 0.4.0."
+  }
+]

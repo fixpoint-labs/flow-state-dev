@@ -71,6 +71,16 @@ export interface WorkRecorderOptions {
   files: UpsertableCollection;
   plan: UpsertableCollection;
   /**
+   * The run's plan list marker (core's `observed-plan-list`), keyed by
+   * `runId`. When a plan row fails to write, the recorder marks this run's
+   * plan `incomplete` there, with the reason, so a reader shows the rows that
+   * did land as possibly incomplete rather than as the plan. Nothing else is
+   * written to it: Claude Code's plan arrives item by item, not as a list, so
+   * there is no `writing` or `complete` moment to mark. Optional: without it, a
+   * failed plan row still leaves its gap row.
+   */
+  planList?: UpsertableCollection;
+  /**
    * Where skips land. Optional so a caller that only wants the two records can
    * omit it — a missing gaps collection degrades to the status note alone,
    * which is worse but never fatal.
@@ -225,6 +235,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     runId,
     files,
     plan,
+    planList,
     gaps,
     cwd: rawCwd,
     flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS,
@@ -539,7 +550,21 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
         // tried, so it reports rather than raising another gap.
         if (subject !== null) gap(subject, reason);
         else report(reason);
+        if (subject === "plan") await markPlanIncomplete(reason);
       }
+    }
+  };
+
+  /**
+   * Mark this run's plan `incomplete` in the list marker. Its own
+   * failure becomes a plan gap: the gap row is still the durable record.
+   */
+  const markPlanIncomplete = async (reason: string): Promise<void> => {
+    if (planList === undefined) return;
+    try {
+      await planList.upsert(runId, { status: "incomplete", reason });
+    } catch (err) {
+      gap("plan", `the plan list marker for "${runId}" could not be written: ${(err as Error).message}`);
     }
   };
 

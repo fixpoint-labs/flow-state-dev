@@ -28,22 +28,22 @@ import type {
   TaskStreamItem,
 } from "../src/react/lib/task-collection-state";
 
-/** The key a `per-task` seat's hand-off runs `taskId` under, as the writer spells it. */
+/** The key a `per-task` assignee's hand-off runs `taskId` under, as the writer spells it. */
 function perTaskKey(boardId: string, taskId: string): string {
   return taskSessionKeyFor(
     "board",
     "per-task",
-    { boardId, seat: "unused", taskId, attempt: 0, createdAt: 0, payload: undefined },
+    { boardId, assignee: "unused", taskId, attempt: 0, createdAt: 0, payload: undefined },
     {} as never
   );
 }
 
-/** The key a `per-worker` seat's hand-off runs every one of its rows under. */
-function perWorkerKey(boardId: string, seat: string): string {
+/** The key a `per-worker` assignee's hand-off runs every one of its rows under. */
+function perWorkerKey(boardId: string, assignee: string): string {
   return taskSessionKeyFor(
     "board",
     "per-worker",
-    { boardId, seat, taskId: "unused", attempt: 0, createdAt: 0, payload: undefined },
+    { boardId, assignee, taskId: "unused", attempt: 0, createdAt: 0, payload: undefined },
     {} as never
   );
 }
@@ -108,11 +108,11 @@ describe("decodeDispatchRunKey", () => {
     });
   });
 
-  it("reads a per-worker key back into its board and seat", () => {
+  it("reads a per-worker key back into its board and assignee", () => {
     expect(decodeDispatchRunKey(perWorkerKey("issue-work", "implement"))).toEqual({
       policy: "per-worker",
       boardId: "issue-work",
-      seat: "implement",
+      assignee: "implement",
     });
   });
 
@@ -195,9 +195,9 @@ describe("linkDispatchRunsToTasks", () => {
     ]);
   });
 
-  it("fans a per-worker child out over every row on its seat", () => {
+  it("fans a per-worker child out over every row on its assignee", () => {
     // Not a collision to resolve — it is the substrate's behaviour. A
-    // `per-worker` seat runs all of its rows in one child, so the panel has to
+    // `per-worker` assignee runs all of its rows in one child, so the panel has to
     // be able to say so, and each of those rows points back at the same child.
     const ws = dispatchRun({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
     const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
@@ -207,7 +207,7 @@ describe("linkDispatchRunsToTasks", () => {
           task({ id: "task-a", assignee: "implement" }),
           task({ id: "task-b", assignee: "review" }),
           task({ id: "task-c", assignee: "implement" }),
-          // Unassigned: not on any seat, so not on this one.
+          // Unassigned: not on any assignee, so not on this one.
           task({ id: "task-d" }),
         ]),
       ]
@@ -220,7 +220,7 @@ describe("linkDispatchRunsToTasks", () => {
   });
 
   it("pairs a per-task key on the row's id, not its assignee", () => {
-    // The key names one row. Whatever seat the row is on now — or none — the
+    // The key names one row. Whatever assignee the row is on now — or none — the
     // child derived for it is this one.
     const ws = dispatchRun({ id: "dsx_1", topic: perTaskKey("issue-work", "task-a") });
     const { byTask } = linkDispatchRunsToTasks(
@@ -275,7 +275,7 @@ describe("linkDispatchRunsToTasks", () => {
   });
 
   it("leaves a task with no matching dispatch run unlinked", () => {
-    // The majority case: an inline seat runs inside the request being viewed.
+    // The majority case: an inline assignee runs inside the request being viewed.
     const { byTask, byDispatchRun } = linkDispatchRunsToTasks(
       [dispatchRun({ id: "dsx_1", topic: perTaskKey("issue-work", "task-z") })],
       [board("issues", [task({ id: "task-a" })])]
@@ -285,7 +285,7 @@ describe("linkDispatchRunsToTasks", () => {
   });
 
   it("does not let the entry label stand in for the key", () => {
-    // `coordinate` names the entry the run was dispatched for, and a seat's
+    // `coordinate` names the entry the run was dispatched for, and an assignee's
     // name is usually its entry's — but "usually" is not a pairing rule. A
     // child whose key does not decode stays unlinked however apt its entry.
     const { byTask } = linkDispatchRunsToTasks(
@@ -303,7 +303,7 @@ describe("linkDispatchRunsToTasks", () => {
     // The task was claimed by `implement` in an earlier request and reassigned
     // to `review` in a later one. Requests arrive newest-first, so a fold that
     // takes the last item it walks past holds the `implement` snapshot, and the
-    // link then resolves against a seat the task is no longer on.
+    // link then resolves against an assignee the task is no longer on.
     const reviewWs = dispatchRun({ id: "dsx_review", topic: perWorkerKey("issue-work", "review") });
     const implementWs = dispatchRun({
       id: "dsx_impl",
@@ -326,11 +326,11 @@ describe("linkDispatchRunsToTasks", () => {
   });
 
   describe("the board leg, which cannot be checked and so is detected", () => {
-    // A key frames `boardId` in beside the row or the seat, so a run belongs
+    // A key frames `boardId` in beside the row or the assignee, so a run belongs
     // to ONE board — but nothing on the task side carries a board id.
     // `task-change` and `task-board-meta` emit `collectionId`, and `taskBoard`
     // documents that as a deliberately different string from `boardId`, so
-    // board equality can never be checked the way the row and the seat can.
+    // board equality can never be checked the way the row and the assignee can.
     //
     // What IS observable is contention, and clicking the wrong claimant opens
     // unrelated work, so contention draws nothing.
@@ -348,8 +348,8 @@ describe("linkDispatchRunsToTasks", () => {
       expect(byDispatchRun.size).toBe(0);
     });
 
-    it("draws no link when two collections carry the seat a per-worker child names", () => {
-      // Seat names are per board, so two boards may each declare `implement`.
+    it("draws no link when two collections carry the assignee a per-worker child names", () => {
+      // Assignee names are per board, so two boards may each declare `implement`.
       // Only one of them owns this child, and nothing on the wire says which.
       const ws = dispatchRun({ id: "dsx_impl", topic: perWorkerKey("issue-work", "implement") });
       const { byTask, byDispatchRun } = linkDispatchRunsToTasks(

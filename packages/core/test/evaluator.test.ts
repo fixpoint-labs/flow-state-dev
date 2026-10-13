@@ -227,7 +227,7 @@ describe("evaluator — asking (BR-1 to BR-5)", () => {
       { message: "help", tier: "gold" },
       spyContext().ctx
     );
-    expect(first.calls[0]!.state).toEqual({ message: "help", tier: "gold" });
+    expect(first.calls[0]!.state).toEqual([{ type: "json", value: { message: "help", tier: "gold" } }]);
 
     const second = mockEvaluationModel({ answers: { urgent: { type: "boolean", probability: 0.5 } } });
     await runForTest(
@@ -240,7 +240,42 @@ describe("evaluator — asking (BR-1 to BR-5)", () => {
       { message: "help" },
       spyContext().ctx
     );
-    expect(second.calls[0]!.state).toBe("help");
+    expect(second.calls[0]!.state).toEqual([{ type: "text", text: "help" }]);
+  });
+
+  it("asks a decision model, which reads the state as parts, the same state: a string, an object or an array", async () => {
+    // A decision model (the gateway's from 4.0.108) maps over its state's
+    // parts; the evaluated value arrives as one text or json part.
+    const states: unknown[] = [];
+    const model = {
+      specificationVersion: "v4",
+      provider: "mock.decision",
+      modelId: "mock-decide",
+      supportedQuestionTypes: ["boolean"],
+      async doDecide(call: DoEvaluateOptions) {
+        states.push((call.state as Array<{ type: string }>).map((part) => part));
+        return { answers: { urgent: { type: "boolean", probability: 0.5 } }, usage: {}, warnings: [] };
+      },
+      doEvaluate(call: DoEvaluateOptions) {
+        return this.doDecide(call);
+      },
+    } as unknown as EvaluationModel;
+    const ask = (name: string, state: unknown) =>
+      runForTest(
+        evaluator({ name, model, questions: { urgent: boolean("Urgent?") }, state: () => state as never }),
+        "x",
+        spyContext().ctx
+      );
+
+    await ask("text", "help");
+    await ask("object", { message: "help" });
+    await ask("list", [{ message: "help" }, "again"]);
+
+    expect(states).toEqual([
+      [{ type: "text", text: "help" }],
+      [{ type: "json", value: { message: "help" } }],
+      [{ type: "json", value: [{ message: "help" }, "again"] }],
+    ]);
   });
 
   it("refuses a state that is not a string, an array or a plain object, before any call (BR-4)", async () => {

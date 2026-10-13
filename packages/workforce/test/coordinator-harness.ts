@@ -14,7 +14,7 @@
  *   reports a cancelled run unless the host turns that off (`reportCancel`).
  * - `quiet` takes nothing: its workers can't be delegates.
  * - `tasker` takes tasks and no posts; `allround` takes both. Their doors
- *   answer `<kind> heard it`, and neither runs a task here.
+ *   answer `<flow> heard it`, and neither runs a task here.
  *
  * Models are scripted: the best-fit evaluator by block name
  * (`coordinator-route`), answering from the post's first `[route:<worker>]`
@@ -137,17 +137,17 @@ function quietFlow(installation: WorkerInstallation) {
 }
 
 /** A flow that takes tasks: `tasker` and nothing else, `allround` posts too. */
-function taskingFlow(installation: WorkerInstallation, kind: "tasker" | "allround") {
-  const door = handler({ name: `${kind}-run`, inputSchema: doorInput, execute: () => `${kind} heard it` });
+function taskingFlow(installation: WorkerInstallation, flow: "tasker" | "allround") {
+  const door = handler({ name: `${flow}-run`, inputSchema: doorInput, execute: () => `${flow} heard it` });
   return defineFlow({
-    kind,
+    kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
     actions: { run: { inputSchema: doorInput, block: door, userMessage: (i: { message: string }) => i.message } },
-    ...(kind === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
+    ...(flow === "allround" ? { internal: { actions: { onDelegatedPost: delegatedPostEntry(door) } } } : {}),
     // Takes a conversation's tasks, as the delegate check requires (FIX-1842).
-    task: { actions: { work: workerTaskEntry({ name: `${kind}-task`, turn: door }) } }
+    task: { actions: { work: workerTaskEntry({ name: `${flow}-task`, turn: door }) } }
   });
 }
 
@@ -163,11 +163,11 @@ function scriptedRoute() {
       const text = (state as { post: { text: string } }).post.text;
       const marks = [...text.matchAll(/\[route:([a-z.-]+)\]/g)].map((match) => match[1]!);
       if (marks.length === 0) throw new Error("the scripted route has no answer for this post");
-      const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
+      const offered = (questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {};
       const picked = marks.find((mark) => Object.hasOwn(offered, mark)) ?? marks[0]!;
       const confidence = /\[conf:([0-9.]+)\]/.exec(text)?.[1];
       return {
-        member: {
+        worker: {
           type: "choice",
           choice: picked === "none" ? "nobody.here" : picked,
           ...(confidence === undefined ? {} : { confidence: Number(confidence) })
@@ -181,10 +181,12 @@ export type HostOptions = {
   standard?: WorkerManifest[];
   /** The judgment turn's scripted model. Omitted, a judgment turn has no script and fails. */
   judgment?: MockGeneratorInstance;
-  /** The options the judgment turn is built with: the agent kind's catalog and capabilities. */
+  /** The options the judgment turn is built with: the agent worker flow's catalog and capabilities. */
   agent?: CoordinatorFlowOptions["agent"];
   /** How long a round waits for its answers. */
   roundDeadlineMs?: number;
+  /** When set, the evaluator throws and this generator answers best fit's question. */
+  languageRoute?: MockGeneratorInstance;
   /**
    * Whether `helper` reports a cancelled run (`delegatedPostOnFinished` as its
    * request `onFinished`). Off, a cancelled delegate says nothing, as one whose
@@ -230,14 +232,23 @@ export function bootHost(options: HostOptions = {}) {
     allround: allround() as unknown as FlowInstance,
     roster: rosterFlow() as unknown as FlowInstance
   };
-  const route = scriptedRoute();
+  const route =
+    options.languageRoute === undefined
+      ? scriptedRoute()
+      : // The gateway's refusal of a language model, whatever `routeModel` names.
+        mockEvaluationModel({
+          error: new Error("Model is a language model, not a decision model. Use the language generation API instead.")
+        });
   const judgment = options.judgment ?? mockGenerator({ script: [] });
   const state = createFlowState({
     flows: instances,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({
       evaluators: { [COORDINATOR_ROUTE]: route },
-      generators: { "coordinator-judgment": judgment }
+      generators: {
+        "coordinator-judgment": judgment,
+        ...(options.languageRoute === undefined ? {} : { "coordinator-route-ask": options.languageRoute })
+      }
     }),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");

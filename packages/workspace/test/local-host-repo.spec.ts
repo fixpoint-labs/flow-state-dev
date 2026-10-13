@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/exec";
 import { localWorkspaceHost, WorkspaceRefusedError } from "../src/local-host";
 import { createFakeCollection } from "./fake-collection";
-import { createRemote, git, tempDir, type Remote } from "./git-fixtures";
+import { createRemote, git, subcommand, tempDir, type Remote } from "./git-fixtures";
 
 vi.mock("../src/exec", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/exec")>();
@@ -28,7 +28,7 @@ vi.setConfig({ testTimeout: 30_000 });
 const spawned = vi.mocked(run);
 const { run: realRun } = await vi.importActual<typeof import("../src/exec")>("../src/exec");
 /** The git subcommand of every process the host started. */
-const gitCommands = () => spawned.mock.calls.map(([, args]) => args[0]);
+const gitCommands = () => spawned.mock.calls.map(([, args]) => subcommand(args)[0]);
 /** The error `attempt` rejected with; fails the test if it provisioned. */
 const refusalOf = (attempt: Promise<unknown>) =>
   attempt.then(
@@ -243,7 +243,7 @@ describe("a retry keeps its checkout and never fetches", () => {
     rmSync(first.cwd, { recursive: true, force: true });
     spawned.mockClear();
     spawned.mockImplementation(async (file, args, options) => {
-      if (args[0] === "show-ref") throw Object.assign(new Error("fatal: the clone is unreadable"), { code: 128 });
+      if (subcommand(args)[0] === "show-ref") throw Object.assign(new Error("fatal: the clone is unreadable"), { code: 128 });
       return realRun(file, args, options);
     });
 
@@ -273,7 +273,7 @@ describe("a retry keeps its checkout and never fetches", () => {
     const paused = new Promise<void>((resolve) => (reached = resolve));
     let held = false;
     spawned.mockImplementation(async (file, args, options) => {
-      if (!held && args[0] === "worktree" && args[1] === "add") {
+      if (!held && subcommand(args).slice(0, 2).join(" ") === "worktree add") {
         held = true;
         reached();
         await gate;
@@ -323,7 +323,7 @@ describe("a retry keeps its checkout and never fetches", () => {
 function killWorktreeAdd(leave: (checkout: string) => void): void {
   spawned.mockImplementation(async (file, args, options) => {
     const result = await realRun(file, args, options);
-    if (args[0] === "worktree" && args[1] === "add") {
+    if (subcommand(args).slice(0, 2).join(" ") === "worktree add") {
       spawned.mockImplementation(realRun);
       leave(join(root, "run-1", "checkout"));
       throw Object.assign(new Error("git worktree add: killed"), { killed: true, signal: "SIGTERM" });

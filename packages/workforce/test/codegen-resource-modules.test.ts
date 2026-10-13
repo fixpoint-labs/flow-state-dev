@@ -75,11 +75,11 @@ function expandPlaces(patterns: readonly string[]): string[] {
   );
 }
 
-/** A `resources/` folder where the convention does not look: the root, mailboxes, a folder inside a worker. */
+/** A `resources/` folder where the convention does not look: the root, a folder the convention doesn't name, a folder inside a worker. */
 const DECOY_SLOTS = [
   "resources",
-  "org/mailboxes/one/resources",
-  "teams/one/mailboxes/one/resources",
+  "org/notes/one/resources",
+  "teams/one/notes/one/resources",
   "org/workers/one/nested/resources",
   "teams/one/workers/one/nested/resources",
 ];
@@ -92,7 +92,7 @@ const DECOY_SLOTS = [
  * folder cannot change what it yields, and a worker or team that happens to be
  * named like one is the both-doors fixtures' and the characterization test's.
  */
-const SATURATED_NAMES = ["org", "teams", "workers", "mailboxes", "one"];
+const SATURATED_NAMES = ["org", "teams", "workers", "notes", "one"];
 
 /** One level below the deepest place, a team worker's folder, four folders down. */
 const SATURATED_DEPTH = 5;
@@ -147,7 +147,7 @@ describe("where the modules are found", () => {
     // Two claims in one assertion, and both are drift guards. The refs match,
     // so one ref has one owner and the collision check below can see a pair.
     // And *every* ref matches, so the two doors descended into the same
-    // folders — a Door B that skipped a seat, or reached one Door A does not,
+    // folders — a Door B that skipped a worker, or reached one Door A does not,
     // comes back with a different list. Asserted against the other door's own
     // output rather than against a list of strings this file wrote down: a
     // second spelling of the rule in a test is how the doors drift apart while
@@ -400,7 +400,7 @@ describe("what the walk refuses", () => {
     ]);
   });
 
-  it("refuses a symlinked worker folder rather than reading the seat behind it", async () => {
+  it("refuses a symlinked worker folder rather than reading the worker behind it", async () => {
     const outside = mkdtempSync(join(tmpdir(), "fsd-door-b-outside-"));
     roots.push(outside);
     mkdirSync(join(outside, "resources"), { recursive: true });
@@ -449,7 +449,7 @@ describe("what the walk refuses", () => {
   });
 
   it("refuses a worker folder that is present and unreadable", async () => {
-    // The same distinction one level up, where a whole seat's resources are
+    // The same distinction one level up, where a whole worker's resources are
     // behind the folder we cannot list.
     const root = tree({ "teams/engineering/workers/lead/resources/notes.ts": MODULE });
     const locked = join(root, "teams/engineering/workers/lead");

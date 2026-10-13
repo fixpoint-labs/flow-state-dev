@@ -4,11 +4,11 @@
  *
  * The chat-agent flow runs three generators per turn (skill-classifier,
  * assistant-generator, auto-title). Each gets its own mock instance below.
- * An `agent` seat answers through `agent-answer` (or
- * `agent-answer-with-activate-tool`, when the seat turns that tool on); both
- * share `agentSeatMock`, keyed on its own scenario markers: each answers a post
+ * An `agent` worker answers through `agent-answer` (or
+ * `agent-answer-with-activate-tool`, when the worker turns that tool on); both
+ * share `agentWorkerMock`, keyed on its own scenario markers: each answers a post
  * a coordinator delivered, or a person's own turn, and one names the tokens the
- * seat could see from before the turn. Under the goal checks' `no-history` control the scripted model is
+ * worker could see from before the turn. Under the goal checks' `no-history` control the scripted model is
  * handed only the system messages and the latest turn.
  * A scenario can hold its answer for a while first (`holdMs`), which
  * `test/mock-flowstate.ts` applies before the model runs.
@@ -39,7 +39,7 @@ import { goalControl } from "./goal-control";
 type ScenarioScript = {
   /** Whether the latest user turn picks this scenario. */
   match: (turn: string) => boolean;
-  /** How long the seat holds before answering, so a page can see it working. */
+  /** How long the worker holds before answering, so a page can see it working. */
   holdMs?: number;
   /**
    * The steps, or a function of the turn, what this call's tools returned so
@@ -88,40 +88,40 @@ const SCENARIO_SCRIPTS: ScenarioScript[] = [
 ];
 
 /**
- * An `agent` seat's scenarios. The reply carries a marker of its own, so a
+ * An `agent` worker's scenarios. The reply carries a marker of its own, so a
  * check can tell a scripted answer ran without reading what it says.
  */
-const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
+const AGENT_WORKER_SCRIPTS: ScenarioScript[] = [
   {
-    // A person talking to a seat from the page (FIX-1585).
-    match: (turn) => turn.includes("[scenario:talk-to-seat]"),
-    steps: [{ text: "[reply:talk-to-seat] Noted, I have your message." }],
+    // A person talking to a worker from the page (FIX-1585).
+    match: (turn) => turn.includes("[scenario:talk-to-worker]"),
+    steps: [{ text: "[reply:talk-to-worker] Noted, I have your message." }],
   },
   {
-    // A post a coordinator delivered to the seat (FIX-1590). The seat hears it
+    // A post a coordinator delivered to the worker (FIX-1590). The worker hears it
     // as `<from>, through <coordinator>: <body>`, so the marker is still in the
     // turn. Its answer lands in the person's conversation under its name.
     match: (turn) => turn.includes("[scenario:wake]"),
     steps: [{ text: "[reply:wake] Heard it." }],
   },
   {
-    // A post the seat answers naming the post's `reply-token-…` (FIX-1594): the
+    // A post the worker answers naming the post's `reply-token-…` (FIX-1594): the
     // answer that lands in the person's conversation carries the token and
-    // `[reply:in-mailbox]`, never the scenario marker, so a seat handed the
+    // `[reply:in-conversation]`, never the scenario marker, so a worker handed the
     // answer does not answer it again.
-    match: (turn) => turn.includes("[scenario:reply-in-mailbox]"),
+    match: (turn) => turn.includes("[scenario:reply-in-conversation]"),
     steps: replyWithToken,
   },
   {
     // The same answer, held about three seconds first, so a page can be seen
-    // showing the seat as working on the post before its line lands.
+    // showing the worker as working on the post before its line lands.
     match: (turn) => turn.includes("[scenario:reply-after-a-hold]"),
     holdMs: 3_000,
     steps: replyWithToken,
   },
   {
     // The wake's answer, held about three seconds first, so the hold outlasts
-    // the person's own post request: a page is seen showing the seat as working
+    // the person's own post request: a page is seen showing the worker as working
     // before its line lands, and a page that does not follow the conversation
     // live never sees the line without a reload.
     match: (turn) => turn.includes("[scenario:wake-after-a-hold]"),
@@ -129,7 +129,7 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
     steps: [{ text: "[reply:wake] Heard it." }],
   },
   {
-    // What the seat can see from before this turn (FIX-1611 BR-19): every
+    // What the worker can see from before this turn (FIX-1611 BR-19): every
     // token in the system messages and in the earlier turns of this
     // conversation, and none from the turn itself. The reply names nothing it could not see, so a check reads what
     // reached the model off the reply.
@@ -142,13 +142,13 @@ const AGENT_SEAT_SCRIPTS: ScenarioScript[] = [
 ];
 
 /**
- * A seat's answer naming the post's `reply-token-…`, so a check can tell which
- * post a landed line answers. It carries `[reply:in-mailbox]`, never a scenario
- * marker, so a seat handed the answer does not answer it again.
+ * A worker's answer naming the post's `reply-token-…`, so a check can tell which
+ * post a landed line answers. It carries `[reply:in-conversation]`, never a scenario
+ * marker, so a worker handed the answer does not answer it again.
  */
 function replyWithToken(turn: string): MockGeneratorScriptStep[] {
   const token = /reply-token-[a-z0-9]+/.exec(turn)?.[0] ?? "no-token";
-  return [{ text: `[reply:in-mailbox] ${token} Refunds post on Fridays.` }];
+  return [{ text: `[reply:in-conversation] ${token} Refunds post on Fridays.` }];
 }
 
 /** A token a check mints into a post, and the only thing recall names. */
@@ -177,12 +177,12 @@ function tokensBeforeLatestTurn(messages: Message[]): string[] {
 }
 
 /**
- * The messages the seat's model is handed, as the scripted model reads them.
+ * The messages the worker's model is handed, as the scripted model reads them.
  *
  * Under the goal checks' `no-history` control (test mode only, `goalControl`),
  * only the system messages and the latest user turn: the conversation's
  * earlier turns never reach the model, as if the kind kept no history. A check
- * that a seat recalls an earlier turn must FAIL under it. The kind has no
+ * that a worker recalls an earlier turn must FAIL under it. The kind has no
  * switch for this, and must not: a public option only a control would use.
  */
 function asHeard(messages: Message[]): Message[] {
@@ -257,12 +257,12 @@ function buildScenarioMock(name: string, scripts: ScenarioScript[]): MockGenerat
 export const assistantMock = buildScenarioMock("assistant-generator", SCENARIO_SCRIPTS);
 
 /** Both of the `agent` kind's answering generators. */
-export const agentSeatMock = buildScenarioMock("agent-answer", AGENT_SEAT_SCRIPTS);
+export const agentWorkerMock = buildScenarioMock("agent-answer", AGENT_WORKER_SCRIPTS);
 
 /** The scripts whose scenarios may hold, by the generator they answer for. */
 const SCRIPTS_BY_GENERATOR: Record<string, ScenarioScript[]> = {
-  "agent-answer": AGENT_SEAT_SCRIPTS,
-  "agent-answer-with-activate-tool": AGENT_SEAT_SCRIPTS,
+  "agent-answer": AGENT_WORKER_SCRIPTS,
+  "agent-answer-with-activate-tool": AGENT_WORKER_SCRIPTS,
 };
 
 /**
@@ -289,11 +289,11 @@ export function holdBeforeAnswer(generator: string, input: unknown): number {
 export const coordinatorRouteMock = mockEvaluationModel({
   answers: ({ state }) => {
     const text = (state as { post?: { text?: unknown } }).post?.text;
-    const member = typeof text === "string" ? /\[route:([^\]\s]+)\]/.exec(text)?.[1] : undefined;
-    if (member === undefined) {
+    const worker = typeof text === "string" ? /\[route:([^\]\s]+)\]/.exec(text)?.[1] : undefined;
+    if (worker === undefined) {
       throw new Error("coordinator-route (test mode): the post names no [route:<worker>], so the call fails");
     }
-    return { member: { type: "choice", choice: member } };
+    return { worker: { type: "choice", choice: worker } };
   },
 });
 

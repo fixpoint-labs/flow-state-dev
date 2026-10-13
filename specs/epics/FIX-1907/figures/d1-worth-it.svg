@@ -1,0 +1,103 @@
+<svg viewBox="0 0 940 416" role="img" aria-label="D1: is harness mode worth an epic now? Chosen: four issues, an adopted bug and a closure run. Instead of: the goal scripts and Shift Manager as the proof. It comes down to whether the shared contract is ever run side by side: only one app with all three does that. The price is Kitchen Sink&#x27;s front page changing. Gaps found: before a closure trips on them, against only when one does. Locks in the picker as the front page and FIX-1185 as a child. Flips if harness-manager&#x27;s path is the only way anyone drives a harness."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .recom  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Is a harness mode in Kitchen Sink worth an epic now?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Four issues, a bug, a closure</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Scripts and Shift Manager</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE CONTRACT</text>
+    <text class="t-lbl" x="32" y="169">SIDE BY SIDE</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">All three in one app, one contract</text>
+    <text class="t-s" x="248" y="179">a gap shows against the other two</text>
+    <text class="mark minus" x="592" y="162">&#8722;</text>
+    <text class="t-b" x="612" y="161">Each proved alone, or not at all</text>
+    <text class="t-s" x="612" y="179">Cursor never ran on the real path</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">KITCHEN SINK&#x27;S</text>
+    <text class="t-lbl" x="32" y="231">FRONT PAGE</text>
+    <text class="mark minus" x="228" y="218">&#8722;</text>
+    <text class="t-b" x="248" y="217">Changes to a picker</text>
+    <text class="t-s" x="248" y="235">the support desk moves behind it</text>
+    <text class="mark plus" x="592" y="218">+</text>
+    <text class="t-b" x="612" y="217">Unchanged</text>
+    <text class="t-s" x="612" y="235">nothing moves</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHEN A GAP</text>
+    <text class="t-lbl" x="32" y="289">IS FOUND</text>
+    <text class="mark plus" x="228" y="276">+</text>
+    <text class="t-b" x="248" y="275">Before a closure trips on it</text>
+    <text class="t-s" x="248" y="293">a person sees it in the mode</text>
+    <text class="mark minus" x="592" y="276">&#8722;</text>
+    <text class="t-b" x="612" y="275">When a closure trips on it</text>
+    <text class="t-s" x="612" y="293">as FIX-1735 and FIX-1692 were</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="347">LOCKS IN</text>
+    <text class="t-b" x="32" y="367">The picker is the front page</text>
+    <text class="t-s" x="32" y="385">FIX-1185 is a child; Codex and Cursor may fold</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="347">FLIPS IF</text>
+    <text class="t-b" x="494" y="367">The board path is the only one used</text>
+    <text class="t-s" x="494" y="385">then a direct mode tests nothing real</text>
+  </g>
+</svg>

@@ -2,7 +2,7 @@
  * On Vercel the route is a Next catch-all, so `params.path` arrives already
  * percent-decoded once. The handler forwards it untouched, and the engine's
  * route parser must not decode it a second time: a flow kind that carries a
- * literal `%XX` (an escaped seat address) has to resolve as written.
+ * literal `%XX` (an escaped worker address) has to resolve as written.
  */
 import { describe, expect, it } from "vitest";
 import { parseFlowRoute, type FlowApiRouter, type FlowState } from "@flow-state-dev/engine";

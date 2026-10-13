@@ -273,7 +273,7 @@ await runGoal(async (failures) => {
     type Filed = { taskId: string; worker: (typeof takers)[number]; goal: string };
     const filed: Filed[] = [];
     const file = async (worker: (typeof takers)[number], goal: string) => {
-      const out = await act(filerKind, conversation, "addTask_tasks", { goal, assignee: worker.id });
+      const out = await act(filerKind, conversation, "dispatchTask_tasks", { goal, assignee: worker.id });
       if (out?.ok !== true) throw new Error(`filing for ${worker.id} was refused: ${JSON.stringify(out)}`);
       filed.push({ taskId: out.taskId, worker, goal });
     };

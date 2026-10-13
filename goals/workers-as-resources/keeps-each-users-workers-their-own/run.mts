@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { createClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
 import { createFlowApiRouter, createFlowRegistry, type FlowRegistry, type StoreRegistry } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { createWorkforceClient, ROSTER_FLOW_KIND } from "@flow-state-dev/workforce/browser";
+import { createWorkforceClient, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { fixtureDir, loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { appFlows, markerEchoModel, RESEARCH, verified, type Control } from "./fixtures/app";
@@ -123,11 +123,11 @@ await runGoal(async (failures) => {
   // ---- leg a: Alice forks, hires and talks --------------------------------
   const alice = first.as(fixture.alice);
   await alice.workforce.roster(); // her roster session
-  const [rosterSession] = await alice.sessions.listSessions({ flowKind: ROSTER_FLOW_KIND, userId: fixture.alice });
+  const [rosterSession] = await alice.sessions.listSessions({ flowKind: ROSTER_FLOW, userId: fixture.alice });
   if (rosterSession === undefined) return { failures: ["a:roster — Alice has no roster session"], evidence: "" };
-  const forked = await alice.act(ROSTER_FLOW_KIND, rosterSession.id, "fork", { from: standard.onAgent, id: fork.id });
+  const forked = await alice.act(ROSTER_FLOW, rosterSession.id, "fork", { from: standard.onAgent, id: fork.id });
   if (forked.status !== "completed") failures.push(`a:fork — fork ended ${forked.status}: ${forked.error}`);
-  const hired = await alice.act(ROSTER_FLOW_KIND, rosterSession.id, "hire", {
+  const hired = await alice.act(ROSTER_FLOW, rosterSession.id, "hire", {
     id: hire.id,
     flow: "agent",
     instructions: hire.instructions,

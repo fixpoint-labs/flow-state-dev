@@ -19,11 +19,12 @@
  *   delegates with its `handOff` tool, or answers itself. It reads its
  *   delegates with its `listDelegates` tool; the list is never in its prompt.
  * - `best-fit`: best fit's ladder (`best-fit.ts`): the delegate still on the
- *   person's last post, else one evaluator call, else the fallback delegate,
+ *   user's last post, else one evaluator call (asked again as a language model when it
+ *   fails on a model string), else the fallback delegate,
  *   else the coordinator's own judgment turn. Only when that turn fails is the
  *   post unplaced, recorded and said in the conversation.
  * - `round-robin`: the next delegate in list order after the one the
- *   person's last post went to.
+ *   user's last post went to.
  * - `everyone`: each delegate.
  *
  * Every pick is checked against the user's roster when the post arrives
@@ -65,10 +66,10 @@
  * as it lands, never to its author; everyone and judgment send a round's
  * answers on when the round closes. Either way the next round runs on the
  * internal {@link ROUTE_ON_ACTION}, which the conversation dispatches into
- * itself, through the same policy steps as a person's post. A delegate with
+ * itself, through the same policy steps as a user's post. A delegate with
  * no answer says so on {@link DELEGATE_MISSED_ACTION}, so a round doesn't wait
  * on a failed or cancelled turn, and closes at its deadline whatever is still
- * out. Every wake of the conversation (a person's post, an answer, a missed
+ * out. Every wake of the conversation (a user's post, an answer, a missed
  * report, the end of a routing) also closes each round past its deadline, so
  * a delegate that never reports holds its round only until the next wake.
  */
@@ -77,6 +78,7 @@ import {
   defineFlow,
   dispatcher,
   evaluator,
+  generator,
   handler,
   router,
   sequencer
@@ -86,6 +88,7 @@ import type { BlockContext, BlockDefinition, EvaluationModel } from "@flow-state
 import { z } from "zod";
 import {
   bestFitEvaluationFailed,
+  failedEvaluationSchema,
   needsBestFitCall,
   placeBestFit,
   type BestFitCase,
@@ -152,8 +155,9 @@ import {
 } from "./coordinator-state";
 import {
   COORDINATOR_JUDGMENT,
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   COORDINATOR_ROUTE,
+  COORDINATOR_ROUTE_ASK,
   DELEGATE_ANSWER_ACTION,
   DELEGATE_MISSED_ACTION,
   DELIVERIES_STATE,
@@ -239,7 +243,7 @@ const ROUTE_QUESTION =
   "Who should take the post? Read it with the recent lines before it: " +
   "a post that follows up on a delegate's answer goes to that delegate.";
 
-/** The door's input: what the person says. */
+/** The door's input: what the user says. */
 const doorInputSchema = z.object({ message: z.string() });
 
 type DoorInput = z.infer<typeof doorInputSchema>;
@@ -248,7 +252,7 @@ type DoorInput = z.infer<typeof doorInputSchema>;
 const POST_STATE = "coordinatorPost";
 
 const postStateSchema = z.object({
-  /** The person's post. Answers going back out keep its id, in a later round. */
+  /** The user's post. Answers going back out keep its id, in a later round. */
   postId: z.string(),
   body: z.string(),
   from: z.string(),
@@ -262,14 +266,16 @@ const postStateSchema = z.object({
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
   /** What each hand-off of the judgment turn came to. */
   handOffs: z.array(routedDelegateSchema),
-  /** In a round after the person's post: the answers going back out. */
+  /** In a round after the user's post: the answers going back out. */
   answers: z.array(roundAnswerSchema).optional(),
   /** Who they never go back to: their author, under best fit and round robin. */
   exclude: deliveryDelegateSchema.optional(),
   /** Why this round's answers go no further, when it was refused at the cap on open rounds. */
   note: z.string().optional(),
   /** Why best fit handed this post to the judgment turn, when it did: the turn's record says it. */
-  fit: bestFitWhySchema.optional()
+  fit: bestFitWhySchema.optional(),
+  /** Best fit's evaluator error, when it failed and best fit asked again as a language model: every record says it. */
+  evaluationFailed: z.string().optional()
 });
 
 type PostState = z.infer<typeof postStateSchema>;
@@ -345,7 +351,7 @@ function fitOf(placed: Exclude<BestFitPlacement, { by: "held" | "evaluated" }>, 
   if (placed.by === "coordinator") {
     return {
       reason: "coordinator",
-      choice: placed.member,
+      choice: placed.worker,
       ...(placed.confidence === undefined ? {} : { confidence: placed.confidence }),
       ...floor
     };
@@ -396,7 +402,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const sessionBoard = defineSessionBoard({
     installation,
-    flowKind: COORDINATOR_KIND,
+    flowKind: COORDINATOR_FLOW,
     postFlows,
     // A project's coordinator starts with its user's open workstreams there.
     seed: (ctx) => workstreamDelegateSeed(ctx as never)
@@ -410,7 +416,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * that names none.
    */
   const coordinatorOf = async (ctx: BlockContext) => {
-    const worker = await installation.resolveWorker(ctx, COORDINATOR_KIND);
+    const worker = await installation.resolveWorker(ctx, COORDINATOR_FLOW);
     const config = worker.config as unknown as CoordinatorConfig;
     const records = (ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] == null
       ? await workstreamDelegateSeed(ctx as never)
@@ -489,12 +495,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * created here.
    */
   const targetDispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of postFlows) {
+  for (const flow of postFlows) {
     targetDispatchers.set(
-      kind,
+      flow,
       dispatcher({
-        name: `coordinator-deliver-target-${kind}`,
-        flowKind: kind,
+        name: `coordinator-deliver-target-${flow}`,
+        flowKind: flow,
         action: DELEGATED_POST_ENTRY,
         inputSchema: deliveryDispatchSchema,
         session: { id: (delivery: DeliveryDispatch) => delivery.targetSessionId! },
@@ -505,12 +511,12 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
 
   /** One dispatcher per flow a delegate can take a post on. */
   const dispatchers = new Map<string, BlockDefinition<any, any>>();
-  for (const kind of postFlows) {
+  for (const flow of postFlows) {
     dispatchers.set(
-      kind,
+      flow,
       dispatcher({
-        name: `coordinator-deliver-${kind}`,
-        flowKind: kind,
+        name: `coordinator-deliver-${flow}`,
+        flowKind: flow,
         action: DELEGATED_POST_ENTRY,
         inputSchema: deliveryDispatchSchema,
         // The delegate's own session for this conversation: derived from the
@@ -639,15 +645,16 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     recent: post.recent
   });
 
-  /** What every record of this request's routing starts with, its note included when it has one. */
+  /** What every record of this request's routing starts with, its note and best fit's evaluator error included when it has them. */
   const recordOf = (post: PostState) => ({
     postId: post.postId,
     round: post.round,
     policy: post.policy,
-    ...(post.note === undefined ? {} : { note: post.note })
+    ...(post.note === undefined ? {} : { note: post.note }),
+    ...(post.evaluationFailed === undefined ? {} : { evaluationFailed: post.evaluationFailed })
   });
 
-  /** What the judgment turn reads: the person's post, or the answers going back out. */
+  /** What the judgment turn reads: the user's post, or the answers going back out. */
   const turnMessage = (post: PostState): string =>
     post.answers === undefined ? post.body : wakeMessage(post.round - 1, post.answers);
 
@@ -665,7 +672,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       filingSessionId: await filingSessionIdOf(ctx.session),
       // Read once, from the conversation's own items, and carried to best fit and every delivery.
       recent: readRecentLines(ctx.session, {
-        person: ctx.session.identity.userId ?? "",
+        user: ctx.session.identity.userId ?? "",
         coordinator: worker.id,
         coordinatorNames: turn.answerNames
       }),
@@ -833,7 +840,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const turn = agentWorkerTurn(
     { ...(options.agent ?? {}), installation },
     {
-      kind: COORDINATOR_KIND,
+      kind: COORDINATOR_FLOW,
       answerName: COORDINATOR_JUDGMENT,
       extraTools: [...sessionBoard.delegates.tools, handOffTool],
       board: sessionBoard,
@@ -949,9 +956,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /**
    * One roster read per post: every delegate checked now, the options, the
    * holder and the fallback. An answer going back out is never offered to its
-   * own author, and holds nothing: the hold is about a person's posts.
+   * own author, and holds nothing: the hold is about a user's posts.
    *
-   * On a person's post, the coordinator is a choice too, keyed by its worker
+   * On a user's post, the coordinator is a choice too, keyed by its worker
    * id and picked by its description, when it has one. Its floor, from its
    * configuration, applies on every round. Both come from the worker and the
    * roster, never from the post.
@@ -1012,8 +1019,65 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     model: options.routeModel,
     inputSchema: bestFitCaseSchema,
     state: (bestFit: BestFitCaseValue) => ({ recent: bestFit.recent, post: bestFit.post }),
-    questions: (bestFit: BestFitCaseValue) => ({ member: choice(ROUTE_QUESTION, bestFit.ladder.options) })
+    questions: (bestFit: BestFitCaseValue) => ({ worker: choice(ROUTE_QUESTION, bestFit.ladder.options) })
   });
+
+  /** A gateway serves most model ids as language models only, so a failed evaluator call on a string asks again here. */
+  const routeModelId = typeof options.routeModel === "string" ? options.routeModel : undefined;
+  const routeAsked = (model: string) =>
+    generator({
+      name: COORDINATOR_ROUTE_ASK,
+      model,
+      inputSchema: bestFitCaseSchema,
+      outputSchema: z.object({ worker: z.string() }),
+      itemVisibility: { client: false, history: false },
+      // Only `routeModel` picks: no coercion pass on another model.
+      repair: { coerce: false },
+      prompt: (bestFit: BestFitCaseValue) =>
+        [
+          ROUTE_QUESTION,
+          "Answer with the key of exactly one option below, as `worker`.",
+          "",
+          "Options:",
+          ...Object.entries(bestFit.ladder.options).map(([key, pickBy]) => `- ${key}: ${pickBy}`)
+        ].join("\n"),
+      user: (bestFit: BestFitCaseValue) =>
+        [
+          ...bestFit.recent.map((line) => `${line.from}: ${line.text}`),
+          `The post, from ${bestFit.post.from}: ${bestFit.post.text}`
+        ].join("\n")
+    })
+      .connectInput((_failed: unknown, ctx) => bestFitCaseSchema.parse(ctx.parent?.input))
+      .connectOutput((asked: { worker: string }) => ({ answers: { worker: { choice: asked.worker } } }));
+
+  /** Keep the evaluator's error on the post before asking again, so the record says the call failed. */
+  const noteEvaluationFailed = handler({
+    name: "coordinator-route-note-failed",
+    inputSchema: failedEvaluationSchema,
+    outputSchema: z.object({}),
+    requestStateSchema,
+    execute: async (evaluated, ctx) => {
+      await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({
+        ...state,
+        evaluationFailed: evaluated.failed
+      })) as never);
+      return {};
+    }
+  });
+
+  const evaluateRoute = sequencer({ name: "coordinator-best-fit-ask", inputSchema: bestFitCaseSchema }).step(
+    routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
+  );
+  const isFailedEvaluation = (evaluated: unknown) => failedEvaluationSchema.safeParse(evaluated).success;
+  const askRoute =
+    routeModelId === undefined
+      ? evaluateRoute
+      : evaluateRoute
+          .tapIf(isFailedEvaluation, noteEvaluationFailed)
+          .stepIf(
+            isFailedEvaluation,
+            routeAsked(routeModelId).rescue([{ block: bestFitEvaluationFailed("coordinator-route-ask-failed") }])
+          );
 
   /** Where a fixed policy put the post: deliveries to make, best fit's miss for judgment, or nobody. */
   const placedSchema = z.union([
@@ -1032,7 +1096,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   type Placed = z.infer<typeof placedSchema>;
 
   /**
-   * Place the post on best fit's ladder, and note who now holds the person's
+   * Place the post on best fit's ladder, and note who now holds the user's
    * next post. A post the judgment turn takes, picked for the coordinator or
    * missed, carries why in request state, for the turn's record.
    */
@@ -1046,7 +1110,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const bestFit = bestFitCaseSchema.parse(ctx.parent?.input);
       const post = postOf(ctx as never);
       const placed = placeBestFit(bestFit.ladder as BestFitCase, answer);
-      // Only a person's post moves the hold.
+      // Only a user's post moves the hold.
       const holds = post.round === 0;
       if (placed.by === "none" || placed.by === "coordinator") {
         if (holds) await ctx.session.patchState({ [HOLD_STATE]: null } as never);
@@ -1058,7 +1122,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
             : missReason(placed.miss) + (placed.fallbackUnreachable ? "; the fallback delegate can't be reached" : "");
         return { place: "judgment", reason, skipped: bestFit.skipped };
       }
-      const target = bestFit.byLabel[placed.member]!;
+      const target = bestFit.byLabel[placed.worker]!;
       if (holds) {
         await ctx.session.patchState({ [HOLD_STATE]: { postId: post.postId, delegate: target.delegate } } as never);
       }
@@ -1075,7 +1139,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const decideBestFit = sequencer({ name: "coordinator-best-fit-decide", inputSchema: bestFitCaseSchema })
     .stepIf(
       (bestFit: BestFitCaseValue) => needsBestFitCall(bestFit.ladder as BestFitCase),
-      routeEvaluator.rescue([{ block: bestFitEvaluationFailed("coordinator-route-evaluation-failed") }])
+      askRoute
     )
     .step(placeBestFitPost);
 
@@ -1121,9 +1185,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         ...recordOf(post),
         by: "unplaced",
         delegates: [],
-        none: why
+        none: why,
+        ...(post.fit === undefined ? {} : { fit: post.fit })
       });
-      // A person's post is answered in the conversation; answers going back out aren't.
+      // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
       return { unplaced: why };
     }
@@ -1134,7 +1199,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   );
 
   /**
-   * A fixed policy found nobody to take the post: recorded, and on a person's
+   * A fixed policy found nobody to take the post: recorded, and on a user's
    * post said in the conversation.
    */
   const recordNobody = handler({
@@ -1176,7 +1241,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     list.findIndex((record) => sameDelegate(record, delegate));
 
   /**
-   * Round robin's turns for a person's post, each claimed before it is
+   * Round robin's turns for a user's post, each claimed before it is
    * checked: one versioned write moves the turn to the next delegate after
    * where it stands now, so two posts at once never take the same turn. A
    * delegate already tried is passed over; the turns end once each has been
@@ -1202,7 +1267,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   }
 
   /**
-   * The next delegate in list order that can be reached. For a person's post
+   * The next delegate in list order that can be reached. For a user's post
    * the turn goes on from the delegate the last one went to, and moves on;
    * for an answer going back out it goes on from the answer's author, never
    * to it, and stays where it was.
@@ -1217,7 +1282,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const post = postOf(ctx as never);
       const list = currentDelegates(ctx.session.state, post.defaults).delegates;
       const author = post.exclude;
-      // A person's post claims each turn before checking it, so two posts at
+      // A user's post claims each turn before checking it, so two posts at
       // once take two turns; an answer going back out goes on from its author
       // and leaves the turn where it is.
       const order =
@@ -1250,7 +1315,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // --- everyone ------------------------------------------------------------
 
   /**
-   * Each delegate that can be reached. On a person's post each gets the post;
+   * Each delegate that can be reached. On a user's post each gets the post;
    * when a round's answers go back out, each gets the others' answers from it,
    * and one with no other answer to get is skipped.
    */
@@ -1432,7 +1497,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .tap(finishRouting);
 
   /**
-   * Open a round after the person's post: the answers going back out, routed
+   * Open a round after the user's post: the answers going back out, routed
    * by the conversation's policy now. When none of the closed round's
    * deliveries was answered, nothing goes on: recorded, and done.
    */
@@ -1622,7 +1687,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .tapIf(hasRouteOns, sendOn);
 
   const flow = defineFlow({
-    kind: COORDINATOR_KIND,
+    kind: COORDINATOR_FLOW,
     configSchema: coordinatorConfigSchema(turn.settings),
     // The agent turn's binding: the documents a worker may be granted, the
     // per-turn visibility rule, and the request `onStarted` that loads this

@@ -89,7 +89,7 @@ export const parallelTasksBenchmarkAdapter: BenchmarkAdapter = {
 };
 
 /**
- * Round-robin adapter — a 3-seat roster whose agents the pattern builds from
+ * Round-robin adapter — a 3-worker roster whose agents the pattern builds from
  * the shared `model` (roster entries omit `block`).
  */
 export const roundRobinBenchmarkAdapter: BenchmarkAdapter = {

@@ -58,6 +58,6 @@ export async function openKitchenSink(page: Page, sessionId: string): Promise<vo
     data: { sessionId },
   });
   expect(created.status(), await created.text()).toBe(201);
-  await page.goto(`/?e2eSession=${encodeURIComponent(sessionId)}`);
+  await page.goto(`/flow-state?e2eSession=${encodeURIComponent(sessionId)}`);
   await expect(byTestId(page, "message-input")).toBeEnabled();
 }

@@ -6,7 +6,7 @@
  * The delegates are `agent` workers, or workers on an app's own flow whose
  * generator reads `delegatedPostHistory`, so what is graded is what their
  * model was handed, with each message's role, and what landed in the
- * person's conversation. The models are scripted, and answer only from what
+ * user's conversation. The models are scripted, and answer only from what
  * they are handed:
  *
  * - best fit's evaluation: a post marked `[follow-up]` goes to whichever
@@ -18,7 +18,7 @@
  *   anything else is acknowledged under the worker's name.
  */
 import { describe, expect, it } from "vitest";
-import { defineFlow, generator } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import type { SessionItem } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
@@ -36,6 +36,7 @@ import { delegatedPostEntry, delegatedPostHistory } from "../src/coordinator/del
 import { workerConfigSchema } from "../src/worker-config";
 import { hireWorkforce } from "../src/workers/register";
 import { createWorkerInstallation } from "../src/workers/installation";
+import { workerConfigOf } from "../src/workers/verified-worker";
 
 type ModelMessage = { role: string; content: unknown };
 
@@ -85,31 +86,42 @@ function scriptedRoute() {
         recent?: Array<{ from: string; text: string }>;
         post: { from: string; text: string };
       };
-      const offered = (questions as { member?: { criteria?: Record<string, string> } }).member?.criteria ?? {};
+      const offered = (questions as { worker?: { criteria?: Record<string, string> } }).worker?.criteria ?? {};
       if (post.text.includes("[follow-up]")) {
         const last = [...recent].reverse().find((line) => Object.hasOwn(offered, line.from));
-        if (last !== undefined) return { member: { type: "choice", choice: last.from } };
+        if (last !== undefined) return { worker: { type: "choice", choice: last.from } };
       }
       const mark = [...post.text.matchAll(/\[route:([a-z.-]+)\]/g)].map((m) => m[1]!).find((m) => Object.hasOwn(offered, m));
       if (mark === undefined) throw new Error("the scripted route has no pick for this post");
-      return { member: { type: "choice", choice: mark } };
+      return { worker: { type: "choice", choice: mark } };
     }
   });
 }
 
 /**
- * An app's own delegate flow: its door is a generator that names its worker
- * and reads `delegatedPostHistory`, as the coordinators page shows.
+ * An app's own delegate flow, as the coordinators page shows it: the worker is
+ * loaded in `request.onStarted`, and the door is a generator that answers
+ * with the worker's own instructions (`workerConfigOf`) and reads
+ * `delegatedPostHistory`. Each worker's body names it, so a turn that missed
+ * its instructions is graded as `unknown`.
  */
 function researchFlow(installation: ReturnType<typeof createWorkerInstallation>) {
   const input = z.object({ message: z.string() });
+  const loadWorker = handler({
+    name: "research-load-worker",
+    inputSchema: z.unknown(),
+    resources: { ...installation.resources },
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, "research")).id })
+  });
   const door = generator({
     name: "research-answer",
     inputSchema: input,
     model: "scripted/research",
-    resources: { ...installation.resources },
     history: delegatedPostHistory,
-    prompt: async (_input, ctx) => `You are ${(await installation.resolveWorker(ctx as never, "research")).id}.`,
+    prompt: (_input, ctx) => {
+      const { instructions } = workerConfigOf(ctx);
+      return typeof instructions === "string" ? instructions : "You answer research questions.";
+    },
     user: (turn: { message: string }) => turn.message
   });
   return defineFlow({
@@ -117,6 +129,7 @@ function researchFlow(installation: ReturnType<typeof createWorkerInstallation>)
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
+    request: { onStarted: loadWorker },
     actions: { run: { inputSchema: input, block: door, userMessage: (turn: { message: string }) => turn.message } },
     internal: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }
   });
@@ -377,12 +390,12 @@ describe("a follow-up keeps its conversation's context", () => {
 });
 
 describe("recentLines", () => {
-  const who = { person: "alice", coordinator: "desk", coordinatorNames: ["coordinator-judgment", "coordinator-judgment-with-activate-tool"] };
+  const who = { user: "alice", coordinator: "desk", coordinatorNames: ["coordinator-judgment", "coordinator-judgment-with-activate-tool"] };
   let index = 0;
   const message = (role: string, text: string, extra: Partial<SessionItem> = {}): SessionItem =>
     ({ id: `i${index}`, type: "message", status: "completed", requestId: `r${index}`, itemIndex: index++, payload: text, role, ...extra }) as SessionItem;
 
-  it("names each line's writer: the person, the coordinator, or the delegate that answered", () => {
+  it("names each line's writer: the user, the coordinator, or the delegate that answered", () => {
     const lines = recentLines(
       [
         message("user", "hello"),

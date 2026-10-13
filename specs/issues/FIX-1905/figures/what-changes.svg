@@ -1,0 +1,105 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Left to right across the top: a project row naming linear, which a member sets; the coding run starting and reading its project and its owner once, through the same read that gives the workspace host the repository, as today; FSD's own MCP client, createMcpManager, connecting to Linear's address with the run owner's key; Claude Code receiving only the tools, as an in-process server, with no address and no key. Two inputs rise into FSD's client from below: the host config approving linear and its address, and the Settings page where each person stores their own key, write-only. Below a dashed fence: never on the row, an address or a key; never handed to the run, the key, in its command line, environment, MCP config, session or logs."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.4; }
+    .n-out { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arr-n { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .head-n{ fill:var(--code); }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-e   { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-gs  { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="row">
+    <rect class="n-new" x="16" y="40" width="180" height="86" rx="5"/>
+    <text class="t-lbl" x="30" y="60">THE PROJECT ROW</text>
+    <text class="t-b" x="30" y="82">fsd</text>
+    <text class="t-s" x="30" y="102">mcpServers: ["linear"]</text>
+    <text class="t-s" x="30" y="116">a member sets it</text>
+  </g>
+
+  <g id="read">
+    <rect class="n-box" x="236" y="40" width="196" height="86" rx="5"/>
+    <text class="t-lbl" x="250" y="60">RUN START · ONE READ</text>
+    <text class="t-b" x="250" y="82">its project and owner</text>
+    <text class="t-s" x="250" y="102">workstream → filing project</text>
+    <text class="t-s" x="250" y="116">→ the task's input.project</text>
+  </g>
+
+  <g id="fsd">
+    <rect class="n-new" x="472" y="40" width="210" height="86" rx="5"/>
+    <text class="t-lbl" x="486" y="60">FSD'S MCP CLIENT</text>
+    <text class="t-b" x="486" y="82">connects with the key</text>
+    <text class="t-s" x="486" y="102">createMcpManager, per run</text>
+    <text class="t-s" x="486" y="116">closed when the run ends</text>
+  </g>
+
+  <g id="claude">
+    <rect class="n-new" x="722" y="40" width="202" height="86" rx="5"/>
+    <text class="t-lbl" x="736" y="60">CLAUDE CODE</text>
+    <text class="t-b" x="736" y="82">tools only</text>
+    <text class="t-s" x="736" y="102">in-process server, no key</text>
+    <text class="t-s" x="736" y="116">mcp__linear__* allowed</text>
+  </g>
+
+  <g id="checkout">
+    <rect class="n-out" x="236" y="170" width="196" height="56" rx="5"/>
+    <text class="t-lbl" x="250" y="190">WORKSPACE HOST · TODAY</text>
+    <text class="t-b" x="250" y="211">the repository's checkout</text>
+  </g>
+
+  <g id="host">
+    <rect class="n-in" x="472" y="170" width="100" height="70" rx="5"/>
+    <text class="t-lbl" x="482" y="190">HOST CONFIG</text>
+    <text class="t-b" x="482" y="211">linear</text>
+    <text class="t-s" x="482" y="228">its address</text>
+  </g>
+
+  <g id="settings">
+    <rect class="n-new" x="582" y="170" width="160" height="70" rx="5"/>
+    <text class="t-lbl" x="594" y="190">SETTINGS · PER PERSON</text>
+    <text class="t-b" x="594" y="211">their own key</text>
+    <text class="t-s" x="594" y="228">write-only, never shown</text>
+  </g>
+
+  <g id="arrows">
+    <path class="arr-n" d="M196 83 H228"/><path class="head-n" d="M228 78 L236 83 L228 88 Z"/>
+    <path class="arr-n" d="M432 83 H464"/><path class="head-n" d="M464 78 L472 83 L464 88 Z"/>
+    <text class="t-e" x="434" y="76">names</text>
+    <path class="arr-n" d="M682 83 H714"/><path class="head-n" d="M714 78 L722 83 L714 88 Z"/>
+    <text class="t-e" x="684" y="76">tools</text>
+    <path class="arr" d="M334 126 V162"/><path class="head" d="M329 162 L334 170 L339 162 Z"/>
+    <text class="t-e" x="340" y="150">repository, as today</text>
+    <path class="arr-n" d="M522 170 V134"/><path class="head-n" d="M517 134 L522 126 L527 134 Z"/>
+    <text class="t-e" x="528" y="152">where</text>
+    <path class="arr-n" d="M640 170 V134"/><path class="head-n" d="M635 134 L640 126 L645 134 Z"/>
+    <text class="t-e" x="646" y="152">the owner's key</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="276" x2="924" y2="276"/>
+    <text class="t-g" x="16" y="306">NEVER ON THE ROW</text>
+    <text class="t-gs" x="196" y="306">an address · a credential variable · a key</text>
+    <text class="t-g" x="16" y="334">NEVER HANDED TO THE RUN</text>
+    <text class="t-gs" x="196" y="334">the key, in its command line · environment · MCP config · session · logs</text>
+    <text class="t-g" x="16" y="362">NOT INVOLVED</text>
+    <text class="t-gs" x="196" y="362">a coordinator's hand-over · dispatchTask · core, engine, orchestration, workspace</text>
+  </g>
+</svg>

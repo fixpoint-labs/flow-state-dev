@@ -9,7 +9,7 @@
  * It used to build five more, each wrapping a coordination pattern from
  * `@flow-state-dev/patterns` around sub-agent generators that ran and ended
  * inside the turn. Those were removed (FIX-1478): the app's one recipe for
- * work done by several agents is the roster of hired seats, and a second
+ * work done by several agents is the roster of hired workers, and a second
  * in-request one on the same screen taught the reader that `worker` means two
  * different things. The patterns themselves are unaffected and still shipped —
  * see the patterns documentation, which carries a runnable example per page.

@@ -12,6 +12,22 @@
  * returns its id; nothing executes it by itself. Whatever drains that board
  * (a `taskBoard()` drain, a hand-off) runs the work.
  *
+ * ## Dispatching (FIX-1875)
+ *
+ * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
+ * a conversation's board), a tenth tool, `dispatchTask`, starts work now: a
+ * new row (`goal`, with `addTask`'s fields and checks, through the same code),
+ * or a row recorded earlier (`taskId`), readied by the collection's one
+ * conditional `dispatch` write. With `wait`, the turn parks on it until the
+ * task ends. Exactly one of `goal` and `taskId`, and no owner it can resolve is
+ * refused (`assignee_required`), each before anything is written.
+ *
+ * On such a board `addTask` **records** a row and doesn't start it: the row is
+ * filed with `Task.undispatched`, which the board's start test and the
+ * substrate's claim admission both read, and its result says
+ * `status: "recorded"`. `assignTask` only changes the owner, so a recorded row
+ * stays recorded. Nothing but `dispatchTask` readies it.
+ *
  * Board resolution goes through an injectable resolver (FIX-918). The default
  * reads the host generator's own-state board via `ctx.parent` (each handler
  * runs as a child block, so `ctx.parent` — not `ctx.self`, which is the
@@ -41,13 +57,13 @@
  *
  * ## Waiting for the answer (FIX-1816)
  *
- * On a turn whose host can hold an ask (durable execution, and a durability
- * sweeper that times asks out: `RequestHost.hasAskSweeper`), the capability's
- * `addTask` takes two more flat fields: `waitForResponse`, which files the task
- * and parks the turn until it ends, returning its output as `answer`; and
- * `timeoutMs`, the ask's bound. Anywhere else the fields are not in the schema
- * and `addTask` is exactly as before. It adds no tool. The `addTask_<board>`
- * action never waits.
+ * On a turn whose host can hold a wait (durable execution, and a durability
+ * sweeper that times waits out: `RequestHost.hasAskSweeper`), `dispatchTask`
+ * takes two more flat fields: `wait`, which parks the turn until the task
+ * ends, returning its output as `answer`; and `timeoutMs`, the wait's bound.
+ * Anywhere else the fields are not in the schema. The `dispatchTask_<board>`
+ * action never waits. `addTask` never waits: it refuses the fields it used to
+ * take for it by name, rather than letting the schema drop them.
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
@@ -65,6 +81,7 @@ import {
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
+  type TaskInit,
   type TaskStatus,
   type TaskTransitionOptions,
   type TaskWriteOutcome,
@@ -83,7 +100,15 @@ import { isTaskTurn } from "../task-board/task-turn";
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
 import { shouldRetryOnFail } from "../tasks/collection/internal";
-import { addTaskAndWait, canHoldAsk, MAX_ASK_TIMEOUT_MS, MIN_ASK_TIMEOUT_MS, toolCallOf } from "../tasks/helpers/wait-for-response";
+import {
+  dispatchAndWait,
+  canHoldWait,
+  MAX_WAIT_TIMEOUT_MS,
+  MIN_WAIT_TIMEOUT_MS,
+  notDispatchableMessage,
+  toolCallOf,
+  type DispatchAndWaitResult,
+} from "../tasks/helpers/wait-for-response";
 
 /**
  * Own-state field the default resolver's board lives on. A host generator that
@@ -171,6 +196,13 @@ export interface AssigneeRoster {
   has(assignee: string): boolean;
   /** Roster rendered for an error message, e.g. `researcher (…), fetch (tool)`. */
   describe(): string;
+  /**
+   * The one participant a task with no assignee goes to, when there is
+   * exactly one; `undefined` otherwise. Read by `dispatchTask`, which refuses
+   * (`assignee_required`) rather than start a row nobody would take
+   * (FIX-1875 BR-24). Optional: a roster without it names no default.
+   */
+  soleAssignee?(): string | undefined;
 }
 
 /**
@@ -754,30 +786,41 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
 // specific board (own-state default or an injected shared board).
 // ---------------------------------------------------------------------------
 
-function buildTaskTools(
-  resolve: TaskCollectionResolver,
-  roster?: AssigneeRosterSource,
-  nameSuffix?: string,
+/** How {@link buildTaskTools} builds one board's tools. */
+interface BuildTaskToolsOptions {
+  /** The board's roster, fixed or read per call ({@link AssigneeRosterSource}). */
+  readonly roster?: AssigneeRosterSource;
+  /** Board qualifier for every tool name ({@link taskToolSuffix}). */
+  readonly nameSuffix?: string;
   /**
    * Capabilities each tool composes. Only {@link taskToolActions} passes one: a
    * board's own capability, so the ledger's resource is installed on the
    * action's block rather than left for the flow to declare.
    */
-  uses?: readonly DefinedCapability[],
+  readonly uses?: readonly DefinedCapability[];
   /**
    * Present no worker claim, whatever async scope the tool runs in. Only
    * {@link taskToolActions} sets it: an action is a caller's move (BR-25), and
    * a worker that dispatches one in-process must not lend it the worker's
    * ticket through the claim seam.
    */
-  claimless = false,
+  readonly claimless?: boolean;
   /**
-   * Offer `addTask`'s `waitForResponse` and `timeoutMs`. Only the capability's
-   * per-turn tool list sets it, on a host that can hold an ask
-   * ({@link canHoldAsk}).
+   * Offer the wait: `dispatchTask`'s `wait`, with `timeoutMs`. Only the
+   * capability's per-turn tool list sets it, on a host that can hold a wait
+   * ({@link canHoldWait}).
    */
-  wait = false,
-) {
+  readonly wait?: boolean;
+  /**
+   * Add `dispatchTask` (FIX-1875): the board starts a ready row at once, so a
+   * dispatch means work starts now ({@link TaskToolsOptions.dispatches}). And
+   * `addTask` records: it files the row not dispatched.
+   */
+  readonly dispatches?: boolean;
+}
+
+function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
+  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
    * The nine names, optionally board-qualified.
@@ -897,14 +940,11 @@ function buildTaskTools(
     "not run it. The board may bound how many tasks wait at once and how many it may hold " +
     "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
     "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.";
-  const waitDescription =
-    " Set waitForResponse to true when your next step needs the task's result: the task is " +
-    "filed as usual, then you wait until it ends and get its output back as answer. Only one " +
-    "waiting addTask per step. timeoutMs bounds the wait, from 30000 (30 seconds) to 3600000 " +
-    "(an hour), five minutes when unset, and is only valid with waitForResponse. Errors: " +
-    "wait_timed_out (it didn't end in time; it is cancelled), wait_task_failed, " +
-    "wait_task_cancelled, wait_already_pending, wait_unavailable (you are working a task " +
-    "yourself, so you can't wait), wait_timeout_out_of_range.";
+  // FIX-1875 BR-23: on a board that dispatches, recording is all addTask does.
+  const addTaskRecordsDescription =
+    " On this board the task stays recorded and doesn't start, even with an assignee, until " +
+    "you dispatch it: call dispatchTask with its taskId. To start work now, call dispatchTask " +
+    "instead of addTask.";
   const addTaskFields = {
     goal: z.string(),
     assignee: z.string().optional(),
@@ -923,47 +963,164 @@ function buildTaskTools(
           "with its worker, so leave assignee unset.",
       ),
   };
-  const waitFields = {
-    waitForResponse: z
-      .boolean()
-      .optional()
-      .describe("Wait for the task to end and return its output as answer."),
-    timeoutMs: z
-      .number()
-      .optional()
-      .describe(
-        `How long to wait, in ms: ${MIN_ASK_TIMEOUT_MS} to ${MAX_ASK_TIMEOUT_MS}. Five minutes when unset. Only with waitForResponse.`,
-      ),
-  };
-  type AddTaskInput = z.infer<z.ZodObject<typeof addTaskFields>> & {
-    waitForResponse?: boolean;
-    timeoutMs?: number;
-  };
+  type NewTaskInput = z.infer<z.ZodObject<typeof addTaskFields>>;
+  /**
+   * The fields `addTask` took to wait (FIX-1816), refused by name since the
+   * wait moved to `dispatchTask` (FIX-1875 BR-21). Read from the call's input
+   * before anything else: the schema doesn't name them, so a plain parse
+   * would drop them and file a task the caller thinks it waits on.
+   */
+  const RETIRED_WAIT_FIELDS = ["waitForResponse", "timeoutMs"] as const; // retired-name-refusal
+  type FollowUp = { root: string; assignee: string | undefined; id: string };
+
+  /**
+   * A decision read from the roster, which can change between a call and its
+   * replay: recorded with the call when `memoize`, so the replay of a call
+   * that already filed or readied its row decides as the first call did, and
+   * reaches its own write instead of a refusal (FIX-1875 BR-15). `null`
+   * stands for "nothing to refuse" in the record, which holds JSON only.
+   */
+  async function decideOnce<T>(
+    ctx: BlockContext,
+    memoize: boolean,
+    name: string,
+    decide: () => Promise<T>,
+  ): Promise<T> {
+    const call = memoize ? toolCallOf(ctx) : undefined;
+    return call !== undefined && ctx.runOnce !== undefined
+      ? ctx.runOnce(`fsd.decide.${name}:${call.logicalId}`, decide)
+      : decide();
+  }
+
+  /**
+   * `addTask`'s checks on a new task, in its order, run by `addTask` and
+   * `dispatchTask` alike so the two refuse identically (FIX-1875 BR-14): the
+   * follow-up (in this board's partition only), then the assignee against the
+   * roster. The creation cap comes last, at the write ({@link fileNewTask}).
+   * Every refusal comes before anything is filed.
+   *
+   * `memoize` records the follow-up's checks, and the id they pick, with the
+   * call, so a replay of a waiting or dispatching call reuses them instead of
+   * re-counting against a board that now holds this follow-up.
+   */
+  async function checkNewTask(
+    ctx: BlockContext,
+    collection: TaskCollectionRef,
+    input: NewTaskInput,
+    memoize: boolean,
+  ): Promise<{ init: TaskInit; followUp: FollowUp | undefined } | { ok: false; error: string }> {
+    let followUp: FollowUp | undefined;
+    if (input.followUpOf !== undefined) {
+      const followUpOf = input.followUpOf;
+      const check = async () => resolveFollowUp(collection, followUpOf);
+      const call = memoize ? toolCallOf(ctx) : undefined;
+      const resolved =
+        call !== undefined && ctx.runOnce !== undefined
+          ? await ctx.runOnce(`fsd.followUp:${call.logicalId}`, check)
+          : await check();
+      if ("error" in resolved) return resolved;
+      followUp = resolved;
+    }
+    const assignee = followUp !== undefined ? followUp.assignee : input.assignee;
+    // Failure order is deliberate and uniform across the tools that touch an
+    // assignee: no board (the caller's) -> unknown assignee -> creation cap.
+    //
+    // The cap comes LAST because "that worker doesn't exist" is the more
+    // useful thing to tell a model, and because a task refused for a phantom
+    // assignee must not consume budget or reach the ledger at all — otherwise
+    // a typo'd add could be what trips the cap for a later valid one. It also
+    // avoids a two-round-trip dead end at the boundary: cap-first would answer
+    // "board full" to a caller whose real problem is the assignee, which it
+    // would then still hit after fixing it. `checkAssignee` is a pure
+    // pre-flight, so running it first costs nothing.
+    const bad =
+      assignee === undefined
+        ? undefined
+        : await decideOnce(ctx, memoize, "assignee", async () => checkAssignee(assignee, await rosterFor(roster, ctx)) ?? null);
+    if (bad) return bad;
+    return {
+      init: {
+        goal: input.goal,
+        ...(assignee !== undefined ? { assignee } : {}),
+        ...(followUp !== undefined ? { id: followUp.id, followUpOf: followUp.root } : {}),
+        ...(input.deps !== undefined ? { deps: input.deps } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.input !== undefined ? { input: input.input } : {}),
+        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+      },
+      followUp,
+    };
+  }
+
+  /**
+   * Run a new task's write, turning the two refusals the write itself can
+   * make into the soft errors `addTask` answers: a creation cap (FIX-931),
+   * and a follow-up's id taken by one filed at the same moment. Every other
+   * throw propagates.
+   */
+  async function fileNewTask<T>(
+    collection: TaskCollectionRef,
+    followUp: FollowUp | undefined,
+    followUpOf: string | undefined,
+    write: () => Promise<T>,
+  ): Promise<T | { ok: false; error: string }> {
+    try {
+      return await write();
+    } catch (err) {
+      // A creation cap (FIX-931) is a soft error the model can act on — drain
+      // to free enqueue slots, or stop planning at the lifetime ceiling.
+      if (err instanceof TaskCapExceededError) return capError(err);
+      // A follow-up's id was taken by one filed at the same moment: that
+      // one holds the session now (see `resolveFollowUp`).
+      if (followUp !== undefined && isTakenTaskId(err)) {
+        return followUpTakenError(err, collection, followUp.id, followUp.root, followUpOf!);
+      }
+      throw err;
+    }
+  }
+
+  /** A wait's result as the tools answer it: the answer, or the error code and its message. */
+  const waitAnswer = (result: DispatchAndWaitResult) =>
+    result.ok
+      ? { ok: true as const, taskId: result.taskId, answer: result.answer }
+      : {
+          ok: false as const,
+          error: result.message === undefined ? result.error : `${result.error}: ${result.message}`,
+          ...(result.taskId !== undefined ? { taskId: result.taskId } : {}),
+        };
+
+  /** What a recorded row's result says, so a caller that skipped the description sees it (BR-27). */
+  const recordedNote = (taskId: string) =>
+    `Recorded, not started. Call dispatchTask with taskId "${taskId}" when it should start.`;
 
   const addTask = defineTool({
     name: named("addTask"),
-    description: wait ? addTaskDescription + waitDescription : addTaskDescription,
-    inputSchema: wait ? z.object({ ...addTaskFields, ...waitFields }) : z.object(addTaskFields),
-    outputSchema: wait
-      ? z.union([
-          z.object({ ok: z.literal(true), taskId: z.string(), answer: z.unknown().optional() }),
-          z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
-        ])
-      : z.union([
-          z.object({ ok: z.literal(true), taskId: z.string() }),
-          z.object({ ok: z.literal(false), error: z.string() }),
-        ]),
+    description: dispatches ? addTaskDescription + addTaskRecordsDescription : addTaskDescription,
+    // Passthrough, so a retired wait field reaches `execute` to be refused by
+    // name rather than stripped by the parse (BR-21).
+    inputSchema: z.object(addTaskFields).passthrough(),
+    outputSchema: z.union([
+      z.object({
+        ok: z.literal(true),
+        taskId: z.string(),
+        status: z.literal("recorded").optional(),
+        note: z.string().optional(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
     parentStateSchema,
     execute: async (raw, ctx) => {
-      const input = raw as AddTaskInput;
-      // A bound with nothing to bound is refused, never ignored: a filer who
-      // meant to wait learns it didn't.
-      if (input.timeoutMs !== undefined && input.waitForResponse !== true) {
+      const input = raw as NewTaskInput & Record<string, unknown>;
+      const retired = RETIRED_WAIT_FIELDS.filter((field) => input[field] !== undefined);
+      if (retired.length > 0) {
         return {
           ok: false as const,
           error:
-            "wait_timeout_without_wait: timeoutMs bounds a wait, and this call doesn't wait. " +
-            "Set waitForResponse: true, or drop timeoutMs. Nothing was filed.",
+            `add_task_does_not_wait: addTask takes no ${retired.join(" or ")}; it only records a task. ` +
+            (dispatches
+              ? "To start a task now and wait for its result, call dispatchTask with the same fields and wait: true. "
+              : "This board has no tool that waits for a task. ") +
+            "Nothing was filed.",
         };
       }
       // A follow-up takes the finished task's worker: another worker is
@@ -973,75 +1130,230 @@ function buildTaskTools(
       }
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      // The follow-up's checks run before anything is filed, in this board's
-      // partition only, so a refusal stores nothing.
-      let followUp: { root: string; assignee: string | undefined; id: string } | undefined;
-      if (input.followUpOf !== undefined) {
-        // On the waiting path the checks and the id they pick are recorded
-        // with the call, so the replay after the answer reuses them instead of
-        // re-counting against a board that now holds this follow-up.
-        const followUpOf = input.followUpOf;
-        const check = async () => resolveFollowUp(collection, followUpOf);
-        const call = input.waitForResponse === true ? toolCallOf(ctx) : undefined;
-        const resolved =
-          call !== undefined && ctx.runOnce !== undefined
-            ? await ctx.runOnce(`fsd.followUp:${call.logicalId}`, check)
-            : await check();
-        if ("error" in resolved) return resolved;
-        followUp = resolved;
+      const checked = await checkNewTask(ctx, collection, input, false);
+      if ("error" in checked) return checked;
+      return fileNewTask(collection, checked.followUp, input.followUpOf, async () => {
+        if (!dispatches) {
+          const task = await collection.addTask(checked.init);
+          return { ok: true as const, taskId: task.id };
+        }
+        // FIX-1875 D1: on a board that starts a ready row at once, the row is
+        // filed not dispatched, so recording it starts nothing.
+        const task = await collection.addTask({ ...checked.init, undispatched: true });
+        return { ok: true as const, taskId: task.id, status: "recorded" as const, note: recordedNote(task.id) };
+      });
+    },
+  });
+
+  // -------------------------------------------------------------------------
+  // dispatchTask (FIX-1875): start work on another worker now, and optionally
+  // wait for it. Offered only on a board that starts a ready row at once.
+  // -------------------------------------------------------------------------
+
+  const dispatchDescription =
+    "Start a task on another worker now. Give goal to start a new task, with the same " +
+    "fields addTask takes, or taskId to start a task recorded earlier on this board. " +
+    "assignee names the worker; leave it unset only when there is a single worker to " +
+    "give it to. Returns the task id at once, without waiting for the task to run, and " +
+    "you hear when it ends. Use addTask only to write a task down for later.";
+  const dispatchWaitDescription =
+    " Set wait to true when your next step needs the task's result: you wait until it " +
+    "ends and get its output back as answer. Only one waiting call per step. timeoutMs " +
+    "bounds the wait, from 30000 (30 seconds) to 3600000 (an hour), five minutes when " +
+    "unset, and is only valid with wait. Errors: wait_timed_out (it didn't end in time; it " +
+    "is cancelled), wait_task_failed, wait_task_cancelled, wait_already_pending, " +
+    "wait_unavailable (you are working a task yourself, so you can't wait), " +
+    "wait_timeout_out_of_range.";
+  const dispatchFields = {
+    ...addTaskFields,
+    goal: z.string().optional().describe("What the new task is for. Omit it when you give taskId."),
+    taskId: z
+      .string()
+      .optional()
+      .describe("A task recorded earlier on this board that hasn't started, to start instead of a new one."),
+  };
+  const dispatchWaitFields = {
+    wait: z.boolean().optional().describe("Wait for the task to end and return its output as answer."),
+    timeoutMs: z
+      .number()
+      .optional()
+      .describe(
+        `How long to wait, in ms: ${MIN_WAIT_TIMEOUT_MS} to ${MAX_WAIT_TIMEOUT_MS}. Five minutes when unset. Only with wait.`,
+      ),
+  };
+  type DispatchInput = Omit<NewTaskInput, "goal"> & {
+    goal?: string;
+    taskId?: string;
+    wait?: unknown;
+    timeoutMs?: unknown;
+    post?: unknown;
+  };
+  /** The fields only a new task takes, refused beside `taskId` (BR-13): change a recorded task with updateTask first. */
+  const NEW_TASK_ONLY = ["deps", "priority", "input", "metadata", "followUpOf"] as const;
+
+  /**
+   * The owner a dispatch starts the row with (BR-24): the one named, else the
+   * row's own, else the board's sole worker. `undefined` means nobody would
+   * take it, and the call is refused before anything is written.
+   */
+  const ownerFor = async (ctx: BlockContext, named: string | undefined): Promise<string | undefined> =>
+    named ?? (await rosterFor(roster, ctx))?.soleAssignee?.();
+
+  const assigneeRequiredError = {
+    ok: false as const,
+    error:
+      "assignee_required: there is more than one worker this task could go to, and none was " +
+      "named, so nothing would start it. Name one with assignee. Nothing was filed.",
+  };
+
+  /**
+   * File a new row ready, once per call: its id is recorded with the call, and
+   * the row carries the call (`dispatchCall`), so a replay after a crash finds
+   * its own row instead of filing a second (BR-15). Where the turn carries no
+   * tool call or no `runOnce`, it is the unguarded path: a plain `addTask`,
+   * with no replay protection.
+   */
+  async function fileReady(ctx: BlockContext, collection: TaskCollectionRef, init: TaskInit) {
+    const call = toolCallOf(ctx);
+    if (call === undefined || ctx.runOnce === undefined) {
+      const task = await collection.addTask(init);
+      return { ok: true as const, taskId: task.id };
+    }
+    const id = await ctx.runOnce(
+      `fsd.dispatch.plan:${call.logicalId}`,
+      // The board's own id shape: twenty hex characters, unique across processes.
+      async () => init.id ?? `task_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
+    );
+    if (collection.get(id)?.dispatchCall === call.logicalId) return { ok: true as const, taskId: id };
+    const task = await collection.addTask({ ...init, id, dispatchCall: call.logicalId });
+    return { ok: true as const, taskId: task.id };
+  }
+
+  const dispatchTask = defineTool({
+    name: named("dispatchTask"),
+    description: wait ? dispatchDescription + dispatchWaitDescription : dispatchDescription,
+    // Not `.strict()`: FIX-1872 adds its post form to this schema. Passthrough,
+    // so a field this board doesn't offer reaches `execute` to be refused by
+    // name rather than stripped by the parse (BR-18).
+    inputSchema: (wait ? z.object({ ...dispatchFields, ...dispatchWaitFields }) : z.object(dispatchFields)).passthrough(),
+    outputSchema: z.union([
+      z.object({ ok: z.literal(true), taskId: z.string(), answer: z.unknown().optional() }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
+    parentStateSchema,
+    execute: async (raw, ctx) => {
+      const input = raw as DispatchInput;
+      // Read before anything else, and before the schema could have dropped
+      // them: a wait this board or host can't hold is refused by name.
+      if (!wait && (input.wait !== undefined || input.timeoutMs !== undefined)) {
+        return {
+          ok: false as const,
+          error:
+            "wait_unavailable: this call can't wait here, so it takes no wait or timeoutMs. " +
+            "Dispatch without them, and you hear when the task ends. Nothing was filed.",
+        };
       }
-      const assignee = followUp !== undefined ? followUp.assignee : input.assignee;
-      // Failure order is deliberate and uniform across the tools that touch an
-      // assignee: no board (above) -> unknown assignee -> creation cap.
-      //
-      // The cap comes LAST because "that worker doesn't exist" is the more
-      // useful thing to tell a model, and because a task refused for a phantom
-      // assignee must not consume budget or reach the ledger at all — otherwise
-      // a typo'd add could be what trips the cap for a later valid one. It also
-      // avoids a two-round-trip dead end at the boundary: cap-first would answer
-      // "board full" to a caller whose real problem is the assignee, which it
-      // would then still hit after fixing it. `checkAssignee` is a pure
-      // pre-flight, so running it first costs nothing.
-      const bad =
-        assignee === undefined
-          ? undefined
-          : checkAssignee(assignee, await rosterFor(roster, ctx));
-      if (bad) return bad;
-      const init = {
-        goal: input.goal,
-        ...(assignee !== undefined ? { assignee } : {}),
-        ...(followUp !== undefined ? { id: followUp.id, followUpOf: followUp.root } : {}),
-        ...(input.deps !== undefined ? { deps: input.deps } : {}),
-        ...(input.priority !== undefined ? { priority: input.priority } : {}),
-        ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-      };
-      try {
-        if (input.waitForResponse === true) {
-          const result = await addTaskAndWait(ctx, collection, init, {
-            ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
-          });
-          if (result.ok) return { ok: true as const, taskId: result.taskId, answer: result.answer };
+      if (input.post !== undefined) {
+        return {
+          ok: false as const,
+          error: "post_unavailable: there is no post being routed on this turn to hand on. Nothing was filed.",
+        };
+      }
+      const hasGoal = input.goal !== undefined;
+      const hasRef = input.taskId !== undefined;
+      if (!hasGoal && !hasRef) {
+        return {
+          ok: false as const,
+          error:
+            "dispatch_target_required: give goal to start a new task, or taskId to start one " +
+            "recorded earlier. Nothing was filed.",
+        };
+      }
+      if (hasGoal && hasRef) {
+        return {
+          ok: false as const,
+          error:
+            "dispatch_target_ambiguous: give goal for a new task or taskId for a recorded one, " +
+            "not both. Nothing was filed.",
+        };
+      }
+      if (input.timeoutMs !== undefined && input.wait !== true) {
+        return {
+          ok: false as const,
+          error:
+            "wait_timeout_without_wait: timeoutMs bounds a wait, and this call doesn't wait. " +
+            "Set wait: true, or drop timeoutMs. Nothing was filed.",
+        };
+      }
+      const timeout = typeof input.timeoutMs === "number" ? { timeoutMs: input.timeoutMs } : {};
+
+      if (hasRef) {
+        const taskId = input.taskId!;
+        const extra = NEW_TASK_ONLY.filter((field) => input[field] !== undefined);
+        if (extra.length > 0) {
           return {
             ok: false as const,
-            error: result.message === undefined ? result.error : `${result.error}: ${result.message}`,
-            ...(result.taskId !== undefined ? { taskId: result.taskId } : {}),
+            error:
+              `dispatch_ref_takes_no_task_fields: ${extra.join(", ")} only describe a new task. ` +
+              `To change task "${taskId}", call updateTask first. Nothing was written.`,
           };
         }
-        const task = await collection.addTask(init);
-        return { ok: true as const, taskId: task.id };
-      } catch (err) {
-        // A creation cap (FIX-931) is a soft error the model can act on — drain
-        // to free enqueue slots, or stop planning at the lifetime ceiling. Every
-        // other throw still propagates.
-        if (err instanceof TaskCapExceededError) return capError(err);
-        // A follow-up's id was taken by one filed at the same moment: that
-        // one holds the session now (see `resolveFollowUp`).
-        if (followUp !== undefined && isTakenTaskId(err)) {
-          return followUpTakenError(err, collection, followUp.id, followUp.root, input.followUpOf!);
+        const collection = await resolve(ctx);
+        if (!collection) return noBoardError;
+        const row = collection.get(taskId);
+        if (!row) return taskNotFoundError(taskId);
+        // Recorded with the call (BR-15): a replay after the team changed
+        // decides as the first call did, and reaches its own write.
+        const decided = await decideOnce(ctx, true, "owner", async () => {
+          const bad =
+            input.assignee === undefined
+              ? undefined
+              : checkAssignee(input.assignee, await rosterFor(roster, ctx));
+          return bad ?? { owner: (await ownerFor(ctx, input.assignee ?? row.assignee)) ?? null };
+        });
+        if ("error" in decided) return decided;
+        if (decided.owner === null) return assigneeRequiredError;
+        // An owner the call names is always written, even the row's own: an
+        // assignTask landing between this read and the write must not stand
+        // over the later dispatch (BR-25). Only an inherited owner is left out.
+        const assignee =
+          input.assignee !== undefined || decided.owner !== row.assignee ? decided.owner : undefined;
+        if (input.wait === true) {
+          return waitAnswer(
+            await dispatchAndWait(ctx, collection, { taskId, ...(assignee !== undefined ? { assignee } : {}) }, timeout),
+          );
         }
-        throw err;
+        if (collection.dispatch === undefined) {
+          return {
+            ok: false as const,
+            taskId,
+            error: `task_not_dispatchable: this board can't start task "${taskId}" by its id. Nothing was written.`,
+          };
+        }
+        const call = toolCallOf(ctx)?.logicalId ?? `call_${crypto.randomUUID()}`;
+        const outcome: TaskWriteOutcome = await collection.dispatch(taskId, {
+          call,
+          ...(assignee !== undefined ? { assignee } : {}),
+        });
+        if (outcome.outcome === "declined") {
+          return { ok: false as const, taskId, error: `task_not_dispatchable: ${notDispatchableMessage(taskId, outcome)}` };
+        }
+        return { ok: true as const, taskId };
       }
+
+      if (input.followUpOf !== undefined && input.assignee !== undefined) {
+        return followUpAssigneeError(input.followUpOf);
+      }
+      const collection = await resolve(ctx);
+      if (!collection) return noBoardError;
+      const checked = await checkNewTask(ctx, collection, { ...input, goal: input.goal! }, true);
+      if ("error" in checked) return checked;
+      const owner = await decideOnce(ctx, true, "owner", async () => (await ownerFor(ctx, checked.init.assignee)) ?? null);
+      if (owner === null) return assigneeRequiredError;
+      const init: TaskInit = { ...checked.init, assignee: owner };
+      return fileNewTask(collection, checked.followUp, input.followUpOf, async () =>
+        input.wait === true ? waitAnswer(await dispatchAndWait(ctx, collection, init, timeout)) : fileReady(ctx, collection, init),
+      );
     },
   });
 
@@ -1049,7 +1361,11 @@ function buildTaskTools(
     name: named("assignTask"),
     description:
       "Reassign an existing task to a different worker. A task that has already " +
-      "finished cannot be reassigned — you get told so rather than a silent success.",
+      "finished cannot be reassigned — you get told so rather than a silent success." +
+      (dispatches
+        ? " This only changes who owns it: a recorded task stays recorded until you call " +
+          "dispatchTask with its taskId."
+        : ""),
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
     outputSchema: okOrError,
     parentStateSchema,
@@ -1188,7 +1504,7 @@ function buildTaskTools(
             // The run working the task, or the one that last worked it: a
             // reader opens it from here (FIX-1668). Absent until a run starts.
             run: taskSchema.shape.run,
-            /** A turn is waiting on this task's answer (`addTask` with `waitForResponse`). */
+            /** A turn is waiting on this task's answer (`dispatchTask` with `wait`). */
             asked: z.literal(true).optional(),
           }),
         ),
@@ -1271,7 +1587,10 @@ function buildTaskTools(
     },
   });
 
-  return [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, answerTask];
+  const tools = [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, answerTask];
+  // `dispatchTask` follows the nine, so a board that doesn't dispatch keeps
+  // exactly its nine, in their order.
+  return dispatches ? [...tools, dispatchTask] : tools;
 }
 
 /**
@@ -1289,7 +1608,10 @@ export function buildTaskToolsList(
   roster?: AssigneeRosterSource,
   nameSuffix?: string,
 ) {
-  return buildTaskTools(resolveCollection, roster, nameSuffix);
+  return buildTaskTools(resolveCollection, {
+    ...(roster !== undefined ? { roster } : {}),
+    ...(nameSuffix !== undefined ? { nameSuffix } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1307,8 +1629,9 @@ export function buildTaskToolsList(
  *   from the running context ({@link AssigneeRosterSource}). Supply it so a
  *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
  *   roster the executive is.
- * @param options `resumesAsks: true` when the board has a waker, so `addTask`
- *   may offer `waitForResponse` ({@link TaskToolsOptions}).
+ * @param options `dispatches: true` on a board that starts a ready row at
+ *   once, and `resumesAsks: true` when it also has a waker, so `dispatchTask`
+ *   may offer `wait` ({@link TaskToolsOptions}).
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
@@ -1343,18 +1666,27 @@ export interface TaskToolsOptions {
    * The board has a waker: whatever runs it calls `resumeOwedAsks` when it
    * touches the board outside a turn (a board run, a task's notice), so a
    * turn parked on an ask is resumed when its task ends. Only then may
-   * `addTask` offer `waitForResponse`. Default `false`: a board that nothing
-   * wakes would leave every ask to its timeout.
+   * `dispatchTask` offer `wait`, so it has no effect without `dispatches`.
+   * Default `false`: a board that nothing wakes would leave every wait to its
+   * timeout.
    */
   readonly resumesAsks?: boolean;
+  /**
+   * The board starts a ready row at once (FIX-1875): its ref's writes wake
+   * whatever runs it, so `dispatchTask` is offered, and it means the work
+   * starts now. Default `false`: a board a drain runs decides for itself when
+   * each row runs, so a dispatch there would promise a start nothing makes.
+   */
+  readonly dispatches?: boolean;
 }
 
 /**
- * The nine task tools as a turn gets them: two lists of the same nine
- * names, built once, and the one the turn can use. `addTask` carries
- * `waitForResponse` and `timeoutMs` only on a board that resumes asks
- * (`options.resumesAsks`) and a host that can hold and bound one
- * ({@link canHoldAsk}); anywhere else the list is {@link buildTaskToolsList}'s.
+ * The task tools as a turn gets them: two lists of the same names, built
+ * once, and the one the turn can use. The nine, and `dispatchTask` on a board
+ * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
+ * `timeoutMs` only on a board that also resumes asks (`options.resumesAsks`)
+ * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
+ * never waits.
  *
  * For a composing layer that builds its own capability over a board (pass
  * the result as a preset's `controlTools`, or call it from one).
@@ -1364,10 +1696,15 @@ export function taskToolsForTurn(
   roster?: AssigneeRosterSource,
   options: TaskToolsOptions = {},
 ): (ctx: object) => GeneratorTool[] {
-  const plain = buildTaskTools(resolveCollection, roster);
-  if (options.resumesAsks !== true) return () => plain;
-  const waiting = buildTaskTools(resolveCollection, roster, undefined, undefined, false, true);
-  return (ctx) => (canHoldAsk(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
+  const base: BuildTaskToolsOptions = {
+    ...(roster !== undefined ? { roster } : {}),
+    dispatches: options.dispatches === true,
+  };
+  const plain = buildTaskTools(resolveCollection, base);
+  // Only `dispatchTask` waits, so a board without it has one list.
+  if (options.resumesAsks !== true || options.dispatches !== true) return () => plain;
+  const waiting = buildTaskTools(resolveCollection, { ...base, wait: true });
+  return (ctx) => (canHoldWait(ctx as Pick<BlockContext, "requestHost">) ? waiting : plain);
 }
 
 /**
@@ -1393,7 +1730,7 @@ export const taskTools = createTaskToolsCapability();
  * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
  * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
  *
- * **Pinned.** It is the name a model is told about on a mailbox board and the
+ * **Pinned.** It is the name a model is told about on a dotted board and the
  * name an action carries under {@link taskToolActions}, and the DevTool scopes
  * a row's actions to its board by it.
  */
@@ -1430,8 +1767,8 @@ export interface TaskToolActionsBoard {
  *   reached through the board's own resolver, and each action composes the
  *   board's capability, so the flow need not declare the collection again.
  * - `taskToolActions(collectionId, resolve, roster?)` — for a caller that
- *   resolves a durable ledger itself (a Workforce mailbox does, to fence each
- *   action to its own session).
+ *   resolves a durable ledger itself, to fence each action to its own
+ *   session.
  *
  * Pass a `roster` and the actions check assignees the way the model's tools
  * do: `addTask`, `assignTask` and `updateTask` refuse one the roster does not
@@ -1439,6 +1776,10 @@ export interface TaskToolActionsBoard {
  * function of the running context, read per call ({@link AssigneeRosterSource}),
  * for a board whose team changes while it is in use. Without one, any assignee
  * is accepted, as before.
+ *
+ * Pass `{ dispatches: true }` for a board that starts a ready row at once
+ * ({@link TaskToolsOptions.dispatches}), and `dispatchTask_<suffix>` is among
+ * them. It never waits: an action has no turn to park.
  *
  * These are public actions: anyone who can call the flow can call them.
  *
@@ -1458,11 +1799,13 @@ export function taskToolActions(
   collectionId: string,
   resolve: TaskCollectionResolver,
   roster?: AssigneeRosterSource,
+  options?: Pick<TaskToolsOptions, "dispatches">,
 ): Record<string, ActionConfig>;
 export function taskToolActions(
   boardOrId: TaskToolActionsBoard | string,
   resolveOrRoster?: TaskCollectionResolver | AssigneeRosterSource,
   rosterForId?: AssigneeRosterSource,
+  actionOptions: Pick<TaskToolsOptions, "dispatches"> = {},
 ): Record<string, ActionConfig> {
   let collectionId: string;
   let resolve: TaskCollectionResolver;
@@ -1499,7 +1842,13 @@ export function taskToolActions(
     uses = [boardOrId.capability];
   }
   return Object.fromEntries(
-    buildTaskTools(resolve, roster, taskToolSuffix(collectionId), uses, true).map((tool) => [
+    buildTaskTools(resolve, {
+      ...(roster !== undefined ? { roster } : {}),
+      nameSuffix: taskToolSuffix(collectionId),
+      ...(uses !== undefined ? { uses } : {}),
+      claimless: true,
+      dispatches: actionOptions.dispatches === true,
+    }).map((tool) => [
       tool.name,
       { block: tool, description: tool.description },
     ]),

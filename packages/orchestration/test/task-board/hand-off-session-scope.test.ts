@@ -32,7 +32,7 @@ function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
     collection,
     workers: {
       brief: dispatcher({
-        name: "brief-seat",
+        name: "brief-assignee",
         type: "task",
         action: "brief",
         session: "per-task"

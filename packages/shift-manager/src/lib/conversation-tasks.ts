@@ -26,9 +26,9 @@ export type ConversationTask = {
   attempts: number;
 };
 
-/** Read the tasks of the coordinator conversation `sessionId` on `kind`. */
-export async function readConversationTasks(clients: LabClients, kind: string, sessionId: string): Promise<ConversationTask[]> {
-  const output = (await runAction(clients, kind, sessionId, LIST_TASKS_ACTION, {})).output as
+/** Read the tasks of the coordinator conversation `sessionId` on `flow`. */
+export async function readConversationTasks(clients: LabClients, flow: string, sessionId: string): Promise<ConversationTask[]> {
+  const output = (await runAction(clients, flow, sessionId, LIST_TASKS_ACTION, {})).output as
     | { ok: true; tasks: ConversationTask[] }
     | { ok: false; error: string };
   if (!output.ok) throw new ActionRefused(output.error);

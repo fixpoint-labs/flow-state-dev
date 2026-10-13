@@ -24,9 +24,9 @@ delegates: [eng.coder, eng.reviewer]
 ---
 ```
 
-`delegates:` is who works for this worker. A coordinator hands posts to this list, and any worker files tasks for it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
+`delegates:` is who works for this worker. A coordinator hands posts to this list, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s nine task tools in that session: `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`. Your app can send the same nine as actions on any of that worker's sessions, named for the board, `tasks`: `addTask_tasks`, `listTasks_tasks` and so on.
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` records a task without starting it, until `dispatchTask` names it by its `taskId`. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
 
 A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer:
 
@@ -92,8 +92,8 @@ What the kit gives you, and where each piece goes:
 
 | Field | Put it in |
 |-------|-----------|
-| `tools` | The `uses` of the block that runs the model. It carries the nine tools only while the session files, and nothing otherwise. |
-| `actions` | The flow's `actions`: the nine as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
+| `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
+| `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
@@ -113,9 +113,9 @@ A worker that files from a session it was **posted** to still answers the post a
 
 How a filed task runs, how the filing session hears it ended, and how to manage it from your app are on the coordinators page, under [Handing out tasks](./coordinators.md#handing-out-tasks). They work the same for every worker.
 
-## Showing a person's boards in your app
+## Showing a user's boards in your app
 
-A browser reads a person's boards through the `tasks` collection on any of that person's sessions. The session has to be on a flow that keeps boards: the built-in worker flow, the coordinator flow, or your own flow built with `defineSessionBoard`. On any other session the read fails with a 404, `Unknown resource "tasks"`. The read covers the task rows of every session that person has filed from, of all three kinds above, so you don't need a request per session. It never returns another person's rows.
+A browser reads a user's boards through the `tasks` collection on any of that user's sessions. The session has to be on a flow that keeps boards: the built-in worker flow, the coordinator flow, or your own flow built with `defineSessionBoard`. On any other session the read fails with a 404, `Unknown resource "tasks"`. The read covers the task rows of every session that user has filed from, on any of the three flows above, so you don't need a request per session. It never returns another user's rows.
 
 Pass the first segment of a row's `topic`, URI-decoded, to `sessionIdOfFiling` to get the id of the session that filed the task. `clientData` holds the board's fields: `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. A task's input, output and metadata are never sent.
 
@@ -149,9 +149,9 @@ your conversation ── task ──▶ lead's task session ── pieces ──
         ◀── "completed, with both results" ──┘
 ```
 
-Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can file the work again, for the same delegate or another. A piece filed in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't file it again, the task fails naming the retry.
+Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can dispatch the work again, for the same delegate or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
 
-Only the turn a failure woke can retry it. A piece filed in any later turn is new work, so a failure the worker left alone still fails the task.
+Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
 
 Every session in the chain is yours, and only your own workers appear in it.
 
@@ -177,4 +177,4 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 
 - [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.
-- [Task board](../orchestration/task-board.md): the board and the nine task tools underneath.
+- [Task board](../orchestration/task-board.md): the board and the task tools underneath.

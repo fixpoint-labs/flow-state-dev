@@ -64,12 +64,12 @@ describe("a delegate's session, found by its conversation (BR-20a)", () => {
     await post(host, id, "fix it [route:eng.coder]");
     expect(await app.findWorkerSession({ worker: "eng.coder" })).toBeUndefined();
 
-    // A session an app opened itself for a conversation carries the key too.
-    const appOpened = await app.ensureWorkerSession({ worker: "eng.coder", filingSessionId: "another-conversation" });
-    expect(await app.findWorkerSession({ worker: "eng.coder" })).toBeUndefined();
+    // An app can't open one for a conversation itself: only the delivery does.
+    await expect(app.ensureWorkerSession({ worker: "eng.coder", filingSessionId: "another-conversation" })).rejects.toThrow(
+      /never by ensureWorkerSession/
+    );
 
     const plain = await app.ensureWorkerSession({ worker: "eng.coder" });
-    expect(plain.id).not.toBe(appOpened.id);
     expect(plain.id).not.toBe(host.heard[0]!.sessionId);
     expect((await app.findWorkerSession({ worker: "eng.coder" }))?.id).toBe(plain.id);
   });

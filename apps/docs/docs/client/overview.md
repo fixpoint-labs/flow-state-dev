@@ -23,13 +23,14 @@ const client = createClient({
   // such as "http://localhost:3000", plus any base path. See /docs/configuration/client#choosing-baseurl
 });
 
-const { requestId } = await client.sendAction("chat", { message: "Hello" });
+const { request } = await client.sendAction("chat", { message: "Hello" });
+const requestId = request.id;
 // `flowKind` is the instance the client is bound to: a flow's kind, or one
 // copy's id for a flow that runs as several. Every call goes to that instance,
 // and a session it starts is recorded as that instance's.
 ```
 
-`sendAction` returns a `requestId`. Execution is async. The server returns `202 Accepted`; the real work happens in the background. Connect to the stream to receive results.
+`sendAction` resolves to `{ status, request, session?, error? }`, where `status` is `"in_progress"`, `"completed"`, `"failed"` or `"incomplete"` and you use `request.id` to connect to the request's stream. Execution is async. The server returns `202 Accepted`; the real work happens in the background. Connect to the stream to receive results.
 
 ## createTypedClient
 
@@ -44,7 +45,7 @@ const client = createTypedClient({
   userId: "user_1",
 });
 
-const { requestId } = await client.actions.chat({ message: "Hello" });
+const { request } = await client.actions.chat({ message: "Hello" });
 ```
 
 Action names and input shapes are checked at compile time. The typed client also exposes `sendAction` if you need it.
@@ -212,7 +213,7 @@ if (run) {
 
 A row whose session has had no run dispatched into it carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims a run is pending when none has been dispatched.
 
-`topic` and `coordinate` are optional too. `topic` is the key the run's session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board seat's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
+`topic` and `coordinate` are optional too. `topic` is the key the run's session was derived from, `coordinate` the entry it was dispatched to. Both are display labels — nothing identifies or authorizes from them. Whether `topic` reads well depends on what the flow keyed on: a document id or an issue key is legible, a task-board worker's composed key is not. The session id is the one field always there, so fall back to it rather than to a made-up name:
 
 ```tsx
 <li>

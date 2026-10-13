@@ -2,7 +2,7 @@
  * The scripted model's scenario dispatcher, which every keyless check in this
  * app runs on.
  *
- * A scenario is picked by a marker in the LATEST user turn only. A seat's
+ * A scenario is picked by a marker in the LATEST user turn only. A worker's
  * conversation carries its earlier turns, so matching the whole history would
  * answer a new message with an old message's scenario. Red state, before the
  * green was trusted: the dispatcher before FIX-1589 (whole-history match)
@@ -16,15 +16,15 @@
  * (FIX-1792).
  *
  * A held scenario (`[scenario:reply-after-a-hold]`) gives a page time to show
- * a seat as working before its line lands. Its line must wait out the hold,
+ * a worker as working before its line lands. Its line must wait out the hold,
  * and nothing else may hold: every other check's timing depends on that.
  * `[scenario:wake-after-a-hold]` holds the same way before the wake's answer.
- * Without the hold that answer lands before a page can show the seat working,
+ * Without the hold that answer lands before a page can show the worker working,
  * and before the person's own post request ends and the page reads the
  * conversation again anyway.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentSeatMock, coordinatorRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
+import { agentWorkerMock, coordinatorRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
 import { createKitchenSinkTestModelResolver } from "./mock-flowstate";
 
 const system = (content: string) => ({ role: "system", content });
@@ -37,19 +37,19 @@ afterEach(() => {
 
 describe("the scripted model's scenario dispatcher", () => {
   it("matches the latest user turn only, not an earlier turn in the conversation", () => {
-    agentSeatMock.reset();
+    agentWorkerMock.reset();
     const history = [
-      user("devuser, through support.help: [scenario:reply-in-mailbox] reply-token-bbb when do refunds post?"),
-      assistant("[reply:in-mailbox] reply-token-bbb Refunds post on Fridays."),
-      user("[scenario:talk-to-seat] where is my refund?"),
+      user("devuser, through support.help: [scenario:reply-in-conversation] reply-token-bbb when do refunds post?"),
+      assistant("[reply:in-conversation] reply-token-bbb Refunds post on Fridays."),
+      user("[scenario:talk-to-worker] where is my refund?"),
     ];
-    const step = agentSeatMock.next(history);
-    expect(step?.text).toContain("[reply:talk-to-seat]");
+    const step = agentWorkerMock.next(history);
+    expect(step?.text).toContain("[reply:talk-to-worker]");
     expect(step?.text).not.toContain("reply-token-bbb");
 
     // And a latest turn with no marker is unmatched, however marked the history.
     const unmarked = [...history, assistant("..."), user("just saying hello")];
-    expect(agentSeatMock.next(unmarked)?.text).not.toMatch(/\[reply:/);
+    expect(agentWorkerMock.next(unmarked)?.text).not.toMatch(/\[reply:/);
   });
 });
 
@@ -62,8 +62,8 @@ describe("the recall scenario (BR-19)", () => {
   ];
 
   it("names every token found before the latest turn, in the system message or an earlier turn, and no other", () => {
-    agentSeatMock.reset();
-    const text = agentSeatMock.next(conversation)?.text ?? "";
+    agentWorkerMock.reset();
+    const text = agentWorkerMock.next(conversation)?.text ?? "";
     expect(text).toMatch(/^\[reply:recall\]/);
     expect(text).toContain("reply-token-aaa");
     expect(text).toContain("case-token-bbb");
@@ -74,8 +74,8 @@ describe("the recall scenario (BR-19)", () => {
   it("under no-history, recalls only what the system message holds (BR-23)", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     vi.stubEnv("GOAL_CONTROL", "no-history");
-    agentSeatMock.reset();
-    const text = agentSeatMock.next(conversation)?.text ?? "";
+    agentWorkerMock.reset();
+    const text = agentWorkerMock.next(conversation)?.text ?? "";
     expect(text).toContain("reply-token-aaa");
     expect(text).not.toContain("case-token-bbb");
   });
@@ -83,31 +83,31 @@ describe("the recall scenario (BR-19)", () => {
   it("ignores no-history outside test mode", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "");
     vi.stubEnv("GOAL_CONTROL", "no-history");
-    agentSeatMock.reset();
-    expect(agentSeatMock.next(conversation)?.text).toContain("case-token-bbb");
+    agentWorkerMock.reset();
+    expect(agentWorkerMock.next(conversation)?.text).toContain("case-token-bbb");
   });
 });
 
-describe("a seat that answers naming the post's token", () => {
+describe("a worker that answers naming the post's token", () => {
   // How a delegate hears a post: `<from>, through <coordinator>: <body>`.
   const heard = (marker: string) => [
     user(`devuser, through support.help: ${marker} reply-token-abc123 when do refunds post?`),
   ];
   const held = () => heard("[scenario:reply-after-a-hold]");
-  const plain = () => heard("[scenario:reply-in-mailbox]");
+  const plain = () => heard("[scenario:reply-in-conversation]");
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
   it("answers in text carrying the post's token and its marker, never the scenario's", () => {
-    agentSeatMock.reset();
-    const step = agentSeatMock.next(plain());
+    agentWorkerMock.reset();
+    const step = agentWorkerMock.next(plain());
     expect(step?.toolCalls).toBeUndefined();
-    expect(step?.text).toBe("[reply:in-mailbox] reply-token-abc123 Refunds post on Fridays.");
+    expect(step?.text).toBe("[reply:in-conversation] reply-token-abc123 Refunds post on Fridays.");
   });
 
-  it("holds the agent seat about three seconds for the held scenario, and nothing else", () => {
+  it("holds the agent worker about three seconds for the held scenario, and nothing else", () => {
     expect(holdBeforeAnswer("agent-answer", held())).toBe(3_000);
     expect(holdBeforeAnswer("agent-answer-with-activate-tool", held())).toBe(3_000);
     // The same post without the hold marker, and other generators, answer at once.
@@ -115,14 +115,14 @@ describe("a seat that answers naming the post's token", () => {
     expect(holdBeforeAnswer("assistant-generator", held())).toBe(0);
   });
 
-  it("answers exactly as reply-in-mailbox does once the hold ends", () => {
-    agentSeatMock.reset();
-    expect(agentSeatMock.next(held())).toEqual(agentSeatMock.next(plain()));
+  it("answers exactly as reply-in-conversation does once the hold ends", () => {
+    agentWorkerMock.reset();
+    expect(agentWorkerMock.next(held())).toEqual(agentWorkerMock.next(plain()));
   });
 
-  it("keeps the seat's answer back until the hold ends", async () => {
+  it("keeps the worker's answer back until the hold ends", async () => {
     vi.useFakeTimers();
-    agentSeatMock.reset();
+    agentWorkerMock.reset();
     const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
     let answered: string | undefined;
     const answer = model
@@ -134,21 +134,21 @@ describe("a seat that answers naming the post's token", () => {
 
     await vi.advanceTimersByTimeAsync(200);
     await answer;
-    expect(answered).toContain("[reply:in-mailbox] reply-token-abc123");
+    expect(answered).toContain("[reply:in-conversation] reply-token-abc123");
   });
 
   it("does not hold a post that names no hold", async () => {
     vi.useFakeTimers();
-    agentSeatMock.reset();
+    agentWorkerMock.reset();
     const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
     let answered: string | undefined;
     void model.generate({ messages: plain() } as Parameters<typeof model.generate>[0]).then((result) => (answered = result.text));
     await vi.advanceTimersByTimeAsync(0);
-    expect(answered).toContain("[reply:in-mailbox]");
+    expect(answered).toContain("[reply:in-conversation]");
   });
 });
 
-describe("a seat that holds, then answers the wake", () => {
+describe("a worker that holds, then answers the wake", () => {
   const heard = (marker: string) => [user(`devuser, through support.help: ${marker} ask-token-abc123 is anyone there?`)];
   const held = () => heard("[scenario:wake-after-a-hold]");
 
@@ -156,22 +156,22 @@ describe("a seat that holds, then answers the wake", () => {
     vi.useRealTimers();
   });
 
-  it("holds the agent seat about three seconds, and the plain wake not at all", () => {
+  it("holds the agent worker about three seconds, and the plain wake not at all", () => {
     expect(holdBeforeAnswer("agent-answer", held())).toBe(3_000);
     expect(holdBeforeAnswer("agent-answer-with-activate-tool", held())).toBe(3_000);
     expect(holdBeforeAnswer("agent-answer", heard("[scenario:wake]"))).toBe(0);
   });
 
   it("answers as the wake does", () => {
-    agentSeatMock.reset();
-    const step = agentSeatMock.next(held());
+    agentWorkerMock.reset();
+    const step = agentWorkerMock.next(held());
     expect(step?.toolCalls).toBeUndefined();
-    expect(step).toEqual(agentSeatMock.next(heard("[scenario:wake]")));
+    expect(step).toEqual(agentWorkerMock.next(heard("[scenario:wake]")));
   });
 
   it("keeps the answer back until the hold ends", async () => {
     vi.useFakeTimers();
-    agentSeatMock.reset();
+    agentWorkerMock.reset();
     const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
     let answered: string | undefined;
     const answer = model
@@ -202,7 +202,7 @@ describe("the scripted best-fit evaluation", () => {
 
   it("picks the delegate a post names with [route:<worker>]", async () => {
     const result = await route("[route:support.devices] my laptop won't join the wifi");
-    expect(result.answers).toEqual({ member: { type: "choice", choice: "support.devices" } });
+    expect(result.answers).toEqual({ worker: { type: "choice", choice: "support.devices" } });
   });
 
   it("fails the call for a post that names no delegate, so the coordinator's fallback takes it", async () => {
@@ -220,8 +220,8 @@ describe("the scripted best-fit evaluation", () => {
 
 describe("the wake scenario", () => {
   it("answers in text, with no tool call", () => {
-    agentSeatMock.reset();
-    const step = agentSeatMock.next([user("devuser, through support.help: [scenario:wake] is anyone there?")]);
+    agentWorkerMock.reset();
+    const step = agentWorkerMock.next([user("devuser, through support.help: [scenario:wake] is anyone there?")]);
     expect(step?.toolCalls).toBeUndefined();
     expect(step?.text).toContain("[reply:wake]");
   });

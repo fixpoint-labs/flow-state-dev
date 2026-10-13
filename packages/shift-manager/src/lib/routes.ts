@@ -10,7 +10,7 @@
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
- *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the person's own private projects
+ *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
  */
@@ -24,7 +24,7 @@ export type ProjectTab = (typeof PROJECT_TABS)[number];
 export type TaskTab = (typeof TASK_TABS)[number];
 export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
 
-/** Where the person is. */
+/** Where the user is. */
 export type Route =
   | { level: "cos" }
   | { level: "inbox"; suspensionId: string | null }
@@ -34,7 +34,7 @@ export type Route =
       level: "project";
       projectId: string;
       tab: ProjectTab;
-      /** `"private"` for one of the person's own private projects; absent for a shared one. */
+      /** `"private"` for one of the user's own private projects; absent for a shared one. */
       visibility?: "private";
       /** One workstream of the project, opened from its Workstreams: its owner and its id. */
       entry?: { owner: string; id: string };

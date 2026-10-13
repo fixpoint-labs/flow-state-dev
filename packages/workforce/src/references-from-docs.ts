@@ -103,9 +103,9 @@ export function referenceBody(raw: string): string {
  * sealed file-backed resource as a reference and refuse an app whose wiring is
  * fine. Identity says what this is asking: *did this convention build it?*
  *
- * It exists so the wall can tell that a kind is holding references before it
+ * It exists so the wall can tell that a worker flow is holding references before it
  * has a catalog to recognise them with — which is the one way the wall could be
- * switched off. See `./seat-references`.
+ * switched off. See `./worker-references`.
  *
  * Deliberately no brand field. A marker property would be a second place the
  * same fact lives, and one a hand-built entry could set.

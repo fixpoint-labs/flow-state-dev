@@ -34,7 +34,8 @@ export function scriptedModel(byBody: (body: string) => BodyScript): ScriptedMod
     supportedQuestionTypes: ["choice", "score", "boolean"],
     calls,
     async doEvaluate(call: MockEvaluationCall) {
-      const body = String(call.state);
+      // The SDK sends the body as one text part.
+      const body = String((call.state as Array<{ text?: string }>)[0]?.text);
       calls.push(body);
       const script = byBody(body);
       return mockEvaluationModel({ answers: script.answers, error: script.error }).doEvaluate(

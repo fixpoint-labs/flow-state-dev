@@ -1,11 +1,11 @@
 /**
- * A hired built-in seat answers a caller who sends only `userId`.
+ * A hired built-in worker answers a caller who sends only `userId`.
  *
  * The skills collection stays at organization scope. The organization is the
  * one already on the principal — a configured resolver's verified org, or the
  * framework development org when the app configures no resolver. The request
  * body does not carry an `orgId`, and the test does not mint one to make the
- * turn succeed. What is graded is that the seat's own skill is seeded and
+ * turn succeed. What is graded is that the worker's own skill is seeded and
  * reaches the model, which is the thing that used to die with
  * `Resource "skills" is not registered` before the model was called.
  */
@@ -14,8 +14,8 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, InitialSkill, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { mintSeats } from "../src/hire";
-import { AGENT_KIND, defineAgentWorkerFlow } from "../src/agent-worker-flow";
+import { mintWorkers } from "../src/hire";
+import { AGENT_FLOW, defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import type { WorkerManifest } from "../src/manifest";
 
 const USER_ID = "u_caller";
@@ -53,10 +53,10 @@ type Turn = {
   shown: string;
 };
 
-async function ask(seat: FlowInstance, sessionId: string): Promise<Turn> {
+async function ask(worker: FlowInstance, sessionId: string): Promise<Turn> {
   const answer = mockGenerator({ name: "agent-answer", script: [{ text: "ok" }] });
   const state = createFlowState({
-    flows: { [seat.id]: seat },
+    flows: { [worker.id]: worker },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: {
@@ -66,7 +66,7 @@ async function ask(seat: FlowInstance, sessionId: string): Promise<Turn> {
     }),
   });
   const router = await state.getRouter();
-  const path = [seat.id, sessionId, "actions", "run"];
+  const path = [worker.id, sessionId, "actions", "run"];
   const body = { userId: USER_ID, input: { message: "/house-style" } };
   const response = await router.POST(
     new Request(`http://test/api/flows/${path.join("/")}`, {
@@ -98,18 +98,18 @@ async function ask(seat: FlowInstance, sessionId: string): Promise<Turn> {
   return { httpStatus: response.status, httpBody, request, session, shown };
 }
 
-function hireSeat(authentication?: FlowInstance["authentication"]): FlowInstance {
-  const kind = defineAgentWorkerFlow();
-  const [seat] = mintSeats([record()], { workerFlows: { [AGENT_KIND]: kind } });
+function hireWorker(authentication?: FlowInstance["authentication"]): FlowInstance {
+  const flow = defineAgentWorkerFlow();
+  const [worker] = mintWorkers([record()], { workerFlows: { [AGENT_FLOW]: flow } });
   if (authentication !== undefined) {
-    Object.assign(seat!, { authentication });
+    Object.assign(worker!, { authentication });
   }
-  return seat!;
+  return worker!;
 }
 
-describe("a built-in seat resolves skills from the principal's org", () => {
-  it("seeds and shows the seat's skill when the body sends only userId", async () => {
-    const turn = await ask(hireSeat({ resolvePrincipal: principalOrg }), "s-principal");
+describe("a built-in worker resolves skills from the principal's org", () => {
+  it("seeds and shows the worker's skill when the body sends only userId", async () => {
+    const turn = await ask(hireWorker({ resolvePrincipal: principalOrg }), "s-principal");
 
     expect(turn.httpStatus, JSON.stringify(turn.httpBody)).toBe(202);
     expect(turn.request?.status, JSON.stringify(turn.request)).toBe("completed");
@@ -121,7 +121,7 @@ describe("a built-in seat resolves skills from the principal's org", () => {
   });
 
   it("does the same when the app configures no resolver and the framework supplies the development org", async () => {
-    const turn = await ask(hireSeat(), "s-default");
+    const turn = await ask(hireWorker(), "s-default");
 
     expect(turn.httpStatus, JSON.stringify(turn.httpBody)).toBe(202);
     expect(turn.request?.status, JSON.stringify(turn.request)).toBe("completed");

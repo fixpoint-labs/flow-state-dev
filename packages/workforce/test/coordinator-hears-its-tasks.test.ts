@@ -3,7 +3,7 @@
  * line only (FIX-1863, on FIX-1794 BR-22 and BR-24).
  *
  * A coordinator whose own turn can file a task reads that task's ending in
- * that turn, so a failed task can be filed again and the person told: one
+ * that turn, so a failed task can be filed again and the user told: one
  * routing by judgment, and every one routing by best fit. Best fit runs that
  * turn on a post it picks the coordinator for (FIX-1833 D1) and on a miss
  * with no fallback to take it (FIX-1791 D2), description or not. A
@@ -47,7 +47,7 @@ async function heard(worker: string, ending: "completed" | "errored") {
   try {
     const conv = await host.conversation("alice", worker);
     const goal = ending === "errored" ? "Count licenses [fail-until:9]" : "Count licenses";
-    const filed = await host.act("alice", conv, "addTask_tasks", { goal, assignee: "eng.tasker" });
+    const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal, assignee: "eng.tasker" });
     expect(filed.error, messageOf(filed.error)).toBeUndefined();
     expect((filed.output as { ok: boolean }).ok).toBe(true);
     await host.settled();

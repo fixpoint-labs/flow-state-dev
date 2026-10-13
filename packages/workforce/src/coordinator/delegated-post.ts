@@ -35,7 +35,7 @@ import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, LLMMessage, RequestScopeHandle } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
-import { COORDINATOR_KIND, DELEGATE_ANSWER_ACTION, DELEGATE_MISSED_ACTION } from "./coordinator-keys";
+import { COORDINATOR_FLOW, DELEGATE_ANSWER_ACTION, DELEGATE_MISSED_ACTION } from "./coordinator-keys";
 import { conversationLineSchema, linesField, type ConversationLine } from "./coordinator-lines";
 
 /** What a delegate is handed. */
@@ -89,7 +89,7 @@ export function delegatedPostMessage(post: DelegatedPost): string {
  */
 export const answerDelegatedPost = dispatcher({
   name: "answer-delegated-post",
-  flowKind: COORDINATOR_KIND,
+  flowKind: COORDINATOR_FLOW,
   action: DELEGATE_ANSWER_ACTION,
   inputSchema: delegatedAnswerSchema,
   session: { from: true },
@@ -99,7 +99,7 @@ export const answerDelegatedPost = dispatcher({
 /** Tell the conversation that delivered the post there is no answer for it, the same way. */
 const missDelegatedPost = dispatcher({
   name: "miss-delegated-post",
-  flowKind: COORDINATOR_KIND,
+  flowKind: COORDINATOR_FLOW,
   action: DELEGATE_MISSED_ACTION,
   inputSchema: delegatedMissSchema,
   session: { from: true },

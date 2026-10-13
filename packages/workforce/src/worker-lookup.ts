@@ -16,7 +16,7 @@
  */
 
 import type { BlockContext, TaskFlowTarget, TaskStateTarget } from "@flow-state-dev/core/types";
-import { AGENT_KIND } from "./agent-worker-flow";
+import { AGENT_FLOW } from "./agent-worker-flow";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
 import type { WorkerInstallation } from "./workers/installation";
 import { WORKER_ID_STATE_KEY } from "./workers/keys";
@@ -68,10 +68,10 @@ export interface WorkerLookup {
   /**
    * The check a door makes before it files a task for `name` on list
    * `listId`: `undefined` when the name is fine, else the sentence to refuse
-   * with. A name a board over that list declares as its own seat (DevTeam's
+   * with. A name a board over that list declares as its own worker (DevTeam's
    * `coder`) passes without the lookup, since that board routes it itself.
    *
-   * @param aliases Each list's own seat names, by list id, as the host read
+   * @param aliases Each list's own worker names, by list id, as the host read
    *   them off the boards it built.
    */
   filingCheck(
@@ -93,7 +93,7 @@ export function createWorkerLookup(options: WorkerLookupOptions): WorkerLookup {
     if (worker === undefined) {
       return { found: false, reason: "not-found", message: `No worker is named "${name}".` };
     }
-    const flowId = standardWorkerFlow(worker, AGENT_KIND)!;
+    const flowId = standardWorkerFlow(worker, AGENT_FLOW)!;
     const flow = installation.workerFlows()[flowId]?.flow as { task?: { actions?: Record<string, unknown> } } | undefined;
     if (!Object.prototype.hasOwnProperty.call(flow?.task?.actions ?? {}, WORKER_TASK_ENTRY)) {
       return {

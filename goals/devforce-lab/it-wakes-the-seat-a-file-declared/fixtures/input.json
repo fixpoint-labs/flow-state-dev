@@ -35,15 +35,12 @@
       "instructionsToken": "REVIEWER-INSTRUCTIONS-C93E1"
     }
   },
-  "orgSeats": {
+  "orgWorkers": {
     "chief-of-staff": {
       "kind": "coordinator"
     },
     "project-coordinator": {
       "kind": "coordinator"
-    },
-    "workstream-coordinator": {
-      "kind": "agent"
     }
   },
   "teamCoordinators": {

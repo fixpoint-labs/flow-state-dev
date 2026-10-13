@@ -47,11 +47,11 @@ workforce/
         escalation.md
 ```
 
-Six documents: a code of conduct everyone reads, a handbook for engineering, a runbook for the seat `ada`, a runbook for the org seat `build`, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
+Six documents: a code of conduct everyone reads, a handbook for engineering, a runbook for the worker `ada`, a runbook for the org worker `build`, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
 
 Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the name `handbook`. Neither single-folder reader sees the other folder, so neither reports the pair on its own. `readDeclaredRoster`, which walks the whole tree in one call, puts it in its `problems` and names both files; `hireWorkforce` throws on a ref handed to it as both a document and a reference.
 
-A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. An org seat's folder is read the same way: `org/workers/build/` in the tree above is the `build` seat, and `resources/runbook.md` beside its `WORKER.md` is its runbook.
+A worker's own folder is what lets two workers each have a `runbook` without their authors agreeing on a name. An org worker's folder is read the same way: `org/workers/build/` in the tree above is the `build` worker, and `resources/runbook.md` beside its `WORKER.md` is its runbook.
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `references/` or `resources/`. A directory in one of those folders is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 
@@ -99,7 +99,7 @@ A document's ref is its identity. It is built from the folders above the file, j
 | `<root>/teams/engineering/workers/ada/references/runbook.md` | `teams/engineering/workers/ada/runbook` |
 | `<root>/org/workers/build/resources/runbook.md` | `workers/build/runbook` |
 
-Each qualifier means a name only has to be unique where it sits. Every team can have a `handbook`, and every seat a `runbook`, without checking what anyone else called theirs.
+Each qualifier means a name only has to be unique where it sits. Every team can have a `handbook`, and every worker a `runbook`, without checking what anyone else called theirs.
 
 The ref is also the key the document is installed under, and a resource's [accessor key](/docs/resources/overview#block-level-resource-declarations) is what a block reads on `ctx.resources`:
 
@@ -269,13 +269,13 @@ Both functions throw rather than collecting. A record that cannot become a resou
 
 ## Who reaches what
 
-![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the seat ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org seat's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each seat its own](./documents-reach.svg)
+![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own](./documents-reach.svg)
 
-A folder means two different things here. Under `references/`, it is a wall: a seat reads the references of its organization, its team and its own folder, and nothing beside them. Under `resources/`, it is only part of the name: every document there is the organization's, and a flow that installs them reaches all of them unless you filter.
+A folder means two different things here. Under `references/`, it is a wall: a worker reads the references of its organization, its team and its own folder, and nothing beside them. Under `resources/`, it is only part of the name: every document there is the organization's, and a flow that installs them reaches all of them unless you filter.
 
-You write no filter for a reference, and there is no setting to widen it: to let a reference reach more people, move the file up the tree. An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
+You write no filter for a reference, and there is no setting to widen it: to let a reference reach more people, move the file up the tree. An unreachable reference is not an empty read. The accessor is not on the worker's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
 
-A seat can ask for less than its place gives it, by listing what it wants in its own file. The list narrows and never widens, so naming a document the seat could not already reach refuses the whole roster at the hire, naming the seat and the ref:
+A worker can ask for less than its place gives it, by listing what it wants in its own file. The list narrows and never widens, so naming a document the worker could not already reach refuses the whole roster at the hire, naming the worker and the ref:
 
 ```md
 ---
@@ -286,9 +286,9 @@ references:
 ---
 ```
 
-Leaving the key out means every reference at or above the seat. Writing `references: []` means none.
+Leaving the key out means every reference at or above the worker. Writing `references: []` means none.
 
-A reference under `org/workers/<name>/references/` belongs to the org seat declared in that folder. That seat reaches it, along with the organization's references. No other seat does, and no team's references reach an org seat, because it has no team.
+A reference under `org/workers/<name>/references/` belongs to the org worker declared in that folder. That worker reaches it, along with the organization's references. No other worker does, and no team's references reach an org worker, because it has no team.
 
 To keep a team's `resources/` documents to that team, filter the records before installing them:
 
@@ -302,18 +302,18 @@ A worker's folder is also only part of the name. Putting a `resources/` document
 
 Filtering decides what a whole flow installs. To narrow one worker within a flow, the worker's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). Its model then reaches only those, on every turn: a document it isn't granted answers as one that doesn't exist. A worker whose file has no `resources:` key reaches every document the app passed as `documents`, and writes the ones that allow writes. A worker naming a document the app didn't declare is refused, so the filter holds.
 
-### Keeping a document per person
+### Keeping a document per user
 
-A `resources/` document whose frontmatter carries `flowIsolation: true` gets one row per person, per flow, instead of one the person's other flows share:
+A `resources/` document whose frontmatter carries `flowIsolation: true` gets one row per user, per flow, instead of one the user's other flows share:
 
 ```md
 ---
-description: Working notes, one copy per person.
+description: Working notes, one copy per user.
 flowIsolation: true
 ---
 ```
 
-A person's workers on one flow share that row, since they share the flow's copy. To keep a document to one worker, grant it in that worker's `resources:` and leave it out of the others'. A `references/` file cannot declare `flowIsolation`; its boundary is where the file sits.
+A user's workers on one flow share that row, since they share the flow's copy. To keep a document to one worker, grant it in that worker's `resources:` and leave it out of the others'. A `references/` file cannot declare `flowIsolation`; its boundary is where the file sits.
 
 ### Letting a model read a document
 
@@ -334,7 +334,7 @@ The documents are already declared on the flow, so the generator does not declar
 
 A reference is read-only to code and to the model. `writeContent()` on one throws a `FlowError` with code `resource_read_only`, whose message names the ref: `Resource "teams/engineering/handbook" content is read-only`. The write tool is never offered for a reference either, whatever tools the generator carries.
 
-The DevTool's Resources panel marks a reference read-only. The mark follows the two settings the folder gives a reference, `writable: false` and `llmWritable: false`. A `resources/` document a seat takes read-only in its own file carries the same pair and gets the same mark. [Read-only resources](../devtool/debug-vs-client-state.md#read-only-resources) covers what each setting refuses.
+The DevTool's Resources panel marks a reference read-only. The mark follows the two settings the folder gives a reference, `writable: false` and `llmWritable: false`. A `resources/` document a worker takes read-only in its own file carries the same pair and gets the same mark. [Read-only resources](../devtool/debug-vs-client-state.md#read-only-resources) covers what each setting refuses.
 
 ## Moving a document into `references/`
 

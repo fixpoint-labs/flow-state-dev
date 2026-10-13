@@ -59,7 +59,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 /** The keys `hireWorkforce` imposes on every seat it hires. */
-const CONTRACT_KEYS = ["instructions", "teamInstructions", "seatSkills"] as const;
+const CONTRACT_KEYS = ["instructions", "teamInstructions", "workerSkills"] as const;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

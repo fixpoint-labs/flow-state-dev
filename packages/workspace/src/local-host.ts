@@ -16,21 +16,29 @@
  *     workspace/   the kept files as the working directory (a run with no repository)
  *
  * <root>/<place…>/                  a repository the operator named in
- *                                   `localRepositories`: the place IS the checkout,
- * <root>/<place…>.provisioning      with its marker and lock beside it, and the
- * <root>/<place…>.place.lock        branch kept in that repository, never cloned
+ *                                   `localRepositories`, with no kept files: the
+ * <root>/<place…>.provisioning      place IS the checkout, with its marker and lock
+ * <root>/<place…>.place.lock        beside it, and the branch kept in that
+ *                                   repository, never cloned
  * ```
+ *
+ * A repository the operator named, answered WITH kept files, is laid out like
+ * a remote run's place: its worktree in `checkout/` and the files in
+ * `project/` beside it, the branch still kept in that repository.
  *
  * Three rules shape it, and each is enforced here rather than trusted to the
  * caller:
  *
  * - **A remote is judged before git sees it** (`./remotes`). A refused remote
  *   starts no process at all, and every process that does start can reach
- *   only the transports the allowlist names.
+ *   only the transports the allowlist names. The one exception is a listed
+ *   repository's own upstream, which listing it admits: judged for shape
+ *   all the same, and fetched speaking only its own scheme.
  * - **Existing work is never discarded.** A checkout already on disk is handed
  *   back as it is — no fetch, no reset, no rebase — and one this host cannot
  *   explain is refused, not cleared. Only a NEW branch is cut from a freshly
- *   fetched remote.
+ *   fetched remote, and in a repository the operator named, from the newer of
+ *   its base and that base's freshly fetched upstream.
  * - **The kept files are the record, the directory is not.** `project/` and
  *   `workspace/` are hydrated from one key prefix of a collection and flushed
  *   back to it. A directory this process did not hydrate is rebuilt from the
@@ -75,10 +83,11 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
+import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
-import { gitAnsweredNo, ignoredProblem, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
+import { readFetchPins } from "./repository";
+import { firstLine, gitAnsweredNo, ignoredProblem, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -108,15 +117,22 @@ const LOCAL_LOCK_SUFFIX = ".place.lock";
 const HOST_ID_FILE = ".host-id";
 /** Where a held snapshot is laid out for a person, beside the checkout. */
 const HELD_DIR = "held";
+/**
+ * The share of a provision's remaining budget a local repository's upstream
+ * fetch may take, so one that hangs still leaves time to cut the branch.
+ */
+const FETCH_BUDGET_SHARE = 0.5;
 
 /**
  * The host would not provision this run, and says why — before anything was
  * created and before any agent was paid for.
  *
  * `reason` is stable: `"invalid-remote"`, `"remote-not-allowed"`,
- * `"remote-unreadable"`, or whatever reason a run source refused with. A
- * caller should fail the run with it rather than retry: none of these clears
- * on its own.
+ * `"remote-unreadable"`, `"base-diverged"` (a repository on this machine
+ * whose base and its upstream each have commits the other lacks), or
+ * whatever reason a run source refused with. A caller should fail the run
+ * with it rather than retry: none of these clears by itself, and
+ * `base-diverged` clears once someone pulls or rebases, or pushes, there.
  */
 export class WorkspaceRefusedError extends Error {
   constructor(
@@ -141,9 +157,21 @@ export interface LocalWorkspaceHostOptions {
   /**
    * Repositories on this machine that runs are cut from directly, as their
    * absolute paths. A source answering one of these paths as its `repo` gets a
-   * worktree of that repository itself: no clone, no fetch, and the run's
-   * branch kept in it. The place's directory is the checkout, and a source may
-   * not name kept files beside it.
+   * worktree of that repository itself: no clone, and the run's branch kept
+   * in it. When the source names no kept files, the place's directory is the
+   * checkout; when it names them, the worktree is the place's `checkout/` and
+   * the files are in `project/` beside it.
+   *
+   * A NEW branch whose base tracks an upstream is cut from the newer of the
+   * two, after fetching that one upstream branch into its tracking ref; a
+   * base and upstream that have each moved are refused as `base-diverged`,
+   * and a failed fetch falls back to the copy last fetched, with a warning.
+   * Listing a path admits fetching its own upstream: `remotes.allow` isn't
+   * asked, though the URL is still judged for shape before git sees it.
+   * Each listed path's remote URLs are pinned when the host is built; a
+   * remote whose URL has changed since (a run shares the repository's
+   * config) is not fetched, with a warning, and the fetch obeys no
+   * program-running setting in the repository's own config.
    *
    * Any other bare path is still refused. Listing a path is the operator's
    * allowance, judged before any git process, the same as `remotes.allow`.
@@ -254,9 +282,12 @@ export interface WorkspacePlace {
     branch: string;
     /** Whether this call cut the branch. `false` for a checkout handed back. */
     created: boolean;
-    /** The branch the run's branch was cut from. Only when `created`. */
+    /**
+     * The ref the run's branch was cut from, as asked (`"HEAD"` when none was
+     * named). Only when `created`.
+     */
     baseRef?: string;
-    /** The commit it was cut at. Only when `created`, and only for a clone. */
+    /** The commit it was cut at. Only when `created`. */
     baseCommit?: string;
   };
   /** Where a repository place came from. */
@@ -353,6 +384,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const root = resolve(options.root);
   const allow = options.remotes.allow;
   const localRepositories = new Set((options.localRepositories ?? []).map((path) => resolve(path)));
+  // Read now, before any run of this process could rewrite a listed
+  // repository's config: its worktrees share that config, so a run could
+  // otherwise aim the next run's fetch.
+  const fetchPins = new Map([...localRepositories].map((path) => [path, readFetchPins(path)] as const));
   const provisionTimeoutMs = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
   const now = options.now ?? Date.now;
   const env = {
@@ -371,15 +406,16 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const heldWork = options.heldWork;
   let id: string | undefined;
 
+  /** Git as the host runs it: none of the repository's hooks (`NO_HOOKS`), and this host's environment. */
   async function git(cwd: string, args: string[], timeoutMs: number): Promise<string> {
-    const { stdout } = await run("git", args, { cwd, timeoutMs, env });
+    const { stdout } = await run("git", [...NO_HOOKS, ...args], { cwd, timeoutMs, env });
     return stdout.trim();
   }
 
-  /** Git for held work: one budget, extra environment and input per call. */
+  /** Git for held work: one budget, extra environment and input per call, and no hooks, as `git`. */
   function heldGit(left: () => number): Git {
     return async (cwd, args, extra) => {
-      const { stdout } = await run("git", args, {
+      const { stdout } = await run("git", [...NO_HOOKS, ...args], {
         cwd,
         timeoutMs: left(),
         env: { ...env, ...extra?.env },
@@ -669,41 +705,249 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /**
-   * A worktree of a repository the operator named, with the place itself as
-   * the checkout. No clone and no fetch: the base is read in the repository
-   * as it stands, and the run's branch stays in it.
+   * A worktree of a repository the operator named, at `checkout`: the place
+   * itself when the run keeps no files, `<place>/checkout` when it does. No
+   * clone: the run's branch stays in the repository. A new branch is cut
+   * from the base, or from its upstream when that is ahead (`fetchUpstream`);
+   * the repository's own branches, index and files never move. No lock over
+   * the repository: each run has its own place and branch, git keeps
+   * concurrent worktrees apart, and a fetch that loses a ref lock to another
+   * falls back like any failed fetch. Called holding the place's lock.
    */
   async function provisionLocalCheckout(
     repo: string,
     baseRef: string | undefined,
-    dir: string,
+    checkout: string,
+    marker: string,
     branch: string,
     ignored: IgnoredDirectory | undefined,
     deadline: number,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
-    mkdirSync(root, { recursive: true });
-    return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, async () => {
-      const base = baseRef ?? "HEAD";
-      const worktree = await provisionWorktree({
-        repo,
-        repoLabel: repo,
-        checkout: dir,
-        marker: `${dir}${LOCAL_MARKER_SUFFIX}`,
-        root,
-        branch,
-        deadline,
-        now,
-        ...(ignored !== undefined ? { ignored } : {}),
-        base: async () => ({ ref: base, commitish: base }),
-      });
-      return {
-        remote: repo,
-        clone: repo,
-        branch,
-        created: worktree.created,
-        ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
-      };
+    const base = baseRef ?? "HEAD";
+    const worktree = await provisionWorktree({
+      repo,
+      repoLabel: repo,
+      checkout,
+      marker,
+      root,
+      branch,
+      deadline,
+      now,
+      ...(ignored !== undefined ? { ignored } : {}),
+      // Read before anything is made, so a ref the repository doesn't have,
+      // or a base that has split from its upstream, fails naming it and
+      // leaves no marker, tree or branch behind. Only a NEW branch gets here.
+      base: async (left) => {
+        try {
+          await git(repo, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`], left());
+        } catch (error) {
+          if (!gitAnsweredNo(error)) throw error;
+          throw new WorkspaceRefusedError("remote-unreadable", `${repo} has no "${base}" to cut the run's branch from.`);
+        }
+        // Named once, and everything after read off that one name: `HEAD` can
+        // move to another branch while this runs, and the ref recorded, the
+        // commit compared and the upstream fetched must all be one branch's.
+        const full = await git(repo, ["rev-parse", "--symbolic-full-name", base], left());
+        const branchRef = full.startsWith("refs/heads/") ? full : undefined;
+        const local = await git(repo, ["rev-parse", "--verify", "--quiet", `${branchRef ?? base}^{commit}`], left());
+        // Recorded as asked (`HEAD` when no base is named); the commit cut at
+        // is recorded beside it.
+        const ref = base;
+        // Always fetched, on purpose: the cached tracking ref can say "ahead" while upstream has moved.
+        const upstream = branchRef === undefined ? undefined : await fetchUpstream(repo, base, branchRef, left);
+        // Equal, or local ahead: the person's branch, as it always was.
+        if (upstream === undefined || (await isAncestor(repo, upstream.commit, local, left))) {
+          // The commit compared, not the name: the name can move while the fetch runs.
+          return { ref, commitish: local, commit: local };
+        }
+        // Behind: cut at the commit, never the ref's name, so the run's branch
+        // doesn't come out tracking the person's upstream.
+        if (await isAncestor(repo, local, upstream.commit, left)) {
+          return { ref, commitish: upstream.commit, commit: upstream.commit };
+        }
+        throw new WorkspaceRefusedError(
+          "base-diverged",
+          `${repo}: "${base}" (${local}) and its upstream ${upstream.ref} (${upstream.commit}) each have ` +
+            `commits the other lacks, so neither is the base to cut a run's branch from. To start a run ` +
+            `from it, pull or rebase, or push, in ${repo}.`,
+        );
+      },
     });
+    return {
+      remote: repo,
+      clone: repo,
+      branch,
+      created: worktree.created,
+      ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
+      ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+    };
+  }
+
+  /**
+   * Bring the upstream of `full`, the branch `base` named, up to date in a
+   * repository the operator listed, and say where it is: its tracking ref and
+   * commit, or `undefined` when the branch has none (it tracks nothing or
+   * another local branch) or none was ever fetched.
+   *
+   * Only that one upstream branch is fetched, into its own tracking ref: no
+   * tags, no `FETCH_HEAD`, no maintenance, no other ref. Listing the
+   * repository admits its upstream, so `remotes.allow` isn't asked, but the
+   * URL is judged for shape before git sees it and git may speak only its
+   * scheme. The URL fetched is the one pinned when the host was built: a remote
+   * repointed since, or not there then, is skipped. The fetch runs in an empty
+   * repository of its own, so nothing in the repository's config, a
+   * `url.insteadOf` included, is read by it; nothing outside it that runs a
+   * program (ssh command, upload-pack, credential helper, hooks, askpass,
+   * fsmonitor) is obeyed either; credential helpers from outside the
+   * repository, read when the host was built, are. **A fetch that fails, a URL
+   * that fails the judge, or one skipped, is a warning,
+   * never a refusal**: the comparison uses the copy last fetched. A probe
+   * that fails is raised: read as "no upstream", it would cut from a stale
+   * base without a word.
+   */
+  async function fetchUpstream(
+    repo: string,
+    base: string,
+    full: string,
+    left: () => number,
+  ): Promise<{ ref: string; commit: string } | undefined> {
+    const [liveRef = "", liveRemote = "", liveRemoteRef = ""] = (
+      await git(repo, ["for-each-ref", "--format=%(upstream)%0a%(upstream:remotename)%0a%(upstream:remoteref)", full], left())
+    ).split("\n");
+    const pins = fetchPins.get(repo);
+    // The upstream pinned when the host started, never the live config a run
+    // could have repointed. A branch with none pinned has no upstream here.
+    const pinnedUpstream = pins?.upstreams.get(full);
+    if (pinnedUpstream === undefined) {
+      if (liveRef.startsWith("refs/remotes/") && liveRemote !== "" && liveRemote !== ".") {
+        console.warn(
+          `[workspace] ${repo}: "${base}" now tracks ${liveRef}, which it didn't when the host started, ` +
+            `so its upstream is neither fetched nor compared.`,
+        );
+      }
+      return undefined;
+    }
+    const { ref, remoteName, remoteRef } = pinnedUpstream;
+    if (liveRef !== ref || liveRemote !== remoteName || liveRemoteRef !== remoteRef) {
+      console.warn(
+        `[workspace] ${repo}: "${base}" now tracks ${liveRef || "nothing"}, not ${ref} as when the host ` +
+          `started; ${ref} is used.`,
+      );
+    }
+
+    const skip = (why: string) =>
+      console.warn(
+        `[workspace] ${repo}: ${why}, so "${base}" is compared with the copy of ${ref} last fetched.`,
+      );
+    const pinned = pins?.remotes.get(remoteName);
+    let url: string | undefined;
+    try {
+      url = await git(repo, ["remote", "get-url", remoteName], left());
+    } catch (error) {
+      skip(`could not read the URL of remote "${remoteName}" (${firstLine(error)})`);
+    }
+    if (url !== undefined && pinned === undefined) {
+      skip(`its upstream was not fetched: remote "${remoteName}" (${redactRemote(url)}) was not there when the host started`);
+    } else if (url !== undefined && url !== pinned) {
+      skip(
+        `its upstream was not fetched: remote "${remoteName}" now points at "${redactRemote(url)}", ` +
+          `not "${redactRemote(pinned!)}" as when the host started`,
+      );
+    } else if (pinned !== undefined && url !== undefined) {
+      // The pinned URL, never the remote's name, is what git is handed.
+      const judged = checkRemoteShape(pinned);
+      if ("reason" in judged) skip(`its upstream was not fetched: ${judged.message}`);
+      else if (!/^refs\/heads\/[^\s:]+$/.test(remoteRef)) skip(`its upstream was not fetched: "${remoteRef}" is not a branch`);
+      // A `url.<base>.insteadOf` added since would still rewrite the URL git is handed.
+      else {
+        // Fetched in an empty repository of its own, into the person's object
+        // store: the person's config, which every run's worktree shares and can
+        // rewrite at any moment, is never read, so no `url.insteadOf` added in
+        // it can aim the fetch elsewhere. The tracking ref moves only after.
+        let scratch: string | undefined;
+        try {
+          scratch = scratchDir();
+          const objects = join(await git(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"], left()), "objects");
+          const isolated = { ...env, GIT_DIR: scratch, GIT_OBJECT_DIRECTORY: objects };
+          await run("git", ["init", "--quiet", "--bare", scratch], { cwd: scratch, timeoutMs: left(), env });
+          // The copy last fetched, so only what is new crosses the wire.
+          const previous = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
+          if (previous !== "") await run("git", ["update-ref", ref, previous], { cwd: scratch, timeoutMs: left(), env: isolated });
+          await run(
+            "git",
+            [
+              // Nothing in config that runs a program is obeyed here.
+              "-c", "core.sshCommand=ssh",
+              "-c", "core.askPass=",
+              ...NO_HOOKS,
+              "-c", "core.fsmonitor=false",
+              "-c", "protocol.allow=never",
+              "-c", `protocol.${judged.scheme}.allow=always`,
+              // An empty helper clears every one before it; the person's own,
+              // read at start, are put back.
+              "-c", "credential.helper=",
+              ...(pins?.credentialHelpers ?? []).flatMap(([key, value]) => ["-c", `${key}=${value}`]),
+              "fetch",
+              "--upload-pack=git-upload-pack",
+              "--quiet",
+              "--no-tags",
+              "--no-prune",
+              "--no-write-fetch-head",
+              "--no-auto-maintenance",
+              "--no-recurse-submodules",
+              "--",
+              judged.url,
+              `+${remoteRef}:${ref}`,
+            ],
+            // A slice of what is left, so a fetch that hangs leaves time to cut.
+            {
+              cwd: scratch,
+              timeoutMs: Math.max(1, Math.floor(left() * FETCH_BUDGET_SHARE)),
+              env: { ...isolated, GIT_ALLOW_PROTOCOL: judged.scheme, GIT_SSH_COMMAND: "ssh" },
+            },
+          );
+          const fetched = (await run("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { cwd: scratch, timeoutMs: left(), env: isolated })).stdout.trim();
+          // Only over the copy this fetch started from: a provision running
+          // beside this one may have fetched something newer since. A ref
+          // that failed to move for any other reason (a lock) is a failed
+          // fetch, and falls back like one.
+          try {
+            // `--no-deref`: a tracking ref a run replaced with a symbolic ref
+            // moves itself, never the branch it points at.
+            await git(repo, ["update-ref", "--no-deref", ref, fetched, previous], left());
+          } catch (error) {
+            const now = await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()).catch(() => "");
+            if (now === previous) throw error;
+          }
+          // What was fetched, not what the shared ref says now.
+          return { ref, commit: fetched };
+        } catch (error) {
+          skip(`could not fetch "${redactRemote(judged.url)}" (${firstLine(error)})`);
+        } finally {
+          // Best effort: a leftover temp dir never decides the provision.
+          try {
+            if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+          } catch {}
+        }
+      }
+    }
+    try {
+      return { ref, commit: await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()) };
+    } catch (error) {
+      if (gitAnsweredNo(error)) return undefined;
+      throw error;
+    }
+  }
+
+  /** Whether `ancestor` is in `commit`'s history. A probe that failed is raised, never read as no. */
+  async function isAncestor(repo: string, ancestor: string, commit: string, left: () => number): Promise<boolean> {
+    try {
+      await git(repo, ["merge-base", "--is-ancestor", ancestor, commit], left());
+      return true;
+    } catch (error) {
+      if (gitAnsweredNo(error)) return false;
+      throw error;
+    }
   }
 
   /** The repository a source's `repo` names, when the operator listed it as local. */
@@ -716,7 +960,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   function locate(answer: RunSourceAnswer, request: Pick<PlaceRequest, "place">): { dir: string; cwd: string } {
     const dir = placeDir(request.place);
     if (answer.kind === "files") return { dir, cwd: join(dir, WORKSPACE_DIR) };
-    if (answer.kind === "repo" && localRepository(answer.repo) !== undefined) return { dir, cwd: dir };
+    // A local repository is its own place only when no kept files sit beside it.
+    if (answer.kind === "repo" && localRepository(answer.repo) !== undefined && answer.files === undefined) {
+      return { dir, cwd: dir };
+    }
     return { dir, cwd: join(dir, CHECKOUT_DIR) };
   }
 
@@ -752,14 +999,40 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     // A repository the operator named on this machine, used as it stands.
     const local = localRepository(answer.repo);
     if (local !== undefined) {
-      if (answer.files !== undefined) {
-        throw new Error(
-          `a repository on this machine (${local}) is its own place, so it takes no kept ` +
-            `files beside it. Name a remote to keep files in project/, or none.`,
+      if (answer.projectId === undefined || answer.files === undefined) {
+        // No kept files: the place is the checkout, with its marker and lock
+        // beside it, exactly as places already on disk were made.
+        mkdirSync(root, { recursive: true });
+        const repo = await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, () =>
+          provisionLocalCheckout(local, answer.baseRef, dir, `${dir}${LOCAL_MARKER_SUFFIX}`, branch, request.ignored, deadline),
         );
+        return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
       }
-      const repo = await provisionLocalCheckout(local, answer.baseRef, dir, branch, request.ignored, deadline);
-      return { kind: "repo", dir, cwd: dir, repo, origin: repo.created ? "new" : "live" };
+      // Kept files: laid out like a remote run's place, the worktree in
+      // checkout/ and the files in project/ beside it, never inside it.
+      const { projectId, files } = answer;
+      return await locked(join(dir, LOCK_SUFFIX), deadline, async () => {
+        const repo = await provisionLocalCheckout(
+          local,
+          answer.baseRef,
+          join(dir, CHECKOUT_DIR),
+          join(dir, PROVISIONING_MARKER),
+          branch,
+          request.ignored,
+          deadline,
+        );
+        const filesDir = join(dir, PROJECT_DIR);
+        await provisionFiles(dir, PROJECT_DIR, projectId, files);
+        return {
+          kind: "repo",
+          dir,
+          cwd: join(dir, CHECKOUT_DIR),
+          filesDir,
+          holder: hold(filesDir),
+          repo,
+          origin: repo.created ? "new" : "live",
+        } satisfies WorkspacePlace;
+      });
     }
 
     // Judged before anything is created or spawned.

@@ -96,7 +96,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Load the page, with the control's query, and wait until it can be used. */
 async function openPage(page: Page, origin: string): Promise<void> {
-  await page.goto(`${origin}/${PAGE_QUERY}`);
+  await page.goto(`${origin}/flow-state${PAGE_QUERY}`);
   await page.locator('[data-testid="message-input"]:visible').waitFor({ state: "visible", timeout: 30_000 });
 }
 
@@ -293,7 +293,7 @@ await runGoal(async (failures) => {
       (s) => helpConversation !== undefined && s.parentSessionId === helpConversation,
     );
     const seatPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    const seatReads = snapshotReads(seatPage);
+    const workerReads = snapshotReads(seatPage);
     await openPage(seatPage, origin);
     if (delegateRun === undefined) throw new Error(`${fixture.replier.id} has no session for the conversation with ${fixture.coordinator.id}`);
     const runOfConversation = (await openWorkerCopy(seatPage)).locator(
@@ -314,7 +314,7 @@ await runGoal(async (failures) => {
       }
       await sleep(100);
     }
-    const seatWindow = seatReads.filter((at) => at >= third.sentAt && at <= (heardAt ?? third.sentAt + fixture.lineWithinMs)).length;
+    const seatWindow = workerReads.filter((at) => at >= third.sentAt && at <= (heardAt ?? third.sentAt + fixture.lineWithinMs)).length;
     if (heardAt === undefined) {
       fail("line", `post 3 (${third.token}): ${fixture.replier.id}'s open session never showed the post heard and its answer, with no reload`);
     }

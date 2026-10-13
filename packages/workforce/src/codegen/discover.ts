@@ -38,10 +38,10 @@ import {
   type DiscoveredResourceModule,
 } from "./discover-resource-modules";
 import {
-  SEAT_BLOCK_SLOT_PATTERNS,
-  discoverSeatBlocks,
-  type DiscoveredSeatBlock,
-} from "./discover-seat-blocks";
+  WORKER_BLOCK_SLOT_PATTERNS,
+  discoverWorkerBlocks,
+  type DiscoveredWorkerBlock,
+} from "./discover-worker-blocks";
 import {
   PACKAGE_BLOCK_SLOT_PATTERNS,
   discoverPackageBlocks,
@@ -68,7 +68,7 @@ export interface CodeSlot {
   /** Path under the workforce root, POSIX, relative. Owner-locked. */
   readonly dir: string;
   /** The map this slot's files are rendered onto. Public: an app imports it. */
-  readonly exportName: "kinds" | "blocks";
+  readonly exportName: "workerFlows" | "blocks";
   /** What a basename here names, for a refusal to say. */
   readonly label: SegmentLabel;
 }
@@ -77,11 +77,11 @@ export interface CodeSlot {
  * The two locked folders, in the order their maps are rendered.
  *
  * Owner-locked paths, not derived — a best-practice tree rather than a
- * top-level `kinds/`, and one convention covering kinds and blocks together
- * rather than a kinds-only one the blocks half would later have to match.
+ * top-level folder per flow, and one convention covering flows and blocks together
+ * rather than a flows-only one the blocks half would later have to match.
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
-  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" }),
+  Object.freeze({ id: "worker", dir: "flows/workers", exportName: "workerFlows", label: "Worker flow" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
 
@@ -103,19 +103,19 @@ export interface DiscoveryResult {
   /** Every module found in a `resources/` folder, ordered by path. Door B's half. */
   resourceModules: DiscoveredResourceModule[];
   /**
-   * Every block a team-tree `blocks/` folder registers, per seat, ordered by
-   * path then seat. Door C's half.
+   * Every block a team-tree `blocks/` folder registers, per worker, ordered by
+   * path then worker. Door C's half.
    *
-   * A REGISTRATION, not a grant: a seat's `tools:` is still what decides which
+   * A REGISTRATION, not a grant: a worker's `tools:` is still what decides which
    * of these it may call.
    */
-  seatBlocks: DiscoveredSeatBlock[];
+  workerBlocks: DiscoveredWorkerBlock[];
   /**
    * Every block a package's `blocks/` folder carries, keyed by the package's
    * address, ordered by path. Door D's half.
    *
-   * Registration against a PACKAGE, not a seat: which seats may call one is
-   * decided at the hire, from which seats hold the package.
+   * Registration against a PACKAGE, not a worker: which workers may call one is
+   * decided at the hire, from which workers hold the package.
    */
   packageBlocks: DiscoveredPackageBlock[];
   /** Where it looked — the locked folders, then the `resources/` and `blocks/` slot patterns, so the command can say. */
@@ -266,7 +266,7 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
       }
 
       // One basename means one thing (`foo.ts` beside `foo.tsx` is two files
-      // claiming one name). Scoped so a worker kind and a block may share a
+      // claiming one name). Scoped so a worker flow and a block may share a
       // name — they feed different maps on different calls.
       const scope = slot.id === "block" ? `block:${name}` : `kind:${name}`;
       const already = claimed.get(scope);
@@ -299,9 +299,9 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   // Door C, over the same root and before anything is thrown, for Door B's
   // reason: an author holding a bad block file AND a stray `tools/` folder sees
   // both in one run.
-  const doorC = await discoverSeatBlocks(root);
+  const doorC = await discoverWorkerBlocks(root);
   problems.push(...doorC.problems);
-  searched.push(...SEAT_BLOCK_SLOT_PATTERNS);
+  searched.push(...WORKER_BLOCK_SLOT_PATTERNS);
 
   // Door D, the packages' `blocks/` folders, before anything is thrown for the
   // same reason: one run names every problem in the tree.
@@ -310,7 +310,7 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   searched.push(...PACKAGE_BLOCK_SLOT_PATTERNS);
 
   // Two doors descend into the same worker folders, so a STRUCTURAL refusal —
-  // a symlinked or unreadable seat — is met twice and worded identically by
+  // a symlinked or unreadable worker — is met twice and worded identically by
   // both. One refusal, reported once: an author fixing a tree counts the list,
   // and the same sentence twice reads as two problems. Only exact duplicates
   // collapse, and a refusal names its own path, so nothing distinct can hide
@@ -324,7 +324,7 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
   return {
     files,
     resourceModules: doorB.modules,
-    seatBlocks: doorC.seatBlocks,
+    workerBlocks: doorC.workerBlocks,
     packageBlocks: doorD.packageBlocks,
     searched,
   };

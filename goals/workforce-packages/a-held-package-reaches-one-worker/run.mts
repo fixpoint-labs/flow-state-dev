@@ -81,7 +81,7 @@ interface Observation {
   packageErrors: unknown[];
   held: Record<string, string[]>;
   generatedPackages: Record<string, string[]>;
-  seatIds: string[];
+  workerIds: string[];
   attempts: Array<Record<string, Turn>>;
 }
 
@@ -228,8 +228,8 @@ await runGoal((failures) => {
   {
     const before = failures.length;
     const expected = fixture.seats.map((s) => s.id).sort();
-    if (JSON.stringify([...o.seatIds].sort()) !== JSON.stringify(expected)) {
-      failures.push(`hired ${JSON.stringify(o.seatIds)}, wanted ${JSON.stringify(expected)}`);
+    if (JSON.stringify([...o.workerIds].sort()) !== JSON.stringify(expected)) {
+      failures.push(`hired ${JSON.stringify(o.workerIds)}, wanted ${JSON.stringify(expected)}`);
     }
     for (const seat of fixture.seats) {
       const held = o.held[seat.id] ?? [];

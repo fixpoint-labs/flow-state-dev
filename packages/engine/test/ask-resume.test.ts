@@ -12,7 +12,7 @@
  * durability provider, not a durable sequencer.
  */
 import {
-  AskEndedError,
+  WaitEndedError,
   defineFlow,
   generator,
   handler,
@@ -269,7 +269,7 @@ describe("ask gate: park, and resume from the asker's own conversation", () => {
     expect(sent).toContain("The colleague's task failed.");
     // Read as a failed tool, not handed over as an answer.
     expect(sent).not.toContain('"answer"');
-    expect(new AskEndedError("wait_task_failed", "x").code).toBe("wait_task_failed");
+    expect(new WaitEndedError("wait_task_failed", "x").code).toBe("wait_task_failed");
   });
 
   it("resumes once: a second resume of the same gate is refused and changes nothing", async () => {

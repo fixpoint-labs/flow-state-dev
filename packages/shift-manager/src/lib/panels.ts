@@ -4,7 +4,7 @@
  *
  * Each panel collapses on its own, so the centre can take the window: the
  * sidebar to a rail of icons, the right panel to a strip with a handle. What
- * a person picks is kept in this browser's storage under their user id, so it
+ * a user picks is kept in this browser's storage under their user id, so it
  * holds across reloads and from screen to screen. Storage that is missing or
  * throws keeps the pick for this page only, as the theme's does.
  *
@@ -16,7 +16,7 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 /** The windows on which the right panel opens over the centre: narrower than v2's 1180px (v2:1121). */
 export const NARROW_QUERY = "(max-width: 1179px)";
 
-/** What a person picked: `true` while that panel is collapsed. */
+/** What a user picked: `true` while that panel is collapsed. */
 export interface Collapsed {
   nav: boolean;
   panel: boolean;

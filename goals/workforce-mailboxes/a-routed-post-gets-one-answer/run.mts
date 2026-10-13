@@ -179,9 +179,14 @@ function controlSeams(): HostSeams {
         adaptRoute: (model: EvaluationModel) =>
           ({
             ...model,
-            doEvaluate: (call: { state: { recent?: unknown } }) => {
-              const { recent: _recent, ...state } = call.state;
-              return (model as unknown as { doEvaluate: (c: unknown) => unknown }).doEvaluate({ ...call, state });
+            // The SDK sends the state as one json part.
+            doEvaluate: (call: { state: [{ type: "json"; value: { recent?: unknown } }] }) => {
+              const [part] = call.state;
+              const { recent: _recent, ...state } = part.value;
+              return (model as unknown as { doEvaluate: (c: unknown) => unknown }).doEvaluate({
+                ...call,
+                state: [{ ...part, value: state }]
+              });
             }
           }) as unknown as EvaluationModel
       };

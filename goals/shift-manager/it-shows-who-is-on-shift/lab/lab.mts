@@ -29,7 +29,7 @@
  * `coordinator`), and each of its sessions names it in its state
  * (`workerId`). A task runs in a task session the board opens for it.
  *
- * Every task is filed through the lead's conversation's `addTask_tasks`, over
+ * Every task is filed through the lead's conversation's `dispatchTask_tasks`, over
  * the Lab's own router, assigned by the worker's id. No model: the runs are
  * scripted.
  */
@@ -37,11 +37,11 @@ import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer, SuspensionRe
 import type { BlockContext, FlowInstance, GeneratorModel } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
-  COORDINATOR_KIND,
+  COORDINATOR_FLOW,
   WORKER_ID_STATE_KEY,
   defineCoordinatorFlow,
   defineSessionBoard,
-  inventorySeats,
+  inventoryWorkers,
   inventoryWriterActions,
   openInventory,
   workerConfigSchema,
@@ -68,7 +68,7 @@ const LEAD_KIND = "lead";
 /** The kind every worker the lead files for is hired into. */
 const SEAT_KIND = "seat";
 /** The flow the inventory's seat rows are written from: the Lab's own, carrying the writer. */
-const INVENTORY_WRITER_KIND = "inventory-writer";
+const INVENTORY_WRITER_FLOW = "inventory-writer";
 /**
  * The model best fit's one evaluator call would run on. The desks route to
  * everyone and nothing posts to them, but the flow names no default.
@@ -142,7 +142,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   const tree = await readTree();
 
   // The filer is the worker off the coordinator flow whose file names delegates.
-  const lead = tree.workers.find((w) => w.declared.flow !== COORDINATOR_KIND && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
+  const lead = tree.workers.find((w) => w.declared.flow !== COORDINATOR_FLOW && ((w.declared.delegates as string[] | undefined) ?? []).length > 0);
   if (lead === undefined) throw new Error("the shift-lab tree declares no worker that files for delegates");
   const seats = (lead.declared.delegates as string[]).map((id) => ({ id, name: id.split(".").at(-1)! }));
   const unknown = Object.keys(spread).filter((name) => !seats.some((s) => s.name === name));
@@ -219,17 +219,17 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         actions: { ...workerDoor, ask: { block: sequencer({ name: "shift-lab-ask", inputSchema: z.object({ what: z.string() }) }).step(gate), durable: true } },
         task: { actions: { work: workerTaskEntry({ name: "shift-lab-task", turn: taskTurn }) } },
       } as never),
-      [COORDINATOR_KIND]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL }),
+      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL }),
     };
   });
   // The seat write takes caller-supplied rows, so it is internal only.
   const writer = defineFlow({
-    kind: INVENTORY_WRITER_KIND,
+    kind: INVENTORY_WRITER_FLOW,
     internal: { actions: { ...inventoryWriterActions() } },
   } as never) as unknown as FlowInstance;
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(copies.map((copy) => [copy.id, copy])),
-    [INVENTORY_WRITER_KIND]: writer,
+    [INVENTORY_WRITER_FLOW]: writer,
   };
   const flowState = createFlowState({
     flows,
@@ -240,7 +240,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
 
   const runtime = await flowState.getRuntime();
   const inventory = await openInventory(
-    { seats: [...inventorySeats(installation), ORG_SEAT] },
+    { workers: [...inventoryWorkers(installation), ORG_SEAT] },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({
@@ -257,7 +257,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
         if (result?.error !== undefined) throw new Error(`${request.action}: ${String((result.error as Error).message ?? result.error)}`);
         return result;
       },
-      seatWriter: { flowKind: INVENTORY_WRITER_KIND },
+      workerWriter: { flowKind: INVENTORY_WRITER_FLOW },
       userId: SHIFT_LAB_USER_ID,
       orgId,
     },
@@ -270,7 +270,7 @@ export async function openShiftLab(spread: Spread = spreadFromEnv()) {
   const states = (wanted: ShiftState) => Object.entries(spread).flatMap(([name, list]) => list.filter((s) => s === wanted).map(() => name));
   const idOf = (name: string) => seats.find((s) => s.name === name)!.id;
   const file = async (name: string, goal: string, deps?: string[]): Promise<string> => {
-    const filed = await http.act(LEAD_KIND, conversation, "addTask_tasks", { goal, assignee: idOf(name), ...(deps === undefined ? {} : { deps }) });
+    const filed = await http.act(LEAD_KIND, conversation, "dispatchTask_tasks", { goal, assignee: idOf(name), ...(deps === undefined ? {} : { deps }) });
     if (filed?.ok !== true) throw new Error(`filing "${goal}" for ${idOf(name)}: ${JSON.stringify(filed)}`);
     return String(filed.taskId);
   };

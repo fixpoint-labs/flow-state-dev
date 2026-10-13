@@ -19,6 +19,7 @@ import { after } from "next/server";
 import path from "node:path";
 import { createGateway } from "@ai-sdk/gateway";
 import { createFlowState, inMemoryStores, filesystemStores, type FlowState } from "@flow-state-dev/engine";
+import type { FlowInstance } from "@flow-state-dev/core";
 import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
 import { createScheduledTransportAdapter } from "@flow-state-dev/scheduled";
@@ -30,7 +31,10 @@ import chatAgentFlow from "@/flows/chat-agent/flow";
 import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
-import { mergeSeatFlows } from "@flow-state-dev/workforce";
+import { availableHarnessFlows } from "@/lib/harness-gate";
+import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
+import { cursorSessionFlow } from "@/lib/cursor-mode";
+import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -83,18 +87,29 @@ for (const failedPath of workforce.errors) {
   console.error(`[workforce] could not read ${failedPath}`);
 }
 
-// The workforce's copies are addressed by their flow's kind (`agent`,
+// Each coding harness mode's session flow, registered only while that mode is
+// available on this host (`lib/harness-gate.ts`): on a host that can't run a
+// mode, `/api/flows/<its flow>/…` is not found, so the picker is not the only
+// fence. Decided once per server start, the same answer the picker reads.
+// A mode's issue adds its flow here, by mode id.
+const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({
+  "claude-code": claudeCodeSessionFlow,
+  cursor: cursorSessionFlow,
+});
+
+// The workforce's copies are addressed by their flow's name (`agent`,
 // `coordinator`, and `workforce-roster` for the roster flow). A session with a
 // worker is a session on its flow's copy, created naming the worker: a
-// person's conversation with `support.help` is a session on `coordinator`.
-// `mergeSeatFlows` refuses a copy at an id a flow of this app already holds
+// user's conversation with `support.help` is a session on `coordinator`.
+// `mergeWorkerFlows` refuses a copy at an id a flow of this app already holds
 // rather than letting it replace that flow.
 const flowstate = createFlowState({
-  flows: mergeSeatFlows(
+  flows: mergeWorkerFlows(
     {
       chatAgent: chatAgentFlow,
       richTextComponent: richTextComponentFlow,
       weeklyDigest: weeklyDigestFlow,
+      ...harnessFlows,
     },
     workforce.copies
   ),

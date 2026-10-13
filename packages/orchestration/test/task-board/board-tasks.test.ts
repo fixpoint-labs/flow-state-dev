@@ -1,5 +1,5 @@
 /**
- * The task entries a board's seats hand off to, and how the flow declares
+ * The task entries a board's assignees hand off to, and how the flow declares
  * them (FIX-982 P2, ported to the one-dispatch-protocol design).
  *
  * A hand-off dispatch arrives carrying a task row and nothing else — the
@@ -7,12 +7,12 @@
  * with the process. So the flow has to be able to answer "which block runs
  * this row?" from strings alone, which is what a task entry is for: a plain
  * `{ block }` under `defineFlow({ tasks })`, addressed by the
- * `dispatcher({ type: "task", action })` the board holds at the seat.
+ * `dispatcher({ type: "task", action })` the board holds at the assignee.
  *
  * **The gate.** The flow's entry is a plain block, but a `task` dispatch never
  * reaches it directly: `defineFlow` rebuilds every entry a reachable hand-off
  * addresses as that board's claim gate around the block. The board binds the
- * gate onto the hand-off it installs at each dispatcher seat, and the walk
+ * gate onto the hand-off it installs at each dispatcher assignee, and the walk
  * applies it — so the instance carries the gated entry, scoped to the board's
  * id, with the author's policy riding beside it.
  *
@@ -22,7 +22,7 @@
  * invisible to a static walk of `childBlocks`. The pool therefore declares the
  * static blocks every worker is composed from (`blocks: [claimTask,
  * workerBody, checkBoard]`), and the worker router inside `workerBody` carries
- * the hand-off for each seat — so the walk reaches it from wherever the drain
+ * the hand-off for each assignee — so the walk reaches it from wherever the drain
  * is nested, and a flow that forgets the entry is refused at definition rather
  * than at the first hand-off.
  */
@@ -41,12 +41,12 @@ function worker(name: string): TaskWorker {
   }) as TaskWorker;
 }
 
-let seatCount = 0;
-/** A seat that hands off to the task entry `target`. */
-function seat(target: string, session: "per-task" | "per-worker" = "per-task"): TaskWorker {
-  seatCount += 1;
+let assigneeCount = 0;
+/** An assignee that hands off to the task entry `target`. */
+function assignee(target: string, session: "per-task" | "per-worker" = "per-task"): TaskWorker {
+  assigneeCount += 1;
   return dispatcher({
-    name: `seat-${target}-${seatCount}`,
+    name: `assignee-${target}-${assigneeCount}`,
     type: "task",
     action: target,
     session,
@@ -58,18 +58,18 @@ function seat(target: string, session: "per-task" | "per-worker" = "per-task"): 
  * two DIFFERENT references under one accessor key, never the same one twice. */
 const durable = defineTaskCollection({ id: "board-tasks-tasks", scope: "user" });
 
-/** A board with one handed-off seat, addressed to the task entry `target`. */
-function handOffBoard(options: { name: string; boardId: string; seat?: string; target?: string }) {
-  const seatName = options.seat ?? "implement";
+/** A board with one handed-off assignee, addressed to the task entry `target`. */
+function handOffBoard(options: { name: string; boardId: string; assignee?: string; target?: string }) {
+  const assigneeName = options.assignee ?? "implement";
   return taskBoard({
     name: options.name,
     boardId: options.boardId,
     collection: durable,
-    workers: { [seatName]: seat(options.target ?? seatName) },
+    workers: { [assigneeName]: assignee(options.target ?? assigneeName) },
   });
 }
 
-describe("the gated task entry — what the flow carries for a handed-off seat", () => {
+describe("the gated task entry — what the flow carries for a handed-off assignee", () => {
   it("rebuilds the declared entry as the board's claim gate around its block", () => {
     const board = handOffBoard({ name: "issue-work", boardId: "issue-work" });
     const implement = worker("implement");
@@ -89,7 +89,7 @@ describe("the gated task entry — what the flow carries for a handed-off seat",
     // names another board is refused before the gate reads a row.
     const envelope = {
       boardId: "issue-work",
-      seat: "implement",
+      assignee: "implement",
       taskId: "t1",
       attempt: 1,
       createdAt: 1,
@@ -99,8 +99,8 @@ describe("the gated task entry — what the flow carries for a handed-off seat",
     expect(entry?.inputSchema?.safeParse({ ...envelope, boardId: "reviews" }).success).toBe(false);
   });
 
-  it("lets a seat hand off to an entry named differently from the seat", () => {
-    const board = handOffBoard({ name: "issue-work", boardId: "issue-work", seat: "rework", target: "implement" });
+  it("lets an assignee hand off to an entry named differently from the assignee", () => {
+    const board = handOffBoard({ name: "issue-work", boardId: "issue-work", assignee: "rework", target: "implement" });
 
     const flow = defineFlow({
       kind: "board",
@@ -206,8 +206,8 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
   });
 
   it("defines when two boards hand off to two entries", () => {
-    const a = handOffBoard({ name: "issue-work", boardId: "issue-work", seat: "implement" });
-    const b = handOffBoard({ name: "review-work", boardId: "review-work", seat: "review" });
+    const a = handOffBoard({ name: "issue-work", boardId: "issue-work", assignee: "implement" });
+    const b = handOffBoard({ name: "review-work", boardId: "review-work", assignee: "review" });
 
     const flow = defineFlow({
       kind: "board",
@@ -220,7 +220,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     expect(flow.task?.actions.review.block.name).toBe("review-work-review-gate");
   });
 
-  it('throws with the hand-off\'s seat when `tasks` is omitted', () => {
+  it('throws with the hand-off\'s assignee when `tasks` is omitted', () => {
     // The real drain, nowhere else: the worker pool declares the blocks its
     // per-worker factory composes, so `defineFlow`'s walk reaches the hand-off
     // sitting in the worker router and refuses the flow before any request
@@ -251,8 +251,8 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
   });
 
   it("refuses two boards handing off to one entry — one entry settles against one ledger", () => {
-    const a = handOffBoard({ name: "board-a", boardId: "board-a", seat: "implement" });
-    const b = handOffBoard({ name: "board-b", boardId: "board-b", seat: "implement" });
+    const a = handOffBoard({ name: "board-a", boardId: "board-a", assignee: "implement" });
+    const b = handOffBoard({ name: "board-b", boardId: "board-b", assignee: "implement" });
 
     expect(() =>
       defineFlow({
@@ -269,12 +269,12 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board ha
     // could front the entry, and a dispatch from the other would be checked
     // against the wrong ledger — starving as stale at best.
     const other = defineTaskCollection({ id: "board-tasks-other-ledger", scope: "user" });
-    const a = handOffBoard({ name: "board-a", boardId: "shared-id", seat: "implement" });
+    const a = handOffBoard({ name: "board-a", boardId: "shared-id", assignee: "implement" });
     const b = taskBoard({
       name: "board-b",
       boardId: "shared-id",
       collection: other,
-      workers: { implement: seat("implement") },
+      workers: { implement: assignee("implement") },
     });
 
     expect(() =>

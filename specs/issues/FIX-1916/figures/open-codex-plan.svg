@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 416" role="img" aria-label="Open: Codex's headless runs report no to-do list at the pinned version. What does Codex mode do about its plan? Recommended: ship the mode with the panel saying Codex reports no plan, and write the list in a follow-up once a pinned Codex offers its plan tool. Instead of: build the writer now from the documented wire. It comes down to whether the panel tells the truth on a real run: the writer-now option shows no plan recorded for this turn on every turn, as if Codex could have planned. The price of the recommendation: the issue's promise of Codex's list in the panel is not met, and the epic's lock-in that Codex writes the record is amended. Locks in Codex as a harness that reports no plan until a version bump shows otherwise. Flips if a real Codex run, signed in through ChatGPT, does emit a to-do list."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">OPEN · THE CALL</text>
+    <text class="t-q" x="32" y="52">Codex reports no to-do list today. What does Codex mode do about its plan?</text>
+  </g>
+
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">Say "reports no plan"; write it later</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Build the writer now, from the docs</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">TRUE ON A</text>
+    <text class="t-lbl" x="32" y="169">REAL RUN</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Yes: Codex reports no plan</text>
+    <text class="t-s" x="248" y="179">which is what the pinned Codex does</text>
+    <text class="mark minus" x="592" y="162">&#8722;</text>
+    <text class="t-b" x="612" y="161">"No plan recorded", every turn</text>
+    <text class="t-s" x="612" y="179">reads as if Codex could have planned</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="218">THE ISSUE&#x27;S</text>
+    <text class="t-lbl" x="32" y="231">PROMISE</text>
+    <text class="mark minus" x="228" y="224">&#8722;</text>
+    <text class="t-b" x="248" y="223">Not met; epic D3 amended</text>
+    <text class="t-s" x="248" y="241">"Codex writes it" becomes a follow-up</text>
+    <text class="mark minus" x="592" y="224">&#8722;</text>
+    <text class="t-b" x="612" y="223">Not met either, in practice</text>
+    <text class="t-s" x="612" y="241">the panel stays empty on a real run</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="276">WHEN CODEX</text>
+    <text class="t-lbl" x="32" y="289">ADDS THE TOOL</text>
+    <text class="mark tie" x="228" y="282">=</text>
+    <text class="t-b" x="248" y="281">A small writer, at that bump</text>
+    <text class="t-s" x="248" y="299">built against the real wire</text>
+    <text class="mark tie" x="592" y="282">=</text>
+    <text class="t-b" x="612" y="281">Already there, unproved</text>
+    <text class="t-s" x="612" y="299">checked against a scripted wire only</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="347">LOCKS IN</text>
+    <text class="t-b" x="32" y="367">Codex is a harness that reports no plan</text>
+    <text class="t-s" x="32" y="385">rechecked at every Codex SDK version bump</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="326" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="347">FLIPS IF</text>
+    <text class="t-b" x="494" y="367">A real signed-in Codex run emits a to-do list</text>
+    <text class="t-s" x="494" y="385">the one path the POC could not reach</text>
+  </g>
+</svg>

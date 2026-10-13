@@ -1,5 +1,5 @@
 /**
- * What a name in the tree is allowed to be — a team, worker or mailbox folder,
+ * What a name in the tree is allowed to be — a team or worker folder,
  * or a document file.
  *
  * One rule, shared by every reader that names a level of the tree, because the
@@ -18,7 +18,7 @@ import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 /**
  * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
  * joined by single hyphens. These are the skill-name rules, adopted rather than
- * shared: the minted identity becomes a flow instance id and a board key, while
+ * shared: the minted identity becomes a worker's id and a board key, while
  * each segment is separately a path segment on disk, and lowercase-hyphen is the
  * one shape safe in all of them.
  *
@@ -38,17 +38,17 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 /**
  * What a segment names, for the error to say.
  *
- * `Team` and `Worker` are the two halves of a seat's address. `Document` is a file-declared
+ * `Team` and `Worker` are the two halves of a worker's address. `Document` is a file-declared
  * resource's name — the one segment that is a *file* rather than a folder, and
  * the one whose identity is joined with a `/` rather than a `.`, because a
  * document's ref is a storage-key namespace and never routes.
  *
- * `Kind` and `Block` are the other two file-named levels: a flow file's
- * basename under `workforce/flows/`, which becomes a kind name on the map an
+ * `Worker flow` and `Block` are the other two file-named levels: a flow file's
+ * basename under `workforce/flows/`, which becomes a flow name on the map an
  * app registers, and a block file's basename under `workforce/blocks/`, which
  * becomes the name a task board assigns by. They obey the same rule as every
- * other segment for the same reason the rest do — a kind name is half of a
- * minted flow instance id, and both are a path on disk at the same time.
+ * other segment for the same reason the rest do — a flow name is half of a
+ * minted copy's id, and both are a path on disk at the same time.
  *
  * `Package` is a folder under a `packages/` slot. Its name is what a worker's
  * `packages:` line takes it by and half of the address its blocks are
@@ -58,7 +58,7 @@ export type SegmentLabel =
   | "Team"
   | "Worker"
   | "Document"
-  | "Kind"
+  | "Worker flow"
   | "Block"
   | "Package";
 
@@ -66,7 +66,7 @@ export type SegmentLabel =
  * Labels whose segment is a *file* rather than a folder. Held as a set rather
  * than as a comparison so adding a label cannot leave the wording behind.
  */
-const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document", "Kind", "Block"]);
+const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document", "Worker flow", "Block"]);
 
 /** Validate one path segment against the naming rules. Throws on a break. */
 export function validateSegment(segment: string, label: SegmentLabel): void {
@@ -82,8 +82,8 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
     const identity =
       label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
-        : label === "Kind"
-          ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
+        : label === "Worker flow"
+          ? `it becomes the worker flow's name, which a worker file's \`flow:\` names`
           : label === "Block"
             ? `it becomes the name the block registers under, which a task board assigns by`
             : label === "Package"

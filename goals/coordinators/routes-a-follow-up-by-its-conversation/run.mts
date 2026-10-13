@@ -89,9 +89,14 @@ async function routeModelFor(resolver: ModelResolver): Promise<string | Evaluati
   const model = await resolver.resolveEvaluationModel!(ROUTE_MODEL);
   return {
     ...model,
-    doEvaluate: (call: { state: { recent?: unknown } }) => {
-      const { recent: _recent, ...state } = call.state;
-      return (model as unknown as { doEvaluate: (c: unknown) => PromiseLike<unknown> }).doEvaluate({ ...call, state });
+    // The SDK sends the state as one json part.
+    doEvaluate: (call: { state: [{ type: "json"; value: { recent?: unknown } }] }) => {
+      const [part] = call.state;
+      const { recent: _recent, ...state } = part.value;
+      return (model as unknown as { doEvaluate: (c: unknown) => PromiseLike<unknown> }).doEvaluate({
+        ...call,
+        state: [{ ...part, value: state }]
+      });
     }
   } as unknown as EvaluationModel;
 }

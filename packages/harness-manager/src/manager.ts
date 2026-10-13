@@ -127,6 +127,7 @@ import {
   ASK_MARKER_IGNORED,
   acquireCheckout,
   branchFor,
+  locationFor,
   hostForConfig,
   placeFor,
   releaseCheckout,
@@ -400,7 +401,7 @@ export interface ManagerOptions {
    * The board's ledger collection id — the fence reads the live claim from it,
    * and every run's checkout folder, branch and run record are derived from it.
    *
-   * Used as is: a mailbox's board (`eng.feature.work`) is accepted with its
+   * Used as is: a dotted board id (`eng.feature.work`) is accepted with its
    * dots. Checked when the manager is built, so an id a git branch cannot carry
    * (a `.lock` ending, a doubled or trailing dot, a separator) is refused here
    * rather than after a row has been claimed.
@@ -715,6 +716,7 @@ const managerStateSchema = z.object({
    */
   remote: z.string().nullable().default(null),
   baseRef: z.string().nullable().default(null),
+  baseCommit: z.string().nullable().default(null),
   /** The run was first provisioned as kept files alone, read off its run record with them. */
   filesOnly: z.boolean().nullable().default(null),
   /**
@@ -1883,13 +1885,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // Building them from one object is what stops a discriminator reaching one
       // and missing another, which would leave the report partitioned and the
       // overwrite on disk.
-      const location: RunLocation = {
-        principal: runPrincipal(ctx),
-        epic,
-        issue,
-        phase: phaseName,
-      };
-      const branch = branchFor(location);
       const topic = runTopic(epic, issue, phaseName);
 
       await ctx.sequencer!.patchState({
@@ -1898,7 +1893,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         topic,
         taskId: input.taskId,
         attempt: input.attempts,
-        branch,
       });
 
       // **Where the run works, from the workspace host.** Its source is asked
@@ -1912,9 +1906,18 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       } catch (corrupt) {
         throw new HarnessAttemptFailed((corrupt as Error).message);
       }
+      // The record is read first because a run it names an older branch for
+      // keeps that branch and its tree (see `locationFor`).
+      const location = locationFor(
+        { principal: runPrincipal(ctx), epic, issue, phase: phaseName },
+        recorded?.branch,
+      );
+      const branch = branchFor(location);
+      await ctx.sequencer!.patchState({ branch });
       const pinned = {
         remote: recorded?.remote ?? null,
         baseRef: recorded?.baseRef ?? null,
+        baseCommit: recorded?.baseCommit ?? null,
         filesOnly: recorded?.filesOnly ?? null,
       };
       await ctx.sequencer!.patchState({
@@ -2114,12 +2117,12 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       // to the context that resolved it. If its answer moved the run since
       // the row was opened, the prompt already names the old place, so the
       // attempt stops rather than running the agent somewhere else.
-      const location: RunLocation = {
-        principal: runPrincipal(ctx),
-        epic: state.epic!,
-        issue: state.issue!,
-        phase: state.phase!,
-      };
+      // The branch the run opened on decides the derivation, so this step
+      // derives the place the open step did.
+      const location = locationFor(
+        { principal: runPrincipal(ctx), epic: state.epic!, issue: state.issue!, phase: state.phase! },
+        state.branch,
+      );
       const answer = pinnedAnswer(await host.source(ctx), state);
       if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
       if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
@@ -2145,7 +2148,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       if (state.remote == null && state.filesOnly !== true) {
         const pin =
           place.repo !== undefined
-            ? { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null }
+            ? {
+                remote: place.repo.remote,
+                baseRef: place.repo.baseRef ?? null,
+                baseCommit: place.repo.baseCommit ?? null,
+              }
             : { filesOnly: true };
         await fenced(
           writeRunRow(ctx, identityOf(ctx, harnessCtxState(ctx)), pin),
@@ -2309,7 +2316,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
       const commitsOf = (): Promise<RunCommits> =>
         state.filesOnly === true
           ? Promise.resolve({ count: 0, subjects: [] })
-          : readRunCommits(state.workspacePath!, state.baseRef);
+          : readRunCommits(state.workspacePath!, state.baseRef, state.baseCommit);
 
       // Everything the run reported goes on the row before anything is decided,
       // so a failed attempt's row is as complete as a successful one's.

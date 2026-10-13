@@ -1,5 +1,5 @@
 /**
- * `addTaskAndWait` on the real collection backings (FIX-1816): the ask is
+ * `dispatchAndWait` on the real collection backings (FIX-1816): the ask is
  * filed once across a crash between its row's commit and the record of the
  * filing, and an ask whose row completed just before its timeout's cancel
  * answers with the row, not with a timeout.
@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { addTaskAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
+import { dispatchAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 function boardCtx(): BlockContext {
@@ -84,7 +84,7 @@ const init = { goal: "Is ACME's SOC 2 current?", assignee: "researcher" };
 const LOGICAL_ID = "req_1:root/step[0]/tool[addTask][0%3Ac1]";
 
 for (const [backing, build] of Object.entries(BACKINGS)) {
-  describe(`addTaskAndWait on the ${backing} backing`, () => {
+  describe(`dispatchAndWait on the ${backing} backing`, () => {
     it("files one row when the process dies after the row's commit and before the filing is recorded", async () => {
       const board = await build();
       let died = false;
@@ -101,9 +101,9 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       }) as TaskCollectionRef;
       const memo = new Map<string, unknown>();
 
-      await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init)).rejects.toThrow("the process died");
+      await expect(dispatchAndWait(turnCtx(memo, "park"), dying, init)).rejects.toThrow("the process died");
       // The replay of the same call, after the restart.
-      await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init)).rejects.toThrow("parked");
+      await expect(dispatchAndWait(turnCtx(memo, "park"), dying, init)).rejects.toThrow("parked");
 
       expect(board.list()).toHaveLength(1);
     });
@@ -115,7 +115,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       const memo = new Map<string, unknown>([
         [`fsd.ask.plan:${LOGICAL_ID}`, { taskId: "task_taken", gateId: "ask:asks:task_taken" }]
       ]);
-      await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow(/isn't this ask's/);
+      await expect(dispatchAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow(/isn't this ask's/);
       const [row] = board.list();
       expect(row).toMatchObject({ id: "task_taken", goal: "someone else's task" });
       expect(row!.ask).toBeUndefined();
@@ -124,7 +124,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
     it("leaves the shipped shape under the old filing key, so a process on the earlier code resolves the same ask", async () => {
       const board = await build();
       const memo = new Map<string, unknown>();
-      await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
+      await expect(dispatchAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
       const [row] = board.list();
       // What the earlier code reads back on its replay: the filing, whole.
       const shipped = memo.get(`fsd.ask.file:${LOGICAL_ID}`) as { taskId: string; gateId: string; deadline: number };
@@ -134,11 +134,11 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 
     it("keeps a caller's own id, and a second call asking under that id is refused, not adopted", async () => {
       const board = await build();
-      await expect(addTaskAndWait(turnCtx(new Map(), "park", "c1"), board, { ...init, id: "root-f1" })).rejects.toThrow("parked");
+      await expect(dispatchAndWait(turnCtx(new Map(), "park", "c1"), board, { ...init, id: "root-f1" })).rejects.toThrow("parked");
       expect(board.list().map((row) => row.id)).toEqual(["root-f1"]);
       const first = board.get("root-f1")!.ask!.gateId;
       // Another call, another turn's memo, the same follow-up id.
-      await expect(addTaskAndWait(turnCtx(new Map(), "park", "c2"), board, { ...init, id: "root-f1" })).rejects.toThrow(
+      await expect(dispatchAndWait(turnCtx(new Map(), "park", "c2"), board, { ...init, id: "root-f1" })).rejects.toThrow(
         /isn't this ask's/
       );
       expect(board.list()).toHaveLength(1);
@@ -147,7 +147,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 
     it("mints a cross-process-unique id for a new ask", async () => {
       const board = await build();
-      await expect(addTaskAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
+      await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
       expect(board.list()[0]!.id).toMatch(/^task_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
@@ -160,7 +160,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       const memo = new Map<string, unknown>([
         [`fsd.ask.file:${LOGICAL_ID}`, { taskId, gateId, deadline: Date.now() + 300_000 }]
       ]);
-      await expect(addTaskAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
+      await expect(dispatchAndWait(turnCtx(memo, "park"), board, init)).rejects.toThrow("parked");
       expect(board.list().map((row) => row.id)).toEqual([taskId]);
     });
 
@@ -178,13 +178,13 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         }
       }) as TaskCollectionRef;
       const memo = new Map<string, unknown>();
-      await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("the process died");
+      await expect(dispatchAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("the process died");
       // Down for ten minutes, longer than the ask's bound.
       const real = Date.now.bind(Date);
       vi.spyOn(Date, "now").mockImplementation(() => real() + 10 * 60_000);
       try {
         const restartedAt = Date.now();
-        await expect(addTaskAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("parked");
+        await expect(dispatchAndWait(turnCtx(memo, "park"), dying, init, { timeoutMs: 60_000 })).rejects.toThrow("parked");
         const [row] = board.list();
         expect(row!.ask!.deadline).toBeGreaterThanOrEqual(restartedAt + 60_000);
       } finally {
@@ -214,7 +214,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         }
       }) as TaskCollectionRef;
 
-      const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
+      const result = await dispatchAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
       expect(result).toMatchObject({ ok: true, answer: "Yes, renewed 2026-08" });
       expect(board.list()[0]).toMatchObject({ status: "completed" });
     });
@@ -242,7 +242,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         }
       }) as TaskCollectionRef;
 
-      const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), legacy, init);
+      const result = await dispatchAndWait(turnCtx(new Map(), { timedOut: true }), legacy, init);
       expect(result).toMatchObject({ ok: true, answer: "Yes, renewed 2026-08" });
     });
 
@@ -268,7 +268,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         }
       }) as TaskCollectionRef;
       try {
-        const result = await addTaskAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
+        const result = await dispatchAndWait(turnCtx(new Map(), { timedOut: true }), racing, init);
         expect(result).toMatchObject({ ok: false, error: "wait_timed_out" });
       } finally {
         lateBy = 0;
@@ -297,7 +297,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
           const board = await build();
           const blip = failingFirstCancel(board);
 
-          const result = await addTaskAndWait(turnCtx(new Map(), park), blip, init);
+          const result = await dispatchAndWait(turnCtx(new Map(), park), blip, init);
           expect(result).toMatchObject({ ok: false, error });
           // Nobody waits on the row now, and its worker would keep at it: the
           // cancel is owed, on the row.
@@ -316,7 +316,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 
       it("a row whose worker ends it before the touch pays the debt with that ending, and owes the turn nothing", async () => {
         const board = await build();
-        await addTaskAndWait(turnCtx(new Map(), { stopped: true }), failingFirstCancel(board), init);
+        await dispatchAndWait(turnCtx(new Map(), { stopped: true }), failingFirstCancel(board), init);
         await board.claim("researcher-worker");
         await board.complete(board.list()[0]!.id, "done anyway");
 
@@ -328,7 +328,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 
       it("a touch with no cancel owed leaves an open ask alone", async () => {
         const board = await build();
-        await expect(addTaskAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
+        await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
         await resumeOwedAsks(turnCtx(new Map(), "park"), board);
         expect(board.list()[0]).toMatchObject({ status: "pending" });
         expect(board.list()[0]?.cancelOwed).toBeUndefined();
@@ -336,13 +336,60 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 
       it("a board whose list ignores the filter still cancels only the rows owed a cancel", async () => {
         const board = await build();
-        await expect(addTaskAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
+        await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
         const unfiltered = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
           list: () => board.list()
         }) as TaskCollectionRef;
         await resumeOwedAsks(turnCtx(new Map(), "park"), unfiltered);
         expect(board.list()[0]).toMatchObject({ status: "pending" });
       });
+    });
+  });
+}
+
+for (const [backing, build] of Object.entries(BACKINGS)) {
+  describe(`dispatchAndWait on a recorded row, on the ${backing} backing (FIX-1875)`, () => {
+    it("marks a recorded row waited-on and dispatched in one write, then parks on it (BR-17)", async () => {
+      const board = await build();
+      await board.addTask({ id: "task_rec", goal: "Which region?", assignee: "researcher", undispatched: true });
+      await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, { taskId: "task_rec" })).rejects.toThrow("parked");
+      const row = board.get("task_rec")!;
+      expect(row.undispatched).toBeUndefined();
+      expect(row.dispatchCall).toBe(LOGICAL_ID);
+      expect(row.ask?.gateId.startsWith("ask:asks:task_rec#")).toBe(true);
+      expect(board.list()).toHaveLength(1);
+    });
+
+    it("replays into the same wait after a crash between the ready write and the filing's record (BR-15)", async () => {
+      const board = await build();
+      await board.addTask({ id: "task_rec", goal: "Which region?", assignee: "researcher", undispatched: true });
+      let died = false;
+      const dying = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
+        dispatch: async (...args: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>) => {
+          const outcome = await board.dispatch!(...args);
+          if (!died) {
+            died = true;
+            throw new Error("the process died");
+          }
+          return outcome;
+        }
+      }) as TaskCollectionRef;
+      const memo = new Map<string, unknown>();
+      await expect(dispatchAndWait(turnCtx(memo, "park"), dying, { taskId: "task_rec" })).rejects.toThrow("the process died");
+      const gate = board.get("task_rec")!.ask!.gateId;
+      // The replay of the same call finds its own write by the gate it planned: no refusal, the same park.
+      await expect(dispatchAndWait(turnCtx(memo, "park"), dying, { taskId: "task_rec" })).rejects.toThrow("parked");
+      expect(board.get("task_rec")!.ask!.gateId).toBe(gate);
+    });
+
+    it("refuses a row that was never recorded, naming why, and writes nothing (BR-10)", async () => {
+      const board = await build();
+      await board.addTask({ id: "task_ready", goal: "Which region?", assignee: "researcher" });
+      const before = board.get("task_ready")!.revision;
+      const result = await dispatchAndWait(turnCtx(new Map(), "park"), board, { taskId: "task_ready" });
+      expect(result).toMatchObject({ ok: false, error: "task_not_dispatchable", taskId: "task_ready" });
+      expect(board.get("task_ready")!.revision).toBe(before);
+      expect(board.get("task_ready")!.ask).toBeUndefined();
     });
   });
 }

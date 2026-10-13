@@ -67,7 +67,7 @@ export interface MilestoneFacts {
 }
 
 /** A collection's rows through one session, with their topics, read through the shipped resource client. */
-async function rowsOf(who: Connected, sessionId: string, pattern: string): Promise<{ ref: string; rows: Array<{ topic: string; data: unknown }> }> {
+export async function rowsOf(who: Connected, sessionId: string, pattern: string): Promise<{ ref: string; rows: Array<{ topic: string; data: unknown }> }> {
   const ref = await who.routes.refOf(sessionId, pattern);
   if (ref === undefined) throw new Error(`session ${sessionId} publishes no ${pattern} collection`);
   const rows: Array<{ topic: string; data: unknown }> = [];
@@ -84,7 +84,7 @@ async function rowsOf(who: Connected, sessionId: string, pattern: string): Promi
 const lastSegment = (topic: string) => topic.slice(topic.lastIndexOf("/") + 1);
 
 /** The user's session on `flowKind` (the roster flow's, say), found or created through the session client. */
-async function sessionOn(who: Connected, flowKind: string): Promise<string> {
+export async function sessionOn(who: Connected, flowKind: string): Promise<string> {
   const listed = mostRecent(await who.sessions.listSessions({ flowKind, userId: who.person.userId }));
   return listed?.id ?? (await who.sessions.createSession({ flowKind, userId: who.person.userId })).id;
 }

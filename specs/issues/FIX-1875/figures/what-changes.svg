@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What a worker calls on a conversation's board, today and after, for four intents. Hand work over: today addTask with an assignee records and starts it; after, dispatchTask starts it. Need the answer before going on: today addTask with waitForResponse records, starts and parks the turn; after, dispatchTask with wait does the same. Move a task to someone else: today assignTask moves and starts it; after, assignTask moves it and it stays recorded until a dispatch. Write it down for later: today there is no way, because naming an assignee starts it; after, addTask records it and it stays recorded until a dispatch. Under both columns, unchanged: the waiting rules, no question park, the turn owns the row, a timeout cancels it, 30 seconds to an hour, one wait per step, no wait from a task turn."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .cell  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .start { fill:var(--accent); }
+    .rec   { fill:var(--ink-3); }
+    .foot  { fill:var(--surface-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-int { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-code{ fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-chip{ fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.08em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="headers">
+    <rect class="head" x="200" y="14" width="356" height="30" rx="5"/>
+    <text class="t-lbl" x="216" y="33">TODAY · STARTS FROM THREE TOOLS</text>
+    <rect class="head" x="568" y="14" width="356" height="30" rx="5"/>
+    <text class="t-lbl" x="584" y="33">AFTER · STARTS FROM ONE</text>
+  </g>
+
+  <g id="row-hand-over">
+    <text class="t-int" x="16" y="78">Hand work over</text>
+    <rect class="cell" x="200" y="56" width="356" height="50" rx="5"/>
+    <text class="t-code" x="214" y="77">addTask({ goal, assignee })</text>
+    <rect class="start" x="490" y="66" width="56" height="16" rx="3"/><text class="t-chip" x="500" y="77">STARTS</text>
+    <text class="t-s" x="214" y="96">records, and the board's wake starts it</text>
+    <rect class="new" x="568" y="56" width="356" height="50" rx="5"/>
+    <text class="t-code" x="582" y="77">dispatchTask({ goal, assignee })</text>
+    <rect class="start" x="858" y="66" width="56" height="16" rx="3"/><text class="t-chip" x="868" y="77">STARTS</text>
+    <text class="t-s" x="582" y="96">the ending arrives as a notice, as today</text>
+  </g>
+
+  <g id="row-need-answer">
+    <text class="t-int" x="16" y="138">Need the answer</text>
+    <text class="t-s" x="16" y="154">before going on</text>
+    <rect class="cell" x="200" y="116" width="356" height="50" rx="5"/>
+    <text class="t-code" x="214" y="137">addTask({ …, waitForResponse })</text>
+    <rect class="start" x="490" y="126" width="56" height="16" rx="3"/><text class="t-chip" x="500" y="137">STARTS</text>
+    <text class="t-s" x="214" y="156">a flag turns a board tool into a delivery tool</text>
+    <rect class="new" x="568" y="116" width="356" height="50" rx="5"/>
+    <text class="t-code" x="582" y="137">dispatchTask({ …, wait: true })</text>
+    <rect class="start" x="858" y="126" width="56" height="16" rx="3"/><text class="t-chip" x="868" y="137">STARTS</text>
+    <text class="t-s" x="582" y="156">the same park and resume, renamed</text>
+  </g>
+
+  <g id="row-move">
+    <text class="t-int" x="16" y="198">Move a task to</text>
+    <text class="t-int" x="16" y="214">someone else</text>
+    <rect class="cell" x="200" y="176" width="356" height="50" rx="5"/>
+    <text class="t-code" x="214" y="197">assignTask({ taskId, assignee })</text>
+    <rect class="start" x="490" y="186" width="56" height="16" rx="3"/><text class="t-chip" x="500" y="197">STARTS</text>
+    <text class="t-s" x="214" y="216">moves it, and the wake starts it</text>
+    <rect class="cell" x="568" y="176" width="356" height="50" rx="5"/>
+    <text class="t-code" x="582" y="197">assignTask({ taskId, assignee })</text>
+    <rect class="rec" x="850" y="186" width="64" height="16" rx="3"/><text class="t-chip" x="858" y="197">RECORDS</text>
+    <text class="t-s" x="582" y="216">then dispatchTask({ taskId }) starts it</text>
+  </g>
+
+  <g id="row-later">
+    <text class="t-int" x="16" y="258">Write it down</text>
+    <text class="t-int" x="16" y="274">for later</text>
+    <rect class="cell" x="200" y="236" width="356" height="50" rx="5"/>
+    <text class="t-b" x="214" y="257">Not possible</text>
+    <text class="t-s" x="214" y="276">naming an assignee starts the work</text>
+    <rect class="cell" x="568" y="236" width="356" height="50" rx="5"/>
+    <text class="t-code" x="582" y="257">addTask({ goal, assignee })</text>
+    <rect class="rec" x="850" y="246" width="64" height="16" rx="3"/><text class="t-chip" x="858" y="257">RECORDS</text>
+    <text class="t-s" x="582" y="276">it stays recorded until dispatched</text>
+  </g>
+
+  <g id="unchanged">
+    <rect class="foot" x="200" y="304" width="724" height="78" rx="5"/>
+    <text class="t-lbl" x="216" y="325">UNCHANGED UNDER BOTH · THE WAITING RULES</text>
+    <text class="t-b" x="216" y="346">No question park · the waiting turn owns the row · a timeout cancels it</text>
+    <text class="t-b" x="216" y="366">30 seconds to an hour, five minutes by default · one wait per step · no wait from a task turn</text>
+  </g>
+</svg>

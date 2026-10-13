@@ -30,6 +30,22 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
   });
 
+  it("offers a board's generated dispatchTask on its rows, though a new task makes its taskId optional", () => {
+    // `dispatchTask_<suffix>` starts a recorded row by its id, or files a new
+    // one with a goal, so its taskId is optional. On a row it starts that row.
+    const family = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"];
+    const schemas: Record<string, ActionInputSchema> = {
+      ...Object.fromEntries(family.map((tool) => [`${tool}_tasks`, tool === "addTask" || tool === "listTasks" ? noTaskId : takesTaskId])),
+      dispatchTask_tasks: { type: "object", fields: { goal: { type: "string", required: false }, taskId: { type: "string", required: false } } },
+      // An app's own action with an optional taskId is still not a row action.
+      maybe: optionalTaskId,
+    };
+    const offered = taskActionsFor(Object.keys(schemas), schemas, "tasks", []);
+    expect(offered).toContain("dispatchTask_tasks");
+    expect(offered).not.toContain("maybe");
+    expect(offered).not.toContain("addTask_tasks");
+  });
+
   it("offers a board's own tools only on that board, and a generic action on every board", () => {
     const schemas = {
       answer: takesTaskId,
@@ -77,7 +93,7 @@ describe("taskActionsFor", () => {
 
   describe("a board named only by its generated task tools", () => {
     // `taskToolActions` always generates the whole family of eight for a
-    // board. A board this session has no rows on (a sibling Workforce mailbox
+    // board. A board this session has no rows on (a sibling session
     // sharing the flow kind, or a board with no tasks yet) is not listed, but
     // its family in the flow's action list still names it, so its tools are
     // that board's and never generic.
@@ -88,7 +104,7 @@ describe("taskActionsFor", () => {
     const schemasFor = (names: string[]) =>
       Object.fromEntries(names.map((name) => [name, name.startsWith("addTask") || name.startsWith("listTasks") ? noTaskId : takesTaskId]));
 
-    it("keeps a sibling mailbox's tools off this mailbox's rows", () => {
+    it("keeps a sibling board's tools off this board's rows", () => {
       const names = [...family("eng_queue_work"), ...family("eng_other_work")];
       const offered = taskActionsFor(names, schemasFor(names), "eng.queue.work", ["eng.queue.work"]);
       expect(offered).toEqual([

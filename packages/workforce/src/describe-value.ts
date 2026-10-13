@@ -2,10 +2,10 @@
  * How a refusal names a value it will not accept: short, quoted, and never a
  * sprawling dump.
  *
- * Shared by the two seat-declaration modules — `./seat-resources` and
- * `./seat-references` — because an author who mis-indents one key and then the
+ * Shared by the two worker-declaration modules — `./worker-resources` and
+ * `./worker-references` — because an author who mis-indents one key and then the
  * other should not get two different descriptions of the same mistake. It
- * moved here from `seat-resources` when the second caller arrived; a second
+ * moved here from `worker-resources` when the second caller arrived; a second
  * copy is how "a mapping of 2 key(s)" and "an object" end up in one file.
  */
 

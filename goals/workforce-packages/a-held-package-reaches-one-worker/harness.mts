@@ -30,7 +30,7 @@ import {
   WORKER_ID_STATE_KEY,
   createWorkerInstallation,
   hireWorkforce,
-  inventorySeats,
+  inventoryWorkers,
 } from "@flow-state-dev/workforce";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 
@@ -122,8 +122,8 @@ async function main(): Promise<void> {
   });
   const copies = hireWorkforce(installation);
   // Each seat, and the flow it runs on.
-  const seats = inventorySeats(installation);
-  out.seatIds = seats.map((s) => s.id);
+  const seats = inventoryWorkers(installation);
+  out.workerIds = seats.map((s) => s.id);
 
   const flowState = createFlowState({
     flows: Object.fromEntries(copies.map((copy) => [copy.id, copy])),

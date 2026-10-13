@@ -24,10 +24,10 @@ function projectTools() {
 }
 
 describe("chief of staff tools presented with .as()", () => {
-  it("the project tools are createProject, setRepository, openWorkstream and listProjects: none lists mailboxes on a project", () => {
+  it("the project tools are createProject, setRepository, setBrief, openWorkstream and listProjects: none lists workstreams on a project row", () => {
     // A project's workstreams are the entries `openWorkstream` writes; there is
-    // no tool left that writes a list of mailbox ids onto a project row.
-    expect(Object.keys(projectTools().tools).sort()).toEqual(["createProject", "listProjects", "openWorkstream", "setRepository"]);
+    // no tool that writes a list of ids onto a project row.
+    expect(Object.keys(projectTools().tools).sort()).toEqual(["createProject", "listProjects", "openWorkstream", "setBrief", "setRepository"]);
   });
 
   it("hire is the Workforce hire block under the tool's own name", () => {
@@ -35,7 +35,7 @@ describe("chief of staff tools presented with .as()", () => {
     const tool = chiefOfStaffRosterTools(installation).hire;
     const block = createWorkerHireBlocks(installation).hire;
     expect(tool.name).toBe("hire");
-    expect(tool.description).toMatch(/^Hire a worker of the person's own: `id` is a short lowercase slug/);
+    expect(tool.description).toMatch(/^Hire a worker of the user's own: `id` is a short lowercase slug/);
     expect(tool.kind).toBe(block.kind);
     expect(tool.kind).not.toBe("sequencer");
     expect(tool.inputSchema).toBe(block.inputSchema);

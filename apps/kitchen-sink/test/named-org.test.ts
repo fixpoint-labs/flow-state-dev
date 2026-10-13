@@ -10,7 +10,7 @@
  * One thing is substituted, below the wiring under test: the model.
  * `KITCHEN_SINK_TEST_MODE=1` makes the config build its model resolver from
  * `test/mock-flowstate`, which this file mocks with a scripted `agent-answer`,
- * so a seat's answer is fixed.
+ * so a worker's answer is fixed.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1500/PLAN.md`), and the red
  * state each was seen in before its green was trusted:
@@ -20,10 +20,7 @@
  *       (FIX-1792 BR-25). Red: remove `resolvePrincipal` from
  *       `fsdev.config.ts` — every session binds to `__fsd_default_org__`.
  *
- * V19 (a boot over a store written before the app named its organization
- * refuses, naming each stored mailbox) and the refusal of a store written
- * before mailboxes were renamed left with the mailboxes the boot opened
- * (FIX-1792 S6, D2): the boot opens no session, so it reads none an earlier
+ * The boot opens no session (FIX-1792 S6, D2), so it reads none an earlier
  * store holds, and nothing old is refused by name.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";

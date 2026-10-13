@@ -283,8 +283,8 @@ describe("the create route", () => {
 
   // Off state of the create-time schema refusal: only a flow that binds its
   // sessions (a readonly field or a create check) refuses. A flow with a schema
-  // and neither keeps today's behaviour, which workforce's half-filled mailbox
-  // sessions rely on.
+  // and neither keeps the state as sent, which a flow that fills its sessions
+  // in later relies on.
   it("keeps a state the schema rejects as sent, on a flow with no readonly field and no check", async () => {
     const loose = defineFlow({
       kind: "loose",
@@ -555,7 +555,7 @@ describe("a dispatch through a public task dispatcher()", () => {
       }
     })({ id }) as unknown as FlowInstance;
   }
-  const envelope = { boardId: "board", seat: "researcher", taskId: "t1", attempt: 1, createdAt: 1, payload: {} };
+  const envelope = { boardId: "board", assignee: "researcher", taskId: "t1", attempt: 1, createdAt: 1, payload: {} };
 
   it("creates each task's child with the state the dispatcher looked up for it", async () => {
     const { sent, children } = await sendThroughRelay(relay(true), envelope);
@@ -609,8 +609,8 @@ describe("the session listing's state filter", () => {
 
 describe("readCollectionItem on a parameterized collection", () => {
   it("reads the item named by its parameters, and nothing when it is absent", async () => {
-    const rooms = defineResourceCollection({
-      pattern: "[room]/info",
+    const venues = defineResourceCollection({
+      pattern: "[venue]/info",
       scope: "user",
       stateSchema: z.object({ open: z.boolean() })
     });
@@ -618,24 +618,24 @@ describe("readCollectionItem on a parameterized collection", () => {
     const stores = createInMemoryStores();
     registry.register(
       defineFlow({
-        kind: "rooms",
-        resources: { rooms },
+        kind: "venues",
+        resources: { venues },
         session: {
-          stateSchema: z.object({ room: z.string().readonly() }),
+          stateSchema: z.object({ venue: z.string().readonly() }),
           createCheck: async ({ state, readCollectionItem }) => {
-            const row = await readCollectionItem("rooms", { room: state.room as string });
-            return row?.open === true ? { ok: true } : { ok: false, status: 404, message: "No such room." };
+            const row = await readCollectionItem("venues", { venue: state.venue as string });
+            return row?.open === true ? { ok: true } : { ok: false, status: 404, message: "No such venue." };
           }
         },
-        actions: { run: { inputSchema: z.object({}), block: handler({ name: "rooms-run", execute: () => ({}) }) } }
-      })({ id: "rooms" }) as unknown as FlowInstance
+        actions: { run: { inputSchema: z.object({}), block: handler({ name: "venues-run", execute: () => ({}) }) } }
+      })({ id: "venues" }) as unknown as FlowInstance
     );
     const router = createFlowApiRouter({ registry, stores });
-    const cell = resolveUserStorageKey("alice", ORG, { id: "rooms", isolateUserState: false });
+    const cell = resolveUserStorageKey("alice", ORG, { id: "venues", isolateUserState: false });
     await stores.resourceState.set("user", cell, "lobby/info", { open: true }, "absent");
 
-    expect((await create(router, "rooms", { userId: "alice", sessionId: "r1", state: { room: "lobby" } })).status).toBe(201);
-    expect((await create(router, "rooms", { userId: "alice", sessionId: "r2", state: { room: "attic" } })).status).toBe(404);
+    expect((await create(router, "venues", { userId: "alice", sessionId: "r1", state: { venue: "lobby" } })).status).toBe(201);
+    expect((await create(router, "venues", { userId: "alice", sessionId: "r2", state: { venue: "attic" } })).status).toBe(404);
   });
 });
 

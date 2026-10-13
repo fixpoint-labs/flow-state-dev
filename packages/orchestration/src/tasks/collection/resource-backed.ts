@@ -124,6 +124,7 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
   assigneeChangeDecline,
+  dispatchWrite,
   parkPatch,
   unparkPatch,
 } from "./internal";
@@ -204,7 +205,7 @@ export interface ResourceBackedOptions {
    * Refuse `setAssignee` on a task an attempt holds (FIX-982, narrowed by
    * FIX-1780 to `in_progress` and `parked`).
    *
-   * Set by a task board with dispatcher seats. The assignee is what a
+   * Set by a task board with dispatcher assignees. The assignee is what a
    * handed-off task's routing key derives from, so reassigning a task whose
    * dispatch is in flight silently strands it — see `TaskCollectionRef.setAssignee`.
    * A pending or blocked task is claimed afresh before it runs, so it can
@@ -1051,6 +1052,35 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           ? { cancelOwed: true }
           : undefined
       );
+    },
+
+    async dispatch(id, dispatchOptions) {
+      const write = () =>
+        patchRef(
+          id,
+          "dispatched",
+          (task) => {
+            const decided = dispatchWrite(task as Task, dispatchOptions);
+            if (decided === undefined) return undefined;
+            if ("decline" in decided) throw new WriteDeclined(decided.decline, task.status);
+            return decided.patch as Partial<Task<TInput, TOutput>>;
+          },
+          { declineOnTerminal: true }
+        );
+      const outcome = await write();
+      // A request reads a resource as the snapshot it first took, and a throw
+      // from the updater skips the store's check of that snapshot. A row
+      // another request claimed or dispatched since moves on, so confirm the
+      // decline against the committed row before reporting it, as
+      // `setAssignee` does.
+      if (outcome.outcome === "declined" && outcome.reason !== "terminal") {
+        const ref = mirror.get(id);
+        if (ref !== undefined) {
+          await readCommitted(ref, () => undefined);
+          return write();
+        }
+      }
+      return outcome;
     },
 
     get(id) {

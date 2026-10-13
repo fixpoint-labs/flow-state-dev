@@ -239,6 +239,8 @@ For a repository, the host keeps one clone of each remote under `root` and gives
 
 A checkout that already exists is handed back exactly as it was left. The host doesn't fetch, reset or rebase it, so a retry finds its uncommitted work. A checkout it can't explain, such as one on a different branch or with no `.git`, is refused and left alone. The one exception is a checkout whose `git worktree add` was killed before it finished: the host marks the place while that command runs, and when the mark is still there and the tree only has files missing, it rebuilds the checkout instead of handing a run a tree with half the repository gone. If the tree shows any other change, the host refuses it and keeps it.
 
+The host runs none of the repository's git hooks while it makes or hands back a checkout, whether they live in `.git/hooks` or in a `core.hooksPath` directory such as `.husky`. A `post-checkout` hook that builds or installs would fail in a fresh tree with no dependencies, and a run can write to the hooks directory its worktree shares with the repository. Run any setup the checkout needs as part of the run.
+
 Several hosts, in one process or several, can share a `root`. Provisioning a place, and working on a clone, take a lock file under the root, so a second host waits for the first instead of racing it. A lock left by a process that died is taken over after a minute.
 
 Kept files go in `project/` next to the checkout, never inside it, so `git status` never sees them. With no repository they go in `workspace/`, which is also the run's working directory. Either way they're hydrated from one key prefix of the collection and flushed back by `save`, with the same conflict reporting as any projection. The first run in an empty prefix starts from an empty directory. A retry in the same process gets the same live directory back, unsaved edits included. From then on the kept files are the retry's: `save` refuses the earlier place handle, and `release` on it does nothing. A directory the process didn't fill itself, after a restart or because it was deleted, is rebuilt from the collection. The collection is the record, so anything a run never saved is gone.
@@ -256,7 +258,19 @@ const host = localWorkspaceHost({
 });
 ```
 
-The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. Nothing is fetched, on the first run or a retry. The place directory is the checkout itself, so there is no `checkout/` level and no `project/` beside it, and a source that names kept files with a local repository is refused. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. The repository's own branches, index and working tree are never touched. When the source names no kept files, the place directory is the checkout itself, with no `checkout/` level. When it names kept files, the place is laid out like a remote run's: the worktree in `checkout/` and the kept files in `project/` beside it. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+
+Before cutting a new branch whose base tracks an upstream, the host fetches that one upstream branch, which updates only its remote-tracking ref. It then cuts from whichever of the two is newer, and records that commit as `place.repo.baseCommit`. Listing the repository allows the fetch without an entry in `remotes.allow`. Its URL goes through the same checks as any remote, with an absolute path read as `file://`.
+
+Every run shares the repository's `.git/config`, so the host reads each remote's URL, and the upstream each branch tracks, once, when it starts. It fetches that URL rather than the remote's name. Settings in the repository's own config that run a program, such as `core.sshCommand`, an upload-pack, a credential helper or hooks, are ignored during the fetch. Credential helpers from your global and system config, read at start, still run.
+
+- **Local and upstream have each moved:** the provision is refused as `base-diverged` before anything is made.
+- **The fetch fails:** the host compares with the copy last fetched and logs a warning.
+- **The remote's URL changed since the host started, or the remote is new:** nothing is fetched. The host compares with the copy last fetched and logs a warning naming both URLs. Restart the host to pick up the new URL.
+- **A branch's upstream changed since the host started:** the upstream it tracked then is still the one fetched, and the host logs a warning. A branch that had no upstream then is used as it is. Restart the host to pick up the change.
+- **The base has no upstream, or the branch already exists:** nothing is fetched.
+
+Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.
 
 ### Keeping a directory out of git
 
@@ -438,9 +452,10 @@ interface HeldWorkStore {
 | `invalid-remote` | The value starts with `-`, uses a transport helper like `ext::`, has a host starting with `-`, carries a password or an `https` login, or is a bare path rather than a URL |
 | `remote-not-allowed` | Its host isn't listed, it's `file://` and `"file"` isn't listed, or its scheme isn't `https`, `ssh` or `file` |
 | `remote-unreadable` | The host is allowed but git couldn't read it, or it has no branch to cut from |
+| `base-diverged` | A repository on this machine: the base and its upstream each have commits the other lacks. Nothing is made |
 | anything else | The source answered `refused`, with that reason |
 
-Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry, so fail the run with the reason.
+Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry by itself, so fail the run with the reason. `base-diverged` clears once someone pulls or rebases, or pushes, in that repository.
 
 ## API
 

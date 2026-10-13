@@ -3,7 +3,7 @@
  * The task screen against a real Lab, in a DOM (V1 to V5). The run-lab's lead
  * files tasks on its own conversation's board for scripted runs that hold
  * until stopped; what the screen draws is compared with what the Lab's routes
- * and stores hold. A conversation's board is read as the person's whole
+ * and stores hold. A conversation's board is read as the user's whole
  * `tasks` collection, through one of their sessions, and the screen keeps its
  * conversation's rows.
  */
@@ -46,7 +46,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
   return { lab, served: s, clients, rows, boardRef };
 }
 
-/** Whether `url` is a read of the person's conversation boards: the snapshot's, or one task screen's. */
+/** Whether `url` is a read of the user's conversation boards: the snapshot's, or one task screen's. */
 const isBoardRead = (url: string) => new URL(url, "http://lab.local").pathname.endsWith(`/resources/${CONVERSATION_BOARD_COLLECTION}`);
 
 async function renderAt(baseUrl: string, path: string, devtoolUrl?: string) {
@@ -334,19 +334,19 @@ describe("the header's worker", () => {
   it("resolves the row's worker by its id, though another team's worker shares its name, as the inspector does", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, false);
-    const seat = { id: row.assignee!, name: row.assignee!.split(".").at(-1)! };
+    const worker = { id: row.assignee!, name: row.assignee!.split(".").at(-1)! };
     // Another team's worker with the same short name, listed first.
     rewriteRows(
       (url) => url.includes("/resources/") && !isBoardRead(url),
       (rows) => {
-        const mine = rows.find((r) => r.id === seat.id);
-        return mine === undefined ? rows : [{ ...mine, id: `zz.${seat.name}` }, ...rows];
+        const mine = rows.find((r) => r.id === worker.id);
+        return mine === undefined ? rows : [{ ...mine, id: `zz.${worker.name}` }, ...rows];
       },
     );
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
-    await waitFor(() => expect(screen.getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(seat.id));
-    expect(screen.getByTestId("task-status").textContent).toContain(seat.id);
-    expect(screen.getByTestId("task-status").textContent).not.toContain(`zz.${seat.name}`);
+    await waitFor(() => expect(screen.getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(worker.id));
+    expect(screen.getByTestId("task-status").textContent).toContain(worker.id);
+    expect(screen.getByTestId("task-status").textContent).not.toContain(`zz.${worker.name}`);
   }, 30_000);
 });
 
@@ -387,7 +387,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const row = await heldRow(opened, true);
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`, "http://127.0.0.1:4000");
     const inspector = await screen.findByTestId("task-inspector");
-    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-seat-id")).toBe(opened.lab.ownWorker!.id);
+    expect(within(inspector).getByTestId("inspector-worker-id").getAttribute("data-worker-id")).toBe(opened.lab.ownWorker!.id);
     expect(within(inspector).getByTestId("inspector-started-at").getAttribute("data-started-at")).toBe(String(row.startedAt));
     expect(within(inspector).getByTestId("inspector-harness-gap").textContent).toBe(GAPS.task.harness);
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
@@ -431,7 +431,7 @@ describe("the inspector (BR-18 to BR-23)", () => {
   }, 30_000);
 });
 
-describe("a task whose run waits on a person (BR-17)", () => {
+describe("a task whose run waits on a user (BR-17)", () => {
   it("draws the ask inline in the Session, on the highlighter in the activity line and the inspector, and no Inbox detour", async () => {
     const opened = await openLab({ asking: true });
     const filed = opened.lab.filed.find((f) => f.kind === "asking")!;
@@ -445,7 +445,7 @@ describe("a task whose run waits on a person (BR-17)", () => {
     await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
 
     const ask = await screen.findByTestId("session-ask", {}, { timeout: 10_000 });
-    // Its kind on the highlighter, and the one ask card Inbox draws.
+    // Its ask kind on the highlighter, and the one ask card Inbox draws.
     expect(within(ask).getByText("APPROVAL").getAttribute("data-look")).toBe("ask-kind");
     expect(within(ask).getByTestId("ask-card").textContent).toContain(RUN_LAB_ASK);
     expect(screen.queryByText("Waiting on you: answer it in Inbox")).toBeNull();

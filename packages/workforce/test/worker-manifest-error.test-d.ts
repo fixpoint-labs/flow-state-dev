@@ -28,7 +28,7 @@ export const fromTheResult = (result: ReadWorkforceDirectoryResult): WorkerManif
 /** Every variant keys by `path`: the union never drops the `PathReport` contract. */
 export const key = (entry: WorkerManifestError): string => entry.path;
 
-/** Narrowing on `kind` tells a refused structural folder from a seat that would not load. */
+/** Narrowing on `kind` tells a refused structural folder from a worker that would not load. */
 export function lostEverythingBeneath(entry: WorkerManifestError): boolean {
   return entry.kind === "unreadable-slot";
 }
@@ -56,7 +56,7 @@ export const refused: WorkerManifestError = {
 // @ts-expect-error an untagged entry is not a WorkerManifestError — the point of S5.
 export const untagged: WorkerManifestError = {
   path: "teams/engineering/workers/lead",
-  error: new Error("no kind"),
+  error: new Error("no flow"),
 };
 
 /** The union is closed: a condition it does not have is not admitted. */

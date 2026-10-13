@@ -13,11 +13,11 @@ import type { DeliveryDelegate } from "../delivery-ledger";
 import { DELIVERIES_STATE, HOLD_STATE, LANDED_STATE, ROUND_ROBIN_STATE, ROUNDS_STATE } from "./coordinator-keys";
 import { landedAnswersSchema } from "./coordinator-lines";
 
-/** Who best fit holds the person's next post for: the delegate the last one went to. */
+/** Who best fit holds the user's next post for: the delegate the last one went to. */
 export const bestFitHoldSchema = z.object({ postId: z.string(), delegate: deliveryDelegateSchema });
 
 /**
- * Where round robin's turn stands: the delegate the person's last post went
+ * Where round robin's turn stands: the delegate the user's last post went
  * to, and where it stood in the list then, so the turn goes on from the same
  * place when that delegate has since been removed.
  */

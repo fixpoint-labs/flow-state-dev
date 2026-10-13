@@ -19,9 +19,9 @@
  * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
  *   breadth is refused in the ref the resolver returns (`./chain`), as the
  *   task substrate refuses a full board: `total_task_cap_exceeded`.
- * - **The tools and the actions.** Orchestration's nine task tools, on the
+ * - **The tools and the actions.** Orchestration's task tools, `dispatchTask` among them, on the
  *   model's turn and as public actions, over one resolver and one roster. The
- *   tools are one capability whose nine are on a turn only while the session
+ *   tools are one capability whose tools are on a turn only while the session
  *   files, read per call. The resolver is the running session's own board,
  *   and none while it doesn't file, so an action answers
  *   `no_delegation_board`. The roster is the session's delegates that take a
@@ -111,7 +111,7 @@ export interface ConversationBoardOptions {
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
   /**
-   * The kind of the flow the board's sessions run on: where each task it
+   * The worker flow the board's sessions run on: where each task it
    * hands over sends its notice back, as the task session's `filingFlow`.
    */
   flowKind: string;
@@ -134,7 +134,10 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
       if (delegates.unavailable.size === 0) return listed;
       const why = [...delegates.unavailable].map(([worker, reason]) => `${worker}: ${reason}`).join("; ");
       return `${listed}. Not taking tasks now: ${why}`;
-    }
+    },
+    // The same default the guarded `addTask` gives an unassigned row: the
+    // conversation's only task-taking delegate, or none.
+    soleAssignee: () => (delegates.available.size === 1 ? [...delegates.available.keys()][0] : undefined)
   };
 }
 
@@ -160,22 +163,37 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
   return onState ?? currentWorkerClaim();
 }
 
-/** Claims only rows that name a delegate: an unassigned row waits on the board until it is assigned. */
-const assignedOnly: TaskDispatcher = {
-  claim: (collection, workerId) => collection.claim(workerId, { eligibility: (task) => task.assignee !== undefined })
+/**
+ * The board's one test for "may start" (FIX-1875 S6): the row names a
+ * delegate, and it isn't recorded-but-not-dispatched (`undispatched`). Every
+ * start path reads it: the claim, the drain's exit, and the wakes after a
+ * filing, an assign, an answer and a touch. A path that tests the assignee
+ * alone starts a recorded row. Claimability (status, deps, lease) is the
+ * substrate's, read beside it; the substrate's admission refuses the mark too,
+ * so another claimer of the same collection never starts a recorded row. This
+ * test still reads it because the filing's wake reads no claimability.
+ */
+export function isStartable(task: Pick<Task, "assignee" | "undispatched">): boolean {
+  return task.assignee !== undefined && task.undispatched !== true;
+}
+
+/** Claims only rows that may start: an unassigned or recorded row waits on the board. */
+const startableOnly: TaskDispatcher = {
+  claim: (collection, workerId) => collection.claim(workerId, { eligibility: isStartable })
 };
 
 /**
- * Whether a row this board can start is waiting: assigned, and claimable now
- * (a dead run's row included). Such a row is owed a run of the board; this is
- * the whole of a start's debt (`./ledger`). With `id`, only that row.
+ * Whether a row this board can start is waiting: startable ({@link isStartable})
+ * and claimable now (a dead run's row included). Such a row is owed a run of
+ * the board; this is the whole of a start's debt (`./ledger`). With `id`, only
+ * that row.
  */
 function hasStartable(collection: TaskCollectionRef, id?: string): boolean {
   const now = collection.now();
   const lookup = (taskId: string): Task | undefined => collection.get(taskId);
   return collection
     .list({ status: ["pending", "in_progress"] })
-    .some((task) => (id === undefined || task.id === id) && task.assignee !== undefined && isClaimable(task, lookup, now));
+    .some((task) => (id === undefined || task.id === id) && isStartable(task) && isClaimable(task, lookup, now));
 }
 
 /**
@@ -309,7 +327,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     collection: conversationLedger,
     workers: {},
     defaultWorker: handOffToDelegate as never,
-    dispatcher: assignedOnly,
+    dispatcher: startableOnly,
     // Exit once nothing this run can start is waiting. An unassigned row
     // waits on the board for `assignTask`, so a run must not wait on it.
     onIdle: "wait",
@@ -367,7 +385,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(metadata !== undefined ? { metadata } : {})
       });
       if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
-      if (assignee !== undefined) await wake(ctx);
+      if (isStartable(added)) await wake(ctx);
       return added;
     };
     /**
@@ -413,6 +431,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
         return outcome;
       },
+      // A recorded row readied by `dispatchTask` starts the board, through the
+      // same test as an assign: `unchanged` too, so a dispatch replayed after
+      // a lost wake starts the row (FIX-1875).
+      ...(ref.dispatch === undefined
+        ? {}
+        : {
+            async dispatch(id: string, dispatchOptions: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>[1]) {
+              const outcome = await ref.dispatch!(id, dispatchOptions);
+              if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+              return outcome;
+            }
+          }),
       // An answer re-queues the row assigned and pending, which is its start
       // owed, in the unpark's own write (FIX-1817); then it starts the board,
       // as a filing does. A lost wake leaves the row startable for the next touch.
@@ -493,17 +523,17 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     .tap(afterRun);
 
   /**
-   * The nine task tools for the model's turn: one capability instance, whose
-   * nine are on a turn only while the session files, read before each model
+   * The task tools for the model's turn: one capability instance, whose
+   * tools are on a turn only while the session files, read before each model
    * call. Orchestration's own tools over this board's resolver and roster;
    * `controlTools`, as Orchestration's capability carries them, so a worker's
    * `tools:` line doesn't fence them out.
    */
-  // Chosen per turn: `addTask` waits for its answer only where the host can
-  // hold an ask (FIX-1816).
-  // This board resumes asks: its notice entry and every run call
-  // `resumeOwedAsks`.
-  const eight = taskToolsForTurn(resolver, roster, { resumesAsks: true });
+  // Chosen per turn: a wait is offered only where the host can hold one
+  // (FIX-1816). This board resumes waits: its notice entry and every run call
+  // `resumeOwedAsks`. And it dispatches (FIX-1875): its ref's filings and
+  // dispatches wake a run of it, so `dispatchTask` starts work now.
+  const eight = taskToolsForTurn(resolver, roster, { resumesAsks: true, dispatches: true });
   const tools = defineCapability({
     name: "taskTools",
     resources: { ...conversationLedgerResources, ...taskChainResources },
@@ -520,8 +550,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     runBoard,
     files,
     tools,
-    /** The nine task tools as public actions, `<tool>_tasks`. */
-    actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster),
+    /** The task tools as public actions, `<tool>_tasks`, `dispatchTask_tasks` among them. */
+    actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
     /** The ledger and the chain records, for the flow's `resources`. */
     resources: { ...conversationLedgerResources, ...taskChainResources }
   };

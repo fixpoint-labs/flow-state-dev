@@ -33,9 +33,9 @@ import type { Browser, Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/host.mts";
+import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { Scenario, serveLab } from "../../multi-seat-collab/run-scenario.mts";
-import { WORKER_KIND } from "../../../packages/shift-manager/test/fixtures/multi-seat-collab/workforce/flows/workers/worker.mts";
+import { WORKER_FLOW } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/workforce/flows/workers/worker.mts";
 import { gradeRow5 } from "./row5.mts";
 
 type Fixture = {
@@ -98,9 +98,9 @@ async function waitForBadge(page: Page, sessionId: string): Promise<void> {
  * row ran in, which the navigator lists under that copy.
  */
 async function openRun(page: Page, run: string): Promise<void> {
-  const kindRow = page.locator(`[data-kind="${WORKER_KIND}"]`);
+  const kindRow = page.locator(`[data-kind="${WORKER_FLOW}"]`);
   if ((await kindRow.getAttribute("aria-expanded")) !== "true") await kindRow.click();
-  const copyRow = page.locator(`[data-instance-id="${WORKER_KIND}"]`);
+  const copyRow = page.locator(`[data-instance-id="${WORKER_FLOW}"]`);
   if ((await copyRow.getAttribute("aria-expanded")) !== "true") await copyRow.click();
   await page.locator(`[data-session-id="${run}"]`).click();
   await waitForBadge(page, run);

@@ -54,15 +54,15 @@ afterEach(() => {
 describe("FlowNavigator · a host that cannot name its kinds", () => {
   const mixed = [
     entry("chat", "chat", "singleton"),
-    entry("seat-a", "agent", "collection"),
-    entry("seat-b", "agent", "collection"),
+    entry("worker-a", "agent", "collection"),
+    entry("worker-b", "agent", "collection"),
     entry("ops", "ops-console", "singleton"),
   ];
 
   it("lists every kind the server has when a section names none", async () => {
     const { listFlows } = mount(mixed, { sections: [{ label: "Flows" }] });
 
-    // One row per KIND, not per instance: the two agent seats are one row.
+    // One row per KIND, not per instance: the two agent workers are one row.
     await waitFor(() => expect(kindRow("agent")).toBeTruthy());
     expect(
       Array.from(document.querySelectorAll("[data-kind]")).map((el) =>

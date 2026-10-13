@@ -25,7 +25,7 @@ import {
 } from "./derive-session-id";
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
-import { ROSTER_FLOW_KIND, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
+import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -64,6 +64,7 @@ export interface WorkforceClient {
    * criteria's keys: a session that carries a criteria key the call doesn't
    * name is not returned. With `workstreamId`, the one session the user's
    * entry for that workstream names, or `undefined` while it names none.
+   * Throws when the worker isn't on the user's roster.
    */
   findWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary | undefined>;
   /**
@@ -74,7 +75,10 @@ export interface WorkforceClient {
    * workstream's open starts its lead's session, and until the entry names
    * it this throws. With `taskId` it never creates one either: a task's
    * session is opened when its conversation's board hands it over, and until
-   * then this throws.
+   * then this throws. Nor with `filingSessionId`: a conversation's delegate
+   * session is opened when the conversation hands it a post or a task, and
+   * until then this throws. Throws, too, when the worker isn't on the
+   * user's roster.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
 }
@@ -113,11 +117,11 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   let rosterSession: Promise<{ id: string; orgId: string }> | undefined;
   const roster = (): Promise<{ id: string; orgId: string }> =>
     (rosterSession ??= (async () => {
-      const listed = mostRecent(await sessions.listSessions({ flowKind: ROSTER_FLOW_KIND, userId }));
+      const listed = mostRecent(await sessions.listSessions({ flowKind: ROSTER_FLOW, userId }));
       const detail =
         listed !== undefined
           ? await sessions.getSession(listed.id)
-          : await sessions.createSession({ flowKind: ROSTER_FLOW_KIND, userId });
+          : await sessions.createSession({ flowKind: ROSTER_FLOW, userId });
       return { id: detail.id, orgId: detail.orgId };
     })().catch((error: unknown) => {
       rosterSession = undefined;
@@ -182,7 +186,7 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       // a dispatch run of the session that opened it, and a conversation's
       // board opens a task's session as a dispatch run of the conversation, so
       // a lookup for any of them includes those. A lookup that names none
-      // keeps to the sessions a person started.
+      // keeps to the sessions a user started.
       ...(criteria.filingSessionId === undefined &&
       criteria.workstreamId === undefined &&
       criteria.taskId === undefined
@@ -191,6 +195,9 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
+      // A session naming a conversation is only ever a dispatch run of it; a
+      // top-level one is a caller's, from before a create naming one was refused.
+      if (Object.hasOwn(state, FILING_SESSION_STATE_KEY) && row.parentSessionId == null) return false;
       return CRITERIA_STATE_KEYS.every((key) => named.has(key) || !Object.hasOwn(state, key));
     });
     if (criteria.workstreamId === undefined) return mostRecent(matching);
@@ -221,6 +228,14 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
         throw new Error(
           `Task "${criteria.taskId}" has no session with "${criteria.worker}" yet: a task's session is opened ` +
             `when the task is handed over, never by ensureWorkerSession.`
+        );
+      }
+      if (criteria.filingSessionId !== undefined) {
+        // Only the coordinator's delivery opens a conversation's delegate
+        // session; one started here would be a decoy lookups could return.
+        throw new Error(
+          `Conversation "${criteria.filingSessionId}" has no session with "${criteria.worker}" yet: a conversation's ` +
+            `delegate session is opened when the conversation hands it a post or a task, never by ensureWorkerSession.`
         );
       }
       if (criteria.workstreamId !== undefined) {

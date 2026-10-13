@@ -142,7 +142,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/cursor`            | Cursor integration — run Cursor's coding agent as a block through the Cursor SDK local runtime, returning core's neutral harness handle |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
-| `@flow-state-dev/workforce`         | Seat factory (`hireWorkforce`), the `WORKER.md` loader, and personas (Layer 2 on orchestration) |
+| `@flow-state-dev/workforce`         | Worker factory (`hireWorkforce`), the `WORKER.md` loader, and personas (Layer 2 on orchestration) |
 | `@flow-state-dev/patterns`          | Higher-level composition patterns (built on the task board)             |
 | `@flow-state-dev/harness-manager`   | Task-board worker that turns a row into a supervised coding run — own checkout, verdict before settlement, question channel, and the coding harness as a slot |
 | `@flow-state-dev/shift-manager`     | The browser app a Workforce Lab is worked through, run as the `shift-manager` command over `fsdev dev --app` |
@@ -151,7 +151,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |
 | `apps/devtool`                      | DevTool source app (builds into `@flow-state-dev/devtool`)              |
 | `apps/docs`                         | Documentation site (Docusaurus)                                         |
-| `apps/kitchen-sink`                 | Canonical reference app (Next.js): a support desk on Workforce, and the other subsystems it hosts. Features with no job in it are proven by fixture hosts under `goals/` |
+| `apps/kitchen-sink`                 | Canonical reference app (Next.js): opens on a picker of modes. Flow State mode is a support desk on Workforce and the other subsystems it hosts; the coding harness modes (Claude Code, Codex, Cursor) each get their own address. Features with no job in it are proven by fixture hosts under `goals/` |
 | `apps/pattern-benchmark`            | Cross-pattern benchmark suite over a fixed task suite + model           |
 
 

@@ -1,0 +1,114 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: is the set three issues and a closure, four with MCP delivery split out to wait for dispatchTask, or two with the local checkout folded into the dev profile. Chosen: three. It comes down to the first row, what each piece waits on: with three, only what it builds on, FIX-1906 proving a worktree builds before the rest; with four, FIX-1905&#x27;s delivery waits on FIX-1875 for a read the run already makes; with two, the risky host change waits inside a profile PR. Second row, the price: three specs and FIX-1905 the largest child in one PR, against two smaller MCP issues, or one spec fewer. Third row, a tie: the closure is the same run in all three. Locks in the coder default inside FIX-1904, FIX-1906 proving the build first, FIX-1905 as one PR, and FIX-1875 becoming related, not blocking. Flips if a run that needs Linear can&#x27;t name its project when it starts, or if FIX-1906&#x27;s proof is trivial, then it folds."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Three issues and a closure, four with MCP delivery split out, or two?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="224" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="224" y="112">Three, and a closure</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="464" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="464" y="112">Four: split MCP delivery</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="704" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="704" y="112">Two: fold 1906 into 1904</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT EACH</text>
+    <text class="t-lbl" x="32" y="169">PIECE WAITS ON</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="224" y="162">+</text>
+    <text class="t-b" x="240" y="161">Only what it builds on</text>
+    <text class="t-s" x="240" y="179">1906 proves a worktree builds first</text>
+    <text class="mark minus" x="464" y="162">−</text>
+    <text class="t-b" x="480" y="161">Delivery waits on FIX-1875</text>
+    <text class="t-s" x="480" y="179">for a read the run already makes</text>
+    <text class="mark minus" x="704" y="162">−</text>
+    <text class="t-b" x="720" y="161">The risky change waits</text>
+    <text class="t-s" x="720" y="179">inside a profile PR, proven late</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">SIZE AND</text>
+    <text class="t-lbl" x="32" y="237">REVIEW COST</text>
+    <text class="mark minus" x="224" y="226">−</text>
+    <text class="t-b" x="240" y="225">Three specs; 1905 largest</text>
+    <text class="t-s" x="240" y="243">both MCP halves in one PR</text>
+    <text class="mark plus" x="464" y="226">+</text>
+    <text class="t-b" x="480" y="225">Smaller MCP issues</text>
+    <text class="t-s" x="480" y="243">each with its own spec</text>
+    <text class="mark plus" x="704" y="226">+</text>
+    <text class="t-b" x="720" y="225">One spec fewer</text>
+    <text class="t-s" x="720" y="243">one seam fewer in the plan</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">THE CLOSURE</text>
+    <text class="mark tie" x="224" y="284">=</text>
+    <text class="t-b" x="240" y="283">The same run</text>
+    <text class="t-s" x="240" y="301">both legs, one commit</text>
+    <text class="mark tie" x="464" y="284">=</text>
+    <text class="t-b" x="480" y="283">The same run</text>
+    <text class="t-s" x="480" y="301">both legs, one commit</text>
+    <text class="mark tie" x="704" y="284">=</text>
+    <text class="t-b" x="720" y="283">The same run</text>
+    <text class="t-s" x="720" y="301">both legs, one commit</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">1906 proves the build first; 1905 is one PR</text>
+    <text class="t-s" x="32" y="389">the coder default in FIX-1904 · FIX-1875 related, not blocking</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A run that needs Linear can&#x27;t name its project</text>
+    <text class="t-s" x="494" y="389">or 1906&#x27;s proof is trivial: then it folds into 1904</text>
+  </g>
+</svg>

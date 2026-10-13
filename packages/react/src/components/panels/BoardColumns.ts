@@ -8,7 +8,7 @@
  * failure a column layout can have silently.
  *
  * **An empty board states the likely cause rather than spinning** (BR-22).
- * Board wiring is explicit per seat, so the ordinary reason a board is empty
+ * Board wiring is explicit per worker, so the ordinary reason a board is empty
  * is that nothing drains it — and a spinner in that spot reads as "still
  * loading", which is the wrong thing to tell somebody whose board is simply
  * not wired up. Loading and empty are therefore two different renders, and the
@@ -85,8 +85,8 @@ export type BoardColumnsProps = {
   /** The session the read is addressed to. Its organization is the one read. */
   readonly sessionId: string;
   /**
-   * The key the session's flow declares this board's ledger under — the minted
-   * `<mailboxId>.<boardName>`. One path segment, so it carries no slash.
+   * The key the session's flow declares this board's ledger under, such as
+   * `eng.feature.work`. One path segment, so it carries no slash.
    */
   readonly boardRef: string;
   /**
@@ -212,7 +212,7 @@ export function BoardColumns(props: BoardColumnsProps): ReactNode {
       slots.empty?.() ??
         note(
           "empty",
-          "This board has no rows. Boards are wired to a seat explicitly, so the likely reason is that nothing drains this one yet."
+          "This board has no rows. Boards are wired to a worker explicitly, so the likely reason is that nothing drains this one yet."
         )
     );
   }

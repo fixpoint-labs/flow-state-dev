@@ -89,10 +89,10 @@ export type AskOutcome =
  * caller ends what it asked for and lets the turn end; it is not a tool error
  * for a model to read.
  */
-export class AskStoppedError extends Error {
+export class WaitStoppedError extends Error {
   constructor() {
     super("The asking turn was stopped.");
-    this.name = "AskStoppedError";
+    this.name = "WaitStoppedError";
   }
 }
 
@@ -101,13 +101,13 @@ export class AskStoppedError extends Error {
  * generator tool that throws it surfaces to the model as a failed tool call,
  * so the model reads it like any other tool error.
  */
-export class AskEndedError extends Error {
+export class WaitEndedError extends Error {
   readonly code: AskEndingErrorCode;
 
   constructor(code: AskEndingErrorCode, message: string) {
     // The code leads the message, because the message is what the model reads.
     super(`${code}: ${message}`);
-    this.name = "AskEndedError";
+    this.name = "WaitEndedError";
     this.code = code;
   }
 }
@@ -175,7 +175,7 @@ export type ParkOnAskInput = {
  * Park the running turn on an ask gate, and return the answer once the
  * conversation that asked resumes it.
  *
- * Throws {@link AskEndedError} when the ask ended without an answer. Needs a
+ * Throws {@link WaitEndedError} when the ask ended without an answer. Needs a
  * durable host: without one, `ctx.suspend` is absent or refuses, and so does
  * this.
  */
@@ -212,8 +212,8 @@ function askSuspendOptions(input: ParkOnAskInput): SuspendOptions {
 
 function answerOf(outcome: AskOutcome): unknown {
   if (outcome.answered) return outcome.answer;
-  if ("stopped" in outcome) throw new AskStoppedError();
-  throw new AskEndedError(outcome.error.code, outcome.error.message);
+  if ("stopped" in outcome) throw new WaitStoppedError();
+  throw new WaitEndedError(outcome.error.code, outcome.error.message);
 }
 
 /**

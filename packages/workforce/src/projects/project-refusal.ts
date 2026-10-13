@@ -1,7 +1,7 @@
 /**
  * The refusals a project or workstream write gives, as one error type with a
  * `reason` a caller can branch on without matching message text — the same
- * shape the mailbox's own refusals use.
+ * shape Workforce's other refusals use.
  */
 
 /**
@@ -25,6 +25,8 @@
  *   credential. The refusal never repeats the value.
  * - `too-many-workstreams`: the owner has as many open workstreams in the project
  *   as their project coordinator holds delegates.
+ * - `other-project`: an open from a conversation linked to one project
+ *   named another.
  */
 export type ProjectRefusalReason =
   | "not-a-member"
@@ -39,7 +41,8 @@ export type ProjectRefusalReason =
   | "project-id-held"
   | "invalid-project-id"
   | "invalid-repository"
-  | "too-many-workstreams";
+  | "too-many-workstreams"
+  | "other-project";
 
 /** A project or workstream write refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

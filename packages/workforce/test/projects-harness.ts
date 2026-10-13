@@ -27,10 +27,21 @@ import { workerConfigSchema } from "../src/worker-config";
 import { createWorkerHireBlocks } from "../src/workers/hire-blocks";
 import { createWorkerInstallation, type WorkerInstallation } from "../src/workers/installation";
 import { defineWorkerRosterFlow } from "../src/workers/roster-flow";
-import { ROSTER_FLOW_KIND } from "../src/workers/keys";
+import { ROSTER_FLOW } from "../src/workers/keys";
 
 export const ORG = "acme";
 export const OTHER_ORG = "beta";
+
+/**
+ * Who a call is from, beyond the user: an organization, or an organization
+ * and a tenant (the router's `x-tenant-id` header).
+ */
+export type Caller = string | { org: string; tenant: string };
+
+/** The verified headers for `caller`. */
+function callerHeaders(caller: Caller): Record<string, string> {
+  return typeof caller === "string" ? { "x-org": caller } : { "x-org": caller.org, "x-tenant-id": caller.tenant };
+}
 
 /** What a test file adds to the host: actions on `lab`, and actions on the `lead` flow. */
 export type HostExtras = {
@@ -46,7 +57,7 @@ export type HostExtras = {
   standardWorkers?: readonly WorkerManifest[];
   /** The standard worker the installation names as every project's coordinator. */
   projectCoordinator?: string;
-  /** More worker flows on the installation, by kind, built once it exists. */
+  /** More worker flows on the installation, keyed by `kind`, built once it exists. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** The scripted models, as `createMockModelResolver` takes them. */
   models?: Parameters<typeof createMockModelResolver>[0];
@@ -56,22 +67,22 @@ const doorInput = z.object({ message: z.string() });
 
 /** A worker flow whose door echoes, with whatever actions the test adds. */
 function workerFlow(
-  kind: string,
+  flow: string,
   installation: WorkerInstallation,
   extra: Record<string, unknown> = {},
   internal: Record<string, unknown> = {}
 ) {
   const door = handler({
-    name: `${kind}-run`,
+    name: `${flow}-run`,
     inputSchema: doorInput,
     resources: { ...installation.resources },
     execute: async (input, ctx) => {
-      const worker = await installation.resolveWorker(ctx, kind);
+      const worker = await installation.resolveWorker(ctx, flow);
       return `${worker.id} heard: ${input.message}`;
     }
   });
   return defineFlow({
-    kind,
+    kind: flow,
     configSchema: workerConfigSchema(),
     session: installation.session(),
     resources: { ...installation.resources },
@@ -110,9 +121,9 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     lead: lead() as unknown as FlowInstance,
     lead2: lead2() as unknown as FlowInstance,
     quiet: quiet() as unknown as FlowInstance,
-    [ROSTER_FLOW_KIND]: roster() as unknown as FlowInstance,
+    [ROSTER_FLOW]: roster() as unknown as FlowInstance,
     ...Object.fromEntries(
-      Object.entries(more).map(([kind, flow]) => [kind, (flow as () => unknown)() as unknown as FlowInstance])
+      Object.entries(more).map(([name, flow]) => [name, (flow as () => unknown)() as unknown as FlowInstance])
     )
   };
   const state = createFlowState({
@@ -134,12 +145,12 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     user: string,
     path: string[],
     body?: unknown,
-    options: { org?: string; query?: string } = {}
+    options: { org?: Caller; query?: string } = {}
   ): Promise<Answer> => {
     const response = await router[method](
       new Request(`http://test/api/flows/${path.join("/")}${options.query ?? ""}`, {
         method,
-        headers: { "content-type": "application/json", "x-user": user, "x-org": options.org ?? ORG },
+        headers: { "content-type": "application/json", "x-user": user, ...callerHeaders(options.org ?? ORG) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       }),
       { params: { path } }
@@ -155,16 +166,16 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   };
 
   /** Create a session of `flow` as `user`, with `initial` state. Throws on a refusal. */
-  const openSession = async (user: string, flow: string, initial?: unknown, org = ORG): Promise<string> => {
+  const openSession = async (user: string, flow: string, initial?: unknown, org: Caller = ORG): Promise<string> => {
     const created = await tryOpenSession(user, flow, initial, org);
     if (created.status >= 400) throw new Error(`createSession ${created.status}: ${JSON.stringify(created.json)}`);
     return created.json.session.id;
   };
-  const tryOpenSession = (user: string, flow: string, initial?: unknown, org = ORG) =>
+  const tryOpenSession = (user: string, flow: string, initial?: unknown, org: Caller = ORG) =>
     call("POST", user, [flow, "sessions"], { userId: user, ...(initial === undefined ? {} : { state: initial }) }, { org });
 
   /** Run an action and wait for it to settle: its status, output and error. */
-  const act = async (user: string, flow: string, sessionId: string, action: string, input: unknown, org = ORG) => {
+  const act = async (user: string, flow: string, sessionId: string, action: string, input: unknown, org: Caller = ORG) => {
     const answer = await call("POST", user, [flow, sessionId, "actions", action], { userId: user, input }, { org });
     const requestId = answer.json?.request?.id;
     if (requestId === undefined) return { http: answer.status, settled: undefined, output: undefined, error: answer.json };
@@ -182,7 +193,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   };
 
   /** The output of an action that must complete. */
-  const ok = async (user: string, flow: string, sessionId: string, action: string, input: unknown, org = ORG) => {
+  const ok = async (user: string, flow: string, sessionId: string, action: string, input: unknown, org: Caller = ORG) => {
     const result = await act(user, flow, sessionId, action, input, org);
     if (result.settled !== "completed") {
       throw new Error(`${action} as ${user}: ${result.settled} ${JSON.stringify(result.error)}`);
@@ -191,7 +202,7 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
   };
 
   /** The browser's list of a collection, through the resource route: each item's storage key and client data. */
-  const listed = async (user: string, sessionId: string, ref: string, org = ORG) => {
+  const listed = async (user: string, sessionId: string, ref: string, org: Caller = ORG) => {
     const answer = await call("GET", user, ["sessions", sessionId, "resources", ref], undefined, { org });
     if (answer.status !== 200) throw new Error(`list ${ref} as ${user}: ${answer.status} ${JSON.stringify(answer.json)}`);
     return (answer.json.items as Array<{ storageKey: string; clientData?: Record<string, unknown> }>).map((item) => ({
@@ -200,10 +211,22 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
     }));
   };
 
-  /** Hire a worker on `flow` onto `user`'s roster, through the roster flow. */
-  const hire = async (user: string, id: string, flow: string, org = ORG) => {
-    const rosterSession = await openSession(user, ROSTER_FLOW_KIND, undefined, org);
-    return ok(user, ROSTER_FLOW_KIND, rosterSession, "hire", { id, flow, description: `${user}'s ${id}` }, org);
+  /**
+   * Hire a worker on `flow` onto `user`'s roster, through the roster flow. A
+   * worker on `lead` or `lead2` lists a delegate unless `settings` says
+   * otherwise, since a lead runs its workstream through its delegates.
+   */
+  const hire = async (user: string, id: string, flow: string, org: Caller = ORG, settings?: Record<string, unknown>) => {
+    const rosterSession = await openSession(user, ROSTER_FLOW, undefined, org);
+    const given = settings ?? (flow === "lead" || flow === "lead2" ? { delegates: [`${id}.helper`] } : undefined);
+    return ok(
+      user,
+      ROSTER_FLOW,
+      rosterSession,
+      "hire",
+      { id, flow, description: `${user}'s ${id}`, ...(given === undefined ? {} : { settings: given }) },
+      org
+    );
   };
 
   /** A session record as stored. */
@@ -211,12 +234,12 @@ export async function bootProjectsHost(extras: HostExtras, options: { stores?: S
 
   /** A `fetch` that reaches this host's router as `userId`, for `createWorkforceClient`. */
   const fetcherFor =
-    (userId: string, org = ORG) =>
+    (userId: string, org: Caller = ORG) =>
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(String(input), "http://localhost");
       const headers = new Headers(init?.headers);
       headers.set("x-user", userId);
-      headers.set("x-org", org);
+      for (const [name, value] of Object.entries(callerHeaders(org))) headers.set(name, value);
       const request = new Request(url, { ...init, headers });
       const path = url.pathname.replace(/^\/api\/flows\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
       const method = (init?.method ?? "GET").toUpperCase() as "GET" | "POST" | "PATCH" | "DELETE";

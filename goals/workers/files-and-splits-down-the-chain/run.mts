@@ -171,11 +171,11 @@ function chainUnder(all: StoredSession[], root: string): StoredSession[] {
   return all.filter((s) => ids.has(s.id));
 }
 
-/** The `addTask` calls a session's turns made, each one's answer; only one request's when `requestId` is given. */
-function addTasks(store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
+/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. Each leg reads exactly the tool it proves: `dispatchTask` starts work, `addTask` records it. */
+function addTasks(tool: "addTask" | "dispatchTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
   if (sessionId == null) return [];
   return items(store, sessionId, "tool_output")
-    .filter((i) => i.toolCall?.name === "addTask" && (requestId === undefined || i.requestId === requestId))
+    .filter((i) => i.toolCall?.name === tool && (requestId === undefined || i.requestId === requestId))
     .map(toolOutput);
 }
 
@@ -197,7 +197,7 @@ function gradeA(o: any, store: string): LegResult {
   const bob = o.people.bob.userId as string;
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
-  const filed = addTasks(store, A.conv, A.turn.requestId);
+  const filed = addTasks("dispatchTask", store, A.conv, A.turn.requestId);
   const topId = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const top = rows.find((x) => x.id === topId);
 
@@ -206,7 +206,7 @@ function gradeA(o: any, store: string): LegResult {
   }
   const plannerSessions = all.filter((s) => topId !== null && s.state.taskId === topId);
   const planner = plannerSessions[0];
-  const pieceCalls = addTasks(store, planner?.id);
+  const pieceCalls = addTasks("dispatchTask", store, planner?.id);
   const pieces = planner === undefined ? [] : onBoardOf(rows, planner.id);
   if (plannerSessions.length !== 1 || pieceCalls.filter((x) => x?.ok === true).length !== 2 || pieces.length !== 2 || show(pieces.map((p) => p.assignee).sort()) !== show(["crew.one", "crew.two"])) {
     r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own addTask; sessions ${plannerSessions.length}, its addTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
@@ -248,8 +248,8 @@ function gradeA(o: any, store: string): LegResult {
   }
   // Bob's worker of the same name: his own row, so it lists only his delegate.
   const bobRows = taskRows(store, bob, o.org);
-  const bobTried = addTasks(store, A.bobConv, A.bobTurn.requestId);
-  const bobOwnId = addTasks(store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
+  const bobTried = addTasks("dispatchTask", store, A.bobConv, A.bobTurn.requestId);
+  const bobOwnId = addTasks("dispatchTask", store, A.bobConv, A.bobOwn.requestId).find((x) => x?.ok === true)?.taskId as string | undefined;
   const bobOwn = bobRows.find((x) => x.id === bobOwnId);
   const bobOwnSessions = all.filter((s) => bobOwnId !== undefined && s.state.taskId === bobOwnId);
   const herRowsNamingIt = rows.filter((x) => x.assignee === A.lead);
@@ -281,7 +281,7 @@ function gradeB(o: any, store: string): LegResult {
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const conv = all.find((s) => s.id === B.conv);
-  const filed = addTasks(store, B.conv, B.turn.requestId);
+  const filed = addTasks("dispatchTask", store, B.conv, B.turn.requestId);
   const id = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const row = rows.find((x) => x.id === id);
   if (conv?.flowKind !== "foreman" || conv.state.workerId !== "shop.foreman" || row === undefined || row.assignee !== "crew.one" || !row.partition.startsWith(`${B.conv}~`)) {
@@ -314,7 +314,7 @@ function gradeC(o: any, store: string): LegResult {
     if (tools === null || onTurn.length > 0) {
       r.failures.push(`c:no-task-tool — wanted ${X.worker}'s turn handed none of the task tools; ${tools === null ? `it said no tool list (the turn ${X.turn.status}: ${show(said || X.turn.error)})` : `it was handed ${show(onTurn)}`}`);
     }
-    const tried = addTasks(store, X.conv, X.turn.requestId);
+    const tried = addTasks("addTask", store, X.conv, X.turn.requestId);
     const stored = onBoardOf(rows, X.conv);
     if (tried.some((x) => x?.ok === true) || !refusedWith(X.app.output ?? X.app.error, "no_delegation_board") || stored.length > 0) {
       r.failures.push(`c:files-nothing — wanted ${X.worker}, with no task-taking delegate, to file nothing: its turn's addTask answered ${show(tried)}, the app's addTask ${show(X.app.output ?? X.app.error ?? X.app.status)}, rows on its board ${stored.length}`);
@@ -332,7 +332,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
   const rows = taskRows(store, alice, o.org);
   const all = sessions(store);
   const chain = chainUnder(all, D.conv);
-  const deepTried = addTasks(store, D.d5);
+  const deepTried = addTasks("dispatchTask", store, D.d5);
   const boards = chain.filter((s) => onBoardOf(rows, s.id).length > 0);
   const toD6 = allTaskRows(store).filter((x) => x.assignee === "deep.d6");
   if (
@@ -348,7 +348,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
       `d:depth — wanted the filing onto the sixth board refused, by deep.d5's own addTask and by the app, total_task_cap_exceeded, and five boards holding one row each; deep.d5's session ${D.d5 ?? "missing"}, its addTask answered ${show(deepTried)}, the app's ${show(D.deepApp?.output ?? D.deepApp?.error)}, rows for deep.d6 ${toD6.length}, boards ${show(boards.map((s) => [s.state.workerId, onBoardOf(rows, s.id).length]))}`,
     );
   }
-  const fanCalls = addTasks(store, D.fan);
+  const fanCalls = addTasks("addTask", store, D.fan);
   const fanOk = fanCalls.filter((x) => x?.ok === true).length;
   const fanRefused = fanCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
   const fanRows = D.fan === null ? [] : onBoardOf(rows, D.fan);
@@ -358,7 +358,7 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
   r.notes.push(`depth: boards ${boards.length}, deep.d5's addTask ${show(deepTried)}, app ${show(D.deepApp?.output)}; fan: ${fanOk} ok, ${fanRefused} refused, app ${show(D.fanApp?.output)}`);
   if (cap !== undefined && capStore !== undefined) {
     const capRows = cap.fan === null ? [] : onBoardOf(taskRows(capStore, alice, cap.org), cap.fan);
-    const capCalls = addTasks(capStore, cap.fan);
+    const capCalls = addTasks("addTask", capStore, cap.fan);
     const capOk = capCalls.filter((x) => x?.ok === true).length;
     const capRefused = capCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
     if (cap.fan === null || capOk !== APP_CAP || capRefused !== 1 || capRows.length !== APP_CAP || !refusedWith(cap.fanApp?.output ?? cap.fanApp?.error, "total_task_cap_exceeded")) {
@@ -374,11 +374,11 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const rows = taskRows(store, alice, org);
   const tools = items(store, E.conv, "tool_output");
-  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "addTask");
+  const calls = tools.filter((i) => i.requestId === E.turn.requestId && i.toolCall?.name === "dispatchTask");
   const ids = calls.map(toolOutput).filter((x) => x?.ok === true).map((x) => x.taskId as string);
   const filed = rows.filter((x) => ids.includes(x.id) && (x.assignee === "crew.one" || x.assignee === "crew.two") && x.partition.startsWith(`${E.conv}~`));
   if (filed.length === 0) {
-    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with addTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its addTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
+    r.failures.push(`e:filed — wanted real.lead's turn to file at least one piece for crew.one or crew.two with dispatchTask; the turn ${E.turn.status} ${E.turn.error ?? ""}, its dispatchTask answered ${show(calls.map(toolOutput))}; tools it called ${show(tools.filter((i) => i.requestId === E.turn.requestId).map((i) => i.toolCall?.name))}`);
     return r;
   }
   // A filing that waited for its answer hears the ending as the tool's result; any other hears it as one notice.
@@ -386,7 +386,7 @@ function gradeE(E: LegE, store: string, alice: string, org: string): LegResult {
     calls
       .filter((i) => {
         try {
-          return (JSON.parse(i.toolCall?.arguments ?? "{}") as { waitForResponse?: unknown }).waitForResponse === true;
+          return (JSON.parse(i.toolCall?.arguments ?? "{}") as { wait?: unknown }).wait === true;
         } catch {
           return false;
         }

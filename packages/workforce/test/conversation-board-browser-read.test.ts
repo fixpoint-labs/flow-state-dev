@@ -1,7 +1,7 @@
 /**
- * A browser reads its person's conversation boards through the collection
+ * A browser reads its user's conversation boards through the collection
  * read route: every conversation's rows at once, each under its
- * conversation's partition, and none of another person's. An app's task list
+ * conversation's partition, and none of another user's. An app's task list
  * and task screen read this way, since an action's answer never reaches a
  * page's resource reads.
  */
@@ -22,12 +22,12 @@ async function readTasks(host: BoardHost, userId: string, sessionId: string) {
 }
 
 async function file(host: BoardHost, userId: string, conv: string, goal: string): Promise<string> {
-  const result = await host.act(userId, conv, "addTask_tasks", { goal, assignee: "eng.tasker" });
+  const result = await host.act(userId, conv, "dispatchTask_tasks", { goal, assignee: "eng.tasker" });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output.taskId as string;
 }
 
-describe("a browser reading its person's conversation boards", () => {
+describe("a browser reading its user's conversation boards", () => {
   it("reads every conversation's rows at once, each keyed under the conversation that filed it", async () => {
     const host = bootBoardHost();
     try {
@@ -48,7 +48,7 @@ describe("a browser reading its person's conversation boards", () => {
     }
   });
 
-  it("answers none of another person's rows", async () => {
+  it("answers none of another user's rows", async () => {
     const host = bootBoardHost();
     try {
       const alices = await host.conversation("alice", "desk");

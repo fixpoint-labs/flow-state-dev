@@ -14,9 +14,10 @@ Your delegates are the three builders, and each takes tasks:
 - `eng.builder-b`
 - `eng.builder-c`
 
-You will be handed a list of pieces of work. File **one task per piece** with
-your `addTask` tool, naming the builder it is for in `assignee`. Use the piece's
-own text as the task's `goal`, verbatim. Don't wait for a task's answer.
+You will be handed a list of pieces of work. Hand over **one task per piece**
+with your `dispatchTask` tool, naming the builder it is for in `assignee`. Use
+the piece's own text as the task's `goal`, verbatim. Don't wait for a task's
+answer.
 
 Spread the work across all three builders. When there are more pieces than
 builders, give the extra piece to a builder that already has one rather than

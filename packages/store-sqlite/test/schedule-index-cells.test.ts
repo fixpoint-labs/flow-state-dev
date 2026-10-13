@@ -84,7 +84,7 @@ function boot(seed?: (db: Database.Database) => void) {
         remove: { inputSchema: z.object({ key: z.string() }), block: remove },
       },
     });
-  const seatKind = kind("research", "collection");
+  const workerKind = kind("research", "collection");
   const appKind = kind("reminders", "singleton");
 
   const registry = createFlowRegistry();
@@ -93,9 +93,9 @@ function boot(seed?: (db: Database.Database) => void) {
     registry.register(flow as FlowInstance, pin === undefined ? undefined : { pin });
     return flow as FlowInstance;
   };
-  /** A seat hired for `userId` in `orgId`. */
-  const seat = (orgId: string, userId = "alice") =>
-    register(seatKind({ id: `${orgId}.~${userId}.research` }), { orgId, userId });
+  /** A worker hired for `userId` in `orgId`. */
+  const worker = (orgId: string, userId = "alice") =>
+    register(workerKind({ id: `${orgId}.~${userId}.research` }), { orgId, userId });
   const app = () => register(appKind());
   /** `userId` runs `actionName` on `flow` while admitted under `orgId`. */
   const run = async (
@@ -110,14 +110,14 @@ function boot(seed?: (db: Database.Database) => void) {
   };
   const due = () => index.claimDue(FAR_FUTURE, 100);
 
-  return { stores, seat, app, run, due, db: db! };
+  return { stores, worker, app, run, due, db: db! };
 }
 
 describe("schedule index rows are one per storage cell", () => {
-  it("keeps two seats' same-named schedules apart, and disabling one leaves the other due", async () => {
+  it("keeps two workers' same-named schedules apart, and disabling one leaves the other due", async () => {
     const h = boot();
-    const acme = h.seat("acme");
-    const globex = h.seat("globex");
+    const acme = h.worker("acme");
+    const globex = h.worker("globex");
 
     await h.run(acme, "create", "acme");
     await h.run(globex, "create", "globex");
@@ -133,10 +133,10 @@ describe("schedule index rows are one per storage cell", () => {
     });
   });
 
-  it("deleting in one seat leaves the other seat's row due", async () => {
+  it("deleting in one worker leaves the other worker's row due", async () => {
     const h = boot();
-    const acme = h.seat("acme");
-    const globex = h.seat("globex");
+    const acme = h.worker("acme");
+    const globex = h.worker("globex");
 
     await h.run(acme, "create", "acme");
     await h.run(globex, "create", "globex");
@@ -146,20 +146,20 @@ describe("schedule index rows are one per storage cell", () => {
     expect(rows.map((r) => [r.cell, r.orgId])).toEqual([["alice:~org:acme", "acme"]]);
   });
 
-  it("files an app flow's and a seat's schedule in one org under one cell", async () => {
+  it("files an app flow's and a worker's schedule in one org under one cell", async () => {
     const h = boot();
     await h.run(h.app(), "create", "acme");
     expect((await h.due()).map((r) => [r.cell, r.orgId])).toEqual([["alice:~org:acme", "acme"]]);
 
-    // The seat in that org reads the same schedule: turning it off there
+    // The worker in that org reads the same schedule: turning it off there
     // takes the one row out of the index.
-    await h.run(h.seat("acme"), "disable", "acme");
+    await h.run(h.worker("acme"), "disable", "acme");
     expect(await h.due()).toEqual([]);
   });
 
   it("files a row under the cell its schedule is stored in", async () => {
     const h = boot();
-    const acme = h.seat("acme", "a:b");
+    const acme = h.worker("acme", "a:b");
     await h.run(acme, "create", "acme", "weekly", "a:b");
 
     const [row] = await h.due();
@@ -259,7 +259,7 @@ describe("upgrading a schedule index written before rows carried a cell", () => 
  * `cell` column before either takes the write lock. The one that loses the
  * race must see the finished migration once it holds the lock — rebuilding an
  * already re-keyed table would recompute every cell from `user_id`, moving a
- * seat row the winner has since written into the person's app-wide cell (or
+ * worker row the winner has since written into the person's app-wide cell (or
  * colliding with the app-wide row and failing startup).
  */
 describe("two connections upgrading one legacy database at once", () => {
@@ -277,7 +277,7 @@ describe("two connections upgrading one legacy database at once", () => {
     const second = new Database(file);
     try {
       // Let `second` get as far as the rebuild's transaction — past any check
-      // made before the lock — then let `first` migrate and write a seat row.
+      // made before the lock — then let `first` migrate and write a worker row.
       const originalTransaction = second.transaction.bind(second);
       let interleaved = false;
       second.transaction = ((fn: (...args: unknown[]) => unknown) => {

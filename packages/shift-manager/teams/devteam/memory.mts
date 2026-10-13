@@ -16,7 +16,7 @@ export const CAPTURE_ON =
 /** What the turn's context says when capture is off. */
 export const CAPTURE_OFF =
   "Memory capture is off: nothing said in this conversation is recorded into your memory. " +
-  "If the person asks you to remember something for later, say you can't keep it.";
+  "If the user asks you to remember something for later, say you can't keep it.";
 
 type AgentTurn = {
   catalog: Record<string, GeneratorTool>;

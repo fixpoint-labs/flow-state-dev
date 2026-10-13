@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { SeatDetail } from "@flow-state-dev/react";
+import { WorkerDetail } from "@flow-state-dev/react";
 
 import {
   failingItemSource,
@@ -13,10 +13,10 @@ import {
  */
 const meta = {
   title: "React/Worker detail",
-  component: SeatDetail,
+  component: WorkerDetail,
   parameters: { layout: "padded" },
   args: { sessionId: "story-session", kind: "support-agent" },
-} satisfies Meta<typeof SeatDetail>;
+} satisfies Meta<typeof WorkerDetail>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -24,9 +24,9 @@ type Story = StoryObj<typeof meta>;
 /** The worker's roster row carries instructions. */
 export const Instructions: Story = {
   args: {
-    seatId: "support.ada",
+    workerId: "support.ada",
     resourceClient: itemSource({
-      seatId: "support.ada",
+      workerId: "support.ada",
       flow: "support-agent",
       instructions: "Answer billing questions. Hand refunds over $500 to a person.",
     }),
@@ -36,8 +36,8 @@ export const Instructions: Story = {
 /** The worker was hired with no instructions. */
 export const NoneGiven: Story = {
   args: {
-    seatId: "support.grace",
-    resourceClient: itemSource({ seatId: "support.grace", flow: "support-agent", instructions: null }),
+    workerId: "support.grace",
+    resourceClient: itemSource({ workerId: "support.grace", flow: "support-agent", instructions: null }),
   },
 };
 
@@ -48,13 +48,13 @@ export const NotPublished: Story = {
 
 /** The instructions read has not answered yet. */
 export const Loading: Story = {
-  args: { seatId: "support.ada", resourceClient: loadingItemSource },
+  args: { workerId: "support.ada", resourceClient: loadingItemSource },
 };
 
 /** The read failed. The line says what failed and offers Retry. */
 export const Failed: Story = {
   args: {
-    seatId: "support.ada",
+    workerId: "support.ada",
     resourceClient: failingItemSource("Failed to load this worker's instructions"),
   },
 };

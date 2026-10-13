@@ -20,7 +20,8 @@ const SDK_MODULE = "@anthropic-ai/claude-agent-sdk";
  */
 export type SdkImporter = () => Promise<{ query?: unknown }>;
 
-const defaultImporter: SdkImporter = () =>
+/** The lazy dynamic `import` of the SDK every default path loads it through. */
+export const defaultSdkImporter: SdkImporter = () =>
   import(/* @vite-ignore */ SDK_MODULE) as Promise<{ query?: unknown }>;
 
 /**
@@ -31,7 +32,7 @@ const defaultImporter: SdkImporter = () =>
  * {@link defaultResolveClaudeAgent}.
  */
 export function createDefaultResolveClaudeAgent(
-  importSdk: SdkImporter = defaultImporter,
+  importSdk: SdkImporter = defaultSdkImporter,
 ): ResolveClaudeAgent {
   return async (_ctx: BlockContext<any>): Promise<ResolvedClaudeAgent> => {
     let mod: { query?: unknown };

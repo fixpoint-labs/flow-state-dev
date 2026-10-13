@@ -17,7 +17,7 @@ import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
 
 const file = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "addTask_tasks", input);
+  const result = await host.act(userId, conv, "dispatchTask_tasks", input);
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string };
 };
@@ -72,10 +72,10 @@ describe("an attempt that completes (BR-22)", () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "rota");
-      await file(host, "alice", conv, { goal: "Count seats", assignee: "eng.writer" });
+      await file(host, "alice", conv, { goal: "Count workers", assignee: "eng.writer" });
       await host.settled();
       await touch(host, "alice", conv);
-      expect(await linesAbout(host, conv, "Count seats")).toEqual([expect.stringContaining("completed by eng.writer")]);
+      expect(await linesAbout(host, conv, "Count workers")).toEqual([expect.stringContaining("completed by eng.writer")]);
       expect(host.judgment.calls).toEqual([]);
     } finally {
       await host.dispose();
@@ -85,7 +85,7 @@ describe("an attempt that completes (BR-22)", () => {
   it("wakes the coordinator's judgment turn once, with the notice as its message", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]
@@ -111,7 +111,7 @@ describe("an attempt that fails", () => {
   it("with attempts left wakes no turn: the board runs again and the next attempt completes (BR-23)", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "flaky [fail-until:2]", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "flaky [fail-until:2]", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: () => true, then: { text: "Done on the second try." } }
       ]
@@ -180,7 +180,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
   const script = (...more: Array<{ when: (input: unknown) => boolean; then: { text: string } }>) =>
     mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } },
         ...more
@@ -190,7 +190,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
   type Held = { host: BoardHost; conv: string; replyId: string };
 
   /**
-   * A person's message, sent through the host as an app sends it, whose reply
+   * A user's message, sent through the host as an app sends it, whose reply
    * files the task and is then held open (after its model call, so `addTask`
    * has run) until the task's notice has been dispatched to the conversation,
    * for a further half second in which the notice could land, and then for as
@@ -242,17 +242,17 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
     }
   });
 
-  it("never makes the person's own next message wait: it starts mid-reply, and the notice waits for both", async () => {
+  it("never makes the user's own next message wait: it starts mid-reply, and the notice waits for both", async () => {
     const judgment = script({
-      when: (input) => JSON.stringify(input).includes("and our seats"),
-      then: { text: "Forty seats." }
+      when: (input) => JSON.stringify(input).includes("and our workers"),
+      then: { text: "Forty workers." }
     });
     let nextStartedMidReply = false;
     let landedMidReply = true;
     const { host, conv, seen } = await replyHeldOpen(judgment, async ({ host, conv }) => {
-      await host.post("alice", conv, "run", { message: "and our seats?" });
+      await host.post("alice", conv, "run", { message: "and our workers?" });
       nextStartedMidReply = await until(() =>
-        judgment.calls.some((call) => JSON.stringify(call.input).includes("and our seats"))
+        judgment.calls.some((call) => JSON.stringify(call.input).includes("and our workers"))
       );
       landedMidReply = (await linesAbout(host, conv, "Count licenses")).length > 0;
     });
@@ -263,7 +263,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
       expect(nextStartedMidReply).toBe(true);
       expect(landedMidReply).toBe(false);
       const replies = await texts(host, conv);
-      expect(replies.filter((text) => text === "Forty seats.")).toHaveLength(1);
+      expect(replies.filter((text) => text === "Forty workers.")).toHaveLength(1);
       expect(replies.filter((text) => text === "Twelve licenses.")).toHaveLength(1);
       expect(await linesAbout(host, conv, "Count licenses")).toHaveLength(1);
     } finally {
@@ -309,7 +309,7 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
       script: [
         { toolCalls: [{ toolCallId: "h1", toolName: "handOff", args: { worker: "eng.helper" } }] },
         { text: "Handed." },
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count licenses", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Twelve licenses." } }
       ]

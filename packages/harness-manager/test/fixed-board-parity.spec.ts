@@ -7,6 +7,9 @@
  * board's rows. The snapshot beside this file was written by the manager as it
  * stood before boards could be read from a claim; this compares against it
  * rather than re-deriving, which would only prove the code agrees with itself.
+ * It was rewritten once, deliberately, when the organization became part of a
+ * run's checkout and branch; a run recorded before that keeps its older place
+ * (`org-place.spec.ts`).
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { relative } from "node:path";
@@ -26,7 +29,7 @@ function normalized(record: Record<string, unknown>, dir: string): Record<string
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => {
         if (key === "updatedAt") return [key, typeof value];
-        if (key === "childSessionId" || key === "requestId") return [key, typeof value];
+        if (key === "childSessionId" || key === "requestId" || key === "baseCommit") return [key, typeof value];
         if ((key === "workspacePath" || key === "remote") && typeof value === "string") return [key, relative(dir, value)];
         return [key, value];
       }),

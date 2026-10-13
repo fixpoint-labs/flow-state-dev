@@ -1,5 +1,5 @@
 /**
- * The shared reads over the two goal Labs, each loaded through its own fsdev
+ * The shared reads over the goal Labs and the `fsd` profile, each loaded through its own fsdev
  * config the way the `shift-manager` command loads it (V4; BR-7, BR-13, BR-14).
  *
  * What the reads return is compared against the tree each Lab was opened from
@@ -26,9 +26,18 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; clients: LabClients };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
-  // DevTeam keeps a store across restarts; each open here gets its own.
-  process.env.DEVTEAM_STORE = join(mkdtempSync(join(tmpdir(), "sm-goal-labs-")), "devteam.sqlite");
-  const loaded = await loadFsdevConfig({ cwd: repo, configPath }).finally(() => delete process.env.DEVTEAM_STORE);
+  // DevTeam and fsd keep a store across restarts; each open here gets its own.
+  // fsd's coder defaults to Claude Code, which checks for an account at start;
+  // these reads need no coder, so it opens on the scripted one.
+  const dir = mkdtempSync(join(tmpdir(), "sm-goal-labs-"));
+  process.env.DEVTEAM_STORE = join(dir, "devteam.sqlite");
+  process.env.FSD_STORE = join(dir, "fsd.sqlite");
+  process.env.DEVFORCE_LAB_HARNESS = "stub";
+  const loaded = await loadFsdevConfig({ cwd: repo, configPath }).finally(() => {
+    delete process.env.DEVTEAM_STORE;
+    delete process.env.FSD_STORE;
+    delete process.env.DEVFORCE_LAB_HARNESS;
+  });
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
   const devtool = loaded.flowState.meta.devtool;
@@ -43,7 +52,7 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
 }
 
-/** TEAMS, as the tree declares it: each team's seat ids, an org seat (no team in its id) under Staff. */
+/** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under Staff. */
 function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
   for (const worker of roster.workers) {
@@ -54,8 +63,9 @@ function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
 }
 
 describe.each([
-  ["multi-seat-collab", "packages/shift-manager/test/fixtures/multi-seat-collab/fsdev.config.mts", "packages/shift-manager/test/fixtures/multi-seat-collab/workforce"],
+  ["multi-worker-collab", "packages/shift-manager/test/fixtures/multi-worker-collab/fsdev.config.mts", "packages/shift-manager/test/fixtures/multi-worker-collab/workforce"],
   ["devteam", "packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce"],
+  ["fsd", "packages/shift-manager/teams/devteam/fsd.fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce"],
 ])("%s", (name, configPath, treePath) => {
   let opened: Opened;
   beforeAll(async () => {
@@ -63,19 +73,19 @@ describe.each([
   }, 120_000);
   afterAll(async () => opened?.lab.handle.close());
 
-  it("TEAMS is exactly the seats the Lab registered, per team, each with its kind", () => {
+  it("TEAMS is exactly the workers the Lab registered, per team, each with its worker flow", () => {
     const { snapshot, roster } = opened;
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     const read = Object.fromEntries(
-      teamsOf(snapshot.inventory.value.seats).map(({ team, seats }) => [team, seats.map((s) => s.id).sort()]),
+      teamsOf(snapshot.inventory.value.workers).map(({ team, workers }) => [team, workers.map((s) => s.id).sort()]),
     );
     expect(read).toEqual(declaredTeams(roster));
-    for (const seat of snapshot.inventory.value.seats) {
-      expect(seat.kind).toBe(roster.workers.find((w) => w.id === seat.id)!.declared.flow);
+    for (const worker of snapshot.inventory.value.workers) {
+      expect(worker.kind).toBe(roster.workers.find((w) => w.id === worker.id)!.declared.flow);
     }
   });
 
-  // multi-seat-collab declares no board: the planner files on its own
+  // multi-worker-collab declares no board: the planner files on its own
   // conversation's, so its rows reach Shift Manager as that conversation's
   // board, keyed by the conversation.
   it.runIf(name === "multi-seat-collab")("a row filed on a conversation's board is that conversation's board", async () => {
@@ -87,7 +97,7 @@ describe.each([
     const conversation = (
       await clients.sessions.createSession({ flowKind, userId: clients.userId, state: { workerId: filer.id } })
     ).id;
-    const sent = await clients.actions(flowKind).sendAction("addTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
+    const sent = await clients.actions(flowKind).sendAction("dispatchTask_tasks", { goal: "a row the snapshot must hold", assignee }, { sessionId: conversation });
     const taskId = await eventually(async () => {
       const listed = (await clients.sessions.listSessionRequests(conversation, { includeResultOutput: true, limit: 50 })) as Array<{
         id: string;
@@ -104,7 +114,10 @@ describe.each([
     expect(boards.value.rows.map((r) => [r.id, r.assignee, r.boardRef])).toEqual([[taskId, assignee, `${conversation}.tasks`]]);
   }, 60_000);
 
-  it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
+  // Jump to finds a document through the flow of a session the user has. fsd
+  // opens no session at start (no ask, no workstream), so a fresh fsd open has
+  // none to find yet; the claim is checked on the Labs that open one.
+  it.runIf(name !== "fsd")("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
     const { snapshot, roster, clients } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
     const readable = roster.documents.filter(declaredBrowserReadable);
@@ -143,7 +156,7 @@ describe("devteam: an approved task's run", () => {
   beforeAll(async () => {
     delete process.env.AI_GATEWAY_API_KEY;
     // Settling is what this checks, so the scripted run does not wait out the
-    // pacing a person watching needs. The it-shows-and-stops goal keeps it.
+    // pacing a user watching needs. The it-shows-and-stops goal keeps it.
     process.env[STEP_MS_ENV] = "0";
     try {
       opened = await open("packages/shift-manager/teams/devteam/fsdev.config.mts", "packages/shift-manager/teams/devteam/workforce");

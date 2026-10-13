@@ -1,0 +1,569 @@
+/**
+ * What ONE worker picks up from the capabilities its worker flow carries.
+ *
+ * A worker flow installs capabilities once, for every worker on it — that is
+ * what `uses` is and this file does not change it. What it adds is the other
+ * half a `resources/` folder needs: a worker's own file naming which of those
+ * capabilities' presets *this* worker wants, so two workers on one flow can differ
+ * by what their own files say.
+ *
+ * **A worker adds; it never takes away.** A file that names nothing carries
+ * exactly what the flow installed, which is what every worker gets today. A file
+ * that names a preset carries that preset on top. There is no spelling that
+ * removes one — an app that wants a capability quieter for some workers turns it
+ * down where it installs it, because what a workforce *may* do is the app's
+ * call and a file a team edits is not where that is decided.
+ *
+ * ## Why the selection is resolved per turn and the install is not
+ *
+ * A worker flow is built once and hired many times: one block graph, one `uses`
+ * array, one settings schema, and a config bag per worker. So a worker's selection
+ * cannot reach a static `uses` entry — by the time a worker exists the entry is
+ * already resolved. The one slot that can see a worker is a DYNAMIC `uses`
+ * entry, `(ctx) => refs`, which the framework resolves per execution off
+ * `ctx.flow.config`.
+ *
+ * That path carries **context and tools** — catalog tools and controls alike;
+ * {@link DYNAMIC_KEYS} is the list. Resources, state schemas and
+ * the generator singletons have to exist before a block runs, so the framework
+ * resolves them at build time from static entries alone. Two consequences run
+ * through this whole file:
+ *
+ * - The capability stays on its STATIC entry exactly as the app wrote it, so
+ *   its resources and its default presets reach every worker the way they do
+ *   today. The dynamic entry carries **only the presets a worker named that were
+ *   not already active** — the delta, never the whole capability. No preset is
+ *   resolved twice, which matters because the framework resolves the two paths
+ *   independently and does not dedupe across them: a capability contributing
+ *   its presets on both would hand a worker that named a default preset two
+ *   copies of it.
+ * - A preset that can only be delivered at build time cannot be selected, and
+ *   a capability with open config cannot be reached dynamically at all. Both
+ *   are refused **at the mint**, by name, rather than failing on the worker's
+ *   first turn. See {@link BUILD_TIME_ONLY_KEYS} and {@link workerCapabilityProblems}.
+ *
+ * Everything here is pure and isomorphic: no `node:fs`, no registry, no state.
+ * The catalogue is built once when the worker flow is built; the per-turn half is one
+ * map lookup per named capability and one clone per capability that has a
+ * delta.
+ */
+
+import type { CapabilityRef, GeneratorTool, PresetDef, UsesSlot } from "@flow-state-dev/core";
+import {
+  flattenCapabilities,
+  getBaseCapability,
+  resolveActivePresets
+} from "@flow-state-dev/core/capability";
+
+/**
+ * What a worker file's `capabilities:` key parses to — capability name to the
+ * presets that worker wants.
+ *
+ * ```yaml
+ * capabilities:
+ *   research: [briefing]
+ * ```
+ *
+ * An empty list is legal and means *carry this capability's defaults*, which
+ * is also what naming the capability nowhere means. It reads as a no-op
+ * because it is one; refusing it would make an author delete a line to say the
+ * thing the line already says.
+ */
+export type WorkerCapabilitySelection = Record<string, readonly string[]>;
+
+/**
+ * The surface keys a preset can declare that the dynamic path cannot deliver.
+ *
+ * The framework resolves a dynamic `uses` entry per execution, when the
+ * block's resources, state containers and model are long since fixed. So a
+ * preset declaring any of these is a build-time preset: the app installs it
+ * for the whole flow or nobody has it, and a worker naming it is refused rather
+ * than given half of it.
+ *
+ * Listed rather than derived by negation from `context`/`tools` on purpose — a
+ * key added to `PresetDef` later must be classified deliberately, and being
+ * absent from this list is the claim that the dynamic path carries it. The
+ * assertion under {@link DYNAMIC_KEYS} makes "deliberately" real: a new key
+ * that neither list names fails to compile here.
+ */
+const BUILD_TIME_ONLY_KEYS = [
+  "resources",
+  "sessionStateSchema",
+  "requestStateSchema",
+  "userStateSchema",
+  "orgStateSchema",
+  "sequencerStateSchema",
+  "stateSchema",
+  "targetStateSchemas",
+  "model",
+  "providerOptions",
+  "caching"
+] as const satisfies readonly (keyof PresetDef)[];
+
+/**
+ * The surface keys the dynamic path DOES carry, as the framework resolves it.
+ *
+ * Kept only so the two lists can be checked against `PresetDef` together.
+ *
+ * `controlTools` (FIX-1393) is dynamic because core makes it so —
+ * `resolveDynamicCapSurface` collects it alongside `tools` — not as a
+ * preference. Build-time-only would refuse a worker naming a control-bearing
+ * preset, which inverts what a control is for.
+ *
+ * Being dynamic is not being unfenced: a selected preset's catalog `tools`
+ * still stop at a `tools:` line the worker wrote. A worker that wrote none is
+ * granted them by the worker flow's tools slot instead — see
+ * {@link selectedPresetTools}. See `PresetDef.controlTools` for the
+ * distinction, and the paired tests in `test/worker-capabilities.test.ts` for
+ * the behaviour — *"carries a selected preset's context but not its tool past
+ * the worker's fence"* and *"lets a selected preset's CONTROL tool through the
+ * same empty tools list"*, one key apart on the same worker.
+ */
+const DYNAMIC_KEYS = ["context", "tools", "controlTools"] as const satisfies readonly (keyof PresetDef)[];
+
+/**
+ * Compile-time proof that every `PresetDef` key is classified as one or the
+ * other. A key added to `PresetDef` upstream lands in neither list, so
+ * `Exclude` stops being `never` and this alias fails to compile — the whole
+ * point of listing the build-time keys instead of deriving them by negation.
+ */
+type _EveryPresetKeyIsClassified = AssertNever<
+  Exclude<keyof PresetDef, (typeof BUILD_TIME_ONLY_KEYS)[number] | (typeof DYNAMIC_KEYS)[number]>
+>;
+type AssertNever<T extends never> = T;
+
+/** Which build-time-only keys this preset declares, in the order listed above. */
+function buildTimeOnlySurface(preset: PresetDef): string[] {
+  return BUILD_TIME_ONLY_KEYS.filter((key) => preset[key] !== undefined);
+}
+
+/**
+ * One capability a worker may pick presets from, flattened once when the worker flow is
+ * built.
+ *
+ * Everything a refusal or a per-turn resolution needs is read here, so neither
+ * walks a capability again: the mint does map lookups and the turn does one
+ * clone per capability with a delta.
+ */
+interface SelectableCapability {
+  /**
+   * The ref the app installed, presets and config as the app configured them.
+   * A worker's clone is made from THIS, so an app's own `.presets()` and
+   * `.config()` survive into the worker's copy.
+   */
+  ref: CapabilityRef;
+  /** Every preset the capability declares, in declaration order. */
+  declared: string[];
+  /**
+   * The presets already active for every worker on this flow — the capability's
+   * own defaults as the app's `.presets()` left them. A worker naming one of
+   * these is naming what it already has, so it is carried once: it stays on
+   * the static path and never joins the delta.
+   */
+  activeForFlow: Set<string>;
+  /**
+   * Presets the app turned OFF where it installed the capability.
+   *
+   * A worker may not switch one back on. The app's `false` is a statement about
+   * the whole flow — most sharply where it keeps a tool-bearing preset away
+   * from the model — and a file a team edits is not where that is reversed.
+   * Refused at the mint rather than honoured or ignored.
+   */
+  disabledByApp: Set<string>;
+  /**
+   * Whether the capability declares open config (`defineCapability({ config })`).
+   *
+   * The framework refuses such a capability on the dynamic path outright,
+   * because that path resolves presets only and would silently drop the config
+   * resolver's surface. So its presets are the app's to set, and a worker naming
+   * one is refused at the mint — where the alternative is a throw inside the
+   * worker's first answer.
+   */
+  hasOpenConfig: boolean;
+  /** Preset name to the build-time-only keys it declares; only non-empty entries are held. */
+  buildTimeOnly: Map<string, string[]>;
+  /**
+   * Preset name to the catalog `tools` it declares, as declared: an array, or
+   * a function resolved per turn. Only presets that declare tools are held.
+   * Read by {@link selectedPresetTools}; controls are not here, because a
+   * control reaches the worker through the capability whatever its `tools:` says.
+   */
+  presetTools: Map<string, NonNullable<PresetDef["tools"]>>;
+}
+
+/** What a worker flow's `uses` offers a worker to pick from. */
+export type WorkerCapabilityCatalog = ReadonlyMap<string, SelectableCapability>;
+
+/**
+ * Read the capabilities a worker may pick presets from off a worker flow's `uses`.
+ *
+ * **Top-level static entries only.** A dynamic entry is a function whose
+ * result is not known until a request runs, so nothing can be listed from it;
+ * and a capability reached transitively through another's own `uses` is that
+ * capability's internal business rather than something the app put on the
+ * worker flow. Both are passed over, so a worker naming one is refused by
+ * {@link workerCapabilityProblems} the same way a typo is.
+ *
+ * **Which ref is read is the framework's answer, not this array's order.**
+ * `flattenCapabilities` walks depth-first, so a capability reached through an
+ * earlier entry's own `uses` is recorded before the same capability appearing
+ * later at the top level, and that later one is then skipped as a diamond. The
+ * block therefore runs off the nested ref. Reading the array directly would
+ * describe a worker's options against a ref that never resolved — and, worse,
+ * would call a preset the winning ref already turned on inactive, so a worker
+ * naming it would be handed it a second time on the dynamic path.
+ *
+ * @param uses The worker flow's `uses` slot, as the app passed it.
+ * @returns The catalogue, keyed by capability name. Empty when the flow
+ *   installs no capabilities — in which case the flow grows no per-worker entry
+ *   at all and any selection is refused.
+ */
+export function catalogWorkerCapabilities(uses: UsesSlot | undefined): WorkerCapabilityCatalog {
+  const catalog = new Map<string, SelectableCapability>();
+  if (!uses) return catalog;
+
+  const topLevel = uses.filter(
+    (entry): entry is CapabilityRef => typeof entry !== "function"
+  );
+  // What the app itself put on the worker flow. The flatten below also returns
+  // capabilities reached only through another's `uses`, which stay unselectable.
+  const selectable = new Set(topLevel.map((entry) => getBaseCapability(entry).name));
+
+  for (const entry of flattenCapabilities(topLevel)) {
+    const base = getBaseCapability(entry);
+    if (!selectable.has(base.name)) continue;
+    const presetDefs = (base.__presetDefs ?? {}) as Record<string, PresetDef>;
+    const declared = Object.keys(presetDefs).filter((key) => key !== "default");
+
+    const overrides = ("__presetOverrides" in entry
+      ? ((entry as { __presetOverrides?: Record<string, unknown> }).__presetOverrides ?? {})
+      : {}) as Record<string, unknown>;
+
+    const buildTimeOnly = new Map<string, string[]>();
+    const presetTools = new Map<string, NonNullable<PresetDef["tools"]>>();
+    for (const name of declared) {
+      const keys = buildTimeOnlySurface(presetDefs[name]!);
+      if (keys.length > 0) buildTimeOnly.set(name, keys);
+      const tools = presetDefs[name]!.tools;
+      if (tools !== undefined) presetTools.set(name, tools);
+    }
+
+    catalog.set(base.name, {
+      ref: entry,
+      declared,
+      // Asked of the framework rather than re-derived: which presets a ref
+      // resolves to is one rule, and a second reading of it here is how a
+      // worker's idea of "already on" drifts from the block's.
+      activeForFlow: new Set(resolveActivePresets(entry).map((preset) => preset.name)),
+      disabledByApp: new Set(
+        Object.entries(overrides)
+          .filter(([, value]) => value === false)
+          .map(([name]) => name)
+      ),
+      hasOpenConfig: base.__configDef !== undefined,
+      buildTimeOnly,
+      presetTools
+    });
+  }
+
+  return catalog;
+}
+
+/** Quote a list for a refusal, or say there is nothing to list. */
+function listed(names: Iterable<string>): string {
+  const quoted = [...names].map((name) => `"${name}"`);
+  return quoted.length > 0 ? quoted.join(", ") : "(none)";
+}
+
+/**
+ * Every reason a worker's selection is refused, as messages — one per problem,
+ * so a file with two mistakes is told about both.
+ *
+ * Separated from the schema that reports them because the same list is what a
+ * test asserts on and what the refusal text is built from; a rule living only
+ * inside a `superRefine` closure can be checked only by minting a worker.
+ *
+ * @param catalog The worker flow's catalogue.
+ * @param selection What the worker's file named.
+ * @returns One message per problem, in file order. Empty when the selection is good.
+ */
+export function workerCapabilityProblems(
+  catalog: WorkerCapabilityCatalog,
+  selection: WorkerCapabilitySelection
+): string[] {
+  const problems: string[] = [];
+
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) {
+      problems.push(
+        `names capability "${name}", which its worker flow does not carry. ` +
+          `This worker flow carries: ${listed(catalog.keys())}. ` +
+          `A capability reaches a worker flow through \`defineAgentWorkerFlow({ uses })\` — ` +
+          `install it there, or drop it from this worker.`
+      );
+      continue;
+    }
+
+    for (const preset of presets) {
+      if (!capability.declared.includes(preset)) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which that capability does not ` +
+            `declare. It declares: ${listed(capability.declared)}.`
+        );
+        continue;
+      }
+
+      // Already carried: nothing to add and nothing to refuse. Skipped here so
+      // the three refusals below only ever fire on a preset that would really
+      // travel the per-worker path.
+      if (capability.activeForFlow.has(preset)) continue;
+
+      if (capability.disabledByApp.has(preset)) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which the app turned off where it ` +
+            `installed that capability. A worker adds to what its worker flow carries and never widens past ` +
+            `it — turn the preset back on at \`defineAgentWorkerFlow({ uses })\` if every worker ` +
+            `should have it.`
+        );
+        continue;
+      }
+
+      if (capability.hasOpenConfig) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which takes config ` +
+            `(\`defineCapability({ config })\`). Such a capability is resolved once, where the ` +
+            `app installs it, so its presets cannot be picked per worker — set them at ` +
+            `\`defineAgentWorkerFlow({ uses })\`.`
+        );
+        continue;
+      }
+
+      const buildTimeOnly = capability.buildTimeOnly.get(preset);
+      if (buildTimeOnly) {
+        problems.push(
+          `names preset "${preset}" on capability "${name}", which declares ` +
+            `${buildTimeOnly.join(", ")} — that has to exist before a request runs, so the preset ` +
+            `is the app's to turn on for the whole worker flow rather than one worker's to pick.`
+        );
+      }
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * Two picked presets carrying DIFFERENT tools under one name, as messages.
+ *
+ * A worker with no `tools:` line is granted every picked preset's tools (see
+ * {@link selectedPresetTools}), and one name is one tool, so such a pair is a
+ * turn that would fail on the framework's duplicate-name check. The caller
+ * refuses it at the mint, for the listed tools it can see; a function-valued
+ * preset's tools exist only per turn and are left to that check.
+ *
+ * Only meaningful for a worker that wrote NO `tools:` line — one that wrote a
+ * line is granted exactly that line, so nothing picked is added and nothing
+ * collides. That is the caller's condition to apply: this reads the selection
+ * alone. The same tool instance picked through two presets is one tool and
+ * passes.
+ *
+ * @param catalog The worker flow's catalogue.
+ * @param selection What this worker's file named.
+ * @returns One message per colliding pair, in selection order.
+ */
+export function pickedToolCollisions(
+  catalog: WorkerCapabilityCatalog,
+  selection: WorkerCapabilitySelection
+): string[] {
+  const problems: string[] = [];
+  const seen = new Map<string, { tool: unknown; where: string }>();
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (!Array.isArray(declared)) continue;
+      const where = `preset "${preset}" on capability "${name}"`;
+      for (const tool of declared) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string") continue;
+        const first = seen.get(toolName);
+        if (first === undefined) {
+          seen.set(toolName, { tool, where });
+        } else if (first.tool !== tool) {
+          problems.push(
+            `picks ${first.where} and ${where}, which carry different tools named ` +
+              `"${toolName}". One name is one tool — pick one of the two presets, or write a \`tools:\` line.`
+          );
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * A held package's block sharing a name with a picked preset's tool, as
+ * messages — the package form of {@link pickedToolCollisions}.
+ *
+ * Only meaningful for a worker that wrote NO `tools:` line, which is granted
+ * both the package's blocks and the picked presets' tools; the caller applies
+ * that condition. Listed preset tools only: a function-valued preset's tools
+ * exist per turn, where the framework's own duplicate-name check refuses the
+ * clash on that turn.
+ *
+ * @param catalog The worker flow's catalogue.
+ * @param selection What this worker's file named.
+ * @param packages The packages this worker holds, as the hire imposed them.
+ * @returns One message per clash.
+ */
+export function packageToolCollisions(
+  catalog: WorkerCapabilityCatalog,
+  selection: WorkerCapabilitySelection,
+  packages: ReadonlyArray<{ path: string; tools: ReadonlyArray<{ name?: unknown }> }>
+): string[] {
+  const carried = new Map<string, { tool: unknown; path: string }>();
+  for (const held of packages) {
+    for (const tool of held.tools) {
+      if (typeof tool.name === "string") carried.set(tool.name, { tool, path: held.path });
+    }
+  }
+  if (carried.size === 0) return [];
+
+  const problems: string[] = [];
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (!Array.isArray(declared)) continue;
+      for (const tool of declared) {
+        const toolName = (tool as { name?: unknown }).name;
+        if (typeof toolName !== "string") continue;
+        const held = carried.get(toolName);
+        if (held === undefined || held.tool === tool) continue;
+        problems.push(
+          `holds package "${held.path}", whose block "${toolName}" has the same name as a tool of ` +
+            `preset "${preset}" on capability "${name}", which it picks. One name is one tool — ` +
+            `rename the block, or write a \`tools:\` line.`
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * The refs a worker's selection adds on top of what its worker flow already carries.
+ *
+ * One entry per named capability that has at least one preset the flow does
+ * not already have on. Each is a clone of the app's own ref with an explicit
+ * on/off for every declared preset — on for this worker's additions, off for
+ * everything else, the presets the static entry is already contributing
+ * included. That is what keeps a named default preset from arriving twice.
+ *
+ * Runs on every render of the generator's bindings, so it stays a map lookup
+ * and a clone per addition, and returns nothing at all for the common case of
+ * a worker that named none.
+ *
+ * Assumes the selection passed {@link workerCapabilityProblems} at the mint: an
+ * unknown capability or preset is skipped here rather than checked twice.
+ *
+ * @param catalog The worker flow's catalogue.
+ * @param selection What this worker's file named.
+ * @returns The per-worker refs for a dynamic `uses` entry.
+ */
+export function resolveWorkerCapabilities(
+  catalog: WorkerCapabilityCatalog,
+  selection: WorkerCapabilitySelection | undefined
+): CapabilityRef[] {
+  if (!selection) return [];
+  const refs: CapabilityRef[] = [];
+
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+
+    const additions = presets.filter(
+      (preset) => capability.declared.includes(preset) && !capability.activeForFlow.has(preset)
+    );
+    if (additions.length === 0) continue;
+
+    const overrides: Record<string, boolean> = {};
+    for (const preset of capability.declared) {
+      overrides[preset] = additions.includes(preset);
+    }
+    const ref = (capability.ref as { presets(overrides: unknown): CapabilityRef }).presets(
+      overrides
+    );
+    // Cut the clone loose from what this capability COMPOSES, which the static
+    // entry has already delivered in full.
+    //
+    // `.presets()` returns `Object.create(base)`, so the clone inherits the
+    // capability's own `uses` — and the per-worker path walks that subtree rather
+    // than stopping at the entry it was handed. Left on, a capability that
+    // composes another would hand this worker the nested surface a second time,
+    // and a nested capability declaring open config would take a worker that
+    // hired cleanly and fail every turn it runs, since that path refuses open
+    // config outright. Both break along the same axis the delta is here to
+    // hold: one path per contribution, per worker.
+    //
+    // An OWN `undefined` shadowing the prototype's, rather than a walk of our
+    // own: whatever the subtree holds stays the static entry's business, and
+    // `getBaseCapability` still recovers the base through the prototype, so
+    // nothing downstream loses the capability's identity.
+    (ref as { uses?: unknown }).uses = undefined;
+    refs.push(ref);
+  }
+
+  return refs;
+}
+
+/**
+ * The catalog tools of every preset a worker's own file picked — what a worker
+ * with no `tools:` line can call (FIX-1459 D1).
+ *
+ * **Read from the selection as written**, not from what
+ * {@link resolveWorkerCapabilities} delivers. That function skips a preset the
+ * worker flow already has on, which is right for context (carried once, by the static
+ * entry) and wrong here: picking a preset the flow switches on by default is
+ * still the worker's choice, and the choice is what grants. A preset the flow
+ * switches on that the worker did NOT pick grants nothing.
+ *
+ * Only the preset's own `tools`. Its controls reach the worker through the
+ * capability as they always have, and what the capability composes is the
+ * static entry's business, exactly as on the per-worker path.
+ *
+ * Runs per turn from the worker flow's tools slot, so it stays one map lookup per
+ * picked preset, plus the preset's own function when its tools are one. The
+ * same tool instance picked through two presets is offered once.
+ *
+ * @param catalog The worker flow's catalogue.
+ * @param selection What this worker's file named.
+ * @param ctx The running block's context, handed to a function-valued preset.
+ * @returns The tools, in selection order.
+ */
+export async function selectedPresetTools(
+  catalog: WorkerCapabilityCatalog,
+  selection: WorkerCapabilitySelection | undefined,
+  ctx: unknown
+): Promise<GeneratorTool[]> {
+  if (!selection) return [];
+  const tools: GeneratorTool[] = [];
+  for (const [name, presets] of Object.entries(selection)) {
+    const capability = catalog.get(name);
+    if (!capability) continue;
+    for (const preset of presets) {
+      const declared = capability.presetTools.get(preset);
+      if (declared === undefined) continue;
+      // A function-valued preset is resolved here, per turn, with the same
+      // context the framework hands it on the capability path.
+      const resolved = Array.isArray(declared)
+        ? declared
+        : await declared(ctx as Parameters<typeof declared>[0]);
+      for (const tool of resolved) if (!tools.includes(tool)) tools.push(tool);
+    }
+  }
+  return tools;
+}

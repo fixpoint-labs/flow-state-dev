@@ -1,8 +1,8 @@
 /**
- * Opening the seat inventory to the browser must open exactly what was
+ * Opening the worker inventory to the browser must open exactly what was
  * intended (FIX-1502, BR-1–BR-6).
  *
- * The seat inventory declares a `client` block so a browser panel can read it
+ * The worker inventory declares a `client` block so a browser panel can read it
  * at all — without one, the collection-state route refuses every read with
  * `403 State read not permitted`, and an action's return value has no path to
  * a browser, so there is no other door. Opening that door raises two separate
@@ -44,7 +44,7 @@ import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/c
 import { z } from "zod";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { defineSeatInventoryCollection, inventoryWriterActions, openInventory } from "../src/index";
+import { defineWorkerInventoryCollection, inventoryWriterActions, openInventory } from "../src/index";
 
 type Harness = {
   post: (path: string[], body: unknown, headers?: Record<string, string>) => Promise<Answer>;
@@ -73,7 +73,7 @@ function readCollection(
  * opened over the real session route, rows written by `openInventory` through
  * the real writer, and every read through the real collection-state route.
  *
- * Two organizations, with DIFFERENT seat ids. Identical rows in both would make
+ * Two organizations, with DIFFERENT worker ids. Identical rows in both would make
  * a read that leaks look isolated: the org-a session would get org-b's rows
  * back and they would compare equal.
  *
@@ -82,26 +82,26 @@ function readCollection(
  * returns, so an empty read cannot pass as an isolated one.
  *
  * **Red states, observed:**
- * - Drop the `client` line from `defineSeatInventoryCollection`: the manifest
- *   stops listing it, so V1 fails with `org-a seat read — the manifest lists no
- *   such collection` and V2 with `inventory/seats/* on a flow carrying the
+ * - Drop the `client` line from `defineWorkerInventoryCollection`: the manifest
+ *   stops listing it, so V1 fails with `org-a worker read — the manifest lists no
+ *   such collection` and V2 with `inventory/workers/* on a flow carrying the
  *   writer: expected undefined to be defined`.
- * - Drop `expose` from the seat inventory's `client` and the BR-5 case fails
- *   with `a seats row must not carry "secret"`.
+ * - Drop `expose` from the worker inventory's `client` and the BR-5 case fails
+ *   with `a workers row must not carry "secret"`.
  * - Point the route's org read at another org (`resourceScopeIds(session.orgId,
- *   …)` in `resources/internal.ts`) and V1 fails with `org-a's seats: expected
+ *   …)` in `resources/internal.ts`) and V1 fails with `org-a's workers: expected
  *   [ 'beta.analyst', 'beta.lead' ] to deeply equal [ 'alpha.coder',
- *   'alpha.lead' ]` — the other org's seats, by id.
+ *   'alpha.lead' ]` — the other org's workers, by id.
  */
 
 const INV_USER = "u_boot";
 const WRITER_KIND = "inventory-writer";
 const PLAIN_KIND = "no-inventory";
 
-/** Org -> the seats it hires. No id appears in both. */
+/** Org -> the workers it hires. No id appears in both. */
 const INVENTORY_ORGS = {
-  "org-a": { seats: ["alpha.lead", "alpha.coder"] },
-  "org-b": { seats: ["beta.lead", "beta.analyst"] }
+  "org-a": { workers: ["alpha.lead", "alpha.coder"] },
+  "org-b": { workers: ["beta.lead", "beta.analyst"] }
 } as const;
 type InvOrg = keyof typeof INVENTORY_ORGS;
 const INV_ORGS = Object.keys(INVENTORY_ORGS) as InvOrg[];
@@ -179,7 +179,7 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
     flows: { [WRITER_KIND]: writer, [PLAIN_KIND]: plain },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
-    // Host-level, so both kinds resolve the same principal. The org comes from
+    // Host-level, so both flows resolve the same principal. The org comes from
     // a verified header, never the body.
     resolvePrincipal: verifiedHeaderPrincipal(() => INV_USER)
   } as never);
@@ -197,10 +197,10 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
 
   for (const org of INV_ORGS) {
     // Opened over the real session route, as the org's own principal.
-    for (const kind of [WRITER_KIND, PLAIN_KIND]) {
+    for (const flowKind of [WRITER_KIND, PLAIN_KIND]) {
       const created = await h.post(
-        [kind, "sessions"],
-        { userId: INV_USER, sessionId: `${readerSession(org)}${kind === PLAIN_KIND ? "-plain" : ""}` },
+        [flowKind, "sessions"],
+        { userId: INV_USER, sessionId: `${readerSession(org)}${flowKind === PLAIN_KIND ? "-plain" : ""}` },
         { "x-verified-org": org }
       );
       if (created.status >= 400) throw new Error(`create ${created.status}: ${JSON.stringify(created.json)}`);
@@ -208,7 +208,7 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
     if (options.fill === false) continue;
 
     const binding = await openInventory(
-      { seats: INVENTORY_ORGS[org].seats.map((id) => ({ id, kind: "agent", actions: {} })) },
+      { workers: INVENTORY_ORGS[org].workers.map((id) => ({ id, kind: "agent", actions: {} })) },
       {
         run: async (request) => {
           const result: any = await runAction({
@@ -227,9 +227,9 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
           }
           return result;
         },
-        // One seat-writer session per org: the default id is one per store,
+        // One worker-writer session per org: the default id is one per store,
         // and two orgs writing through one session would be one org's session.
-        seatWriter: { flowKind: WRITER_KIND, sessionId: `inventory-binder-${org}` },
+        workerWriter: { flowKind: WRITER_KIND, sessionId: `inventory-binder-${org}` },
         userId: INV_USER,
         orgId: org
       }
@@ -241,7 +241,7 @@ async function buildInventoryHarness(options: { fill?: boolean } = {}): Promise<
   return h;
 }
 
-/** The ref a session's manifest gives the seat collection, found by pattern, and the whole list. */
+/** The ref a session's manifest gives the worker collection, found by pattern, and the whole list. */
 async function inventoryRefs(h: Harness, sessionId: string, org: string) {
   const { status, json } = await h.get(["sessions", sessionId, "manifest"], "", {
     "x-verified-org": org
@@ -250,7 +250,7 @@ async function inventoryRefs(h: Harness, sessionId: string, org: string) {
   const resources = json.resources as Array<Record<string, any>>;
   return {
     resources,
-    seats: resources.find((entry) => entry.pattern === "inventory/seats/*")?.ref as string | undefined
+    workers: resources.find((entry) => entry.pattern === "inventory/workers/*")?.ref as string | undefined
   };
 }
 
@@ -281,15 +281,15 @@ async function listAll(
   return { status: 200, rows, raw };
 }
 
-describe("FIX-1502 · the seat inventory's client read", () => {
-  it("V1 · each organization's session lists only its own seat rows (BR-1, BR-2, BR-4)", async () => {
+describe("FIX-1502 · the worker inventory's client read", () => {
+  it("V1 · each organization's session lists only its own worker rows (BR-1, BR-2, BR-4)", async () => {
     const h = await buildInventoryHarness();
 
     // The positive record first: both organizations' rows are in storage.
     for (const org of INV_ORGS) {
-      const { seats } = INVENTORY_ORGS[org];
+      const { workers } = INVENTORY_ORGS[org];
       expect(Object.keys(await h.stored(org)).sort(), `${org}'s stored inventory keys`).toEqual(
-        seats.map((seat) => `inventory/seats/${seat}`).sort()
+        workers.map((worker) => `inventory/workers/${worker}`).sort()
       );
     }
 
@@ -305,14 +305,14 @@ describe("FIX-1502 · the seat inventory's client read", () => {
       };
 
       // `limit=1`, so the read below crosses pages.
-      const seats = await listAll(h, readerSession(org), refs.seats, org, steer);
+      const workers = await listAll(h, readerSession(org), refs.workers, org, steer);
 
-      expect(seats.status, `${org} seat read — ${seats.raw}`).toBe(200);
-      expect(seats.rows.map((r) => r.id).sort(), `${org}'s seats`).toEqual([...own.seats].sort());
+      expect(workers.status, `${org} worker read — ${workers.raw}`).toBe(200);
+      expect(workers.rows.map((r) => r.id).sort(), `${org}'s workers`).toEqual([...own.workers].sort());
 
       // Over the raw payload too, so a shape change cannot turn the above into a no-op.
-      for (const foreign of other.seats) {
-        expect(seats.raw, `${org}'s read leaked ${foreign}`).not.toContain(foreign);
+      for (const foreign of other.workers) {
+        expect(workers.raw, `${org}'s read leaked ${foreign}`).not.toContain(foreign);
       }
     }
   });
@@ -326,17 +326,17 @@ describe("FIX-1502 · the seat inventory's client read", () => {
       { "x-verified-org": "org-a" }
     );
     expect(created.status, JSON.stringify(created.json)).toBeLessThan(400);
-    const seats = await listAll(h, "s-claims-b", refs.seats, "org-a");
-    expect(seats.status).toBe(200);
-    expect(seats.rows.map((r) => r.id).sort()).toEqual([...INVENTORY_ORGS["org-a"].seats].sort());
-    expect(seats.raw).not.toContain("beta.");
+    const workers = await listAll(h, "s-claims-b", refs.workers, "org-a");
+    expect(workers.status).toBe(200);
+    expect(workers.rows.map((r) => r.id).sort()).toEqual([...INVENTORY_ORGS["org-a"].workers].sort());
+    expect(workers.raw).not.toContain("beta.");
   });
 
   it("V1 control · the same pattern declared WITHOUT the read is refused 403 (BR-3)", async () => {
     // Same pattern, scope and sharing as the factory, and no `client`.
     const unread = {
-      seats: defineResourceCollection({
-        pattern: "inventory/seats/*",
+      workers: defineResourceCollection({
+        pattern: "inventory/workers/*",
         scope: "org",
         flowIsolation: false,
         stateSchema: z.object({ id: z.string(), kind: z.string() })
@@ -369,9 +369,9 @@ describe("FIX-1502 · the seat inventory's client read", () => {
   it("V1 control · a key written into a stored row does not reach the browser (BR-5)", async () => {
     const h = await buildInventoryHarness();
     const org = "org-a";
-    const { seats } = INVENTORY_ORGS[org];
+    const { workers } = INVENTORY_ORGS[org];
     // A key the named fields leave out, planted straight into the stored row.
-    const key = `inventory/seats/${seats[0]}`;
+    const key = `inventory/workers/${workers[0]}`;
     const current = await h.runtime.stores.resourceState.get("org", org, key);
     expect(current, `${key} is stored`).toBeDefined();
     await h.runtime.stores.resourceState.set(
@@ -385,26 +385,26 @@ describe("FIX-1502 · the seat inventory's client read", () => {
     expect(planted.state.secret, `${key} carries the planted key`).toBe("LEAKED-INVENTORY-KEY");
 
     const refs = await inventoryRefs(h, readerSession(org), org);
-    const read = await listAll(h, readerSession(org), refs.seats, org);
-    expect(read.status, `seats read — ${read.raw}`).toBe(200);
+    const read = await listAll(h, readerSession(org), refs.workers, org);
+    expect(read.status, `workers read — ${read.raw}`).toBe(200);
     // The row carrying the planted key is in the read at all.
-    expect(read.rows.map((r) => r.id)).toContain(seats[0]);
+    expect(read.rows.map((r) => r.id)).toContain(workers[0]);
     for (const row of read.rows) {
-      expect(row, `a seats row must not carry "secret"`).not.toHaveProperty("secret");
+      expect(row, `a workers row must not carry "secret"`).not.toHaveProperty("secret");
     }
-    expect(read.raw, "seats payload").not.toContain("LEAKED-INVENTORY-KEY");
+    expect(read.raw, "workers payload").not.toContain("LEAKED-INVENTORY-KEY");
   });
 
-  it("V2 · the manifest lists the seat collection as readable on a flow with the writer, and none without it (BR-6)", async () => {
+  it("V2 · the manifest lists the worker collection as readable on a flow with the writer, and none without it (BR-6)", async () => {
     const h = await buildInventoryHarness({ fill: false });
     const on = await inventoryRefs(h, readerSession("org-a"), "org-a");
     const off = await inventoryRefs(h, `${readerSession("org-a")}-plain`, "org-a");
 
-    const entry = on.resources.find((e) => e.pattern === "inventory/seats/*");
-    expect(entry, "inventory/seats/* on a flow carrying the writer").toBeDefined();
+    const entry = on.resources.find((e) => e.pattern === "inventory/workers/*");
+    expect(entry, "inventory/workers/* on a flow carrying the writer").toBeDefined();
     expect(entry!.kind).toBe("collection");
     expect(entry!.scope).toBe("org");
-    expect(entry!.client?.state?.read, "inventory/seats/* is readable").toBe(true);
+    expect(entry!.client?.state?.read, "inventory/workers/* is readable").toBe(true);
     expect(
       off.resources.filter((e) => String(e.pattern ?? "").startsWith("inventory/")),
       "inventory collections on a flow without the writer"

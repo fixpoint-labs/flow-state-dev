@@ -22,27 +22,27 @@ const flows: FlowListEntry[] = [
 ];
 
 const sections = [
-  { label: "Mailboxes", kinds: ["chat"] },
-  { label: "Seats", kinds: ["agent"] },
+  { label: "Coordinators", kinds: ["chat"] },
+  { label: "Workers", kinds: ["agent"] },
 ];
 
 describe("groupFlowsIntoSections", () => {
   it("puts two instances of one collection kind under ONE kind row", () => {
-    const [, seats] = groupFlowsIntoSections(flows, sections);
+    const [, workers] = groupFlowsIntoSections(flows, sections);
 
     // A flat list over instances gives two rows here, which is the shape being
     // replaced.
-    expect(seats!.kinds).toHaveLength(1);
-    expect(seats!.kinds[0]!.kind).toBe("agent");
-    expect(seats!.kinds[0]!.instances.map((i) => i.id)).toEqual([
+    expect(workers!.kinds).toHaveLength(1);
+    expect(workers!.kinds[0]!.kind).toBe("agent");
+    expect(workers!.kinds[0]!.instances.map((i) => i.id)).toEqual([
       "engineer-a",
       "engineer-b",
     ]);
   });
 
   it("draws no instance level under a singleton kind, and makes the kind row the leaf", () => {
-    const [mailboxes] = groupFlowsIntoSections(flows, sections);
-    const group = mailboxes!.kinds[0]!;
+    const [coordinators] = groupFlowsIntoSections(flows, sections);
+    const group = coordinators!.kinds[0]!;
 
     expect(group.cardinality).toBe("singleton");
     expect(group.instances).toEqual([]);
@@ -55,14 +55,14 @@ describe("groupFlowsIntoSections", () => {
   });
 
   it("gives a collection kind no leaf of its own — its leaves are its instances", () => {
-    const [, seats] = groupFlowsIntoSections(flows, sections);
+    const [, workers] = groupFlowsIntoSections(flows, sections);
 
-    expect(seats!.kinds[0]!.leaf).toBeNull();
+    expect(workers!.kinds[0]!.leaf).toBeNull();
   });
 
   it("renders a section whose kinds the server does not have as empty, leaving the others alone", () => {
     const views = groupFlowsIntoSections(flows, [
-      { label: "Mailboxes", kinds: ["chat"] },
+      { label: "Coordinators", kinds: ["chat"] },
       { label: "Warehouses", kinds: ["warehouse"] },
     ]);
 
@@ -75,7 +75,7 @@ describe("groupFlowsIntoSections", () => {
     // flow. Nothing in the section said which shape to expect.
     const asCollection = groupFlowsIntoSections(
       [entry("chat", "chat", "collection")],
-      [{ label: "Mailboxes", kinds: ["chat"] }]
+      [{ label: "Coordinators", kinds: ["chat"] }]
     );
 
     expect(asCollection[0]!.kinds[0]!.leaf).toBeNull();
@@ -84,8 +84,8 @@ describe("groupFlowsIntoSections", () => {
 
   it("keeps a kind in one section out of another", () => {
     const views = groupFlowsIntoSections(flows, [
-      { label: "Mailboxes", kinds: ["chat"] },
-      { label: "Seats", kinds: ["agent"] },
+      { label: "Coordinators", kinds: ["chat"] },
+      { label: "Workers", kinds: ["agent"] },
     ]);
 
     expect(views[0]!.kinds.map((k) => k.kind)).toEqual(["chat"]);

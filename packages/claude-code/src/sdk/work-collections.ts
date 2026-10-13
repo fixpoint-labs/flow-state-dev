@@ -1,7 +1,11 @@
 /**
- * The two resource collections a recording run writes into.
+ * The resource collections a recording run writes into.
  *
- * Both are declared here rather than inside the agent block so the block and
+ * The file and gap records are Claude Code's own and are defined here. The plan
+ * record and its per-run list marker are the shape every harness shares, so
+ * they are defined in `@flow-state-dev/core` and re-exported below.
+ *
+ * All of them are collected here rather than inside the agent block so the block and
  * the capability contribute the SAME definitions — a capability's `tools` do
  * not carry resource declarations up to the flow (see `./capability`), so the
  * capability has to declare these itself, and two separate definitions would
@@ -11,9 +15,30 @@
  * working tree: which path the run's file tools touched, how, when, and how the
  * attempt settled.
  */
-import { defineResourceCollection } from "@flow-state-dev/core";
+import {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  defineResourceCollection,
+  observedOutcomeSchema,
+  observedPlanCollection,
+  observedPlanListCollection,
+} from "@flow-state-dev/core";
 import type { DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { z } from "zod";
+
+/**
+ * The plan record's shape lives in `@flow-state-dev/core`, shared by every
+ * harness. Re-exported here as the SAME objects, so code importing them from
+ * this package keeps working and gets exactly what core exports.
+ */
+export {
+  OBSERVED_PLAN,
+  OBSERVED_PLAN_LIST,
+  observedPlanCollection,
+  observedPlanItemStateSchema,
+  observedPlanListCollection,
+  type ObservedOutcome,
+} from "@flow-state-dev/core";
 
 /**
  * Accessor key AND storage prefix for the observed file operations. The two are
@@ -23,28 +48,11 @@ import { z } from "zod";
  * `ctx.resources`, and in the storage key.
  */
 export const OBSERVED_FILE_OPS = "observed-file-ops" as const;
-/** Accessor key AND storage prefix for the run's observed plan. */
-export const OBSERVED_PLAN = "observed-plan" as const;
 /** Accessor key AND storage prefix for the mutations the recorder could not record. */
 export const OBSERVED_GAPS = "observed-gaps" as const;
 
 /** How a file tool touched a path. */
 export type ObservedFileOpKind = "created" | "edited";
-
-/**
- * How a recorded mutation settled.
- *
- * Three-valued, not a boolean, and both extra values are load-bearing. A
- * mutation is recorded when its call is SEEN and settled when its result
- * arrives, so `pending` is a real state that a boolean would have to report as
- * either a success that has not happened or a failure that did not occur. And a
- * plan update the harness REJECTS has to be recordable without applying the
- * status it asked for — it lands as `failed` with the statuses left where the
- * harness has them.
- */
-export type ObservedOutcome = "pending" | "applied" | "failed";
-
-const outcomeSchema = z.enum(["pending", "applied", "failed"]);
 
 /**
  * One observed file operation, keyed by `<runId>/<canonical path>`.
@@ -57,7 +65,7 @@ export const observedFileOpStateSchema = z.object({
   /** How the path was last touched. */
   lastKind: z.enum(["created", "edited"]).nullable().default(null),
   /** How the last touch settled. */
-  outcome: outcomeSchema.nullable().default(null),
+  outcome: observedOutcomeSchema.nullable().default(null),
   /** Epoch millis of the last touch. */
   lastTouchedAt: z.number().nullable().default(null),
   /**
@@ -76,29 +84,6 @@ export const observedFileOpStateSchema = z.object({
    * same as `0`: zero means this run touched the path and nothing applied.
    */
   appliedCount: z.number().nullable().default(null),
-});
-
-/**
- * One observed plan item, keyed by `<runId>/<the harness's own item id>`.
- *
- * `status` and `previousStatus` are free strings, not an enum: the vocabulary
- * belongs to the harness (`pending` / `in_progress` / `completed` at the version
- * measured), and a value we have never seen must record as itself rather than
- * throw. `status` stays null until the harness reports one — a created item's
- * state is not something the create result tells us, and inventing a default
- * would be recording a guess.
- */
-export const observedPlanItemStateSchema = z.object({
-  /** The item's wording, as the run phrased it. */
-  title: z.string().nullable().default(null),
-  /** The status the harness last confirmed. */
-  status: z.string().nullable().default(null),
-  /** The status this row held before the last confirmed move. */
-  previousStatus: z.string().nullable().default(null),
-  /** How the last attempt on this item settled. */
-  lastOutcome: outcomeSchema.nullable().default(null),
-  /** Epoch millis of the last attempt. */
-  lastTouchedAt: z.number().nullable().default(null),
 });
 
 /**
@@ -187,18 +172,6 @@ export const observedGapsCollection = defineResourceCollection({
 /** Which record a gap stands in for. See the collection's `kind` field. */
 export type ObservedGapKind = "file" | "plan" | "run";
 
-/** The run's own to-do list. See {@link observedFileOpsCollection} for the pattern/prefetch note. */
-export const observedPlanCollection = defineResourceCollection({
-  pattern: `${OBSERVED_PLAN}/**`,
-  scope: "session",
-  prefetchMode: "lazy",
-  stateSchema: observedPlanItemStateSchema,
-  client: {
-    state: { read: true },
-    expose: ["title", "status", "previousStatus", "lastOutcome", "lastTouchedAt"],
-  },
-});
-
 /**
  * The resource map the agent block and the capability both declare when
  * `recordWork` is on. One object so the two declaration sites cannot drift.
@@ -212,5 +185,6 @@ export const observedPlanCollection = defineResourceCollection({
 export const workRecorderResources: Record<string, DeclaredResourceEntry> = {
   [OBSERVED_FILE_OPS]: observedFileOpsCollection,
   [OBSERVED_PLAN]: observedPlanCollection,
+  [OBSERVED_PLAN_LIST]: observedPlanListCollection,
   [OBSERVED_GAPS]: observedGapsCollection,
 };

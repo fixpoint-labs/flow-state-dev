@@ -27,7 +27,7 @@ import { workerConfigSchema } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { workerDoor } from "../../../lib/worker-door.mts";
 
-export const DESK_KIND = "desk";
+export const DESK_FLOW = "desk";
 
 /** The app's own store, declared beside the documents. Not a document, and no grant governs it. */
 export const STORE = "audit-log";
@@ -62,10 +62,10 @@ export function buildDesk(installation: WorkerInstallation, options: { withoutRu
     name: "desk-load-worker",
     inputSchema: z.unknown(),
     resources: { ...installation.resources },
-    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, DESK_KIND)).id }),
+    execute: async (_input, ctx) => ({ worker: (await installation.resolveWorker(ctx, DESK_FLOW)).id }),
   });
   return defineFlow({
-    kind: DESK_KIND,
+    kind: DESK_FLOW,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     session: installation.session(),

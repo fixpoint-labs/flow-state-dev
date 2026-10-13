@@ -25,7 +25,7 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
-   chief of staff and project coordinator on `coordinator` and its workstream coordinator on `agent`,
+   chief of staff and project coordinator on `coordinator`,
    the teams' two coordinator workers (`eng.triage`, `ops.oncall`) on `coordinator`, two documents
    and no mailbox (the feature and release work are workstreams the EM leads); a tree naming an
    unregistered kind refuses the **whole** roster by name, and its corrected twin hires cleanly
@@ -110,3 +110,4 @@ is the sibling goal.
 | 2026-10-11 | `cfafdf52`+wip (DevTeam off mailboxes) | n/a | PASS | Converted: the DevTeam declares no mailbox, and the EM files on its own session's board, under a minted id with `{issue, phase}` in the payload (the `FEATURE-CHARTER` token went with the feature `MAILBOX.md`). The checkout is derived from the row's id on that board (`runBoardSegment("tasks", partition)`). A hand-off to an unminted id is refused as not one of the session's delegates, by id. A session's board retries a not-done row at once, so leg f grades the retry's prompt and the spent budget, not a pending moment; `no-commit` and `stopped-at-limit` now settle `errored`, not `pending`. The lab runs `withoutJudge`. |
 | 2026-10-11 | `7af86476` (DevTeam off mailboxes, merged with FIX-1866 P3 `f4978593`) | n/a | PASS | Re-run on the merged tree: 8 seats on 2 kinds, no mailbox; the row handed to eng.coder by id; a hand-off naming no delegate errors the row by name. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | n/a | PASS | Converted: leg a's "no mailbox" reads the tree's files for a `MAILBOX.md` (the loader has no mailbox list any more), and leg g's loader comparison is over workers and documents. 8 workers on 2 kinds, 2 documents, no mailbox file; the row handed to eng.coder on the dispatch record, eng.reviewer never reached; all 4 held-out tokens in the prompt; the row settled completed; the unminted hand-off errored by name; the no-commit retry and spent budget; the boards/ folder loads as nothing, and the org-less read is refused while the bearer read lands. No control targets the two changed legs, so none was re-run. |
+| 2026-10-11 | FIX-1883 (FIX-1793 P5) on 9a618969 + uncommitted | n/a | PASS | The fixture drops the removed `workstream-coordinator` org worker: 7 on 2 kinds, no mailbox |

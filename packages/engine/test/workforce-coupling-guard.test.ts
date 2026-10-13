@@ -1,13 +1,13 @@
 /**
  * Guard: Engine's source is not coupled to Workforce.
  *
- * Hiring, rosters and seats are Workforce's concepts, one layer up. Engine
+ * Hiring, rosters and workers are Workforce's concepts, one layer up. Engine
  * carries generic primitives Workforce opts into (the owner-private
  * collection, the instance pin) and knows none of Workforce's names or key
  * shapes. This fails on concrete coupling anywhere under `src/`:
  *
  *   1. an import or re-export from `@flow-state-dev/workforce`;
- *   2. a roster symbol: `HIRED_ROSTER_*`, `*HiredRosterPrivateCollection`,
+ *   2. a roster symbol: `WORKERS_PATTERN`, `STANDARD_WORKERS_PATTERN`,
  *      `assertRosterCollectionIsNotDeep`, or Engine's deleted roster helpers
  *      (`privateRosterAdmits`, `scopePrivateRosterToCaller`,
  *      `assertFlowRosterPatterns`);
@@ -15,7 +15,7 @@
  *   4. the `"roster-owner"` pin reason;
  *   5. a module path naming `hire-plane`, as a source file or an import.
  *
- * It is not a word ban. Ordinary English ("an operator's seat"), task-board
+ * It is not a word ban. Ordinary English ("an operator's worker"), task-board
  * vocabulary and the trace store's `_roster.json` are not coupling, and prose
  * is left to review. The last block proves each rule can fire and that none
  * fires on those words.
@@ -55,8 +55,8 @@ const RULES: Rule[] = [
   {
     name: "a roster symbol",
     pattern:
-      /\bHIRED_ROSTER_\w*|\w*HiredRosterPrivateCollection\b|\b(?:assertRosterCollectionIsNotDeep|privateRosterAdmits|scopePrivateRosterToCaller|assertFlowRosterPatterns)\b/,
-    sample: 'import { HIRED_ROSTER_PRIVATE_PATTERN } from "@flow-state-dev/core";',
+      /\b(?:STANDARD_)?WORKERS_PATTERN\b|\b(?:assertRosterCollectionIsNotDeep|privateRosterAdmits|scopePrivateRosterToCaller|assertFlowRosterPatterns)\b/,
+    sample: 'const key = `${WORKERS_PATTERN}`;',
   },
   {
     name: "the workforce/roster key",
@@ -75,13 +75,13 @@ const RULES: Rule[] = [
   },
 ];
 
-/** Lines that name roster or seat words without coupling to Workforce. */
+/** Lines that name roster or worker words without coupling to Workforce. */
 const NOT_COUPLING = [
   'const ROSTER_FILE = "_roster.json";',
   "private readonly roster = new Map<string, number>();",
-  "// Both are the same situation from an operator's seat.",
-  "// a seat another board holds would claim a row",
-  "// Workforce pins each hired seat this way.",
+  "// Both are the same situation from an operator's worker.",
+  "// a worker another board holds would claim a row",
+  "// Workforce pins each hired worker this way.",
 ];
 
 describe("Engine source is not coupled to Workforce", () => {

@@ -51,11 +51,11 @@ describe("useLeafSessions · a response outliving its leaf", () => {
     const { result, rerender } = renderHook(
       ({ address }: { address: string }) =>
         useLeafSessions(source as never, leaf(address), "u", false, true),
-      { initialProps: { address: "seat-a" } }
+      { initialProps: { address: "worker-a" } }
     );
 
     await waitFor(() => expect(source.pending).toHaveLength(1));
-    rerender({ address: "seat-b" });
+    rerender({ address: "worker-b" });
     await waitFor(() => expect(source.pending).toHaveLength(2));
 
     // B lands first, then A — the ordering that makes this fail without a fence.
@@ -76,7 +76,7 @@ describe("useLeafSessions · two reads of ONE leaf racing", () => {
   it("never lets an older response overwrite a newer one for the same leaf", async () => {
     const source = deferredSource();
     const { result } = renderHook(() =>
-      useLeafSessions(source as never, leaf("seat-a"), "u", false, true)
+      useLeafSessions(source as never, leaf("worker-a"), "u", false, true)
     );
 
     await waitFor(() => expect(source.pending).toHaveLength(1));
@@ -111,7 +111,7 @@ describe("useLeafSessions · a leaf that closes and opens again", () => {
   const mountLeaf = (source: ReturnType<typeof deferredSource>, isOpen: boolean) =>
     renderHook(
       ({ open }: { open: boolean }) =>
-        useLeafSessions(source as never, leaf("seat-a"), "u", false, open),
+        useLeafSessions(source as never, leaf("worker-a"), "u", false, open),
       { initialProps: { open: isOpen } }
     );
 

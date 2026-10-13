@@ -87,7 +87,7 @@ import {
 export type ResourceDocErrorKind =
   /** A structural folder — a root, a team, a `workers/` level, a worker folder, or a `resources/` slot — is a symlink or is there and could not be listed. Every document under it is missing. */
   | "unreadable-slot"
-  /** A directory sits where a document file belongs — the mistake an author arriving from `workers/` or `mailboxes/` makes. */
+  /** A directory sits where a document file belongs — the mistake an author arriving from `workers/` makes. */
   | "folder-where-file-belongs"
   /** One document file did not load: an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description`. */
   | "document-load-failed"
@@ -134,8 +134,8 @@ export interface ReadResourcesDirectoryResult {
  * — and return one neutral record per document.
  *
  * A worker's folder is an ADDRESS, not a visibility boundary. Its documents are
- * minted under a worker-qualified ref and installed on the worker kind's flow
- * like any other; what makes one private to the seat that owns it is
+ * minted under a worker-qualified ref and installed on the worker's flow
+ * like any other; what makes one private to the worker that owns it is
  * `flowIsolation: true` in that document's own frontmatter, which this reader
  * carries verbatim and never inspects.
  *
@@ -144,7 +144,7 @@ export interface ReadResourcesDirectoryResult {
  * walk somewhere else entirely, is a wiring mistake, not a per-document one.
  *
  * A root with neither `org/` nor `teams/` is an empty result: an app may
- * declare no documents in files, and a team, or a seat, may have no
+ * declare no documents in files, and a team, or a worker, may have no
  * `resources/` folder.
  * Everything else that goes wrong lands in `errors`, so one bad file never
  * costs an app its other documents.

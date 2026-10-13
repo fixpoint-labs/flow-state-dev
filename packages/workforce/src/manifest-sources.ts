@@ -1,17 +1,17 @@
 /**
- * The seats manifest source (FIX-817) — the workforce's projection into the
+ * The workers manifest source (FIX-817) — the workforce's projection into the
  * discovery door.
  *
  * ## Two layers, joined, because neither one alone is an honest answer
  *
  * The **declared** layer (a tree of `WORKER.md` files) is the only place a
- * *purpose* is written: a seat's `description:` is what an orchestrator picks
- * on. It cannot say what is live — a file has no idea whether its seat was
+ * *purpose* is written: a worker's `description:` is what an orchestrator picks
+ * on. It cannot say what is live — a file has no idea whether its worker was
  * ever registered.
  *
- * The **live** layer (FIX-1405's `inventory/seats/*`) knows what actually got
+ * The **live** layer (FIX-1405's `inventory/workers/*`) knows what actually got
  * registered in this org. It cannot say what anything is for: a row carries an
- * id, a kind and a door. And it is
+ * id, a worker flow and a door. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
  * registered in this org*, not *still declared*", and nothing reconciles or
  * deletes a row for going missing. So a row on its own cannot mean *open*.
@@ -20,18 +20,18 @@
  * liveness filter (BR-12a) and it is also what makes a well-formed entry
  * possible at all: a row with no declaration behind it has no purpose line, and
  * an entry whose purpose reads "unknown" is exactly the entry an orchestrator
- * must not plan against. An orchestrator is never handed a seat whose file
+ * must not plan against. An orchestrator is never handed a worker whose file
  * was removed — the row alone no longer qualifies.
  *
  * The direction of the error is deliberate. A partial roster (one boot's view
  * of a tree another process also writes to) under-reports rather than
- * over-reports, and a missing seat costs a planner one `discover` call while a
+ * over-reports, and a missing worker costs a planner one `discover` call while a
  * phantom one costs it the task.
  *
  * ## Where the declared half is read
  *
  * From BOOT state, handed in once — the file tree — plus, when the app names
- * the hired-roster key, from that collection at call time. A runtime hire has
+ * the roster key, from that collection at call time. A runtime hire has
  * no file; its roster row is the declared half so Discover can see it
  * (FIX-1526). `readDeclaredRoster` is a synchronous filesystem tree walk, and
  * this runs behind a tool a model may call on every step — so the file tree is
@@ -41,14 +41,14 @@
  *
  * Neither reader is modified. The inventory's storage keys and row schemas are
  * a public surface with persisted data behind them; these sources read them and
- * write nothing. The hired roster is the same: this module reads it.
+ * write nothing. The roster is the same: this module reads it.
  */
 
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
 import type { WorkerManifest } from "./manifest";
-import type { SeatInventoryRow } from "./inventory/collections";
+import type { WorkerInventoryRow } from "./inventory/collections";
 
 /**
  * The declared half, as the sources need it — a structural subset of
@@ -65,7 +65,7 @@ export interface DeclaredWorkforce {
 }
 
 /**
- * Which resource-registry key the live seat inventory is mounted under, on
+ * Which resource-registry key the live worker inventory is mounted under, on
  * the block that carries the door.
  *
  * A key is how a source finds its collection at call time; with the key
@@ -73,8 +73,8 @@ export interface DeclaredWorkforce {
  * which reads as "nothing here" rather than as a fault.
  */
 export interface InventoryKeys {
-  /** Registry key for the seat inventory (`defineSeatInventoryCollection`). */
-  seats?: string;
+  /** Registry key for the worker inventory (`defineWorkerInventoryCollection`). */
+  workers?: string;
 }
 
 export interface WorkforceManifestSourceOptions {
@@ -118,7 +118,7 @@ function purposeOf(
  * **This lists the whole collection and keeps a subset, which is the thing
  * BP-033 tells you not to do.** Stated here rather than left for a reader to
  * find: an inventory row is never deleted, so the listed set grows with every
- * seat ever registered in the org while the kept set stays bounded
+ * worker ever registered in the org while the kept set stays bounded
  * by what the tree currently declares — and this sits behind a tool a model may
  * call on every step.
  *
@@ -146,24 +146,24 @@ async function listRows<T>(
 }
 
 /**
- * The seats domain: registered seats that are still declared.
+ * The workers domain: registered workers that are still declared.
  *
- * `kind` on the entry is the manifest kind (`"seat"`), not the flow kind the
- * seat was hired into — that one is a fact about how it runs and belongs on the
+ * `kind` on the entry is the manifest kind (`"worker"`), not the worker flow the
+ * worker was hired into — that one is a fact about how it runs and belongs on the
  * contract line, where a planner reads it only when it asks for detail.
  */
-function seatsSource(
+function workersSource(
   roster: DeclaredWorkforce,
   key: string,
 ): BlockManifestSource {
   const files = new Map(roster.workers.map((worker) => [worker.id, worker]));
   return {
-    domain: "seats",
+    domain: "workers",
     origin: "createWorkforceCapability",
     entries: async (ctx: BlockContext): Promise<ManifestEntry[]> => {
       const declared = files;
       const entries: ManifestEntry[] = [];
-      for (const row of await listRows<SeatInventoryRow>(ctx, key, "seats")) {
+      for (const row of await listRows<WorkerInventoryRow>(ctx, key, "workers")) {
         // A row that lost its required fields reads back empty rather than
         // throwing (the collection's schema is closed and required) — guard it
         // the same way a row written before an optional field is guarded.
@@ -171,14 +171,14 @@ function seatsSource(
         if (typeof id !== "string" || id === "") continue;
         const worker = declared.get(id);
         if (worker === undefined) continue;
-        const kind = row.state.kind;
+        const flow = row.state.kind;
         entries.push({
           id,
-          kind: "seat",
-          purpose: purposeOf(worker.declared, id, "seat", worker.body),
+          kind: "worker",
+          purpose: purposeOf(worker.declared, id, "worker", worker.body),
           contract:
-            `Hired into the "${typeof kind === "string" && kind !== "" ? kind : "agent"}" ` +
-            `worker kind. Hand it work by its id.`,
+            `Hired into the "${typeof flow === "string" && flow !== "" ? flow : "agent"}" ` +
+            `worker flow. Hand it work by its id.`,
         });
       }
       return entries;
@@ -187,22 +187,22 @@ function seatsSource(
 }
 
 /**
- * The workforce's manifest sources — the seats domain, when its inventory key
+ * The workforce's manifest sources — the workers domain, when its inventory key
  * was named.
  *
  * Exported beside `createWorkforceCapability` for an app that assembles its own
- * registry (a flow that is not a worker kind, say). The capability is the
+ * registry (a flow that is not a worker flow, say). The capability is the
  * ordinary door and calls this.
  *
  * @param options The boot-resolved roster and the inventory registry keys.
- * @returns No source, or the seats source.
+ * @returns No source, or the workers source.
  */
 export function workforceManifestSources(
   options: WorkforceManifestSourceOptions,
 ): BlockManifestSource[] {
   const sources: BlockManifestSource[] = [];
-  if (options.inventory.seats !== undefined) {
-    sources.push(seatsSource(options.roster, options.inventory.seats));
+  if (options.inventory.workers !== undefined) {
+    sources.push(workersSource(options.roster, options.inventory.workers));
   }
   return sources;
 }

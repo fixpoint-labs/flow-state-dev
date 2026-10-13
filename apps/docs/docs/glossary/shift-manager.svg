@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 572" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 510" role="img" aria-labelledby="title desc">
   <title id="title">Shift Manager: what each screen reads</title>
-  <desc id="desc">Each Shift Manager screen beside what it reads. A Lab is the FlowState an fsdev config exports. The Shift Coordinator is your session with the chief of staff worker. Inbox lists asks, runs suspended on a person. Tasks lists tasks on every mailbox board. Roster lists inventory workers with a derived status. The workstream view shows a mailbox and its boards. The project view shows a project, its workstreams with their progress, your own workstreams’ boards, and your own project coordinator.</desc>
+  <desc id="desc">Each Shift Manager screen beside what it reads. A Lab is the FlowState an fsdev config exports. The Shift Coordinator is your session with your chief of staff. Inbox lists asks, runs suspended on a user. Tasks lists the tasks on your boards. Roster lists your workers with a derived status. The project view shows a project, its workstreams with their progress, your own workstreams’ boards, and your own project coordinator.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -42,7 +42,7 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="572" rx="16" class="bg"/>
+  <rect x="0" y="0" width="920" height="510" rx="16" class="bg"/>
   <text x="28" y="36" class="title">Shift Manager: what each screen reads</text>
   <text x="28" y="58" class="muted">Shift Manager stores nothing of its own. Every screen is a read of the Lab.</text>
   <text x="28" y="92" class="tag-warm">SCREEN</text>
@@ -60,8 +60,8 @@
   <text x="42" y="206" class="code">the home screen</text>
   <rect x="344" y="166" width="548" height="52" rx="10" class="card-org"/>
   <text x="358" y="187" class="tag-org">WORKER + SESSION</text>
-  <text x="508" y="187" class="p">Your session with the Lab's chief of staff, an org</text>
-  <text x="508" y="205" class="p">worker, under a summary of what waits and runs.</text>
+  <text x="508" y="187" class="p">Your session with your chief of staff, under a</text>
+  <text x="508" y="205" class="p">summary of what waits and runs.</text>
   <path d="M296 192 L342 192" class="edge"/>
   <rect x="28" y="228" width="268" height="52" rx="10" class="card-warm"/>
   <text x="42" y="250" class="h">Inbox</text>
@@ -69,39 +69,31 @@
   <rect x="344" y="228" width="548" height="52" rx="10" class="card-sess"/>
   <text x="358" y="249" class="tag-sess">SUSPENSIONS</text>
   <text x="508" y="249" class="p">Asks in sessions you started and their runs: work</text>
-  <text x="508" y="267" class="p">suspended until a person approves or answers.</text>
+  <text x="508" y="267" class="p">suspended until a user approves or answers.</text>
   <path d="M296 254 L342 254" class="edge"/>
   <rect x="28" y="290" width="268" height="52" rx="10" class="card-warm"/>
   <text x="42" y="312" class="h">Tasks</text>
   <text x="42" y="330" class="code">/tasks</text>
   <rect x="344" y="290" width="548" height="52" rx="10" class="card-proc"/>
   <text x="358" y="311" class="tag-proc">TASKS</text>
-  <text x="508" y="311" class="p">Every task not done, on every mailbox board,</text>
+  <text x="508" y="311" class="p">Every task not done on your boards,</text>
   <text x="508" y="329" class="p">grouped by state, worker or workstream.</text>
   <path d="M296 316 L342 316" class="edge"/>
   <rect x="28" y="352" width="268" height="52" rx="10" class="card-warm"/>
   <text x="42" y="374" class="h">Roster</text>
   <text x="42" y="392" class="code">/roster</text>
   <rect x="344" y="352" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="373" class="tag-org">INVENTORY</text>
-  <text x="508" y="373" class="p">Workers in the inventory. On shift, on call and off</text>
-  <text x="508" y="391" class="p">shift are worked out from their tasks and asks.</text>
+  <text x="358" y="373" class="tag-org">ROSTER</text>
+  <text x="508" y="373" class="p">Your workers. On shift, on call and off shift are</text>
+  <text x="508" y="391" class="p">worked out from their tasks and asks.</text>
   <path d="M296 378 L342 378" class="edge"/>
   <rect x="28" y="414" width="268" height="52" rx="10" class="card-warm"/>
-  <text x="42" y="436" class="h">Workstream view</text>
-  <text x="42" y="454" class="code">/w/&lt;mailbox id&gt;</text>
+  <text x="42" y="436" class="h">Project view</text>
+  <text x="42" y="454" class="code">/p/&lt;project id&gt;</text>
   <rect x="344" y="414" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="435" class="tag-org">MAILBOX + BOARDS</text>
-  <text x="508" y="435" class="p">A mailbox's transcript, its boards, and its</text>
-  <text x="508" y="453" class="p">charter as the Brief tab.</text>
+  <text x="358" y="435" class="tag-org">PROJECT</text>
+  <text x="508" y="435" class="p">Its workstreams and their progress, your own boards,</text>
+  <text x="508" y="453" class="p">and your own project coordinator to talk to it.</text>
   <path d="M296 440 L342 440" class="edge"/>
-  <rect x="28" y="476" width="268" height="52" rx="10" class="card-warm"/>
-  <text x="42" y="498" class="h">Project view</text>
-  <text x="42" y="516" class="code">/p/&lt;project id&gt;</text>
-  <rect x="344" y="476" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="497" class="tag-org">PROJECT</text>
-  <text x="508" y="497" class="p">Its workstreams and their progress, your own boards,</text>
-  <text x="508" y="515" class="p">and your own project coordinator to talk to it.</text>
-  <path d="M296 502 L342 502" class="edge"/>
-  <text x="28" y="552" class="muted">Green: Workforce. Purple: Orchestration. Blue: Core. Grey: Engine.</text>
+  <text x="28" y="490" class="muted">Green: Workforce. Purple: Orchestration. Blue: Core. Grey: Engine.</text>
 </svg>

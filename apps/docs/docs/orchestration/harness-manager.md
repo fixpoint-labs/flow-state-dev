@@ -6,7 +6,7 @@ sidebar_label: Harness manager
 
 A [harness](/docs/tools/coding-agents) is a coding agent driven as a block: you hand it a prompt, it works in its own agentic loop, and it hands back a handle describing what it did. `@flow-state-dev/harness-manager` is a task-board worker that turns a row on a board into a supervised run of one.
 
-Supervised means it does what dispatching a coding agent yourself does not. The run gets **its own checkout**, not whatever directory your server happens to sit in. A **verdict is read before the row settles**, so a run that produced nothing can never close as done. The run can **ask a question** and park until a person answers, and the answer continues the same conversation. And **which harness runs is yours to choose**. The manager imports none of them.
+Supervised means it does what dispatching a coding agent yourself does not. The run gets **its own checkout**, not whatever directory your server happens to sit in. A **verdict is read before the row settles**, so a run that produced nothing can never close as done. The run can **ask a question** and park until a user answers, and the answer continues the same conversation. And **which harness runs is yours to choose**. The manager imports none of them.
 
 ```bash
 pnpm add @flow-state-dev/harness-manager
@@ -52,15 +52,15 @@ const answering = harnessManager({
 });
 ```
 
-`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the person the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
+`conversationLedgers` comes from Workforce. It finds the board of the conversation the task came from, for the user the run belongs to, and nothing else. The manager reads the board and partition from the claim, never from the task. Each run's checkout, branch and run record are kept apart by board and partition, so two conversations that file the same task never share a tree. Pass `boardCollectionId` as well, and the manager also runs that board's rows.
 
 A task from a conversation usually carries a goal and no `issue` or `phase`. The manager then uses the task's id in their place. A task that names only one of the two is refused. A completed run's output carries the agent's last message as `answer` (up to 8,000 characters), the run's `branch`, or `null` when it worked on files alone, and how many `commits` it made.
 
-A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks parks the task the way the conversation parks any task: the person answers in the conversation, and the run's next attempt gets the answer in its prompt.
+A run refused before it starts (no project, a remote the host doesn't allow) fails a conversation's task for good, so the conversation hears why; on a fixed board the row is cancelled. A question the run asks parks the task the way the conversation parks any task: the user answers in the conversation, and the run's next attempt gets the answer in its prompt.
 
-You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the person, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
+You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the user, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
 
-A manager built with `ledgers` alone has no `messageDoor`, since that door reads one board's rows. To let a person send a message into a running run, build the door with `harnessMessageDoor` and tell it which boards the calling session's run may be on. The package README's [One door for runs from more than one board](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#one-door-for-runs-from-more-than-one-board) has the setup.
+A manager built with `ledgers` alone has no `messageDoor`, since that door reads one board's rows. To let a user send a message into a running run, build the door with `harnessMessageDoor` and tell it which boards the calling session's run may be on. The package README's [One door for runs from more than one board](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#one-door-for-runs-from-more-than-one-board) has the setup.
 
 ## Choosing the harness
 
@@ -137,7 +137,7 @@ The manager installs it on the blocks a phase's hooks run inside, so `ctx.resour
 
 ## Asking and being answered
 
-A run that needs a decision writes its question to a path the prompt names. When the manager sees it, the run parks: the board row waits, nothing is spent while a person thinks, and the question appears wherever your host surfaces it.
+A run that needs a decision writes its question to a path the prompt names. When the manager sees it, the run parks: the board row waits, nothing is spent while a user thinks, and the question appears wherever your host surfaces it.
 
 Answer it and the run picks up **the same coding session**, not a new one told what was answered. Everything the first attempt had worked out is still there.
 
@@ -147,7 +147,7 @@ Answer it and the run picks up **the same coding session**, not a new one told w
 
 ## Talking to a run
 
-A person can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
+A user can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
 
 The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
 
@@ -163,9 +163,9 @@ defineFlow({
 });
 ```
 
-If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
+If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its flow kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
 
-Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The person's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
+Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The user's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
 
 What happens depends on where the task is:
 
@@ -186,7 +186,7 @@ A refusal fails the request rather than answering with a value, so a request tha
 
 **A message isn't an answer.** If the run is waiting on its own question, your message is kept for later but the question still needs answering.
 
-**Only the run's own person can send one.** The session belongs to them, so anyone else is refused before the message is written.
+**Only the run's own user can send one.** The session belongs to them, so anyone else is refused before the message is written.
 
 The stop costs the step the run was in the middle of.
 
@@ -194,7 +194,7 @@ The stop costs the step the run was in the middle of.
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Any later session works out the same path from the same inputs, without looking it up.
 
-The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
+The board can be any task collection. A board id with dots in it, like `eng.feature.work`, is accepted as is, and the manager names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a board kept for a whole organization, a row's run belongs to the user who started it, and another user's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
 
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. A process that was displaced never removes its replacement's lock.
 

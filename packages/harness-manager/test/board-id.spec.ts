@@ -8,8 +8,10 @@
  *    dot derives byte for byte the checkout and branch it did then. The
  *    comparison is against `derivation-snapshot.json`, which was written by the
  *    code as it stood before the grammar widened — not re-derived here, which
- *    would only prove the function agrees with itself.
- * 2. **A mailbox's board is used as is.** `eng.feature.work` is accepted, and
+ *    would only prove the function agrees with itself. Those were derived
+ *    before the organization was part of the place, so they are compared as
+ *    a run already under way then is derived: without it (`orgless`).
+ * 2. **A dotted board id is used as is.** `eng.feature.work` is accepted, and
  *    because nothing is translated it never shares a checkout or a branch with
  *    `eng-feature-work`, a name a board may already have. Ids that differ only
  *    in case shared before and still do: the derivation folds case, because a
@@ -34,7 +36,7 @@ import { seedRepo } from "./fixtures";
 
 interface SnapshotRow {
   epic: string;
-  principal: RunLocation["principal"];
+  principal: Omit<RunLocation["principal"], "orgId">;
   checkout: string;
   branch: string;
 }
@@ -44,10 +46,16 @@ const snapshot = JSON.parse(
   readFileSync(join(HERE, "derivation-snapshot.json"), "utf8"),
 ) as SnapshotRow[];
 const CONFIG = { root: "/ws", sourceRepo: "/src", baseRef: "main" };
-const ALICE = { userId: "u_devforce_lab" };
+const ALICE = { orgId: "org_devforce_lab", userId: "u_devforce_lab" };
 
-function derive(epic: string, principal: RunLocation["principal"] = ALICE) {
-  const location: RunLocation = { principal, epic, issue: "FIX-1", phase: "implement" };
+function derive(epic: string, principal: RunLocation["principal"] = ALICE, orgless?: true) {
+  const location: RunLocation = {
+    principal,
+    epic,
+    issue: "FIX-1",
+    phase: "implement",
+    ...(orgless !== undefined ? { orgless } : {}),
+  };
   return { checkout: checkoutPathFor(CONFIG, location), branch: branchFor(location) };
 }
 
@@ -70,7 +78,7 @@ describe("every board id accepted before derives what it did", () => {
 
   it("derives the recorded checkout and branch for each, byte for byte", () => {
     for (const row of snapshot) {
-      expect(derive(row.epic, row.principal), row.epic).toEqual({
+      expect(derive(row.epic, { ...row.principal, orgId: "any-org" }, true), row.epic).toEqual({
         checkout: row.checkout,
         branch: row.branch,
       });
@@ -85,7 +93,7 @@ describe("every board id accepted before derives what it did", () => {
   });
 });
 
-describe("a mailbox's board id, used as is", () => {
+describe("a dotted board id, used as is", () => {
   it("is accepted, and git accepts the branch it derives", () => {
     const { checkout, branch } = derive("eng.feature.work");
     expect(checkout).toContain("/eng.feature.work/");
@@ -160,7 +168,7 @@ describe("an id git cannot carry is refused when the manager is built", () => {
     }
   });
 
-  it("builds for a mailbox's board id and for an id accepted before", () => {
+  it("builds for a dotted board id and for an id accepted before", () => {
     expect(() => build("eng.feature.work")).not.toThrow();
     expect(() => build("devforce-tasks--t0--feature")).not.toThrow();
     // `.lock` is refused as an ending only, which is git's rule too.

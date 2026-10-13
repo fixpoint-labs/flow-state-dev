@@ -1,0 +1,80 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Today and after, for three families. Ask, the word for a waited-on task: parkOnAsk, the ask gate, row.ask become parkOnWait, the wait gate and row.wait, with the old marks still read and the internal fsd.ask keys kept. Hand-off, the word for a dispatched row: createHandOff, the handed-off ending and the section Assignees that hand off become the dispatch names, the dispatched ending and Assignees that dispatch, with old logs still read. Published words: the glossary and the task board pages say dispatch and wait, and hand-off means mid-work only, held by the sweep in CI. Kept, in grey: ask as a question to a person, isTaskDispatcher and dispatcher(), goal directories and retained specs."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.5; }
+    .kept  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="32" y="28">FAMILY</text>
+    <text class="t-lbl" x="212" y="28">TODAY</text>
+    <text class="t-lbl" x="592" y="28">AFTER</text>
+  </g>
+
+  <g id="wait">
+    <text class="t-b" x="32" y="66">Waiting on</text>
+    <text class="t-b" x="32" y="84">a task · P1</text>
+    <rect class="old" x="212" y="44" width="340" height="66" rx="5"/>
+    <text class="t-g" x="228" y="66">ask</text>
+    <text class="t-s" x="228" y="84">parkOnAsk · AskEndedError · gate "ask"</text>
+    <text class="t-s" x="228" y="100">row.ask · fsd.ask.* · resumeOwedAsks</text>
+    <path class="arrow" d="M556 77 H582"/><path class="head" d="M588 77 l-8 -4 v8 z"/>
+    <rect class="new" x="592" y="44" width="332" height="66" rx="5"/>
+    <text class="t-c" x="608" y="66">wait</text>
+    <text class="t-s" x="608" y="84">parkOnWait · WaitEndedError · gate "wait"</text>
+    <text class="t-s" x="608" y="100">row.wait · old marks read · fsd.ask.* kept</text>
+  </g>
+
+  <g id="dispatch">
+    <text class="t-b" x="32" y="148">A board's</text>
+    <text class="t-b" x="32" y="166">row run elsewhere · P2</text>
+    <rect class="old" x="212" y="126" width="340" height="66" rx="5"/>
+    <text class="t-g" x="228" y="148">hand-off</text>
+    <text class="t-s" x="228" y="166">createHandOff · ending "handed-off"</text>
+    <text class="t-s" x="228" y="182">"Assignees that hand off"</text>
+    <path class="arrow" d="M556 159 H582"/><path class="head" d="M588 159 l-8 -4 v8 z"/>
+    <rect class="new" x="592" y="126" width="332" height="66" rx="5"/>
+    <text class="t-c" x="608" y="148">dispatch</text>
+    <text class="t-s" x="608" y="166">createRowDispatch · ending "dispatched"</text>
+    <text class="t-s" x="608" y="182">"Assignees that dispatch" · old logs read</text>
+  </g>
+
+  <g id="published">
+    <text class="t-b" x="32" y="230">Published</text>
+    <text class="t-b" x="32" y="248">words · P3</text>
+    <rect class="old" x="212" y="208" width="340" height="66" rx="5"/>
+    <text class="t-g" x="228" y="230">two words for one thing</text>
+    <text class="t-s" x="228" y="248">glossary Hand-off = any work that leaves</text>
+    <text class="t-s" x="228" y="264">"an asked row" · "hands each row off"</text>
+    <path class="arrow" d="M556 241 H582"/><path class="head" d="M588 241 l-8 -4 v8 z"/>
+    <rect class="new" x="592" y="208" width="332" height="66" rx="5"/>
+    <text class="t-c" x="608" y="230">one word per thing</text>
+    <text class="t-s" x="608" y="248">Dispatch a task · Wait · Hand-off mid-work</text>
+    <text class="t-s" x="608" y="264">held by the sweep in CI: zero open lines</text>
+  </g>
+
+  <g id="kept">
+    <text class="t-lbl" x="32" y="312">KEPT ON PURPOSE</text>
+    <rect class="kept" x="212" y="294" width="712" height="66" rx="5"/>
+    <text class="t-b" x="228" y="316">ask as a question to a person · dispatcher() and isTaskDispatcher</text>
+    <text class="t-s" x="228" y="336">Shift Manager's Ask and Inbox · approvals · the harness question inbox</text>
+    <text class="t-s" x="228" y="352">goal directories, retained specs, changelogs: history</text>
+  </g>
+</svg>

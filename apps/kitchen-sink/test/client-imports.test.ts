@@ -42,7 +42,7 @@ describe("client components and the workforce package", () => {
   it("finds the client components it checks", () => {
     // Guards the scan itself: an empty list would pass the case below.
     expect(clientModules.map((path) => relative(appDir, path))).toEqual(
-      expect.arrayContaining(["components/picked-session-panel.tsx", "app/page.tsx"]),
+      expect.arrayContaining(["components/picked-session-panel.tsx", "app/flow-state/page.tsx"]),
     );
   });
 

@@ -581,7 +581,7 @@ Use isolation for internal-only flows, background jobs, library-private state, o
 
 ### The per-org user cell
 
-Every flow keys a user's **shared** data — the scope record and every user-scoped resource that is not flow-isolated — at `<user>:~org:<org>`, and their flow-isolated data at `<user>:~org:<org>:<flow id>` (FIX-1790). The org is the admitted run's, or the stored session's on a read-side view, never a header or body (BP-031). So a user's flows in one org share one cell, the same user in another org starts empty, and another user reads their own cell. An owner-pinned instance is no exception: admission already checked that the run's org is the pin's, so a hired seat shares the user's cell with the app's other flows in its org, under the registry's schema check like any two flows. The pin chooses no key (`IsolationFlow.ownerPin` is accepted and ignored until FIX-1798 removes pins).
+Every flow keys a user's **shared** data — the scope record and every user-scoped resource that is not flow-isolated — at `<user>:~org:<org>`, and their flow-isolated data at `<user>:~org:<org>:<flow id>` (FIX-1790). The org is the admitted run's, or the stored session's on a read-side view, never a header or body (BP-031). So a user's flows in one org share one cell, the same user in another org starts empty, and another user reads their own cell. An owner-pinned instance is no exception: admission already checked that the run's org is the pin's, so a hired worker shares the user's cell with the app's other flows in its org, under the registry's schema check like any two flows. The pin chooses no key (`IsolationFlow.ownerPin` is accepted and ignored until FIX-1798 removes pins).
 
 The org is a required argument with no default: a missing, blank or malformed one throws `OrgRequiredError`, because a default would be the cross-org cell under a new name. Org-scoped and session-scoped keys are unchanged.
 
@@ -702,8 +702,8 @@ Every creator goes through one function, `birthSession`
 (`context/session-birth.ts`). It parses the session's initial state through the
 flow's session `stateSchema` (on a flow that binds its sessions, with a
 `.readonly()` field or a `createCheck`, a state the schema refuses is refused;
-any other flow keeps it as sent, because the workforce mailbox creates
-sessions half-filled on purpose), runs the `serverOwned` refusal for caller-seeded state and the
+any other flow keeps it as sent, so a flow can create sessions half-filled
+on purpose), runs the `serverOwned` refusal for caller-seeded state and the
 flow's `session.createCheck` on the parsed state, reclaims the id's resource-state tombstones (FIX-1258),
 mints the lineage id unless the caller derives one, and writes `"absent"`. The
 caller describes the record it wants and chooses only what a lost race means:

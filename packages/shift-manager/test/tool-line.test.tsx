@@ -32,12 +32,12 @@ describe("a tool call is a quiet line", () => {
   });
 
   it("a run of calls is one line with a count, and opens to one row per call", () => {
-    render(<ToolLineGroup items={[call("discover"), call("createProject"), call("readMailbox")]} />);
+    render(<ToolLineGroup items={[call("discover"), call("createProject"), call("readNotes")]} />);
     expect(screen.getAllByTestId("tool-group")).toHaveLength(1);
     expect(screen.queryByText("Used createProject")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Used 3 tools/ }));
     expect(screen.getByText("Used createProject")).toBeTruthy();
-    expect(screen.getByText("Used readMailbox")).toBeTruthy();
+    expect(screen.getByText("Used readNotes")).toBeTruthy();
   });
 
   it("says so in words while a call runs, and when it failed", () => {
@@ -46,5 +46,17 @@ describe("a tool call is a quiet line", () => {
     cleanup();
     render(<ToolLine item={call("discover", "failed")} />);
     expect(screen.getByRole("button", { name: /discover failed/ })).toBeTruthy();
+  });
+
+  it("a call that stopped to wait says it waits, not that it failed, and shows no error", () => {
+    const waiting = { ...call("setRepository", "failed"), error: { message: "Approve setting the repository?", code: "SUSPENSION" } } as ToolOutputItem;
+    render(<ToolLine item={waiting} />);
+    const line = screen.getByRole("button", { name: /setRepository is waiting/ });
+    expect(screen.queryByText(/setRepository failed/)).toBeNull();
+    fireEvent.click(line);
+    expect(screen.queryByText(/Approve setting the repository/)).toBeNull();
+    cleanup();
+    render(<ToolLineGroup items={[call("listProjects"), waiting]} />);
+    expect(screen.getByRole("button", { name: /Used 2 tools, one waiting/ })).toBeTruthy();
   });
 });

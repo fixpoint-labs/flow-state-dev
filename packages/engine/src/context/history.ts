@@ -25,7 +25,7 @@ import type {
   OutputItem,
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
-import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import {
   buildAssistantToolCallMessage,
@@ -167,8 +167,14 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 /**
  * Expands the items of a single RequestRecord into LLM-ready messages.
  *
- * Applies, in order: a stable sort by `(ts, itemIndex)`, the transient
- * filter, the allowed-item-types filter, and `itemToLLMMessages` per item.
+ * Applies, in order: the canonical-log collapse, a stable sort by
+ * `(ts, itemIndex)`, the transient filter, the allowed-item-types filter,
+ * and `itemToLLMMessages` per item.
+ *
+ * The collapse keeps a tool call that waited on an approval from replaying
+ * its wait: raw, a later turn shows the model the approval's question as the
+ * call's error, then the same call again, which it reads as a retry.
+ *
  * `itemToLLMMessages` internally applies `resolveItemVisibility` so
  * sub-agent and trace items are dropped here as well.
  *
@@ -188,7 +194,7 @@ export function expandRequestToMessages(
   allowedTypes: Set<string>,
   allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
 ): LLMMessage[] {
-  const sorted = [...items].sort((a, b) => {
+  const sorted = collapseToCanonicalLog(items as readonly OutputItem[]).sort((a, b) => {
     const tsDiff = a.ts - b.ts;
     return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
   });

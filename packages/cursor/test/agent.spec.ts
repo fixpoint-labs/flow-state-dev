@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
-import { harnessRunHandleSchema } from "@flow-state-dev/core";
+import { harnessFailureKind, harnessRunHandleSchema } from "@flow-state-dev/core";
 import { cursorAgent, INTERNAL_SDK_VERSION_READER, type CursorAgentOptions } from "../src/agent";
 import {
   CursorAgentAbortedError,
@@ -843,5 +843,61 @@ describe("cursorAgent — cancellation", () => {
 describe("cursorAgent — the version gate seam", () => {
   it("builds against the tested version through the private symbol", () => {
     expect(() => cursorAgent(GATE_OFF)).not.toThrow();
+  });
+});
+
+describe("cursorAgent — a resume Cursor refuses (S8)", () => {
+  /** The SDK's AgentNotFoundError, as `@cursor/sdk` 1.0.31 throws it from `Agent.resume`. */
+  const agentNotFound = (id: string) =>
+    Object.assign(new Error(`Agent ${id} not found`), { name: "AgentNotFoundError", code: "agent_not_found" });
+
+  it("classifies Cursor not knowing the agent as an unknown conversation, naming the agent", async () => {
+    const { resolve } = scripted([], { throwOnResume: agentNotFound("agent_gone") });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, resume: () => "agent_gone" });
+    const { error } = await testBlock(block, { input: { prompt: "continue" } });
+
+    expect(harnessFailureKind(error)).toBe("unknown-conversation");
+    expect(String(error?.message)).toContain("agent_gone");
+  });
+
+  it("reads any other resume failure as an error, not a refusal", async () => {
+    const { resolve } = scripted([], {
+      throwOnResume: Object.assign(new Error("unauthorized"), { name: "AuthenticationError", code: "unauthenticated" }),
+    });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, resume: () => "agent_1" });
+    const { error } = await testBlock(block, { input: { prompt: "continue" } });
+
+    expect(error).not.toBeNull();
+    expect(harnessFailureKind(error)).toBeNull();
+  });
+
+  it("reads a failure after Cursor resumed the agent as an error, even one carrying the same code", async () => {
+    // Cursor confirmed the agent when `resume` returned; whatever fails later
+    // is a failure on an agent it knows.
+    const { resolve } = scripted([], { throwOnSend: agentNotFound("agent_1") });
+    const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, resume: () => "agent_1" });
+    const { error } = await testBlock(block, { input: { prompt: "continue" } });
+
+    expect(error).not.toBeNull();
+    expect(harnessFailureKind(error)).toBeNull();
+  });
+});
+
+describe("cursorAgent — the env fence, refusals when the block is built", () => {
+  it("refuses env together with a custom client, which would run outside the fence", () => {
+    const { resolve } = scripted([]);
+    expect(() => cursorAgent({ ...GATE_OFF, env: { PATH: "/usr/bin" }, resolveCursorClient: resolve })).toThrow(
+      CursorAgentConfigError,
+    );
+  });
+
+  it("refuses a function in the options, which cannot cross into the runtime's process, naming where", () => {
+    expect(() =>
+      cursorAgent({ ...GATE_OFF, env: { PATH: "/usr/bin" }, send: { onStep: () => {} } }),
+    ).toThrow(/send\.onStep/);
+  });
+
+  it("accepts the same function with env unset, as before", () => {
+    expect(() => cursorAgent({ ...GATE_OFF, send: { onStep: () => {} } })).not.toThrow();
   });
 });

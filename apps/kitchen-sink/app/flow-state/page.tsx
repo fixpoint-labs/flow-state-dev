@@ -1,0 +1,942 @@
+"use client";
+
+import { memo, Suspense, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import {
+  FlowNavigator,
+  FlowProvider,
+  SuspensionResolverProvider,
+  useFlow,
+  useSession,
+  useClientData,
+  useResourceCollectionList,
+  useVoice,
+  type FlowNavigatorLeaf,
+  type FlowNavigatorLeafState,
+  type FlowNavigatorSection,
+} from "@flow-state-dev/react";
+import { createClient, createSessionClient, type ClientFetch } from "@flow-state-dev/client";
+import { Button } from "@/components/ui/button";
+import { Menu, MessageSquareText, Package, Plus, RotateCcw, Users, Wrench, X } from "lucide-react";
+
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+  ScrollOnNewRequest,
+} from "@/components/flow-state/conversation";
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputSubmit,
+  type PromptInputMessage,
+} from "@/components/flow-state/prompt-input";
+import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
+import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { StuckRequestBanner } from "@/components/flow-state/stuck-request-banner";
+
+import { AgentResponseCard } from "@/components/agent-response-card";
+import { ModeSelector, type Mode } from "@/components/mode-selector";
+import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
+import { ModelSelector, type ModelId } from "@/components/model-selector";
+import { ThinkingToggle } from "@/components/thinking-toggle";
+import { DEFAULT_KITCHEN_SINK_MODEL } from "@/lib/models";
+import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
+import { ClientDataBar } from "@/components/client-data-bar";
+import { ArtifactPanel } from "@/components/artifact-panel";
+import { TeamPanel } from "@/components/team-panel";
+import { PickedSessionPanel } from "@/components/picked-session-panel";
+import { ArtifactDialog } from "@/components/artifact-dialog";
+import { ResizeHandle } from "@/components/resize-handle";
+import { SuggestionRow } from "@/components/suggestion-row";
+import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
+import { VoiceToggle } from "@/components/voice-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { ModeRailHeader, RAIL_THEME } from "@/components/mode-rail-header";
+import { modeById } from "@/lib/modes";
+import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { ChatAgentMessage } from "@/components/chat-agent/message";
+import { cn } from "@/lib/utils";
+import { railSessions } from "@/lib/rail-sessions";
+import { COORDINATOR_FLOWS, defaultConversation, isCoordinatorFlow, WORKER_FLOWS, SHELL_FLOW } from "@/lib/workforce-shell";
+import { createWorkforceClient, type RosterEntry } from "@flow-state-dev/workforce/browser";
+import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
+import { pageGoalControl } from "@/lib/goal-control";
+
+import type { RendererRegistry } from "@flow-state-dev/react";
+
+const chatAgentRenderers: RendererRegistry = {
+  ...chatAssistantRenderers,
+  message: ChatAgentMessage,
+  block_trace: AgentResponseCard,
+};
+
+
+type MobilePanel = "chat" | "artifacts";
+
+/**
+ * Whether the rail lists the user's conversations with workers: the
+ * sessions on the one `agent` copy every worker runs on. A conversation is
+ * started from the roster panel's "Talk", which names its worker. Set this to
+ * `false` to ship the rail with coordinators only.
+ */
+const SHOW_WORKERS_IN_RAIL = true;
+
+/**
+ * The `fetch` the roster and the user's conversations with workers are read
+ * with. This app sends no credential; a host that does adds it here, once.
+ */
+const panelFetch: ClientFetch = (input, init) => fetch(input, init);
+
+/**
+ * The rail's sections. How deep each flow goes is read off the flow's declared
+ * cardinality, never written here: the coordinator flow opens straight into
+ * the user's conversations with its workers, and so does `agent`, whose one
+ * copy holds every worker's.
+ *
+ * "Assistant" is this app's own chat flow, so its conversations stay one click
+ * away.
+ */
+const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
+  { label: "Coordinators", kinds: COORDINATOR_FLOWS },
+  ...(SHOW_WORKERS_IN_RAIL ? [{ label: "Workers", kinds: WORKER_FLOWS }] : []),
+  { label: "Assistant", kinds: [SHELL_FLOW] },
+];
+
+/**
+ * A session picked in the rail that is not one of the assistant's own.
+ * `address` is the worker flow's copy it belongs to (`coordinator` for a
+ * conversation with a coordinator, `agent` for one with a specialist).
+ * Continuing or retrying a request is routed by it.
+ */
+type PickedSession = { sessionId: string; kind: string; address: string };
+
+const SIDEBAR_DEFAULT_WIDTH = 360;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 700;
+const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
+
+const CLIENT_DATA_OPTIONS = {
+  session: ["modeStatus", "workingMemory"] as string[],
+  user: ["preferences"] as string[],
+};
+
+export default function Page() {
+  // useSearchParams() must be wrapped in Suspense in Next.js app router —
+  // it opts the route out of prerender. The wrapper keeps SSR happy without
+  // forcing the production landing page to be fully dynamic.
+  return (
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
+  );
+}
+
+function PageInner() {
+  // Every caller of this app is the same user (`lib/kitchen-sink-principal.ts`),
+  // so parallel E2E scenarios cannot be kept apart by user. Under E2E test mode
+  // only, `?e2eSession=<id>` opens the assistant on that session instead of the
+  // user's most recent one, and each test brings its own. The env var is
+  // `NEXT_PUBLIC_*` so the gate evaluates on the client; production builds
+  // ignore the parameter.
+  const searchParams = useSearchParams();
+  const e2eSessionId =
+    process.env.NEXT_PUBLIC_KITCHEN_SINK_TEST_MODE === "1"
+      ? searchParams.get("e2eSession")
+      : null;
+  // The goal control `no-live` opens the rail's panels without following their
+  // session, so a goal check can be seen to fail without it.
+  const pickedLive = pageGoalControl(searchParams) !== "no-live";
+  return (
+    <FlowProvider flowKind="chat-agent" userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAgentRenderers}>
+      <KitchenSinkApp e2eSessionId={e2eSessionId} pickedLive={pickedLive} />
+    </FlowProvider>
+  );
+}
+
+function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | null; pickedLive: boolean }) {
+  // The assistant's own sessions, and which one the stream is on. The rail's
+  // navigator reads the flow list once more for itself: one extra read per
+  // page, never one per row. A test's own session, when one is named, is the
+  // only one selected: the hook neither picks the latest nor creates another.
+  const flow = useFlow({
+    autoCreateSession: e2eSessionId === null,
+    // Chosen below instead, so a test's own session is never replaced, and an
+    // earlier page's hire session is never the one opened.
+    autoSelectSession: false,
+  });
+  const { selectSession, createSession } = flow;
+  // The conversation the stream opens on: the test's own when one is named;
+  // otherwise the most recent that is not an earlier page's hire session, and a
+  // new one when there is none. An empty list is `useFlow`'s to fill.
+  const isCreatingSession = useRef(false);
+  useEffect(() => {
+    if (e2eSessionId !== null) {
+      selectSession(e2eSessionId);
+      return;
+    }
+    if (flow.activeSessionId !== undefined || flow.sessions.length === 0 || isCreatingSession.current) return;
+    const latest = defaultConversation(flow.sessions);
+    if (latest !== undefined) {
+      selectSession(latest.id);
+      return;
+    }
+    isCreatingSession.current = true;
+    void createSession().finally(() => {
+      isCreatingSession.current = false;
+    });
+  }, [e2eSessionId, flow.activeSessionId, flow.sessions, selectSession, createSession]);
+  const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
+
+  const [message, setMessage] = useState("");
+  const [mode, setMode] = useState<Mode>("ask");
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
+  const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
+  const [isRailDrawerOpen, setIsRailDrawerOpen] = useState(false);
+  const [isTeamSheetOpen, setIsTeamSheetOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedSession | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+    const stored = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
+    return stored ? Number(stored) : SIDEBAR_DEFAULT_WIDTH;
+  });
+
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth((w) => {
+      const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, w - delta));
+      sessionStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  // Applied through a custom property so it only takes effect where the panel
+  // is a column (`lg` and up); below that the panel is a sheet with its own width.
+  const teamPanelStyle = useMemo(
+    () => ({ "--team-panel-width": `${sidebarWidth}px` }) as CSSProperties,
+    [sidebarWidth],
+  );
+
+  const voice = useVoice(session, {
+    action: "run",
+    buildInput: (text) => ({ message: text, mode, thinkingStyle, features }),
+    autoPlayTTS: ttsEnabled,
+  });
+
+  // A coordinator's or a worker's session, when one is picked in the rail. Its
+  // panel has a composer of its own, which calls the picked flow's own action
+  // on this session; the assistant's composer stays wired to the assistant.
+  // It follows the whole session (`live`), because others write here too: a
+  // delegate's answer landing, a user in another tab. The assistant's session
+  // (`session`, above) is not live: only this user writes there, and their
+  // own requests already stream.
+  const pickedSession = useSession(picked?.sessionId, {
+    flowKind: picked?.address,
+    items: true,
+    autoResume: true,
+    live: pickedLive,
+  });
+  // A composer settles a send on that request's own status, read from the
+  // picked flow, rather than on the session's stream closing.
+  const pickedAddress = picked?.address;
+  const pickedRequestStatus = useMemo(() => {
+    if (pickedAddress === undefined) return async () => "in_progress";
+    const client = createClient({ flowKind: pickedAddress, userId: KITCHEN_SINK_USER_ID, baseUrl: "" });
+    return async (requestId: string) => (await client.getRequestStatus(requestId)).status;
+  }, [pickedAddress]);
+
+  // The user's roster and their conversations with workers.
+  const workforce = useMemo(
+    () => createWorkforceClient({ userId: KITCHEN_SINK_USER_ID, baseUrl: "", fetcher: panelFetch }),
+    [],
+  );
+
+  const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
+  // What the rail lists: under the coordinator flow, the user's conversation
+  // with each coordinator the tree declares. Stable, so the navigator's reads
+  // stay fenced on it.
+  const railSessionSource = useMemo(() => railSessions(sessionClient, workforce), [sessionClient, workforce]);
+
+  const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
+  const { items: artifactItems } = useResourceCollectionList(session, "artifacts", { limit: 50 });
+
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; activeSkills?: Array<{ name: string; source: string }> } | undefined;
+  const userPrefs = clientData.user?.preferences as { displayName: string; selectedModel: string; thinkingEnabled: boolean } | undefined;
+
+  // Derive artifact summaries from the paginated artifact list. Content is
+  // loaded lazily via item.fetchContent() when an artifact is opened.
+  const artifacts = useMemo(() => {
+    return artifactItems.map((item) => {
+      const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
+      return {
+        id: item.topic.replace("artifacts/", ""),
+        title: data?.title ?? "Untitled",
+        summary: data?.summary ?? "",
+        updatedAt: data?.updatedAt ?? 0,
+        extension: data?.extension ?? null,
+        content: data?.content ?? "",
+        _handle: item,
+      };
+    });
+  }, [artifactItems]);
+
+  // Server is the source of truth for selectedModel + thinkingEnabled. Fall
+  // back to the catalog default while user state is still loading.
+  const selectedModel: ModelId =
+    (userPrefs?.selectedModel as ModelId | undefined) ??
+    DEFAULT_KITCHEN_SINK_MODEL;
+  const thinkingEnabled = userPrefs?.thinkingEnabled ?? false;
+
+  // Artifact content is loaded lazily when an artifact is selected.
+  const [artifactContent, setArtifactContent] = useState<string | null>(null);
+
+  const selectedArtifactMeta = useMemo(
+    () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
+    [artifacts, selectedArtifactId]
+  );
+
+  // Fetch content when a new artifact is selected. The framework's list
+  // endpoint returns `topic` already stripped of the collection prefix
+  // (`extractBareTopic` → "hello.md", not "artifacts/hello.md"), and
+  // `selectedArtifactId` is derived from that same stripped topic above
+  // — so we compare bare-to-bare and skip the storageKey construction
+  // that would never match.
+  useEffect(() => {
+    if (!selectedArtifactId) {
+      setArtifactContent(null);
+      return;
+    }
+    const item = artifactItems.find((i) => i.topic === selectedArtifactId);
+    if (!item) {
+      setArtifactContent(null);
+      return;
+    }
+    item.fetchContent().then((content) => {
+      setArtifactContent(content);
+    }).catch(() => {
+      setArtifactContent(null);
+    });
+  }, [selectedArtifactId, artifactItems]);
+
+  const selectedArtifact = useMemo(() => {
+    if (!selectedArtifactMeta) return null;
+    return {
+      ...selectedArtifactMeta,
+      content: artifactContent ?? "",
+    };
+  }, [selectedArtifactMeta, artifactContent]);
+
+  const handleSubmit = useCallback(
+    async (msg: PromptInputMessage) => {
+      const text = msg.text.trim();
+      if (!flow.activeSessionId || text.length === 0) return;
+      setMessage("");
+      await session.sendAction("run", {
+        message: text,
+        mode,
+        thinkingStyle,
+        features,
+      }, { userMessage: text });
+    },
+    [flow.activeSessionId, mode, thinkingStyle, features, session]
+  );
+
+  const handleNewSession = useCallback(
+    async (leaf: FlowNavigatorLeafState) => {
+      await flow.createSession();
+      setPicked(null);
+      leaf.refresh();
+      setIsRailDrawerOpen(false);
+      setMobilePanel("chat");
+    },
+    [flow]
+  );
+
+  // "Talk" on a worker in the roster: the user's conversation with that
+  // worker, found or started on the worker's flow, opened in the panel.
+  const handleTalk = useCallback(
+    async (worker: RosterEntry) => {
+      const conversation = await workforce.ensureWorkerSession({ worker: worker.id });
+      setPicked({ sessionId: conversation.id, kind: conversation.flowKind, address: conversation.flowKind });
+      setMobilePanel("chat");
+    },
+    [workforce]
+  );
+
+  const handleSelectSession = useCallback(
+    (id: string, leaf: FlowNavigatorLeaf) => {
+      if (leaf.kind === SHELL_FLOW) {
+        flow.selectSession(id);
+        setPicked(null);
+      } else {
+        setPicked({ sessionId: id, kind: leaf.kind, address: leaf.address });
+      }
+      setIsRailDrawerOpen(false);
+      setMobilePanel("chat");
+    },
+    [flow]
+  );
+
+  // The assistant's leaf, while it is open, so a session that gets its title
+  // after the first turn can be re-read into the rail.
+  const assistantLeafRefresh = useRef<(() => void) | null>(null);
+  const sessionTitle = session.detail?.title;
+  useEffect(() => {
+    if (sessionTitle !== undefined) assistantLeafRefresh.current?.();
+  }, [sessionTitle]);
+
+  const railSlots = useMemo(
+    () => ({
+      // "New session" sits on the assistant's own row. Coordinators get none:
+      // the rail opens the user's one conversation with each. A conversation
+      // with a worker starts from the roster.
+      leafToolbar: (leaf: FlowNavigatorLeafState) =>
+        leaf.kind === SHELL_FLOW ? (
+          <AssistantLeafToolbar
+            leaf={leaf}
+            refreshRef={assistantLeafRefresh}
+            disabled={flow.isLoading}
+            onNewSession={handleNewSession}
+          />
+        ) : null,
+      leafDetail: () => null,
+    }),
+    [handleNewSession, flow.isLoading]
+  );
+
+  const handleSelectedModelChange = useCallback(
+    (next: ModelId) => {
+      if (!flow.activeSessionId) return;
+      void session.sendAction("setSelectedModel", { selectedModel: next });
+    },
+    [flow.activeSessionId, session],
+  );
+
+  const handleThinkingEnabledChange = useCallback(
+    (next: boolean) => {
+      if (!flow.activeSessionId) return;
+      void session.sendAction("setThinkingEnabled", { thinkingEnabled: next });
+    },
+    [flow.activeSessionId, session],
+  );
+
+  // When switching out of Build mode, collapse the mobile view back to chat.
+  const handleModeChange = useCallback(
+    (newMode: Mode) => {
+      setMode(newMode);
+      if (newMode !== "build") {
+        setMobilePanel("chat");
+      }
+    },
+    [],
+  );
+
+  const handleSuggestionClick = useCallback((text: string) => {
+    setMessage(text);
+  }, []);
+
+  const handleSaveArtifact = useCallback(
+    async (artifact: { id: string; title: string; content: string }) => {
+      if (!flow.activeSessionId) return;
+      // Use the flow action for saves — this triggers server-side processing
+      // (state updates, summary generation) alongside the content update.
+      await session.sendAction("saveArtifact", artifact);
+    },
+    [flow.activeSessionId, session]
+  );
+
+  const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
+
+  const chatPanel = (
+    <ChatPanel
+      message={message}
+      mode={mode}
+      thinkingStyle={thinkingStyle}
+      selectedModel={selectedModel}
+      thinkingEnabled={thinkingEnabled}
+      features={features}
+      isDisabled={isDisabled}
+      session={session}
+      voice={voice}
+      ttsEnabled={ttsEnabled}
+      onToggleTTS={() => setTtsEnabled((v) => !v)}
+      onSetMessage={setMessage}
+      onSetMode={handleModeChange}
+      onSetThinkingStyle={setThinkingStyle}
+      onSelectedModelChange={handleSelectedModelChange}
+      onThinkingEnabledChange={handleThinkingEnabledChange}
+      onSetFeatures={setFeatures}
+      onSubmit={handleSubmit}
+      onSuggestionClick={handleSuggestionClick}
+    />
+  );
+  const stream =
+    picked === null ? (
+      chatPanel
+    ) : (
+      <PickedSessionPanel
+        session={pickedSession}
+        kind={picked.kind}
+        user={KITCHEN_SINK_USER_ID}
+        requestStatus={pickedRequestStatus}
+        conversation={
+          isCoordinatorFlow(picked.kind) ? null : (
+          <Conversation className="min-h-0 flex-1" data-testid="conversation">
+            <ConversationBody
+              items={pickedSession.items}
+              isStreaming={pickedSession.isStreaming}
+              isFinishing={pickedSession.isFinishing}
+              statusMessage={pickedSession.statusMessage}
+              isLoading={pickedSession.isLoading}
+              error={pickedSession.error}
+              emptyTitle="Nothing here yet"
+              emptyDescription={`This ${picked.kind} session has no turns yet.`}
+            />
+            <ConversationScrollButton />
+          </Conversation>
+          )
+        }
+      />
+    );
+
+  const teamPanel = (
+    <TeamPanel
+      workforce={workforce}
+      onTalk={handleTalk}
+      top={
+        mode === "build" ? (
+          <ArtifactPanel
+            artifacts={artifacts}
+            selectedId={selectedArtifactId}
+            onSelect={setSelectedArtifactId}
+            className="h-72 shrink-0 border-b border-l-0"
+          />
+        ) : null
+      }
+    />
+  );
+
+  // Three regions, and the order they give way in as the window narrows:
+  // below `lg` the team panel becomes a sheet opened from the header, below
+  // `sm` the rail becomes a drawer too, and the stream never yields.
+  //
+  // The rail and the panel are each mounted ONCE, at every width. A drawer is
+  // the same element restyled, not a second copy, so there is one flow-list
+  // read, one scroll container and one set of open rows whatever the width.
+  return (
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
+      {isRailDrawerOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 sm:hidden"
+          aria-label="Close navigator"
+          onClick={() => setIsRailDrawerOpen(false)}
+        />
+      )}
+      <aside
+        className={cn(
+          "shrink-0 flex-col border-r sm:static sm:z-auto sm:flex sm:w-64 sm:max-w-none sm:bg-muted/30 sm:shadow-none",
+          isRailDrawerOpen
+            ? "fixed inset-y-0 left-0 z-50 flex w-[18rem] max-w-[85vw] bg-background shadow-2xl"
+            : "hidden",
+        )}
+        data-testid="rail"
+        aria-label="Coordinators, workers and conversations"
+      >
+        <Rail
+          slots={railSlots}
+          sessionSource={railSessionSource}
+          selectedSessionId={picked?.sessionId ?? flow.activeSessionId}
+          onSelectSession={handleSelectSession}
+        />
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col" data-testid="stream">
+        <div className="flex items-center gap-2 border-b px-3 py-2 sm:px-4 lg:hidden">
+          <Button variant="outline" size="sm" className="gap-2 sm:hidden" onClick={() => setIsRailDrawerOpen(true)}>
+            <Menu className="h-4 w-4" />
+            Browse
+          </Button>
+          <Button
+            variant={mobilePanel === "chat" ? "secondary" : "outline"}
+            size="sm"
+            className="gap-2 sm:hidden"
+            onClick={() => setMobilePanel("chat")}
+          >
+            <MessageSquareText className="h-4 w-4" />
+            Chat
+          </Button>
+          {mode === "build" && picked === null && (
+            <Button
+              variant={mobilePanel === "artifacts" ? "secondary" : "outline"}
+              size="sm"
+              className="gap-2 sm:hidden"
+              onClick={() => setMobilePanel("artifacts")}
+            >
+              <Package className="h-4 w-4" />
+              Artifacts ({artifacts.length})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            aria-label="Open the roster"
+            onClick={() => setIsTeamSheetOpen(true)}
+          >
+            <Users className="h-4 w-4" />
+            Team
+          </Button>
+          <div className="ml-auto sm:hidden">
+            <ThemeToggle />
+          </div>
+        </div>
+
+        {/* The model named here is the assistant's own preference, and only the
+            assistant answers with it. A picked coordinator or worker answers through
+            its model intents (an `FSDEV_*` override lands there), and each reply
+            carries the model that produced it, so the bar names none there. */}
+        <ClientDataBar
+          displayName={userPrefs?.displayName}
+          selectedModel={picked === null ? selectedModel : undefined}
+          activeSkills={modeStatus?.activeSkills}
+        />
+
+        {/* Mounted HERE, above both responsive trees, and exactly once. The
+            mobile and desktop `ChatPanel`s are both alive at the same time —
+            one is hidden with CSS, not unmounted — so a side effect placed
+            inside either of them runs twice per turn. The panel itself is fine
+            to render twice; its stream-end re-read is not. */}
+        <BackgroundWorkRefresh session={session} />
+
+        <div className="flex min-h-0 flex-1 sm:hidden">
+          {(mobilePanel === "chat" || picked !== null) && stream}
+
+          {mobilePanel === "artifacts" && mode === "build" && picked === null && (
+            <div className="flex min-w-0 flex-1">
+              <ArtifactPanel
+                artifacts={artifacts}
+                selectedId={selectedArtifactId}
+                onSelect={setSelectedArtifactId}
+                className="w-full border-l-0"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="hidden min-h-0 flex-1 sm:flex">{stream}</div>
+      </main>
+
+      <ResizeHandle onResize={handleSidebarResize} className="hidden lg:flex" />
+      {isTeamSheetOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          aria-label="Close the roster"
+          onClick={() => setIsTeamSheetOpen(false)}
+        />
+      )}
+      <aside
+        className={cn(
+          "shrink-0 flex-col border-l lg:static lg:z-auto lg:flex lg:w-[var(--team-panel-width)] lg:max-w-none lg:shadow-none",
+          isTeamSheetOpen
+            ? "fixed inset-y-0 right-0 z-50 flex w-[28rem] max-w-[90vw] bg-background shadow-2xl"
+            : "hidden",
+        )}
+        style={teamPanelStyle}
+        data-testid="team-panel"
+        aria-label="Roster"
+      >
+        <div className="flex items-center justify-end border-b px-2 py-1 lg:hidden">
+          <Button variant="ghost" size="icon-sm" aria-label="Close the roster" onClick={() => setIsTeamSheetOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        {teamPanel}
+      </aside>
+
+      <ArtifactDialog
+        artifact={selectedArtifact}
+        isSaving={session.isStreaming}
+        onSaveArtifact={handleSaveArtifact}
+        onClose={() => setSelectedArtifactId(null)}
+      />
+    </div>
+  );
+}
+
+/**
+ * The assistant's open leaf's action, on its row: "New session", plus a
+ * handle on the leaf's re-read for as long as the leaf is open.
+ */
+function AssistantLeafToolbar({
+  leaf,
+  refreshRef,
+  disabled,
+  onNewSession,
+}: {
+  leaf: FlowNavigatorLeafState;
+  refreshRef: React.MutableRefObject<(() => void) | null>;
+  disabled: boolean;
+  onNewSession: (leaf: FlowNavigatorLeafState) => Promise<void>;
+}) {
+  const { refresh } = leaf;
+  useEffect(() => {
+    refreshRef.current = refresh;
+    return () => {
+      if (refreshRef.current === refresh) refreshRef.current = null;
+    };
+  }, [refresh, refreshRef]);
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label="New session"
+      title="New session"
+      onClick={() => void onNewSession(leaf)}
+      disabled={disabled}
+    >
+      <Plus className="size-3.5" />
+    </Button>
+  );
+}
+
+/** The rail: the mode's header row, one navigator over every section, and the app's links underneath it. */
+function Rail({
+  slots,
+  sessionSource,
+  selectedSessionId,
+  onSelectSession,
+}: {
+  slots: {
+    leafToolbar: (leaf: FlowNavigatorLeafState) => React.ReactNode;
+    leafDetail: (leaf: FlowNavigatorLeafState) => React.ReactNode;
+  };
+  sessionSource: ReturnType<typeof railSessions>;
+  selectedSessionId: string | undefined;
+  onSelectSession: (sessionId: string, leaf: FlowNavigatorLeaf) => void;
+}) {
+  return (
+    <>
+      <ModeRailHeader label={modeById("flow-state").label} />
+      <div className="min-h-0 flex-1 py-1" style={RAIL_THEME}>
+        {/* Dispatch runs too: a specialist's session for a coordinator's post is
+            a run the coordinator started, and is listed only when they are
+            included. */}
+        <FlowNavigator
+          sections={RAIL_SECTIONS}
+          sessionClient={sessionSource}
+          includeDispatchRuns
+          selectedSessionId={selectedSessionId}
+          onSelectSession={onSelectSession}
+          slots={slots}
+        />
+      </div>
+      <div className="flex items-center gap-1 border-t p-3">
+        <ThemeToggle />
+        <Button asChild variant="ghost" size="icon-sm" aria-label="Open DevTool">
+          <Link href="/devtool" target="_blank" rel="noopener" title="Open DevTool">
+            <Wrench className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </>
+  );
+}
+
+interface ChatPanelProps {
+  message: string;
+  mode: Mode;
+  thinkingStyle: ThinkingStyle;
+  selectedModel: ModelId;
+  thinkingEnabled: boolean;
+  features: Features;
+  isDisabled: boolean;
+  session: ReturnType<typeof useSession>;
+  voice: ReturnType<typeof useVoice>;
+  ttsEnabled: boolean;
+  onToggleTTS: () => void;
+  onSetMessage: (value: string) => void;
+  onSetMode: (value: Mode) => void;
+  onSetThinkingStyle: (value: ThinkingStyle) => void;
+  onSelectedModelChange: (value: ModelId) => void;
+  onThinkingEnabledChange: (value: boolean) => void;
+  onSetFeatures: (value: Features) => void;
+  onSubmit: (msg: PromptInputMessage) => Promise<void>;
+  onSuggestionClick: (text: string) => void;
+}
+
+/** Memoized conversation body — only re-renders when items/streaming/error change, not on typing. */
+const ConversationBody = memo(function ConversationBody({
+  items,
+  isStreaming,
+  isFinishing,
+  statusMessage,
+  isLoading,
+  error,
+  emptyTitle = "Kitchen Sink",
+  emptyDescription = "A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use.",
+}: {
+  items: import("@flow-state-dev/core/items").OutputItem[];
+  isStreaming: boolean;
+  isFinishing: boolean;
+  statusMessage: string;
+  isLoading: boolean;
+  error: { message: string } | null;
+  emptyTitle?: string;
+  emptyDescription?: string;
+}) {
+  return (
+    <>
+      <ScrollOnNewRequest items={items} />
+      <SessionItemsProvider value={items}>
+        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
+          {items.length === 0 && !isLoading && (
+            <ConversationEmptyState title={emptyTitle} description={emptyDescription} />
+          )}
+          <RequestGroupRenderer items={items} isStreaming={isStreaming} isFinishing={isFinishing} statusMessage={statusMessage} />
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <span>{error.message}</span>
+            </div>
+          )}
+        </ConversationContent>
+      </SessionItemsProvider>
+    </>
+  );
+});
+
+/**
+ * Inline notice that appears above the prompt when the latest request on this
+ * session was interrupted. Clicking Resume continues the interrupted request
+ * under its OWN id (crash-recovery re-entry) and streams the re-entry inline —
+ * it does not re-dispatch a fresh request, so the request list shows the same
+ * row transitioning interrupted → completed rather than a new `retryOf`
+ * sibling. Hidden in every other state — including while a new request is
+ * already streaming — so the chat doesn't pile up dueling controls.
+ */
+function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
+  const [isResuming, setIsResuming] = useState(false);
+  const latest = session.latestRequest;
+  const canResume =
+    latest?.status === "interrupted" && !session.isStreaming && !session.isFinishing;
+
+  const handleResume = useCallback(async () => {
+    if (latest === null) return;
+    setIsResuming(true);
+    try {
+      await session.continueRequest(latest.id);
+    } catch {
+      // Error is already surfaced via session.error.
+    } finally {
+      setIsResuming(false);
+    }
+  }, [session, latest]);
+
+  if (!canResume) return null;
+
+  return (
+    <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+        <span className="text-amber-700 dark:text-amber-300">
+          The previous request was interrupted before it finished.
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleResume}
+          disabled={isResuming}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          {isResuming ? "Resuming…" : "Resume"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ChatPanel({
+  message,
+  mode,
+  thinkingStyle,
+  selectedModel,
+  thinkingEnabled,
+  features,
+  isDisabled,
+  session,
+  voice,
+  ttsEnabled,
+  onToggleTTS,
+  onSetMessage,
+  onSetMode,
+  onSetThinkingStyle,
+  onSelectedModelChange,
+  onThinkingEnabledChange,
+  onSetFeatures,
+  onSubmit,
+  onSuggestionClick,
+}: ChatPanelProps) {
+  return (
+    // Bridge the session's streaming resume to the inline approval cards
+    // (the ui Approval renderer) so approving/rejecting a suspension streams the
+    // continuation into the chat live, without a page refresh.
+    <SuspensionResolverProvider resolve={session.resumeSuspension}>
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <Conversation className="min-h-0 flex-1" data-testid="conversation">
+        <ConversationBody
+          items={session.items}
+          isStreaming={session.isStreaming}
+          isFinishing={session.isFinishing}
+          statusMessage={session.statusMessage}
+          isLoading={session.isLoading}
+          error={session.error}
+        />
+        <ConversationScrollButton />
+      </Conversation>
+
+      <div className="border-t">
+        {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
+        <StuckRequestBanner session={session} />
+        {/* Outside the conversation, deliberately: a child session's output is not
+            part of the transcript and nothing folds it in. */}
+        <BackgroundWorkPanel session={session} flowKind="chat-agent" />
+        <ResumePrompt session={session} />
+        <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
+          <div className="mb-2 flex items-center gap-3">
+            <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
+            <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
+            <ModelSelector value={selectedModel} onValueChange={onSelectedModelChange} disabled={isDisabled} />
+            <ThinkingToggle value={thinkingEnabled} onValueChange={onThinkingEnabledChange} disabled={isDisabled} />
+            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
+            <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
+          </div>
+          <PromptInput onSubmit={onSubmit}>
+            <PromptInputTextarea
+              name="message"
+              placeholder={
+                mode === "build" ? "Describe what to build..." :
+                mode === "interview" ? "Name a topic to explore..." :
+                mode === "debate" ? "State a position to challenge..." :
+                "Ask a question..."
+              }
+              value={message}
+              onChange={(e) => onSetMessage(e.target.value)}
+              disabled={isDisabled}
+            />
+            <PromptInputSubmit
+              className="mr-2 sm:mr-4"
+              status={session.isStreaming ? "streaming" : "ready"}
+              disabled={!session.isStreaming && (isDisabled || message.trim().length === 0)}
+              onStop={session.isStuck ? () => session.dismissRequest() : session.abortRequest}
+            />
+          </PromptInput>
+        </div>
+      </div>
+    </section>
+    </SuspensionResolverProvider>
+  );
+}

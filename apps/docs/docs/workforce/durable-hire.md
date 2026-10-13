@@ -36,6 +36,21 @@ is saved. A bad value, a flow your installation doesn't run workers on or keeps 
 workers, or an id already on the user's roster is refused, and nothing is written. An id can't be
 a standard worker's: fork it instead.
 
+`sendAction` returns when the write starts, not when it finishes. Before you send a write that
+depends on an earlier one, such as an `edit` of a worker you just hired or forked, wait for the
+earlier request to leave `in_progress`, and go on only if it `completed`:
+
+```ts
+const { request } = await roster.sendAction("fork", { from: "researcher", id: "my-researcher" }, { sessionId })
+let status = (await roster.getRequestStatus(request.id)).status
+while (status === "in_progress") {
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  status = (await roster.getRequestStatus(request.id)).status
+}
+if (status !== "completed") throw new Error(`fork ${status}`)
+await roster.sendAction("edit", { id: "my-researcher", instructions: "Cite every source." }, { sessionId })
+```
+
 The same four writes are blocks, from `createWorkerHireBlocks(installation)`, if you'd rather
 mount them on a flow of your own or hand them to a model as tools:
 
@@ -87,7 +102,7 @@ why; your app reads it the way it reads any failed request.
 
 ## Who can reach a worker
 
-Only its owner. A worker belongs to one user in one organization: another member can't list it,
+Only its owner. A worker belongs to one user in one organization: another user can't list it,
 open its sessions, send it a message or create a session with it. Asking for another user's
 worker gets the same answer as asking for one that doesn't exist. A user who belongs to two
 organizations has a separate roster in each.
@@ -98,7 +113,7 @@ Each worker the user hires or forks is one row in their user scope at `workforce
 A standard worker isn't stored: it is read from your files each time, so a deploy that changes a
 file changes it for everyone. On the built-in `agent` flow, each worker has its own skills, and
 its own working memory in each conversation. Long-term memory, if your app adds it, is kept per
-person: one person's workers on `agent` share it, and another person's workers can't read it. On a
+user: one user's workers on `agent` share it, and another user's workers can't read it. On a
 flow you write, that is up to you: see
 [Where a worker's data lives](./workers-on-disk.md#where-a-workers-data-lives).
 

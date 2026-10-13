@@ -6,9 +6,9 @@
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `seatStates` result, so they agree with Roster. PROJECTS lists each project;
+ * `workerStates` result, so they agree with Roster. PROJECTS lists each project;
  * TEAMS is one row per
- * team with a status square per seat, the person's own workers included,
+ * team with a status square per worker, the user's own workers included,
  * opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
  *
@@ -17,7 +17,7 @@
  * Coordinator is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
  * Inbox's count wears the highlighter only while an ask waits, and Tasks' is
  * blue; the current row is v2's blue tint at 700; TEAMS says what its counts are; and the
- * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
+ * footer ends its counts with the user's initials (v2:52-113, 1173-1188).
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
  * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
@@ -29,7 +29,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { initialsOf } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
@@ -140,7 +140,7 @@ function Heading({ children, aside, testId }: { children: string; aside?: string
   );
 }
 
-/** The organization this person's sessions are bound to. One per Lab principal. */
+/** The organization this user's sessions are bound to. One per Lab principal. */
 function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -339,12 +339,12 @@ export function Sidebar({
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
-  // The person's own workers are on their roster, not in the inventory: joined as Roster joins them.
+  // The user's own workers are on their roster, not in the inventory: joined as Roster joins them.
   const roster = useRoster(loaded?.readAt);
   const joined = loaded === undefined ? undefined : withRoster(loaded, roster);
   // With the inventory unread and nobody on the roster, TEAMS has only its failure to show.
-  const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.seats.length > 0) ? joined : undefined;
-  const states = drawn === undefined ? undefined : seatStates(drawn.snapshot);
+  const drawn = joined !== undefined && (loaded?.inventory.ok === true || joined.workers.length > 0) ? joined : undefined;
+  const states = drawn === undefined ? undefined : workerStates(drawn.snapshot);
   const counts = states === undefined ? undefined : shiftCounts(states);
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
 
@@ -387,7 +387,7 @@ export function Sidebar({
                 label="Inbox"
                 icon={<NavIcon name="inbox" />}
                 mark={
-                  // v2's badge (v2:60): the highlighter only while an ask waits on the person.
+                  // v2's badge (v2:60): the highlighter only while an ask waits on the user.
                   <span
                     className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
                     data-look="meta-count"
@@ -434,7 +434,7 @@ export function Sidebar({
             </Heading>
             <div data-testid="teams">
               {drawn === undefined ? null : (
-                teamsOf(drawn.seats).map(({ team, seats }) => (
+                teamsOf(drawn.workers).map(({ team, workers }) => (
                   <button
                     key={team}
                     type="button"
@@ -448,17 +448,17 @@ export function Sidebar({
                   >
                     <span className="flex-1 truncate">{team}</span>
                     <span className="flex gap-0.5">
-                      {seats.map((seat) => {
-                        const status = states?.seats.get(seat.id)?.status ?? "off shift";
+                      {workers.map((worker) => {
+                        const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={seat.id} title={`${seat.name} · ${status}`} data-testid="worker" data-seat-id={seat.id} data-status={status}>
+                          <span key={worker.id} title={`${worker.name} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );
                       })}
                     </span>
                     <Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">
-                      {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{seats.length}
+                      {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{workers.length}
                     </Meta>
                   </button>
                 ))

@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="Two rows, the same run. Today: the host gives no prompt, the block forwards nothing, the SDK sends an empty system prompt, the agent writes its plan as prose and the plan record stays empty. After: the block asks for Claude Code's own prompt, with any line the host appends on top; the agent calls its to-do tools and the plan record fills. Beside it, unchanged: a host's own full prompt string and an empty string still pass straight through."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-old { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .arr   { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .lane  { fill:var(--surface-2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-code { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+  <g id="headers">
+    <text class="t-lbl" x="24" y="26">THE HOST GIVES</text>
+    <text class="t-lbl" x="226" y="26">THE BLOCK ASKS THE SDK FOR</text>
+    <text class="t-lbl" x="476" y="26">THE AGENT</text>
+    <text class="t-lbl" x="726" y="26">THE PLAN RECORD</text>
+  </g>
+
+  <g id="today">
+    <rect class="lane" x="12" y="38" width="916" height="84" rx="6"/>
+    <text class="t-lbl" x="24" y="56">TODAY</text>
+    <rect class="n-in" x="24" y="64" width="176" height="46" rx="5"/>
+    <text class="t-b" x="36" y="84">no prompt</text>
+    <text class="t-s" x="36" y="100">the common case</text>
+    <rect class="n-old" x="226" y="64" width="220" height="46" rx="5"/>
+    <text class="t-gone" x="238" y="84">nothing, so an empty prompt</text>
+    <text class="t-s" x="238" y="100">the SDK's default</text>
+    <rect class="n-box" x="476" y="64" width="220" height="46" rx="5"/>
+    <text class="t-b" x="488" y="84">plans in prose at the end</text>
+    <text class="t-s" x="488" y="100">no to-do tool calls, 0 of 8</text>
+    <rect class="n-old" x="726" y="64" width="190" height="46" rx="5"/>
+    <text class="t-gone" x="738" y="84">empty</text>
+    <text class="t-s" x="738" y="100">every real run</text>
+    <path class="arr" d="M200 87 H226 M446 87 H476 M696 87 H726"/>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="12" y="134" width="916" height="84" rx="6"/>
+    <text class="t-lbl" x="24" y="152">AFTER</text>
+    <rect class="n-in" x="24" y="160" width="176" height="46" rx="5"/>
+    <text class="t-b" x="36" y="180">no prompt, or append</text>
+    <text class="t-s" x="36" y="196">a line on top, optional</text>
+    <rect class="n-new" x="226" y="160" width="220" height="46" rx="5"/>
+    <text class="t-code" x="238" y="180">Claude Code's own prompt</text>
+    <text class="t-s" x="238" y="196">the one the claude CLI uses</text>
+    <rect class="n-box" x="476" y="160" width="220" height="46" rx="5"/>
+    <text class="t-b" x="488" y="180">keeps its to-do list</text>
+    <text class="t-s" x="488" y="196">as it works</text>
+    <rect class="n-new" x="726" y="160" width="190" height="46" rx="5"/>
+    <text class="t-code" x="738" y="180">fills</text>
+    <text class="t-s" x="738" y="196">pending, then completed</text>
+    <path class="arr" d="M200 183 H226 M446 183 H476 M696 183 H726"/>
+  </g>
+
+  <g id="unchanged">
+    <text class="t-lbl" x="24" y="248">UNCHANGED</text>
+    <rect class="n-box" x="24" y="258" width="176" height="46" rx="5"/>
+    <text class="t-b" x="36" y="278">a full prompt string</text>
+    <text class="t-s" x="36" y="294">or "" for a blank start</text>
+    <rect class="n-box" x="226" y="258" width="220" height="46" rx="5"/>
+    <text class="t-b" x="238" y="278">exactly what was given</text>
+    <text class="t-s" x="238" y="294">it replaces Claude Code's (D2)</text>
+    <path class="arr" d="M200 281 H226"/>
+    <text class="t-s" x="476" y="285">the agent knows only that string; the record usually stays empty</text>
+  </g>
+</svg>

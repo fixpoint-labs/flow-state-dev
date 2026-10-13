@@ -7,10 +7,10 @@
  * L1's resource map already is the registry and a second one would be a second
  * place for a document to exist.
  *
- * The map is returned rather than installed. A flow instance's `resources`
+ * The map is returned rather than installed. A registered flow's `resources`
  * option *replaces* the definition's map instead of merging with it, so
  * installing on the app's behalf would silently delete whatever resources the
- * flow kind declared. The app spreads the map into its own, visibly, at its own
+ * flow declared. The app spreads the map into its own, visibly, at its own
  * call site.
  */
 

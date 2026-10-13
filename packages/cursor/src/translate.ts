@@ -22,6 +22,7 @@
  * unrecognised content block, becomes a **status note**. The wire moves; a run
  * should degrade before it breaks (BP-030).
  */
+import type { PlanListItem } from "@flow-state-dev/core/types";
 import type {
   CursorContentBlock,
   CursorRunUsage,
@@ -145,16 +146,42 @@ function translateToolCall(message: Record<string, unknown>): TranslatedEvent[] 
   if (message.status === "running") {
     return [{ kind: "tool_call", callId, name, arguments: args }];
   }
-  return [
-    {
-      kind: "tool_result",
-      callId,
-      name,
-      arguments: args,
-      output: message.result ?? null,
-      isError: message.status === "error",
-    },
-  ];
+  const settled: TranslatedEvent = {
+    kind: "tool_result",
+    callId,
+    name,
+    arguments: args,
+    output: message.result ?? null,
+    isError: message.status === "error",
+  };
+  const planList = name === TODO_TOOL ? confirmedTodoList(message) : null;
+  return planList === null ? [settled] : [settled, { kind: "plan_list", items: planList }];
+}
+
+/** The name Cursor's to-do call reaches the stream under, at the pinned SDK. */
+const TODO_TOOL = "updateTodos";
+
+/**
+ * The whole to-do list a settled `updateTodos` call confirmed, or `null` when
+ * the call carries none.
+ *
+ * Read off the call's **result**, never its args. The update Cursor sends can
+ * name only part of the list, and the SDK drops the item ids that would say
+ * which part, so the args cannot be placed. The success result carries the
+ * whole list as it stands after the update. A call still running, a call
+ * Cursor rejected, and a result that is not a list all answer `null`: the
+ * record changes only on a list Cursor confirmed. An empty list is a list.
+ */
+function confirmedTodoList(message: Record<string, unknown>): PlanListItem[] | null {
+  if (message.status !== "completed") return null;
+  const result = message.result as { status?: unknown; value?: { todos?: unknown } } | null | undefined;
+  if (result?.status !== "success") return null;
+  const todos = result.value?.todos;
+  if (!Array.isArray(todos)) return null;
+  return todos.map((todo) => {
+    const item = (todo ?? {}) as { content?: unknown; status?: unknown };
+    return { title: readString(item.content) ?? null, status: readString(item.status) ?? null };
+  });
 }
 
 /**

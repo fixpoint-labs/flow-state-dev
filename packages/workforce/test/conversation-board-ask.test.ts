@@ -1,13 +1,13 @@
 /**
  * An ask on a conversation's board (FIX-1816 S9, V7): the coordinator's turn
- * files a task with `waitForResponse` and parks; the task's ending reaches the
+ * dispatches a task with `wait` and parks; the task's ending reaches the
  * conversation through the same notice every ending sends, and there it
  * resumes the parked turn with the answer, waking no judgment turn and landing
  * no line. A task filed without waiting still wakes a turn (FIX-1794's notices
  * are unchanged; their own suite is `conversation-board-notices.test.ts`).
  *
  * Nothing here calls the waker: the task session's notice, or a later touch
- * of the board by the person, is what resumes the turn.
+ * of the board by the user, is what resumes the turn.
  */
 import { describe, expect, it } from "vitest";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
@@ -29,7 +29,7 @@ function toolResults(messages: unknown): string {
 
 /**
  * The coordinator's judgment as a step model: its first step asks with a
- * waiting `addTask` for `goal`, and the step after the answer replies with
+ * waiting `dispatchTask` for `goal`, and the step after the answer replies with
  * `reply(answer)`. Every call is kept in `seen`.
  */
 function askingJudgment(goal: string, reply: (results: string) => string) {
@@ -44,7 +44,7 @@ function askingJudgment(goal: string, reply: (results: string) => string) {
       const results = toolResults(options.messages);
       if (results === "") {
         return {
-          toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal, assignee: "eng.tasker", waitForResponse: true } }],
+          toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal, assignee: "eng.tasker", wait: true } }],
           finishReason: "tool-calls"
         };
       }
@@ -66,7 +66,7 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
 const statusOf = async (host: BoardHost, requestId: string) =>
   (await (await host.state.getRuntime()).stores.request.get(requestId))?.status;
 
-/** A durable host whose router has built its durability sweeper, so `addTask` offers the wait. */
+/** A durable host whose router has built its durability sweeper, so `dispatchTask` offers the wait. */
 async function askingHost(judgment: ReturnType<typeof mockGenerator> | GeneratorModel) {
   const host = bootBoardHost(
     "generateStep" in judgment ? { judgmentModel: judgment as GeneratorModel, durable: true } : { judgment, durable: true }
@@ -110,16 +110,16 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
     }
   });
 
-  it("a notice lost after the ending is paid by the person's next touch of the board, once (BR-11)", async () => {
-    const judgment = askingJudgment("Count seats", (results) =>
-      results.includes("eng.tasker did: Count seats") ? "Forty seats." : `unexpected: ${results}`
+  it("a notice lost after the ending is paid by the user's next touch of the board, once (BR-11)", async () => {
+    const judgment = askingJudgment("Count workers", (results) =>
+      results.includes("eng.tasker did: Count workers") ? "Forty workers." : `unexpected: ${results}`
     );
     const host = await askingHost(judgment.model);
     try {
       const conv = await host.conversation("alice", "lead");
       // Every notice's send is lost, as a process dying after the ending's write would lose it.
       const lost = await host.loseDispatches("onTaskSettled");
-      const asked = await host.act("alice", conv, "run", { message: "how many seats?" });
+      const asked = await host.act("alice", conv, "run", { message: "how many workers?" });
       expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
       await host.settled();
       expect(lost.lost()).toBeGreaterThan(0);
@@ -127,7 +127,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
       expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
       lost.restore();
 
-      // The person looks at the conversation's task list: a touch of the board.
+      // The user looks at the conversation's task list: a touch of the board.
       expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
       expect(await until(async () => (await statusOf(host, asked.requestId!)) === "completed")).toBe(true);
       await host.settled();
@@ -136,7 +136,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
       await host.settled();
 
       expect(judgment.seen).toHaveLength(2);
-      expect((await host.messages(conv)).filter((m) => m.text === "Forty seats.")).toHaveLength(1);
+      expect((await host.messages(conv)).filter((m) => m.text === "Forty workers.")).toHaveLength(1);
       expect((await host.rows("alice"))[0]!.resumeOwed ?? false).toBe(false);
     } finally {
       await host.dispose();
@@ -147,7 +147,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
     ["throws", (): Promise<never> => Promise.reject(new Error("the store blinked"))],
     ["is turned away as busy", () => Promise.resolve({ ok: false as const, refused: "busy" as const, detail: "another resume holds the turn" })]
   ] as const) {
-    it(`a resume that ${label} on the notice is retried by the person's next touch, once (BR-11)`, async () => {
+    it(`a resume that ${label} on the notice is retried by the user's next touch, once (BR-11)`, async () => {
       const judgment = askingJudgment("Count desks", (results) =>
         results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
       );
@@ -167,7 +167,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
         expect(await statusOf(host, asked.requestId!)).toBe("suspended");
         expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
 
-        // The person looks at the task list: a touch of the board, never a turn.
+        // The user looks at the task list: a touch of the board, never a turn.
         expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
         expect(await until(async () => (await statusOf(host, asked.requestId!)) === "completed")).toBe(true);
         await host.settled();
@@ -202,7 +202,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
 
       // A second task, filed without waiting, whose notice is lost on the way: it is owed only on its row.
       const lost = await host.loseDispatches("onTaskSettled");
-      const filed = await host.act("alice", conv, "addTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
+      const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal: "Count tables", assignee: "eng.tasker" });
       expect(filed.error, messageOf(filed.error)).toBeUndefined();
       const tables = (filed.output as { taskId: string }).taskId;
       expect(await until(async () => (await host.rows("alice")).find((r) => r.id === tables)?.status === "completed")).toBe(true);
@@ -239,7 +239,7 @@ describe("an asked task's ending resumes the turn that asked (V7)", { timeout: 3
   it("a task filed without waiting still wakes the judgment turn when it ends", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "a1", toolName: "addTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }] },
+        { toolCalls: [{ toolCallId: "a1", toolName: "dispatchTask", args: { goal: "Count laptops", assignee: "eng.tasker" } }] },
         { text: "Filed." },
         { when: (input) => JSON.stringify(input).includes("completed by eng.tasker"), then: { text: "Nine laptops." } }
       ]

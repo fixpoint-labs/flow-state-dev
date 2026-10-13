@@ -140,17 +140,17 @@ export function defineFlows(workers: WorkerInstallation) {
     },
   });
 
-  /** Breaks one rule: declares the configuration by hand, with `seatId` as a number. */
+  /** Breaks one rule: declares the configuration by hand, with `workerId` as a number. */
   const numberedFlow = defineFlow({
     kind: "numbered",
     cardinality: "collection",
     configSchema: z.object({
       instructions: z.string().optional(),
       teamInstructions: z.string().optional(),
-      seatSkills: z.array(z.any()).default([]),
-      seatTools: z.array(z.any()).default([]),
-      seatPackages: z.array(z.any()).optional(),
-      seatId: z.number().optional(),
+      workerSkills: z.array(z.any()).default([]),
+      workerTools: z.array(z.any()).default([]),
+      workerPackages: z.array(z.any()).optional(),
+      workerId: z.number().optional(),
     }),
     ...bound,
     actions: { run: hearing("numbered") },

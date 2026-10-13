@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
-import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
+import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, fencedHits, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
 
 const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
@@ -170,10 +170,10 @@ describe("the fence", () => {
     expect(values).not.toContain("ui-monospace");
   });
 
-  it("finds no theme value anywhere under packages/", () => {
+  it("finds no theme value anywhere under packages/, the DevTool aside", () => {
     const { walked, hits } = findThemeValues(join(REPO_ROOT, "packages"), values);
     expect(walked).toBeGreaterThan(500);
-    expect(hits).toEqual([]);
+    expect(fencedHits(hits)).toEqual([]);
   });
 
   it("names the file and value when one is planted in a package file", () => {
@@ -196,6 +196,6 @@ describe("the package stays a skin", () => {
 
   it("imports only its fonts and names no Workforce word in the stylesheet", () => {
     for (const [line] of css.matchAll(/@import[^;]*;/g)) expect(line).toMatch(/^@import "@fontsource\/[a-z-]+\/latin-\d+\.css";$/);
-    expect(css).not.toMatch(/workforce|needs you|roster|seat/i);
+    expect(css).not.toMatch(/workforce|needs you|roster|worker/i);
   });
 });

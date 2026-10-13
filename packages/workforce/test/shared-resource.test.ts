@@ -85,7 +85,7 @@ const sharerFlow = defineFlow({
   }
 });
 
-/** An app flow no worker runs on: a person writing through the app. */
+/** An app flow no worker runs on: a user writing through the app. */
 const appFlow = defineFlow({ kind: "app", actions: { share: { inputSchema: writeInput, block: share } } });
 
 async function withRuntime(
@@ -166,34 +166,34 @@ describe("a shared resource", () => {
   });
 
   it("FIX-1788 · a flow that isn't a worker flow names no worker, whatever its settings or a caller's state say", async () => {
-    // A `seatId` setting and a `workerId` the caller seeded: neither is a
+    // A `workerId` setting and a `workerId` the caller seeded: neither is a
     // worker the turn resolved, so neither signs the entry.
-    const seatIdFlow = defineFlow({
-      kind: "seat-id-app",
-      configSchema: z.object({ seatId: z.string() }),
+    const workerIdFlow = defineFlow({
+      kind: "worker-id-app",
+      configSchema: z.object({ workerId: z.string() }),
       session: { stateSchema: z.object({ workerId: z.string().optional() }) },
       actions: { share: { inputSchema: writeInput, block: share } }
-    })({ id: "seat-id-app", config: { seatId: "research.scout" } }) as unknown as FlowInstance;
+    })({ id: "worker-id-app", config: { workerId: "research.scout" } }) as unknown as FlowInstance;
     const state = createFlowState({
-      flows: { "seat-id-app": seatIdFlow },
+      flows: { "worker-id-app": workerIdFlow },
       stores: { default: { primary: inMemoryStores() } }
     });
     try {
       const runtime = await state.getRuntime();
       const router = await state.getRouter();
       const created = await router.POST(
-        new Request("http://localhost/api/flows/seat-id-app/sessions", {
+        new Request("http://localhost/api/flows/worker-id-app/sessions", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ userId: "alice", sessionId: "seeded", state: { workerId: "research.scout" } })
         }),
-        { params: { path: ["seat-id-app", "sessions"] } }
+        { params: { path: ["worker-id-app", "sessions"] } }
       );
       expect(created.status).toBe(201);
       expect((await runtime.stores.session.get("seeded"))?.state).toEqual({ workerId: "research.scout" });
       const ran = await runAction({
         orgId: DEFAULT_ORG_ID,
-        flow: seatIdFlow,
+        flow: workerIdFlow,
         actionName: "share",
         input: { message: "no worker", key: "nw" },
         userId: "alice",
@@ -210,23 +210,23 @@ describe("a shared resource", () => {
   });
 
   it("BR-22 · a `writtenBy` in the caller's input is ignored: the name comes from the session", async () => {
-    const seat = sharerFlow({ id: "sharer", config: {} });
-    await withRuntime([seat], async (run, read) => {
-      await run(seat, "run", "alice", { message: "forged", key: "forged", writtenBy: { userId: "mallory", workerId: "x" } });
+    const worker = sharerFlow({ id: "sharer", config: {} });
+    await withRuntime([worker], async (run, read) => {
+      await run(worker, "run", "alice", { message: "forged", key: "forged", writtenBy: { userId: "mallory", workerId: "x" } });
       expect(await read("forged")).toEqual({ text: "forged", writtenBy: { userId: "alice" } });
     });
   });
 
   it("BR-21 · an entry written without `writtenBy` is refused by the resource's own schema", async () => {
-    const seat = sharerFlow({ id: "sharer", config: {} });
-    await withRuntime([seat], async (run, read) => {
-      const { error } = await run(seat, "unsigned", "alice", { message: "anonymous", key: "anonymous" });
+    const worker = sharerFlow({ id: "sharer", config: {} });
+    await withRuntime([worker], async (run, read) => {
+      const { error } = await run(worker, "unsigned", "alice", { message: "anonymous", key: "anonymous" });
       expect(error).toBeDefined();
       expect(await read("anonymous")).toBeUndefined();
     });
   });
 
-  it("BR-23 · a person writing through the app, with no worker, is named alone", async () => {
+  it("BR-23 · a user writing through the app, with no worker, is named alone", async () => {
     const app = appFlow();
     await withRuntime([app], async (run, read) => {
       await run(app, "share", "alice", { message: "from the app", key: "app" });
@@ -235,7 +235,7 @@ describe("a shared resource", () => {
   });
 
   it("BR-24 · another user of the org reads the entry, with who wrote it", async () => {
-    const seat = sharerFlow({ id: "sharer", config: {} });
+    const worker = sharerFlow({ id: "sharer", config: {} });
     const reader = handler({
       name: "read-note",
       inputSchema: writeInput,
@@ -249,8 +249,8 @@ describe("a shared resource", () => {
       }
     });
     const readerFlow = defineFlow({ kind: "reader", actions: { read: { inputSchema: writeInput, block: reader } } })();
-    await withRuntime([seat, readerFlow], async (run) => {
-      await run(seat, "run", "alice", { message: "for everyone", key: "everyone" });
+    await withRuntime([worker, readerFlow], async (run) => {
+      await run(worker, "run", "alice", { message: "for everyone", key: "everyone" });
       const read = await run(readerFlow, "read", "bob", { message: "", key: "everyone" });
       expect(read.error).toBeUndefined();
       expect(JSON.parse((read.output as { message: string }).message)).toEqual({
@@ -261,9 +261,9 @@ describe("a shared resource", () => {
   });
 
   it("K3 · flow code that writes the resource directly can set its own `writtenBy`, which is why it is only as trustworthy as the flow", async () => {
-    const seat = sharerFlow({ id: "sharer", config: {} });
-    await withRuntime([seat], async (run, read) => {
-      await run(seat, "selfSigned", "alice", { message: "signed as bob", key: "k3" });
+    const worker = sharerFlow({ id: "sharer", config: {} });
+    await withRuntime([worker], async (run, read) => {
+      await run(worker, "selfSigned", "alice", { message: "signed as bob", key: "k3" });
       expect(await read("k3")).toEqual({ text: "signed as bob", writtenBy: { userId: "bob" } });
     });
   });

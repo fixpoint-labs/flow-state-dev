@@ -1,19 +1,19 @@
 /**
- * An agent seat hears the earlier turns of its own conversation, and only
+ * An agent worker hears the earlier turns of its own conversation, and only
  * those.
  *
- * A person who tells a seat "I need a new laptop" and then asks "where can I
- * buy it?" is asking about the laptop. The seat can only answer that if the
+ * A user who tells a worker "I need a new laptop" and then asks "where can I
+ * buy it?" is asking about the laptop. The worker can only answer that if the
  * model is handed the first turn along with the second. What it must never be
- * handed is another conversation's turns: a seat talks in one session per
- * conversation, and a seat that repeats in one conversation what a person
+ * handed is another conversation's turns: a worker talks in one session per
+ * conversation, and a worker that repeats in one conversation what a user
  * told it in another is a leak, not memory.
  *
  * What is graded is what the model was sent, read off the scripted model's
  * calls, never the stored items: a turn can be stored and still not reach the
  * model, which is exactly the failure this file exists for.
  *
- * Red state produced before these were trusted: the kind's answer without its
+ * Red state produced before these were trusted: the worker flow's answer without its
  * `history` slot. The first and third checks fail (turn 2 sends the system
  * prompt and the new message only), and so do the positive halves of the
  * second. The second's negative halves pass on that red state because nothing
@@ -27,10 +27,10 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { mintSeats } from "../src/hire";
+import { mintWorkers } from "../src/hire";
 
 const USER_ID = "u_person";
-const SEAT = "support.devices";
+const WORKER = "support.devices";
 
 type Sent = { role: string; text: string };
 
@@ -56,11 +56,11 @@ function turnOf(messages: unknown): string | undefined {
 }
 
 /**
- * One seat on an in-process host, with a scripted model that answers the
+ * One worker on an in-process host, with a scripted model that answers the
  * laptop question by name and everything else with "noted".
  */
 function boot() {
-  const [seat] = mintSeats([{ id: SEAT, declared: {}, body: "You answer device questions." }]);
+  const [worker] = mintWorkers([{ id: WORKER, declared: {}, body: "You answer device questions." }]);
   const answer = mockGenerator({
     name: "agent-answer",
     script: [
@@ -69,18 +69,18 @@ function boot() {
     ]
   });
   const state = createFlowState({
-    flows: { [seat!.id]: seat! },
+    flows: { [worker!.id]: worker! },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({ generators: { "agent-answer": answer }, policy: "allow" })
   });
-  return { seat: seat!, state, answer };
+  return { worker: worker!, state, answer };
 }
 
-/** One direct turn with the seat, in the conversation named `sessionId`. */
-async function say(runtime: FlowStateRuntime, seat: FlowInstance, sessionId: string, message: string) {
+/** One direct turn with the worker, in the conversation named `sessionId`. */
+async function say(runtime: FlowStateRuntime, worker: FlowInstance, sessionId: string, message: string) {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-    flow: seat,
+    flow: worker,
     actionName: "run",
     input: { message },
     userId: USER_ID,
@@ -91,13 +91,13 @@ async function say(runtime: FlowStateRuntime, seat: FlowInstance, sessionId: str
   expect(result.error).toBeUndefined();
 }
 
-describe("an agent seat's conversation", () => {
+describe("an agent worker's conversation", () => {
   it("hands the model the earlier turns of a direct conversation, in order, ahead of the new one", async () => {
-    const { seat, state, answer } = boot();
+    const { worker, state, answer } = boot();
     try {
       const runtime = await state.getRuntime();
-      await say(runtime, seat, "direct-talk", "I need a new laptop.");
-      await say(runtime, seat, "direct-talk", "Where can I buy it?");
+      await say(runtime, worker, "direct-talk", "I need a new laptop.");
+      await say(runtime, worker, "direct-talk", "Where can I buy it?");
 
       // Both sides of turn 1, then turn 2 once: the question has its subject.
       expect(conversation(answer.calls[1]!.input)).toEqual([
@@ -110,16 +110,16 @@ describe("an agent seat's conversation", () => {
     }
   });
 
-  it("keeps two of a seat's conversations apart", async () => {
-    const { seat, state, answer } = boot();
+  it("keeps two of a worker's conversations apart", async () => {
+    const { worker, state, answer } = boot();
     try {
       const runtime = await state.getRuntime();
       // Interleaved, so each conversation's second turn runs after the other
       // conversation already holds something it could leak.
-      await say(runtime, seat, "direct-talk", "My badge number is 4417.");
-      await say(runtime, seat, "desk-talk", "The printer on floor 3 is jammed.");
-      await say(runtime, seat, "direct-talk", "What is my badge number?");
-      await say(runtime, seat, "desk-talk", "Any update?");
+      await say(runtime, worker, "direct-talk", "My badge number is 4417.");
+      await say(runtime, worker, "desk-talk", "The printer on floor 3 is jammed.");
+      await say(runtime, worker, "direct-talk", "What is my badge number?");
+      await say(runtime, worker, "desk-talk", "Any update?");
 
       const callFor = (turn: string) => {
         const call = answer.calls.find((c) => turnOf(c.input) === turn);
@@ -141,13 +141,13 @@ describe("an agent seat's conversation", () => {
   });
 
   it("hands the model at most the framework's history window of earlier turns", async () => {
-    const { seat, state, answer } = boot();
+    const { worker, state, answer } = boot();
     try {
       const runtime = await state.getRuntime();
       // The window is the session's 50 most recent completed turns. Turn 52
       // has 51 behind it, so the oldest falls out and the next 50 stay.
       const turns = Array.from({ length: 52 }, (_, i) => `turn ${i + 1}`);
-      for (const turn of turns) await say(runtime, seat, "long-talk", turn);
+      for (const turn of turns) await say(runtime, worker, "long-talk", turn);
 
       const asked = sent(answer.calls.at(-1)!.input)
         .filter((m) => m.role === "user")

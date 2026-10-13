@@ -1,7 +1,7 @@
 /**
  * The reads the workforce panels share.
  *
- * `Roster`, `BoardColumns` and `BoardList` page a collection; `SeatDetail`
+ * `Roster`, `BoardColumns` and `BoardList` page a collection; `WorkerDetail`
  * reads one item. All go through the package's internal `useFencedRead`
  * (`internal/useFencedRead.ts`), which the flow navigator's reads share, so the
  * fence protocol lives there, once. A live `BoardList` reads its board again on
@@ -29,7 +29,7 @@ import { useFencedRead, type ReadDriver } from "../../internal/useFencedRead";
  */
 export type PanelRowSource = Pick<ResourceClient, "listCollectionItems">;
 
-/** `SeatDetail`'s read is one item, not a page — the method name says which (FIX-1500 BR-27). */
+/** `WorkerDetail`'s read is one item, not a page — the method name says which (FIX-1500 BR-27). */
 export type PanelItemSource = Pick<ResourceClient, "getCollectionItemState">;
 
 /** One row as a panel receives it: its topic, and the collection's projection of its state. */
@@ -193,7 +193,7 @@ export function usePanelItem<TClient = unknown>(
       // metadata-only shape (`{ topic, storageKey, hint }`) — the topic
       // exists but this surface can't project it — and that is a read
       // failure, not an absent topic. Handed through as-is, it fails a
-      // caller's own shape guard (e.g. `isSeat`) rather than being silently
+      // caller's own shape guard (e.g. `isWorker`) rather than being silently
       // indistinguishable from "no such item".
       if (result === null) return null;
       if (result.clientData === undefined) return result as unknown as TClient;

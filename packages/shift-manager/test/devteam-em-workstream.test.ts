@@ -10,9 +10,9 @@
  * workstream session once; and the EM updates the workstream entry, whose
  * report Alice's project screen reads.
  *
- * A project lists no mailbox: the run finds Storefront through the
- * workstream session it was filed from, with no claim row anywhere and a
- * Storefront row an earlier version wrote, still naming mailboxes.
+ * The run finds Storefront through the workstream session it was filed
+ * from, with no claim row anywhere and a Storefront row an earlier version
+ * wrote, still carrying a list the project no longer has.
  *
  * The models are scripted by block: the project coordinator's judgment
  * (`coordinator-judgment`) hands the post on; the EM's turn files on the turn
@@ -88,7 +88,7 @@ function emModel(turns: string[]): GeneratorModel {
         queue =
           turns.length === 1
             ? ISSUES.map((issue) => ({
-                toolName: "addTask",
+                toolName: "dispatchTask",
                 args: { goal: `Build ${issue}.`, assignee: CODER, input: { issue, phase: "implement" } },
               }))
             : [{ toolName: "updateWorkstream", args: { report: REPORT } }];
@@ -159,16 +159,16 @@ describe("the EM files from the workstream it leads", () => {
       harness: stub.slot,
       runTimeoutMs: 30_000,
       workspace: { root, remotes: { allow: ["file"] } },
-      coderSeatId: CODER,
+      coderWorkerId: CODER,
       inventory: true,
       projects: [{ id: STOREFRONT.id, title: "Storefront", repository: remote.url, members: [LAB_USERS.member.userId] }],
-      // As shipped: the seed's own `feature` is the member's, so Alice's coordinator can't hand to it.
+      // As shipped: the seed's own `feature` is the other project member's, so Alice's coordinator can't hand to it.
       workstreams: [{ as: "member", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: EM } }],
     });
     const runtime = await lab.state.getRuntime();
     const org = runtime.stores.resourceState;
 
-    // A Storefront row an earlier version wrote, still naming mailboxes, and a claim row for one: both from before.
+    // A Storefront row an earlier version wrote, with a list the project no longer has, and a claim row: both from before.
     const row = await org.get("org", LAB_ORG_ID, "projects/storefront");
     expect(row).toBeDefined();
     await org.set("org", LAB_ORG_ID, "projects/storefront", { ...row!.state, workstreams: ["eng.feature"] }, row!.version);

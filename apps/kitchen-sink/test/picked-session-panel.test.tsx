@@ -5,11 +5,11 @@
  *
  * The page's sends are the whole contract here. A composer that sends the
  * wrong action, or sends an `author`, would still render; only the recorded
- * call catches it. The browser half (the line survives a reload, the seat
+ * call catches it. The browser half (the line survives a reload, the worker
  * keeps both sides) is `e2e/talk-from-page.spec.ts` and the goal check.
  *
- * Checks, by the spec's ids (`specs/issues/FIX-1585/PLAN.md` V5), moved from
- * the mailbox onto the coordinator by FIX-1792. Red states produced before
+ * Checks, by the spec's ids (`specs/issues/FIX-1585/PLAN.md` V5), on the
+ * coordinator since FIX-1792. Red states produced before
  * these were trusted:
  *   - label a line by its role before its `agentName`: the label case fails.
  *   - drop the `text.length === 0` guard on Send: the whitespace case fails.
@@ -22,7 +22,7 @@
  *     request's status: the settles-on-its-own-request case fails (the text
  *     clears when another request's stream closes).
  *   - leave the composer unkeyed by session: the switching-picks case fails
- *     (the first seat's draft is still there).
+ *     (the first worker's draft is still there).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -94,7 +94,7 @@ afterEach(() => {
 
 function panel(kind: string, s: never) {
   return render(
-    <PickedSessionPanel session={s} kind={kind} person="devuser" requestStatus={requestStatus} conversation={<div data-testid="stream-items" />} />,
+    <PickedSessionPanel session={s} kind={kind} user="devuser" requestStatus={requestStatus} conversation={<div data-testid="stream-items" />} />,
   );
 }
 
@@ -103,7 +103,7 @@ async function type(label: string, text: string) {
 }
 
 describe("a coordinator's panel", () => {
-  it("shows the lines oldest first: a delegate's answer under its name, the person's post under theirs, the coordinator's own word under it", () => {
+  it("shows the lines oldest first: a delegate's answer under its name, the user's post under theirs, the coordinator's own word under it", () => {
     panel(
       "coordinator",
       session({
@@ -167,7 +167,7 @@ describe("a coordinator's panel", () => {
           items: [{ id: "e", type: "error", requestId: "req-refused", message: "No post is being routed in this request." }],
         })}
         kind="coordinator"
-        person="devuser"
+        user="devuser"
         requestStatus={requestStatus}
         conversation={null}
       />,
@@ -194,7 +194,7 @@ describe("a coordinator's panel", () => {
           items: [line("k", "please keep me")],
         })}
         kind="coordinator"
-        person="devuser"
+        user="devuser"
         requestStatus={requestStatus}
         conversation={null}
       />,
@@ -220,7 +220,7 @@ describe("a send settles on its own request", () => {
       <PickedSessionPanel
         session={session({ sendAction, isStreaming: false })}
         kind="coordinator"
-        person="devuser"
+        user="devuser"
         requestStatus={requestStatus}
       />,
     );
@@ -243,23 +243,23 @@ describe("switching picks", () => {
   it("starts the next session's composer empty, with nothing pending and no failure", async () => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     const view = panel("agent", session({ sessionId: "sess-a", sendAction }));
-    await type("Message this seat", "meant for the first seat");
+    await type("Message this worker", "meant for the first worker");
 
-    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} kind="agent" person="devuser" requestStatus={requestStatus} />);
-    expect((screen.getByLabelText("Message this seat") as HTMLTextAreaElement).value).toBe("");
+    view.rerender(<PickedSessionPanel session={session({ sessionId: "sess-b", sendAction })} kind="agent" user="devuser" requestStatus={requestStatus} />);
+    expect((screen.getByLabelText("Message this worker") as HTMLTextAreaElement).value).toBe("");
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
-describe("a seat's panel", () => {
+describe("a worker's panel", () => {
   it.each([
     ["agent", "run", { message: "where is my refund?" }],
-  ])("a %s seat sends its kind's own action", async (kind, action, input) => {
+  ])("a %s worker sends its kind's own action", async (kind, action, input) => {
     const sendAction = vi.fn(async () => ({ status: "in_progress", request: { id: "req-1" } }));
     panel(kind, session({ sendAction }));
-    // A seat keeps its item stream.
+    // A worker keeps its item stream.
     expect(screen.getByTestId("stream-items")).toBeTruthy();
-    await type("Message this seat", "where is my refund?");
+    await type("Message this worker", "where is my refund?");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sendAction).toHaveBeenCalledTimes(1));
     // No optimistic copy: nothing but the action and its input is sent.
@@ -267,11 +267,11 @@ describe("a seat's panel", () => {
   });
 
   // FIX-1611 BR-15.
-  it("a seat of a kind the page has no action for has no composer, and says so", () => {
+  it("a worker of a kind the page has no action for has no composer, and says so", () => {
     panel("a-kind-this-page-does-not-know", session());
     expect(screen.queryByTestId("picked-composer")).toBeNull();
     expect(screen.getByTestId("picked-read-only").textContent).toBe(
-      "This a-kind-this-page-does-not-know seat takes no messages from this page.",
+      "This a-kind-this-page-does-not-know worker takes no messages from this page.",
     );
     expect(screen.queryByText(/go to the assistant/)).toBeNull();
   });
@@ -280,7 +280,7 @@ describe("a seat's panel", () => {
 describe("who is working", () => {
   const rows = () => screen.queryAllByTestId("working-row").map((el) => el.textContent);
   const rerender = (view: ReturnType<typeof panel>, kind: string, s: never) =>
-    view.rerender(<PickedSessionPanel session={s} kind={kind} person="devuser" requestStatus={requestStatus} conversation={null} />);
+    view.rerender(<PickedSessionPanel session={s} kind={kind} user="devuser" requestStatus={requestStatus} conversation={null} />);
 
   it.each(["coordinator", "agent"])("a %s panel names each unfinished run by the delegate it was handed to, else its flow", (kind) => {
     panel(kind, session({ childSessions: [delegateRun("run-1", "support.devices", "active"), { id: "run-2", flowId: "agent", status: "active" }] }));
@@ -339,7 +339,7 @@ describe("who is working", () => {
     expect(rows()).toEqual(["support.accounts is working"]);
   });
 
-  it("shows a run with no recorded flow as background work, not a seat", () => {
+  it("shows a run with no recorded flow as background work, not a worker", () => {
     panel("coordinator", session({ childSessions: [{ id: "run-1", status: "active" }] }));
     expect(rows()).toEqual(["Background work is running"]);
   });
