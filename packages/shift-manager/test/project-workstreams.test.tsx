@@ -429,6 +429,31 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     expect(screen.getByTestId("project-progress").getAttribute("data-workstreams")).toBe("1");
   });
 
+  it("keeps the list on screen when a later read fails, and doesn't swap it for the failure", async () => {
+    // A poll that fails must not blank a list the user is reading; only a first read that fails shows the failure.
+    const { screen } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    await openAs(alice, setup, "checkout");
+    openApp(alice.clients, baseUrl, "/p/apollo/workstreams");
+    await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 });
+
+    const real = globalThis.fetch;
+    let failed = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (decodeURIComponent(url).includes("topicPrefix=workstreams/apollo/")) {
+        failed += 1;
+        return new Response(JSON.stringify({ error: "unavailable" }), { status: 503, headers: { "content-type": "application/json" } });
+      }
+      return real(input, init);
+    });
+    await eventually(async () => (failed > 0 ? true : undefined), "a poll that fails", 15_000);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(screen.queryByTestId("project-read-failure")).toBeNull();
+    expect(screen.getAllByTestId("project-entry").map((li) => li.getAttribute("data-workstream-id"))).toEqual(["checkout"]);
+  });
+
   it("flags an entry gone quiet by the project's progress, one clock for the row and the count (BR-19)", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);

@@ -155,7 +155,8 @@ const PROJECT_POLL_MS = 5_000;
  * while a tab that draws entries is on screen: a workstream is opened by
  * someone else's turn (the chief of staff's, or a coordinator's in another
  * window), so the list shows it without a reload. `reread` reads it now, as
- * after an open. A read again keeps the last one on screen until it lands.
+ * after an open. A read again keeps the last one on screen until it lands,
+ * and keeps it if it fails.
  * No read while `readerSessionId` is `null`: the user holds no reader session
  * yet, or the tab on screen draws no entries.
  */
@@ -169,7 +170,12 @@ function useProjectRead(address: ProjectAddress, readerSessionId: string | null,
     let next: ReturnType<typeof setTimeout> | undefined;
     readProject(clients, readerSessionId, address)
       .then((value) => !closed && setRead({ value }))
-      .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error) }))
+      // A failed read again keeps the last good one on screen: one dropped
+      // poll shouldn't blank the list. Only a failed first read shows.
+      .catch(
+        (error: unknown) =>
+          !closed && setRead((prev) => (prev !== undefined && "value" in prev ? prev : { failure: describeFailure(error) })),
+      )
       // After a failed read too: a dropped request recovers without Retry.
       .finally(() => {
         if (!closed) next = setTimeout(() => setReads((n) => n + 1), PROJECT_POLL_MS);
