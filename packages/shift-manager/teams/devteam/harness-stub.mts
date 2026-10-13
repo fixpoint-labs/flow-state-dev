@@ -19,6 +19,7 @@
  */
 
 import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import { projectWorkspaceCapability, type ProjectMcpToolsResolver } from "@flow-state-dev/workforce";
 import type {
   HarnessBlock,
   HarnessCallbackContext,
@@ -110,6 +111,8 @@ export interface HarnessStub {
     cwd: (ctx: HarnessCallbackContext) => string | Promise<string>;
     resume: (ctx: HarnessCallbackContext) => string | null | Promise<string | null>;
     onSession: (sessionId: string, ctx: HarnessCallbackContext) => void | Promise<void>;
+    /** The Lab's relayed MCP servers. The stub takes none, and says so when the project names some. */
+    mcpTools?: ProjectMcpToolsResolver;
   }) => HarnessBlock;
 }
 
@@ -125,11 +128,13 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
 
   return {
     runs,
-    slot: ({ cwd, resume, onSession }) =>
+    slot: ({ cwd, resume, onSession, mcpTools }) =>
       handler({
         name: "devforce-lab-harness-stub",
         inputSchema: harnessRunInputSchema,
         outputSchema: harnessRunHandleSchema,
+        // The project read `named` makes, only when the Lab offers MCP servers.
+        ...(mcpTools === undefined ? {} : { uses: [projectWorkspaceCapability] }),
         execute: async (input: { prompt: string }, ctx) => {
           const context = ctx as unknown as HarnessCallbackContext;
           const run: StubRun = {
@@ -146,6 +151,16 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           // of the contract unexercised in the one check that runs model-free.
           sessions += 1;
           await onSession(`sess_stub_${sessions}`, context);
+
+          // The scripted run takes no relayed tools: a project that names MCP
+          // servers runs without them here, and its session says so.
+          const unrelayed = mcpTools === undefined ? [] : await mcpTools.named(context);
+          if (unrelayed.length > 0) {
+            ctx.emit.status(
+              `This run goes without MCP servers ${unrelayed.join(", ")}: the scripted coder takes no relayed tools.`,
+              { transient: false },
+            );
+          }
 
           for (const step of options.steps ?? []) {
             if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);

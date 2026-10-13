@@ -359,15 +359,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
         if (existingDecls === undefined) continue;
         for (const existingDecl of existingDecls) {
           for (const incomingDecl of incomingDecls) {
-            checkPair(
-              scope,
-              `resources.${ref}`,
-              existing.flowKind,
-              flowKind,
-              existingDecl.schema,
-              incomingDecl.schema,
-              incomingDecl.collection || existingDecl.collection
-            );
+            checkResourcePair(scope, `resources.${ref}`, existing.flowKind, flowKind, existingDecl, incomingDecl);
           }
         }
       }
@@ -383,6 +375,8 @@ export class InMemoryFlowRegistry implements FlowRegistry {
 type ResourceDeclaration = {
   schema: ZodTypeAny;
   collection: boolean;
+  /** The declaration's `secret` fields, sorted: two declarations of one cell must agree. */
+  secret: readonly string[];
 };
 
 /**
@@ -544,6 +538,8 @@ function collectScopeDeclaration(
     const isolated = resolveResourceIsolation(entry.flowIsolation, flow, scope);
     const ref = storageRef(entry, accessor, storageKeys);
     const collection = isCollectionConfig(entry);
+    const secret = [...(entry.secret ?? [])].sort();
+    const declaration: ResourceDeclaration = { schema, collection, secret };
 
     // JSON-encoded so the two fields cannot concatenate ambiguously, matching
     // `tupleKey` in core's `flow/defineFlow.ts`.
@@ -563,20 +559,20 @@ function collectScopeDeclaration(
       // transitive, so a declaration compatible with one may still conflict
       // with another already accepted for this cell.
       for (const prior of priors) {
-        checkPair(scope, `resources.${ref}`, flow.kind, flow.kind, prior.schema, schema, prior.collection || collection);
+        checkResourcePair(scope, `resources.${ref}`, flow.kind, flow.kind, prior, declaration);
       }
-      priors.push({ schema, collection });
-      if (!isolated) (resourceSchemas[ref] ??= []).push({ schema, collection });
+      priors.push(declaration);
+      if (!isolated) (resourceSchemas[ref] ??= []).push(declaration);
       continue;
     }
-    cellsInFlow.set(cellKey, [{ schema, collection }]);
+    cellsInFlow.set(cellKey, [declaration]);
 
     // Cross-flow view: isolated declarations are flow-namespaced, so they
     // cannot collide with another flow's and do not participate.
     if (isolated) continue;
     // A shared and an isolated declaration occupy different cells but share a
     // `ref`, so this list may already exist from the isolated branch above.
-    (resourceSchemas[ref] ??= []).push({ schema, collection });
+    (resourceSchemas[ref] ??= []).push(declaration);
   }
 
   if (stateSchema === undefined && Object.keys(resourceSchemas).length === 0) {
@@ -584,6 +580,35 @@ function collectScopeDeclaration(
   }
 
   return { stateSchema, resourceSchemas };
+}
+
+/**
+ * Two declarations of one resource cell: their schemas must be compatible
+ * (see {@link checkPair}) and they must mark the same `secret` fields. A cell
+ * is one stored row, so a declaration that marks fewer fields would send what
+ * the other keeps on the server.
+ */
+function checkResourcePair(
+  scope: ConflictScope,
+  field: string,
+  flowA: string,
+  flowB: string,
+  a: ResourceDeclaration,
+  b: ResourceDeclaration
+): void {
+  const collection = a.collection || b.collection;
+  checkPair(scope, field, flowA, flowB, a.schema, b.schema, collection);
+  if (a.secret.join("\0") === b.secret.join("\0")) return;
+  const list = (s: readonly string[]) => (s.length === 0 ? "none" : s.join(", "));
+  throw new CrossFlowSchemaConflictError({
+    scope,
+    field,
+    flowA,
+    flowB,
+    reason: "secret-mismatch",
+    detail: `one marks secret ${list(a.secret)}, the other ${list(b.secret)}; declare the same secret fields`,
+    collection,
+  });
 }
 
 function checkPair(

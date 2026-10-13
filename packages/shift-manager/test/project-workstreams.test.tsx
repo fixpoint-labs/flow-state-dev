@@ -53,7 +53,10 @@ type ToolCall = { toolName: string; args: Record<string, unknown> };
 /** What the project coordinator's judgment calls on its next turn, one call per step. */
 let judgmentCalls: ToolCall[] = [];
 
-/** The judgment runs `judgmentCalls`, then stops; any other generator answers a fixed line. */
+/** Whether the lead fit check answers that a lead fits, by the lead and work it was asked about. Every lead fits by default. */
+let leadFits: (asked: string) => boolean = () => true;
+
+/** The judgment runs `judgmentCalls`, then stops; the lead fit check answers `leadFits`; any other generator answers a fixed line. */
 function scripted(): ModelResolver {
   let step = 0;
   const judgment: GeneratorModel = {
@@ -81,9 +84,22 @@ function scripted(): ModelResolver {
       return { text: "On it.", finishReason: "stop" };
     },
   };
-  return Object.assign((_id: string, block?: string) => (block?.startsWith("coordinator-judgment") ? judgment : agent), {
-    resolveId: (id: string) => id,
-  }) as unknown as ModelResolver;
+  const fit: GeneratorModel = {
+    modelId: "test/fit",
+    async generate(options: unknown) {
+      return { structuredOutput: { fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+    },
+    async generateStep(options: unknown) {
+      return { structuredOutput: { fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+    },
+  };
+  return Object.assign(
+    (_id: string, block?: string) =>
+      block?.startsWith("coordinator-judgment") ? judgment : block === "workstream-lead-fit" ? fit : agent,
+    {
+      resolveId: (id: string) => id,
+    },
+  ) as unknown as ModelResolver;
 }
 
 let lab: Lab | undefined;
@@ -92,6 +108,7 @@ let root: string | undefined;
 
 beforeEach(() => {
   judgmentCalls = [];
+  leadFits = () => true;
 });
 
 afterEach(async () => {
@@ -143,8 +160,11 @@ async function ownWorkers(user: User): Promise<RosterEntry[]> {
   return (await user.roster()).filter((entry) => !entry.standard).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** The DevTeam's one worker that can lead a workstream. */
+/** The DevTeam's lead for features. */
 const EM = "eng.em";
+
+/** The DevTeam's lead for research, planning and other work that isn't building software. */
+const GENERAL_LEAD = "general-lead";
 
 /** Open a workstream over HTTP, as an app may, naming the EM as its lead. */
 async function openAs(user: User, setup: ProjectSetup, id: string, project: ProjectAddress = APOLLO) {
@@ -225,9 +245,9 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     expect(await ownWorkers(alice)).toEqual([]);
 
     const pc = await askFor(alice, setup, "checkout", "Please add guest checkout, PERIWINKLE-7319.");
-    // It was offered only the worker that can lead: the coder, the reviewer and the coordinators lead nothing (BR-42).
+    // It was offered only the workers that can lead: the coder, the reviewer, the researcher and the coordinators lead nothing (BR-42).
     await eventually(async () => ((await leadsOffered(alice, pc)).length > 0 ? true : undefined), "the leads read");
-    expect(await leadsOffered(alice, pc)).toEqual([[EM]]);
+    expect((await leadsOffered(alice, pc)).map((ids) => [...ids].sort())).toEqual([[EM, GENERAL_LEAD].sort()]);
     expect(await ownWorkers(alice)).toEqual([]);
 
     // The EM leads the entry, and its session is the workstream session.
@@ -272,7 +292,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     });
     const pc = await askFor(alice, setup, "release", "Cut the release, AMBER-4410.", "release-lead");
     await eventually(async () => ((await leadsOffered(alice, pc)).length > 0 ? true : undefined), "the leads read");
-    expect(await leadsOffered(alice, pc)).toEqual([[EM, "release-lead"].sort()]);
+    expect((await leadsOffered(alice, pc)).map((ids) => [...ids].sort())).toEqual([[EM, GENERAL_LEAD, "release-lead"].sort()]);
     const entry = (await readProject(alice.clients, alice.reader, APOLLO))!.entries.find((e) => e.id === "release")!;
     expect(entry.lead).toBe("release-lead");
     await eventually(async () => ((await holds(alice, entry.sessionId!, "AMBER-4410")) ? true : undefined), "the ask in the hired lead's session");
@@ -287,6 +307,45 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
       }),
     ).rejects.toThrow(/cannot-lead/);
     expect((await readProject(alice.clients, alice.reader, APOLLO))!.entries.map((e) => e.id)).toEqual(["release"]);
+  });
+
+  it("refuses research under the EM, whose description says it files features, and opens it under the general lead", async () => {
+    const { setup, as } = await open();
+    const alice = await as(ALICE);
+    // The check is asked about each pick: the EM doesn't do research, by its own description.
+    const asked: string[] = [];
+    leadFits = (prompt) => {
+      asked.push(prompt);
+      return !prompt.includes(EM);
+    };
+    const research = { project: APOLLO, id: "research", title: "Research what to build next", objectives: ["Rank three ideas, SAFFRON-2207."] };
+    judgmentCalls = [
+      { toolName: "listLeads", args: {} },
+      { toolName: "openWorkstream", args: { ...research, lead: EM } },
+      { toolName: "openWorkstream", args: { ...research, lead: GENERAL_LEAD } },
+      { toolName: "dispatchTask", args: { post: true, assignee: GENERAL_LEAD, target: "shared/apollo/research" } },
+    ];
+    const pc = await projectCoordinator(alice, setup);
+    await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next, SAFFRON-2207." });
+
+    const { items } = await readSessionItems(alice.clients, pc);
+    const opens = (items as Array<{ type?: string; blockName?: string }>).filter(
+      (item) => item.type === "tool_output" && item.blockName === "openWorkstream",
+    );
+    expect(opens).toHaveLength(2);
+    expect(JSON.stringify(opens[0])).toContain("lead-doesnt-fit");
+    // The check read each lead's own description, from its file.
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toContain("Files each feature as a task for the coder");
+    expect(asked[1]).toContain("Leads research and planning");
+
+    const entries = (await readProject(alice.clients, alice.reader, APOLLO))!.entries;
+    expect(entries.map((e) => ({ id: e.id, lead: e.lead }))).toEqual([{ id: "research", lead: GENERAL_LEAD }]);
+    expect((await delegatesOf(alice, pc)).map(({ worker, target }) => ({ worker, target }))).toEqual([
+      { worker: GENERAL_LEAD, target: "shared/apollo/research" },
+    ]);
+    await eventually(async () => ((await holds(alice, entries[0]!.sessionId!, "SAFFRON-2207")) ? true : undefined), "the ask in the general lead's session");
+    expect(await ownWorkers(alice)).toEqual([]);
   });
 
   it("drops the record when she marks the workstream done, and moving it back out of done restores it", async () => {
