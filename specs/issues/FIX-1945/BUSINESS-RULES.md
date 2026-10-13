@@ -27,7 +27,7 @@ The cases, written as rules. Each says what a person or the system does and what
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-9 | Two people use the same worker, standard or forked | Each has a separate list. Neither sees, applies or edits the other's | CI · goal check (`person-scoped`) |
+| BR-9 | Two people use the same standard worker or the same coordinator | Each has a separate list. Neither sees, applies or edits the other's | CI · goal check (`person-scoped`) |
 | BR-10 | One person gives a note to the coordinator | Only the coordinator follows it; that person's other workers do not | CI |
 | BR-11 | A person forks a worker | The fork starts with no rules | CI |
 | BR-12 | A client writes to the rules record directly through the generic resource API | Refused: the record allows client reads only. Rules change only through the rule tools and the rules action, both behind one validator | CI |
@@ -43,15 +43,16 @@ The cases, written as rules. Each says what a person or the system does and what
 | BR-15 | A change or remove names a number whose current text differs from the quoted text | Refused with the current list; nothing changes. The worker re-reads and retries or asks | CI |
 | BR-16 | An add would make the 21st rule | Refused, naming the cap and the count. The worker tells the person and asks which rule to merge or drop | CI |
 | BR-17 | A rule's text is over 300 characters, empty, or more than one line | Refused with the reason. The page refuses the same | CI |
-| BR-18 | The worker and the page edit at nearly the same time | One wins; the other is refused under BR-15, never a silent overwrite of a rule it did not see | CI |
+| BR-18 | The worker and the page edit at nearly the same time, adds included | Every write carries the version of the list it read. One wins; the other is refused with the current list, never a silent overwrite or a second add past a list it did not see | CI |
 | BR-19 | A person adds, edits or deletes a rule on the Shift Manager page | Same limits and checks as the tools. The conversation is not interrupted; the next turn reads it | CI · browser check |
 
 ## Shift Manager
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-20 | A person opens a worker on their roster, or the Shift Coordinator view | They see that worker's rules for them: text, when added, and a link to the conversation it came from (or "added here") | Browser check |
+| BR-20 | A person opens a worker on their roster that runs on the built-in `agent` flow, or the Shift Coordinator view | They see that worker's rules for them: text, when added, and a link to the conversation it came from (or "added here") | Browser check |
 | BR-21 | A worker has no rules for them | The view says so and offers to add one. It is not under "not there yet" | Browser check |
+| BR-21a | A roster worker runs on a custom hireable flow | No Rules view; its row says this worker's flow doesn't keep standing rules. A custom flow gets rules by composing the agent flow, not by a new contract | Browser check |
 
 ## Failure taxonomy
 

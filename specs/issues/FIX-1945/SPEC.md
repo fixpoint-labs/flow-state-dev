@@ -116,8 +116,9 @@ still forgets coaching, or one person's notes steer someone else's sessions.
    add and the worker asks what to merge.** If wrong: about 1,500 tokens on every turn, or a
    cap that people hit and resent.
 
-**Open: none.** D2 is the one to weigh. D2 and D3 are product calls, put to the product lead
-on the mailbox with these recommendations. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
+**Open: none.** D2 is the one to weigh. D2 and D3 are product calls; the product lead
+answered on the mailbox that Jake agrees with both as written (relayed, so the merge is still
+the approval). Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Feature · `workforce` + `shift-manager` · medium (8 surfaces, 8 checks, 6 doc surfaces) · 2 stacked PRs · epic FIX-1775
