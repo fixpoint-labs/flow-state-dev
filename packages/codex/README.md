@@ -58,7 +58,10 @@ session id cannot be derived from text the model wrote.
 moment the run names one, before the run does any work. A cancelled or crashed run
 returns no handle, so this is the only carrier that reaches your state in the case
 resuming exists for. It fires only when Codex actually names a thread, so a resume
-Codex refuses leaves the id you already hold untouched.
+Codex refuses leaves the id you already hold untouched. The run then fails with a
+`CodexAgentRunError` whose `harnessFailure` is `"unknown-conversation"`, which
+`harnessFailureKind(error)` from `@flow-state-dev/core` reads; every other failure
+reads `null`.
 
 ## Option groups
 

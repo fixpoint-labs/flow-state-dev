@@ -76,7 +76,7 @@ and it doesn't know that conversation. `harnessFailureKind(error)` from
 for every other one, so you can say "the agent refused to continue this
 conversation" without matching on any agent's error message. It reads through
 wrapped errors, so the error a flow hands you works as well as the agent's own.
-Claude Code classifies its refusals today.
+Claude Code, Codex and Cursor classify their refusals.
 
 ## The run's plan
 
@@ -104,6 +104,9 @@ it starts work, and writing to it hands the agent nothing.
 Not every harness reports a plan. Read the session's resource manifest first. If
 it doesn't list `observed-plan`, the harness records none, and a reader should say
 so rather than show an empty list.
+
+Codex is one of them: its headless runs don't produce a to-do list in the version
+`@flow-state-dev/codex` supports, so a Codex block declares no plan record.
 
 Beside the entries, each run has a list marker in `observed-plan-list`, keyed by
 the run. It says whether the run's plan is `complete`, still `writing`, or
