@@ -53,7 +53,7 @@ import { taskClaimTicketSchema, type TaskClaimTicket, type TaskCollectionRef, ty
 import { z } from "zod";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
 import { sendOwedNotices } from "../conversation-board/notice-delivery";
-import { deliveryDelegateSchema } from "../delegates/delegate-list";
+import { delegateRefSchema } from "../delegates/delegate-list";
 import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../workers/keys";
 import { COORDINATOR_FLOW, POST_CANCELLED_ACTION, ROUND_DEADLINE_ACTION } from "./coordinator-keys";
@@ -95,7 +95,7 @@ export const postRowSchema = delegatedPostSchema.extend({
   /** The round it was handed on in: 0 for a user's post. */
   round: z.number().int().min(0),
   /** The delegate record it went to. */
-  delegate: deliveryDelegateSchema,
+  delegate: delegateRefSchema,
   /**
    * The session it is worked in: the delegate's own session for this
    * conversation, by key, or the session a workstream record's target
@@ -106,11 +106,21 @@ export const postRowSchema = delegatedPostSchema.extend({
 
 export type PostRow = z.infer<typeof postRowSchema>;
 
-/** A row's post, when the row is a post row; `undefined` for any other row. */
-export function postRowOf(row: { readonly sealed?: Readonly<Record<string, unknown>> } | undefined): PostRow | undefined {
-  const sealed = row?.sealed;
-  if (sealed === undefined || sealed.kind !== POST_ROW) return undefined;
-  const parsed = postRowSchema.safeParse(sealed);
+type SealedRow = { readonly sealed?: Readonly<Record<string, unknown>> } | undefined;
+
+/** Whether a row is a post row, by its payload's `kind`, whether or not the rest of the payload reads. */
+export function isPostRow(row: SealedRow): boolean {
+  return row?.sealed?.kind === POST_ROW;
+}
+
+/**
+ * A row's post, when the row is a post row whose payload reads; `undefined`
+ * for any other row, and for a post row whose payload doesn't
+ * ({@link isPostRow} tells those two apart).
+ */
+export function postRowOf(row: SealedRow): PostRow | undefined {
+  if (!isPostRow(row)) return undefined;
+  const parsed = postRowSchema.safeParse(row!.sealed);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -120,12 +130,12 @@ export function delegatedPostMessage(post: DelegatedPost): string {
 }
 
 /** Request state: the post this request works, and its row. Set before the turn. */
-const DELIVERY_STATE = "delegatedPost";
+const TAKEN_POST_STATE = "delegatedPost";
 /** Request state: whether the turn has ended, answered or failed, so the deadline watch can stop. */
 const ENDED_STATE = "delegatedPostEnded";
 
-const deliveryStateSchema = z.object({
-  [DELIVERY_STATE]: z
+const takenPostStateSchema = z.object({
+  [TAKEN_POST_STATE]: z
     .object({
       taskId: z.string(),
       partition: z.string(),
@@ -139,11 +149,11 @@ const deliveryStateSchema = z.object({
   [ENDED_STATE]: z.boolean().optional()
 });
 
-type NotedDelivery = NonNullable<z.infer<typeof deliveryStateSchema>[typeof DELIVERY_STATE]>;
+type NotedPost = NonNullable<z.infer<typeof takenPostStateSchema>[typeof TAKEN_POST_STATE]>;
 
-/** The post this request works, as `markDelivery` noted it. */
-const notedDelivery = (ctx: { readonly request: { readonly state: unknown } }): NotedDelivery | undefined =>
-  (ctx.request.state as z.infer<typeof deliveryStateSchema> | undefined)?.[DELIVERY_STATE];
+/** The post this request works, as `markPost` noted it. */
+const notedPost = (ctx: { readonly request: { readonly state: unknown } }): NotedPost | undefined =>
+  (ctx.request.state as z.infer<typeof takenPostStateSchema> | undefined)?.[TAKEN_POST_STATE];
 
 /**
  * The deadline watch waiting in each request, by request: `markEnded` wakes
@@ -186,20 +196,25 @@ function wrongSession(ctx: BlockContext, post: PostRow, assignee: string, partit
  * one written on it, and note it for the request: the row, so its ending can
  * be told, and the lines it came with, so the turn's model is shown them.
  */
-const markDelivery = handler({
+const markPost = handler({
   name: "delegated-post-mark",
   inputSchema: taskWorkerInputSchema,
   outputSchema: postRowSchema,
-  requestStateSchema: deliveryStateSchema,
+  requestStateSchema: takenPostStateSchema,
   execute: async (task: TaskWorkerInput, ctx): Promise<PostRow> => {
-    const post = postRowOf(task);
-    if (post === undefined) throw new Error(`Task "${task.taskId}" isn't a delegated post, so this entry doesn't take it.`);
+    if (!isPostRow(task)) throw new Error(`Task "${task.taskId}" isn't a delegated post, so this entry doesn't take it.`);
+    const parsed = postRowSchema.safeParse(task.sealed);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((issue) => `${issue.path.join(".") || "(payload)"}: ${issue.message}`);
+      throw new Error(`Post row "${task.taskId}" carries a post this entry can't read (${issues.join("; ")}).`);
+    }
+    const post = parsed.data;
     const claim = claimOf(ctx as never);
     if (claim === undefined) {
       throw new Error(`"${DELEGATED_POST_ENTRY}" runs only behind its claim gate, and found no claim the gate verified.`);
     }
     await ctx.request.patchState({
-      [DELIVERY_STATE]: {
+      [TAKEN_POST_STATE]: {
         taskId: task.taskId,
         partition: claim.partition,
         claim,
@@ -210,6 +225,12 @@ const markDelivery = handler({
     });
     const wrong = wrongSession(ctx as never, post, post.delegate.worker, claim.partition);
     if (wrong !== undefined) throw new Error(`This session doesn't take the post from ${post.coordinator}: ${wrong}.`);
+    // The board takes back a row whose lease lapsed, whatever its `maxAttempts`.
+    // A post has one attempt: the first run stopped without ending its row, so
+    // this one ends it rather than handing the post to the delegate again.
+    if (claim.attempt > 1) {
+      throw new Error(`A post has one attempt, and an earlier run on this one stopped without an answer, so it isn't worked again.`);
+    }
     return post;
   }
 });
@@ -221,13 +242,13 @@ const markDelivery = handler({
  * any other turn and on a post with no lines.
  */
 function delegatedPostLinesMessage(ctx: { readonly request: { readonly state: unknown } }): LLMMessage | undefined {
-  const delivery = notedDelivery(ctx);
-  const recent: readonly ConversationLine[] = delivery?.recent ?? [];
-  if (delivery === undefined || recent.length === 0) return undefined;
+  const taken = notedPost(ctx);
+  const recent: readonly ConversationLine[] = taken?.recent ?? [];
+  if (taken === undefined || recent.length === 0) return undefined;
   return {
     role: "user",
     content: [
-      `Recent lines in the conversation with ${delivery.coordinator} before this post, oldest first:`,
+      `Recent lines in the conversation with ${taken.coordinator} before this post, oldest first:`,
       ...recent.map((line) => `- ${line.from}: ${line.text}`)
     ].join("\n")
   };
@@ -258,7 +279,7 @@ const markEnded = handler({
   name: "delegated-post-ended",
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
-  requestStateSchema: deliveryStateSchema,
+  requestStateSchema: takenPostStateSchema,
   execute: async (_value: unknown, ctx) => {
     await ctx.request.patchState({ [ENDED_STATE]: true });
     watches.get(watchKey(ctx))?.();
@@ -271,12 +292,12 @@ const toAnswer = handler({
   name: "delegated-post-answer",
   inputSchema: z.unknown(),
   outputSchema: z.string().min(1),
-  requestStateSchema: deliveryStateSchema,
+  requestStateSchema: takenPostStateSchema,
   execute: (reply: unknown, ctx): string => {
     const body = typeof reply === "string" ? reply : (reply as { text?: unknown } | null)?.text;
     if (typeof body !== "string" || body.trim().length === 0) {
       throw new Error(
-        `This worker's turn on a post from ${notedDelivery(ctx)?.coordinator ?? "its coordinator"} ended with an empty reply, so nothing was answered.`
+        `This worker's turn on a post from ${notedPost(ctx)?.coordinator ?? "its coordinator"} ended with an empty reply, so nothing was answered.`
       );
     }
     return body;
@@ -294,7 +315,7 @@ const waitForDeadline = handler({
   name: "delegated-post-deadline-wait",
   inputSchema: postRowSchema,
   outputSchema: z.object({ late: z.boolean() }),
-  requestStateSchema: deliveryStateSchema,
+  requestStateSchema: takenPostStateSchema,
   execute: async (post: PostRow, ctx) => {
     const key = watchKey(ctx);
     const late = await new Promise<boolean>((resolve) => {
@@ -319,6 +340,19 @@ const waitForDeadline = handler({
 });
 
 /**
+ * Send `action` to the conversation that filed this post: its stamped sender,
+ * never an id from the row. Best effort: a refused or thrown send is dropped,
+ * and each caller says what makes up for it.
+ */
+async function sendToCoordinator(ctx: BlockContext, action: string, payload: unknown, from: string): Promise<void> {
+  try {
+    await dispatchThroughSeam(ctx, { type: "internal", action, flowKind: COORDINATOR_FLOW, session: { from: true }, payload, from });
+  } catch {
+    // Dropped: see the caller.
+  }
+}
+
+/**
  * Wake the conversation that filed the post: its stamped sender, never an id
  * from the row. A plain wake, with nothing in it: the conversation closes
  * every round past its deadline. A refused or thrown wake is left: the
@@ -329,18 +363,8 @@ const wakeAtDeadline = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
   execute: async (_value: unknown, ctx) => {
-    try {
-      await dispatchThroughSeam(ctx as never, {
-        type: "internal",
-        action: ROUND_DEADLINE_ACTION,
-        flowKind: COORDINATOR_FLOW,
-        session: { from: true },
-        payload: {},
-        from: "delegated-post-deadline-wake"
-      });
-    } catch {
-      // The round closes at the conversation's next wake.
-    }
+    // Unsent, the round closes at the conversation's next wake.
+    await sendToCoordinator(ctx as never, ROUND_DEADLINE_ACTION, {}, "delegated-post-deadline-wake");
     return {};
   }
 });
@@ -386,10 +410,10 @@ async function postLedgers(
  * conversation's next touch of its board sends it.
  */
 async function tellCoordinator(ctx: BlockContext): Promise<number> {
-  const delivery = notedDelivery(ctx);
-  if (delivery === undefined) return 0;
-  const ref = await conversationLedgerAt(ctx, delivery.partition);
-  const row = ref?.get(delivery.taskId);
+  const taken = notedPost(ctx);
+  if (taken === undefined) return 0;
+  const ref = await conversationLedgerAt(ctx, taken.partition);
+  const row = ref?.get(taken.taskId);
   if (row === undefined) return 0;
   return sendOwedNotices(ctx, row, { session: { from: true }, flowKind: COORDINATOR_FLOW, from: "delegated-post-tell" });
 }
@@ -399,7 +423,7 @@ const tell = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({ sent: z.number() }),
   resources: { ...conversationLedgerResources },
-  requestStateSchema: deliveryStateSchema,
+  requestStateSchema: takenPostStateSchema,
   execute: async (_input, ctx) => ({ sent: await tellCoordinator(ctx as never) })
 });
 
@@ -421,7 +445,7 @@ export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
     allowSessionState: true
   });
   const block = sequencer({ name: "delegated-post", inputSchema: taskWorkerInputSchema })
-    .step(markDelivery)
+    .step(markPost)
     .sideChainIf((post: PostRow) => post.deadlineAt !== undefined, watchDeadline)
     .step((post: PostRow) => ({ message: delegatedPostMessage(post) }), turn)
     .step(toAnswer)
@@ -460,23 +484,14 @@ const reportCancelled = handler({
   name: "delegated-post-cancelled",
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
-  requestStateSchema: deliveryStateSchema,
+  requestStateSchema: takenPostStateSchema,
   execute: async (_input, ctx) => {
-    const delivery = notedDelivery(ctx);
-    if (delivery === undefined) return {};
-    const payload: PostCancelled = { taskId: delivery.taskId, claim: delivery.claim };
-    try {
-      await dispatchThroughSeam(ctx as never, {
-        type: "internal",
-        action: POST_CANCELLED_ACTION,
-        flowKind: COORDINATOR_FLOW,
-        session: { from: true },
-        payload,
-        from: "delegated-post-cancelled"
-      });
-    } catch {
-      // The row's lease lapses, and its recovery ends it.
-    }
+    const taken = notedPost(ctx);
+    if (taken === undefined) return {};
+    const payload: PostCancelled = { taskId: taken.taskId, claim: taken.claim };
+    // Unsent, the row's lease lapses and the board takes it back, and that
+    // run ends it unworked (`markPost`: a post has one attempt).
+    await sendToCoordinator(ctx as never, POST_CANCELLED_ACTION, payload, "delegated-post-cancelled");
     return {};
   }
 });
@@ -493,6 +508,6 @@ export const delegatedPostOnFinished = sequencer({
   inputSchema: requestFinishedSchema
 }).tapIf(
   (finished: RequestFinished, ctx) =>
-    finished.status === "aborted" && finished.actionName === DELEGATED_POST_ENTRY && notedDelivery(ctx) !== undefined,
+    finished.status === "aborted" && finished.actionName === DELEGATED_POST_ENTRY && notedPost(ctx) !== undefined,
   reportCancelled
 );

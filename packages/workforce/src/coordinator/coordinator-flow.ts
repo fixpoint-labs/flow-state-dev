@@ -136,10 +136,10 @@ import {
   currentDelegates,
   delegateKey,
   delegateLabel,
-  deliveryDelegateSchema,
+  delegateRefSchema,
   readDelegates,
   sameDelegate,
-  type DeliveryDelegate,
+  type DelegateRef,
   type DelegateDefaults,
   type DelegateRecord
 } from "../delegates/delegate-list";
@@ -273,7 +273,7 @@ const postStateSchema = z.object({
   /** In a round after the user's post: the answers going back out. */
   answers: z.array(roundAnswerSchema).optional(),
   /** Who they never go back to: their author, under best fit and round robin. */
-  exclude: deliveryDelegateSchema.optional(),
+  exclude: delegateRefSchema.optional(),
   /** Why this round's answers go no further, when it was refused at the cap on open rounds. */
   note: z.string().optional(),
   /** Why best fit handed this post to the judgment turn, when it did: the turn's record says it. */
@@ -290,7 +290,7 @@ const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() }
 const deliveryRequestSchema = z.object({
   postId: z.string(),
   round: z.number().int().min(0),
-  delegate: deliveryDelegateSchema,
+  delegate: delegateRefSchema,
   /** The flow the delegate's worker runs on. */
   flow: z.string(),
   body: z.string(),
@@ -363,7 +363,7 @@ function fitOf(placed: Exclude<BestFitPlacement, { by: "held" | "evaluated" }>, 
  * the same part finds the first. Each part is URI-encoded, since a ledger
  * keeps a task id to one path segment and a workstream target has slashes.
  */
-function postRowId(postId: string, round: number, delegate: DeliveryDelegate): string {
+function postRowId(postId: string, round: number, delegate: DelegateRef): string {
   const parts = [postId, String(round), delegate.worker, ...(delegate.target === undefined ? [] : [delegate.target])];
   return `post:${parts.map(encodeURIComponent).join(":")}`;
 }
@@ -546,7 +546,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   };
 
   /** A delegate record as a delivery names it: its worker, and its target when it has one. */
-  const bare = (delegate: DeliveryDelegate): DeliveryDelegate => ({
+  const bare = (delegate: DelegateRef): DelegateRef => ({
     worker: delegate.worker,
     ...(delegate.target === undefined ? {} : { target: delegate.target })
   });
@@ -558,7 +558,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const deliveryOf = (
     post: PostState,
-    delegate: DeliveryDelegate,
+    delegate: DelegateRef,
     flow: string,
     passed: { from: string; body: string } = post
   ): DeliveryRequest => ({
@@ -805,7 +805,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   const scanReachable = async (
     ctx: BlockContext,
     records: Iterable<DelegateRecord> | AsyncIterable<DelegateRecord>,
-    exclude: DeliveryDelegate | undefined,
+    exclude: DelegateRef | undefined,
     visit: (record: DelegateRecord, worker: RosterWorker) => Visit
   ): Promise<RoutedDelegate[]> => {
     const skipped: RoutedDelegate[] = [];
@@ -835,7 +835,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       minConfidence: z.number().optional()
     }),
     /** Each reachable delegate, by its label, with the flow it runs on. */
-    byLabel: z.record(z.object({ delegate: deliveryDelegateSchema, flow: z.string() })),
+    byLabel: z.record(z.object({ delegate: delegateRefSchema, flow: z.string() })),
     skipped: z.array(routedDelegateSchema),
     /** The conversation's recent lines before the post, oldest first. */
     recent: z.array(conversationLineSchema),
@@ -1128,7 +1128,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // --- round robin ---------------------------------------------------------
 
   /** Where a delegate record stands in a list, or -1. */
-  const indexIn = (list: readonly DelegateRecord[], delegate: DeliveryDelegate) =>
+  const indexIn = (list: readonly DelegateRecord[], delegate: DelegateRef) =>
     list.findIndex((record) => sameDelegate(record, delegate));
 
   /**
@@ -1279,7 +1279,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    */
   const routeOnsFor = async (
     ctx: BlockContext,
-    event: { landed?: { delivery: RoundPost; body: string; kept: boolean }; closed: readonly ClosedRound[] }
+    event: { landed?: { posted: RoundPost; body: string; kept: boolean }; closed: readonly ClosedRound[] }
   ): Promise<RouteOn[]> => {
     // An answer that landed outside an open round, and no round closed: nothing goes on.
     if (event.landed?.kept !== true && event.closed.length === 0) return [];
@@ -1287,7 +1287,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const { routing, rounds } = config;
     const landed = event.landed;
     return [
-      landed === undefined ? undefined : routeOnAfterAnswer(landed.delivery, landed.body, landed.kept, routing, rounds),
+      landed === undefined ? undefined : routeOnAfterAnswer(landed.posted, landed.body, landed.kept, routing, rounds),
       ...event.closed.map((closed) => routeOnAfterClose(closed, routing, rounds))
     ].filter((routeOn): routeOn is RouteOn => routeOn !== undefined);
   };
@@ -1447,9 +1447,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     outputSchema: z.object({ landed: z.boolean(), routeOns: z.array(routeOnSchema).optional() }),
     ...blockBase,
     execute: async (ending: PostEnding, ctx) => {
-      const parsed = postRowSchema.safeParse(ending.post);
-      if (!parsed.success) return { landed: false };
-      const post = parsed.data;
+      const post = ending.post;
       const posted: RoundPost = { postId: post.postId, round: post.round, delegate: post.delegate };
       const body = ending.ending === "completed" && typeof ending.output === "string" ? ending.output : undefined;
       const now = Date.now();
@@ -1468,7 +1466,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
               result: { kept: false, closed: [...(closing.closed === undefined ? [] : [closing.closed]), ...swept.closed] }
             };
           }
-          const hold = state[HOLD_STATE] as { postId: string; delegate: DeliveryDelegate } | null | undefined;
+          const hold = state[HOLD_STATE] as { postId: string; delegate: DelegateRef } | null | undefined;
           const releases =
             hold !== null && hold !== undefined && hold.postId === post.postId && sameDelegate(hold.delegate, post.delegate);
           const landed = landAnswer(rounds, rows, posted, body, now);
@@ -1498,7 +1496,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       }
       ctx.emit.message(body, { agentName: post.delegate.worker });
       const routeOns = await routeOnsFor(ctx as never, {
-        landed: { delivery: posted, body, kept: outcome.kept },
+        landed: { posted, body, kept: outcome.kept },
         closed: outcome.closed
       });
       return { landed: true, ...routeOnsOutput(routeOns) };

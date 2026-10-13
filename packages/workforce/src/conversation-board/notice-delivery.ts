@@ -15,6 +15,7 @@
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import { owedNotices, type Task, type TaskNotice } from "@flow-state-dev/orchestration/tasks";
+import { isPostRow } from "../coordinator/delegated-post";
 import { CONVERSATION_LEDGER_ID } from "./ledger";
 
 /**
@@ -59,7 +60,7 @@ export async function sendOwedNotices(
     try {
       outcome = await dispatchThroughSeam(ctx, {
         type: "internal",
-        action: row.sealed?.kind === "post" ? POST_SETTLED_ENTRY : TASK_SETTLED_ENTRY,
+        action: isPostRow(row) ? POST_SETTLED_ENTRY : TASK_SETTLED_ENTRY,
         ...(address.flowKind !== undefined ? { flowKind: address.flowKind } : {}),
         session: address.session,
         payload: notice,

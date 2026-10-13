@@ -28,7 +28,7 @@ import {
   currentDelegates,
   delegateRecordSchema,
   delegateSessionStateSchema,
-  deliveryDelegateSchema,
+  delegateRefSchema,
   readDelegates,
   type DelegateChange,
   type DelegateDefaults,
@@ -67,7 +67,7 @@ export interface WorkerDelegatesOptions {
 
 const delegateListOutputSchema = z.object({
   delegates: z.array(delegateRecordSchema),
-  fallback: deliveryDelegateSchema.nullable(),
+  fallback: delegateRefSchema.nullable(),
   max: z.number(),
   /**
    * This session's `filingSessionId`: what each of its delegates' sessions

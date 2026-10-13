@@ -30,7 +30,7 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { deliveryDelegateSchema } from "../delegates/delegate-list";
+import { delegateRefSchema } from "../delegates/delegate-list";
 import { COORDINATOR_ROUTE } from "./coordinator-keys";
 
 /** How a decision found its delegates. */
@@ -68,7 +68,7 @@ export const bestFitWhySchema = z.object({
 export type BestFitWhy = z.infer<typeof bestFitWhySchema>;
 
 /** What became of one delegate in a decision. */
-export const routedDelegateSchema = deliveryDelegateSchema.extend({
+export const routedDelegateSchema = delegateRefSchema.extend({
   outcome: z.enum(["delivered", "skipped", "failed"]),
   reason: z.string().optional()
 });

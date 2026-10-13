@@ -14,9 +14,9 @@ import { z } from "zod";
 import {
   DELEGATE_SERVER_OWNED,
   delegateStateShape,
-  deliveryDelegateSchema,
+  delegateRefSchema,
   sameDelegate,
-  type DeliveryDelegate
+  type DelegateRef
 } from "../delegates/delegate-list";
 import { HOLD_STATE, LANDED_STATE, ROUND_ROBIN_STATE, ROUNDS_STATE } from "./coordinator-keys";
 import { landedAnswersSchema } from "./coordinator-lines";
@@ -34,19 +34,19 @@ export function dropRetiredLedger(state: Readonly<Record<string, unknown>>): Rec
 }
 
 /** Who best fit holds the user's next post for: the delegate the last one went to. */
-export const bestFitHoldSchema = z.object({ postId: z.string(), delegate: deliveryDelegateSchema });
+export const bestFitHoldSchema = z.object({ postId: z.string(), delegate: delegateRefSchema });
 
 /**
  * Where round robin's turn stands: the delegate the user's last post went
  * to, and where it stood in the list then, so the turn goes on from the same
  * place when that delegate has since been removed.
  */
-export const roundRobinCursorSchema = z.object({ delegate: deliveryDelegateSchema, index: z.number().int().min(0) });
+export const roundRobinCursorSchema = z.object({ delegate: delegateRefSchema, index: z.number().int().min(0) });
 
 export type RoundRobinCursor = z.infer<typeof roundRobinCursorSchema>;
 
 /** An answer that landed in an open round: its author and what it said. */
-export const roundAnswerSchema = deliveryDelegateSchema.extend({ body: z.string() });
+export const roundAnswerSchema = delegateRefSchema.extend({ body: z.string() });
 
 export type RoundAnswer = z.infer<typeof roundAnswerSchema>;
 
@@ -98,7 +98,7 @@ export type CoordinatorSessionState = z.infer<typeof coordinatorSessionStateSche
  * @param list The conversation's delegates, in list order.
  * @param after Who had the last turn, or `null` to start at the top.
  */
-export function turnOrder<T extends DeliveryDelegate>(list: readonly T[], after: RoundRobinCursor | null): T[] {
+export function turnOrder<T extends DelegateRef>(list: readonly T[], after: RoundRobinCursor | null): T[] {
   if (list.length === 0) return [];
   let start = 0;
   if (after !== null) {

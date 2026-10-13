@@ -1775,8 +1775,9 @@ export interface DispatchPostForm {
 }
 
 /**
- * The task tools as a turn gets them: two lists of the same names, built
- * once, and the one the turn can use. The nine, and `dispatchTask` on a board
+ * The task tools as a turn gets them: a list of the same names per kind of
+ * turn (waiting or not, routing a post or not), each built once, and the one
+ * the turn can use. The nine, and `dispatchTask` on a board
  * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
  * `timeoutMs` only on a board that also resumes asks (`options.resumesAsks`)
  * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
@@ -1795,21 +1796,30 @@ export function taskToolsForTurn(
     dispatches: options.dispatches === true,
   };
   const posts = options.dispatches === true ? options.posts : undefined;
-  const plain = buildTaskTools(resolveCollection, base);
-  const postingPlain = posts !== undefined ? buildTaskTools(resolveCollection, { ...base, posting: posts }) : plain;
-  const routing = (ctx: object) => posts !== undefined && posts.routing(ctx as BlockContext);
-  // Only `dispatchTask` waits, so a board without it has one list.
-  if (options.resumesAsks !== true || options.dispatches !== true) {
-    return (ctx) => (routing(ctx) ? postingPlain : plain);
-  }
-  const waiting = buildTaskTools(resolveCollection, { ...base, wait: true });
-  const postingWaiting =
-    posts !== undefined ? buildTaskTools(resolveCollection, { ...base, wait: true, posting: posts }) : waiting;
-  return (ctx) => {
-    const holds = canHoldWait(ctx as Pick<BlockContext, "requestHost">);
-    if (routing(ctx)) return holds ? postingWaiting : postingPlain;
-    return holds ? waiting : plain;
+  // Only `dispatchTask` waits, so a board without it has no waiting list.
+  const waits = options.resumesAsks === true && options.dispatches === true;
+  // One list per kind of turn, built once, the first time a turn needs it.
+  const lists = new Map<string, GeneratorTool[]>();
+  const listFor = (wait: boolean, posting: DispatchPostForm | undefined): GeneratorTool[] => {
+    const key = `${wait}:${posting !== undefined}`;
+    let list = lists.get(key);
+    if (list === undefined) {
+      list = buildTaskTools(resolveCollection, {
+        ...base,
+        ...(wait ? { wait: true } : {}),
+        ...(posting !== undefined ? { posting } : {}),
+      });
+      lists.set(key, list);
+    }
+    return list;
   };
+  // The plain list now, so a board that can't build its tools fails at wiring.
+  listFor(false, undefined);
+  return (ctx) =>
+    listFor(
+      waits && canHoldWait(ctx as Pick<BlockContext, "requestHost">),
+      posts !== undefined && posts.routing(ctx as BlockContext) ? posts : undefined,
+    );
 }
 
 /**

@@ -69,7 +69,7 @@ import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types"
 import type { BlockContext, BlockDefinition, DispatchAddress, TaskTargetQuery } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
-import { postRowOf } from "../coordinator/delegated-post";
+import { isPostRow, postRowOf } from "../coordinator/delegated-post";
 import type { TaskDelegates } from "../delegates/worker-delegates";
 import {
   FILING_FLOW_STATE_KEY,
@@ -464,7 +464,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       (write: (id: string, ...rest: any[]) => Promise<TaskWriteOutcome>) =>
       async (id: string, ...rest: any[]): Promise<TaskWriteOutcome> => {
         const row = ref.get(id);
-        if (postRowOf(row) !== undefined) return { outcome: "declined", reason: "disallowed", status: row!.status };
+        if (isPostRow(row)) return { outcome: "declined", reason: "disallowed", status: row!.status };
         return write(id, ...rest);
       };
     return {
@@ -482,7 +482,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       async setAssignee(id, assignee) {
         // A post row goes to the delegate it was handed to, in that delegate's session.
         const row = ref.get(id);
-        if (postRowOf(row) !== undefined) return { outcome: "declined", reason: "immutable-assignee", status: row!.status };
+        if (isPostRow(row)) return { outcome: "declined", reason: "immutable-assignee", status: row!.status };
         const outcome = await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);

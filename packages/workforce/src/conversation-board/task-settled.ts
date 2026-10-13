@@ -46,6 +46,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { isPostRow, postRowOf, postRowSchema } from "../coordinator/delegated-post";
 import { replayNotices } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
@@ -113,8 +114,8 @@ export const postEndingSchema = z.object({
   ending: z.enum(["completed", "errored", "cancelled"]),
   /** The row's output: the delegate's reply, on a completed row. */
   output: z.unknown().optional(),
-  /** The row's server-written post (`postRowSchema`). */
-  post: z.record(z.unknown())
+  /** The row's server-written post, read once here. */
+  post: postRowSchema
 });
 
 export type PostEnding = z.infer<typeof postEndingSchema>;
@@ -215,7 +216,13 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       if (first !== true) return { act: "none" };
       // A post row's ending is the coordinator's, never the generic line. A
       // post has one attempt and nobody to ask, so it ends only one way of three.
-      if (options.onPost !== undefined && row.sealed?.kind === "post") {
+      // `sendOwedNotices` sends a post row's notice to `onPostSettled`, so on
+      // `onTaskSettled` this is the guard that keeps one sent there any other
+      // way from landing as a generic line.
+      if (options.onPost !== undefined && isPostRow(row)) {
+        // A post that doesn't read can't be landed: its round closes at its deadline.
+        const post = postRowOf(row);
+        if (post === undefined) return { act: "none" };
         if (notice.ending !== "completed" && notice.ending !== "errored" && notice.ending !== "cancelled") {
           return { act: "none" };
         }
@@ -223,7 +230,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
           taskId: row.id,
           ending: notice.ending,
           ...(notice.output !== undefined ? { output: notice.output } : {}),
-          post: row.sealed
+          post
         };
         return { act: "post", post: ending };
       }

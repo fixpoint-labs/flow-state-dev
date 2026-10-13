@@ -14,6 +14,10 @@
  *                `dispatchTask`;
  *   BR-21        a post row can't be reassigned, completed, failed or blocked from the board;
  *                a cancel ends that delegate's part, and its late answer lands nowhere.
+ *
+ * And the one attempt a post has: a row whose run stopped without a word is
+ * taken back by the board once its lease lapses, and then ends errored rather
+ * than running the post a second time.
  */
 import { describe, expect, it } from "vitest";
 import { mockGenerator } from "@flow-state-dev/testing";
@@ -21,7 +25,7 @@ import { defineAgentWorkerFlow } from "../src/agent-worker-flow";
 import { createWorkerInstallation } from "../src/workers/installation";
 import { hireWorkforce } from "../src/workers/register";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY } from "../src/workers/keys";
-import { SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinator-harness";
+import { ORG, SLOW_MS, bootHost, messageOf, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 
@@ -116,6 +120,35 @@ describe("a post row on the board (BR-21)", () => {
     await host.settled();
     expect((await host.postRows("alice")).map((r) => [r.status, r.assignee, r.output])).toEqual([["cancelled", "eng.coder", undefined]]);
     expect(await lines(host, id)).toEqual([]);
+  });
+});
+
+describe("a post row whose run stopped without a word", () => {
+  it("isn't worked again when its lease lapses: the board takes it back, and it ends errored", async () => {
+    // The coder's run is cancelled and says nothing, as one whose process stopped would.
+    const host = bootHost({ reportCancel: false });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "first [hang:eng.coder] [route:eng.coder]" })).error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await host.settled();
+    const [row] = await host.postRows("alice");
+    expect(row).toMatchObject({ status: "in_progress", attempts: 1 });
+
+    // Its lease lapses, and the next post wakes the board, which takes the row back.
+    const runtime = await host.state.getRuntime();
+    const scope = `alice:~org:${ORG}`;
+    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
+    const key = Object.keys(entries).find((k) => (entries[k]!.state as { id?: string }).id === row.id)!;
+    const stored = entries[key];
+    const lapsed = { ...(stored!.state as Record<string, unknown>), leaseUntil: Date.now() - 1 };
+    expect((await runtime.stores.resourceState.set("user", scope, key, lapsed, stored!.version)).ok).toBe(true);
+    await post(host, id, "second [route:eng.coder]");
+    await host.settled();
+
+    expect(host.heard.filter((h) => h.message.includes("first"))).toHaveLength(1);
+    const ended = (await host.postRows("alice")).find((r) => r.id === row.id);
+    expect(ended).toMatchObject({ status: "errored" });
+    expect(ended.error).toMatch(/one attempt/);
   });
 });
 

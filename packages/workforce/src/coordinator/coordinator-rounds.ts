@@ -44,7 +44,7 @@
 import { z } from "zod";
 import type { CoordinatorRouting } from "./coordinator-config";
 import { MAX_ROUNDS } from "./coordinator-keys";
-import { delegateLabel, deliveryDelegateSchema, sameDelegate, type DeliveryDelegate } from "../delegates/delegate-list";
+import { delegateLabel, delegateRefSchema, sameDelegate, type DelegateRef } from "../delegates/delegate-list";
 import { roundAnswerSchema, type OpenRound, type RoundAnswer } from "./coordinator-state";
 
 /** The most open rounds a conversation keeps. One more is refused: its answers go no further. */
@@ -63,7 +63,7 @@ export const routeOnSchema = z
     /** The answers, by author. */
     answers: z.array(roundAnswerSchema),
     /** Who they never go back to: the author, under best fit and round robin. */
-    exclude: deliveryDelegateSchema.optional()
+    exclude: delegateRefSchema.optional()
   })
   .strict();
 
@@ -82,7 +82,7 @@ export type ClosedRound = { postId: string; round: number; deliveries: number; a
 export type RoundRows = (postId: string, round: number) => { readonly ids: readonly string[] };
 
 /** A post that went out in a round: which post, which round, and to whom. */
-export type RoundPost = { postId: string; round: number; delegate: DeliveryDelegate };
+export type RoundPost = { postId: string; round: number; delegate: DelegateRef };
 
 const indexOf = (rounds: readonly OpenRound[], postId: string, round: number) =>
   rounds.findIndex((open) => open.postId === postId && open.round === round);
@@ -213,7 +213,7 @@ export function anyOverdue(rounds: readonly OpenRound[], now: number): boolean {
 }
 
 /**
- * An answer landed for `delivery`. A round past its deadline closes first,
+ * An answer landed for `posted`. A round past its deadline closes first,
  * without it. Otherwise the answer is kept on its open round, and the round
  * closes if that was the last one out.
  *
@@ -224,20 +224,20 @@ export function anyOverdue(rounds: readonly OpenRound[], now: number): boolean {
 export function landAnswer(
   rounds: readonly OpenRound[],
   rows: RoundRows,
-  delivery: RoundPost,
+  posted: RoundPost,
   body: string,
   now: number
 ): { rounds: OpenRound[]; kept: boolean; closed?: ClosedRound } {
-  const at = indexOf(rounds, delivery.postId, delivery.round);
+  const at = indexOf(rounds, posted.postId, posted.round);
   if (at < 0) return { rounds: [...rounds], kept: false };
   if (pastDeadline(rounds[at]!, now)) return { ...closeAt(rounds, at, rows), kept: false };
   const answer: RoundAnswer = {
-    worker: delivery.delegate.worker,
-    ...(delivery.delegate.target === undefined ? {} : { target: delivery.delegate.target }),
+    worker: posted.delegate.worker,
+    ...(posted.delegate.target === undefined ? {} : { target: posted.delegate.target }),
     body
   };
   const kept = rounds.map((open, i) => (i === at ? { ...open, answers: [...open.answers, answer] } : open));
-  return { ...closeRound(kept, rows, delivery.postId, delivery.round, now), kept: true };
+  return { ...closeRound(kept, rows, posted.postId, posted.round, now), kept: true };
 }
 
 /**
@@ -246,18 +246,18 @@ export function landAnswer(
  * limit, or under another policy.
  */
 export function routeOnAfterAnswer(
-  delivery: RoundPost,
+  posted: RoundPost,
   body: string,
   kept: boolean,
   policy: CoordinatorRouting,
   limit: number
 ): RouteOn | undefined {
-  if (!kept || (policy !== "best-fit" && policy !== "round-robin") || delivery.round >= limit) return undefined;
-  const author: DeliveryDelegate = {
-    worker: delivery.delegate.worker,
-    ...(delivery.delegate.target === undefined ? {} : { target: delivery.delegate.target })
+  if (!kept || (policy !== "best-fit" && policy !== "round-robin") || posted.round >= limit) return undefined;
+  const author: DelegateRef = {
+    worker: posted.delegate.worker,
+    ...(posted.delegate.target === undefined ? {} : { target: posted.delegate.target })
   };
-  return { postId: delivery.postId, round: delivery.round + 1, answers: [{ ...author, body }], exclude: author };
+  return { postId: posted.postId, round: posted.round + 1, answers: [{ ...author, body }], exclude: author };
 }
 
 /**
@@ -290,6 +290,6 @@ export function wakeMessage(round: number, answers: readonly RoundAnswer[]): str
 }
 
 /** The answers `delegate` hasn't seen: everyone else's. */
-export function othersOf(answers: readonly RoundAnswer[], delegate: DeliveryDelegate): RoundAnswer[] {
+export function othersOf(answers: readonly RoundAnswer[], delegate: DelegateRef): RoundAnswer[] {
   return answers.filter((answer) => !sameDelegate(answer, delegate));
 }
