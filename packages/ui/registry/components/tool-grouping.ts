@@ -118,3 +118,81 @@ export function composeToolGroupLabel(toolNames: string[]): string {
 
   return capitalizeFirst(joinClauses(clauses));
 }
+
+/**
+ * Argument that carries a tool's own statement of intent, by tool name.
+ * Claude Code's `Bash` asks the agent for a short `description` of each
+ * command ("List files in src"); `Task` / `Agent` do the same for a
+ * sub-agent. Only tools listed here are read: a `description` argument on
+ * an arbitrary tool can be a payload (an issue body), not an intent.
+ */
+export const TOOL_INTENT_ARG: Record<string, string> = {
+  Bash: "description",
+  bash: "description",
+  Task: "description",
+  Agent: "description",
+};
+
+/**
+ * The intent a call stated for itself, or `undefined` when its tool has no
+ * intent argument or the call left it empty. `args` is the parsed
+ * arguments object.
+ */
+export function toolIntent(toolName: string, args: unknown): string | undefined {
+  const key = TOOL_INTENT_ARG[toolName];
+  if (key === undefined || args === null || typeof args !== "object") return undefined;
+  const value = (args as Record<string, unknown>)[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** One call, as the label composer sees it. */
+export type ToolCallLabelInput = { name: string; intent?: string };
+
+/**
+ * Intent phrases shown in a group label before the rest are counted as
+ * "+N more". The full list is one click away in the expanded group.
+ */
+export const TOOL_GROUP_INTENT_CAP = 3;
+
+/**
+ * Composes a group label from each call's stated intent, in order:
+ *
+ *   composeToolCallsLabel([
+ *     { name: "Bash", intent: "List files" },
+ *     { name: "Bash", intent: "Run tests" },
+ *   ])
+ *   // → "List files · Run tests"
+ *
+ * Consecutive calls with no intent fold into one name-based phrase from
+ * {@link composeToolGroupLabel} ("Ran 2 searches"). A batch where no call
+ * stated an intent is exactly {@link composeToolGroupLabel} of its names.
+ * More than {@link TOOL_GROUP_INTENT_CAP} phrases end in "+N more".
+ */
+export function composeToolCallsLabel(calls: ToolCallLabelInput[]): string {
+  if (!calls.some((c) => c.intent !== undefined)) {
+    return composeToolGroupLabel(calls.map((c) => c.name));
+  }
+
+  const phrases: string[] = [];
+  let unnamed: string[] = [];
+  const flush = () => {
+    if (unnamed.length === 0) return;
+    phrases.push(composeToolGroupLabel(unnamed));
+    unnamed = [];
+  };
+  for (const call of calls) {
+    if (call.intent === undefined) {
+      unnamed.push(call.name);
+    } else {
+      flush();
+      phrases.push(call.intent);
+    }
+  }
+  flush();
+
+  if (phrases.length <= TOOL_GROUP_INTENT_CAP) return phrases.join(" · ");
+  const shown = phrases.slice(0, TOOL_GROUP_INTENT_CAP).join(" · ");
+  return `${shown} · +${phrases.length - TOOL_GROUP_INTENT_CAP} more`;
+}

@@ -14,6 +14,7 @@
  * |---|---|
  * | (none) | names the conversation (the asked one, or a new one), streams a reply with a pause, succeeds |
  * | `[plan]` | also records two to-do items and moves the first to `in_progress` |
+ * | `[bash]` | also runs five shell commands, each with its `description` |
  * | `[slow]` | after the reply and plan have shown, holds long enough for a stop to land |
  * | `[slow-start]` | pauses before naming the conversation, so a stop lands before it is confirmed |
  * | `[new]` | names a new conversation even when asked to continue one |
@@ -104,6 +105,18 @@ async function* scriptedTurn(
     yield toolResult("toolu_plan_2", { task: { id: "2", subject: "Answer it" } }, "Task #2 created successfully: Answer it");
     yield toolUse("toolu_plan_3", "TaskUpdate", { taskId: "1", status: "in_progress" });
     yield toolResult("toolu_plan_3", { success: true, taskId: "1" }, "Updated task #1 status");
+    await pause(step, signal);
+  }
+
+  if (has("bash")) {
+    // A run of shell commands, each with the description Claude Code asks for.
+    const commands = ["git status", "ls", "cat package.json", "pnpm test", "pnpm typecheck"];
+    const descriptions = ["Check git status", "List files", "Read the package manifest", "Run the tests", "Typecheck"];
+    for (const [i, command] of commands.entries()) {
+      const id = `toolu_bash_${i + 1}`;
+      yield toolUse(id, "Bash", { command, description: descriptions[i] });
+      yield toolResult(id, { stdout: "ok", stderr: "", interrupted: false }, "ok");
+    }
     await pause(step, signal);
   }
 

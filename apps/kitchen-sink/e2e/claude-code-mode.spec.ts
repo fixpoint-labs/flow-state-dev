@@ -120,3 +120,25 @@ test.describe("the plan panel (V8)", () => {
     await expect(panel.locator("button, input, textarea, select, [contenteditable=true]")).toHaveCount(0);
   });
 });
+
+test.describe("tool calls", () => {
+  test("a run of shell commands is one quiet line, labelled by what each command was for", async ({ page, consoleErrors: _consoleErrors }) => {
+    await newSession(page);
+    await send(page, "[bash] look around");
+    await expect(page.getByTestId("conversation")).toContainText("Scripted Claude Code, turn 1");
+
+    const group = page.getByTestId("tool-group");
+    await expect(group).toHaveCount(1);
+    await expect(group).toContainText("Check git status · List files · Read the package manifest · +2 more");
+    await expect(page.getByTestId("tool-row")).toHaveCount(0);
+
+    await group.getByRole("button").first().click();
+    await expect(page.getByTestId("tool-row")).toHaveText([
+      "Check git status",
+      "List files",
+      "Read the package manifest",
+      "Run the tests",
+      "Typecheck",
+    ]);
+  });
+});
