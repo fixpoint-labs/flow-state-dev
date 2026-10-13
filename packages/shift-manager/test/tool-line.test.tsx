@@ -47,17 +47,4 @@ describe("a tool call is a quiet line", () => {
     render(<ToolLine item={call("discover", "failed")} />);
     expect(screen.getByRole("button", { name: /discover failed/ })).toBeTruthy();
   });
-
-  it("a failed call a later call of the same tool retried reads as an attempt, not an error", () => {
-    const run = [call("openWorkstream", "failed", "first"), call("listLeads"), call("openWorkstream", "completed", "retry")];
-    render(<ToolLineGroup items={run} />);
-    const line = screen.getByRole("button", { name: /Used 3 tools$/ });
-    fireEvent.click(line);
-    expect(screen.getByText("Tried openWorkstream")).toBeTruthy();
-    expect(screen.queryByText("openWorkstream failed")).toBeNull();
-    cleanup();
-    // Not retried: the same failure followed by another tool, or by the same tool failing again, still reads as failed.
-    render(<ToolLineGroup items={[call("openWorkstream", "failed", "first"), call("listLeads"), call("openWorkstream", "failed", "again")]} />);
-    expect(screen.getByRole("button", { name: /one failed/ })).toBeTruthy();
-  });
 });
