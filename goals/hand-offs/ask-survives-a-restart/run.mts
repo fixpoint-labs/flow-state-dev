@@ -15,6 +15,7 @@
  *
  * Run:      pnpm tsx goals/hand-offs/ask-survives-a-restart/run.mts
  * Controls: GOAL_CONTROL=no-run-once | no-waker
+ * Wording:  GOAL_ASK=recorded (ask to record the task first, then wait on it by id)
  * Attempts: GOAL_ATTEMPTS=<n> fresh stores, until it first passes (default 3; 1 under a control)
  */
 import { execFileSync } from "node:child_process";
@@ -36,9 +37,25 @@ const word = () => `${["heron", "copper", "lantern", "saffron", "willow", "glaci
 
 // ---- controls -------------------------------------------------------------------
 
+/**
+ * How the asker waited: `dispatchTask` with `wait` on a new task (`goal`), or on
+ * a task it recorded first with `addTask` (`taskId`). `none` when it never did.
+ */
+type WaitPath = "new" | "recorded" | "none";
+
+/** One attempt's grade, and the path the asker took. */
+interface Graded {
+  failures: string[];
+  notes: string[];
+  path: WaitPath;
+}
+
 interface Control {
   name: string;
-  assertions: string[];
+  /** The assertions the control must fail, on the path the asker took. */
+  assertions: (path: Exclude<WaitPath, "none">) => string[];
+  /** The assertions that must stay green under the control, on that path. */
+  holds?: (path: Exclude<WaitPath, "none">) => string[];
   patches: ModulePatch[];
   does: string;
 }
@@ -48,7 +65,13 @@ const WAIT = "packages/orchestration/src/tasks/helpers/wait-for-response.ts";
 const CONTROLS: Record<string, Control> = {
   "no-run-once": {
     name: "no-run-once",
-    assertions: ["one-row"],
+    // On a new task the replay mints a new id and files a second row. On a
+    // recorded one it re-dispatches the same row, which the board declines,
+    // so the answer never reaches the turn: one row, and no word. `one-row`
+    // must stay green there, so a resume that broke some other way can't
+    // pass for this control.
+    assertions: (path) => (path === "new" ? ["one-row"] : ["a:word"]),
+    holds: (path) => (path === "recorded" ? ["one-row"] : []),
     patches: [
       {
         module: WAIT,
@@ -61,11 +84,11 @@ const CONTROLS: Record<string, Control> = {
         to: "await ((_key, fn) => fn())(`fsd.ask.plan:",
       },
     ],
-    does: "the ask records neither its filing nor its row's id with runOnce, so the replay after the resume reaches addTask with a new id and files again",
+    does: "the ask records neither its filing nor its row's id with runOnce, so the replay after the resume files again: a new task gets a second row, and a recorded one is dispatched again and declined",
   },
   "no-waker": {
     name: "no-waker",
-    assertions: ["a:completed"],
+    assertions: () => ["a:completed"],
     patches: [
       {
         module: WAIT,
@@ -83,6 +106,15 @@ if (controlName !== "" && CONTROLS[controlName] === undefined) {
   process.exit(2);
 }
 const control = controlName === "" ? undefined : CONTROLS[controlName];
+
+// GOAL_ASK=recorded asks in words that name the recorded-task path, so that
+// path, which the model takes only some of the time, can be run on purpose.
+const askName = process.env.GOAL_ASK ?? "";
+if (askName !== "" && askName !== "recorded") {
+  console.error(`unknown GOAL_ASK "${askName}"; known: recorded`);
+  process.exit(2);
+}
+const ASK_RECORDED = askName === "recorded";
 
 // ---- the clients ----------------------------------------------------------------
 
@@ -151,7 +183,7 @@ async function attempt(o: {
   model: string;
   label: string;
 }): Promise<Observed> {
-  const fixture = loadFixture<{ asker: string; colleague: string; ask: string }>(import.meta.url, "ask.json");
+  const fixture = loadFixture<{ asker: string; colleague: string; ask: string; askRecorded: string }>(import.meta.url, "ask.json");
   const asker = `lead-${word()}`;
   const colleague = `keeper-${word()}`;
   const secret = word();
@@ -173,7 +205,7 @@ async function attempt(o: {
   if (added.status !== "completed") throw new Error(`addDelegate ended ${added.status}`);
 
   // The ask. Kill the server the moment the asker's request reads suspended.
-  const ask = fixture.ask.replaceAll("{colleague}", colleague);
+  const ask = (ASK_RECORDED ? fixture.askRecorded : fixture.ask).replaceAll("{colleague}", colleague);
   say(`${o.label}: "${ask}" (the word is ${secret})`);
   const client = alice.flow("agent");
   const asked = (await client.sendAction("run", { message: ask }, { sessionId: conv })).request.id;
@@ -216,9 +248,25 @@ async function attempt(o: {
 
 let LAB_ORG = "";
 
-function grade(O: Observed, store: string, userId: string): { failures: string[]; notes: string[] } {
+/**
+ * How the asking request waited, read from its own tool calls (see {@link WaitPath}).
+ * A prefix match: a board's task tools can carry its suffix (`dispatchTask_<board>`).
+ * A turn that waited both ways is `none`: no one path's assertion fits it.
+ */
+function waitPath(store: string, O: Observed): WaitPath {
+  const calls = items(store, O.conv, "generator_step")
+    .filter((step) => step.requestId === O.asked)
+    .flatMap((step) => (step.toolCalls ?? []) as Array<{ toolName?: string; arguments?: Record<string, unknown> }>)
+    .filter((call) => call.toolName?.startsWith("dispatchTask") === true && call.arguments?.wait === true);
+  const recorded = calls.filter((call) => call.arguments?.taskId !== undefined).length;
+  if (calls.length === 0 || (recorded > 0 && recorded < calls.length)) return "none";
+  return recorded > 0 ? "recorded" : "new";
+}
+
+function grade(O: Observed, store: string, userId: string): Graded {
   const failures: string[] = [];
   const notes: string[] = [];
+  const path = waitPath(store, O);
   if (!O.suspendedAtKill) failures.push(`kill:suspended — the server was not killed while the asker's request read suspended (it read ${O.statusAtKill})`);
 
   const all = requests(store);
@@ -242,10 +290,10 @@ function grade(O: Observed, store: string, userId: string): { failures: string[]
     failures.push(`b:once — ${O.colleague} completed ${completedRows.length} rows in ${completedRuns.length} runs, not one`);
   }
   notes.push(
-    `killed ${O.killedAfterMs} ms after the ask; asker ${askedRequest?.status}; ${turns.length} turn(s); rows ${show(rows.map((t) => [t.status, t.attempts]))}; ` +
+    `waited on ${path === "none" ? "no one path (never with wait, or both ways)" : `a ${path} task`}; killed ${O.killedAfterMs} ms after the ask; asker ${askedRequest?.status}; ${turns.length} turn(s); rows ${show(rows.map((t) => [t.status, t.attempts]))}; ` +
       `completed runs ${completedRuns.length}; said: ${said.slice(0, 200).replace(/\n/g, " ")}`,
   );
-  return { failures, notes };
+  return { failures, notes, path };
 }
 
 // ---- the run ------------------------------------------------------------------------
@@ -273,7 +321,7 @@ await runGoal(async () => {
   const pages = await buildShiftManagerPages(join(SCRATCH, "pages"));
 
   const attempts = Number(process.env.GOAL_ATTEMPTS ?? (control === undefined ? 3 : 1));
-  let result: { failures: string[]; notes: string[] } = { failures: ["no attempt ran"], notes: [] };
+  let result: Graded = { failures: ["no attempt ran"], notes: [], path: "none" };
   for (let n = 1; n <= attempts; n += 1) {
     const label = `${control?.name ?? "plain"}-${n}`;
     const storeDir = join(SCRATCH, "stores", `${RUN_STAMP}-${label}`);
@@ -285,7 +333,7 @@ await runGoal(async () => {
       const observed = await attempt({ serve, store, shipped, alice, model, label });
       result = grade(observed, store, alice.userId);
     } catch (error) {
-      result = { failures: [`setup — ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}`], notes: [] };
+      result = { failures: [`setup — ${error instanceof Error ? (error.stack ?? error.message).slice(0, 1500) : String(error)}`], notes: [], path: "none" };
     }
     for (const note of result.notes) say(`attempt ${n}: ${note}`);
     say(`attempt ${n} of ${attempts}: ${result.failures.length === 0 ? "PASS" : `FAIL (${[...new Set(result.failures.map((f) => f.split(" — ")[0]))].join(", ")})`}`);
@@ -295,14 +343,22 @@ await runGoal(async () => {
 
   if (control !== undefined) assertPatched(control.patches, REPO_ROOT, mark);
   const failures = [...result.failures];
-  if (control !== undefined) {
-    for (const assertion of control.assertions) {
+  const path = result.path;
+  if (control !== undefined && path === "none") {
+    failures.unshift(`control ${control.name}: the asker didn't wait one way (it never dispatched with wait, or waited both ways), so the control can't be graded`);
+  } else if (control !== undefined && path !== "none") {
+    for (const assertion of control.assertions(path)) {
       const named = failures.some((f) => f.startsWith(`${assertion} `));
       failures.unshift(
         named
           ? `control ${control.name}: ${assertion} failed, as it must`
           : `control ${control.name}: ${assertion} did NOT fail, so the check can't see what the control removes`,
       );
+    }
+    for (const assertion of control.holds?.(path) ?? []) {
+      if (failures.some((f) => f.startsWith(`${assertion} `))) {
+        failures.unshift(`control ${control.name}: ${assertion} failed, but on a ${path} task it must hold, so something other than the control broke the run`);
+      }
     }
   }
   return { failures, evidence: `DevTeam on ${model}, SQLite, the server killed with SIGKILL while the ask waited; ${result.notes.join("; ")}` };
