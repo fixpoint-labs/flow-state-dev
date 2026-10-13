@@ -335,6 +335,9 @@ export interface AgentWorkerFlowOptions {
   installation?: WorkerInstallation;
 }
 
+/** The coordinator's tool that handed a post on before `dispatchTask` did, refused by name at load. */
+const RETIRED_HAND_OFF = "handOff"; // retired-name-refusal
+
 /**
  * What one worker on this flow configures, in its file.
  *
@@ -383,6 +386,18 @@ function settingsSchema(
         const known = Object.keys(catalog);
         for (const name of names ?? []) {
           if (Object.hasOwn(catalog, name)) continue;
+          // A coordinator hands a post on with `dispatchTask` and `post: true` now.
+          if (name === RETIRED_HAND_OFF) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                `names tool "${RETIRED_HAND_OFF}", which no longer exists. A coordinator hands the post it is ` + // retired-name-refusal
+                `routing to a delegate with \`dispatchTask\` and \`post: true\`, which every coordinator turn ` +
+                `carries: drop "${RETIRED_HAND_OFF}" from this worker's \`tools:\` line, and name ` + // retired-name-refusal
+                `\`dispatchTask\` in its instructions instead.`
+            });
+            continue;
+          }
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
@@ -1287,8 +1302,8 @@ function defineAgentFlowAround(
     isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
     ...bound,
-    // A delegated post's run that is cancelled before its answer went back
-    // tells the coordinator, so its round doesn't wait for the deadline.
+    // A delegated post's run that is cancelled tells the coordinator the
+    // ending its row owes, so its round doesn't wait for the deadline.
     request: { ...(bound.request ?? {}), onFinished: delegatedPostOnFinished },
     // `userMessage` keeps the caller's message as their turn, so a worker's
     // conversation holds both sides and survives a reload.
@@ -1309,10 +1324,6 @@ function defineAgentFlowAround(
     },
     internal: {
       actions: {
-        // A coordinator's delivery: one turn of `run` on the post, its reply
-        // handed back to the delivering conversation with the delivery's
-        // token. That is what makes an agent worker a delegate that takes posts.
-        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run),
         // A workstream's open: creates the lead's workstream session, linked
         // at create, and runs nothing. That is what lets an agent worker lead
         // a workstream.
@@ -1322,7 +1333,15 @@ function defineAgentFlowAround(
         ...(board?.entries(run) ?? {})
       }
     },
-    task: { actions: { [WORKER_TASK_ENTRY]: taskEntry } }
+    task: {
+      actions: {
+        [WORKER_TASK_ENTRY]: taskEntry,
+        // A coordinator's post row: one turn of `run` on the post, behind the
+        // claim gate, its reply the row's result. That is what makes an agent
+        // worker a delegate that takes posts.
+        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run)
+      }
+    }
   });
 
   /**

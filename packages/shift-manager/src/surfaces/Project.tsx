@@ -22,7 +22,8 @@
  *   a line saying it has none and its coding work runs on its files.
  *
  * **What a project view reads** (BR-18): the row and the entries, by one
- * prefix, when it opens and each time the Lab is read again; never a read of
+ * prefix, when it opens, each time the Lab is read again, and every few
+ * seconds while Board or Workstreams is on screen; never a read of
  * the whole Lab of its own. The title comes from the snapshot every level shares.
  *
  * Above the tabs, the team strip from the worker inventory, as design v2 draws
@@ -146,12 +147,19 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
   );
 }
 
+/** How often a tab that draws entries reads the project again while it is on screen. */
+const PROJECT_POLL_MS = 5_000;
+
 /**
- * The project's own read, row and entries (BR-18), when the view opens and
- * each time the Lab is read again (`readAt`); `reread` reads it now, as after
- * an open. A read again keeps the last one on screen until it lands. No read
- * while `readerSessionId` is `null`: the user holds no reader session yet,
- * or the tab on screen draws no entries.
+ * The project's own read, row and entries (BR-18), when the view opens, each
+ * time the Lab is read again (`readAt`), and every {@link PROJECT_POLL_MS}
+ * while a tab that draws entries is on screen: a workstream is opened by
+ * someone else's turn (the chief of staff's, or a coordinator's in another
+ * window), so the list shows it without a reload. `reread` reads it now, as
+ * after an open. A read again keeps the last one on screen until it lands,
+ * and keeps it if it fails.
+ * No read while `readerSessionId` is `null`: the user holds no reader session
+ * yet, or the tab on screen draws no entries.
  */
 function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
   const { clients } = useLab();
@@ -160,11 +168,22 @@ function useProjectRead(address: ProjectAddress, readerSessionId: string | null,
   useEffect(() => {
     if (readerSessionId === null) return;
     let closed = false;
+    let next: ReturnType<typeof setTimeout> | undefined;
     readProject(clients, readerSessionId, address)
       .then((value) => !closed && setRead({ value }))
-      .catch((error: unknown) => !closed && setRead({ failure: describeFailure(error) }));
+      // A failed read again keeps the last good one on screen: one dropped
+      // poll shouldn't blank the list. Only a failed first read shows.
+      .catch(
+        (error: unknown) =>
+          !closed && setRead((prev) => (prev !== undefined && "value" in prev ? prev : { failure: describeFailure(error) })),
+      )
+      // After a failed read too: a dropped request recovers without Retry.
+      .finally(() => {
+        if (!closed) next = setTimeout(() => setReads((n) => n + 1), PROJECT_POLL_MS);
+      });
     return () => {
       closed = true;
+      if (next !== undefined) clearTimeout(next);
     };
     // The address is the view's key; its parts are what the read depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps

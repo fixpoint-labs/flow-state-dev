@@ -30,10 +30,20 @@ export type DelegateCheck =
   | { readonly ok: true; readonly worker: RosterWorker; readonly takesPost: boolean }
   | { readonly ok: false; readonly message: string };
 
-/** Whether a worker flow declares the delegated-post entry. */
+/** Whether a worker flow declares the delegated-post entry, among its task entries. */
 export function takesDelegatedPost(flow: unknown): boolean {
-  const internal = (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal;
-  return internal?.actions !== undefined && Object.hasOwn(internal.actions, DELEGATED_POST_ENTRY);
+  const actions = (flow as { task?: { actions?: Record<string, unknown> } } | undefined)?.task?.actions;
+  return actions !== undefined && Object.hasOwn(actions, DELEGATED_POST_ENTRY);
+}
+
+/**
+ * Whether a worker flow still declares the delegated-post entry where it used
+ * to go, among its internal entries: a coordinator refuses such a delegate
+ * flow by name rather than treat it as one that takes no post (BP-030).
+ */
+export function declaresInternalPostEntry(flow: unknown): boolean {
+  const actions = (flow as { internal?: { actions?: Record<string, unknown> } } | undefined)?.internal?.actions;
+  return actions !== undefined && Object.hasOwn(actions, DELEGATED_POST_ENTRY);
 }
 
 /** What a delegate takes, as `listDelegates` says it. */

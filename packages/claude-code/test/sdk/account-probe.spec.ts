@@ -53,6 +53,29 @@ describe("probeClaudeAccount, scripted", () => {
     expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({ status: "account", tokenSource: "claude.ai" });
   });
 
+  it("says account for a subscription sign-in, which names no key or token source", async () => {
+    // The shape the SDK returns for a `claude` login (keychain / ~/.claude) with no API key set.
+    const sdk = scriptedSdk(async () => ({ email: "a@b.c", organization: "o", subscriptionType: "Claude Max", apiProvider: "firstParty" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).toEqual({
+      status: "account",
+      email: "a@b.c",
+      subscriptionType: "Claude Max",
+    });
+  });
+
+  it("says account for an email alone, and for a subscription type alone", async () => {
+    // The SDK documents accountInfo() as the logged-in user's account, so either
+    // field present means a sign-in was found. The probe still does not check
+    // that the credential works (see the file header).
+    const emailOnly = scriptedSdk(async () => ({ email: "a@b.c", apiProvider: "firstParty" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: emailOnly.importSdk })).toEqual({ status: "account", email: "a@b.c" });
+    const planOnly = scriptedSdk(async () => ({ subscriptionType: "Claude Pro" }));
+    expect(await probeClaudeAccount({ env: {}, importSdk: planOnly.importSdk })).toEqual({
+      status: "account",
+      subscriptionType: "Claude Pro",
+    });
+  });
+
   it("says none, with the reason, when neither source comes back", async () => {
     const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: null }));
     const result = await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk });

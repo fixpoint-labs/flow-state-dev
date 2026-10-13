@@ -247,7 +247,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     model = scripted([
       { toolName: "hire", args: { id: "licenses", flow: "agent", description: "Audits dependency licenses." } },
       { toolName: "addDelegate", args: { worker: "licenses" } },
-      { toolName: "handOff", args: { worker: "licenses" } },
+      { toolName: "dispatchTask", args: { post: true, assignee: "licenses" } },
     ]);
     const turn = await act(lab, id, "run", { message: "audit our dependencies' licenses" });
     expect(turn.error).toBeUndefined();
@@ -266,7 +266,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
   it("records a default delegate whose flow can't take a post as skipped, with why (BR-9)", async () => {
     const lab = await open();
     const id = await conversation(lab);
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.coder" } }]);
+    model = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "eng.coder" } }]);
     expect((await act(lab, id, "run", { message: "plan the release" })).error).toBeUndefined();
     const items = await settledItems(lab, id);
     const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
@@ -283,7 +283,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const lab = await open();
     const id = await conversation(lab);
     const issue = `cart-${globalThis.crypto.randomUUID().slice(0, 6)}`;
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], { choice: "eng.em", confidence: 0.9 }, [
+    model = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }], { choice: "eng.em", confidence: 0.9 }, [
       {
         toolName: "dispatchTask",
         args: { goal: "show a badge on the cart", assignee: "eng.coder", input: { issue, phase: PHASE } },
@@ -334,7 +334,9 @@ describe("the chief of staff as a coordinator (S10)", () => {
               const value = Reflect.get(target, key, receiver);
               if (typeof value !== "function") return value;
               return async (...args: unknown[]) => {
-                if (JSON.stringify(args)?.includes(issue)) await held;
+                // The coder's row only: the post to the EM names the issue too, and must land.
+                const written = JSON.stringify(args) ?? "";
+                if (written.includes(issue) && written.includes('"eng.coder"')) await held;
                 return value.apply(target, args);
               };
             },
@@ -354,7 +356,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     expect(hired.error).toBeUndefined();
     const id = `s-desk-${globalThis.crypto.randomUUID()}`;
     expect((await lab.door("POST", "coordinator/sessions", { body: { userId: LAB_USER_ID, sessionId: id, state: { workerId: "release-desk" } } })).status).toBe(201);
-    model = scripted([{ toolName: "handOff", args: { worker: "eng.em" } }], undefined, [
+    model = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }], undefined, [
       { toolName: "dispatchTask", args: { goal: "the release notes", assignee: "eng.coder", input: { issue, phase: PHASE } } },
     ]);
     expect((await act(lab, id, "run", { message: `${issue}: the release notes` })).error).toBeUndefined();
@@ -370,11 +372,10 @@ describe("the chief of staff as a coordinator (S10)", () => {
     abandon(new Error("the write was abandoned: its request was cancelled"));
     await settledItems(lab, id);
 
-    const deliveries = ((await runtime.stores.session.get(id))?.state as { deliveries: any[] }).deliveries;
-    expect(deliveries.find((d) => d.delegate.worker === "eng.em")).toMatchObject({
-      answered: false,
-      missed: "its turn failed: its run was cancelled",
-    });
+    // The EM's post row ended with the cancel, and the round closed on it.
+    const posts = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.sealed?.kind === "post");
+    expect(posts).toEqual([expect.objectContaining({ assignee: "eng.em", status: "errored", error: "its run was cancelled" })]);
+    expect(((await runtime.stores.session.get(id))?.state as { openRounds: unknown[] }).openRounds).toEqual([]);
   });
 });
 

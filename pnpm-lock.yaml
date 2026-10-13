@@ -1924,6 +1924,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
+      '@flow-state-dev/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@flow-state-dev/workspace':
         specifier: workspace:*
         version: link:../workspace

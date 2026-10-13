@@ -40,6 +40,12 @@ describe("the fsd profile's coder (default claude-code)", () => {
     expect(started.lines).toEqual(["Coder: Claude Code, on the credential from claude.ai."]);
   });
 
+  it("names a subscription sign-in, which carries no key or token source, by its plan", async () => {
+    const subscription: ClaudeAccountProbe = { status: "account", email: "a@b.c", subscriptionType: "Claude Max" };
+    const started = await start("claude-code", undefined, subscription);
+    expect(started.lines).toEqual(["Coder: Claude Code, on the credential from a Claude Max sign-in."]);
+  });
+
   it("BR-7: with no account it refuses, naming what to set, and says nothing about a coder", async () => {
     const started = await start("claude-code", undefined, NONE);
     expect(started.harness).toBeUndefined();
