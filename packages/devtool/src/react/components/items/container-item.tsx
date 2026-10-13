@@ -6,9 +6,9 @@ import type { ContainerItem } from "@flow-state-dev/core/items";
 
 export function ContainerItemView({ item }: { item: ContainerItem }) {
   return (
-    <div className="flex items-center gap-1.5 text-[11px] text-slate-600 border-l-2 border-slate-700/50 pl-2 py-0.5">
-      <span className="font-mono">{item.blockName}</span>
-      {item.label && <span className="text-slate-700">· {item.label}</span>}
+    <div className="flex items-center gap-1.5 text-[11px] text-fs-ink3 border-l border-fs-ink/30 pl-2 py-0.5">
+      <span className="font-fs-mono">{item.blockName}</span>
+      {item.label && <span className="text-fs-ink4">· {item.label}</span>}
     </div>
   );
 }

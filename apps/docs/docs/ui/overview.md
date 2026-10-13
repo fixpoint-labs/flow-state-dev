@@ -40,7 +40,7 @@ Status gets its own tokens:
 
 Each has a `-foreground` partner for text on a filled background. `warning` and `attention` are separate tokens, so an app can make "waiting on you" stand out without every warning looking like a request.
 
-Defaults come with the components. The first `fsdev ui add` of a component that uses a status token also adds the `tokens` item, which writes every token, light and dark, into your stylesheet. The defaults are plain: green, amber, blue, yellow and red.
+Defaults come with the components. The first `fsdev ui add` of a component that uses a status token also adds the `tokens` item, which writes every token, light and dark, into your stylesheet. The base colours are a warm paper background with dark ink text, and dark mode inverts them. The status tokens default to blue for `info`, green for `success`, red for `destructive`, amber for `warning`, and a highlighter yellow for `attention`. `--radius` defaults to `0rem`, so corners are square.
 
 ```bash
 fsdev ui add tool task-plan   # also adds tokens

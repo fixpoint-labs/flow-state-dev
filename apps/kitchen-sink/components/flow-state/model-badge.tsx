@@ -32,7 +32,7 @@ export function ModelBadge({
     <span
       title={title}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5",
+        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5",
         "text-[10px] font-medium leading-none text-muted-foreground",
         className,
       )}

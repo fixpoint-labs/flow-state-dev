@@ -16,20 +16,20 @@ export function ReasoningItemView({ item }: { item: ReasoningItem }) {
   return (
     <div>
       <button
-        className="flex items-center gap-1.5 w-full text-left text-xs text-slate-400"
+        className="flex items-center gap-1.5 w-full text-left text-xs text-fs-ink3 hover:text-fs-ink"
         onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
       >
         {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
-          : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+          ? <ChevronDown className="h-3 w-3 shrink-0 text-fs-ink3" />
+          : <ChevronRight className="h-3 w-3 shrink-0 text-fs-ink3" />
         }
-        <Brain className="h-3 w-3 shrink-0 text-slate-400" />
-        <span>Reasoning</span>
-        {lineCount > 0 && <span className="text-slate-600">({lineCount} {lineCount === 1 ? "line" : "lines"})</span>}
+        <Brain className="h-3 w-3 shrink-0 text-fs-ink3" />
+        <span className="font-fs-mono font-medium">Reasoning</span>
+        {lineCount > 0 && <span className="font-fs-mono text-fs-ink4">({lineCount} {lineCount === 1 ? "line" : "lines"})</span>}
       </button>
       {expanded && (
-        <div className="ml-7 mt-1.5 text-xs text-slate-400 whitespace-pre-wrap leading-relaxed">
-          {text || <span className="italic text-slate-600">No reasoning content</span>}
+        <div className="ml-7 mt-1.5 border-l border-fs-ink/20 pl-3 text-[13px] text-fs-ink2 whitespace-pre-wrap leading-relaxed">
+          {text || <span className="italic text-fs-ink4">No reasoning content</span>}
         </div>
       )}
     </div>

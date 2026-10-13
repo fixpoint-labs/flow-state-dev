@@ -35,35 +35,35 @@ type StatusPresentation = {
 const PRESENTATIONS: Record<LiveStatus, StatusPresentation> = {
   streaming: {
     label: "Live",
-    dotClass: "bg-green-400 animate-pulse",
-    textClass: "text-green-300",
+    dotClass: "bg-fs-blue animate-pulse",
+    textClass: "text-fs-blue",
   },
   polling: {
     label: "Polling",
-    dotClass: "bg-amber-400 animate-pulse",
-    textClass: "text-amber-300",
+    dotClass: "bg-fs-blue/50 animate-pulse",
+    textClass: "text-fs-ink2",
   },
   complete: {
     label: "Complete",
-    dotClass: "bg-emerald-500",
-    textClass: "text-emerald-300",
+    dotClass: "bg-fs-green",
+    textClass: "text-fs-green",
     icon: "check",
   },
   failed: {
     label: "Failed",
-    dotClass: "bg-red-500",
-    textClass: "text-red-300",
+    dotClass: "bg-fs-red",
+    textClass: "text-fs-red",
     icon: "cross",
   },
   idle: {
     label: "Idle",
-    dotClass: "bg-slate-500",
-    textClass: "text-slate-400",
+    dotClass: "border border-dashed border-fs-ink3",
+    textClass: "text-fs-ink3",
   },
   off: {
     label: "Off",
-    dotClass: "bg-slate-700",
-    textClass: "text-slate-500",
+    dotClass: "border border-fs-ink5",
+    textClass: "text-fs-ink4",
   },
 };
 
@@ -90,23 +90,23 @@ export function LiveSwitch({ on, disabled, status, showToggle, onToggle }: LiveS
           disabled={disabled}
           onClick={onToggle}
           className={cn(
-            "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors",
+            "relative inline-flex h-4 w-7 shrink-0 items-center border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fs-blue/40",
             on
-              ? "border-green-500/40 bg-green-500/30"
-              : "border-slate-700 bg-slate-800",
+              ? "border-fs-blue bg-fs-blue/15"
+              : "border-fs-ink/30 bg-fs-paper",
             disabled ? "cursor-not-allowed opacity-90" : "cursor-pointer",
           )}
         >
           <span
             className={cn(
-              "inline-block h-3 w-3 transform rounded-full bg-slate-100 shadow transition-transform",
-              on ? "translate-x-3.5" : "translate-x-0.5",
+              "inline-block h-2.5 w-2.5 transform transition-transform",
+              on ? "translate-x-[15px] bg-fs-blue" : "translate-x-[3px] bg-fs-ink3",
             )}
           />
         </button>
       )}
-      <span className="inline-flex items-center gap-1 text-[10px] font-medium">
-        <span className={cn("inline-block h-1.5 w-1.5 rounded-full", pres.dotClass)} />
+      <span className="inline-flex items-center gap-1.5 font-fs-mono text-[10.5px] font-medium">
+        <span className={cn("inline-block size-[7px] shrink-0 box-border", pres.dotClass)} />
         <span className={pres.textClass}>{pres.label}</span>
         {pres.icon === "check" && <Check className={cn("h-3 w-3", pres.textClass)} />}
         {pres.icon === "cross" && <X className={cn("h-3 w-3", pres.textClass)} />}

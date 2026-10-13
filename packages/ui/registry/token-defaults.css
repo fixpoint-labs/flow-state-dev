@@ -1,61 +1,80 @@
-/* The `@theme` form of the `tokens` item. Storybook and kitchen-sink import this. */
+/*
+ * The `@theme` form of the `tokens` item. Storybook and kitchen-sink import this.
+ *
+ * Flow State brand defaults: Paper in light, Night in `.dark`. Blueprint means
+ * interactive / live / focus; highlighter means a person needs to act, and
+ * nothing else; red is an error, green is done. Hairlines are ink at a fixed
+ * opacity, authored here as the solid they make on the surface.
+ */
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(240 10% 3.9%);
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(240 10% 3.9%);
-  --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(240 10% 3.9%);
-  --color-primary: hsl(240 5.9% 10%);
-  --color-primary-foreground: hsl(0 0% 98%);
-  --color-secondary: hsl(240 4.8% 95.9%);
-  --color-secondary-foreground: hsl(240 5.9% 10%);
-  --color-muted: hsl(240 4.8% 95.9%);
-  --color-muted-foreground: hsl(240 3.8% 46.1%);
-  --color-accent: hsl(240 4.8% 95.9%);
-  --color-accent-foreground: hsl(240 5.9% 10%);
-  --color-destructive: hsl(0 84.2% 60.2%);
-  --color-destructive-foreground: hsl(0 0% 98%);
-  --color-border: hsl(240 5.9% 90%);
-  --color-input: hsl(240 5.9% 90%);
-  --color-ring: hsl(240 5.9% 10%);
-  --color-success: hsl(142 76% 36%);
-  --color-success-foreground: hsl(0 0% 98%);
-  --color-warning: hsl(32 95% 44%);
-  --color-warning-foreground: hsl(0 0% 98%);
-  --color-info: hsl(217 91% 60%);
-  --color-info-foreground: hsl(0 0% 98%);
-  --color-attention: hsl(41 96% 40%);
-  --color-attention-foreground: hsl(240 10% 3.9%);
-  --radius: 0.625rem;
+  --color-background: hsl(45 36.4% 95.7%); /* surface #f8f6f0 */
+  --color-foreground: hsl(50 12.5% 9.4%); /* ink #1b1a15 */
+  --color-card: hsl(48 45.5% 97.8%); /* card #fcfbf7 */
+  --color-card-foreground: hsl(50 12.5% 9.4%);
+  --color-popover: hsl(48 45.5% 97.8%); /* card #fcfbf7 */
+  --color-popover-foreground: hsl(50 12.5% 9.4%);
+  --color-primary: hsl(50 12.5% 9.4%); /* ink #1b1a15 */
+  --color-primary-foreground: hsl(44 33.3% 91.2%);
+  --color-secondary: hsl(43.3 27.3% 87.1%); /* sidebar #e7e2d5 */
+  --color-secondary-foreground: hsl(50 12.5% 9.4%);
+  --color-muted: hsl(43.3 27.3% 87.1%); /* sidebar #e7e2d5 */
+  --color-muted-foreground: hsl(46.2 8.1% 31.6%);
+  --color-accent: hsl(45.2 16.3% 90.5%); /* ink at .06 on surface */
+  --color-accent-foreground: hsl(50 12.5% 9.4%);
+  --color-destructive: hsl(10.3 61.5% 40.8%); /* red #a83e28 */
+  --color-destructive-foreground: hsl(44 33.3% 91.2%);
+  --color-border: hsl(45.8 6.9% 78.4%); /* ink at .2 on surface */
+  --color-input: hsl(46.2 4.8% 69.8%); /* ink at .3 on surface */
+  --color-ring: hsl(218.1 52.2% 36.1%); /* blueprint #2c4f8c */
+  --color-success: hsl(130.4 27.4% 32.9%); /* green #3d6b45 */
+  --color-success-foreground: hsl(44 33.3% 91.2%);
+  --color-warning: hsl(32 60% 34%); /* amber: the input-state fill hue (#ffc98a), darkened to read as text */
+  --color-warning-foreground: hsl(44 33.3% 91.2%);
+  --color-info: hsl(218.1 52.2% 36.1%); /* blueprint #2c4f8c */
+  --color-info-foreground: hsl(44 33.3% 91.2%);
+  --color-attention: hsl(64.8 89.1% 63.9%); /* highlighter #e8f551 */
+  --color-attention-foreground: hsl(50 12.5% 9.4%);
+  --radius: 0rem;
+  /* Square corners: every `rounded-*` size reads one of these, not `--radius`. */
+  --radius-xs: 0rem;
+  --radius-sm: 0rem;
+  --radius-md: 0rem;
+  --radius-lg: 0rem;
+  --radius-xl: 0rem;
+  --radius-2xl: 0rem;
+  --radius-3xl: 0rem;
+  --radius-4xl: 0rem;
+  /* Brand faces. Storybook loads them by family name; kitchen-sink sets the next/font variables. */
+  --font-sans: var(--font-space-grotesk, "Space Grotesk"), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono, "IBM Plex Mono"), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .dark {
-  --color-background: hsl(240 10% 3.9%);
-  --color-foreground: hsl(0 0% 98%);
-  --color-card: hsl(240 10% 3.9%);
-  --color-card-foreground: hsl(0 0% 98%);
-  --color-popover: hsl(240 10% 3.9%);
-  --color-popover-foreground: hsl(0 0% 98%);
-  --color-primary: hsl(0 0% 98%);
-  --color-primary-foreground: hsl(240 5.9% 10%);
-  --color-secondary: hsl(240 3.7% 15.9%);
-  --color-secondary-foreground: hsl(0 0% 98%);
-  --color-muted: hsl(240 3.7% 15.9%);
-  --color-muted-foreground: hsl(240 5% 64.9%);
-  --color-accent: hsl(240 3.7% 15.9%);
-  --color-accent-foreground: hsl(0 0% 98%);
-  --color-destructive: hsl(0 62.8% 58%);
-  --color-destructive-foreground: hsl(240 10% 3.9%);
-  --color-border: hsl(240 3.7% 15.9%);
-  --color-input: hsl(240 3.7% 15.9%);
-  --color-ring: hsl(240 4.9% 83.9%);
-  --color-success: hsl(142 69% 58%);
-  --color-success-foreground: hsl(240 10% 3.9%);
-  --color-warning: hsl(43 96% 56%);
-  --color-warning-foreground: hsl(240 10% 3.9%);
-  --color-info: hsl(213 94% 68%);
-  --color-info-foreground: hsl(240 10% 3.9%);
-  --color-attention: hsl(48 96% 53%);
-  --color-attention-foreground: hsl(240 10% 3.9%);
+  --color-background: hsl(51.4 14.3% 9.6%); /* surface #1c1b15 */
+  --color-foreground: hsl(43.3 32.1% 89%); /* ink #ece7da */
+  --color-card: hsl(52.5 12.5% 12.5%); /* card #24231c */
+  --color-card-foreground: hsl(43.3 32.1% 89%);
+  --color-popover: hsl(52.5 12.5% 12.5%); /* card #24231c */
+  --color-popover-foreground: hsl(43.3 32.1% 89%);
+  --color-primary: hsl(43.3 32.1% 89%); /* ink #ece7da */
+  --color-primary-foreground: hsl(51.4 18.9% 7.3%);
+  --color-secondary: hsl(53.3 33.3% 5.3%); /* sidebar #121109 */
+  --color-secondary-foreground: hsl(43.3 32.1% 89%);
+  --color-muted: hsl(53.3 33.3% 5.3%); /* sidebar #121109 */
+  --color-muted-foreground: hsl(44.3 11.4% 60.6%);
+  --color-accent: hsl(50.3 10.5% 14.4%); /* ink at .06 on surface */
+  --color-accent-foreground: hsl(43.3 32.1% 89%);
+  --color-destructive: hsl(12.4 69.3% 62.9%); /* red #e27a5f */
+  --color-destructive-foreground: hsl(51.4 18.9% 7.3%);
+  --color-border: hsl(48.3 7.1% 25.5%); /* ink at .2 on surface */
+  --color-input: hsl(47.2 6% 33.4%); /* ink at .3 on surface */
+  --color-ring: hsl(219.8 58.9% 72.4%); /* blueprint #8fabe2 */
+  --color-success: hsl(135.3 31.4% 65.7%); /* green #8cc39a */
+  --color-success-foreground: hsl(51.4 18.9% 7.3%);
+  --color-warning: hsl(32 100% 68%); /* input-state amber #ffb35c */
+  --color-warning-foreground: hsl(51.4 18.9% 7.3%);
+  --color-info: hsl(219.8 58.9% 72.4%); /* blueprint #8fabe2 */
+  --color-info-foreground: hsl(51.4 18.9% 7.3%);
+  --color-attention: hsl(64.8 89.1% 63.9%); /* highlighter #e8f551 */
+  --color-attention-foreground: hsl(50 12.5% 9.4%);
 }

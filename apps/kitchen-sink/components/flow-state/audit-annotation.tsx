@@ -113,7 +113,7 @@ export function AuditAnnotation({ item }: { item: ComponentItem }) {
         </div>
         <span
           className={cn(
-            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+            "rounded-md px-2 py-0.5 text-[10px] font-medium",
             SEVERITY_BG[severity],
           )}
         >
@@ -249,10 +249,10 @@ function ScoreGauge({ score, label }: { score: number; label: string }) {
 
   return (
     <div className="flex items-center gap-1.5">
-      <div className="h-1.5 w-12 overflow-hidden rounded-full bg-muted">
+      <div className="h-1.5 w-12 overflow-hidden rounded-sm bg-muted">
         <div
           className={cn(
-            "h-full rounded-full transition-all",
+            "h-full rounded-sm transition-all",
             severity === "info" && "bg-info",
             severity === "warning" && "bg-warning",
             severity === "critical" && "bg-destructive",

@@ -3,12 +3,11 @@ import type { BlockTraceItem, OutputItem, ItemLookup } from "@flow-state-dev/cor
 import { sideChainTaskCount, sideChainTaskLabel } from "../../lib/side-chain-task-count";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { DevtoolItem } from "../../lib/item-types";
-import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
+import { ChevronDown, ChevronRight, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "../../lib/trace-tree";
 import { buildTraceTree } from "../../lib/trace-tree";
 import type { RequestGroup } from "./stream-view";
-import { StatusBadge } from "../shared/status-badge";
-import { KindIndicator } from "../shared/kind-indicator";
+import { statusSquareClass } from "./request-separator";
 import { useSelection } from "../../context/selection-context";
 import { useDebug } from "../../context/debug-context";
 import { useTraceLookup } from "../../context/trace-context";
@@ -36,6 +35,38 @@ export function TraceView({ requestGroups }: TraceViewProps) {
     const sorted = [...requestGroups].sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
     return buildTraceTree(sorted);
   }, [requestGroups]);
+
+  // Per-request timeline window (wall-clock ms) for the bar column. Spans
+  // the request's own start/duration widened to cover every block's
+  // start/duration, so a bar never falls outside its track. Requests whose
+  // blocks carry no `startedAt` get no window — the bar column stays empty
+  // rather than drawing positions the data doesn't have.
+  const timelineWindows = useMemo(() => {
+    const windows = new Map<string, TimelineWindow>();
+    const groupById = new Map(requestGroups.map((g) => [`req-${g.requestId}`, g]));
+    for (const requestNode of sortedTree) {
+      const group = groupById.get(requestNode.id);
+      let start = Number.POSITIVE_INFINITY;
+      let end = Number.NEGATIVE_INFINITY;
+      let timedBlocks = 0;
+      const visit = (n: TraceNode) => {
+        if (n.type === "block" && n.blockStartedAt !== undefined) {
+          timedBlocks += 1;
+          start = Math.min(start, n.blockStartedAt);
+          end = Math.max(end, blockEnd(n) ?? n.blockStartedAt);
+        }
+        n.children.forEach(visit);
+      };
+      requestNode.children.forEach(visit);
+      if (timedBlocks === 0) continue;
+      if (group?.startedAt !== undefined) {
+        start = Math.min(start, group.startedAt);
+        if (group.duration !== undefined) end = Math.max(end, group.startedAt + group.duration);
+      }
+      if (end > start) windows.set(requestNode.id, { start, total: end - start });
+    }
+    return windows;
+  }, [sortedTree, requestGroups]);
 
   // Determine active request IDs.
   const activeRequestIds = useMemo(
@@ -130,19 +161,27 @@ export function TraceView({ requestGroups }: TraceViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full select-none">
-      <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-slate-800/50">
-        <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={traceItemsVisible}
-            onChange={toggleTraceItemsVisible}
-            className="h-3 w-3 rounded border-slate-600 bg-slate-800"
-          />
-          Show trace items
-        </label>
+    <div className="flex flex-col h-full select-none bg-fs-surface">
+      <div className="border-b border-fs-ink/12 bg-fs-surface">
+        <div className="flex items-center gap-3 px-[18px] pb-2 pt-2.5">
+          <TraceLegend />
+          <label className="ml-auto flex shrink-0 cursor-pointer select-none items-center gap-1.5 font-fs-mono text-[11px] font-medium text-fs-ink3 hover:text-fs-ink">
+            <input
+              type="checkbox"
+              checked={traceItemsVisible}
+              onChange={toggleTraceItemsVisible}
+              className="size-3 accent-fs-blue focus-visible:ring-2 focus-visible:ring-fs-blue/40"
+            />
+            Show trace items
+          </label>
+        </div>
+        <div className={cn(ROW_GRID, "pb-1.5 font-fs-mono text-[10px] font-medium tracking-[.12em] text-fs-ink4")}>
+          <span className="pl-1.5">BLOCK</span>
+          <span className="pr-3 text-right">TIME</span>
+          <span>TIMELINE</span>
+        </div>
       </div>
-      <div ref={scrollContainerRef} className="overflow-auto flex-1">
+      <div ref={scrollContainerRef} className="overflow-auto flex-1 pb-5 pt-1">
         {sortedTree.map((node, index) => (
           <TraceNodeView
             key={node.id}
@@ -155,9 +194,124 @@ export function TraceView({ requestGroups }: TraceViewProps) {
             isActive={activeRequestIds.has(node.id)}
             activeNodeRef={activeNodeRef}
             traceItemsVisible={traceItemsVisible}
+            timeline={timelineWindows.get(node.id)}
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** A request's wall-clock span, used to position each block's timeline bar. */
+type TimelineWindow = { start: number; total: number };
+
+/** Row grid shared by the column header and every tree row: block | time | timeline. */
+const ROW_GRID = "grid grid-cols-[minmax(0,1fr)_64px_220px] items-center pl-2 pr-[18px]";
+
+/** Repeating 16px indent rule — one hairline per nesting level. */
+const INDENT_GUIDES: React.CSSProperties = {
+  backgroundImage:
+    "repeating-linear-gradient(90deg, transparent 0 13px, color-mix(in srgb, var(--fs-ink) 16%, transparent) 13px 14px, transparent 14px 16px)",
+};
+
+/** Quarter ticks behind every timeline track. */
+const TRACK_TICKS: React.CSSProperties = {
+  backgroundImage:
+    "repeating-linear-gradient(90deg, color-mix(in srgb, var(--fs-ink) 10%, transparent) 0 1px, transparent 1px 25%)",
+};
+
+/** Mono kind labels — kinds are told apart by text, not hue. */
+const KIND_LABELS: Record<string, string> = {
+  generator: "GEN",
+  evaluator: "EVL",
+  handler: "HDL",
+  sequencer: "SEQ",
+  router: "RTR",
+};
+
+/** Tag treatment for the small inline markers (iter, SC, D, S). */
+const TAG = "shrink-0 border px-1 font-fs-mono text-[9.5px] font-medium uppercase tracking-[.08em]";
+
+function blockEnd(node: TraceNode): number | undefined {
+  if (node.blockCompletedAt !== undefined) return node.blockCompletedAt;
+  if (node.blockStartedAt !== undefined && node.blockDuration !== undefined) {
+    return node.blockStartedAt + node.blockDuration;
+  }
+  return undefined;
+}
+
+function formatMs(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function TraceLegend() {
+  const entry = "flex items-center gap-[5px]";
+  return (
+    <div className="flex h-4 min-w-0 flex-wrap gap-x-3.5 overflow-hidden whitespace-nowrap font-fs-mono text-[10.5px] font-medium leading-4 text-fs-ink3">
+      <span className={entry}><span className="size-2 bg-fs-green" />ok</span>
+      <span className={entry}><span className="size-2 bg-fs-blue" />active</span>
+      <span className={entry}><span className="size-2 bg-fs-red" />error</span>
+      <span className={entry}><span className="box-border size-2 border border-dashed border-fs-ink3" />skipped</span>
+      <span className={entry}><span className="box-border h-[5px] w-3.5 border border-dashed border-fs-ink3" />side chain</span>
+    </div>
+  );
+}
+
+/** Square status glyph for a tree row. */
+function StatusSquare({ status }: { status?: string }) {
+  return (
+    <span
+      className={cn("inline-block size-2 shrink-0 box-border", statusSquareClass(status))}
+      title={status}
+    />
+  );
+}
+
+/** Indent rail: one guide per nesting level. */
+function IndentGuides({ depth }: { depth: number }) {
+  if (depth === 0) return null;
+  return <span className="shrink-0 self-stretch" style={{ width: depth * 16, ...INDENT_GUIDES }} />;
+}
+
+/**
+ * The timeline cell for a block row. Positioned by the block's own
+ * start/duration inside its request's window; empty track when either is
+ * unknown.
+ */
+function TimelineBar({
+  node,
+  depth,
+  timeline,
+}: {
+  node: TraceNode;
+  depth: number;
+  timeline?: TimelineWindow;
+}) {
+  const started = node.blockStartedAt;
+  const end = blockEnd(node) ?? (node.blockStatus === "in_progress" && timeline ? timeline.start + timeline.total : undefined);
+  const hasBar = timeline !== undefined && started !== undefined && end !== undefined;
+  const left = hasBar ? Math.min(100, Math.max(0, ((started - timeline.start) / timeline.total) * 100)) : 0;
+  const width = hasBar ? Math.min(100 - left, Math.max(0.6, ((end - started) / timeline.total) * 100)) : 0;
+  const isSideChain = node.phase === "sideChain";
+  const barClass = node.blockStatus === "failed"
+    ? isSideChain ? "border border-dashed border-fs-red" : "bg-fs-red"
+    : isSideChain
+      ? "border border-dashed border-fs-ink"
+      : node.blockStatus === "in_progress"
+        ? "bg-fs-blue"
+        : node.blockKind === "generator"
+          ? "bg-fs-ink"
+          : depth < 2
+            ? "bg-fs-ink/22"
+            : "bg-fs-ink/50";
+  return (
+    <div className="relative h-3" style={TRACK_TICKS}>
+      {hasBar && (
+        <span
+          className={cn("absolute top-[3px] box-border h-1.5", barClass)}
+          style={{ left: `${left}%`, width: `${width}%` }}
+        />
+      )}
     </div>
   );
 }
@@ -183,6 +337,7 @@ function TraceNodeView({
   isActive,
   activeNodeRef,
   traceItemsVisible,
+  timeline,
 }: {
   node: TraceNode;
   depth: number;
@@ -193,6 +348,7 @@ function TraceNodeView({
   isActive?: boolean;
   activeNodeRef?: React.RefObject<HTMLDivElement | null>;
   traceItemsVisible: boolean;
+  timeline?: TimelineWindow;
 }) {
   const { selectedItemId, selectItem, selectedBlockNode, selectBlock } = useSelection();
   const { isDebugMode } = useDebug();
@@ -212,21 +368,37 @@ function TraceNodeView({
     return (
       <div ref={isActive ? activeNodeRef : undefined}>
         <button
-          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left hover:bg-slate-800/30"
-          style={{ paddingLeft: `${depth * 16 + 12}px` }}
+          className={cn(ROW_GRID, "min-h-7 w-full text-left hover:bg-fs-ink/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fs-blue/40")}
           onClick={() => toggleNode(node.id, isExpanded)}
         >
-          {hasChildren &&
-            (isExpanded ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />)}
-          {index !== undefined && (
-            <span className="text-[10px] font-mono text-slate-600">#{index}</span>
-          )}
-          <span className="text-xs text-slate-300">{node.action}</span>
-          {node.status && <StatusBadge status={node.status} />}
-          <span className="flex-1" />
-          {node.duration !== undefined && (
-            <span className="text-[10px] font-mono text-slate-500">{(node.duration / 1000).toFixed(1)}s</span>
-          )}
+          <span className="flex min-w-0 items-center gap-1.5 self-stretch">
+            <IndentGuides depth={depth} />
+            <span className="flex w-3.5 shrink-0 justify-center text-fs-ink3">
+              {hasChildren &&
+                (isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
+            </span>
+            <StatusSquare status={node.status} />
+            {index !== undefined && (
+              <span className="w-7 shrink-0 font-fs-mono text-[10px] font-medium tracking-[.04em] text-fs-ink4">#{index}</span>
+            )}
+            <span className="min-w-0 truncate font-fs-mono text-[12.5px] font-semibold text-fs-ink">{node.action}</span>
+            {node.status && (
+              <span
+                className={cn(
+                  "min-w-0 truncate font-fs-mono text-[10.5px] font-medium",
+                  node.status === "failed" ? "text-fs-red" : "text-fs-ink4",
+                )}
+              >
+                {node.status}
+              </span>
+            )}
+          </span>
+          <span className="pr-3 text-right font-fs-mono text-[11px] font-medium tabular-nums text-fs-ink3">
+            {node.duration !== undefined ? `${(node.duration / 1000).toFixed(1)}s` : ""}
+          </span>
+          <div className="relative h-3" style={TRACK_TICKS}>
+            {timeline !== undefined && <span className="absolute inset-x-0 top-[3px] h-1.5 bg-fs-ink/22" />}
+          </div>
         </button>
         {isExpanded &&
           visibleChildren.map((child) => (
@@ -238,6 +410,7 @@ function TraceNodeView({
               parentRequestExpanded={isExpanded}
               toggleNode={toggleNode}
               traceItemsVisible={traceItemsVisible}
+              timeline={timeline}
             />
           ))}
       </div>
@@ -266,87 +439,105 @@ function TraceNodeView({
 
     return (
       <div>
+        {/* The row and its in/out preview are one target: hover, selection and click cover both. */}
         <div
           className={cn(
-            "flex w-full items-center gap-1.5 py-1 text-left hover:bg-slate-800/30 cursor-pointer",
-            isBlockSelected && "bg-slate-800/50 border-l-2 border-green-500",
+            "cursor-pointer hover:bg-fs-ink/5",
+            isBlockSelected && "bg-fs-blue/8 shadow-[inset_2px_0_0_var(--fs-blue)]",
           )}
-          style={{ paddingLeft: `${depth * 16 + 12}px` }}
           onClick={handleRowClick}
         >
-          {hasChildren ? (
-            <button
-              type="button"
-              className="p-0.5 -m-0.5 hover:text-slate-300"
-              aria-label={isExpanded ? "Collapse" : "Expand"}
-              onClick={handleChevronClick}
-            >
-              {isExpanded
-                ? <ChevronDown className="h-3 w-3 text-slate-500" />
-                : <ChevronRight className="h-3 w-3 text-slate-500" />}
-            </button>
-          ) : (
-            <span className="w-3" />
-          )}
-          {node.blockKind && <KindIndicator kind={node.blockKind} />}
-          <span className="text-xs text-slate-300">{node.blockName}</span>
-          {node.iterationIndex !== undefined && (
-            <span
-              className="text-[10px] font-mono text-sky-400/80 px-1 rounded border border-sky-800/40"
-              title={`loopBack iteration ${node.iterationIndex}`}
-            >
-              iter {node.iterationIndex}
-            </span>
-          )}
-          {node.phase === "sideChain" && <SideChainBadge />}
-          {traceErrorSummary && (
-            <span className="text-[10px] font-mono px-1 py-0 rounded border border-red-700/60 text-red-300 shrink-0">
-              {traceErrorSummary}
-            </span>
-          )}
-          {traceError && (
-            <span
-              className="text-[11px] text-red-400/80 truncate max-w-[20rem]"
-              title={traceError}
-            >
-              {traceError}
-            </span>
-          )}
-          {(() => {
-            const trace = node.traceItem as BlockTraceItem | undefined;
-            const hasGenerator = trace?.generator !== undefined;
-            const hasConnected = trace?.input?.connected !== undefined;
-            if (!hasGenerator && !hasConnected) return null;
-            return (
-              <span
-                className="text-[10px] font-mono text-purple-400/70 px-1 rounded border border-purple-800/40"
-                title={trace?.generator?.prompt ? "Resolved prompt captured" : "Connected input captured"}
+        <div className={cn(ROW_GRID, "min-h-7 w-full text-left")}>
+          <div className="flex min-w-0 items-center gap-1.5 self-stretch">
+            <IndentGuides depth={depth} />
+            {hasChildren ? (
+              <button
+                type="button"
+                className="flex w-3.5 shrink-0 justify-center text-fs-ink3 hover:text-fs-ink"
+                aria-label={isExpanded ? "Collapse" : "Expand"}
+                onClick={handleChevronClick}
               >
-                D
-              </span>
-            );
-          })()}
-          {node.stateSnapshots && node.stateSnapshots.length > 0 && (
+                {isExpanded
+                  ? <ChevronDown className="h-3 w-3" />
+                  : <ChevronRight className="h-3 w-3" />}
+              </button>
+            ) : (
+              <span className="w-3.5 shrink-0" />
+            )}
+            <StatusSquare status={node.blockStatus} />
+            <span className="w-7 shrink-0 font-fs-mono text-[10px] font-medium tracking-[.04em] text-fs-ink4">
+              {node.blockKind ? (KIND_LABELS[node.blockKind] ?? node.blockKind) : ""}
+            </span>
             <span
-              className="text-[10px] font-mono text-amber-500/70 px-1 rounded border border-amber-800/40"
-              title={`${node.stateSnapshots.length} state snapshot${node.stateSnapshots.length === 1 ? "" : "s"}`}
+              className={cn(
+                "min-w-0 truncate font-fs-mono text-[12.5px] text-fs-ink",
+                depth < 2 || node.blockKind === "generator" ? "font-semibold" : "font-medium",
+              )}
             >
-              S
+              {node.blockName}
             </span>
-          )}
-          {node.blockStatus && <StatusBadge status={node.blockStatus} />}
-          <span className="flex-1" />
-          {isDebugMode && node.blockInstanceId && (
-            <span className="text-[10px] font-mono text-slate-600 mr-1">{node.blockInstanceId.slice(0, 8)}</span>
-          )}
-          {node.blockDuration !== undefined && (
-            <span className="text-[10px] font-mono text-slate-500 flex items-center gap-0.5">
-              <Clock className="h-2.5 w-2.5" />
-              {node.blockDuration}ms
-            </span>
-          )}
+            {node.iterationIndex !== undefined && (
+              <span
+                className={cn(TAG, "border-fs-ink/45 text-fs-ink3")}
+                title={`loopBack iteration ${node.iterationIndex}`}
+              >
+                iter {node.iterationIndex}
+              </span>
+            )}
+            {node.phase === "sideChain" && <SideChainBadge />}
+            {traceErrorSummary && (
+              <span className={cn(TAG, "border-fs-red text-fs-red normal-case tracking-normal")}>
+                {traceErrorSummary}
+              </span>
+            )}
+            {traceError && (
+              <span
+                className="font-fs-mono text-[10.5px] text-fs-red truncate max-w-[20rem]"
+                title={traceError}
+              >
+                {traceError}
+              </span>
+            )}
+            {(() => {
+              const trace = node.traceItem as BlockTraceItem | undefined;
+              const hasGenerator = trace?.generator !== undefined;
+              const hasConnected = trace?.input?.connected !== undefined;
+              if (!hasGenerator && !hasConnected) return null;
+              return (
+                <span
+                  className={cn(TAG, "border-fs-ink/45 text-fs-ink3")}
+                  title={trace?.generator?.prompt ? "Resolved prompt captured" : "Connected input captured"}
+                >
+                  D
+                </span>
+              );
+            })()}
+            {node.stateSnapshots && node.stateSnapshots.length > 0 && (
+              <span
+                className={cn(TAG, "border-fs-ink/45 text-fs-ink3")}
+                title={`${node.stateSnapshots.length} state snapshot${node.stateSnapshots.length === 1 ? "" : "s"}`}
+              >
+                S
+              </span>
+            )}
+            {isDebugMode && node.blockInstanceId && (
+              <span className="min-w-0 flex-1 truncate font-fs-mono text-[10.5px] font-medium text-fs-ink4">
+                {node.blockInstanceId.slice(0, 8)}
+              </span>
+            )}
+          </div>
+          <span
+            className={cn(
+              "pr-3 text-right font-fs-mono text-[11px] font-medium tabular-nums",
+              node.blockStatus === "failed" ? "text-fs-red" : "text-fs-ink3",
+            )}
+          >
+            {node.blockDuration !== undefined ? formatMs(node.blockDuration) : ""}
+          </span>
+          <TimelineBar node={node} depth={depth} timeline={timeline} />
         </div>
         <BlockIOPreview node={node} depth={depth} />
+        </div>
         {isExpanded &&
           visibleChildren.map((child) => (
             <TraceNodeView
@@ -357,6 +548,7 @@ function TraceNodeView({
               parentRequestExpanded={parentRequestExpanded}
               toggleNode={toggleNode}
               traceItemsVisible={traceItemsVisible}
+              timeline={timeline}
             />
           ))}
       </div>
@@ -370,22 +562,25 @@ function TraceNodeView({
   if (node.type === "item" && node.item) {
     const item = node.item;
     const isSelected = selectedItemId === item.id;
-    const icon = getItemIcon(item.type);
     const preview = getItemPreview(item);
 
     return (
       <button
         className={cn(
-          "flex w-full items-center gap-1.5 py-0.5 text-left hover:bg-slate-800/30",
-          isSelected && "bg-slate-800/50 border-l-2 border-green-500",
+          ROW_GRID,
+          "min-h-6 w-full text-left hover:bg-fs-ink/5",
+          isSelected && "bg-fs-blue/8 shadow-[inset_2px_0_0_var(--fs-blue)]",
         )}
-        style={{ paddingLeft: `${depth * 16 + 12}px` }}
         onClick={() => selectItem(item.id, item)}
       >
-        <Minus className="h-2.5 w-2.5 text-slate-700 shrink-0" />
-        <span className="text-[10px] shrink-0">{icon}</span>
-        <span className="text-xs text-slate-400 truncate flex-1">{preview}</span>
-        <span className="text-[10px] text-slate-600 shrink-0">{item.type}</span>
+        <span className="flex min-w-0 items-center gap-1.5 self-stretch">
+          <IndentGuides depth={depth} />
+          <Minus className="h-2.5 w-3.5 shrink-0 text-fs-ink5" />
+          <span className="font-fs-mono text-[11px] text-fs-ink3 truncate flex-1">{preview}</span>
+          <span className="font-fs-mono text-[10px] text-fs-ink4 shrink-0">{item.type}</span>
+        </span>
+        <span />
+        <span />
       </button>
     );
   }
@@ -411,14 +606,14 @@ function TraceDividerView({ item, depth }: { item: DevtoolItem; depth: number })
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1"
-      style={{ paddingLeft: `${depth * 16 + 12}px` }}
+      className="flex items-center gap-2 py-1.5 pr-[18px]"
+      style={{ paddingLeft: `${depth * 16 + 8}px` }}
     >
-      <div className="h-px flex-1 bg-amber-800/40" />
-      <span className="shrink-0 text-[10px] font-mono uppercase tracking-wide text-amber-400/80">
+      <div className="h-px flex-1 bg-fs-ink/20" />
+      <span className="shrink-0 font-fs-mono text-[10px] font-medium uppercase tracking-[.12em] text-fs-ink3">
         {label}
       </span>
-      <div className="h-px flex-1 bg-amber-800/40" />
+      <div className="h-px flex-1 bg-fs-ink/20" />
     </div>
   );
 }
@@ -427,7 +622,7 @@ function TraceDividerView({ item, depth }: { item: DevtoolItem; depth: number })
 function SideChainBadge() {
   return (
     <span
-      className="text-[10px] font-mono text-sky-400/80 px-1 rounded border border-sky-700/50"
+      className={cn(TAG, "border-dashed border-fs-ink/45 text-fs-ink3")}
       title="Side chain — dispatched via .sideChain() / .sideChainIf() / .forEachSideChain()"
     >
       SC
@@ -463,17 +658,18 @@ function BlockIOPreview({ node, depth }: { node: TraceNode; depth: number }) {
 
   return (
     <div
-      className="flex items-center gap-2 text-[10px] font-mono text-slate-500 truncate"
-      style={{ paddingLeft: `${depth * 16 + 30}px` }}
+      className="-mt-1 flex items-center gap-3 pb-1 pr-[18px] font-fs-mono text-[10.5px] text-fs-ink4 truncate"
+      // Aligns under the block name: row padding + indent + chevron, glyph, kind columns and gaps.
+      style={{ paddingLeft: `${depth * 16 + 76}px` }}
     >
       {preview.input !== undefined && (
         <span className="truncate" title={preview.input}>
-          <span className="text-slate-600">in</span> {preview.input}
+          <span className="text-fs-ink3">in</span> {preview.input}
         </span>
       )}
       {preview.output !== undefined && (
         <span className="truncate" title={preview.output}>
-          <span className="text-slate-600">out</span> {preview.output}
+          <span className="text-fs-ink3">out</span> {preview.output}
         </span>
       )}
     </div>
@@ -488,6 +684,8 @@ function compactValuePreview(
   const resolved = isInternalBlockValue(value)
     ? resolveBlockValueInternal(value, getItem as ItemLookup)
     : value;
+  // A value the block never produced reads as absent, not as the word "undefined".
+  if (resolved === undefined) return "";
   let text: string;
   if (typeof resolved === "string") {
     text = resolved;
@@ -500,26 +698,6 @@ function compactValuePreview(
   }
   text = text.replace(/\s+/g, " ").trim();
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
-}
-
-function getItemIcon(type: string): string {
-  const icons: Record<string, string> = {
-    message: "💬",
-    reasoning: "🧠",
-    block_output: "{}",
-    error: "❌",
-    status: "○",
-    component: "🧩",
-    container: "📦",
-    context: "👁",
-    state_change: "Δ",
-    resource_change: "📄",
-    block_tool_output: "{}",
-    router_decision: "🔀",
-    source: "🔗",
-    state_snapshot: "📊",
-  };
-  return icons[type] ?? "?";
 }
 
 function getItemPreview(item: DevtoolItem): string {

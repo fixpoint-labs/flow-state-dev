@@ -12,7 +12,7 @@ export function JsonViewer({ data, className, maxInitialKeys = 20 }: JsonViewerP
   const text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
 
   if (text === undefined || text === null || text === "null" || text === "undefined") {
-    return <span className="text-xs text-slate-500 italic">null</span>;
+    return <span className="font-fs-mono text-[11px] text-fs-ink4 italic">null</span>;
   }
 
   const lines = text.split("\n");
@@ -24,21 +24,21 @@ export function JsonViewer({ data, className, maxInitialKeys = 20 }: JsonViewerP
 
   return (
     <>
-      <div className={cn("relative group rounded-md bg-slate-950 border border-slate-800 p-3 font-mono text-xs overflow-auto", className)}>
+      <div className={cn("relative group bg-fs-card border border-fs-ink/20 p-3 font-fs-mono text-[11.5px] leading-[1.55] overflow-auto", className)}>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setDialogOpen(true); }}
           title="Open in dialog"
-          className="absolute top-1.5 right-1.5 p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-1.5 right-1.5 p-1 text-fs-ink4 hover:text-fs-ink hover:bg-fs-ink/5 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-fs-blue/40 opacity-0 group-hover:opacity-100 transition-opacity"
         >
           <Maximize2 className="h-3 w-3" />
         </button>
-        <pre className="whitespace-pre-wrap text-slate-300">
+        <pre className="whitespace-pre-wrap text-fs-ink2">
           {syntaxHighlight(displayLines.join("\n"))}
         </pre>
         {!expanded && remaining > 0 && (
           <button
-            className="mt-1 text-[10px] text-blue-400 hover:text-blue-300"
+            className="mt-1 text-[10.5px] text-fs-blue hover:text-fs-ink"
             onClick={() => setExpanded(true)}
           >
             ... ({remaining} more lines)
@@ -78,36 +78,36 @@ function JsonDialog({ text, onClose }: { text: string; onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-fs-ink/50 p-6"
       onClick={onClose}
     >
       <div
-        className="relative flex flex-col w-full max-w-4xl max-h-[85vh] rounded-lg border border-slate-700 bg-slate-950 shadow-xl"
+        className="relative flex flex-col w-full max-w-4xl max-h-[85vh] border border-fs-ink/30 bg-fs-card"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-2">
-          <span className="text-[11px] uppercase tracking-wide text-slate-400 font-medium">Value</span>
+        <div className="flex items-center justify-between gap-2 border-b border-fs-ink/20 px-4 py-2">
+          <span className="font-fs-mono text-[10px] font-medium uppercase tracking-[.14em] text-fs-ink3">Value</span>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={handleCopy}
               title="Copy"
-              className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800"
+              className="p-1.5 text-fs-ink4 hover:text-fs-ink hover:bg-fs-ink/5 focus-visible:ring-2 focus-visible:ring-fs-blue/40"
             >
-              {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? <Check className="h-3.5 w-3.5 text-fs-green" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
             <button
               type="button"
               onClick={onClose}
               title="Close (Esc)"
-              className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800"
+              className="p-1.5 text-fs-ink4 hover:text-fs-ink hover:bg-fs-ink/5 focus-visible:ring-2 focus-visible:ring-fs-blue/40"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-auto p-4 font-mono text-xs">
-          <pre className="whitespace-pre-wrap text-slate-300">
+        <div className="flex-1 overflow-auto p-4 font-fs-mono text-[11.5px] leading-[1.55]">
+          <pre className="whitespace-pre-wrap text-fs-ink2">
             {syntaxHighlight(text)}
           </pre>
         </div>
@@ -127,7 +127,7 @@ function syntaxHighlight(json: string): React.ReactNode[] {
       parts.push(json.slice(lastIndex, match.index));
     }
     parts.push(
-      <span key={`k-${match.index}`} className="text-blue-300">
+      <span key={`k-${match.index}`} className="text-fs-ink3">
         {match[1]}
       </span>,
     );

@@ -22,7 +22,7 @@ fsdev ui list
 
 ### Colours
 
-Components read colours only from tokens. `fsdev ui add tokens` (added automatically with the first component that needs it) writes the defaults into your stylesheet, including the status tokens `success`, `warning`, `info` and `attention`. Override any of them to restyle. See [colours and theming](https://flow-state.dev/docs/ui/overview#colours-and-theming).
+Components read colours only from tokens. `fsdev ui add tokens` (added automatically with the first component that needs it) writes the default tokens into your stylesheet: a warm paper background with ink text, square corners, and the status tokens `info` (blue), `success` (green), `destructive` (red), `warning` (amber) and `attention` (highlighter yellow). Override any of them to restyle. See [colours and theming](https://flow-state.dev/docs/ui/overview#colours-and-theming).
 
 ## Components
 

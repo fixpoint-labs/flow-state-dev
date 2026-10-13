@@ -24,6 +24,12 @@ fsdev dev
 
 This starts an HTTP server that serves both your flow API and the DevTool UI. Open the printed URL (default: `http://localhost:4200`) in your browser. The DevTool discovers all flows in your project and is ready to use.
 
+## Themes
+
+The DevTool has three themes: Paper (light), Draft (a warmer paper), and Night (dark). It opens in Night. Switch with the Paper / Draft / Night control at the right of the header.
+
+The DevTool remembers your choice in that browser's local storage. It isn't stored in the devtool config or the URL, so a link you share opens in whatever theme the other person last picked.
+
 ## How `fsdev dev` works
 
 The command does three things:

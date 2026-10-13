@@ -96,7 +96,7 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
   },
   parked: {
     icon: EyeIcon,
-    iconClassName: "text-attention",
+    iconClassName: "bg-attention text-attention-foreground",
     label: "Parked",
   },
   completed: {
@@ -887,7 +887,7 @@ function StepItem({
   return (
     <div className="flex gap-2">
       <div className="flex flex-col items-center">
-        <div className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+        <div className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/40" />
         {!isLast && <div className="w-px flex-1 bg-muted-foreground/25" />}
       </div>
       <div className="min-w-0 flex-1 pb-1.5">{children}</div>

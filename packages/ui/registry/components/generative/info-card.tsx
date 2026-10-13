@@ -23,7 +23,7 @@ interface InfoCardData {
 export function InfoCardRenderer({ item }: { item: ComponentItem }) {
   const data = item.data as unknown as InfoCardData;
   return (
-    <div className="rounded-lg border border-border bg-card text-card-foreground shadow-sm overflow-hidden max-w-md">
+    <div className="rounded-lg border border-border bg-card text-card-foreground overflow-hidden max-w-md">
       {data.imageUrl ? (
         <div className="aspect-[16/9] bg-muted overflow-hidden">
           <img

@@ -203,7 +203,7 @@ export const ConversationScrollButton = ({
     <div className="sticky bottom-4 z-10 flex justify-center pointer-events-none">
       <Button
         className={cn(
-          "rounded-full pointer-events-auto dark:bg-background dark:hover:bg-muted",
+          "rounded-md pointer-events-auto dark:bg-background dark:hover:bg-muted",
           className
         )}
         onClick={scrollToBottom}
@@ -274,7 +274,7 @@ export const ConversationDownload = ({
   return (
     <Button
       className={cn(
-        "absolute top-4 right-4 rounded-full dark:bg-background dark:hover:bg-muted",
+        "absolute top-4 right-4 rounded-md dark:bg-background dark:hover:bg-muted",
         className
       )}
       onClick={handleDownload}
