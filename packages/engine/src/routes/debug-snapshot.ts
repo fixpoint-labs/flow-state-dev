@@ -9,7 +9,8 @@
  * `client.*` config so the panel can render projection badges.
  *
  * Bypasses `buildResourceSnapshot` and its `client.*` shaping by design —
- * production client semantics live elsewhere. Off-by-default at the route
+ * production client semantics live elsewhere. It does not bypass a
+ * definition's `secret` fields: those are omitted from every state it returns. Off-by-default at the route
  * gate (`debugEndpointsEnabled` / `FSDEV_DEBUG_ENDPOINTS=1`).
  *
  * It does not bypass the owner-private key fence. These reads go to the store,
@@ -23,7 +24,11 @@ import type {
   ResourceConfig
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
-import { hasClientProjection, resolveClientProjection } from "@flow-state-dev/core/helpers";
+import {
+  hasClientProjection,
+  omitSecretFields,
+  resolveClientProjection
+} from "@flow-state-dev/core/helpers";
 import {
   getPersistedData,
   isCollectionConfig,
@@ -435,7 +440,7 @@ export async function buildDebugResourceTree(opts: {
     // the group's canonical storage key (FIX-591).
     const rawState = persisted ? persisted.resources[group.storageKey] : undefined;
     const state: JsonObject | null = isJsonObject(rawState)
-      ? (rawState as JsonObject)
+      ? omitSecretFields(group.config, rawState as JsonObject)
       : null;
     const rawContent = persisted ? persisted.content[group.storageKey] : undefined;
     const hasContent = typeof rawContent === "string";
@@ -571,7 +576,7 @@ export async function buildDebugCollectionItems(opts: {
     if (filter.length > 0 && !topic.includes(filter)) continue;
     const rawState = persisted.resources[storageKey];
     const state: JsonObject | null = isJsonObject(rawState)
-      ? (rawState as JsonObject)
+      ? omitSecretFields(config, rawState as JsonObject)
       : null;
     const rawContent = persisted.content[storageKey];
     const hasContent = typeof rawContent === "string";

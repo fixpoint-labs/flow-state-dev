@@ -20,7 +20,7 @@ import type {
   ResourceQuery,
 } from "@flow-state-dev/core/types";
 import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchProjectedRecords } from "@flow-state-dev/core/types";
-import { resolveClientProjection } from "@flow-state-dev/core/helpers";
+import { omitSecretFields, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareState, toBareStates } from "../stores/resource-state-views";
@@ -428,10 +428,10 @@ const STATE_LIST_DEFAULT_LIMIT = 50;
 const STATE_LIST_MAX_LIMIT = 200;
 
 async function applyClientData(
-  config: { client?: CollectionClientConfig },
+  config: { client?: CollectionClientConfig; secret?: ReadonlyArray<string> },
   state: JsonObject
 ): Promise<unknown> {
-  return await resolveClientProjection(config.client, state);
+  return await resolveClientProjection(config.client, omitSecretFields(config, state));
 }
 
 function hasTruthyFlag(record: Record<string, unknown> | undefined): boolean {

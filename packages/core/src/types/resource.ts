@@ -253,6 +253,15 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   llmReadable?: boolean;
   llmWritable?: boolean;
   /**
+   * State fields that never leave the server. Every read the engine serves
+   * omits them: the client snapshot, the list and get-state routes, live
+   * deltas, and the debug routes, which otherwise return full state. A
+   * `client.data` projection is handed state without them. Blocks running on
+   * the server still read them through the resource handle. A field named here
+   * cannot also be named in `client.expose`.
+   */
+  secret?: ReadonlyArray<keyof TState & string>;
+  /**
    * Removed. `dynamic` never had an effect — collections are declared with
    * `defineResourceCollection`. Typed `never` rather than deleted because
    * `defineResource` takes its config as a naked generic parameter, so
@@ -568,7 +577,8 @@ export function defineResource<
     ref: config.ref ?? "(unnamed)",
     kind: "single",
     stateSchema: config.stateSchema,
-    client: config.client as Parameters<typeof validateClientProjection>[0]["client"]
+    client: config.client as Parameters<typeof validateClientProjection>[0]["client"],
+    secret: config.secret
   });
 
   // Single resources have no create/delete lifecycle — only state and content
