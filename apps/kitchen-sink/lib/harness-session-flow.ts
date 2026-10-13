@@ -26,6 +26,7 @@ import { defineFlow, handler, harnessFailureKind, sequencer } from "@flow-state-
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
   HarnessCallbackContext,
+  HarnessRunHandle,
   HarnessResolver,
   HarnessBlock,
   HarnessSessionHook,
@@ -99,6 +100,13 @@ function withTurn(state: HarnessSessionState, requestId: string, change: (turn: 
     .slice(0, KEPT_TURNS);
   return { ...state, turns: Object.fromEntries(kept) };
 }
+
+/**
+ * The error a turn records when the harness returned a run it reports as
+ * failed. Core's handle carries no failure text any harness can fill, so the
+ * record says what is known and no more.
+ */
+const FAILED_OUTCOME_ERROR = "The harness reported the run as failed.";
 
 /** Change the session's state atomically. */
 async function changeState(
@@ -174,11 +182,32 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
       throw error;
     },
   });
+  // A harness can also report a run it saw end in failure as a result, not a
+  // throw. That turn is recorded as failed too, so the page shows its error
+  // rather than a continued conversation. The binding is left as it was, so
+  // the next turn still continues the same conversation.
+  const recordFailedOutcome = handler({
+    name: "record-failed-outcome",
+    execute: async (handle: HarnessRunHandle, ctx): Promise<void> => {
+      if (handle.outcome !== "failed") return;
+      const requestId = ctx.request.identity.id;
+      await changeState(ctx, (state) =>
+        withTurn(state, requestId, (record) => ({
+          ...record,
+          failure: null,
+          stopped: ctx.signal.aborted,
+          error: FAILED_OUTCOME_ERROR,
+        })),
+      );
+    },
+  });
   const turn = sequencer({
     name: "turn",
     description: "One turn of a harness session: the prompt, run by the harness in the session's worktree.",
     inputSchema: z.object({ prompt: z.string().min(1) }),
-  }).step(agent.rescue([{ block: recordFailure }]));
+  })
+    .step(agent.rescue([{ block: recordFailure }]))
+    .tap(recordFailedOutcome);
 
   return defineFlow({
     kind: options.kind,

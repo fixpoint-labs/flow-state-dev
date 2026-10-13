@@ -19,6 +19,7 @@
  * | `[slow]` | after the reply and the plan have shown, holds long enough for a stop to land |
  * | `[refuse]` | refuses the asked agent the way Cursor does: `Agent.resume` throws `agent_not_found` |
  * | `[fail]` | opens the agent, then the run's stream fails with another error |
+ * | `[errored]` | opens the agent and streams its reply, then Cursor reports the run as errored (a result, not a throw) |
  * | `[fail-early]` | fails before opening any agent |
  *
  * The reply names how many turns the agent has had, which is how a test sees
@@ -119,6 +120,11 @@ function scriptedRun(agentId: string, turn: number, prompt: string): CursorRunLi
     await pause(has("slow") ? scriptedCursorPauses.slowMs : step, cancel.signal);
     if (cancel.signal.aborted) {
       outcome = { status: "cancelled" };
+      return;
+    }
+    if (has("errored")) {
+      outcome = { status: "error", error: { message: "scripted run Cursor reports as errored" } };
+      yield { type: "status", status: "ERROR", message: "scripted run Cursor reports as errored" };
       return;
     }
     yield { type: "status", status: "FINISHED" };

@@ -20,6 +20,7 @@
  * | `[refuse]` | refuses the asked conversation the way Claude Code does: a `result` naming it, then the SDK's throw |
  * | `[fail]` | names the conversation, then fails with another error |
  * | `[fail-early]` | fails before naming any conversation |
+ * | `[errored]` | names the conversation and streams its reply, then ends on a `result` Claude Code marks as an error (a result, not a throw) |
  *
  * The reply names how many turns the conversation has had, which is how a
  * test sees a second turn continue the first's conversation.
@@ -116,6 +117,7 @@ async function* scriptedTurn(
   yield {
     type: "result",
     subtype: "success",
+    ...(has("errored") ? { is_error: true } : {}),
     result: reply,
     session_id: sessionId,
     usage: { input_tokens: 1, output_tokens: 1 },

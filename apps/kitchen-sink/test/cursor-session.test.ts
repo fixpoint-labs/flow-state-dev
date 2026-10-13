@@ -11,6 +11,7 @@
  *   - register the flow with `recordPlan` off: the whole-list and empty-list cases find no record.
  *   - leave `env` unset in real mode: the options case finds no allowlist.
  *   - refuse with an error code other than the SDK's `agent_not_found`: the BR-3 case reads as an error.
+ *   - record a failure only on a throw: the errored-run case reads "continued".
  * The notice's own red states (a cleared id, a notice from session-wide
  * fields) are FIX-1915's, on the same shared flow (`harness-session.test.ts`).
  */
@@ -167,6 +168,26 @@ describe("which agent a turn continues (V5)", () => {
     expect(record?.failure).not.toBe(UNKNOWN_CONVERSATION);
     expect(await noticeOf(stores, "s-late", failed.requestId, "failed")).toMatchObject({ kind: "error" });
     expect((await stateOf(stores, "s-late")).binding?.confirmed).toBe(bound);
+  });
+
+  it("a run Cursor reports as errored, a result rather than a throw, shows its error and keeps the id (BR-3a, BR-7)", async () => {
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-errored", "hello");
+    const bound = (await stateOf(stores, "s-errored")).binding?.confirmed;
+
+    const errored = await turn(stores, recorder, "s-errored", "[errored] go on");
+    const record = (await stateOf(stores, "s-errored")).turns?.[errored.requestId];
+    expect(record).toMatchObject({ asked: bound, confirmed: bound, failure: null });
+    expect(record?.error).toEqual(expect.any(String));
+    expect(await noticeOf(stores, "s-errored", errored.requestId, errored.status as "completed" | "failed")).toMatchObject({
+      kind: "error",
+      conversation: bound,
+    });
+    expect((await stateOf(stores, "s-errored")).binding?.confirmed).toBe(bound);
+
+    await turn(stores, recorder, "s-errored", "try again");
+    expect(recorder.opens.at(-1)?.resumed).toBe(bound);
   });
 
   it("a failure before Cursor opens the agent, for another reason, is an error, and the id stays (BR-3)", async () => {

@@ -9,7 +9,8 @@
  *
  * Red state produced before this was trusted: register the Cursor flow with
  * `recordPlan` off, and the panel reads "Cursor reports no plan", so the
- * plan case fails.
+ * plan case fails. And record a failure only on a throw: the errored case
+ * reads "continued".
  */
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
@@ -67,6 +68,26 @@ test.describe("Cursor mode (V6)", () => {
     await expect(notice(page)).toContainText(`did not continue conversation ${agent}`);
     await expect(bound(page)).toHaveText(agent);
     // The failed turn's request reports to the console; that is the turn's error, shown above.
+    consoleErrors.length = 0;
+  });
+
+  test("a run Cursor reports as errored reads as an error, keeps the id, and the next turn continues it", async ({
+    page,
+    consoleErrors,
+  }) => {
+    await newSession(page);
+    await send(page, "hello");
+    await expect(notice(page)).toHaveAttribute("data-kind", "started");
+    const agent = (await bound(page).textContent())!.trim();
+
+    await send(page, "[errored] go on");
+    await expect(notice(page)).toHaveAttribute("data-kind", "error");
+    await expect(bound(page)).toHaveText(agent);
+
+    await send(page, "and again");
+    await expect(page.getByTestId("conversation")).toContainText(`turn 3 of agent ${agent}`);
+    await expect(notice(page)).toHaveAttribute("data-kind", "continued");
+    // Should the errored turn's request report to the console, that is the turn's error, shown above.
     consoleErrors.length = 0;
   });
 });
