@@ -159,7 +159,7 @@ const apiKeys = defineResourceCollection({
 });
 ```
 
-A secret field is left out of every state read the server answers: the session snapshot's `clientData` (prefetched collection items included), the collection list and item-state endpoints, `live` deltas, and the debug endpoints. A `client.data` function receives the state without it. Your blocks read and write the field as usual through the resource handle.
+A secret field is left out of every state read the server answers: the session snapshot's `clientData` (prefetched collection items included), the collection list and item-state endpoints, `live` deltas, and the debug endpoints. A `client.data` function sees the full state, so it can derive a value from a secret field (`hasKey: s.value !== ""`), but a secret field in what it returns is dropped. Your blocks read and write the field as usual through the resource handle.
 
 A name that isn't on the state schema (here `secret: ["valu"]`), or one that `client.expose` also lists, throws at definition time:
 
@@ -167,6 +167,8 @@ A name that isn't on the state schema (here `secret: ["valu"]`), or one that `cl
 defineResourceCollection() for "api-keys/*": secret names key(s) not on stateSchema: valu. Valid keys: setAt, value.
 defineResourceCollection() for "api-keys/*": client.expose names secret key(s): value. A secret field never leaves the server; remove it from one list.
 ```
+
+A user or org collection that several flows share is one stored row per key, so every flow that declares it must name the same secret fields. Registering a flow whose declaration disagrees throws.
 
 What `secret` doesn't do:
 

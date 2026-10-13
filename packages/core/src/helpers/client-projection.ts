@@ -8,8 +8,10 @@
  *      (best-effort — silently skipped when the schema isn't a `ZodObject`).
  *   3. `secret` fields exist on the state schema and are not in `expose`.
  *
- * `omitSecretFields` strips a config's `secret` fields; every engine read that
- * leaves the server applies it before projecting or returning state.
+ * `omitSecretFields` strips a config's `secret` fields from raw state, for the
+ * debug reads that return it. `resolveClientData` is the client view every
+ * other engine read sends: the projection run on the full state, with any
+ * `secret` field dropped from what it returns.
  *
  * `resolveClientProjection` runs at request time (server routes) and produces
  * the `clientData` payload from a resource/collection-item state. The four
@@ -163,6 +165,32 @@ export function omitSecretFields<T extends JsonObject>(
   const secret = config.secret;
   if (secret === undefined || secret.length === 0) return state;
   return omit(state, secret);
+}
+
+/**
+ * The client view of `state`: `config.client`'s projection run on the full
+ * state, then any `secret` field dropped from the result's top level. A
+ * `client.data` function sees the whole state (its parameter type says so) and
+ * can derive from a secret, as in `hasKey: s.value !== ""`; it cannot pass one
+ * through under its own name. Every engine read that sends a projection to a
+ * client goes through here.
+ */
+export function resolveClientData<TState extends JsonObject>(
+  config: {
+    client?: ResourceClientConfig<TState> | CollectionClientConfig<TState>;
+    secret?: ReadonlyArray<string>;
+  },
+  state: TState
+): JsonValue | Promise<JsonValue> {
+  const projected = resolveClientProjection(config.client, state);
+  return projected instanceof Promise
+    ? projected.then((value) => withoutSecrets(config, value))
+    : withoutSecrets(config, projected);
+}
+
+function withoutSecrets(config: { secret?: ReadonlyArray<string> }, value: JsonValue): JsonValue {
+  const isObject = typeof value === "object" && value !== null && !Array.isArray(value);
+  return isObject ? omitSecretFields(config, value as JsonObject) : value;
 }
 
 function pick<T extends JsonObject>(state: T, keys: ReadonlyArray<string>): JsonObject {

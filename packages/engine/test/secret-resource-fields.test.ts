@@ -163,6 +163,51 @@ describe("secret resource fields", () => {
   });
 });
 
+describe("client.data and secret fields", () => {
+  it("lets a data projection derive from a secret field but not return it", async () => {
+    const withFlag = defineResource({
+      scope: "session",
+      stateSchema: credentialSchema,
+      secret: ["value"],
+      client: { data: (s) => ({ keyTail: s.value.slice(-4), value: s.value, setAt: s.setAt }) }
+    });
+    const snapshot = await buildResourceSnapshot({
+      configs: { withFlag } as Record<string, unknown>,
+      persisted: { withFlag: record }
+    });
+    expect(JSON.stringify(snapshot)).not.toContain(SENTINEL);
+    expect((snapshot as any).withFlag.clientData).toEqual({ keyTail: SENTINEL.slice(-4), setAt: SET_AT });
+  });
+});
+
+describe("flows sharing a cell agree on secret fields", () => {
+  const sharedFlow = (kind: string, secret?: ["value"]) =>
+    defineFlow({
+      kind,
+      resources: {
+        keys: defineResourceCollection({
+          pattern: "shared-keys/*",
+          scope: "user",
+          stateSchema: credentialSchema,
+          ...(secret ? { secret } : {})
+        })
+      },
+      actions: { run: { inputSchema: z.string(), block: handler({ name: "noop", execute: () => "ok" }) } }
+    })();
+
+  it("refuses a second flow that declares the shared cell without the secret", () => {
+    const registry = createFlowRegistry();
+    registry.register(sharedFlow("writer", ["value"]));
+    expect(() => registry.register(sharedFlow("reader"))).toThrow(/secret-mismatch.*marks secret value, the other none/);
+  });
+
+  it("accepts two flows that mark the same secret fields", () => {
+    const registry = createFlowRegistry();
+    registry.register(sharedFlow("writer", ["value"]));
+    expect(() => registry.register(sharedFlow("reader", ["value"]))).not.toThrow();
+  });
+});
+
 describe("secret declaration checks", () => {
   it("rejects a secret field that is not on the state schema", () => {
     expect(() =>

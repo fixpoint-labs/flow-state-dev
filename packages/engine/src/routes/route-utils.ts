@@ -21,9 +21,8 @@ import {
 } from "@flow-state-dev/core/types";
 import {
   cloneValue,
-  resolveClientProjection,
   hasClientProjection,
-  omitSecretFields
+  resolveClientData
 } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
@@ -676,10 +675,7 @@ export async function buildResourceSnapshot(options: {
             storageKey: key
           };
           if (stateReadable) {
-            item.clientData = await resolveClientProjection(
-              collectionClient,
-              omitSecretFields(maybeConfig, state)
-            );
+            item.clientData = await resolveClientData(maybeConfig, state);
           }
           if (prefetchContent && contentMap[key] !== undefined) {
             item.content = contentMap[key];
@@ -704,7 +700,7 @@ export async function buildResourceSnapshot(options: {
 
     const entry: Record<string, unknown> = {};
     if (hasClientProjection(config.client)) {
-      entry.clientData = await resolveClientProjection(config.client, omitSecretFields(config, state));
+      entry.clientData = await resolveClientData(config, state);
     }
     if (prefetch && contentMap[storageKey] !== undefined) {
       entry.content = contentMap[storageKey];

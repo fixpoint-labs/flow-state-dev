@@ -27,7 +27,7 @@ import { getPatternPrefix, matchesPattern } from "@flow-state-dev/core/types";
 import {
   hasClientProjection,
   omitSecretFields,
-  resolveClientProjection
+  resolveClientData
 } from "@flow-state-dev/core/helpers";
 import {
   getPersistedData,
@@ -128,9 +128,8 @@ export interface DebugResourcesResponse {
 }
 
 /**
- * Compute the client-view projection for a single resource state. `state`
- * must already have its `secret` fields omitted ({@link omitSecretFields}):
- * this projects what it is handed. Wraps the
+ * Compute the client-view projection for a single resource state, through the
+ * same {@link resolveClientData} the client reads use. Wraps the
  * author's `client.data` in try/catch since it can throw. Returns `null` when
  * the entry has no state to project.
  */
@@ -149,7 +148,7 @@ export function computeClientView(
     return { ok: false, reason: "no_client_data" };
   }
   try {
-    const value = resolveClientProjection(config.client, state);
+    const value = resolveClientData(config, state);
     if (value instanceof Promise) {
       // Author-supplied async `data` functions are uncommon but not forbidden.
       // The debug snapshot is synchronous-only; surface as "threw" so the
@@ -441,9 +440,8 @@ export async function buildDebugResourceTree(opts: {
     // Single resource. Dual-registered aliases share one persisted slot at
     // the group's canonical storage key (FIX-591).
     const rawState = persisted ? persisted.resources[group.storageKey] : undefined;
-    const state: JsonObject | null = isJsonObject(rawState)
-      ? omitSecretFields(group.config, rawState as JsonObject)
-      : null;
+    const raw: JsonObject | null = isJsonObject(rawState) ? (rawState as JsonObject) : null;
+    const state = raw === null ? null : omitSecretFields(group.config, raw);
     const rawContent = persisted ? persisted.content[group.storageKey] : undefined;
     const hasContent = typeof rawContent === "string";
     entries.push({
@@ -453,7 +451,7 @@ export async function buildDebugResourceTree(opts: {
       scope: group.scope,
       isCollection: false,
       state,
-      clientView: computeClientView(group.config, state),
+      clientView: computeClientView(group.config, raw),
       hasContent,
       contentByteLength: hasContent
         ? Buffer.byteLength(rawContent!, "utf-8")
@@ -577,16 +575,15 @@ export async function buildDebugCollectionItems(opts: {
     const topic = extractBareTopic(pattern, storageKey);
     if (filter.length > 0 && !topic.includes(filter)) continue;
     const rawState = persisted.resources[storageKey];
-    const state: JsonObject | null = isJsonObject(rawState)
-      ? omitSecretFields(config, rawState as JsonObject)
-      : null;
+    const raw: JsonObject | null = isJsonObject(rawState) ? (rawState as JsonObject) : null;
+    const state = raw === null ? null : omitSecretFields(config, raw);
     const rawContent = persisted.content[storageKey];
     const hasContent = typeof rawContent === "string";
     items.push({
       topic,
       storageKey,
       state,
-      clientView: computeClientView(config, state),
+      clientView: computeClientView(config, raw),
       hasContent,
       contentByteLength: hasContent
         ? Buffer.byteLength(rawContent!, "utf-8")
