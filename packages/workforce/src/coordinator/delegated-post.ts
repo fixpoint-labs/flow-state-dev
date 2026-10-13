@@ -146,14 +146,6 @@ const notedDelivery = (ctx: { readonly request: { readonly state: unknown } }): 
   (ctx.request.state as z.infer<typeof deliveryStateSchema> | undefined)?.[DELIVERY_STATE];
 
 /**
- * Whether the running request works a delegated post. A turn on one is not a
- * task turn: it isn't offered the question park.
- */
-export function onDelegatedPost(ctx: { readonly request?: { readonly state: unknown } }): boolean {
-  return ctx.request !== undefined && notedDelivery(ctx as { readonly request: { readonly state: unknown } }) !== undefined;
-}
-
-/**
  * The deadline watch waiting in each request, by request: `markEnded` wakes
  * the one for its request, so a watch waits on one timer and never polls.
  * Process-local on purpose: a side chain runs in the process that runs its

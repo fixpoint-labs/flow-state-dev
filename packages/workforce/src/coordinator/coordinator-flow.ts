@@ -141,6 +141,7 @@ import {
   COORDINATOR_SERVER_OWNED,
   coordinatorSessionStateSchema,
   coordinatorStateShape,
+  dropRetiredLedger,
   roundAnswerSchema,
   roundRobinCursorSchema,
   turnOrder,
@@ -463,57 +464,57 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * nothing.
    */
   const deliverTo = async (ctx: BlockContext, request: DeliveryRequest): Promise<RoutedDelegate> => {
-      const named = bare(request.delegate);
-      const now = Date.now();
-      const deadlineAt = await withOutcome(
-        (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
-          ctx.session.atomicState(mutator as never),
-        (state: Readonly<Record<string, unknown>>) => {
-          const rounds = roundsIn(state);
-          const timed = roundDeadline(rounds, request.postId, request.round, now, deadlineMs);
-          return {
-            state: timed.deadlineAt === undefined ? {} : { [ROUNDS_STATE]: timed.rounds },
-            result: timed.deadlineAt
-          };
-        }
-      );
-      // A record with a target goes into the session its target names now.
-      let session: PostRow["session"] = { key: `delegate:${delegateKey(named)}` };
-      if (named.target !== undefined) {
-        const resolved = await resolveWorkstreamTarget(ctx as never, { worker: named.worker, target: named.target });
-        if ("problem" in resolved) return { ...named, outcome: "failed", reason: resolved.problem };
-        session = { id: resolved.sessionId };
+    const named = bare(request.delegate);
+    const now = Date.now();
+    const deadlineAt = await withOutcome(
+      (mutator: (state: Readonly<Record<string, unknown>>) => Record<string, unknown>) =>
+        ctx.session.atomicState(mutator as never),
+      (state: Readonly<Record<string, unknown>>) => {
+        const rounds = roundsIn(state);
+        const timed = roundDeadline(rounds, request.postId, request.round, now, deadlineMs);
+        return {
+          state: { ...(timed.deadlineAt === undefined ? {} : { [ROUNDS_STATE]: timed.rounds }), ...dropRetiredLedger(state) },
+          result: timed.deadlineAt
+        };
       }
-      const post: PostRow = {
-        kind: POST_ROW_KIND,
-        postId: request.postId,
-        round: request.round,
-        delegate: named,
-        session,
-        body: request.body,
-        from: request.from,
-        coordinator: request.coordinator,
-        ...(deadlineAt === undefined ? {} : { deadlineAt }),
-        ...linesField(request.recent)
-      };
-      try {
-        const filed = await sessionBoard.filePost(ctx as never, {
-          id: postRowId(request.postId, request.round, named),
-          title: `Post for ${delegateLabel(named)}`,
-          goal: delegatedPostMessage(post),
-          assignee: named.worker,
-          // Nothing retries a post: a failed one ends its delegate's part.
-          maxAttempts: 1,
-          sealed: post
-        });
-        if (filed === "exists") {
-          return { ...named, outcome: "skipped", reason: "it was already handed this post in this round" };
-        }
-        return { ...named, outcome: "delivered" };
-      } catch (error) {
-        if (ctx.signal.aborted) throw error;
-        return { ...named, outcome: "failed", reason: error instanceof Error ? error.message : String(error) };
+    );
+    // A record with a target goes into the session its target names now.
+    let session: PostRow["session"] = { key: `delegate:${delegateKey(named)}` };
+    if (named.target !== undefined) {
+      const resolved = await resolveWorkstreamTarget(ctx as never, { worker: named.worker, target: named.target });
+      if ("problem" in resolved) return { ...named, outcome: "failed", reason: resolved.problem };
+      session = { id: resolved.sessionId };
+    }
+    const post: PostRow = {
+      kind: POST_ROW_KIND,
+      postId: request.postId,
+      round: request.round,
+      delegate: named,
+      session,
+      body: request.body,
+      from: request.from,
+      coordinator: request.coordinator,
+      ...(deadlineAt === undefined ? {} : { deadlineAt }),
+      ...linesField(request.recent)
+    };
+    try {
+      const filed = await sessionBoard.filePost(ctx as never, {
+        id: postRowId(request.postId, request.round, named),
+        title: `Post for ${delegateLabel(named)}`,
+        goal: delegatedPostMessage(post),
+        assignee: named.worker,
+        // Nothing retries a post: a failed one ends its delegate's part.
+        maxAttempts: 1,
+        sealed: post
+      });
+      if (filed === "exists") {
+        return { ...named, outcome: "skipped", reason: "it was already handed this post in this round" };
       }
+      return { ...named, outcome: "delivered" };
+    } catch (error) {
+      if (ctx.signal.aborted) throw error;
+      return { ...named, outcome: "failed", reason: error instanceof Error ? error.message : String(error) };
+    }
   };
 
   /** {@link deliverTo} as a step: a fixed policy hands each of its picks to it. */

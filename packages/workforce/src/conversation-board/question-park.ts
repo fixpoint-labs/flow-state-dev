@@ -14,7 +14,6 @@ import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createParkOnQuestion } from "@flow-state-dev/orchestration";
 import { FILING_SESSION_STATE_KEY } from "../workers/keys";
-import { onDelegatedPost } from "../coordinator/delegated-post";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
 
 const park = createParkOnQuestion({
@@ -34,11 +33,7 @@ export const questionPark = defineCapability({
   name: "questionPark",
   resources: { ...conversationLedgerResources },
   presets: {
-    // Never on a delegated post: a post is answered or not, and has nobody to ask.
-    tools: {
-      controlTools: async (ctx) =>
-        !onDelegatedPost(ctx as never) && (await park.offered(ctx as never)) ? [park.tool] : []
-    },
+    tools: { controlTools: async (ctx) => ((await park.offered(ctx as never)) ? [park.tool] : []) },
     default: ["tools"]
   }
 });
