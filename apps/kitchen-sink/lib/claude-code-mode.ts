@@ -150,7 +150,7 @@ function onPath(name: string, path: string | undefined): boolean {
   });
 }
 
-/** The sandbox Claude Code starts: Seatbelt on macOS, bubblewrap with socat on Linux. */
+/** The sandbox Claude Code starts: `sandbox-exec` on macOS, bubblewrap with socat on Linux. */
 function sandboxMissing(env: Record<string, string>): string | null {
   if (process.platform === "darwin") {
     return existsSync("/usr/bin/sandbox-exec") ? null : "Claude Code's sandbox is not available: sandbox-exec was not found.";
