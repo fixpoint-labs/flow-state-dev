@@ -322,6 +322,16 @@ export function translateSdkMessage(
   }
 }
 
+/**
+ * What a tool call tells the person while it runs: the call's own
+ * `description` (Bash and a few others carry the agent's one-line statement of
+ * intent), else `Using <tool>…`, the line the framework's own tool loop emits.
+ */
+function toolStatus(name: string, input: unknown): string {
+  const description = readString(input, "description")?.trim();
+  return description !== undefined && description !== "" ? description : `Using ${name}…`;
+}
+
 /** `system` init/compact_boundary → a transient status notice. */
 function translateSystem(msg: Extract<SdkMessageLike, { type: "system" }>): TranslatedEvent[] {
   if (msg.subtype === "init") {
@@ -378,6 +388,7 @@ function translateAssistant(
           arguments: stringifyArgs(block.input),
           ...withParent,
         });
+        events.push({ kind: "status", message: toolStatus(block.name, block.input) });
         observeToolCall(block, state, events);
       }
     }

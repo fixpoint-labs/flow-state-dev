@@ -54,9 +54,34 @@ describe("translateSdkMessage", () => {
         content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } }],
       },
     });
-    expect(events).toEqual([
-      { kind: "tool_call", callId: "toolu_1", name: "Bash", arguments: '{"command":"ls"}' },
-    ]);
+    expect(events[0]).toEqual({ kind: "tool_call", callId: "toolu_1", name: "Bash", arguments: '{"command":"ls"}' });
+  });
+
+  it("announces a tool call with the call's own description as the live status", () => {
+    // `description` is the agent's one-line statement of intent for the command.
+    const events = translateOne({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_d",
+            name: "Bash",
+            input: { command: "ls", description: "  Check devtool layout, theme toggle  " },
+          },
+        ],
+      },
+    });
+    expect(events.map((e) => e.kind)).toEqual(["tool_call", "status"]);
+    expect(events[1]).toEqual({ kind: "status", message: "Check devtool layout, theme toggle" });
+  });
+
+  it("announces a tool call that states no intent by tool name, like the framework's own tool loop", () => {
+    const events = translateOne({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "toolu_r", name: "Read", input: { path: "a" } }] },
+    });
+    expect(events[1]).toEqual({ kind: "status", message: "Using Read…" });
   });
 
   it("does not stream a thinking_delta with no text", () => {
@@ -83,6 +108,7 @@ describe("translateSdkMessage", () => {
       "reasoning_complete",
       "message_complete",
       "tool_call",
+      "status",
     ]);
   });
 
@@ -156,9 +182,10 @@ describe("translateSdkMessage", () => {
       },
       state,
     );
-    // Only the tool_use survives; text/thinking already streamed as deltas.
+    // Only the tool_use (and its status) survives; text/thinking already streamed as deltas.
     expect(events).toEqual([
       { kind: "tool_call", callId: "toolu_1", name: "Bash", arguments: '{"command":"ls"}' },
+      { kind: "status", message: "Using Bash…" },
     ]);
   });
 
@@ -703,10 +730,10 @@ describe("translateSdkMessage — observed work", () => {
   });
 
   it("leaves the existing tool_call / tool_result stream untouched", () => {
-    // The observation events are additive: an existing consumer of the item
-    // stream must see exactly what it saw before, in the same order.
+    // The observation events are additive: the item stream's own events keep
+    // their order, with only the call's live status added after the call.
     const kinds = translateScript([writeCall, writeResult]).map((e) => e.kind);
-    expect(kinds).toEqual(["tool_call", "file_op_observed", "tool_result", "file_op_observed"]);
+    expect(kinds).toEqual(["tool_call", "status", "file_op_observed", "tool_result", "file_op_observed"]);
   });
 
   const createCall: SdkMessageLike = {
@@ -1529,7 +1556,7 @@ describe("translateSdkMessage — observed work", () => {
     expect(events.filter((e) => e.kind === "file_op_observed")).toEqual([]);
     expect(events.filter((e) => e.kind === "plan_item_observed")).toEqual([]);
     // …and the tool still surfaces on the item stream as it always did.
-    expect(events.map((e) => e.kind)).toEqual(["tool_call", "tool_result"]);
+    expect(events.map((e) => e.kind)).toEqual(["tool_call", "status", "tool_result"]);
   });
 
   it("does not attribute a message-level structured output when the message carries two results", () => {
