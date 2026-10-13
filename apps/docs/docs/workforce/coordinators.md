@@ -106,6 +106,8 @@ const help = createClient({ flowKind: session.flowKind, userId, baseUrl });
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
+`ensureWorkerSession` returns your most recent session with the coordinator, or starts one if you have none.
+
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
 A delegate's answer arrives in a request of its own once the delegate's turn ends. To see it, follow the session with [`createSessionSSEClient`](../api/client.md#createsessionsseclientoptions), not the `run` request's stream.
