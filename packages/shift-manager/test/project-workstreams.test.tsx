@@ -406,6 +406,44 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     expect(conversation.getAttribute("data-session-id")).toBe(own.sessionId);
   });
 
+  it("shows a workstream's objectives and which are met, on its row and on its owner's own view", async () => {
+    const { screen, act, fireEvent, within } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    const bob = await as(BOB);
+    const objectives = [
+      { text: "Survey the repo", met: true },
+      { text: "Write up findings", met: false },
+    ];
+    for (const user of [alice, bob]) {
+      await openAs(user, setup, "survey");
+      await runAction(user.clients, setup.flow, readerSessionId(user.clients.userId, setup.flow), "updateWorkstream", { project: APOLLO, id: "survey", objectives });
+    }
+    const marks = (root: HTMLElement) =>
+      within(root).getAllByTestId("project-entry-objective").map((li) => [li.textContent?.includes("Survey the repo") ? "survey" : "write-up", li.getAttribute("data-met")]);
+    const rowOf = async (owner: string) => (await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 })).find((li) => li.getAttribute("data-owner") === owner)!;
+
+    openApp(alice.clients, baseUrl, "/p/apollo/workstreams");
+    const hers = await rowOf(ALICE.userId);
+    expect(hers.textContent).toContain("1 of 2 objectives met");
+
+    act(() => fireEvent.click(hers.querySelector("button")!));
+    await screen.findByTestId("project-entry-conversation", undefined, { timeout: 10_000 });
+    expect(marks(screen.getByTestId("project-entry-own"))).toEqual([
+      ["survey", "true"],
+      ["write-up", "false"],
+    ]);
+
+    // Bob's entry draws the same list on its details.
+    act(() => fireEvent.click(screen.getByTestId("project-entry-back")));
+    const his = await rowOf(BOB.userId);
+    act(() => fireEvent.click(his.querySelector("button")!));
+    expect(marks(await screen.findByTestId("project-entry-details"))).toEqual([
+      ["survey", "true"],
+      ["write-up", "false"],
+    ]);
+  });
+
   it("its Stream is her project coordinator session, linked to the project", async () => {
     const { screen } = dom!;
     const { baseUrl, setup, as } = await open();
