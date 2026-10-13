@@ -9,7 +9,7 @@
  * **Modelled on `fakeHarness` in `packages/harness-manager/test/slot.spec.ts`**,
  * which is the cheapest existing proof that the manager drives any conforming
  * harness. Deliberately not `claudeCodeAgent` and deliberately nothing out of
- * `labs/conductor`: those belong to the model-backed sibling check, and a stub
+ * a live coding agent: those belong to the model-backed sibling check, and a stub
  * that reached for one would make the gate's model-freedom an accident.
  *
  * The slot is the whole of D2. Two checks drive the same tree, the same hire

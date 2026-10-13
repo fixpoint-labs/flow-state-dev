@@ -9,9 +9,9 @@ handed carries tokens that exist only in that seat's own files. A third seat, de
 kind, is never dispatched to.
 
 Before this, that claim had two halves that had each been proved and had never met: the pentest lab
-shows a post reaching seats declared in Markdown, and `labs/conductor` shows a board row becoming a
-supervised coding run — but the thing that row reaches there is hand-written TypeScript, not a seat
-that came out of a folder.
+shows a post reaching workers declared in Markdown, and `@flow-state-dev/harness-manager` shows a
+board row becoming a supervised coding run — but the thing that row reaches there is hand-written
+TypeScript, not a worker that came out of a folder.
 
 **Input:** `fixtures/input.json` — the seat ids, their expected documents and skill unions, the row
 the EM seat files, and where each held-out token lives. It is **held-out**: every token is read out
