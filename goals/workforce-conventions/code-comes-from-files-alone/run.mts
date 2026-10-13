@@ -145,8 +145,8 @@ const KITCHEN_SINK = join(REPO_ROOT, "apps", "kitchen-sink");
 const NEXT_DIR = join(KITCHEN_SINK, ".next");
 const APP_GEN = join(KITCHEN_SINK, "workforce", "workforce.gen.ts");
 const APP_BLOCKS = join(KITCHEN_SINK, "workforce", "blocks");
-/** Files a Next build or this leg rewrites, restored byte for byte when the leg ends. */
-const APP_RESTORE = [APP_GEN, join(KITCHEN_SINK, "next-env.d.ts")];
+/** Tracked files this leg rewrites, restored byte for byte when the leg ends. */
+const APP_RESTORE = [APP_GEN];
 /** Flows kitchen-sink wires by hand: the probe must find these, or a 0 for the block means nothing. */
 const HAND_WIRED = ["chat-agent", "rich-text-component", "weekly-digest"];
 
