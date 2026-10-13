@@ -1,12 +1,11 @@
 /**
  * Control `board-flow`: every run is opened through the board's flow, the
- * flow that drains it, instead of the flow its session records as its owner.
+ * lead's, instead of the flow its session records as its owner.
  *
  * Built into the control page in place of `src/lib/run.ts`. The goal injects
- * the drainer's flow id, read off the tree, as `__BOARD_FLOW__`. A run on the
- * drainer's own flow still opens; the run of a seat on a flow of its own does
- * not. The goal must fail at "items equal the run session's" on that seat's
- * row, and pass the others.
+ * the lead's flow id, read off the tree, as `__BOARD_FLOW__`. No run is on the
+ * lead's flow, so none opens: the goal must fail at "items equal the run
+ * session's" on every run row.
  */
 declare const __BOARD_FLOW__: string;
 
