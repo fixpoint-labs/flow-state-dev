@@ -90,7 +90,7 @@ export interface ClaudeCodeSeams {
  * and the plan panel would never fill.
  */
 export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}): HarnessBlock {
-  const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode : undefined);
+  const resolveClaudeAgent = seams.resolveClaudeAgent ?? (claudeCodeIsScripted() ? scriptedClaudeCode() : undefined);
   return claudeCodeAgent({
     cwd: feeds.cwd,
     resume: feeds.resume,
@@ -117,6 +117,10 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     },
     ...(resolveClaudeAgent !== undefined ? { resolveClaudeAgent } : {}),
     name: "claude-code",
+    // Claude Code's handle is core's plus its own fields, and a block's hooks
+    // take its output as a parameter, so the extended block isn't assignable
+    // to core's neutral `HarnessBlock` (core's own note on that type). Shift
+    // Manager's harness casts the same way.
   }) as unknown as HarnessBlock;
 }
 

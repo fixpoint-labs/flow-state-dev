@@ -33,9 +33,11 @@ import type { ClaudeAgentQueryOptions, ResolveClaudeAgent, SdkMessageLike } from
  */
 export const scriptedPauses = { stepMs: 400, slowMs: 20_000 };
 
-/** Turns per conversation, held for the life of the server. */
-const conversations = new Map<string, number>();
-let minted = 0;
+/** One scripted Claude Code's conversations: turns per conversation, and how many it has started. */
+interface Conversations {
+  readonly turns: Map<string, number>;
+  minted: number;
+}
 
 /** A pause that ends the run when it is stopped, as the SDK does: by throwing the stop's reason. */
 async function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
@@ -67,7 +69,11 @@ function toolResult(id: string, result: Record<string, unknown>, content: string
 }
 
 /** The scripted turn, as SDK messages. */
-async function* scriptedTurn(prompt: string, options: ClaudeAgentQueryOptions | undefined): AsyncGenerator<SdkMessageLike> {
+async function* scriptedTurn(
+  conversations: Conversations,
+  prompt: string,
+  options: ClaudeAgentQueryOptions | undefined,
+): AsyncGenerator<SdkMessageLike> {
   const signal = options?.abortController?.signal;
   const has = (directive: string) => prompt.includes(`[${directive}]`);
   const asked = options?.resume;
@@ -82,9 +88,9 @@ async function* scriptedTurn(prompt: string, options: ClaudeAgentQueryOptions | 
     throw new Error(`Claude Code returned an error result: ${refusal}`);
   }
 
-  const sessionId = asked !== undefined && !has("new") ? asked : `scripted-${Date.now().toString(36)}-${(minted += 1)}`;
-  const turn = (conversations.get(sessionId) ?? 0) + 1;
-  conversations.set(sessionId, turn);
+  const sessionId = asked !== undefined && !has("new") ? asked : `scripted-${Date.now().toString(36)}-${(conversations.minted += 1)}`;
+  const turn = (conversations.turns.get(sessionId) ?? 0) + 1;
+  conversations.turns.set(sessionId, turn);
   yield { type: "system", subtype: "init", session_id: sessionId } as SdkMessageLike;
   await pause(step, signal);
 
@@ -117,7 +123,13 @@ async function* scriptedTurn(prompt: string, options: ClaudeAgentQueryOptions | 
   } as SdkMessageLike;
 }
 
-/** The scripted Claude Code, for `claudeCodeAgent`'s `resolveClaudeAgent`. */
-export const scriptedClaudeCode: ResolveClaudeAgent = () => ({
-  query: (args) => scriptedTurn(typeof args.prompt === "string" ? args.prompt : "", args.options),
-});
+/**
+ * A scripted Claude Code, for `claudeCodeAgent`'s `resolveClaudeAgent`. Each
+ * one keeps its own conversations, for as long as the block holding it.
+ */
+export function scriptedClaudeCode(): ResolveClaudeAgent {
+  const conversations: Conversations = { turns: new Map(), minted: 0 };
+  return () => ({
+    query: (args) => scriptedTurn(conversations, typeof args.prompt === "string" ? args.prompt : "", args.options),
+  });
+}

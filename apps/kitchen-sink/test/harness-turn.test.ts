@@ -8,10 +8,11 @@
  *   - return the rows for an undeclared record: the undeclared case fails.
  *   - sort runs as plain strings: the retried-run case shows attempt 2's rows.
  *   - read a stop before the confirmation as a refusal: the stopped case fails.
+ *   - read the stop off the request summary alone: the stop-item case fails.
  */
 import { describe, expect, it } from "vitest";
 
-import { planPanelState, turnNotice, UNKNOWN_CONVERSATION, type PlanPanelInput, type TurnRecord } from "@/lib/harness-turn";
+import { latestTurn, planPanelState, turnNotice, UNKNOWN_CONVERSATION, type PlanPanelInput, type TurnRecord } from "@/lib/harness-turn";
 
 const blank: TurnRecord = { asked: null, confirmed: null, failure: null, stopped: null, error: null, at: 1 };
 
@@ -44,7 +45,33 @@ describe("turnNotice", () => {
   });
 });
 
-const base: PlanPanelInput = { declared: true, label: "Claude Code", turn: 1, ended: true, rows: [], markers: [] };
+describe("latestTurn", () => {
+  const msg = (requestId: string) => ({ requestId, type: "message" });
+  const stop = (requestId: string) => ({ requestId, type: "status", detail: { code: "system.request_aborted" } });
+
+  it("is null before the first turn, and numbers turns in the order they started", () => {
+    expect(latestTurn({ items: [], streaming: false, request: null })).toBeNull();
+    const turn = latestTurn({ items: [msg("r1"), msg("r1"), msg("r2"), msg("r2")], streaming: false, request: { id: "r2", status: "completed" } });
+    expect(turn).toEqual({ requestId: "r2", number: 2, status: "completed" });
+  });
+
+  it("a stop item marks the turn stopped even while the summary still says it runs (BR-9)", () => {
+    const turn = latestTurn({ items: [msg("r1"), stop("r1")], streaming: false, request: { id: "r1", status: "in_progress" } });
+    expect(turn?.status).toBe("stopped");
+    // An earlier turn's stop says nothing about the latest.
+    expect(latestTurn({ items: [msg("r1"), stop("r1"), msg("r2")], streaming: true, request: null })?.status).toBe("running");
+  });
+
+  it("runs while streaming, or until the summary names the turn; then reads the summary", () => {
+    expect(latestTurn({ items: [msg("r2")], streaming: true, request: { id: "r2", status: "completed" } })?.status).toBe("running");
+    expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r1", status: "completed" } })?.status).toBe("running");
+    for (const [status, want] of [["incomplete", "completed"], ["failed", "failed"], ["interrupted", "failed"], ["aborted", "stopped"], ["suspended", "running"]] as const) {
+      expect(latestTurn({ items: [msg("r2")], streaming: false, request: { id: "r2", status } })?.status).toBe(want);
+    }
+  });
+});
+
+const base: PlanPanelInput ={ declared: true, label: "Claude Code", turn: 1, ended: true, rows: [], markers: [] };
 const row = (topic: string, title: string, status = "pending") => ({ topic, title, status });
 
 describe("planPanelState", () => {

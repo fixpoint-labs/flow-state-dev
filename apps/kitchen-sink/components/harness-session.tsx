@@ -20,7 +20,6 @@ import {
   type SessionView,
 } from "@flow-state-dev/react";
 import { OBSERVED_PLAN, OBSERVED_PLAN_LIST, planRowsPrefix } from "@flow-state-dev/core/types";
-import type { RequestStatus } from "@flow-state-dev/core/types";
 
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import {
@@ -40,13 +39,13 @@ import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import {
+  latestTurn,
   planPanelState,
   turnNotice,
   type HarnessSessionState,
   type PlanMarkerItem,
   type PlanRowItem,
   type TurnNotice,
-  type TurnStatus,
 } from "@/lib/harness-turn";
 
 export interface HarnessSessionViewProps {
@@ -66,36 +65,6 @@ export function HarnessSessionView({ label, flowKind, sessionId }: HarnessSessio
   );
 }
 
-/** A turn's request status, as the notice reads it. */
-function turnStatus(status: RequestStatus | undefined): TurnStatus {
-  switch (status) {
-    case "completed":
-    case "incomplete":
-      return "completed";
-    case "failed":
-    case "interrupted":
-      return "failed";
-    case "aborted":
-      return "stopped";
-    default:
-      return "running";
-  }
-}
-
-/** The status item the framework writes when a request is stopped. */
-function isStopItem(item: SessionView["items"][number]): boolean {
-  return item.type === "status" && (item as { detail?: { code?: string } }).detail?.code === "system.request_aborted";
-}
-
-/** The session's turns, by request id, in the order they started: the requests its items belong to. */
-function turnsOf(session: SessionView): string[] {
-  const seen: string[] = [];
-  for (const item of session.items) {
-    if (!seen.includes(item.requestId)) seen.push(item.requestId);
-  }
-  return seen;
-}
-
 function SessionBody({ label, sessionId }: { label: string; sessionId: string }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useState("");
@@ -111,20 +80,12 @@ function SessionBody({ label, sessionId }: { label: string; sessionId: string })
 
   const state = (session.snapshot?.clientData.session ?? {}) as Partial<HarnessSessionState>;
   const bound = state.binding?.confirmed ?? null;
-  const turns = turnsOf(session);
-  const latest = turns.at(-1) ?? null;
-  // A stop is read off the framework's own stop item, written by the engine
-  // and drawn at once by the page: the hook doesn't re-read the request's
-  // status after a stop, so the summary can still say it is running.
-  const status: TurnStatus =
-    latest === null
-      ? "running"
-      : session.items.some((item) => item.requestId === latest && isStopItem(item))
-        ? "stopped"
-        : session.isStreaming || session.latestRequest?.id !== latest
-          ? "running"
-          : turnStatus(session.latestRequest.status);
-  const notice = latest === null ? null : turnNotice(state.turns?.[latest] ?? null, status, bound);
+  const { items, isStreaming, latestRequest } = session;
+  const turn = useMemo(
+    () => latestTurn({ items, streaming: isStreaming, request: latestRequest }),
+    [items, isStreaming, latestRequest],
+  );
+  const notice = turn === null ? null : turnNotice(state.turns?.[turn.requestId] ?? null, turn.status, bound);
 
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -182,7 +143,7 @@ function SessionBody({ label, sessionId }: { label: string; sessionId: string })
           </div>
         </div>
       </section>
-      <PlanPanel session={session} label={label} turn={latest === null ? null : { requestId: latest, number: turns.length }} ended={status !== "running"} />
+      <PlanPanel session={session} label={label} turn={turn} ended={turn !== null && turn.status !== "running"} />
     </div>
   );
 }

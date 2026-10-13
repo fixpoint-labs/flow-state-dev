@@ -22,13 +22,12 @@
  * Nothing here names a harness. A harness that needs more than these feeds has
  * found a gap in its own package. Kitchen Sink writes no item of its own.
  */
-import { defineFlow, handler, harnessFailureKind, sequencer, type harnessRunInputSchema } from "@flow-state-dev/core";
+import { defineFlow, handler, harnessFailureKind, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type {
-  BlockDefinition,
   HarnessCallbackContext,
   HarnessResolver,
-  HarnessRunHandle,
+  HarnessBlock,
   HarnessSessionHook,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -38,11 +37,8 @@ import { readHarnessWorkspace } from "./harness-workspace";
 import { locateSessionWorktree, provisionSessionWorktree, type SessionPlace } from "./harness-worktree";
 import { harnessSessionStateSchema, type HarnessSessionState, type TurnRecord } from "./harness-turn";
 
-/** A harness block: takes the prompt, returns the run's handle. */
-export type HarnessBlock = BlockDefinition<
-  typeof harnessRunInputSchema,
-  z.ZodType<HarnessRunHandle, z.ZodTypeDef, unknown>
->;
+/** A harness block: takes the prompt, returns the run's handle. Core's neutral shape. */
+export type { HarnessBlock };
 
 /** What the session flow hands a harness block. Spread the first three into its options. */
 export interface HarnessFeeds {
@@ -167,7 +163,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     name: "record-turn-failure",
     execute: async (error: Error, ctx): Promise<unknown> => {
       const requestId = ctx.request.identity.id;
-      await changeState(ctx as unknown as HarnessCallbackContext, (state) =>
+      await changeState(ctx, (state) =>
         withTurn(state, requestId, (record) => ({
           ...record,
           failure: harnessFailureKind(error),

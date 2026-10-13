@@ -8,6 +8,7 @@
  * harness-specific: a harness reports its failure through core's neutral
  * classification, and its label comes from the mode list as data.
  */
+import type { RequestStatus } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** What one turn asked for and what came of it, recorded under its request id. */
@@ -51,6 +52,76 @@ export const UNKNOWN_CONVERSATION = "unknown-conversation";
 
 /** How a turn's request stands, from the session's request list. */
 export type TurnStatus = "running" | "completed" | "failed" | "stopped";
+
+/** The code of the status item the framework writes when a request is stopped. */
+const STOP_CODE = "system.request_aborted";
+
+/** A session item, as far as finding the turns needs it. */
+export interface TurnItem {
+  readonly requestId: string;
+  readonly type: string;
+  readonly detail?: unknown;
+}
+
+/** The session's latest turn: its request id, its number from 1, and how it stands. */
+export interface LatestTurn {
+  readonly requestId: string;
+  readonly number: number;
+  readonly status: TurnStatus;
+}
+
+/** A request's status, as the session's request list reports it. */
+function statusOf(status: RequestStatus): TurnStatus {
+  switch (status) {
+    case "completed":
+    case "incomplete":
+      return "completed";
+    case "failed":
+    case "interrupted":
+      return "failed";
+    case "aborted":
+      return "stopped";
+    default:
+      return "running";
+  }
+}
+
+function isStopItem(item: TurnItem): boolean {
+  const detail = item.detail;
+  return item.type === "status" && typeof detail === "object" && detail !== null && (detail as { code?: unknown }).code === STOP_CODE;
+}
+
+/**
+ * The session's latest turn, or `null` before the first.
+ *
+ * Turns are the requests the items belong to, in the order they started. A
+ * stop is read off the framework's own stop item, which the engine writes and
+ * the page draws at once: the session hook doesn't re-read a request's status
+ * after a stop, so its latest-request summary can still say it is running.
+ * Otherwise the turn runs while it streams, or until the summary names it.
+ *
+ * @param input The session's items, whether it is streaming, and its latest request as last read.
+ */
+export function latestTurn(input: {
+  readonly items: readonly TurnItem[];
+  readonly streaming: boolean;
+  readonly request: { readonly id: string; readonly status: RequestStatus } | null;
+}): LatestTurn | null {
+  const turns = new Set<string>();
+  const stopped = new Set<string>();
+  for (const item of input.items) {
+    turns.add(item.requestId);
+    if (isStopItem(item)) stopped.add(item.requestId);
+  }
+  const requestId = [...turns].at(-1);
+  if (requestId === undefined) return null;
+  const status: TurnStatus = stopped.has(requestId)
+    ? "stopped"
+    : input.streaming || input.request?.id !== requestId
+      ? "running"
+      : statusOf(input.request.status);
+  return { requestId, number: turns.size, status };
+}
 
 /** What the session says under a turn. */
 export type TurnNotice =

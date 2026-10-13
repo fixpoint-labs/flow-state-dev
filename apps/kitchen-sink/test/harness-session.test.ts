@@ -68,8 +68,9 @@ afterEach(() => {
 /** The scripted Claude Code, recording what each run was handed. */
 function recorded(onRun?: (options: ClaudeAgentQueryOptions) => void) {
   const runs: ClaudeAgentQueryOptions[] = [];
+  const scripted = scriptedClaudeCode();
   const resolve: ResolveClaudeAgent = async (...args) => {
-    const agent = await scriptedClaudeCode(...args);
+    const agent = await scripted(...args);
     return {
       query: (query) => {
         const options = query.options ?? ({} as ClaudeAgentQueryOptions);
