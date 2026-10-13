@@ -49,7 +49,7 @@ import {
 } from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
 import { trackProcess } from "./process-exit";
-import { inProcessMcpServer, type ClaudeCodeMcpTools } from "./mcp-tools";
+import { inProcessMcpServer, type ClaudeCodeMcpToolServer, type ClaudeCodeMcpTools } from "./mcp-tools";
 import {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
@@ -319,7 +319,9 @@ export interface ClaudeCodeAgentOptions {
    * connectors. If the run still reports a server it wasn't handed, a status
    * item says so. The tools are allowed without asking; name one in
    * `disallowedTools` to keep it out. Each server's `close` is called when the
-   * run ends, however it ends.
+   * run ends, however it ends, and once when several servers share it. An
+   * abort while the resolver is still connecting stops the wait; what it
+   * answers afterwards is closed.
    */
   mcpTools?:
     | ClaudeCodeMcpTools
@@ -900,10 +902,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           : sandbox;
 
       const resolved = await resolveClaudeAgent(ctx);
-      // Resolved once per run, as late as possible: from here on the
-      // `finally` below closes what it opened, however the run ends.
-      const handedTools =
-        typeof mcpTools === "function" ? await mcpTools(ctx) : mcpTools;
+      // The handed servers, resolved inside the `try` below so its `finally`
+      // closes what opened however setup or the run ends.
+      let handedTools: ClaudeCodeMcpTools | undefined;
+      let handedServers: Set<string> | undefined;
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
       // Holds the real process so an abort can wait for it to exit — the
@@ -949,15 +951,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         ...(onToolApproval
           ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
           : {}),
-        ...(handedTools !== undefined ? mcpQueryOptions(handedTools) : {}),
       };
-      // With `mcpTools` set, the relayed tools are allowed without asking.
-      if (handedTools !== undefined) {
-        queryOptions.allowedTools = [
-          ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),
-        ];
-      }
-      const handedServers = handedTools === undefined ? undefined : new Set(Object.keys(handedTools));
 
       const translateState = createTranslateState({
         partialMessages: includePartialMessages,
@@ -1023,6 +1017,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // the return — and it cannot drift out of sync with a sibling copy,
       // because there isn't one.
       try {
+        // Resolved once per run, as late as possible, and raced against the
+        // run's signal: an abort stops waiting on a stalled connect, and what
+        // the resolver answers after that is closed when it arrives.
+        handedTools =
+          typeof mcpTools === "function" ? await resolveMcpTools(mcpTools, ctx) : mcpTools;
+        if (handedTools !== undefined) {
+          Object.assign(queryOptions, mcpQueryOptions(handedTools));
+          // With `mcpTools` set, the relayed tools are allowed without asking.
+          queryOptions.allowedTools = [
+            ...new Set([...(queryOptions.allowedTools ?? []), ...relayedToolNames(handedTools)]),
+          ];
+          handedServers = new Set(Object.keys(handedTools));
+        }
         try {
           // The loop runs as its own promise so it can be RACED against the
           // block's own signal (FIX-1301) rather than awaited outright — the
@@ -1326,15 +1333,46 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         } catch {
           // Deliberately empty: see above.
         }
-        // The handed servers' connections, closed however the run ended. Each
-        // on its own, so one that throws neither hides the run's outcome nor
-        // keeps another open.
-        await Promise.allSettled(
-          Object.values(handedTools ?? {}).map(async (server) => server.close?.()),
-        );
+        await closeMcpTools(handedTools);
       }
     },
   });
+}
+
+/**
+ * Call a `mcpTools` resolver, racing it against the run's signal. When the
+ * signal wins, the run stops waiting and throws the signal's reason, and what
+ * the resolver answers later is closed then, so a connection it was still
+ * opening isn't left open.
+ */
+async function resolveMcpTools(
+  resolve: (ctx: AgentCallbackContext) => ClaudeCodeMcpTools | Promise<ClaudeCodeMcpTools>,
+  ctx: AgentCallbackContext,
+): Promise<ClaudeCodeMcpTools> {
+  const pending = Promise.resolve().then(() => resolve(ctx));
+  const abortRace = rejectOnAbort(ctx.signal);
+  try {
+    return await Promise.race([pending, abortRace.promise]);
+  } catch (err) {
+    if (ctx.signal.aborted) void pending.then(closeMcpTools, () => {});
+    throw err;
+  } finally {
+    abortRace.stop();
+  }
+}
+
+/**
+ * Close the handed servers' connections. Each `close` is called once, even
+ * when several servers share one (a host that opens them through one
+ * manager), and each on its own, so one that throws neither hides the run's
+ * outcome nor keeps another open.
+ */
+async function closeMcpTools(tools: ClaudeCodeMcpTools | undefined): Promise<void> {
+  const closes = new Map<NonNullable<ClaudeCodeMcpToolServer["close"]>, ClaudeCodeMcpToolServer>();
+  for (const server of Object.values(tools ?? {})) {
+    if (server.close !== undefined && !closes.has(server.close)) closes.set(server.close, server);
+  }
+  await Promise.allSettled([...closes].map(async ([close, server]) => close.call(server)));
 }
 
 /**

@@ -15,8 +15,11 @@ export type McpServerKey = { name: string; setAt: string | null };
 /** What a read found: the servers, a Lab that offers none, or a failure. */
 export type McpKeysRead = { servers: McpServerKey[] } | { none: true } | { failure: Failure };
 
+/** Where the Lab's route lives, under the engine's own `/api/flows` mount: the route and this client both read it. */
+export const MCP_CREDENTIALS_PATH = "/api/flows/mcp-credentials";
+
 const pathOf = (clients: LabClients, server?: string) =>
-  `${clients.baseUrl ?? ""}/api/flows/mcp-credentials${server === undefined ? "" : `/${encodeURIComponent(server)}`}`;
+  `${clients.baseUrl ?? ""}${MCP_CREDENTIALS_PATH}${server === undefined ? "" : `/${encodeURIComponent(server)}`}`;
 
 /** A failed answer's status and the Lab's message, never the request's body. */
 async function failureOf(response: Response): Promise<Failure> {

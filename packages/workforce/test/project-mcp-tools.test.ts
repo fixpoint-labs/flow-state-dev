@@ -57,6 +57,8 @@ type Relayed = {
   notices: string[];
   keys: Record<string, string>;
   answer?: unknown;
+  /** What a call the server failed, echoing its address and key, told the run. */
+  failure?: string;
 };
 
 /** The filer's flow: it leads workstreams and files for its delegates. */
@@ -92,7 +94,10 @@ function scriptedClients(keys: Record<string, string>[], failGithub: () => boole
         get_issue: {
           description: `Read one ${config.name} issue`,
           inputSchema: { jsonSchema: { type: "object", properties: { id: { type: "string" } } } },
-          execute: async (args: { id: string }) => ({ content: [{ type: "text", text: `${config.name} ${args.id} via ${auth.length > 0 ? "a key" : "none"}` }] })
+          execute: async (args: { id: string }) => {
+            if (args.id === "FAIL") throw new Error(`500 from ${transport.url}: ${auth} was refused`);
+            return { content: [{ type: "text", text: `${config.name} ${args.id} via ${auth.length > 0 ? "a key" : "none"}` }] };
+          }
         }
       }),
       close: async () => {}
@@ -126,6 +131,10 @@ function takerFlow(installation: WorkerInstallation, runs: Relayed[], keys: Reco
       for (const [name, server] of Object.entries(relayed)) run.servers[name] = server.tools.map((tool) => tool.name);
       if (relayed.linear !== undefined) {
         run.answer = await relayed.linear.tools[0]!.call({ id: "ABC-1" }, {});
+        run.failure = await relayed.linear.tools[0]!.call({ id: "FAIL" }, {}).then(
+          () => "answered",
+          (error: Error) => error.message
+        );
       }
       await Promise.all([...new Set(Object.values(relayed).map((server) => server.close))].map((close) => close()));
       runs.push(run);
@@ -232,6 +241,15 @@ describe("the servers a coding run is relayed (BR-13)", () => {
     expect(run.keys).toEqual({ linear: "alice-linear-key" });
     expect(run.answer).toEqual({ content: [{ type: "text", text: "linear ABC-1 via a key" }] });
     expect(run.notices).toEqual([]);
+  });
+
+  it("takes the server's address and the owner's key out of a failed call before the run sees it", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", mcpServers: ["linear"] });
+    await h.setKey("alice", "linear", "k3y");
+    const run = await h.file("alice", await h.projectConversation("alice", "storefront"));
+    // The message is still the failure; only the address and the short key are gone.
+    expect(run.failure).toBe("500 from …: Bearer … was refused");
   });
 
   it("relays them on a task that names the project, from a conversation with none", async () => {

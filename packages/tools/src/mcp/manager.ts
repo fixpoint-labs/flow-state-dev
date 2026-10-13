@@ -100,18 +100,35 @@ function plainJsonSchema(inputSchema: unknown): Record<string, unknown> {
 }
 
 /**
+ * `text` with each secret replaced by `…`, longest first so a value and a
+ * word inside it both go. Empty secrets are skipped. The one redaction rule
+ * for MCP error text: this manager's connection failures and a relay's own.
+ *
+ * @param text The message to redact.
+ * @param secrets Values that must not appear in it, such as a key or an address.
+ * @returns The message with every secret taken out.
+ */
+export function redactSecrets(text: string, secrets: readonly (string | undefined)[]): string {
+  return [...new Set(secrets)]
+    .filter((secret): secret is string => secret !== undefined && secret.length > 0)
+    .sort((a, b) => b.length - a.length)
+    .reduce((redacted, secret) => redacted.split(secret).join("…"), text);
+}
+
+/**
  * A connection failure's message with the server's header values taken out,
  * so a credential a client echoed in its error never reaches the catalog or a
- * log line. Each value is removed whole, and so is each word of it long
- * enough to be a token (the key in `Bearer <key>`).
+ * log line. Each value is removed whole, and so is each of its credential
+ * words, however short: every word but a leading scheme (`Bearer` in
+ * `Bearer <key>`), which is left so the message still reads.
  */
 function withoutHeaderValues(message: string, config: MCPServerConfig): string {
   const headers = (config.transport as { headers?: Record<string, string> }).headers ?? {};
-  const secrets = Object.values(headers).flatMap((value) => [value, ...value.split(/\s+/).filter((word) => word.length >= 8)]);
-  return secrets
-    .filter((secret) => secret.length > 0)
-    .sort((a, b) => b.length - a.length)
-    .reduce((text, secret) => text.split(secret).join("…"), message);
+  const secrets = Object.values(headers).flatMap((value) => {
+    const words = value.trim().split(/\s+/);
+    return [value, ...(words.length > 1 ? words.slice(1) : words)];
+  });
+  return redactSecrets(message, secrets);
 }
 
 async function defaultCreateClient(config: MCPServerConfig): Promise<MCPClient> {

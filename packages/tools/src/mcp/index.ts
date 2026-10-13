@@ -5,7 +5,7 @@
  * to wire MCP servers into a flow via `uses: [createMcpCapability(...)]`.
  */
 export { createMcpCapability } from "./capability";
-export { createMcpManager } from "./manager";
+export { createMcpManager, redactSecrets } from "./manager";
 export { defaultMcpGuidanceFormatter } from "./context";
 export { defaultMcpFilterTools, mcpRequestStateSchema } from "./filter";
 export { getMcpToolMeta } from "./enrich";

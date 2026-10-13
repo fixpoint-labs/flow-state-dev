@@ -18,7 +18,8 @@
  * is `claudeCodeAgent`'s `mcpTools` answer, matched structurally.
  *
  * **The key is never handed to the run.** It goes into the connection's
- * headers and nowhere else: not in the answer, not in a notice, not in a log.
+ * headers and nowhere else: not in the answer, not in a notice, not in a log,
+ * not in a failed call's message (the server's address is taken out of it too).
  *
  * **A server it can't have is skipped and said.** A name the host no longer
  * offers, an owner with no key, or a connection that fails each leaves that
@@ -32,7 +33,7 @@
 
 import type { LooseBlockContext } from "@flow-state-dev/core";
 import type { HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { createMcpManager, type MCPClient, type MCPServerConfig } from "@flow-state-dev/tools/mcp";
+import { createMcpManager, redactSecrets, type MCPClient, type MCPServerConfig } from "@flow-state-dev/tools/mcp";
 import { isMcpServerName } from "./mcp-server-name";
 import { MCP_CREDENTIALS_RESOURCE, type McpCredential } from "./mcp-credentials";
 import { collectionAt } from "./project-address";
@@ -163,12 +164,17 @@ export function projectMcpTools(servers: ProjectMcpServers, options: ProjectMcpT
         say(`This run goes without MCP server "${server.name}": FSD couldn't connect to it (${scrub(server.error, [url, ...secrets])}).`);
         continue;
       }
+      const hidden = [servers[server.name]?.url, ...secrets];
       answer[server.name] = {
         tools: server.tools.map((tool) => ({
           name: tool.originalName,
           description: tool.description,
           inputSchema: tool.jsonSchema,
-          call: (args, { signal }) => manager.callTool(tool.name, args, signal === undefined ? {} : { signal })
+          // A failed call's message reaches the run and its session: the address and keys are taken out first.
+          call: (args, { signal }) =>
+            manager.callTool(tool.name, args, signal === undefined ? {} : { signal }).catch((error: unknown) => {
+              throw new Error(scrub(error instanceof Error ? error.message : String(error), hidden));
+            })
         })),
         close
       };
@@ -206,11 +212,9 @@ function checkProjectMcpServers(servers: ProjectMcpServers): void {
   }
 }
 
-/** A connection failure's reason with the address and any key taken out. */
+/** A failure's reason, connecting or calling, with the address and any key taken out. */
 function scrub(reason: string | undefined, secrets: readonly (string | undefined)[]): string {
-  let text = reason ?? "no reason given";
-  for (const secret of secrets) if (secret !== undefined && secret !== "") text = text.split(secret).join("…");
-  return text;
+  return redactSecrets(reason ?? "no reason given", secrets);
 }
 
 /** The block resolving a run's tools lacks the keys: name the capability that installs them. */

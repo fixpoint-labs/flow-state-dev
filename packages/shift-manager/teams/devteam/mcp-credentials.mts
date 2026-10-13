@@ -27,9 +27,7 @@ import {
   type InboundTransportHost,
 } from "@flow-state-dev/engine";
 import { MCP_CREDENTIALS_PREFIX, mcpCredentialProblem } from "@flow-state-dev/workforce";
-
-/** Where the route lives, under the engine's own `/api/flows` mount. */
-export const MCP_CREDENTIALS_PATH = "/api/flows/mcp-credentials";
+import { MCP_CREDENTIALS_PATH } from "../../src/lib/mcp-credentials.ts";
 
 /** The source stamped on the principal lookups this route makes. */
 const SOURCE = "lab-mcp-credentials";

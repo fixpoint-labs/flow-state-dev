@@ -103,4 +103,23 @@ describe("a connection that fails", () => {
       warn.mockRestore();
     }
   });
+
+  it("takes out a short key echoed on its own, and a one-word header value, and leaves the scheme word", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const manager = createMcpManager({
+        servers: [
+          { ...linearConfig, transport: { type: "http", url: "https://mcp.example/mcp", headers: { Authorization: "Bearer k3y", "X-Api-Key": "q7" } } },
+        ],
+        _createClient: async () => {
+          throw new Error("401: Bearer token k3y rejected; api key q7 unknown");
+        },
+      });
+      await manager.getTools();
+      expect(manager.getCatalog().servers[0]!.error).toBe("401: Bearer token … rejected; api key … unknown");
+      expect(JSON.stringify(warn.mock.calls)).not.toMatch(/k3y|q7/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

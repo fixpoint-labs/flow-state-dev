@@ -142,6 +142,8 @@ export function inProcessMcpServer(name: string, tools: readonly ClaudeCodeMcpTo
     } catch (error) {
       const code = error instanceof RpcError ? error.code : -32603;
       const text = error instanceof Error ? error.message : String(error);
+      // Ignored: this already reports a failure, and a send that fails here means the
+      // transport is gone, so there is no one left to tell.
       await transport?.send({ jsonrpc: "2.0", id: request.id, error: { code, message: text } }).catch(() => {});
     }
   };

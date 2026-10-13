@@ -273,6 +273,54 @@ describe("closing the servers (BR-18)", () => {
     expect(aborted).toEqual(["close"]);
   });
 
+  it("calls a close several servers share once, so one manager's clients aren't closed twice", async () => {
+    let closes = 0;
+    const close = async () => void closes++;
+    const tools: ClaudeCodeMcpTools = { linear: { tools: [], close }, github: { tools: [], close } };
+    await testBlock(claudeCodeAgent({ mcpTools: tools, resolveClaudeAgent: scripted([]) }), { input: { prompt: "go" } });
+    expect(closes).toBe(1);
+  });
+
+  it("closes what the resolver opened when setup throws before the run starts", async () => {
+    const log: string[] = [];
+    const seen: ClaudeAgentQueryOptions[] = [];
+    // A server with no tools list: building its in-process server throws.
+    const broken = { linear: { tools: undefined as never, close: () => void log.push("close") } };
+    const { error } = await testBlock(claudeCodeAgent({ mcpTools: async () => broken, resolveClaudeAgent: scripted(seen) }), {
+      input: { prompt: "go" },
+    });
+    expect(error).not.toBeNull();
+    expect(seen).toEqual([]);
+    expect(log).toEqual(["close"]);
+  });
+
+  it("stops waiting on a resolver still connecting when the run is aborted, and closes what it answers later", async () => {
+    const log: string[] = [];
+    const seen: ClaudeAgentQueryOptions[] = [];
+    let connected: () => void = () => {};
+    let asked: () => void = () => {};
+    const resolving = new Promise<void>((resolve) => (asked = resolve));
+    const block = claudeCodeAgent({
+      mcpTools: () =>
+        new Promise<ClaudeCodeMcpTools>((resolve) => {
+          asked();
+          connected = () => resolve(linearTools(log));
+        }),
+      resolveClaudeAgent: scripted(seen),
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    const controller = new AbortController();
+    (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+    const run = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+    await resolving;
+    controller.abort();
+    await expect(run).rejects.toBeTruthy();
+    expect(seen).toEqual([]);
+    expect(log).toEqual([]);
+    connected();
+    await vi.waitFor(() => expect(log).toEqual(["close"]));
+  });
+
   it("closes the rest when one server's close throws", async () => {
     const log: string[] = [];
     const tools: ClaudeCodeMcpTools = {
