@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { OutputItem } from "../../src/items";
-import { isSuspensionItem, isSuspensionResumeItem } from "../../src/items";
+import { isSuspensionItem, isSuspensionResumeItem, isSuspensionWait } from "../../src/items";
 
 // Minimal fields required by OutputItemBase shared across all item fixtures.
 const base = {
@@ -92,5 +92,20 @@ describe("isSuspensionResumeItem", () => {
     };
 
     expect(isSuspensionResumeItem(item)).toBe(false);
+  });
+});
+
+describe("isSuspensionWait", () => {
+  const tool = (status: string, error?: { message: string; code?: string }) => ({ ...base, type: "tool_output", status, ...(error ? { error } : {}) });
+
+  it("is a failed tool call coded SUSPENSION: a wait on an answer", () => {
+    expect(isSuspensionWait(tool("failed", { message: "Approve?", code: "SUSPENSION" }))).toBe(true);
+  });
+
+  it("is not an ordinary failure, a finished call, or another item coded SUSPENSION", () => {
+    expect(isSuspensionWait(tool("failed", { message: "boom" }))).toBe(false);
+    expect(isSuspensionWait(tool("failed", { message: "boom", code: "E_TIMEOUT" }))).toBe(false);
+    expect(isSuspensionWait(tool("completed"))).toBe(false);
+    expect(isSuspensionWait({ ...base, type: "block_trace", status: "failed", error: { message: "Approve?", code: "SUSPENSION" } })).toBe(false);
   });
 });
