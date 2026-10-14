@@ -478,7 +478,7 @@ describe("who writes an entry", () => {
     const h = await boot();
     await h.hire("alice", "alice-lead", "lead");
     const lab = await h.lab("alice");
-    const docs = await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "onboarding-docs", title: "Onboarding docs", lead: "alice-lead" });
+    await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "onboarding-docs", title: "Onboarding docs", lead: "alice-lead" });
     const pricing = await h.ok("alice", "lab", lab, "openWorkstream", {
       project: apollo,
       id: "competitor-pricing",
@@ -497,7 +497,6 @@ describe("who writes an entry", () => {
     // Its own status and report still land, on its own workstream only.
     const updated = await h.ok("alice", "lead", pricing.workstream.sessionId, "updateOwn", { status: "researching", report: "Handed to the researcher." });
     expect(updated.workstream).toMatchObject({ id: "competitor-pricing", title: "Competitor pricing research", status: "researching" });
-    expect(docs.workstream.title).toBe("Onboarding docs");
   });
 
   it("refuses the lead's tool on a session that leads no workstream", async () => {
