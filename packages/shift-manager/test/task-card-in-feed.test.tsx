@@ -107,7 +107,7 @@ describe("a delegated post's task in the feed", () => {
     rows = [{ ...rows[0]!, status: "parked" }];
     await tick(TASKS_POLL_MS);
     expect(cards()[0]).toMatchObject({ status: "parked", text: expect.stringContaining("needs you") });
-    // Parked waits on a person, whose answer reads the Lab again (the next test): nothing moves it meanwhile.
+    // Parked waits on the user, whose answer reads the Lab again (the next test): nothing moves it meanwhile.
     const read = calls.length;
     await tick(TASKS_POLL_MS * 20);
     expect(calls).toHaveLength(read);
