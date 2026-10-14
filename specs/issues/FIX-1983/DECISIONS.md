@@ -85,7 +85,10 @@ the stack's top frame too, at the cost of more duplicates.
   request that belongs to a task is held until that task ends, and then joins the task's
   report rather than making its own. The engine's event carries no task field and gets none: the
   intake finds the task itself, from the board row whose `run.requestId` (set when the run
-  starts) is the event's `requestId`.
+  starts) is the event's `requestId`. `run` holds only the latest attempt, so a retry that starts
+  first would hide the match: the intake resolves the task when it first takes the event, and a
+  request from a task run's session that no longer matches is still held as that task's, never
+  reported alone. Leg 4 is the check.
 - **The intake binds after construction.** `createErrorReporter` returns the `errorCapture`
   handler and a `bind(state)`; the handler enqueues and returns, and each occurrence is written by
   a `runAction` into an internal intake action, since a collection has no door outside a flow. The
