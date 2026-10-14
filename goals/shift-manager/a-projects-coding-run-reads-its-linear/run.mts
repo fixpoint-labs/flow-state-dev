@@ -20,11 +20,8 @@
  * 3. The chief of staff files a task for the coder on FSD naming the issue by
  *    its identifier only. Its prompt carries no title.
  * 4. While the run works, every process whose working directory is the run's
- *    is read from `/proc`: its command line and environment. The ones the
- *    Lab starts there itself (the harness manager's own `git` reads of the
- *    run's commits) are the server's, not the run's, and carry the server's
- *    environment; they are listed and not graded. Everything else, Claude
- *    Code and whatever it starts, is the run's.
+ *    is read from `/proc`: its command line and environment. The Lab's own
+ *    processes there are listed and not graded.
  *
  * PASS when all hold: the task's answer carries the title Linear's API gives;
  * the run's items hold at least one `mcp__linear__` tool call; at least one
@@ -120,11 +117,7 @@ async function heldOutIssue(base: string): Promise<{ identifier: string; title: 
   throw new Error(`none of Linear's ${issues.nodes.length} most recently updated issues is held out from this repository`);
 }
 
-/**
- * A model that has the chief of staff make `call` once, then stop. The coder's
- * judge resolves its evaluation model through the real resolver, as the
- * profile's does.
- */
+/** A model that has the chief of staff make `call` once, then stop. */
 function scriptedChief(call: { toolName: string; args: Record<string, unknown> }): ModelResolver {
   // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
   stripIntentOverrides();
@@ -153,21 +146,16 @@ function scriptedChief(call: { toolName: string; args: Record<string, unknown> }
   ) as unknown as ModelResolver;
 }
 
-/** A process read from `/proc`: its parent, command line and environment. */
 interface ReadProcess {
   ppid: number;
   cmdline: string;
   environ: string;
 }
 
-/** Whether a read process is Claude Code itself: the Agent SDK's `claude` binary. */
+/** The Agent SDK's `claude` binary. */
 const isClaudeCode = (proc: ReadProcess): boolean => /\/claude(\s|$)/.test(proc.cmdline.split(" --")[0] ?? "");
 
-/**
- * Whether a read process is the run's, rather than the Lab's own. The Lab
- * (this process) starts Claude Code and, in the run's checkout, its own `git`
- * reads; anything else in the run's places was started under Claude Code.
- */
+/** A direct child of this process that is not Claude Code is the Lab's own. */
 const isTheRuns = (proc: ReadProcess): boolean => proc.ppid !== process.pid || isClaudeCode(proc);
 
 /** The processes whose working directory is under `root`: each one's parent, command line and environment, read now. */
@@ -178,10 +166,9 @@ function processesUnder(root: string): Map<number, ReadProcess> {
     try {
       const cwd = readlinkSync(`/proc/${entry}/cwd`);
       if (!cwd.startsWith(root)) continue;
-      // `pid (comm) state ppid …`: comm may hold spaces or parens, so read after the last ")".
-      const stat = readFileSync(`/proc/${entry}/stat`, "utf8");
+      const status = readFileSync(`/proc/${entry}/status`, "utf8");
       found.set(Number(entry), {
-        ppid: Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]),
+        ppid: Number(/^PPid:\s+(\d+)/m.exec(status)?.[1]),
         cmdline: readFileSync(`/proc/${entry}/cmdline`, "utf8").replace(/\0/g, " "),
         environ: readFileSync(`/proc/${entry}/environ`, "utf8").replace(/\0/g, "\n"),
       });
