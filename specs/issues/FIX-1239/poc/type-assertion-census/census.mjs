@@ -39,6 +39,8 @@
  *
  * Usage (repo root, after `pnpm install && pnpm packages:build`):
  *   node specs/issues/FIX-1239/poc/type-assertion-census/census.mjs [--only a,b] [--json] [--plant]
+ * Its output on main at 4f2e13ed is frozen beside it in snapshot-4f2e13ed.json, which is the
+ * authoritative record; implementers do not re-run this as a gate.
  * Retained spec evidence; not part of any package, test glob, or build.
  */
 import { execFileSync } from "node:child_process";
@@ -157,6 +159,7 @@ function findSites(sf) {
       kind: "directive",
       from: l,
       to: covered,
+      // Misspelling the directive turns it into a plain comment, which removes it without shifting lines.
       edit: { start: at, end: at + "@ts-expect-error".length, text: "@ts-expect-errxr" },
       label: m[1].replace(/\*\/\s*$/, "").replace(/^[\s:—–-]+/, "").trim() ? "described" : "bare",
     });

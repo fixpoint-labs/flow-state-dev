@@ -1,0 +1,2942 @@
+[
+  {
+    "pkg": "claude-code",
+    "file": "test/system-prompt.test-d.ts",
+    "line": 28,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "claude-code",
+    "file": "test/system-prompt.test-d.ts",
+    "line": 30,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "claude-code",
+    "file": "test/system-prompt.test-d.ts",
+    "line": 32,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "client",
+    "file": "src/types/cross-package-items.type-test.ts",
+    "line": 29,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "client",
+    "file": "test/recovery.test.ts",
+    "line": 308,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "client",
+    "file": "test/recovery.test.ts",
+    "line": 402,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/helpers/tests/update-state-with.type-test.ts",
+    "line": 58,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 51,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 62,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 65,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 68,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 71,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 74,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 88,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 96,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS18046"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 100,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2540"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 117,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 127,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 132,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 135,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 138,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 166,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 173,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-context-boundary.type-test.ts",
+    "line": 191,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/block-resource-definitions.type-test.ts",
+    "line": 58,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-config.type-test.ts",
+    "line": 37,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-config.type-test.ts",
+    "line": 40,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-config.type-test.ts",
+    "line": 47,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-config.type-test.ts",
+    "line": 70,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-config.type-test.ts",
+    "line": 78,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-config.type-test.ts",
+    "line": 90,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-schema-forwarding.type-test.ts",
+    "line": 147,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-schema-forwarding.type-test.ts",
+    "line": 154,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 29,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 32,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 44,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 60,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 63,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 78,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/capability-with.type-test.ts",
+    "line": 94,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/clientdata-resource-inference.type-test.ts",
+    "line": 89,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/clientdata-resource-inference.type-test.ts",
+    "line": 100,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/clientdata-resource-inference.type-test.ts",
+    "line": 111,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/clientdata-resource-inference.type-test.ts",
+    "line": 133,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/clientdata-resource-inference.type-test.ts",
+    "line": 144,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/cross-package-validation.type-test.ts",
+    "line": 138,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/dispatcher-session-inference.type-test.ts",
+    "line": 41,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 42,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 47,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2540"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 64,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS18046"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 102,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 105,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 108,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 118,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/flow-config.type-test.ts",
+    "line": 121,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 38,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 41,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 46,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 49,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 58,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 60,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 62,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 71,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 73,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 75,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 83,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-delta-verbs.type-test.ts",
+    "line": 85,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-edges-inference.type-test.ts",
+    "line": 25,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/resource-edges-inference.type-test.ts",
+    "line": 33,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 41,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 50,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 62,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 75,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 88,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 99,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 104,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 114,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 141,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 149,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 153,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 158,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 166,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 186,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 190,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 195,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "src/types/tests/sequencer-state-typing.type-test.ts",
+    "line": 199,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 55,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 63,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 71,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 83,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 93,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 98,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 168,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 175,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 186,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 194,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/cascading-router.test-d.ts",
+    "line": 207,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/changeset-refs-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS7016"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/esm-extensions-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "dead",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/evaluator-answers.test-d.ts",
+    "line": 34,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/evaluator-answers.test-d.ts",
+    "line": 39,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/evaluator-context.test-d.ts",
+    "line": 51,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/evaluator-context.test-d.ts",
+    "line": 54,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/evaluator-context.test-d.ts",
+    "line": 62,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/faceted-collection.test-d.ts",
+    "line": 44,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/faceted-collection.test-d.ts",
+    "line": 48,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/faceted-collection.test-d.ts",
+    "line": 52,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/faceted-collection.test-d.ts",
+    "line": 83,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/faceted-collection.test-d.ts",
+    "line": 108,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/harness-resolver.test-d.ts",
+    "line": 29,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS18046"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/harness-resolver.test-d.ts",
+    "line": 31,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS18046"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/harness-resolver.test-d.ts",
+    "line": 38,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2571"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/harness-resolver.test-d.ts",
+    "line": 50,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/invalidation-item.test.ts",
+    "line": 19,
+    "kind": "expect",
+    "label": "toMatchTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/invalidation-item.test.ts",
+    "line": 20,
+    "kind": "expect",
+    "label": "toMatchTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/invalidation-item.test.ts",
+    "line": 24,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/invalidation-item.test.ts",
+    "line": 28,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/invalidation-item.test.ts",
+    "line": 34,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/invalidation-item.test.ts",
+    "line": 37,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/isolation-coordinate-check.test.ts",
+    "line": 5,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS7016"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/items/resolve-visibility.test.ts",
+    "line": 123,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/model-strings-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "dead",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/prefetch-mode.test.ts",
+    "line": 56,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "failing",
+    "anySubject": false,
+    "already": [
+      "TS2554"
+    ]
+  },
+  {
+    "pkg": "core",
+    "file": "test/prefetch-mode.test.ts",
+    "line": 60,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/prefetch-mode.test.ts",
+    "line": 62,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "failing",
+    "anySubject": false,
+    "already": [
+      "TS2344"
+    ]
+  },
+  {
+    "pkg": "core",
+    "file": "test/prefetch-mode.test.ts",
+    "line": 66,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "failing",
+    "anySubject": false,
+    "already": [
+      "TS2344"
+    ]
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 125,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "failing",
+    "anySubject": false,
+    "already": [
+      "TS2554"
+    ]
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 129,
+    "kind": "expect",
+    "label": "toHaveProperty",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 130,
+    "kind": "expect",
+    "label": "toHaveProperty",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 131,
+    "kind": "expect",
+    "label": "toHaveProperty",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 132,
+    "kind": "expect",
+    "label": "toHaveProperty",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 133,
+    "kind": "expect",
+    "label": "toHaveProperty",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 148,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "failing",
+    "anySubject": false,
+    "already": [
+      "TS2344"
+    ]
+  },
+  {
+    "pkg": "core",
+    "file": "test/projected-resource-collection.test.ts",
+    "line": 160,
+    "kind": "expect",
+    "label": "toHaveProperty",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/publish-set-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "dead",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/reserved-names-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS7016"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection-async-shape.test.ts",
+    "line": 25,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection-async-shape.test.ts",
+    "line": 26,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection-async-shape.test.ts",
+    "line": 29,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection-async-shape.test.ts",
+    "line": 30,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection-async-shape.test.ts",
+    "line": 33,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection-async-shape.test.ts",
+    "line": 54,
+    "kind": "alias",
+    "label": "Expect",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-collection.test.ts",
+    "line": 88,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "dead",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-ref-shape.test.ts",
+    "line": 12,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-ref-shape.test.ts",
+    "line": 13,
+    "kind": "expect",
+    "label": "toEqualTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-ref-shape.test.ts",
+    "line": 14,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/resource-removed-options.test-d.ts",
+    "line": 37,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/schedules-validation.test.ts",
+    "line": 255,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/side-chain-vocabulary-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "dead",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/spec-folder-check.test.ts",
+    "line": 6,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS7016"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/updater-purity-check.test.ts",
+    "line": 2,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS7016"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "core",
+    "file": "test/webhook-config-validation.test.ts",
+    "line": 150,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2741"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "harness-manager",
+    "file": "test/completion-context.spec.ts",
+    "line": 120,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "memory",
+    "file": "test/capture-evaluator.test-d.ts",
+    "line": 51,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "memory",
+    "file": "test/capture-evaluator.test-d.ts",
+    "line": 62,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "memory",
+    "file": "test/capture-evaluator.test-d.ts",
+    "line": 71,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "memory",
+    "file": "test/capture-evaluator.test-d.ts",
+    "line": 73,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "memory",
+    "file": "test/memory-provider.test.ts",
+    "line": 15,
+    "kind": "expect",
+    "label": "toMatchTypeOf",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/skills/tests/skill-evaluator.type-test.ts",
+    "line": 22,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/skills/tests/skill-evaluator.type-test.ts",
+    "line": 35,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/task-board/tests/park-exit-guard.type-test.ts",
+    "line": 35,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/task-board/tests/park-exit-guard.type-test.ts",
+    "line": 38,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/partition-context.type-test.ts",
+    "line": 25,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/partition-context.type-test.ts",
+    "line": 27,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/partition-context.type-test.ts",
+    "line": 29,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/partition-context.type-test.ts",
+    "line": 31,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/partition-context.type-test.ts",
+    "line": 33,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2339"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/partition-context.type-test.ts",
+    "line": 35,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2551"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/task-caps.type-test.ts",
+    "line": 64,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/task-caps.type-test.ts",
+    "line": 73,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "src/tasks/collection/tests/task-caps.type-test.ts",
+    "line": 80,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "test/collection/lease-renewal.test.ts",
+    "line": 204,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2345"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "test/collection/run-link.test.ts",
+    "line": 321,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "test/types.type-test.ts",
+    "line": 80,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "orchestration",
+    "file": "test/types.type-test.ts",
+    "line": 90,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "patterns",
+    "file": "test/task-caps-writers.test.ts",
+    "line": 561,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/components/panels/props-allow-list.type-test.ts",
+    "line": 56,
+    "kind": "alias",
+    "label": "IsTrue",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/components/panels/props-allow-list.type-test.ts",
+    "line": 59,
+    "kind": "alias",
+    "label": "IsTrue",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/components/panels/props-allow-list.type-test.ts",
+    "line": 60,
+    "kind": "alias",
+    "label": "IsTrue",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/components/panels/props-allow-list.type-test.ts",
+    "line": 66,
+    "kind": "alias",
+    "label": "IsTrue",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/components/panels/props-allow-list.type-test.ts",
+    "line": 69,
+    "kind": "alias",
+    "label": "IsTrue",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/hooks/clientdata-hook-types.type-test.ts",
+    "line": 22,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/hooks/clientdata-hook-types.type-test.ts",
+    "line": 27,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/hooks/clientdata-hook-types.type-test.ts",
+    "line": 35,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/hooks/clientdata-hook-types.type-test.ts",
+    "line": 39,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "react",
+    "file": "src/hooks/clientdata-hook-types.type-test.ts",
+    "line": 46,
+    "kind": "alias",
+    "label": "Assert",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/codegen.test.ts",
+    "line": 419,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": false,
+    "compiledAfter": true,
+    "deferredBy1343": true,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2540"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/resource-module-shapes.test-d.ts",
+    "line": 54,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/resource-module-shapes.test-d.ts",
+    "line": 62,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2353"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/resource-module-shapes.test-d.ts",
+    "line": 65,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/worker-manifest-error.test-d.ts",
+    "line": 56,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2741"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/worker-manifest-error.test-d.ts",
+    "line": 64,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/worker-skill-error.test-d.ts",
+    "line": 32,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2551"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/worker-skill-error.test-d.ts",
+    "line": 47,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/workforce-capability-removed-keys.test-d.ts",
+    "line": 38,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/workforce-capability-removed-keys.test-d.ts",
+    "line": 45,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  },
+  {
+    "pkg": "workforce",
+    "file": "test/workforce-capability-removed-keys.test-d.ts",
+    "line": 59,
+    "kind": "directive",
+    "label": "described",
+    "compiledToday": true,
+    "compiledAfter": true,
+    "deferredBy1343": false,
+    "verdict": "live",
+    "anySubject": false,
+    "suppresses": [
+      "TS2322"
+    ],
+    "already": []
+  }
+]

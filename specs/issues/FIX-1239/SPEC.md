@@ -25,7 +25,7 @@ Measured on `main` at `4f2e13ed` by this spec's census, which negates every asse
 | **The real need** | *"Type-level assertions … provide no guarantee … verify each moved assertion can fail … rather than trusting the move."* (the issue) |
 | **Smaller, and rejected** | "The files compile." FIX-1343 delivers that. Compiled is not able to fail: 10 of the 50 sites compile into errors that someone must resolve against what each assertion meant |
 | **Bigger, and not this issue's** | Mutation-testing runtime tests. A real linter (FIX-1417). Type assertions outside `packages/` (FIX-945 owns `goals/`); the census found none |
-| **Not done if** | The census is green because a wrong assertion was deleted or re-pointed at whatever the compiler reports, with no line saying what it claimed · a site in a file no program opens goes unreported · the workforce site is dropped instead of named as deferred |
+| **Not done if** | Typecheck is green because a wrong assertion was deleted or re-pointed at whatever the compiler reports, with no line saying what it claimed · a site in a file no program opens goes unreported · the workforce site is dropped instead of named as deferred |
 
 ```mermaid
 flowchart LR
@@ -40,11 +40,11 @@ The check reads what the compiler reports for a wrong claim, not whether a file 
 
 | How we verify | |
 |---|---|
-| **Goal check** | No `goals/` harness: this is repository tooling. The implementer runs the census and the plant on the stacked branch at completion; the verdict goes in the implementation PR |
-| **Signal** | (1) The census reports every site `live`: 0 failing, vacuous or dead, and none uncompiled except the workforce site FIX-1343 defers. (2) A wrong `expectTypeOf` planted in a `.test.ts` of each of the 9 packages makes `pnpm typecheck` exit non-zero and name that line. (3) `census.mjs --plant` passes 7 of 7 |
-| **Input** | `node specs/issues/FIX-1239/poc/type-assertion-census/census.mjs` after `pnpm packages:build`. Another wrong claim, such as a `@ts-expect-error` above a clean line, must fail the same way |
+| **Goal check** | No `goals/` harness: this is repository tooling. The implementer runs `pnpm typecheck` and the plant on the stacked branch at completion; the verdict goes in the implementation PR |
+| **Signal** | (1) On the stacked branch, `pnpm typecheck` passes with #3433's program in place, and the implementation PR lists the 10 formerly wrong sites, each with its original claim and verdict under #3433's triage rule: a stale test gets its claim updated with the reason; a source bug is filed and held with a named `@ts-expect-error`. (2) A wrong `expectTypeOf` planted in a `.test.ts` of each of the 9 packages makes `pnpm typecheck` exit non-zero and name that line. A full census re-run is optional; the spec-era counts are frozen in `poc/type-assertion-census/snapshot-4f2e13ed.json` |
+| **Input** | The 10 sites in [DECISIONS.md](DECISIONS.md#decided-not-asked) and one planted wrong `expectTypeOf` per package. Another wrong claim, such as a `@ts-expect-error` above a clean line, must fail the same way |
 | **Anti-game** | Don't count by grep or config `include` lines. A site removed to reach 0 is listed with its claim and where that claim is still asserted |
-| **Control that must fail** | Today's `main`. Observed: the plant in `packages/core/test/` gave `pnpm typecheck` exit 0 and vitest 1 passed, failing signal (2). The census there reports 50 uncompiled and 10 broken, failing signal (1) |
+| **Control that must fail** | Today's `main`. Observed: the plant in `packages/core/test/` gave `pnpm typecheck` exit 0 and vitest 1 passed, failing signal (2). The frozen snapshot records 50 uncompiled and 10 broken there, failing signal (1) |
 
 ## What changes
 
@@ -87,8 +87,8 @@ Nothing a person types against the framework changes, so there is no diff.
 | The debt | |
 |---|---|
 | **Removes** | Seven comments that state a false rule |
-| **Adds** | Nothing permanent. The census stays in `poc/` as evidence, not a maintained tool ([D1](DECISIONS.md#d1)) |
-| **Leaves** | The 30 `src` type-test files ship in published `dist`; moving them to `test/` is a follow-up to be filed (FIX-XXX · move type tests out of src). Three homes for type tests ([D2](DECISIONS.md#d2)). Assertions about `any` ([D1](DECISIONS.md#d1)). The workforce site, until FIX-1343's workforce follow-up |
+| **Adds** | Nothing permanent. The census and its frozen snapshot stay in `poc/` as evidence, not a maintained tool ([D1](DECISIONS.md#d1)). The snapshot is the spec-era measurement; ongoing enforcement is `tsc` in `pnpm typecheck`, nothing else |
+| **Leaves** | The 30 `src` type-test files ship in published `dist`; moving them to `test/` is a follow-up filed by the owner before merge (move type tests out of src). Three homes for type tests ([D2](DECISIONS.md#d2)). Assertions about `any` ([D1](DECISIONS.md#d1)). The workforce site, until FIX-1343's workforce follow-up |
 
 **Net: down.** Seven false comments go and 197 assertions are proved; nothing is added that someone must keep in step.
 

@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why. 
 |---|---|
 | **Instead of** | Running the census's negation check on every CI run, so typecheck fails when any assertion stops being able to fail |
 | **Because** | All 147 assertions that today's typecheck compiles can fail; all 10 broken ones sit in the 50 nothing compiles. The defect is *not compiled*, and FIX-1343's guard closes it for good. A standing check would add about a minute to every CI run, and a script to keep in step with TypeScript, to catch one class with 0 members today: assertions about `any`. That is the risk any loose runtime matcher carries, and we don't mutation-test runtime tests either (tenet 3, earn every addition) |
-| **Locks in** | A later assertion about `any` passes until a reviewer catches it. The census stays runnable from this spec's `poc/` for anyone who doubts a file, but no one owns keeping it working |
+| **Locks in** | A later assertion about `any` passes until a reviewer catches it. That one-minute cost per run is why the census is not promoted to CI. Its counts are frozen in `poc/type-assertion-census/snapshot-4f2e13ed.json` and are authoritative; the script models #3433's program in memory and may drift from what merges, so no one re-runs it as a gate |
 
 ![D1: prove once in the implementation PR, beside a negation check on every CI run. Decides it: what the standing check would catch today, which is nothing FIX-1343 misses. Price: an assertion about any is caught only in review](figures/d1-proof.svg)
 
@@ -39,7 +39,7 @@ It comes down to what a standing check would catch today: nothing that FIX-1343'
 |---|---|
 | **Instead of** | The issue's suggested shape: move each type-only assertion into a sibling `.test-d.ts`, add test-d wiring to `memory`, and reject `expectTypeOf` and `assertType` inside `*.test.ts` with a lint or CI guard |
 | **Because** | Every part of that shape works around `.test.ts` not being compiled. After FIX-1343 it is, with the same compiler options as `src`. The move would split six test files from the runtime tests they sit beside, and the rule would forbid a pattern that then works. `memory` already has its test-d wiring (FIX-1223) |
-| **Locks in** | Three places a type assertion can live: inline in a `.test.ts`, in a `.test-d.ts`, and in a `src/**/*.type-test.ts`. The `src` ones keep shipping in five packages' published `dist` until a follow-up moves them (FIX-XXX · move type tests out of src) |
+| **Locks in** | Three places a type assertion can live: inline in a `.test.ts`, in a `.test-d.ts`, and in a `src/**/*.type-test.ts`. The `src` ones keep shipping in five packages' published `dist` until a follow-up moves them (filed by the owner before merge) |
 
 ![D2: assertions stay where they are, beside a move to test-d files with a ban. Decides it: test files compile after FIX-1343. Price: three homes for type tests](figures/d2-where.svg)
 
@@ -78,5 +78,6 @@ It comes down to whether test files compile: after FIX-1343 they do, so the move
 ## How it got here
 
 - **Draft** — scoped to what #3433 leaves: proof that each type assertion can fail, measured first by a census that negates all 197 and asks the compiler; the measurement showed the defect is entirely *not compiled*, so the spec proves once and adds no standing machinery.
+- **Review** — the goal check rests on `pnpm typecheck`, the 10 sites listed with their verdicts, and a frozen census snapshot, because a reviewer showed that re-running the census at implementation contradicted D1.
 
 **Open: none.**
