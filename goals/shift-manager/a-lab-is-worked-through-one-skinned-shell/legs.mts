@@ -102,11 +102,7 @@ function readableDocuments(root: string): string[] {
 
 // ---- a3 / b's reach: every surface, by clicking from the first screen ---------
 
-/**
- * The name a person sees a worker by, and so types into Jump to: its id, except
- * the `chief-of-staff` worker (org or team), which the docs and screens call the
- * Shift Coordinator (apps/docs/docs/workforce/shift-coordinator.md).
- */
+/** `chief-of-staff`, bare or after a team dot, as the docs name it (apps/docs/docs/workforce/shift-coordinator.md). */
 const shownName = (id: string) => (id.slice(id.indexOf(".") + 1) === "chief-of-staff" ? "Shift Coordinator" : id);
 
 /**
