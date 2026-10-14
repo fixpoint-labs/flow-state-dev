@@ -24,9 +24,11 @@ export const RETIRED = [
   {
     id: "ask-symbol",
     files: CODE,
-    // Any identifier built on "ask" that isn't "task": parkOnAsk, AskEndedError, hasAskSweeper,
-    // ASK_GATE_REASON, askGateId. Shift Manager's and the harness's person asks are KEEP.
-    pattern: /\b(?!\w*[Tt]ask)(ask[A-Z]\w*|\w*Ask\w*|ASK_\w+|\w+_ASK\w*)\b/,
+    // Any identifier built on "ask": parkOnAsk, AskEndedError, hasAskSweeper, ASK_GATE_REASON,
+    // askGateId, parkTaskOnAsk, asked_task, gate_ask_1. Each alternative needs a capital A, a
+    // word start or an underscore before "ask", so "task" never matches. Shift Manager's and the
+    // harness's person asks are KEEP.
+    pattern: /\b(ask[A-Z]\w*|\w*Ask\w*|ASK_\w+|\w+_ASK\w*|asked?_\w+|\w+_ask(ed)?(_\w+)?)\b/,
     pathName: /(^|\/)(ask-|[^/]*-ask[-.])[^/]*$/
   },
   {
@@ -45,7 +47,7 @@ export const RETIRED = [
     id: "handoff-symbol",
     files: CODE,
     // Any identifier built on "hand off": createHandOff, handedOffTaskPredicate, abortHandoff.
-    pattern: /\b\w*(HandOff|Handoff|handOff|handoff|HandedOff|handedOff)\w*\b|["'`]handed-off["'`]/,
+    pattern: /\b\w*(HandOff|Handoff|handOff|handoff|HandedOff|handedOff|hand_off|handed_off|HAND_OFF|HANDED_OFF)\w*\b|["'`]handed-off["'`]/,
     pathName: /(^|\/)[^/]*hand-?off[^/]*$/
   },
   {
@@ -63,7 +65,7 @@ export const RETIRED = [
     id: "ask-prose",
     files: CODE_OR_PUBLISHED,
     // "ask" for delivering work. A question to a person is the only meaning kept (KEEP).
-    pattern: /\b(an|every|each) ask\b|\basks? (gate|resume|binding|marker|option)s?\b|\basked (task|row|worker|turn|colleague)s?\b|\basker\b|\bthe ask\b(?! (card|inbox))/i
+    pattern: /\b(an|every|each) ask\b|\basks? (gate|resume|binding|marker|option)s?\b|\basked (task|row|worker|turn|colleague)s?\b|\basker\b|\bthe ask\b(?! (card|inbox))|\b(task|work|row)s? (it|they|you|a turn|the turn) asked for\b/i
   },
   {
     id: "post-to-mailbox",
@@ -93,6 +95,12 @@ export const EXCLUDE = [
 
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
+  {
+    path: /^packages\/engine\/src\/stores\/testing\/request-store-conformance\.ts$/,
+    line: /const requestId = "req_fence_(legacy_)?handed_off";$/,
+    rules: ["handoff-symbol"],
+    why: "a same-owner hand-off of a running request: work already under way changing hands"
+  },
   {
     path: /^apps\/docs\/docs\/orchestration\/task-board\.md$/,
     // The sentence sits on a line of its own, so nothing else on the line is kept with it.

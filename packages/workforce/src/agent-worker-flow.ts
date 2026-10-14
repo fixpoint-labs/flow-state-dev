@@ -391,7 +391,7 @@ function settingsSchema(
         for (const name of names ?? []) {
           if (Object.hasOwn(catalog, name)) continue;
           // A coordinator hands a post on with `dispatchTask` and `post: true` now.
-          if (name === RETIRED_HAND_OFF) {
+          if (name === RETIRED_HAND_OFF) { // retired-name-refusal: FIX-1872
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message:
