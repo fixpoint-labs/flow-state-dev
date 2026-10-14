@@ -67,6 +67,8 @@ const SCRATCH = goalTmpDir(SLUG);
 const BUDGET_MS = 20 * 60_000;
 const SETTLED = new Set(["completed", "errored", "failed", "cancelled"]);
 const DEMO_MARKER = "FEATURE-BRIEF-E61B8";
+/** The worker the dev profile's coding rows are filed for. */
+const CODER = "eng.coder";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const normal = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const git = (...args: string[]) => execFileSync("git", args, { cwd: CHECKOUT, stdio: "pipe", encoding: "utf8" }).trim();
@@ -232,7 +234,8 @@ await runGoal(async (failures) => {
     let rows: Record<string, Record<string, any>> = {};
     let together = false;
     for (const until = Date.now() + BUDGET_MS; Date.now() < until; await sleep(5_000)) {
-      rows = Object.fromEntries((await filed()).map((r) => [legOf(r), r]).filter(([leg]) => leg !== undefined));
+      // The coder's row, not a post row handed to the EM on the way: a post settles before the coder commits.
+      rows = Object.fromEntries((await filed()).filter((r) => r.assignee === CODER).map((r) => [legOf(r), r]).filter(([leg]) => leg !== undefined));
       const live = runWorktrees().filter((w) => !before.has(w.path));
       if (rows.a !== undefined && rows.b !== undefined && !SETTLED.has(rows.a.status) && !SETTLED.has(rows.b.status) && live.length >= 2) together = true;
       if (rows.a !== undefined && rows.b !== undefined && SETTLED.has(rows.a.status) && SETTLED.has(rows.b.status)) break;

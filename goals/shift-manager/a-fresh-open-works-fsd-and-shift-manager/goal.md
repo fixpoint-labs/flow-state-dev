@@ -29,3 +29,5 @@ Then, read from git and the Lab's routes: `a:completed`, `b:completed` (each tas
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-13 | 25636f11 + this check | chief of staff `anthropic/claude-haiku-5-5`, Claude Code (Agent SDK 0.3.234) | FAIL | Twice (FIX-1957, FIX-1960 held out): both coder rows errored in a second, no worktree. The chief of staff's `dispatchTask` sent `input` as a JSON string, so the project source refused `no-project`. Filed FIX-1965 |
+| 2026-10-13 | e15b2f0b (before the epic) via `GOAL_CHECKOUT` | same | FAIL (control, as required) | `key:set-on-settings` (no Settings), `a:completed` errored, `b:completed` never filed, `worktrees-in-checkout` 0, `a:title`, `a:linear-call` |
