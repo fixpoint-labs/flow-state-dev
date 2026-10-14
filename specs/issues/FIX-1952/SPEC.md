@@ -9,7 +9,7 @@
 | **wants to try the same task on another model** | Edits Kitchen Sink's code and restarts the server | Picks the model in **New session**, with the harness's default preselected, and starts a second session beside the first |
 | **continues or reopens a session days later** | Gets whatever the code says now | Every turn and resume runs the model the session started with, even after the harness changes its default ([D1](DECISIONS.md#d1)). The header names it |
 | **picks a model the harness won't run** (no access, retired, misspelt) | n/a | The turn fails, and the person reads the harness's own reason. Nothing runs on another model |
-| **opens New session while the harness's model list can't be reached** | n/a | The picker says why, and offers the harness's default only |
+| **opens New session while the harness's model list can't be reached** | n/a | The picker says why. Cursor offers its default only; Claude Code offers nothing, and New session waits for a reload ([amended](DECISIONS.md#decided-not-asked)) |
 | **uses Codex mode** | Runs Codex's unnamed default model | Picks from a short list Kitchen Sink keeps, because Codex can't list its models ([D3](DECISIONS.md#d3)) |
 | **builds an app on a harness block** | Sets one model per flow, fixed when the block is built | Chooses it per run, as it already chooses the directory and conversation ([D2](DECISIONS.md#d2)) |
 
@@ -27,7 +27,7 @@ harness's own words.**
 | **The real need** | Try the same task on different models in each harness without changing code ([FIX-1952](https://linear.app/fixpoint-labs/issue/FIX-1952), Jake's words above) |
 | **Smaller, and rejected** | "A dropdown that sets the model." It passes while a resume runs the default, or a refused model quietly runs another: both make a comparison wrong unseen |
 | **Bigger, and not this issue's** | Switching model mid-session · comparing cost or capability · Flow State mode, which already has its own model selector |
-| **Not done if** | The check reads Kitchen Sink's state, not the harness's record · it ran only on scripted harnesses · a refused model ran the default · a resume after reload ran another model · Codex still runs an unnamed default |
+| **Not done if** | The check reads Kitchen Sink's state, not the harness's record · it ran only on scripted harnesses · a refused model ran the default · a resume after reload ran another model · Codex still runs an unnamed default · Claude Code offered a model while its list failed |
 
 ```mermaid
 flowchart LR
