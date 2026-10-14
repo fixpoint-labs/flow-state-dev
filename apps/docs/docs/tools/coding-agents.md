@@ -148,9 +148,17 @@ many runs:
 | `cwd` | The directory this run works in. |
 | `resume` | Which conversation this run continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness the moment it names its session, so you can record it. |
+| `model` | Which model this run uses, in the harness's own ids. A fixed id works too. |
 
-`cwd` and `resume` are handed the block's context and nothing else — never the
-prompt, so a path or a session id cannot be derived from text a model wrote.
+`cwd`, `resume` and `model` are handed the block's context and nothing else — never the
+prompt, so a path, a session id or a model cannot be derived from text a model wrote.
+
+`model` is how one flow runs different models for different users or sessions:
+read the id from session state, the way `resume` reads the conversation. The
+harness takes it on a fresh run and a resumed one alike. Return `null` to leave
+the harness on its default. Each harness also has its own model setting in its
+vendor-shaped options (Codex's `thread.model`, Cursor's `agent.model`); setting
+both is refused when the block is built.
 
 `onSession` fires **during** the run rather than after it, which is why it exists
 alongside the handle's own `sessionId`. A run that is cancelled or dies partway

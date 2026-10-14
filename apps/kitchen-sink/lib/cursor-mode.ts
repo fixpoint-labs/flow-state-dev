@@ -38,14 +38,20 @@ import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import type { HarnessModel, ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCursor } from "./scripted-cursor";
 
 /** Cursor mode's flow kind, from the mode list: the rail lists its sessions by it. */
 export const CURSOR_SESSION = flowKindOf(modeById("cursor"));
 
-/** The model Cursor mode runs. */
-export const CURSOR_MODEL = "composer-2.5";
+/**
+ * Cursor mode's default model: preselected in New session, the one a session
+ * from before models could be picked runs on, and the only one offered when
+ * Cursor's model list can't be read. Cursor's SDK refuses a local agent with
+ * no model, so there is always one to hand it.
+ */
+export const CURSOR_DEFAULT_MODEL = "composer-2.5";
 
 /**
  * The only variables of the server's environment Cursor's runtime is handed
@@ -101,10 +107,10 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    model: feeds.model,
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",
     agent: {
-      model: { id: CURSOR_MODEL },
       mode: "agent",
       // Writes confined to the run's `cwd`, the session's worktree. Cursor fails
       // the run when its sandbox can't start, rather than running without it.
@@ -133,7 +139,48 @@ export function cursorBlock(feeds: HarnessFeeds, seams: CursorSeams = {}): Harne
 
 /** Cursor mode's session flow. `seams` is for tests. */
 export function cursorSessionFlow(seams: CursorSeams = {}) {
-  return harnessSessionFlow({ kind: CURSOR_SESSION, agent: (feeds) => cursorBlock(feeds, seams) });
+  return harnessSessionFlow({
+    kind: CURSOR_SESSION,
+    agent: (feeds) => cursorBlock(feeds, seams),
+    defaultModel: CURSOR_DEFAULT_MODEL,
+  });
+}
+
+/** Cursor's own model list, read over the run's sign-in. A seam for tests. */
+export type CursorModelList = (env: Record<string, string>) => Promise<readonly HarnessModel[]>;
+
+/** The SDK's catalog call: the models the signed-in account can run, by Cursor's ids and names. */
+const listCursorModels: CursorModelList = async (env) => {
+  // Loaded only here, so a host without the SDK never loads it.
+  const { Cursor } = (await import("@cursor/sdk")) as unknown as {
+    Cursor: { models: { list(options?: { apiKey?: string }): Promise<Array<{ id: string; displayName?: string }>> } };
+  };
+  const key = env.CURSOR_API_KEY ?? "";
+  const items = await Cursor.models.list(key === "" ? undefined : { apiKey: key });
+  return items.map((item) => ({ id: item.id, label: item.displayName || item.id }));
+};
+
+/**
+ * What Cursor mode's New session offers: Cursor's own list, with the mode's
+ * default preselected (and put first when Cursor doesn't list it). When the
+ * list can't be read, the default alone, with the reason. Under the scripted
+ * Cursor, the default alone and no reason.
+ */
+export async function cursorModelChoices(list: CursorModelList = listCursorModels): Promise<ModelChoices> {
+  const fallback: HarnessModel = { id: CURSOR_DEFAULT_MODEL, label: CURSOR_DEFAULT_MODEL };
+  const base = { defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL };
+  if (cursorIsScripted()) return { ...base, models: [fallback], reason: null };
+  try {
+    const models = await list(cursorEnv());
+    const listed = models.some((model) => model.id === CURSOR_DEFAULT_MODEL);
+    return { ...base, models: listed ? models : [fallback, ...models], reason: null };
+  } catch (error) {
+    return {
+      ...base,
+      models: [fallback],
+      reason: `Cursor's model list can't be read (${error instanceof Error ? error.message : String(error)}), so only Cursor mode's default is offered.`,
+    };
+  }
 }
 
 /** How this host signs Cursor in: a key in the run's environment, a stored login, or neither. */

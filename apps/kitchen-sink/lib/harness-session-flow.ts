@@ -2,7 +2,7 @@
  * One session flow for every coding harness mode: a flow kind, and a function
  * that builds the harness block from the feeds this flow owns.
  *
- * Server only. Kitchen Sink decides two things for a run and the harness
+ * Server only. Kitchen Sink decides three things for a run and the harness
  * decides everything else:
  *
  * - **Where it works** (`cwd`): the session's own git worktree of the
@@ -13,6 +13,11 @@
  *   that id. A failure never clears it, so a conversation the harness won't
  *   continue keeps failing visibly until the person starts a new session,
  *   rather than the session moving on by itself.
+ * - **Which model it runs** (`model`): the one the person picked when the
+ *   session was born, held in a session field the framework fixes at birth.
+ *   The flow refuses to create a session that names none. Kitchen Sink does
+ *   not check the id: the harness judges what it runs, and a refusal reaches
+ *   the person in the harness's words.
  *
  * Each turn also gets a record under its request id: what it asked for, what
  * the harness confirmed during it, and how it failed, read through core's
@@ -41,7 +46,7 @@ import { harnessSessionStateSchema, type HarnessSessionState, type TurnRecord } 
 /** A harness block: takes the prompt, returns the run's handle. Core's neutral shape. */
 export type { HarnessBlock };
 
-/** What the session flow hands a harness block. Spread the first three into its options. */
+/** What the session flow hands a harness block. Spread all but `worktree` into its options. */
 export interface HarnessFeeds {
   /** The session's worktree, provisioned on the first turn and handed back after. */
   readonly cwd: HarnessResolver<string>;
@@ -49,6 +54,12 @@ export interface HarnessFeeds {
   readonly resume: HarnessResolver<string | null>;
   /** Records the conversation the harness confirmed. */
   readonly onSession: HarnessSessionHook;
+  /**
+   * The model this run uses: the session's pick, or the mode's default for a
+   * session stored before models could be picked. `undefined` leaves the
+   * harness on its own default.
+   */
+  readonly model: HarnessResolver<string | undefined>;
   /**
    * Where the session's worktree is, for a fence that names it (a sandbox's
    * writable paths). Its real path once `cwd` has provisioned it.
@@ -62,6 +73,12 @@ export interface HarnessSessionFlowOptions {
   readonly kind: string;
   /** Build the harness block from the feeds. */
   readonly agent: (feeds: HarnessFeeds) => HarnessBlock;
+  /**
+   * The model a session with none runs on (one stored before models could be
+   * picked), and the one the `ignore-model` goal control hands the harness.
+   * Unset, the harness runs its own default in both cases.
+   */
+  readonly defaultModel?: string;
 }
 
 /** How many turn records a session keeps. The notice reads only the latest. */
@@ -116,9 +133,23 @@ async function changeState(
   await ctx.session.atomicState((state) => change(state as HarnessSessionState));
 }
 
-/** The feeds for one flow kind. */
-export function harnessFeeds(kind: string): HarnessFeeds {
+/** The message a create without a model is refused with. */
+export const MODEL_REQUIRED = "A new session must name the model it runs (`state.model`).";
+
+/**
+ * The feeds for one flow kind.
+ *
+ * @param kind The flow kind.
+ * @param defaultModel What {@link HarnessSessionFlowOptions.defaultModel} says.
+ */
+export function harnessFeeds(kind: string, defaultModel?: string): HarnessFeeds {
   return {
+    model: (ctx) => {
+      // Hands the harness the mode's default whatever was picked, so the goal's
+      // "the harness ran the picked model" leg can be seen to fail.
+      if (goalControl() === "ignore-model") return defaultModel;
+      return (ctx.session.state as HarnessSessionState).model ?? defaultModel;
+    },
     cwd: async (ctx) => {
       const repo = repository();
       // Hands the run the repository itself, so goal leg **w** can be seen to fail.
@@ -162,7 +193,7 @@ export function harnessFeeds(kind: string): HarnessFeeds {
  * for it (`concurrency: "queue"`), then continues the same conversation.
  */
 export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
-  const agent = options.agent(harnessFeeds(options.kind));
+  const agent = options.agent(harnessFeeds(options.kind, options.defaultModel));
   // A failure is recorded on the turn, classified by the harness, so the page
   // can tell a refused conversation from any other error and from a stop. The
   // turn still fails with the harness's own error, rethrown here, and the
@@ -221,9 +252,13 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
     },
     session: {
       stateSchema: harnessSessionStateSchema,
-      // The page reads the binding and the turns; nothing a caller sends writes them.
-      client: { expose: ["binding", "turns"] },
+      // The page reads the model, the binding and the turns. The model is the
+      // creator's to name, once; nothing a caller sends writes the other two.
+      client: { expose: ["model", "binding", "turns"] },
       serverOwned: ["binding", "turns"],
+      // Every path that creates a session asks this: a new session runs a named model.
+      createCheck: ({ state }) =>
+        typeof state.model === "string" && state.model !== "" ? { ok: true } : { ok: false, message: MODEL_REQUIRED },
     },
   })();
 }

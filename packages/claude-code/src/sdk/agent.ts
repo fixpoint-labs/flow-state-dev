@@ -134,8 +134,17 @@ export interface ClaudeCodeAgentOptions {
   sessionProvider?: BindingProvider<ClaudeAgentSession>;
   /** Derive the prompt from input/ctx. Default: `input.prompt`. */
   prompt?: (input: { prompt: string }, ctx: AgentCallbackContext) => string;
-  /** Model id forwarded to the SDK. */
-  model?: string;
+  /**
+   * Which model the run uses: a fixed id, or a resolver called once per
+   * invocation, like `cwd` and `resume`, so one block can run a different
+   * model for each run (each session of a host, say). Forwarded to the SDK as
+   * its `model`, on a fresh run and a resumed one alike.
+   *
+   * `null`, `""` and `undefined` from the resolver all mean "no model named":
+   * the SDK runs Claude Code's own default. The resolver is handed the context
+   * alone, never the prompt, for the reason `cwd` is (BP-031).
+   */
+  model?: string | HarnessResolver<string | null | undefined>;
   /**
    * The system prompt the run starts from, forwarded to the SDK as given; the
    * shapes are on {@link ClaudeAgentSystemPrompt}. Omitted, the run starts from
@@ -896,6 +905,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           ? ((await resolveResume(ctx)) ?? "")
           : "";
 
+      // Resolved once, beside the directory and the conversation it runs in.
+      const runModel = (typeof model === "function" ? await model(ctx) : model) || undefined;
+
       const sandboxSettings =
         typeof sandbox === "function"
           ? await (sandbox as (c: AgentCallbackContext) => unknown)(ctx)
@@ -913,7 +925,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const agentProcess = trackProcess();
 
       const queryOptions: ClaudeAgentQueryOptions = {
-        model,
+        model: runModel,
         // The one place the default is decided, so every path that reaches the
         // SDK (in-session, detached, resumed, through a capability) gets it.
         // Left absent, the SDK sends an EMPTY custom prompt rather than Claude

@@ -28,7 +28,7 @@ import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCodexClient } from "@flow-state-dev/codex";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
-import { CODEX_MODEL, CODEX_SESSION, codexBlockOptions, codexSessionFlow } from "@/lib/codex-mode";
+import { CODEX_SESSION, codexBlockOptions, codexSessionFlow } from "@/lib/codex-mode";
 import { harnessFeeds } from "@/lib/harness-session-flow";
 import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
@@ -257,7 +257,7 @@ describe("the plan panel (V3, BR-13)", () => {
 });
 
 describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
-  it("a real run gets the allowlisted environment, workspace-write with no approvals, Codex's default model, and /tmp off the writable list", () => {
+  it("a real run gets the allowlisted environment, workspace-write with no approvals, the session's model, and /tmp off the writable list", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CODEX_API_KEY", "sk-key");
     vi.stubEnv("CODEX_HOME", "/codex-home");
@@ -270,8 +270,9 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     expect(options.client!.env!.CODEX_HOME).toBe("/codex-home");
     expect(options.client!.env!.CODEX_API_KEY).toBe("sk-key");
     expect(options.client!.config).toEqual({ sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } });
+    // The model is the session's, through the block's own option, never a fixed thread setting.
     expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "workspace-write" });
-    expect(CODEX_MODEL).toBeUndefined();
+    expect(options.model).toBeTypeOf("function");
   });
 
   it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 a real run starts with no sandbox and no sandbox config", () => {

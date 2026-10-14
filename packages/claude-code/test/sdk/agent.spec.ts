@@ -3238,3 +3238,42 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     });
   });
 });
+
+describe("claudeCodeAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to a fresh run and a resumed one alike", async () => {
+    const spy = vi.fn();
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // resumes, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "sess_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      detached: true,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(spy.mock.calls[0][0].options).toMatchObject({ model: "model-for-run-1" });
+    expect(spy.mock.calls[0][0].options).not.toHaveProperty("resume");
+    expect(spy.mock.calls[1][0].options).toMatchObject({ model: "model-for-run-2", resume: "sess_saved" });
+  });
+
+  it("forwards a fixed id as before, and names none when the resolver has none", async () => {
+    const spy = vi.fn();
+    await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), model: "fixed-id" }), {
+      input: { prompt: "go" },
+    });
+    expect(spy.mock.calls[0][0].options?.model).toBe("fixed-id");
+    for (const none of [null, undefined, ""]) {
+      spy.mockClear();
+      await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), model: () => none }), {
+        input: { prompt: "go" },
+      });
+      expect(spy.mock.calls[0][0].options?.model).toBeUndefined();
+    }
+  });
+});

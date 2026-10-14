@@ -78,18 +78,24 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
     cwd: (ctx) => workspacePathFor(ctx),
     resume: (ctx) => previousSessionIdFor(ctx),
     onSession: (id, ctx) => rememberSessionId(id, ctx),
-    // Options passed straight to Codex, in Codex's own vocabulary — `model`
-    // here is a Codex model id, not a flow-state-dev one.
-    thread: { model: "gpt-5.4-codex", sandboxMode: "workspace-write", approvalPolicy: "never" },
+    // A Codex model id, not a flow-state-dev one. A fixed id, or one read per run.
+    model: (ctx) => modelPickedFor(ctx),
+    // Options passed straight to Codex, in Codex's own vocabulary.
+    thread: { sandboxMode: "workspace-write", approvalPolicy: "never" },
   }),
   { abortSignal: () => AbortSignal.timeout(runTimeoutMs) },
 );
 ```
 
 The block's input is the prompt, and nothing else. Everything that decides where
-a run writes or which conversation it continues is configuration. The same block
-can be handed to a model as a tool, and a field on the input is a field the model
-could set.
+a run writes, which conversation it continues or which model it runs is
+configuration. The same block can be handed to a model as a tool, and a field on
+the input is a field the model could set.
+
+`model` is asked once per run, so one block can run a different model for each
+session, and a resumed thread gets it too. Codex's SDK can't list its models, so
+the ids come from you; `codex debug models` shows what the installed Codex knows.
+`thread.model` still works for a fixed id, but not together with `model`.
 
 ## What it emits
 
@@ -211,7 +217,7 @@ reasoning output — under `codexUsage`.
 Cost is an estimate, derived from flow-state-dev's model price table, and
 `cost.basis` always reads `"estimated"`. It is absent rather than zero when:
 
-- No model was configured, so the run used Codex's default. Nothing in the output
+- No model was named (`model` or `thread.model`), so the run used Codex's default. Nothing in the output
   names the model that ran, so there is nothing to price.
 - The price table has no entry for the model. One patch release teaches it.
 - The turn never completed, so there is no usage.

@@ -26,8 +26,10 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   claudeCodeAgent,
   containmentSandbox,
+  listClaudeModels,
   probeClaudeAccount,
   type ClaudeAccountProbe,
+  type ClaudeModelList,
   type ResolveClaudeAgent,
 } from "@flow-state-dev/claude-code/sdk";
 
@@ -37,6 +39,7 @@ import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harn
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import type { ModelChoices } from "./harness-models";
 import { scriptedClaudeCode } from "./scripted-claude-code";
 
 /** Claude Code mode's flow kind, from the mode list: the rail lists its sessions by it. */
@@ -99,6 +102,7 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    model: feeds.model,
     detached: true,
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordWork: goalControl() !== "no-record",
@@ -136,7 +140,53 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
 
 /** Claude Code mode's session flow. `seams` is for tests. */
 export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
+  // No `defaultModel`: a session from before models could be picked runs on
+  // Claude Code's own default, as it did.
   return harnessSessionFlow({ kind: CLAUDE_CODE_SESSION, agent: (feeds) => claudeCodeBlock(feeds, seams) });
+}
+
+/** The model the scripted Claude Code offers. It runs no model; the id only travels. */
+export const SCRIPTED_CLAUDE_MODEL = "scripted-claude-code";
+
+/**
+ * What Claude Code mode's New session offers: Claude Code's own list, over the
+ * run's environment, each model under the id it resolves to, its default
+ * preselected.
+ *
+ * When the list can't be read, nothing is offered and New session can't start
+ * a session; the reason says why, and the next load asks again. There is no
+ * fallback id: Kitchen Sink keeps no Claude model name of its own, which would
+ * age as Claude Code's default moves, and a session must be born with a
+ * concrete model (D1). Claude Code that can't list its models is unlikely to
+ * run a turn either.
+ */
+export async function claudeCodeModelChoices(
+  list: (env: Record<string, string>) => Promise<ClaudeModelList> = (env) => listClaudeModels({ env }),
+): Promise<ModelChoices> {
+  if (claudeCodeIsScripted()) {
+    return {
+      models: [{ id: SCRIPTED_CLAUDE_MODEL, label: "Scripted Claude Code" }],
+      defaultId: SCRIPTED_CLAUDE_MODEL,
+      reason: null,
+      fallbackId: null,
+    };
+  }
+  const found = await list(claudeCodeEnv());
+  if (found.status === "failed") {
+    return {
+      models: [],
+      defaultId: null,
+      reason: `Claude Code's model list can't be read (${found.reason}), so a new session can't name its model. Reload to try again.`,
+      fallbackId: null,
+    };
+  }
+  const preselected = found.models.find((model) => model.isDefault) ?? found.models[0]!;
+  return {
+    models: found.models.map(({ id, label }) => ({ id, label })),
+    defaultId: preselected.id,
+    reason: null,
+    fallbackId: null,
+  };
 }
 
 /** What the mode's check asks of the host. Each a seam for tests. */
