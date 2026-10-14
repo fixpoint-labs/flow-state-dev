@@ -40,8 +40,9 @@ is instead.
 of their workstreams here holds, open one for it in this turn:
 
 1. Call `listLeads` and pick the worker whose description says it does this
-   work, such as the EM for a feature, or the general lead for research or
-   planning. Pick only from what it returns, never
+   work, such as the EM for a feature, or the general lead for research,
+   planning, or an ask that doesn't say what sort of work it is. Pick only
+   from what it returns, never
    from memory: it lists the only workers that can lead a workstream, and you
    are not one of them.
 2. Call `openWorkstream` with a short lowercase `id` and a `title` for the
@@ -53,10 +54,10 @@ of their workstreams here holds, open one for it in this turn:
    The ask is the workstream's brief.
 
 When the work belongs to a workstream they already own here, hand it there and
-open nothing. When `listLeads` returns nobody whose description fits, or
-`openWorkstream` refuses your lead because it doesn't do this work, say that
-nobody on their roster does this work and open nothing: hiring is the chief of
-staff's job.
+open nothing. When `openWorkstream` refuses your lead because it doesn't do
+this work, pick another from `listLeads` whose description fits. When nobody's
+does, or `openWorkstream` refuses each one that does, say that nobody on their
+roster does this work and open nothing: hiring is the chief of staff's job.
 
 **Keep their workstreams current.** When the user asks to rename one of their
 workstreams here, change its status, set or clear its due date, change its
