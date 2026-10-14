@@ -3,9 +3,10 @@
  * its `errorCapture` handler, and binds to its runtime.
  *
  * ```ts
- * const reporter = createErrorReporter({ worker: "error-reporter", operator, tracker: { project: "storefront" } });
+ * const reporter = createErrorReporter({ worker: "error-reporter", operator, tracker: { project: "shared/storefront" } });
  * const flow = defineErrorReporterFlow({ reporter, installation, harness });
- * const flowState = createFlowState({ flows: { ..., [flow.kind]: flow }, errorCapture: reporter.capture });
+ * const intake = defineErrorReporterIntakeFlow({ reporter });
+ * const flowState = createFlowState({ flows: { ..., [flow.kind]: flow, [intake.kind]: intake }, errorCapture: reporter.capture });
  * await reporter.bind(host);
  * ```
  *
@@ -21,7 +22,7 @@
  * session holds. Runs are in-process: a multi-process deployment binds one
  * reporter per process, and each process starts the runs its own intakes made.
  */
-import { WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { PROJECT_STATE_KEY, WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import {
   COMMENT_ENTRY,
   ERROR_REPORTER_FLOW,
@@ -376,6 +377,9 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
             .map((s) => ({ id: s.id, flowKind: s.flowKind, state: s.state, summary: s.summary }))
         };
       }
+      // The project the failing session is linked to, never the tracker's.
+      const failing = sessions.find((s) => (s as ReporterSessionFacts).id === latest?.sessionId) as ReporterSessionFacts | undefined;
+      const project = failing?.state?.[PROJECT_STATE_KEY];
       return {
         report: {
           id: row.id,
@@ -393,7 +397,7 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
         ...(requests.length === 0 ? {} : { requests }),
         ...(sessions.length === 0 ? {} : { sessions }),
         ...(named === undefined ? {} : { named }),
-        ...(options.tracker === undefined ? {} : { project: options.tracker.project }),
+        ...(typeof project === "string" ? { project } : {}),
         ...(latest !== undefined && options.links !== undefined ? { links: options.links(latest) } : {})
       };
     }

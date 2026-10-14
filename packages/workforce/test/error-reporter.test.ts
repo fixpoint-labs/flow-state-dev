@@ -43,12 +43,12 @@ type Prompted = { kind: "draft" | "file" | "comment"; prompt: string };
  * A harness that answers like one: a JSON draft, a filed issue, or a comment
  * verdict, by what its prompt asks for. Records what it was asked.
  */
-function standInHarness(prompts: Prompted[], options: { closed?: boolean } = {}) {
+function standInHarness(prompts: Prompted[], options: { closed?: boolean; trailer?: boolean } = {}) {
   return () =>
     handler({
       name: "stand-in-harness",
       inputSchema: z.object({ prompt: z.string() }),
-      execute: async (input) => {
+      execute: async (input, ctx) => {
         const kind = input.prompt.includes("draft ONE bug report") ? "draft" : input.prompt.includes("File this bug report") ? "file" : "comment";
         prompts.push({ kind, prompt: input.prompt });
         const json =
@@ -57,6 +57,10 @@ function standInHarness(prompts: Prompted[], options: { closed?: boolean } = {})
             : kind === "file"
               ? { url: "https://tracker.example/FIX-9", identifier: "FIX-9" }
               : { closed: options.closed === true };
+        const fenced = "```json\n" + JSON.stringify(json) + "\n```";
+        // A harness that says something after its draft, as a checkout's own instructions can make it.
+        if (options.trailer === true && kind === "draft") ctx.emit.message(fenced);
+        const said = options.trailer === true && kind === "draft" ? "I made no file changes; nothing to add." : fenced;
         return {
           source: "stand-in",
           status: "completed",
@@ -64,7 +68,7 @@ function standInHarness(prompts: Prompted[], options: { closed?: boolean } = {})
           url: null,
           dispatchedAt: Date.now(),
           outcome: "finished",
-          finalMessage: "```json\n" + JSON.stringify(json) + "\n```",
+          finalMessage: said,
           usage: null,
           cost: null
         };
@@ -110,9 +114,9 @@ afterEach(async () => {
 });
 
 /** A Lab with the reporter on it, bound to the engine the way a Lab binds it. */
-async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: ReturnType<typeof mockGenerator>; closed?: boolean } = {}): Promise<Lab> {
+async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: ReturnType<typeof mockGenerator>; closed?: boolean; trailer?: boolean } = {}): Promise<Lab> {
   const prompts: Prompted[] = [];
-  const { agentAnswer, closed, ...reporterOptions } = options;
+  const { agentAnswer, closed, trailer, ...reporterOptions } = options;
   const reporter = createErrorReporter({
     worker: "error-reporter",
     operator: { userId: OPERATOR, orgId: ORG },
@@ -130,7 +134,7 @@ async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: 
     ],
     flows: (installation) => ({
       breaker: breakerFlow(installation),
-      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed }) })
+      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed, trailer }) })
     }),
     plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as any)({ id: ERROR_REPORTER_INTAKE_FLOW }) },
     generators: { "error-reporter-answer": agentAnswer ?? mockGenerator({ script: [] }) },
@@ -246,6 +250,21 @@ describe("a request that settled failed", () => {
     const [filed] = await lab.rows();
     expect(filed).toMatchObject({ status: "filed", issue: { identifier: "FIX-9" } });
     expect(await lab.conversationLines()).toContainEqual(expect.stringContaining("Filed FIX-9"));
+  });
+
+  it("keeps the harness's draft when the harness says something after it", async () => {
+    const lab = await openLab({ trailer: true });
+    await lab.breaks("disk is full");
+    const [row] = await lab.rows();
+    expect(row?.draft?.title).toBe("Coordinator fails on a project with no repository");
+    expect(row?.draft?.body).not.toContain("I made no file changes");
+  });
+
+  it("names the failing session's project, not the tracker's", async () => {
+    const lab = await openLab();
+    await lab.breaks("disk is full");
+    const [row] = await lab.rows();
+    expect(row?.draft?.body).not.toContain("shared/storefront");
   });
 
   it("is never filed after a Don't file, and its repeats only count", async () => {

@@ -121,6 +121,16 @@ export const previewAnswerSchema = z.object({
 });
 export type PreviewAnswer = z.infer<typeof previewAnswerSchema>;
 
+/** A message item's text: its payload, or its payload's text parts, joined. */
+function textOfItem(item: { payload: unknown }): string {
+  const payload = item.payload;
+  if (typeof payload === "string") return payload;
+  const parts = Array.isArray(payload) ? payload : (payload as { content?: unknown } | null)?.content;
+  if (typeof parts === "string") return parts;
+  if (!Array.isArray(parts)) return "";
+  return parts.map((part) => (typeof (part as { text?: unknown })?.text === "string" ? (part as { text: string }).text : "")).join("");
+}
+
 /** The last ```json fence in `text` (or the whole text) parsed, or `undefined`. */
 function lastJson(text: string | null | undefined): unknown {
   if (typeof text !== "string") return undefined;
@@ -348,7 +358,18 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       const row = await readReport(reports, id);
       if (row === undefined) throw new Error(`Error report "${id}" is gone.`);
       const said = (handle as { finalMessage?: string | null } | undefined)?.finalMessage ?? null;
-      const parsed = draftSchema.safeParse(lastJson(said));
+      // A harness may say something after its draft (a checkout's own
+      // instructions can ask it to wrap up), so the draft is the newest of this
+      // run's messages that holds one.
+      const requestId = ctx.request.identity.id;
+      const runMessages = ctx.session.items
+        .all({ itemTypes: ["message"], roles: ["assistant"] })
+        .filter((item) => item.requestId === requestId)
+        .map((item) => textOfItem(item))
+        .reverse();
+      const parsed = [said, ...runMessages]
+        .map((text) => draftSchema.safeParse(lastJson(text)))
+        .find((attempt) => attempt.success) ?? draftSchema.safeParse(undefined);
       const secrets = await secretsOf(ctx as never);
       const draft: Draft = redact(
         parsed.success
