@@ -114,6 +114,8 @@ export const KEEP = [
   },
   {
     path: /^apps\/docs\/docs\/workforce\/shift-coordinator\.md$/,
+    // The approval ask's own lines, and only those: any other ask word on the page stays open.
+    line: /^(?!.*\bparkOnAsk\b).*(as `askFire` does|wrap it with an ask|The ask outlives a restart|the ask above refuses)/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "the Shift Coordinator's approval ask: a question to a person"
   },
