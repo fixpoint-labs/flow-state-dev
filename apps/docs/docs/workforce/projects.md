@@ -581,7 +581,7 @@ harnessManager({
 2. The project the task came from, when it was filed from a project's conversation.
 3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
 
-A task filed from a workstream or a project's conversation works in that project, whatever project the filer named. If a worker leading a workstream names a project in `input.project`, the task is filed naming the workstream's project instead, so its runs aren't refused for a project the worker got wrong.
+A task filed from a workstream or a project's conversation is stored naming that project, whatever the filer put in `input.project`.
 
 The run is refused, before any file is read, when:
 

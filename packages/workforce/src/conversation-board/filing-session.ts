@@ -43,13 +43,7 @@ export function filingProjectOf(state: unknown): string | undefined {
   return typeof filed === "string" ? filed : undefined;
 }
 
-/**
- * The project a session works in, as an address: its workstream's project
- * ({@link filingWorkstreamOf}), else its own or its filing project
- * ({@link filingProjectOf}). The order a run's project is found in. Read from
- * server-written fields only; `undefined` when the session has neither, or
- * names one that doesn't parse.
- */
+/** The session's project, in the run's order: its workstream's, else its own. */
 export function filingProjectAddressOf(state: unknown): ProjectAddressRef | undefined {
   const workstream = filingWorkstreamOf(state);
   if (workstream !== undefined) return parseWorkstreamRef(workstream)?.project;

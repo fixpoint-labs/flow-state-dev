@@ -32,9 +32,8 @@
  * conversation the session was opened for. A bare id names nothing. The task
  * names a project; it never grants one, so the run's owner is checked against
  * the project's members. A task naming a project other than its
- * conversation's (1 or 2) is refused, never followed. A task filed through
- * the conversation's board never does: the board writes the conversation's
- * project over the one its filer named (`../conversation-board/board`).
+ * conversation's (1 or 2) is refused, never followed. The board writes that
+ * project over the filer's (`../conversation-board/board`).
  *
  * Every step reads stored, server-written data (BP-031): the session's
  * readonly fields, the entry and the rows; and the run's owner is the
