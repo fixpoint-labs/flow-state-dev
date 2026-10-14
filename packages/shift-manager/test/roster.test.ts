@@ -34,6 +34,14 @@ describe("BR-13a, BR-13b: which group a worker sits in", () => {
     });
   });
 
+  it("a declared team named `general` stays its own team, apart from the org workers' General group", () => {
+    const groups = teamsOf([toWorker({ id: "chief-of-staff", kind: "agent" })!, toWorker({ id: "general.desk", kind: "agent" })!]);
+    expect(groups.map(({ team, name, workers }) => [team, name, workers.map((w) => w.id)])).toEqual([
+      [GENERAL_TEAM, "General", ["chief-of-staff"]],
+      ["general", "general", ["general.desk"]],
+    ]);
+  });
+
   it("a worker or team with no display name reads as its id, so nothing shows blank", () => {
     expect(toWorker({ id: "eng.coder", kind: "coder" })).toMatchObject({ displayName: "eng.coder", teamName: "eng" });
     expect(toWorker({ id: "eng.coder", kind: "coder", name: null, teamName: null })).toMatchObject({ displayName: "eng.coder", teamName: "eng" });

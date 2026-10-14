@@ -70,7 +70,7 @@ const SCRATCH = goalTmpDir("shift-manager-roster");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 
 /** The group a seat with no team sits in, as the design names it. */
-const GENERAL = "general";
+const GENERAL = "_general";
 /** The collection Workforce keeps every conversation's board in, as a flow's manifest publishes it. */
 const CONVERSATION_LEDGER = "tasks";
 const STATUSES = ["on shift", "on call", "off shift"] as const;

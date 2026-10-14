@@ -372,9 +372,11 @@ function time(value: unknown): number | null {
 /**
  * The id of the group an org worker sits in: a worker whose address has no
  * team, such as a chief of staff or a researcher. A person reads it as
- * {@link GENERAL_TEAM_NAME}.
+ * {@link GENERAL_TEAM_NAME}. The underscore keeps it outside Workforce's team
+ * ids (lowercase letters, digits and hyphens), so a team folder named
+ * `general` stays its own team.
  */
-export const GENERAL_TEAM = "general";
+export const GENERAL_TEAM = "_general";
 
 /** {@link GENERAL_TEAM}'s display name. */
 export const GENERAL_TEAM_NAME = "General";

@@ -63,7 +63,7 @@ describe("TEAMS", () => {
     });
     expect(value.workers.map((worker) => [worker.id, worker.team, worker.name])).toEqual([
       ["eng.lead", "eng", "lead"],
-      ["chief-of-staff", "general", "chief-of-staff"],
+      ["chief-of-staff", "_general", "chief-of-staff"],
       ["acme.support", "acme", "support"],
     ]);
   });
