@@ -49,10 +49,15 @@ export function postRowPrefix(sessionId: string): string {
   return `tasks/${keySegment(`${sessionId}~`)}`;
 }
 
+/** Whether a board row is a post handed to a delegate, not a filed task. */
+export function isPostRow(row: { sealed?: { kind?: string } } | null | undefined): boolean {
+  return row?.sealed?.kind === "post";
+}
+
 /** Board rows as graded deliveries: the post rows among them, oldest first. */
 export function toPostDeliveries(rows: ReadonlyArray<Record<string, any>>): PostDelivery[] {
   return rows
-    .filter((row) => row?.sealed?.kind === "post")
+    .filter(isPostRow)
     .sort((a, b) => Number(a.createdAt) - Number(b.createdAt))
     .map((row): PostDelivery => {
       const sessionWorked = row.run?.sessionId as string | undefined;
