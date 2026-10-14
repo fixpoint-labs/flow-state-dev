@@ -1,11 +1,5 @@
 // @vitest-environment happy-dom
-/**
- * A worker's Rules (FIX-1945 S6, BR-19 to BR-21a): which Roster rows open
- * one, what the view draws, and that every edit goes to the Lab naming the
- * version of the list it was drawn from. The Lab is a fake that keeps one
- * list and refuses as the rules action does, so a page that drew its own
- * idea of the list, or wrote without the version, shows here.
- */
+/** The fake list refuses a stale version, so a page that writes its own list shows here. */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
@@ -19,11 +13,9 @@ type Input =
   | { op: "change"; version: number; number: number; current: string; text: string }
   | { op: "remove"; version: number; number: number; current: string };
 
-/** The Lab's list for the worker, and every call the page made. */
 let held: { version: number; rules: Array<Omit<Rule, "number">> };
 let calls: Array<{ worker: string; input: Input }>;
 
-/** The rules action, as a fake: the version check and the one-line, 300-character limit. */
 async function standingRules(worker: string, input: Input) {
   calls.push({ worker, input });
   const answer = () => ({ version: held.version, rules: held.rules.map((r, i) => ({ number: i + 1, ...r })) });

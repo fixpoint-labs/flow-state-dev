@@ -295,7 +295,6 @@ function Talk({
 }
 
 /** The right panel at Shift Coordinator: ON CALL, the workers Roster reads on call. */
-/** @param devtoolUrl The DevTool a rule's conversation opens in, when one is served. */
 export function ChiefOfStaffPanel({ snapshot, gaps, devtoolUrl }: { snapshot: LoadedSnapshot; gaps: Gaps; devtoolUrl?: string }) {
   const states = workerStates(snapshot);
   const onCall = [...states.workers.values()].filter((state) => state.status === "on call");

@@ -1,49 +1,24 @@
-/**
- * A worker's standing rules for the user (FIX-1945 S6): the notes the user
- * asked that worker to keep, read and edited through the worker's own rules
- * action (`createWorkforceClient().standingRules`).
- *
- * The page holds no rule of its own. Every edit names the version of the list
- * it was drawn from, and the Lab checks it with the same limits the worker's
- * tools obey: a refused edit comes back with the Lab's reason and the list is
- * read again, so the page never shows a list the Lab doesn't hold.
- */
+/** A worker's standing rules, read and edited through its rules action. */
 import { useCallback, useEffect, useState } from "react";
 import { STANDING_RULES_FLOWS, type StandingRulesActionOutput } from "@flow-state-dev/workforce/browser";
 import { describeFailure, type Failure, type Worker } from "./reads";
 import { useWorkforce } from "./workforce";
 
-/** Whether `worker` keeps standing rules: it runs on a flow Workforce says keeps them (BR-20, BR-21a). */
+/** A flow Workforce says keeps rules (BR-20, BR-21a). */
 export function keepsRules(worker: Pick<Worker, "kind">): boolean {
   return worker.kind !== null && STANDING_RULES_FLOWS.includes(worker.kind);
 }
 
-/** One rule as the page draws it. */
 export type StandingRule = StandingRulesActionOutput["rules"][number];
 
-/** The list read: the list, why it couldn't be read, or `undefined` until the first read lands. */
-export type RulesRead = { list: StandingRulesActionOutput } | { failure: Failure } | undefined;
+type RulesRead = { list: StandingRulesActionOutput } | { failure: Failure } | undefined;
 
-/** One edit the page makes. Change and remove name the rule as it was drawn. */
-export type RuleEditInput =
+type RuleEditInput =
   | { op: "add"; text: string }
   | { op: "change"; rule: StandingRule; text: string }
   | { op: "remove"; rule: StandingRule };
 
-export interface StandingRulesView {
-  read: RulesRead;
-  /** Whether an edit is on its way. */
-  busy: boolean;
-  /** Why the last edit was refused; cleared by the next edit. */
-  refused: Failure | undefined;
-  /** Read the list again. */
-  reread(): void;
-  /** Make one edit, as the list drawn now. Resolves `true` when it landed. */
-  edit(input: RuleEditInput): Promise<boolean>;
-}
-
-/** `worker`'s standing rules for the user, and the edits the page makes to them. */
-export function useStandingRules(workerId: string): StandingRulesView {
+export function useStandingRules(workerId: string) {
   const workforce = useWorkforce();
   const [read, setRead] = useState<RulesRead>(undefined);
   const [busy, setBusy] = useState(false);
