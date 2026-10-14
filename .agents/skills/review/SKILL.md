@@ -129,10 +129,12 @@ branch/PR name), the target scope, intent, spec/brief version, and verification 
 Provide readable base/head source snapshots and a diff, including surrounding code
 and callers needed by the lenses; reviewers cannot use shell/git to recover them.
 Capture line counts for Restraint. Snapshot the relevant authority documents too.
-For spec-backed work, snapshot the canonical retained set, including `DOCS.md` and
-applicable `EVOLUTION.md`, exact predecessor anchors, and approved/merged revision
-provenance. Read current code/docs separately: historical intent is not shipped behavior.
-Check documentation publication, partial/multiple-predecessor evolution, and POC isolation
+For spec-backed work, snapshot the canonical retained set, `SPEC.md` and `DECISIONS.md`
+(a set retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`,
+`DOCS.md` or `EVOLUTION.md`; snapshot those too), with exact predecessor anchors and
+approved/merged revision provenance. Read current code/docs separately: historical intent
+is not shipped behavior. Check documentation publication against the spec's docs line, the
+change against its debt verdict, partial/multiple-predecessor treatment, and POC isolation
 through the existing lenses. Do not substitute a Linear mirror or superseded design.
 
 For a dirty working diff, include both the committed change and the complete
@@ -277,7 +279,9 @@ Agent tool (superpowers:code-reviewer, model: sonnet):
 Agent tool (general-purpose, model: sonnet):
   Verify the implementation against the spec by reading the code, not the report.
     - Everything the spec requires is implemented; nothing extra that the spec didn't ask for.
-    - Edge cases from the spec are handled; the testing strategy was followed.
+    - Cases the spec names are handled and tested.
+    - The debt verdict holds: what the spec's debt table says goes is gone, and the change
+      adds no debt the table doesn't list (a second way to do a job, a shim, a special case).
     - RED was demonstrated: every new behavioural / regression test has the actual failing
       output captured BEFORE the fix existed, plus the passing output after. "Tests pass"
       with no failing-output evidence is rejected — require re-demonstration. (Exceptions:
