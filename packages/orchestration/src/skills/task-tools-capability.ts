@@ -183,6 +183,21 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
 const noBoardError = { ok: false as const, error: "no_delegation_board" };
 const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_not_found", taskId: id });
 
+/**
+ * The longest result `readTask` returns, in characters of its JSON. A tool's
+ * output is recorded on the turn (BP-042), so a result past this comes back
+ * as its JSON, cut, with `outputCut` set.
+ */
+export const READ_OUTPUT_LIMIT = 20_000;
+
+/** A task's output as `readTask` returns it: whole, or cut to {@link READ_OUTPUT_LIMIT}. */
+function readableOutput(output: unknown): { output?: unknown; outputCut?: true } {
+  if (output === undefined) return {};
+  const text = typeof output === "string" ? output : (JSON.stringify(output) ?? String(output));
+  if (text.length <= READ_OUTPUT_LIMIT) return { output };
+  return { output: text.slice(0, READ_OUTPUT_LIMIT), outputCut: true };
+}
+
 // ---------------------------------------------------------------------------
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
@@ -1602,6 +1617,65 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
+  const readTask = defineTool({
+    name: named("readTask"),
+    description:
+      "Read one task on your delegation board in full: what it was asked to do (goal and " +
+      "input), how it stands, and what it came back with: its result when it completed, its " +
+      "error when it failed, the question it waits on when it is parked. Use it to answer from " +
+      "what a task found, rather than from a line about it.",
+    inputSchema: z.object({ taskId: z.string() }),
+    outputSchema: z.union([
+      z.object({
+        ok: z.literal(true),
+        task: z.object({
+          id: z.string(),
+          goal: z.string(),
+          title: z.string().optional(),
+          status: z.string(),
+          assignee: z.string().optional(),
+          input: z.unknown().optional(),
+          /** The task's result as its worker recorded it; a string, cut, when it was too long to return. */
+          output: z.unknown().optional(),
+          /** True when `output` was cut to {@link READ_OUTPUT_LIMIT} characters. */
+          outputCut: z.literal(true).optional(),
+          error: z.string().optional(),
+          /** The question the task is parked on, when it is parked on one. */
+          question: z.string().optional(),
+          followUpOf: z.string().optional(),
+          run: taskSchema.shape.run,
+          completedAt: z.number().optional(),
+        }),
+      }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
+    parentStateSchema,
+    execute: async (input, ctx) => {
+      const collection = await resolve(ctx);
+      if (!collection) return noBoardError;
+      const t = collection.get(input.taskId);
+      if (t === undefined) return taskNotFoundError(input.taskId);
+      const output = readableOutput(t.output);
+      return {
+        ok: true as const,
+        task: {
+          id: t.id,
+          goal: t.goal,
+          ...(t.title !== undefined ? { title: t.title } : {}),
+          status: t.status,
+          ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+          ...(t.input !== undefined ? { input: t.input } : {}),
+          ...output,
+          ...(t.error !== undefined ? { error: t.error } : {}),
+          ...(t.parkedOnQuestion === true && t.feedback !== undefined ? { question: t.feedback } : {}),
+          ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
+          ...(t.run != null ? { run: t.run } : {}),
+          ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
+        },
+      };
+    },
+  });
+
   const answerTask = defineTool({
     name: named("answerTask"),
     description:
@@ -1654,7 +1728,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
-  const tools = [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, answerTask];
+  const tools = [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, readTask, answerTask];
   // `dispatchTask` follows the nine, so a board that doesn't dispatch keeps
   // exactly its nine, in their order.
   return dispatches ? [...tools, dispatchTask] : tools;

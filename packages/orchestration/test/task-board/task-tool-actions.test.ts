@@ -39,6 +39,7 @@ const TOOLS = [
   "cancelTask",
   "updateTask",
   "listTasks",
+  "readTask",
   "answerTask",
 ] as const;
 
@@ -156,7 +157,7 @@ async function host(options: { declareResource?: boolean } = {}) {
 }
 
 describe("taskToolActions — the set", () => {
-  it("names the nine tools for the board, and nothing else", async () => {
+  it("names the ten tools for the board, and nothing else", async () => {
     const h = await host();
     try {
       const names = Object.keys(taskToolActions(h.board)).sort();

@@ -78,10 +78,10 @@ const turnCtx = (base: object, requestId: string) => ({
 });
 
 describe("answerTask (S2)", () => {
-  it("is one of the task tools, beside the eight", () => {
+  it("is one of the task tools, beside the other nine", () => {
     const names = buildTaskToolsList(defaultOwnStateResolver).map((t) => (t as any).config.name);
     expect(names.filter((n: string) => n === "answerTask")).toHaveLength(1);
-    expect(names).toHaveLength(9);
+    expect(names).toHaveLength(10);
   });
 
   it("re-queues a task parked on a question with the answer, counted as a re-entry (BR-6, BR-8)", async () => {

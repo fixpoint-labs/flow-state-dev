@@ -9,6 +9,7 @@ import {
   defaultOwnStateResolver,
   delegationBoardSchema,
   DELEGATION_BOARD_FIELD,
+  READ_OUTPUT_LIMIT,
   type AssigneeRoster,
 } from "../../src/skills/task-tools-capability";
 import { buildDelegationCtx } from "./delegation-ctx";
@@ -71,7 +72,7 @@ function findTool(name: string): GeneratorTool {
 }
 
 describe("taskTools capability", () => {
-  it("registers nine tools under the default preset", () => {
+  it("registers ten tools under the default preset", () => {
     const presetDefs = (taskTools as unknown as {
       __presetDefs?: { tools?: { controlTools?: unknown } };
     }).__presetDefs;
@@ -85,6 +86,7 @@ describe("taskTools capability", () => {
       "completeTask",
       "failTask",
       "listTasks",
+      "readTask",
       "updateTask",
     ]);
   });
@@ -139,6 +141,67 @@ describe("taskTools — happy paths (own-state board)", () => {
       ] as Record<string, { input?: unknown }>
     );
     expect(board[taskId]?.input).toEqual({ subject: "ACME" });
+  });
+
+  // A coordinator asked "what did that task find?" answers from the task, not
+  // from a line about it, so the read must carry what listTasks leaves out:
+  // the whole result, the error, the question a parked task waits on (FIX-1972).
+  it("readTask returns a finished task's whole result, which listTasks leaves out", async () => {
+    const found = { picked: "the retry helper", plan: ["merge the two copies", "delete the old one"] };
+    const { ctx } = buildCtx({
+      preTasks: {
+        scan: {
+          id: "scan",
+          goal: "scan for tech debt",
+          status: "completed",
+          assignee: "eng.coder",
+          attempts: 1,
+          output: found,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+    });
+    const listed = (await runForTest(findTool("listTasks"), {}, ctx)) as { tasks: Array<Record<string, unknown>> };
+    expect(listed.tasks[0]).not.toHaveProperty("output");
+    const read = (await runForTest(findTool("readTask"), { taskId: "scan" }, ctx)) as {
+      ok: boolean;
+      task: Record<string, unknown>;
+    };
+    expect(read.ok).toBe(true);
+    expect(read.task).toMatchObject({ id: "scan", status: "completed", assignee: "eng.coder", output: found });
+    expect(read.task).not.toHaveProperty("outputCut");
+  });
+
+  it("readTask names the question a task is parked on, and only a question park", async () => {
+    const parked = { goal: "propose a plan", status: "parked", attempts: 1, createdAt: Date.now(), updatedAt: Date.now() };
+    const { ctx } = buildCtx({
+      preTasks: {
+        asks: { ...parked, id: "asks", parkedOnQuestion: true, feedback: "Approve the plan?" },
+        held: { ...parked, id: "held", feedback: "a person's turn" },
+      },
+    });
+    const asks = (await runForTest(findTool("readTask"), { taskId: "asks" }, ctx)) as { task: Record<string, unknown> };
+    expect(asks.task.question).toBe("Approve the plan?");
+    const held = (await runForTest(findTool("readTask"), { taskId: "held" }, ctx)) as { task: Record<string, unknown> };
+    expect(held.task).not.toHaveProperty("question");
+  });
+
+  it("readTask cuts a result too long to return, and says so", async () => {
+    const { ctx } = buildCtx({
+      preTasks: {
+        big: { id: "big", goal: "g", status: "completed", attempts: 1, output: "x".repeat(READ_OUTPUT_LIMIT + 10), createdAt: Date.now(), updatedAt: Date.now() },
+      },
+    });
+    const read = (await runForTest(findTool("readTask"), { taskId: "big" }, ctx)) as { task: { output: string; outputCut?: true } };
+    expect(read.task.output).toHaveLength(READ_OUTPUT_LIMIT);
+    expect(read.task.outputCut).toBe(true);
+  });
+
+  it("readTask answers task_not_found for a task the board doesn't hold", async () => {
+    const { ctx } = buildCtx();
+    const read = await runForTest(findTool("readTask"), { taskId: "nope" }, ctx);
+    expect(read).toEqual({ ok: false, error: "task_not_found", taskId: "nope" });
   });
 
   it("listTasks returns the seeded board entries", async () => {
