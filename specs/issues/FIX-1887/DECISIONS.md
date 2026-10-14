@@ -56,6 +56,16 @@ fails it again at the closure commit, where only `dispatchTask` starts work.
 | **Because** | The claim is that *the epic* changed nothing but names. Fixes from outside the epic changed all three regression checks after this spec was written: FIX-1933 (#3214), FIX-1979 and FIX-1981 (#3346), and, in a coordinator check and a rerun, FIX-1925 (#3188) and FIX-1967 (#3301). The first closure run failed 94 hunks on the single diff, most of them theirs. No base makes that diff pass, and a moved base would drop a child's own changes. Judging each child merge from its first parent (`--base M^1 --head M --rerun-base M^1`) reads exactly what the epic changed |
 | **Locks in** | The runner pins the child PRs (#3168, #3180, #3212, #3232, #3274, #3325, #3358), finds each merge on `main`'s first-parent line, and prints a verdict for each. A child PR added later is added to that list. Two token contexts count as names, each with a control proving a non-name change there still fails: a name as a type-literal or object key (`{ ask?: unknown }` → `{ wait?: unknown }`), and a name ending a regex literal (`/addTask$/` → `/dispatchTask$/`). Nothing else widens: long prose rewritten in place and the #3153 `internal` → `task` entry stay as they were |
 
+<a name="d4"></a>
+## D4 · A fence entry may be one-sided, and an outcome line may move its evidence (amended 2026-10-14)
+
+| | |
+|---|---|
+| **Instead of** | Two-sided fence entries only, each a removed line and its replacement, and no outcome line ever changing (CR-14 as first written) |
+| **Because** | FIX-1872 (#3232) replaced the ledger with post rows in the coordinator checks. Some of those lines have no partner: an import added for the row read, a ledger body removed whole. FIX-1995 listed the 98 lines #3232 needs. With them, two hunks still failed, both outcome lines in `goals/coordinators/hands-each-post-to-its-delegates/goal.md`: leg a's `a:one-delivery` now reads a board post row instead of the ledger, and leg e's "(the ledger)" becomes "(their rows)". The ledger is gone (ER-6), so the evidence has to move. The claim stays the same: one delivery to the EM, delivered, and four deliveries, each answered. `answered` is now read as `row.status === "completed"` (`goals/lib/post-rows.mts`, `toPostDeliveries`) |
+| **Locks in** | A fence entry's `removed` or `added` may be `null`: that line was added or removed with no partner. A one-sided entry must match a whole line (trimmed) rather than a substring, so a short entry (`});`) admits only itself. The rest of the hunk is still judged, and the entry is honoured only in a coordinator check. Controls prove three things: an unlisted pure addition fails, an unlisted pure removal fails, and a one-sided entry in a regression check admits nothing. An outcome line whose evidence moves is listed with `kind: "outcome-evidence"`, and the report prints those entries in their own section. Only a change to the evidence is admitted. A changed claim is still a failure |
+| **What would change my mind** | An outcome-evidence entry whose new evidence reads a different fact than the old one (for example, "answered" read from a status that a failed turn also reaches). Then that line is a changed claim, and it fails |
+
 ## Decided, not asked
 
 - **The scripts are built now, in this spec, not at the closure run.** FIX-1872's V9, FIX-1876's
@@ -102,3 +112,5 @@ fails it again at the closure commit, where only `dispatchTask` starts work.
   `handOff` rule to exports and worker `tools:` lines; 165 live lines on the same `main`.
 - **Amendment** (2026-10-14): the first closure run failed the single diff on fixes from outside
   the epic; [D3](#d3) judges each child's merge instead, and admits two token contexts.
+- **Amendment** (2026-10-14): FIX-1995's fence lines for #3232 needed one-sided entries, and two
+  outcome lines needed their evidence moved off the removed ledger; [D4](#d4) admits both, with controls.

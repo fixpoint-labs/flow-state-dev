@@ -88,5 +88,607 @@
     "removed": "addTasks(capStore, ",
     "added": "addTasks(\"addTask\", capStore, ",
     "why": "FIX-1875 P1 (#3168 fence table): leg d-app-cap's call site reads addTask only"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/goal.md",
+    "removed": "**Anti-game:** no delegate is seeded by a fixture or a store write: every change goes through an action, the roster flow's `hire` or a chief-of-staff turn. Every grade reads what that person owns. The conversation's items (its `coordinator-route` records, the turn's tool outputs, the delegates' lines) and the delegate's own session, by the session id the ledger names, are read through the install's routes as that person. The conversation's session record (its `delegates` and its delivery ledger) is read from the store, from the row that person owns: the SQLite file the install writes for legs a to d, f and g, and the engine's session store for leg e. The session route sends a client only the state a flow exposes (FIX-1588), and the coordinator exposes neither field; its ledger carries delivery tokens. Leg d grades the tool's output against the session's list and the reply against both; the list is never read through the delegate read it grades. Leg e counts answers again after a grace period. The engine's request store is read only to wait until nothing runs.",
+    "added": "**Anti-game:** no delegate is seeded by a fixture or a store write: every change goes through an action, the roster flow's `hire` or a chief-of-staff turn. Every grade reads what that person owns. The conversation's items (its `coordinator-route` records, the turn's tool outputs, the delegates' lines) and the delegate's own session, by the session id its post row names, are read through the install's routes as that person. The conversation's session record (its `delegates`) and its board's post rows are read from the store, from the rows that person owns: the SQLite file the install writes for legs a to d, f and g, and the engine's session store for leg e. The session route sends a client only the state a flow exposes (FIX-1588), and the coordinator exposes no `delegates`; no route sends a client a board's rows with their server-written payload. Leg d grades the tool's output against the session's list and the reply against both; the list is never read through the delegate read it grades. Leg e counts answers again after a grace period. The engine's request store is read only to wait until nothing runs.",
+    "why": "FIX-1872 (#3232): the anti-game paragraph names where the evidence is read: the board's post rows, not the removed ledger. No leg's outcome changes"
+  },
+  {
+    "path": "goals/pentest-lab/lab/README.md",
+    "removed": "| [`workforce/flows/workers/probe.mts`](workforce/flows/workers/probe.mts) | The `probe` worker kind every seat's `WORKER.md` names | What this proves is the *convention* surface on a kind the lab wrote, not on the built-in `agent`. It takes a coordinator's post on the internal entry Workforce's `delegatedPostEntry` declares, the way the built-in kind does. Custom kinds live file-per-kind here; the basename is the kind id. |",
+    "added": "| [`workforce/flows/workers/probe.mts`](workforce/flows/workers/probe.mts) | The `probe` worker kind every worker's `WORKER.md` names | What this proves is the *convention* surface on a kind the lab wrote, not on the built-in `agent`. It takes a coordinator's post on the task entry Workforce's `delegatedPostEntry` declares, the way the built-in kind does. Custom kinds live file-per-kind here; the basename is the kind id. |",
+    "why": "FIX-1872 (#3232): docs vocabulary: the retired word becomes \"worker\" (Jake, 2026-10-04: never that word in docs). Prose only"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": ".step((task: { sealed?: unknown }) => task.sealed as DelegatedPost, generator({ ...answer, inputSchema: delegatedPostSchema, user: heard }))",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/workforce-privacy/two-users-share-a-project-and-nothing-else/store.mts",
+    "removed": "/** A coordinator conversation's record, from the row `userId` owns: its delegates, its ledger and best fit's hold. */",
+    "added": "/** A coordinator conversation's record, from the rows `userId` owns: its delegates, its post rows and best fit's hold. */",
+    "why": "FIX-1872 (#3232): conversationRecord's doc comment: rows, and post rows instead of the ledger"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "const quiet = sequencer({ name: \"quiet-agent-post\", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "const quiet = sequencer({ name: \"agent-quiet-post\", inputSchema: z.object({ sealed: z.unknown() }).passthrough() })",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "const run = generator({ ...answer, inputSchema: turnInput, user: (input: { message: string }) => input.message });",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "internal: { actions: { onDelegatedPost: { inputSchema: delegatedPostSchema, block: answer, userMessage: heard } } }",
+    "added": "task: { actions: { onDelegatedPost: { from: entry.from, userMessage: entry.userMessage, block: quiet } } }",
+    "why": "FIX-1872 (#3232): no-landing declares its post action on `task` behind the published entry's claim gate (the `internal` dispatch it used was removed)"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": ".prepare(\"SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?\")",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/lab/fsdev.config.mts",
+    "removed": "internal: { actions: { [wf.DELEGATED_POST_ENTRY]: { inputSchema: z.unknown(), block: door } } },",
+    "added": "// A post is a row on the coordinator's board: the post entry settles it with the door's reply.",
+    "why": "FIX-1872 (#3232): the lab declares the published post entry on `task`: a hand-rolled internal entry can't end a row with the door's reply"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": null,
+    "added": "* those fields; no route sends a board's rows with their server-written payload. The engine's",
+    "why": "FIX-1872 (#3232): read()'s doc comment says the post rows come from the resource store (the listed fence line); comment only"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "import { defineFlow, generator, handler, type BlockDefinition } from \"@flow-state-dev/core\";",
+    "added": "import { defineFlow, generator, handler, sequencer, type BlockDefinition } from \"@flow-state-dev/core\";",
+    "why": "FIX-1872 (#3232): imports sequencer for the landing control's quiet post flow"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "import { createModelResolver, defineFlow, generator, handler } from \"@flow-state-dev/core\";",
+    "added": "import { createModelResolver, defineFlow, generator, handler, sequencer } from \"@flow-state-dev/core\";",
+    "why": "FIX-1872 (#3232): imports sequencer for the no-landing control's quiet post flow"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "// The published entry's gate, so the row is read and claimed as the real flow's is.",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "block: generator({ ...answer, inputSchema: delegatedPostSchema, user: heard }),",
+    "added": null,
+    "why": "FIX-1872 (#3232): the landing control's post action moves to the published entry's key on `task`"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": ".get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/lab/fsdev.config.mts",
+    "removed": null,
+    "added": "task: { actions: { [wf.DELEGATED_POST_ENTRY]: wf.delegatedPostEntry(door) } },",
+    "why": "FIX-1872 (#3232): the lab declares the published post entry on `task`: a hand-rolled internal entry can't end a row with the door's reply"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* A conversation's session record (its delegates, its delivery ledger and best fit's hold),",
+    "added": "* A conversation's record (its delegates, its post rows and best fit's hold),",
+    "why": "FIX-1872 (#3232): recordOf's doc comment, as above"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": "* fallback and its delivery ledger) from the engine's session store, from the",
+    "added": "* fallback) from the engine's session store and its board's post rows from the",
+    "why": "FIX-1872 (#3232): read()'s doc comment says the post rows come from the resource store (the listed fence line); comment only"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "* post's row ends with no answer on it, as a delegate's that answers nothing.",
+    "why": "FIX-1872 (#3232): no-landing's doc comment: the internal dispatch is gone, and the post entry ends a row with the turn's reply, so the control keeps the answer off by failing the turn after it answers. Its red set is unchanged"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": null,
+    "added": "import { postDeliveries, type PostDelivery } from \"../../lib/post-rows.mts\";",
+    "why": "FIX-1872 (#3232): imports the post-row read the listed fence line calls (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* read from the SQLite file the install writes, from the row `who` owns. Not",
+    "added": "* read from the SQLite file the install writes, from the rows `who` owns. Not",
+    "why": "FIX-1872 (#3232): recordOf's doc comment, as above"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "* conversation, and never hands the answer back: its turn then fails, so the",
+    "why": "FIX-1872 (#3232): no-landing's doc comment: the internal dispatch is gone, and the post entry ends a row with the turn's reply, so the control keeps the answer off by failing the turn after it answers. Its red set is unchanged"
+  },
+  {
+    "path": "goals/pentest-lab/lab/workforce/flows/workers/probe.mts",
+    "removed": "* through an `internal` dispatch on {@link DELEGATED_POST_ENTRY}, which this",
+    "added": "* through a post row handed to {@link DELEGATED_POST_ENTRY}, which this kind",
+    "why": "FIX-1872 (#3232): probe's doc comment: a post arrives as a row and ends the row, replacing the internal dispatch"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": null,
+    "added": "import { postDeliveries, type PostDelivery } from \"../../lib/post-rows.mts\";",
+    "why": "FIX-1872 (#3232): imports the post-row read the listed fence line calls (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "* A coordinator session's delivery ledger, from the store file, from the row",
+    "added": "* A coordinator session's post rows, from the store file, from the rows `who`",
+    "why": "FIX-1872 (#3232): ledgerOf's doc comment: it reads post rows, not the ledger"
+  },
+  {
+    "path": "goals/workforce-privacy/two-users-share-a-project-and-nothing-else/store.mts",
+    "removed": null,
+    "added": "import { postDeliveries, type PostDelivery } from \"../../lib/post-rows.mts\";",
+    "why": "FIX-1872 (#3232): imports the post-row read the listed fence line calls (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": ".step((task: { sealed?: unknown }) => task.sealed as DelegatedPost, answer)",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "* hands the answer back, as the built-in one does; but the post reaches the",
+    "added": "* hands the answer back, as the built-in one does; but the post row's payload",
+    "why": "FIX-1872 (#3232): no-context's doc comment: the post reaches the entry as a row's payload"
+  },
+  {
+    "path": "goals/pentest-lab/lab/workforce/flows/workers/probe.mts",
+    "removed": "* kind declares with Workforce's `delegatedPostEntry`, the way the built-in",
+    "added": "* declares with Workforce's `delegatedPostEntry`, the way the built-in kind",
+    "why": "FIX-1872 (#3232): probe's doc comment: a post arrives as a row and ends the row, replacing the internal dispatch"
+  },
+  {
+    "path": "goals/pentest-lab/lab/workforce/flows/workers/probe.mts",
+    "removed": "* kind does: the turn runs on the post, and its reply is handed back to the",
+    "added": "* does: the turn runs on the post, and its reply ends the row, landing in the",
+    "why": "FIX-1872 (#3232): probe's doc comment: a post arrives as a row and ends the row, replacing the internal dispatch"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": null,
+    "added": "import { postRowPrefix, toPostDeliveries } from \"../../lib/post-rows.mts\";",
+    "why": "FIX-1872 (#3232): imports the post-row read the listed fence line calls (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/pentest-lab/lab/workforce/flows/workers/probe.mts",
+    "removed": "// Reachable only by an `internal` dispatch from a block running in one of",
+    "added": "// Reachable only by a coordinator's post row, handed over behind its claim.",
+    "why": "FIX-1872 (#3232): probe's entry comment: reachable only by a coordinator's post row"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": "* exposes, and the coordinator exposes none of those fields. The engine's",
+    "added": "* client only the state a flow exposes, and the coordinator exposes none of",
+    "why": "FIX-1872 (#3232): read()'s doc comment says the post rows come from the resource store (the listed fence line); comment only"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "* conversation with the coordinator. That is all it takes away. A check that",
+    "added": "* row ends with no answer on it, and the answer stays in the specialist's",
+    "why": "FIX-1872 (#3232): the kitchen-sink landing control's doc comment, the same change as FIX-1610's no-landing"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* exposes, and the coordinator exposes neither field (its ledger carries",
+    "added": "* exposes, and the coordinator exposes neither its delegates nor its hold. A",
+    "why": "FIX-1872 (#3232): recordOf's doc comment, as above: the coordinator no longer has a ledger to expose"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": "* row Alice owns. The session route sends a client only the state a flow",
+    "added": "* engine's resource store, from the rows Alice owns. The session route sends a",
+    "why": "FIX-1872 (#3232): read()'s doc comment says the post rows come from the resource store (the listed fence line); comment only"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "* `no-landing`'s agent flow: takes a delegated post and answers it through",
+    "added": "* `no-landing`'s agent flow: takes a delegated post behind the published",
+    "why": "FIX-1872 (#3232): no-landing's doc comment: the internal dispatch is gone, and the post entry ends a row with the turn's reply, so the control keeps the answer off by failing the turn after it answers. Its red set is unchanged"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* the conversation's session record (its delegates and its delivery ledger)",
+    "added": "* the conversation's record (its delegates, and its post rows) from the",
+    "why": "FIX-1872 (#3232): recordOf's doc comment says what it now reads (post rows, not the removed ledger); comment only, beside the listed fence line"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* delivery tokens). A row is keyed by the session id, prefixed `<tenant>:`",
+    "added": "* session row is keyed by the session id, prefixed `<tenant>:` when the",
+    "why": "FIX-1872 (#3232): recordOf's doc comment, as above: the coordinator no longer has a ledger to expose"
+  },
+  {
+    "path": "goals/pentest-lab/lab/workforce/flows/workers/probe.mts",
+    "removed": "// this app's own requests — which is what a coordinator's delivery is.",
+    "added": null,
+    "why": "FIX-1872 (#3232): probe's entry comment: reachable only by a coordinator's post row"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": "* lines) through the router, and its session record (its delegates, its",
+    "added": "* lines) through the router, its session record (its delegates and its",
+    "why": "FIX-1872 (#3232): read()'s doc comment says the post rows come from the resource store (the listed fence line); comment only"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "* post and answers it with the worker's instructions and the tools its",
+    "added": "* post behind the published entry's claim gate and answers it with the",
+    "why": "FIX-1872 (#3232): the kitchen-sink landing control's doc comment, the same change as FIX-1610's no-landing"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "import type { TaskWorkerInput } from \"@flow-state-dev/orchestration\";",
+    "why": "FIX-1872 (#3232): imports TaskWorkerInput: a post now reaches the entry as a task row with the post in `sealed`"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "* `agent-answer` in its own conversation, and never hands the answer back.",
+    "added": "* entry's claim gate and answers it through `agent-answer` in its own",
+    "why": "FIX-1872 (#3232): no-landing's doc comment: the internal dispatch is gone, and the post entry ends a row with the turn's reply, so the control keeps the answer off by failing the turn after it answers. Its red set is unchanged"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "* stays in the specialist's conversation and never reaches the user's",
+    "added": "* conversation, and hands nothing back: its turn then fails, so the post's",
+    "why": "FIX-1872 (#3232): the kitchen-sink landing control's doc comment, the same change as FIX-1610's no-landing"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "* `tools:` names, in its own conversation, and hands nothing back: the answer",
+    "added": "* worker's instructions and the tools its `tools:` names, in its own",
+    "why": "FIX-1872 (#3232): the kitchen-sink landing control's doc comment, the same change as FIX-1610's no-landing"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* from the install's store file, from the row that person owns. The session",
+    "added": "* install's store file, from the rows that person owns. The session",
+    "why": "FIX-1872 (#3232): recordOf's doc comment says what it now reads (post rows, not the removed ledger); comment only, beside the listed fence line"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "const { recent: _recent, ...post } = task.sealed as DelegatedPost;",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "* conversation and never reaches the user's conversation with the",
+    "why": "FIX-1872 (#3232): the kitchen-sink landing control's doc comment, the same change as FIX-1610's no-landing"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "* `who` owns. No route exposes it: the coordinator keeps it server-written.",
+    "added": "* owns. No route exposes them with their server-written payload.",
+    "why": "FIX-1872 (#3232): ledgerOf's doc comment: it reads post rows, not the ledger"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "* when the session has a tenant. Read-only, and closed after each read.",
+    "added": "* session has a tenant. Read-only, and closed after each read.",
+    "why": "FIX-1872 (#3232): recordOf's doc comment, as above: the coordinator no longer has a ledger to expose"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": null,
+    "added": "const stored = await runtime.stores.session.get(session.id);",
+    "why": "FIX-1872 (#3232): the second half of the listed runtime split: the session read itself is unchanged"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "block: entry.block.connectInput((task: TaskWorkerInput) => {",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "* entry with its lines stripped, so the turn is shown none.",
+    "added": "* reaches the entry with its lines stripped, so the turn is shown none.",
+    "why": "FIX-1872 (#3232): no-context's doc comment: the post reaches the entry as a row's payload"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "const db = new DatabaseSync(store, { readOnly: true });",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "* coordinator. That is all it takes away. A check that",
+    "why": "FIX-1872 (#3232): the kitchen-sink landing control's doc comment, the same change as FIX-1610's no-landing"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "throw new Error(\"this agent keeps its answer\");",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "throw new Error(\"this agent keeps its answer\");",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "import { DatabaseSync } from \"node:sqlite\";",
+    "added": null,
+    "why": "FIX-1872 (#3232): the SQLite read moved to goals/lib/post-rows.mts with the row read"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "const entry = delegatedPostEntry(run);",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "const entry = delegatedPostEntry(run);",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "db.exec(\"PRAGMA busy_timeout = 5000\");",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "return { ...task, sealed: post };",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "inputSchema: delegatedPostSchema,",
+    "added": null,
+    "why": "FIX-1872 (#3232): the landing control's post action moves to the published entry's key on `task`"
+  },
+  {
+    "path": "goals/pentest-lab/lab/workforce/flows/workers/probe.mts",
+    "removed": "* conversation that delivered it.",
+    "added": "* conversation that filed it.",
+    "why": "FIX-1872 (#3232): probe's doc comment: a post arrives as a row and ends the row, replacing the internal dispatch"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "name: \"quiet-agent-keep\",",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "inputSchema: z.unknown(),",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "name: \"agent-quiet-keep\",",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "inputSchema: z.unknown(),",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "execute: (): string => {",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "execute: (): string => {",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "const keep = handler({",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "const keep = handler({",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "DELEGATED_POST_ENTRY,",
+    "why": "FIX-1872 (#3232): imports the published post entry for the landing control"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "delegatedPostEntry,",
+    "why": "FIX-1872 (#3232): imports the published post entry for the landing control"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "userMessage: heard,",
+    "added": null,
+    "why": "FIX-1872 (#3232): the landing control's post action moves to the published entry's key on `task`"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "onDelegatedPost: { ...entry, block: entry.block.connectInput(({ recent: _recent, ...post }: DelegatedPost) => post) }",
+    "added": "onDelegatedPost: {",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "onDelegatedPost: {",
+    "added": "[DELEGATED_POST_ENTRY]: { from: entry.from, userMessage: entry.userMessage, block: quiet },",
+    "why": "FIX-1872 (#3232): the landing control's post action moves to the published entry's key on `task`"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "const row = db",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": ".step(keep);",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": ".step(keep);",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "block: generator({ ...answer, inputSchema: turnInput, user: (input: { message: string }) => input.message }),",
+    "added": "block: run,",
+    "why": "FIX-1872 (#3232): the turn's generator is named once (`run`) so the published entry is built from it. Same config; the plain turn is unchanged"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "} finally {",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "db.close();",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "...entry,",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": "internal: {",
+    "added": "task: {",
+    "why": "FIX-1872 (#3232): #3153 declaration move, `internal` → `task`. This -U0 hunk's own lines don't name DELEGATED_POST_ENTRY, so the shape entry can't fire"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "internal: {",
+    "added": "task: {",
+    "why": "FIX-1872 (#3232): #3153 declaration move, `internal` → `task`, in a hunk that doesn't name the entry itself"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "try {",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "});",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "});",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "})",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": null,
+    "added": "},",
+    "why": "FIX-1872 (#3232): the landing control's quiet flow: claims the row through the published entry's gate, answers, then fails the turn so nothing lands"
+  },
+  {
+    "path": "apps/kitchen-sink/lib/landing-control.ts",
+    "removed": "},",
+    "added": null,
+    "why": "FIX-1872 (#3232): the landing control's post action moves to the published entry's key on `task`"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "}",
+    "why": "FIX-1872 (#3232): no-landing's quiet flow: answers the row's sealed post, then fails the turn so the row ends with no answer"
+  },
+  {
+    "path": "goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts",
+    "removed": null,
+    "added": "}",
+    "why": "FIX-1872 (#3232): no-context strips `recent` from the row's sealed post instead of a bare post: same takeaway, new input shape"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "}",
+    "added": null,
+    "why": "FIX-1872 (#3232): the removed session-row SQLite read; postDeliveries (the listed fence line) does the row read now"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/goal.md",
+    "kind": "outcome-evidence",
+    "removed": "`a:one-delivery` the conversation's ledger holds one delivery of the post, to the EM, delivered;",
+    "added": "`a:one-delivery` the conversation's board holds one post row for the post, to the EM, delivered;",
+    "why": "FIX-1872 (#3232), ER-6: a:one-delivery's claim (one delivery to the EM, delivered) is unchanged; its evidence moved from the removed ledger to the board's post row"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/goal.md",
+    "kind": "outcome-evidence",
+    "removed": "each of those four deliveries is answered (the ledger)",
+    "added": "each of those four deliveries is answered (their rows)",
+    "why": "FIX-1872 (#3232), ER-6: e:four-then-none's claim (four deliveries, each answered) is unchanged; answered is now read as row.status === \"completed\" (goals/lib/post-rows.mts toPostDeliveries)"
   }
 ]

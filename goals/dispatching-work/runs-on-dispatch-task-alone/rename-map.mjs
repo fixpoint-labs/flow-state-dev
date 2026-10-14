@@ -204,12 +204,18 @@ function judge(removed, added, group, fences, path) {
     added = [...added];
     for (const f of fences) {
       if (f.path !== path) continue;
-      const r = removed.findIndex((l) => l.includes(f.removed));
-      const a = added.findIndex((l) => l.includes(f.added));
+      // A side given as null is a line added or removed alone (an import, a moved body), D4.
+      // A one-sided entry names its whole line, so a short one (`});`) can't admit another.
+      if (f.removed == null && f.added == null) continue;
+      const oneSided = f.removed == null || f.added == null;
+      const matches = (want) => (l) => (oneSided ? l.trim() === want.trim() : l.includes(want));
+      const r = f.removed == null ? null : removed.findIndex(matches(f.removed));
+      const a = f.added == null ? null : added.findIndex(matches(f.added));
       if (r === -1 || a === -1) continue;
-      removed.splice(r, 1);
-      added.splice(a, 1);
-      fenced.push(`fence line (listed: ${f.why})`);
+      if (r !== null) removed.splice(r, 1);
+      if (a !== null) added.splice(a, 1);
+      // D4: a graded claim whose evidence moved (the ledger to the board's rows) is printed on its own.
+      fenced.push(f.kind === "outcome-evidence" ? `outcome-evidence (listed: ${f.why})` : `fence line (listed: ${f.why})`);
     }
   }
   const hunkText = removed.join("\n");
@@ -251,6 +257,7 @@ function run(base, head) {
   const fences = loadFences();
   let bad = 0;
   let good = 0;
+  const evidence = [];
   const groups = [["regression", REGRESSION, base], ["coordinator", COORDINATOR, base]];
   if (RERUN_BASE !== undefined) groups.push(["coordinator", RERUNS, RERUN_BASE]);
   else console.log("  (FIX-1872 V9's reruns not judged: pass --rerun-base <control commit>)");
@@ -260,6 +267,7 @@ function run(base, head) {
       if (v.ok) {
         good++;
         console.log(`  ok    ${h.path}  (${v.reasons.join(", ")})`);
+        for (const r of v.reasons) if (r.startsWith("outcome-evidence")) evidence.push(`${h.path}  ${r}`);
       } else {
         bad++;
         console.log(`  FAIL  ${h.path}  ${v.why}`);
@@ -267,6 +275,10 @@ function run(base, head) {
         for (const l of h.added) console.log(`        + ${l.trim().slice(0, 150)}`);
       }
     }
+  }
+  if (evidence.length > 0) {
+    console.log(`\n  outcome lines whose evidence moved, the claim unchanged (D4): ${evidence.length}`);
+    for (const e of evidence) console.log(`    ${e}`);
   }
   return { good, bad };
 }
@@ -335,7 +347,13 @@ if (args.includes("--control")) {
   const FENCE_PATH = "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts";
   const LEDGER_READ = '  const delivered = ledger.filter((d) => d.outcome === "delivered");';
   const ROW_READ = '  const delivered = rows.filter((r) => r.status === "completed" && r.post === true);';
-  const CONTROL_FENCES = [{ path: FENCE_PATH, removed: "ledger.filter(", added: "rows.filter(", why: "control: a ledger read becomes a row read" }];
+  const IMPORT_ROWS = 'import { postDeliveries } from "../../lib/post-rows.mts";';
+  const OPEN_DB = "  const db = new DatabaseSync(store, { readOnly: true });";
+  const CONTROL_FENCES = [
+    { path: FENCE_PATH, removed: "ledger.filter(", added: "rows.filter(", why: "control: a ledger read becomes a row read" },
+    { path: FENCE_PATH, removed: null, added: IMPORT_ROWS, why: "control: an import added alone" },
+    { path: FENCE_PATH, removed: OPEN_DB, added: null, why: "control: a line removed alone" },
+  ];
   const cases = [
     ["pure rename passes", [filed], [filed.replace("addTask_tasks", "dispatchTask_tasks")], "regression", true],
     ["re-wrapped rename passes", [filed], filed.replace("addTask_tasks", "dispatchTask_tasks").replace(", {", ",\n    {").split("\n"), "regression", true],
@@ -349,6 +367,13 @@ if (args.includes("--control")) {
     ["a fence line beside a loosened timeout FAILS", [LEDGER_READ, parked], [ROW_READ, parked.replace("120_000", "240_000")], "coordinator", false, FENCE_PATH],
     ["a fence entry in another path admits nothing", [LEDGER_READ], [ROW_READ], "coordinator", false, "goals/coordinators/files-tasks-down-the-owners-chain/run.mts"],
     ["a fence line in a regression check FAILS", [LEDGER_READ], [ROW_READ], "regression", false, FENCE_PATH],
+    // D4: a one-sided entry admits its one listed whole line, in a coordinator check, and nothing else.
+    ["a listed pure addition passes", [], [IMPORT_ROWS], "coordinator", true, FENCE_PATH],
+    ["an unlisted pure addition FAILS", [], ['import { other } from "../../lib/other.mts";'], "coordinator", false, FENCE_PATH],
+    ["a listed pure removal passes", [OPEN_DB], [], "coordinator", true, FENCE_PATH],
+    ["an unlisted pure removal FAILS", ['  db.exec("PRAGMA busy_timeout = 5000");'], [], "coordinator", false, FENCE_PATH],
+    ["a one-sided entry in a regression check admits nothing", [], [IMPORT_ROWS], "regression", false, FENCE_PATH],
+    ["a one-sided entry admits only its whole line", [], [`${IMPORT_ROWS} // and a widened read`], "coordinator", false, FENCE_PATH],
     // D3: a name as a type-literal key, or at the end of a regex literal, is a name; any other change there is not.
     ["a type-literal key renamed passes", ["const asked = rows.filter((t) => (t as { ask?: unknown }).ask != null);"], ["const asked = rows.filter((t) => (t as { wait?: unknown }).wait != null);"], "regression", true],
     ["a type-literal key widened to both names FAILS", ["(t as { ask?: unknown }).ask != null"], ["(t as { ask?: unknown; wait?: unknown }).wait != null"], "regression", false],
