@@ -30,7 +30,7 @@ import { createDefaultResolveCodexClient } from "@flow-state-dev/codex";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 
-import { HOST_CHECKS, codexClientOptions, codexEnv, codexSessionFlow } from "@/lib/codex-mode";
+import { HOST_CHECKS, codexClientOptions, codexEnv, codexSessionFlow, userMcpServers } from "@/lib/codex-mode";
 import type { HarnessSessionState } from "@/lib/harness-turn";
 import { worktreeRoot } from "@/lib/harness-worktree";
 
@@ -42,6 +42,10 @@ let server: Server;
 let baseUrl: string;
 /** What the program answered each tool call with, as the model received it. */
 const toolOutputs: string[] = [];
+/** Each request the program sent the model endpoint. */
+const requestsSeen: Array<{ model?: unknown; service_tier?: unknown }> = [];
+/** How many requests reached the MCP server the settings name (served beside the model, at `/mcp`). */
+let mcpHits = 0;
 let command = "";
 let sandboxFails: string | null = null;
 
@@ -82,13 +86,15 @@ beforeAll(async () => {
     let body = "";
     req.on("data", (chunk: Buffer) => (body += chunk.toString()));
     req.on("end", () => {
+      if ((req.url ?? "").startsWith("/mcp")) mcpHits += 1;
       // The program tries a websocket first, then falls back to HTTP: refuse the upgrade.
       if (req.method !== "POST" || !(req.url ?? "").endsWith("/responses")) {
         res.writeHead(404);
         res.end();
         return;
       }
-      const request = JSON.parse(body) as { input?: Array<{ type?: string; output?: unknown }> };
+      const request = JSON.parse(body) as { input?: Array<{ type?: string; output?: unknown }>; model?: unknown; service_tier?: unknown };
+      requestsSeen.push({ model: request.model, service_tier: request.service_tier });
       for (const item of request.input ?? []) {
         if (item.type === "function_call_output") toolOutputs.push(String(item.output));
       }
@@ -159,5 +165,45 @@ describe("a Codex mode run, on the real Codex program (V5)", () => {
     expect(existsSync(join(scratch, "beside"))).toBe(false);
     expect(existsSync(tmpProbe)).toBe(false);
     expect(output).not.toMatch(/wrote-(git-pointer|git-data|beside|tmp)/);
+  }, 120_000);
+
+  it("takes neither the model, the Fast tier nor the MCP servers from your own Codex settings", async (ctx) => {
+    if (sandboxFails !== null) ctx.skip(`Codex's sandbox can't run on this host: ${sandboxFails}`);
+    // A home set up the way the report's was: a model this account can't use,
+    // the Fast tier, and a server that can't start here.
+    const config = join(process.env.CODEX_HOME!, "config.toml");
+    writeFileSync(
+      config,
+      ['model = "gpt-6.1-sol"', 'service_tier = "priority"', "", "[mcp_servers.vercel]", `url = "${baseUrl.replace(/\/v1$/, "")}/mcp"`, ""].join("\n"),
+    );
+    try {
+      const names = await userMcpServers(codexEnv());
+      expect(names).toEqual(["vercel"]);
+      // Listing asks the server how it signs in; only what the run does counts.
+      mcpHits = 0;
+      const resolveCodexClient = createDefaultResolveCodexClient({ ...codexClientOptions(process.env, names), baseUrl, apiKey: "sk-scripted" });
+      const stores = createInMemoryStores();
+      const before = requestsSeen.length;
+      const result = await testFlow({
+        flow: codexSessionFlow({ resolveCodexClient }),
+        action: "turn",
+        userId: "u",
+        sessionId: "s-settings",
+        input: { prompt: "say done" },
+        stores,
+      });
+      expect(result.status).toBe("completed");
+      const sent = requestsSeen.slice(before);
+      expect(sent.length).toBeGreaterThan(0);
+      for (const request of sent) {
+        expect(request.model).not.toBe("gpt-6.1-sol");
+        expect(request.service_tier).toBeUndefined();
+      }
+      // The server was never started, so it could neither fail nor say so.
+      expect(mcpHits).toBe(0);
+      expect(JSON.stringify(result.items ?? [])).not.toMatch(/service tier|"type":"error"/);
+    } finally {
+      rmSync(config, { force: true });
+    }
   }, 120_000);
 });
