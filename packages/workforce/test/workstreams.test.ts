@@ -490,7 +490,7 @@ describe("who writes an entry", () => {
     expect(Object.keys(updateOwnWorkstreamInputSchema.shape)).not.toContain("title");
 
     const renamed = await h.act("alice", "lead", pricing.workstream.sessionId, "updateOwn", { title: "Onboarding docs", status: "researching" });
-    expect(renamed.error).toBeDefined();
+    expect(JSON.stringify(renamed.error)).toContain("Unrecognized key(s) in object: 'title'");
     const titles = Object.fromEntries((await entriesOf(h)).map((e) => [e.path.split("/").at(-1), e.state.title]));
     expect(titles).toEqual({ "onboarding-docs": "Onboarding docs", "competitor-pricing": "Competitor pricing research" });
 
