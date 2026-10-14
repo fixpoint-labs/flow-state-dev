@@ -26,6 +26,7 @@ import { OBSERVED_PLAN } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCodexClient } from "@flow-state-dev/codex";
+import { CodexAgentAbortedError } from "@flow-state-dev/codex";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { CODEX_SESSION, codexBlockOptions, codexClient, codexClientOptions, codexSessionFlow } from "@/lib/codex-mode";
@@ -300,6 +301,20 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     await resolve({} as never);
     expect(asked).toHaveLength(1);
     expect(first.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+  });
+
+  it("a run stopped while the first MCP list is still coming stops then, and the list still serves the next run", async () => {
+    let finish: (names: readonly string[]) => void = () => {};
+    const resolve = codexClient(() => new Promise((done) => (finish = done)));
+    const stop = new AbortController();
+    const first = resolve({ signal: stop.signal } as never);
+    stop.abort();
+    await expect(first).rejects.toBeInstanceOf(CodexAgentAbortedError);
+    finish(["vercel"]);
+    const next = (await resolve({ signal: new AbortController().signal } as never)) as unknown as {
+      exec: { configOverrides?: Record<string, unknown> };
+    };
+    expect(next.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
   });
 
   it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 a real run starts with no sandbox and no sandbox config", () => {

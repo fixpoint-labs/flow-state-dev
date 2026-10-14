@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/codex": patch
+"@flow-state-dev/codex": minor
 ---
 
-Codex's non-fatal warnings (an `error` item, such as a service tier the model doesn't advertise) are now kept `status` notes instead of `error` items, and its stream-level `error` events (retry progress) are transient `status`. A failed turn the CLI then exits on fails with the turn's own message, read down to one line from the API's JSON body, and the CLI's output rides on the error item's `details.output`. `TranslatedEvent` gains a `notice` kind (FIX-1988).
+Codex's non-fatal warnings (an `error` item, such as a service tier the model doesn't advertise) are now kept `status` notes instead of `error` items, and its stream-level `error` events (retry progress) are transient `status`. A failed turn the CLI then exits on fails with the turn's own message, read down to one line from the API's JSON body, and the CLI's output rides on the error item's `details.output`. `TranslatedEvent` gains a `notice` kind: a `switch` over it that covers every kind needs a `notice` case (FIX-1988).
