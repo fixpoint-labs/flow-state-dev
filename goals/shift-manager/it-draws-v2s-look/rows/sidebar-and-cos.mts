@@ -1,7 +1,7 @@
 /**
  * The v2 look table's rows for the sidebar's entries and Shift Coordinator
  * (FIX-1737 slice B): audit rows F12–F16, F18, F20, F22, C1, C2, C3 and C5
- * (the shell around the registry's parts), C7, C8 and C10. Spread into
+ * (the shell around the registry's parts), C7 and C10. Spread into
  * `run.mts`'s table, exceptions and graded regions, so each screen slice adds
  * its rows in a file of its own.
  *
@@ -64,7 +64,6 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "ask meta", audit: "C3", v2: { line: 143, has: "font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-look=ask-meta], [data-look=ask-meta] > button", on: ["cos"], min: ({ store }) => store.asks, want: { family: "mono", size: 11 } },
   { id: "thinking line", audit: "C7", v2: { line: 168, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-testid=cos-working]", on: ["cos"], min: whileWorking, want: { family: "mono", size: 11.5 } },
   { id: "thinking square", audit: "C7", v2: { line: 168, has: "width:7px;height:7px;background:var(--blue)" }, select: "[data-testid=cos-working] > [data-look=working]", on: ["cos"], min: whileWorking, want: { surface: "info", width: 7 } },
-  { id: "suggestion", audit: "C8", v2: { line: 174, has: "border:1px dashed rgba(var(--inkrgb),.45)" }, select: "[data-look=suggestion]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 11.5, border: { width: 1, colour: "foreground", style: "dashed" } } },
 ];
 
 export const SIDEBAR_AND_COS_EXCEPTIONS: Exception[] = [
@@ -84,7 +83,6 @@ export type SidebarAndCosRead = {
   sub: string | null;
   /** The sub line's store-backed tail, "watching N streams and M workers". */
   watching: string | null;
-  suggestions: string[] | null;
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -112,14 +110,6 @@ export function sidebarAndCosContent(read: SidebarAndCosRead, store: Store, scre
       if (read.sub !== "working…") failures.push(`Shift Coordinator's sub line says "${read.sub ?? ""}" while a line is in flight, v2 says "working…" (v2:1424)`);
     } else if (read.watching !== watching) {
       failures.push(`Shift Coordinator's sub line says "${read.watching ?? ""}", the store gives "${watching}" (v2:1424)`);
-    }
-    if (store.chiefOfStaff) {
-      const mailboxes = Object.entries(store.mailboxes);
-      const stream = mailboxes.find(([, c]) => c.needs) ?? mailboxes.find(([, c]) => c.running > 0);
-      const want = [...(stream === undefined ? [] : [`What's blocking #${stream[0]}?`]), "Who's on call?"];
-      if (JSON.stringify(read.suggestions) !== JSON.stringify(want)) {
-        failures.push(`Shift Coordinator offers [${(read.suggestions ?? []).join(" | ")}], the store gives [${want.join(" | ")}] (v2:1422)`);
-      }
     }
   }
   return failures;

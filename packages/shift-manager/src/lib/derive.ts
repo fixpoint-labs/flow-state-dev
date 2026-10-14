@@ -71,10 +71,10 @@ export function workerFor(roster: Roster, row: BoardRow): Worker | undefined {
 }
 
 /** A worker's shift status, the one word Roster and the sidebar draw. */
-export type ShiftStatus = "on shift" | "on call" | "off shift";
+export type ShiftStatus = "on shift" | "off shift";
 
-/** The three statuses, in the order Roster groups them. */
-export const SHIFT_STATUSES: readonly ShiftStatus[] = ["on shift", "on call", "off shift"];
+/** The two statuses, in the order Roster groups them. */
+export const SHIFT_STATUSES: readonly ShiftStatus[] = ["on shift", "off shift"];
 
 /** One worker's state: its status, the tasks it holds, and the asks it waits on you with. */
 export type WorkerState = {
@@ -100,11 +100,10 @@ const computed = new WeakMap<LoadedSnapshot, WorkerStates>();
  * Every worker's status, worked out once per snapshot from what the Lab records:
  * its rows (each resolved by {@link workerFor}) and its pending asks.
  *
- * - **on shift**: it holds a running row;
- * - **on call**: otherwise, it holds a row waiting on you (the legacy
- *   `awaiting_review` included) or has a pending ask;
- * - **off shift**: neither. Queued, blocked, errored and finished rows hold no
- *   slot.
+ * - **on shift**: it holds a running row, a row waiting on you (the legacy
+ *   `awaiting_review` included) or a pending ask;
+ * - **off shift**: none of those. Queued, blocked, errored and finished rows
+ *   hold no slot.
  *
  * A row no single worker resolves to, and an ask whose session names no worker in
  * the inventory, count for nobody. Asks that did not load leave every status
@@ -130,11 +129,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
     if (ask.workerId !== null) workers.get(ask.workerId)?.asks.push(ask);
   }
   for (const state of workers.values()) {
-    state.status = state.held.some((row) => readStatus(row.status) === "in_progress")
-      ? "on shift"
-      : state.held.length > 0 || state.asks.length > 0
-        ? "on call"
-        : "off shift";
+    state.status = state.held.length > 0 || state.asks.length > 0 ? "on shift" : "off shift";
   }
   const result = { workers, partial: !snapshot.asks.ok };
   computed.set(snapshot, result);
@@ -204,7 +199,7 @@ export type ShiftCounts = Record<ShiftStatus, number> & {
 
 /** The counts over every worker in `states`, or over one team's. */
 export function shiftCounts(states: WorkerStates, team?: string): ShiftCounts {
-  const counts: ShiftCounts = { "on shift": 0, "on call": 0, "off shift": 0, waiting: 0 };
+  const counts: ShiftCounts = { "on shift": 0, "off shift": 0, waiting: 0 };
   for (const { worker, status, held, asks } of states.workers.values()) {
     if (team !== undefined && worker.team !== team) continue;
     counts[status] += 1;

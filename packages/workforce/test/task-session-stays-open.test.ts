@@ -63,7 +63,7 @@ const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) 
 };
 
 describe("V1 · the task session keeps its prompt (S5)", () => {
-  it("F1 · a user's later question into a finished task's session is handed the task as filed", async () => {
+  it("F1 · a user's later message reopens the finished task, whose turn is handed the task as filed (FIX-1764)", async () => {
     const h = host([
       {
         when: (input) => textOf(input).includes("GOAL-audit") && !textOf(input).includes("KESTREL-41"),
@@ -81,8 +81,9 @@ describe("V1 · the task session keeps its prompt (S5)", () => {
 
       const later = await h.act("alice", row.run!.sessionId, "run", { message: "Which licence was the problem?" }, "agent");
       expect(later.error, messageOf(later.error)).toBeUndefined();
+      await h.settled();
       const messages = sent(h.agentAnswer.calls.at(-1)!.input);
-      // The task as filed, the worker's answer, then the new question, in that order.
+      // The task as filed, the worker's answer, then the user's message, in that order.
       const ask = messages.findIndex((m) => m.role === "user" && m.text.includes("GOAL-audit"));
       const did = messages.findIndex((m) => m.role === "assistant" && m.text.includes("KESTREL-41"));
       const now = messages.findIndex((m) => m.role === "user" && m.text.includes("Which licence"));
@@ -377,7 +378,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
     }
   });
 
-  it("a user's message into the task session is not a task turn: no parkOnQuestion (BR-2)", async () => {
+  it("a user's message into an open task's session is not a task turn: no parkOnQuestion (BR-2)", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
     const h = host([{ when: () => true, then: { text: "OK." } }], {
       observeTools: (block, names, input) => seen.push({ block, names, input: textOf(input) })
@@ -387,7 +388,11 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       const filing = await h.filingOf("alice", conv);
       const filed = await file(h, conv, { goal: "Audit it", assignee: "otto" });
       await h.settled();
-      const sessionId = (await h.row("alice", filing, filed.taskId!))!.run!.sessionId;
+      const done = (await h.row("alice", filing, filed.taskId!))!;
+      const sessionId = done.run!.sessionId;
+      // Open again, waiting on its question: a message on a finished task
+      // reopens it instead (FIX-1764), and its next attempt is a task turn.
+      await h.writeRow("alice", filing, { ...done, status: "parked", parkedOnQuestion: true } as Task);
       seen.length = 0;
       await h.act("alice", sessionId, "run", { message: "USER-asks what you did" }, "agent");
       const turn = seen.filter((s) => s.input.includes("USER-asks"));

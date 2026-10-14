@@ -20,7 +20,6 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
-  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -59,6 +58,9 @@ import {
   dispatchWrite,
   parkPatch,
   unparkPatch,
+  reopenPatch,
+  assertEdgeAllowed,
+  type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -261,7 +263,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus
+    requireFrom?: EdgeSource
   ): Promise<TaskWriteOutcome> {
     return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
@@ -278,7 +280,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
     /** The one source status this verb may run from — see `assertTransitionFrom`. */
-    requireFrom?: TaskStatus;
+    requireFrom?: EdgeSource;
   }
 
   /**
@@ -348,7 +350,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           };
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertTransitionAllowed(task.status, targetStatus, id);
+        assertEdgeAllowed(task.status, targetStatus, id, requireFrom);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that
         // map and there is nothing to reset (FIX-989).
@@ -652,6 +654,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
                 answered: undefined,
+                reopened: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -740,6 +743,18 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
+      );
+    },
+
+    async reopen(id, options) {
+      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
+      return transitionTo(
+        id,
+        "pending",
+        "reopened",
+        (task) => reopenPatch(task as Task) as Partial<Task<TInput, TOutput>>,
+        { ...options, ifAllowed: true },
+        "finished"
       );
     },
 

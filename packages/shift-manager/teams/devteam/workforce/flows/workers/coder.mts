@@ -191,7 +191,16 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
       const boards: MessageDoorBoard[] =
         filed === undefined
           ? []
-          : [{ tasks: filed.tasks, orgScoped: false, drain: { drain: filed.runEntry, flowKind: filed.filingFlow }, runOf }];
+          : [
+              {
+                tasks: filed.tasks,
+                orgScoped: false,
+                drain: { drain: filed.runEntry, flowKind: filed.filingFlow },
+                runOf,
+                // A finished task's board runs in the conversation that filed it.
+                reopenIn: filed.filingSession,
+              },
+            ];
       return boards;
     },
   });
