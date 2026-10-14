@@ -60,7 +60,7 @@ A run refused before it starts (no project, a remote the host doesn't allow) fai
 
 You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the user, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
 
-A manager built with `ledgers` alone has no `messageDoor`, since that door reads one board's rows. To let a user send a message into a running run, build the door with `harnessMessageDoor` and tell it which boards the calling session's run may be on. The package README's [One door for runs from more than one board](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#one-door-for-runs-from-more-than-one-board) has the setup.
+A manager built with `ledgers` alone has no `messageDoor`, since that door reads one board's rows. To let a user send a message into a run, build the door with `harnessMessageDoor` and tell it which boards the calling session's run may be on. Give a board `reopenIn`, the session that runs its drain, and a message on a finished task there reopens it. Workforce's `filingConversationBoard(ctx)` returns that session as `filingSession`. The package README's [One door for runs from more than one board](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#one-door-for-runs-from-more-than-one-board) has the setup.
 
 ## Choosing the harness
 
@@ -176,11 +176,13 @@ What happens depends on where the task is:
 | Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
 | About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
 | Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
-| Not started, or finished | Refused, with the reason |
+| Finished, on a board that says where its drain runs | Reopened. The message is kept for the next attempt, the task goes back in the queue under its own id, and the board's drain runs, so the task reads in progress again and the next attempt resumes the same coding session with your message. The action answers `continuing`, or `kept` if another message reopened it first. A run whose harness never confirmed a coding session is refused with *this run's harness can't continue with a message* |
+| Finished, on a board that doesn't say | Refused with *this task has finished and can't take a message here*. The manager's own `messageDoor` always answers this way; a door built with `harnessMessageDoor` reopens the task on a board you give a `reopenIn` session |
+| Not started | Refused, with the reason |
 
 A request that completes answers `{ outcome: "continuing" | "kept", taskId }`.
 
-A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. The error's message is the reason in words, such as "A finished task takes no message.", and its cause is the door's `TurnRefused` error. A refused message is never handed to a later attempt either.
+A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. The error's message is the reason in words, such as "This task has finished and can't take a message here.", and its cause is the door's `TurnRefused` error. A refused message is never handed to a later attempt either.
 
 **A message doesn't spend a retry.** The run parks for your turn and comes back without being charged an attempt, so talking to a run never makes it fail sooner.
 

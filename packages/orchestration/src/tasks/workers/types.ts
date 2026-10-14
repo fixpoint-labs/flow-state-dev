@@ -71,6 +71,12 @@ export const taskWorkerInputSchema = z.object({
    */
   answer: z.string().optional(),
   /**
+   * A person reopened this finished task (`Task.reopened`, FIX-1764), present
+   * only on the attempts that reopen queued. The person's message is in the
+   * task's session, written there by the door it came through.
+   */
+  reopened: z.literal(true).optional(),
+  /**
    * The finished task this one follows up (`Task.followUpOf`), present only
    * on a follow-up: a `per-task` dispatch runs it in that task's session.
    */

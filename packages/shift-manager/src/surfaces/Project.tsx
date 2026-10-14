@@ -28,7 +28,7 @@
  *
  * Above the tabs, the team strip from the worker inventory, as design v2 draws
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
- * workers are on shift and on call.
+ * workers are on shift.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
@@ -127,7 +127,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
                 {team}
               </Meta>
               <Meta>
-                {counts["on shift"]} on shift · {counts["on call"]} on call
+                {counts["on shift"]} on shift
                 {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
               </Meta>
             </li>

@@ -126,7 +126,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 ## Shift Manager: screens over a Workforce
 
-![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a user's session with the Lab's chief of staff. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift, on call and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
+![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a user's session with the Lab's chief of staff. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
 
 [Shift Manager](./shift-manager/overview.md) is a browser app, published as `@flow-state-dev/shift-manager`. It stores nothing of its own: every screen is a read of the Lab it serves.
 
@@ -138,7 +138,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a user. | Suspension |
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |
-| **Roster** | Shift Manager | Your workers, grouped as on shift (running a task), on call (a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
+| **Roster** | Shift Manager | Your workers, grouped as on shift (running a task, or waiting on you with a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
 | **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
 
 ## Words that mean two things

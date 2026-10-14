@@ -19,10 +19,17 @@ import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import {
+  defineTaskCollection,
+  getOrCreateTaskCollection,
+  resolveResourceCollection,
+  type Task,
+  type TaskCollectionRef,
+} from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
+  harnessMessageDoor,
   harnessTaskInputSchema,
   runOwnerDispatcher,
   type HarnessFeeds,
@@ -166,6 +173,14 @@ function host(options: {
   atHarnessStart?: () => Promise<void>;
   /** Durable execution on the host, so a stop can find the attempt parked. */
   durable?: boolean;
+  /**
+   * Serve the door as a host's `harnessMessageDoor` whose board says where its
+   * drain runs (`reopenIn`), so a finished row can be reopened. Absent, the
+   * manager's own fixed-board door, which can't say.
+   */
+  reopenIn?: string;
+  /** Another line reopens the row just before this door's own reopen, which then declines. */
+  reopenedFirst?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-door-"));
   dirs.push(dir);
@@ -270,7 +285,29 @@ function host(options: {
       // How a person's answer to the run's own question re-queues it.
       answer: { block: board.unparkAndDrain },
       interrupt: { block: interrupt },
-      message: manager.messageDoor({ drain: "resume" }),
+      message:
+        options.reopenIn === undefined
+          ? manager.messageDoor({ drain: "resume" })
+          : harnessMessageDoor({
+              name: "door-host",
+              uses: [board.capability],
+              boards: async (ctx) => [
+                {
+                  tasks: raceReopen(
+                    await getOrCreateTaskCollection({
+                      ctx,
+                      backing: "resource",
+                      collectionId: BOARD_ID,
+                      collection: resolveResourceCollection(ctx, BOARD_ID)!,
+                    }),
+                    options.reopenedFirst === true,
+                  ),
+                  orgScoped: true,
+                  drain: { drain: "resume" },
+                  reopenIn: options.reopenIn,
+                },
+              ],
+            }),
     },
     // Where the door re-runs the board: in the session that claimed the row.
     internal: { actions: { resume: { block: board.drain } } },
@@ -1068,6 +1105,75 @@ describe("a turn to a run that is not working right now", () => {
   }, 60_000);
 });
 
+/** The board's rows, with a reopen another line wins first when `raced`. */
+function raceReopen(tasks: TaskCollectionRef, raced: boolean): TaskCollectionRef {
+  if (!raced) return tasks;
+  return Object.assign(Object.create(tasks) as TaskCollectionRef, {
+    reopen: async (id: string, options?: Parameters<TaskCollectionRef["reopen"]>[1]) => {
+      await tasks.reopen(id, options);
+      return tasks.reopen(id, options);
+    },
+  });
+}
+
+describe("a person's message on a finished task (FIX-1764)", () => {
+  it.each([
+    ["completed", ["finished", "finished"] as Step[], 3],
+    ["errored", ["failed", "finished"] as Step[], 1],
+  ] as const)(
+    "reopens a task that ended %s: it runs again, resuming the same coding session with the line",
+    async (status, script, maxAttempts) => {
+      const lab = host({ script: [...script], maxAttempts, reopenIn: `s_${ALICE}` });
+      await lab.act(ALICE, "seed");
+      await lab.act(ALICE, "drain");
+      const ended = await lab.until((t) => t.status === status, `the run to end ${status}`);
+      const runSession = ended.run!.sessionId;
+
+      const sent = await lab.send(ALICE, "one more thing: rename the flag");
+      expect(sent.error, messageOf(sent.error)).toBeUndefined();
+      expect(sent.output).toMatchObject({ outcome: "continuing" });
+      // The line is on the task, in its own session, as the person's words.
+      expect(await lab.userLines(runSession)).toEqual(["one more thing: rename the flag"]);
+
+      const done = await lab.until((t) => t.status === "completed" && t.attempts === 2, "the reopened attempt");
+      expect(lab.seen).toHaveLength(2);
+      expect(lab.seen[1]!.prompt).toContain("one more thing: rename the flag");
+      // Same coding session, resumed by id, in the same task session.
+      expect(lab.seen[1]!.resume).toBe(lab.seen[0]!.session);
+      expect(done.run!.sessionId).toBe(runSession);
+      expect(done.reopened).toBe(true);
+    },
+    60_000,
+  );
+
+  it("decides again when another line reopened the task first, and the line reaches the reopened attempt", async () => {
+    const lab = host({ script: ["finished", "finished"], maxAttempts: 3, reopenIn: `s_${ALICE}`, reopenedFirst: true });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed", "the run to finish");
+
+    const sent = await lab.send(ALICE, "one more thing: rename the flag");
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    // Decided again on the open row: not yet claimed, so the turn waits for its attempt.
+    expect(sent.output).toMatchObject({ outcome: "kept" });
+    // The winning line's drain.
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed" && t.attempts === 2, "the reopened attempt");
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("one more thing: rename the flag");
+  }, 60_000);
+
+  it("refuses a finished run whose harness never named a coding session, and leaves it finished", async () => {
+    const lab = host({ script: ["no-session"], maxAttempts: 1, reopenIn: `s_${ALICE}` });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "errored", "the run to fail");
+    const sent = await lab.send(ALICE, "try again");
+    expect(messageOf(sent.error)).toContain("This run's harness can't continue with a message.");
+    expect((await lab.row()).status).toBe("errored");
+  }, 60_000);
+});
+
 describe("refusals", () => {
   it("refuses a session no run is linked to, and leaves the line in it (BR-14, BR-5)", async () => {
     const lab = host({ script: ["finished"] });
@@ -1079,13 +1185,16 @@ describe("refusals", () => {
     expect(await lab.userLines("s_nowhere")).toEqual(["hello?"]);
   }, 60_000);
 
-  it("refuses a finished task (BR-15)", async () => {
+  it("refuses a finished task on a board that can't say where to reopen it, and leaves it finished", async () => {
     const lab = host({ script: ["finished"] });
     await lab.act(ALICE, "seed");
     await lab.act(ALICE, "drain");
     await lab.until((t) => t.status === "completed", "the run to finish");
     const sent = await lab.send(ALICE, "one more thing");
-    expect(messageOf(sent.error)).toContain("A finished task takes no message.");
+    expect(messageOf(sent.error)).toContain("This task has finished and can't take a message here.");
+    expect((await lab.row()).status).toBe("completed");
+    // Refused before a turn was kept, so no later attempt acts on it.
+    expect(await lab.turns()).toEqual([]);
   }, 60_000);
 
   it("refuses a run whose harness never named a coding session (BR-16)", async () => {

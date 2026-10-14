@@ -14,6 +14,7 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
+  assertTransitionAllowed,
   IllegalTaskTransitionError,
   isTerminalStatus,
   isTransitionAllowed,
@@ -150,6 +151,7 @@ export function parkPatch(
     parkedForTurn: forTurn === true ? true : undefined,
     parkedOnQuestion: onQuestion === true ? true : undefined,
     answered: undefined,
+    reopened: undefined,
   };
 }
 
@@ -168,8 +170,65 @@ export function unparkPatch(task: Task, feedback: string | undefined, answer = f
     parkedForTurn: undefined,
     parkedOnQuestion: undefined,
     answered: answer ? true : undefined,
+    reopened: undefined,
     ...(task.parkedForTurn === true || answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
   };
+}
+
+/** Clears the ending and the per-attempt fields. The result, and any notice or resume the ending owes, stay. */
+export function reopenPatch(task: Task): Partial<Task> {
+  return {
+    error: undefined,
+    completedAt: undefined,
+    feedback: undefined,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    parkedForTurn: undefined,
+    parkedOnQuestion: undefined,
+    answered: undefined,
+    reopened: true,
+    turnReentries: readTurnReentries(task) + 1,
+  };
+}
+
+/**
+ * The status a verb that owns one edge may run from: one status, or
+ * `"finished"` for any terminal one. Only `reopen` owns an edge out of a
+ * finished row (FIX-1764), and that edge is not in the status table every
+ * other writer is checked against, so a late write can never reopen a row by
+ * accident.
+ */
+export type EdgeSource = TaskStatus | "finished";
+
+/**
+ * Whether a write is `reopen`'s edge: from a finished row, back to `pending`.
+ * The only edge the status table is skipped for, so a verb that names
+ * `"finished"` for any other target is still checked against the table.
+ */
+function isReopenEdge(requireFrom: EdgeSource | undefined, to: TaskStatus): boolean {
+  return requireFrom === "finished" && to === "pending";
+}
+
+/** Whether `status` is a source of the edge `source` names. */
+export function onEdgeSource(status: TaskStatus, source: EdgeSource): boolean {
+  return source === "finished" ? isTerminalStatus(status) : status === source;
+}
+
+/**
+ * The status table's check, for a write that is not `reopen`'s. A verb that
+ * owns the edge out of a finished row is legal on that edge alone, which
+ * {@link assertTransitionFrom} has already checked.
+ *
+ * @throws {IllegalTaskTransitionError} when the table forbids the edge.
+ */
+export function assertEdgeAllowed(
+  from: TaskStatus,
+  to: TaskStatus,
+  taskId: string,
+  requireFrom: EdgeSource | undefined
+): void {
+  if (isReopenEdge(requireFrom, to)) return;
+  assertTransitionAllowed(from, to, taskId);
 }
 
 /**
@@ -566,7 +625,10 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *   `unblock` (`blocked → pending`) and `unpark` (`parked → pending`, FIX-1244).
  *   The status table cannot express this — it maps status to status, not verb
  *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
- *   fence `unpark` would re-queue a row a worker is holding.
+ *   fence `unpark` would re-queue a row a worker is holding. `reopen` owns the
+ *   one edge out of a finished row (`"finished"`, FIX-1764): a finished row is
+ *   not refused as `terminal` for it, and the table, which has no such edge,
+ *   is not consulted.
  *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
@@ -575,22 +637,23 @@ export function transitionDeclineReason(
   options: TaskTransitionOptions | undefined,
   collectionId: string,
   now: number,
-  requireFrom?: TaskStatus,
+  requireFrom?: EdgeSource,
   changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
-  if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
+  const reopening = isReopenEdge(requireFrom, targetStatus);
+  if (options.ifAllowed === true && isTerminalStatus(task.status) && !reopening) return "terminal";
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   if (
     options.ifAllowed === true &&
     requireFrom !== undefined &&
-    task.status !== requireFrom
+    !onEdgeSource(task.status, requireFrom)
   ) {
     return "disallowed";
   }
-  if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
+  if (options.ifAllowed === true && !reopening && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
   }
   // FIX-1234: the caller asked not to settle a row somebody parked for review.
@@ -654,15 +717,15 @@ export function transitionDeclineReason(
  * Runs after the decline check, so an advisory write still reports
  * `disallowed` instead of throwing.
  *
- * @throws {IllegalTaskTransitionError} when `task.status !== requireFrom`.
+ * @throws {IllegalTaskTransitionError} when the task is not on `requireFrom`.
  */
 export function assertTransitionFrom(
   task: Task,
-  requireFrom: TaskStatus | undefined,
+  requireFrom: EdgeSource | undefined,
   targetStatus: TaskStatus,
   taskId: string
 ): void {
-  if (requireFrom !== undefined && task.status !== requireFrom) {
+  if (requireFrom !== undefined && !onEdgeSource(task.status, requireFrom)) {
     throw new IllegalTaskTransitionError({ taskId, from: task.status, to: targetStatus });
   }
 }

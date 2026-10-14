@@ -44,8 +44,9 @@ pending ─┬─→ in_progress ─┬─→ completed
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. A move to the status a task
-already holds is on the table, so a repeat write doesn't throw. Anything else
+`completed`, `errored`, and `cancelled` are terminal: every write treats them as
+final except `reopen`, which puts a finished task back in `pending` (see below).
+A move to the status a task already holds is on the table, so a repeat write doesn't throw. Anything else
 throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
 writes nothing.
 
@@ -57,7 +58,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `unpark`,
+the re-entries that do not spend the budget (`unblock`, `unpark`, `reopen`,
 `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
@@ -167,14 +168,23 @@ from the next resolution onward. A ref you are already holding keeps reporting s
 a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
-`unpark`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+`unpark`, `reopen`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
 and no other, and `unpark` on a `parked` task and no other. Like `cancel`, `unpark`
 declines without options: `disallowed` for a live task, `terminal` once settled, and a
-second answer to an already-queued task is refused. `in_progress → pending` sits in the status table too,
+second answer to an already-queued task is refused. `reopen` runs on a finished task
+(`completed`, `errored` or `cancelled`) and no other, and declines without options:
+`{ outcome: "declined", reason: "disallowed", status }` for any other status, nothing
+written. It is the only write that moves a task out of a finished status. The reopened
+task keeps its id, `attempts` and `output` (until the next attempt writes its own),
+clears its `error` and `completedAt`, and carries `reopened: true`, as does the worker
+input for the attempt it queues. That attempt is not charged against `maxAttempts`.
+`recordEnding` is not called for a reopen; the reopened attempt's own ending is a new
+one. The change event kind is `"reopened"`. Like `unpark`, it only re-queues: something
+must drain the board. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued

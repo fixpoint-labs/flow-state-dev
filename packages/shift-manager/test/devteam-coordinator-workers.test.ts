@@ -1,10 +1,9 @@
 /**
- * DevTeam's two coordinator workers, `eng.triage` and `ops.oncall`, on the
- * real Lab: each is a `WORKER.md` on the built-in `coordinator` flow with the
- * EM as its one delegate and `routing: everyone`, so a post to either reaches
- * the EM with no model call of the coordinator's own, and the EM answers it in
- * that conversation under its own name. The EM is the only worker either one
- * hands to: its turn files the coder's task on the board of the session the
+ * DevTeam's coordinator worker, `eng.triage`, on the real Lab: a `WORKER.md`
+ * on the built-in `coordinator` flow with the EM as its one delegate and
+ * `routing: everyone`, so a post to it reaches the EM with no model call of
+ * the coordinator's own, and the EM answers it in that conversation under its
+ * own name. The EM is the only worker it hands to: its turn files the coder's task on the board of the session the
  * post reached, which is how the test knows the post reached `eng.em` rather
  * than any worker.
  *
@@ -130,37 +129,36 @@ function textOf(item: { content?: unknown; text?: unknown }): string {
   return ((item.content ?? []) as Array<{ text?: string }>).map((part) => part.text ?? "").join("");
 }
 
-describe("DevTeam's triage and oncall coordinators", () => {
-  for (const workerId of ["eng.triage", "ops.oncall"]) {
-    it(`${workerId} is a worker on the coordinator flow whose one delegate is the EM, which takes posts`, async () => {
-      const lab = await open();
-      const id = await conversation(lab, workerId);
-      const listed = await act(lab, id, "listDelegates", {});
-      expect(listed.error).toBeUndefined();
-      expect(listed.output.delegates).toEqual([
-        {
-          worker: "eng.em",
-          description: "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.",
-          takes: "posts",
-        },
-      ]);
-    });
+describe("DevTeam's triage coordinator", () => {
+  const workerId = "eng.triage";
+  it(`${workerId} is a worker on the coordinator flow whose one delegate is the EM, which takes posts`, async () => {
+    const lab = await open();
+    const id = await conversation(lab, workerId);
+    const listed = await act(lab, id, "listDelegates", {});
+    expect(listed.error).toBeUndefined();
+    expect(listed.output.delegates).toEqual([
+      {
+        worker: "eng.em",
+        description: "Files each feature as a task for the coder, and keeps the workstream it leads current; never does the work itself.",
+        takes: "posts",
+      },
+    ]);
+  });
 
-    it(`a post to ${workerId} reaches eng.em with no model call of its own, and the EM files the feature it carries`, async () => {
-      const lab = await open();
-      const id = await conversation(lab, workerId);
-      const issue = `report-${globalThis.crypto.randomUUID().slice(0, 6)}`;
-      expect((await act(lab, id, "run", { message: `${issue}: the cart badge is off by one` })).error).toBeUndefined();
-      const items = await settledItems(lab, id);
-      expect([...new Set(asked)]).toEqual([EM_TURN]);
-      const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
-      expect(record.data).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
-      // The board of the EM session the post reached holds the coder's task only the EM files, and
-      // its answer lands here under its name.
-      const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.issue === issue);
-      expect(filed).toEqual([expect.objectContaining({ goal: "the cart badge is off by one", assignee: "eng.coder" })]);
-      const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
-      expect(answers).toEqual(["Filed."]);
-    });
-  }
+  it(`a post to ${workerId} reaches eng.em with no model call of its own, and the EM files the feature it carries`, async () => {
+    const lab = await open();
+    const id = await conversation(lab, workerId);
+    const issue = `report-${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    expect((await act(lab, id, "run", { message: `${issue}: the cart badge is off by one` })).error).toBeUndefined();
+    const items = await settledItems(lab, id);
+    expect([...new Set(asked)]).toEqual([EM_TURN]);
+    const [record] = items.filter((item) => item.type === "component" && item.component === "coordinator-route");
+    expect(record.data).toMatchObject({ by: "everyone", delegates: [{ worker: "eng.em", outcome: "delivered" }] });
+    // The board of the EM session the post reached holds the coder's task only the EM files, and
+    // its answer lands here under its name.
+    const filed = Object.values(await lab.stored("user", "tasks/")).filter((row: any) => row.input?.issue === issue);
+    expect(filed).toEqual([expect.objectContaining({ goal: "the cart badge is off by one", assignee: "eng.coder" })]);
+    const answers = items.filter((item) => item.type === "message" && item.agentName === "eng.em").map(textOf);
+    expect(answers).toEqual(["Filed."]);
+  });
 });
