@@ -51,12 +51,8 @@ const MEMO = Symbol.for("kitchen-sink.harness-models");
 type Memo = typeof globalThis & { [MEMO]?: Map<HarnessModeId, Promise<ModelChoices>> };
 
 /**
- * The models harness mode `id` offers. Page loads that arrive while a list is
- * being read share that one read (for Claude Code, one SDK start). A list read
- * in full is kept until the server restarts; one with a reason is asked for
- * again on the next load after it.
- *
- * @param lists Each mode's list. A seam for tests.
+ * The models mode `id` offers. Loads during a read share it; a read with a
+ * reason is dropped, so the next load asks again. `lists` is a seam for tests.
  */
 export function harnessModelChoices(
   id: HarnessModeId,

@@ -1,13 +1,7 @@
 /**
- * The model a harness session runs (FIX-1952): picked at birth, handed to the
- * harness on every turn and resume, never changed, and what each mode offers
- * to pick from.
- *
- * The real flows and the real harness blocks, with only each SDK replaced by
- * its scripted stand-in behind a recorder: what is asserted is what the block
- * hands the SDK, the last point Kitchen Sink controls. Whether the harness then
- * RUNS that model is the goal check's to prove on a real harness
- * (`goals/kitchen-sink-harness/runs-the-picked-model/`).
+ * What is asserted is what the block hands the SDK, the last point Kitchen Sink
+ * controls. Whether the harness then runs that model is
+ * `goals/kitchen-sink-harness/runs-the-picked-model/`.
  *
  * Red states produced before these were trusted:
  *   - feed the mode's default instead of the session's model: every "hands the

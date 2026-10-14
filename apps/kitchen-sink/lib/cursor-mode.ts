@@ -164,11 +164,8 @@ const listCursorModels: CursorModelList = async (env) => {
 const CURSOR_LIST_TIMEOUT_MS = 10_000;
 
 /**
- * What Cursor mode's New session offers: Cursor's own list, with the mode's
- * default preselected (and put first when Cursor doesn't list it). When the
- * list can't be read, or doesn't come back within `timeoutMs`, the default
- * alone, with the reason. Under the scripted Cursor, the default alone and no
- * reason.
+ * Cursor's list, the mode's default put first when Cursor omits it; the
+ * default alone, with the reason, when the list can't be read within `timeoutMs`.
  */
 export async function cursorModelChoices(
   list: CursorModelList = listCursorModels,

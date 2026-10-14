@@ -1,16 +1,11 @@
 /**
- * Ask Claude Code which models it offers, before anything is started on it:
- * `listClaudeModels()`.
- *
- * The same no-turn start the account probe makes (`./account-probe`): one
- * streaming-input `query()` whose input never yields, so no user message is
- * sent and no model turn starts. It asks the SDK's `supportedModels()` and
- * closes. Hand it the environment the run gets, so the list is the one the
- * run's sign-in sees.
+ * Ask Claude Code which models it offers, with no turn (`./idle-query`, as
+ * `./account-probe` does), then `supportedModels()`. Hand it the run's
+ * environment.
  *
  * Each model comes back under the id the SDK resolves it to, never an alias:
- * `sonnet` and the "default" row name whatever model they point at today, and
- * a host that stores the id keeps that model after the alias moves on.
+ * `sonnet` and the "default" row name whatever they point at today, and a host
+ * that stores the id keeps that model after the alias moves on.
  */
 import { askIdleQuery } from "./idle-query";
 import type { SdkImporter } from "./sdk-client";
