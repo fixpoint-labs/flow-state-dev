@@ -114,4 +114,16 @@ a Codex update may break the list until the reader is fixed.
   the framework's fixed-at-birth session field and a per-run `model` option on the three harness
   blocks; Codex's list kept by hand because its SDK can't list.
 
+## Notes from review
+
+- "tri-package `model` can land atomically for API parity while **Kitchen Sink** proves the feed pattern on one mode first internally" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4265839356))
+- "Consider documenting a **tier split**: scripted-harness / feed wiring in CI … vs this goal as the merge VG" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4265839351))
+- "successful model lists may be **memoized with the gate** for the server process … account + models should be **one** no-turn SDK session if possible" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4265839358))
+- "a **dev-only** reader for `codex debug models` behind a flag, with the curated list still the default UX" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4265839364))
+- "three separate list code paths without a shared 'fetch once per process' helper — duplication smell" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4265839367))
+- "optional `GOAL_MODEL` legs on the three existing harness goals would reduce duplicate Playwright harness setup" — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#pullrequestreview-5512020047))
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one.
+
 **Open: none.**
