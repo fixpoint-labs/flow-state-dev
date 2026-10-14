@@ -5923,6 +5923,21 @@ const multiResponder =
     return { id, status: 'open', pr: 1, branch: `fix/FIX-9-${id}`, ...(build[id] || {}) }
   }
 
+check('a slice worker is told its deliverables, verbatim', async () => {
+  // A spec no longer carries a plan document, so the implementer's PR-plan table is the only record
+  // of what each slice owns. A build prompt that names only the id leaves a fresh worker guessing
+  // its scope — it builds the whole issue, or overlaps a sibling slice.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { deliverables: 'the cursor parser at the route' }), node('b', { dependsOn: ['a'] })],
+    }),
+    respond: multiResponder(),
+  })
+  const build = calls.find((c) => c.label === 'build:a')
+  assert.ok(build, 'the ready slice is dispatched')
+  assert.match(build.prompt, /Deliverables: the cursor parser at the route/)
+})
+
 check('an answered blocker on an already-OPEN slice gets a worker to apply it', async () => {
   // Clearing the blocker was not enough, and was worse than the stall it replaced: `classify` has no
   // action for an ordinary open node, so nothing consumed the answer — while the slice, now reading as

@@ -484,7 +484,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   });
 
   // Server-internal durability sweeper (FIX-141): enforces suspension expiry,
-  // times out overdue asks, re-drives requests left behind a resolved gate and
+  // times out overdue waits, re-drives requests left behind a resolved gate and
   // carries recorded stops (FIX-1816), and prunes aged-out durability
   // artifacts. Built whenever a durability provider is configured: keeping
   // gates is correctness, not retention. Pruning runs only with a retention
@@ -500,15 +500,15 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           retention: durabilityRetention ?? {},
           prune: durabilityRetention !== undefined,
           logger: runtimeConfig.logger,
-          // Lets the sweep resume an overdue ask with `wait_timed_out`
+          // Lets the sweep resume an overdue wait with `wait_timed_out`
           // through this router's host (FIX-1816).
           continueRequest: (opts) => handlers.host.continueRequest(opts)
         })
-      : { dispose: () => {}, timesOutAsks: () => false };
-  // Requests this router serves are offered an ask only while its own sweeper
-  // times asks out, whatever another host on the same provider runs.
+      : { dispose: () => {}, timesOutWaits: () => false };
+  // Requests this router serves are offered a wait only while its own sweeper
+  // times waits out, whatever another host on the same provider runs.
   if (runtimeConfig.requestHost !== undefined && durabilityProvider !== undefined) {
-    runtimeConfig.requestHost.askSweeper = () => durabilitySweeper.timesOutAsks();
+    runtimeConfig.requestHost.waitSweeper = () => durabilitySweeper.timesOutWaits();
   }
 
   // Built-in HTTP adapter delegates to the canonical handler. The catch-all

@@ -5,7 +5,7 @@
  * Deduped by task, attempt and ending, which absorbs the replays the board's
  * outbox sends: a notice is acted on only while its row still owes it, and
  * only once. Then the one decision (`decideNotice`) is acted on: a retried
- * attempt runs the board again with no turn; an asked row's ending resumes
+ * attempt runs the board again with no turn; a waited-on row's ending resumes
  * the turn parked on it (`dispatchTask` with `wait`), with no line and no turn woken;
  * a post row's ending (a delegate's answer to a post its coordinator handed
  * on, `../coordinator/delegated-post`) goes to the coordinator's own
@@ -33,7 +33,7 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import { resumeOwedAsks } from "@flow-state-dev/orchestration";
+import { resumeOwedWaits } from "@flow-state-dev/orchestration";
 import {
   clearNotice,
   decideNotice,
@@ -83,7 +83,7 @@ export const conversationBoardStateShape = {
 export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE, PARENT_BINDING_STATE];
 
 const settledSchema = z.object({
-  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-ask", "post"]),
+  act: z.enum(["none", "run-board", "wake-turn", "line", "resume-wait", "post"]),
   text: z.string().optional(),
   worker: z.string().optional(),
   /** On a post row's ending: what the coordinator's handling is handed. */
@@ -170,7 +170,7 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
   /**
    * Whatever a run does, the notices still owed go out again behind it, but
    * never `notice`: its marker is cleared, or stays owed for its own entry.
-   * Nor an asked row still owed its resume: its notice stays owed while the
+   * Nor a waited-on row still owed its resume: its notice stays owed while the
    * resume fails, so two such rows would send each other's forever. A touch
    * of the board retries those, once per touch.
    */
@@ -179,7 +179,7 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
       ctx as never,
       ref
         .list()
-        .filter((task) => !(task.ask != null && task.resumeOwed === true))
+        .filter((task) => !(task.wait != null && task.resumeOwed === true))
         .map((task) =>
           task.id === notice.taskId ? { ...task, metadata: { ...(task.metadata ?? {}), ...clearNotice(notice) } } : task
         )
@@ -228,7 +228,7 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
       // way leaves it owed, and the replay sends it there.
       if (options.onPost !== undefined && isPostRow(row)) {
         if (!posts) {
-          await replayNotices(ctx as never, ref.list().filter((task) => !(task.ask != null && task.resumeOwed === true)));
+          await replayNotices(ctx as never, ref.list().filter((task) => !(task.wait != null && task.resumeOwed === true)));
           return { act: "none" };
         }
         const acknowledged = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
@@ -255,7 +255,7 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
       }
       const first = await noteSeen(ctx as never, key);
       const decision = decideNotice(notice, options.policy(ctx as never));
-      // An asked row's ending: resume the turn parked on it, with no line and
+      // A waited-on row's ending: resume the turn parked on it, with no line and
       // no turn. Every copy tries: the gate admits one answer. The owed notice
       // is what carries the resume across a touch, so it clears only once the
       // row no longer owes it (the resume was accepted, or the gate had
@@ -263,15 +263,15 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
       // process that dies first, leaves the notice owed, and the board's next
       // touch sends it again (BR-11). The resolver never resumes itself: it
       // runs inside a turn.
-      if (decision.act === "resume-ask") {
+      if (decision.act === "resume-wait") {
         try {
-          await resumeOwedAsks(ctx as never, ref);
+          await resumeOwedWaits(ctx as never, ref);
         } catch {
           // Still owed: the notice stays, for the next touch.
         }
         if (ref.get(row.id)?.resumeOwed !== true) await ref.patchMetadata(row.id, clearNotice(notice));
         await replayRest();
-        return { act: first === true ? "resume-ask" : "none" };
+        return { act: first === true ? "resume-wait" : "none" };
       }
       // Delivered: the marker clears whichever copy of the notice got here.
       await ref.patchMetadata(row.id, clearNotice(notice));

@@ -233,7 +233,7 @@ async function applyWorkstreamRecord(
 /**
  * Change one workstream's record on this session, the owner's project
  * coordinator, in this turn (BR-38): an open made from the coordinator's own
- * turn hands the ask to the workstream next, in the same turn, and a dispatch
+ * turn hands the request to the workstream next, in the same turn, and a dispatch
  * into this session would land only after the turn ends. The same mutation
  * the internal entry runs, with the defaults of the worker this turn loaded;
  * the open already checked that the lead is on the user's roster and can lead.

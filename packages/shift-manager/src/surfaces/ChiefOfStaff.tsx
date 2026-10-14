@@ -300,7 +300,7 @@ export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
           <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
-          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} />
+          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
         </>
       ) : (
         <p className="px-1 text-xs text-muted-foreground" data-testid="cos-panel-empty">

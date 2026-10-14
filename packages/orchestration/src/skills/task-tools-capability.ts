@@ -58,7 +58,7 @@
  * ## Waiting for the answer (FIX-1816)
  *
  * On a turn whose host can hold a wait (durable execution, and a durability
- * sweeper that times waits out: `RequestHost.hasAskSweeper`), `dispatchTask`
+ * sweeper that times waits out: `RequestHost.hasWaitSweeper`), `dispatchTask`
  * takes two more flat fields: `wait`, which parks the turn until the task
  * ends, returning its output as `answer`; and `timeoutMs`, the wait's bound.
  * Anywhere else the fields are not in the schema. The `dispatchTask_<board>`
@@ -86,6 +86,7 @@ import {
   type TaskTransitionOptions,
   type TaskWriteOutcome,
 } from "../tasks";
+import { withMigratedWait } from "../tasks/schema/task";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
@@ -132,7 +133,7 @@ const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as const;
  * creates the board — without the default the host state initializes to `{}`,
  * the field is absent, and the first task tool call reports `no_delegation_board`.
  */
-export const delegationBoardSchema = z.record(z.string(), taskSchema).default({});
+export const delegationBoardSchema = z.record(z.string(), z.preprocess(withMigratedWait, taskSchema)).default({});
 
 /** Resolves the live TaskCollection a `taskTools` handler mutates. */
 export type TaskCollectionResolver = (
@@ -293,7 +294,7 @@ function statusChangingTools(
     { name: named("cancelTask"), target: "cancelled" },
     { name: named("completeTask"), target: "completed" },
     // `failTask` routes on the retry budget at call time: budget left soft-fails
-    // back to `pending`, otherwise it goes terminal `errored`. Asking the
+    // back to `pending`, otherwise it goes terminal `errored`. Calling the
     // collection's own predicate keeps this in step with `fail()` rather than
     // restating the rule here.
     {
@@ -633,7 +634,7 @@ const awaitingAnswerError = (taskId: string) => ({
   taskId,
   error:
     `task_awaiting_answer: task "${taskId}" was just answered and is about to pick up again ` +
-    `with its worker, in the session that asked. Reassign it after that run starts. Nothing was written.`,
+    `with its worker, in the session that filed it. Reassign it after that run starts. Nothing was written.`,
 });
 
 /** `addTask`'s refusal for a follow-up whose session still has an unfinished task. */
@@ -692,7 +693,7 @@ export interface ParkOnQuestionOptions {
  *   parked this attempt, for its question or for anything else. A task waits
  *   on one thing at a time.
  * - **When it is offered** (`offered`). On a task turn ({@link isTaskTurn})
- *   that holds a running row, when the row isn't asked: in v1 an asked task's worker
+ *   that holds a running row, when the row isn't waited on: in v1 a waited-on task's worker
  *   answers with what it has, or fails (epic ER-22).
  *
  * The turn's own answer after a park is not recorded: the board refuses to
@@ -744,7 +745,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
         };
       }
       const { claim, ledger, row } = held;
-      if (row?.ask !== undefined) {
+      if (row?.wait !== undefined) {
         return {
           ok: false as const,
           error:
@@ -773,10 +774,10 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
   return {
     /** The tool, for a task turn's tool list. */
     tool,
-    /** Whether the running turn is offered the tool: a task turn holding a claim on a row that isn't asked. */
+    /** Whether the running turn is offered the tool: a task turn holding a claim on a row that isn't waited on. */
     offered: async (ctx: BlockContext): Promise<boolean> => {
       const held = await claimedRow(ctx);
-      return held !== undefined && held.row?.status === "in_progress" && held.row.ask === undefined;
+      return held !== undefined && held.row?.status === "in_progress" && held.row.wait === undefined;
     },
   };
 }
@@ -876,7 +877,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     if (!collection) return noBoardError;
     const current = collection.get(taskId);
     if (!current) return taskNotFoundError(taskId);
-    // An answered task waits to run again in the session that asked, which
+    // An answered task waits to run again in the session that filed it, which
     // its assignee keys: moving it before that run would hand the answer to
     // a session that never saw the task or the question (FIX-1817).
     if (options?.assignee !== undefined && current.answered === true && current.status !== "in_progress" && !isTerminalStatus(current.status)) {
@@ -956,10 +957,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     assignee: z.string().optional(),
     deps: z.array(z.string()).optional(),
     priority: z.number().optional(),
+    // `unknown` has no type, so a model may send this payload as a JSON string.
     input: z
-      .unknown()
+      .record(z.string(), z.unknown())
       .optional()
-      .describe("Structured payload handed to the worker as the task's input."),
+      .describe("Structured payload handed to the worker as the task's input: a JSON object, not a string."),
     metadata: z.record(z.string(), z.unknown()).optional(),
     followUpOf: z
       .string()
@@ -1570,7 +1572,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             // reader opens it from here (FIX-1668). Absent until a run starts.
             run: taskSchema.shape.run,
             /** A turn is waiting on this task's answer (`dispatchTask` with `wait`). */
-            asked: z.literal(true).optional(),
+            waitedOn: z.literal(true).optional(),
           }),
         ),
       }),
@@ -1594,7 +1596,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
           attempts: t.attempts,
           ...(t.run != null ? { run: t.run } : {}),
-          ...(t.ask != null ? { asked: true as const } : {}),
+          ...(t.wait != null ? { waitedOn: true as const } : {}),
         })),
       };
     },
@@ -1695,7 +1697,7 @@ export function buildTaskToolsList(
  *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
  *   roster the executive is.
  * @param options `dispatches: true` on a board that starts a ready row at
- *   once, and `resumesAsks: true` when it also has a waker, so `dispatchTask`
+ *   once, and `resumesWaits: true` when it also has a waker, so `dispatchTask`
  *   may offer `wait` ({@link TaskToolsOptions}).
  */
 export function createTaskToolsCapability(
@@ -1722,20 +1724,20 @@ export function createTaskToolsCapability(
 }
 
 /**
- * How a board's task tools are offered. With `resumesAsks`, two lists of the
+ * How a board's task tools are offered. With `resumesWaits`, two lists of the
  * same task tools are built, one with the wait and one without; that is
  * deliberate, so a turn's tools are picked, never rebuilt.
  */
 export interface TaskToolsOptions {
   /**
-   * The board has a waker: whatever runs it calls `resumeOwedAsks` when it
+   * The board has a waker: whatever runs it calls `resumeOwedWaits` when it
    * touches the board outside a turn (a board run, a task's notice), so a
-   * turn parked on an ask is resumed when its task ends. Only then may
+   * turn parked on a wait is resumed when its task ends. Only then may
    * `dispatchTask` offer `wait`, so it has no effect without `dispatches`.
    * Default `false`: a board that nothing wakes would leave every wait to its
    * timeout.
    */
-  readonly resumesAsks?: boolean;
+  readonly resumesWaits?: boolean;
   /**
    * The board starts a ready row at once (FIX-1875): its ref's writes wake
    * whatever runs it, so `dispatchTask` is offered, and it means the work
@@ -1779,7 +1781,7 @@ export interface DispatchPostForm {
  * turn (waiting or not, routing a post or not), each built once, and the one
  * the turn can use. The nine, and `dispatchTask` on a board
  * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
- * `timeoutMs` only on a board that also resumes asks (`options.resumesAsks`)
+ * `timeoutMs` only on a board that also resumes waits (`options.resumesWaits`)
  * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
  * never waits.
  *
@@ -1797,7 +1799,7 @@ export function taskToolsForTurn(
   };
   const posts = options.dispatches === true ? options.posts : undefined;
   // Only `dispatchTask` waits, so a board without it has no waiting list.
-  const waits = options.resumesAsks === true && options.dispatches === true;
+  const waits = options.resumesWaits === true && options.dispatches === true;
   // One list per kind of turn, built once, the first time a turn needs it.
   const lists = new Map<string, GeneratorTool[]>();
   const listFor = (wait: boolean, posting: DispatchPostForm | undefined): GeneratorTool[] => {

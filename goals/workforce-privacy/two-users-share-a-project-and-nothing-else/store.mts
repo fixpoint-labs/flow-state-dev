@@ -22,6 +22,8 @@ export type StoredTask = {
   createdAt?: number;
   completedAt?: number;
   run?: { sessionId: string; requestId: string; attempt: number };
+  /** Server-written; `kind: "post"` marks a coordinator's hand-off of a post to a delegate, not a filed task, and `session` is where the delegate worked it. */
+  sealed?: { kind?: string; session?: { id?: string } };
 };
 
 export type StoredSession = {

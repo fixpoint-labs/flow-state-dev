@@ -1,7 +1,7 @@
 /**
- * `RequestHost.hasAskSweeper` (FIX-1816 BR-5): a turn is told an ask is
- * bounded only when this process runs a durability sweeper that times asks
- * out, so `dispatchTask` offers `wait` only where no ask can wait
+ * `RequestHost.hasWaitSweeper` (FIX-1816 BR-5): a turn is told a wait is
+ * bounded only when this process runs a durability sweeper that times waits
+ * out, so `dispatchTask` offers `wait` only where no wait can
  * forever. The resume verb is unaffected by it.
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -15,8 +15,8 @@ const probe = handler({
   inputSchema: z.object({}).passthrough(),
   outputSchema: z.any(),
   execute: (_input, ctx) => ({
-    hasAskSweeper: ctx.requestHost?.hasAskSweeper === true,
-    resumeAsk: typeof ctx.requestHost?.resumeAsk === "function"
+    hasWaitSweeper: ctx.requestHost?.hasWaitSweeper === true,
+    resumeWait: typeof ctx.requestHost?.resumeWait === "function"
   })
 });
 const flow = defineFlow({ kind: "probe", actions: { probe: { block: probe } } })({ id: "probe" });
@@ -41,30 +41,30 @@ async function probeWith(options: { durable: boolean; router: boolean; sweepInte
       stores: runtime.stores,
       runtimeConfig: runtime.runtimeConfig
     });
-    return result.output as { hasAskSweeper: boolean; resumeAsk: boolean };
+    return result.output as { hasWaitSweeper: boolean; resumeWait: boolean };
   } finally {
     await state.dispose();
   }
 }
 
-describe("RequestHost.hasAskSweeper", () => {
+describe("RequestHost.hasWaitSweeper", () => {
   it("is true on a durable host whose router built the durability sweeper", async () => {
-    expect(await probeWith({ durable: true, router: true })).toEqual({ hasAskSweeper: true, resumeAsk: true });
+    expect(await probeWith({ durable: true, router: true })).toEqual({ hasWaitSweeper: true, resumeWait: true });
   });
 
   it("is false on a durable host with no sweeper running, and the resume verb is still there", async () => {
-    expect(await probeWith({ durable: true, router: false })).toEqual({ hasAskSweeper: false, resumeAsk: true });
+    expect(await probeWith({ durable: true, router: false })).toEqual({ hasWaitSweeper: false, resumeWait: true });
   });
 
   it("is false when the sweep is turned off", async () => {
     expect(await probeWith({ durable: true, router: true, sweepIntervalMs: 0 })).toEqual({
-      hasAskSweeper: false,
-      resumeAsk: true
+      hasWaitSweeper: false,
+      resumeWait: true
     });
   });
 
   it("is false without durable execution", async () => {
-    expect(await probeWith({ durable: false, router: true })).toEqual({ hasAskSweeper: false, resumeAsk: false });
+    expect(await probeWith({ durable: false, router: true })).toEqual({ hasWaitSweeper: false, resumeWait: false });
   });
 
   it("is true on a router built directly with durable execution, whose sweeper runs: no FlowState in between", async () => {
@@ -93,7 +93,7 @@ describe("RequestHost.hasAskSweeper", () => {
         if (record?.status === "completed") output = (record as { result?: { output?: unknown } }).result?.output;
         else await new Promise((r) => setTimeout(r, 10));
       }
-      expect(output).toEqual({ hasAskSweeper: true, resumeAsk: true });
+      expect(output).toEqual({ hasWaitSweeper: true, resumeWait: true });
     } finally {
       (router as { dispose?: () => void }).dispose?.();
     }
@@ -115,8 +115,8 @@ describe("RequestHost.hasAskSweeper", () => {
       runtimeConfig: { durabilityProvider: provider, durabilityRetention: { sweepIntervalMs: 0 } }
     } as never);
     try {
-      expect(await probeThrough(quiet, stores)).toEqual({ hasAskSweeper: false, resumeAsk: true });
-      expect(await probeThrough(sweeping, stores)).toEqual({ hasAskSweeper: true, resumeAsk: true });
+      expect(await probeThrough(quiet, stores)).toEqual({ hasWaitSweeper: false, resumeWait: true });
+      expect(await probeThrough(sweeping, stores)).toEqual({ hasWaitSweeper: true, resumeWait: true });
     } finally {
       (sweeping as { dispose?: () => void }).dispose?.();
       (quiet as { dispose?: () => void }).dispose?.();

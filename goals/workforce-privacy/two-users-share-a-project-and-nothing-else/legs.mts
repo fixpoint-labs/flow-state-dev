@@ -20,7 +20,8 @@ import { rowsOf, sessionOn } from "./milestone.mts";
 import { act, everythingIn, refusal, talk, textOf, type Connected, type Person, type RosterEntry, type SessionSummary } from "./people.mts";
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 import { askInStream, delegatesPanel, projectGroups, projectWorkstreams, rosterRows, type ProjectAt } from "./screens.mts";
-import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession } from "./store.mts";
+import { isPostRow } from "../../lib/post-rows.mts";
+import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession, type StoredTask } from "./store.mts";
 
 const hex = (n = 2) => randomBytes(n).toString("hex");
 const WORDS = ["amber", "basalt", "cobalt", "delta", "ember", "fjord", "garnet", "harbor", "indigo", "juniper", "kestrel", "lagoon", "marble", "nimbus", "orchid", "pewter", "quill", "russet", "saffron", "tundra"];
@@ -611,7 +612,9 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         if (shown === undefined || entry === undefined || !shown.text.toLowerCase().includes(entry.status.toLowerCase())) r.fail("b5", `Alice's Storefront screen doesn't show the entry's status \`${entry?.status}\` (${shown?.text ?? drawn.errors.join(" | ")})`);
         else r.saw("b5", `Alice's Storefront screen shows \`${ws.id}\` with status \`${entry.status}\``);
         r.saw("b5", `${filed.length} task(s) on the workstream session's board: ${filed.map((t) => `\`${t.id}\` ${t.assignee} ${show(t.input)} → ${t.status}${t.error === undefined ? "" : ` (${String(t.error).slice(0, 120)})`}`).join("; ")}`);
-        const boards = new Set(taskRows(o.store).filter((t) => !before.has(t.partition.split("~")[0]!) && t.partition.split("~")[0] !== ws!.sessionId && newSessions(o.store, before).some((s) => t.partition.startsWith(s.id))).map((t) => t.partition));
+        // The coordinator's hand-off of the ask into the workstream session is a post row on its own board; any other row makes a third board.
+        const handOff = (t: StoredTask) => isPostRow(t) && t.sealed?.session?.id === ws!.sessionId;
+        const boards = new Set(taskRows(o.store).filter((t) => !handOff(t) && !before.has(t.partition.split("~")[0]!) && t.partition.split("~")[0] !== ws!.sessionId && newSessions(o.store, before).some((s) => t.partition.startsWith(s.id))).map((t) => t.partition));
         if (boards.size > 0) r.fail("b5", `a third board holds rows: ${show([...boards])}`);
         const created = newSessions(o.store, before);
         gradeOwned(r, "b5", created, A.userId, (await alice.workforce.roster()).map((x) => x.id), "every session b5 created");

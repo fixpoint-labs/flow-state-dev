@@ -149,8 +149,8 @@ describe("addTask refuses the fields it used to wait with, by name (BR-21)", () 
 
   it("offers neither field in addTask's schema, wherever a wait could be held", async () => {
     const collection = await board();
-    const canWait = { requestHost: { resumeAsk: async () => undefined, hasAskSweeper: true } };
-    const tools = taskToolsForTurn(async () => collection, roster, { dispatches: true, resumesAsks: true })(canWait);
+    const canWait = { requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } };
+    const tools = taskToolsForTurn(async () => collection, roster, { dispatches: true, resumesWaits: true })(canWait);
     const fields = Object.keys(((tool(tools, "addTask") as any).config.inputSchema as { shape: object }).shape);
     expect(fields).not.toContain("timeoutMs");
     expect(fields.some((f) => f.startsWith("wait"))).toBe(false);

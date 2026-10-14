@@ -167,7 +167,7 @@ Most boards leave `onIdle` alone. Override when:
 
 ## Waiting on a person: `onReview`
 
-A worker can park a task with `awaitReview` when it needs a human to look at something. By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, waiting for someone to move the task out of `parked`.
+A worker can park a task with `awaitReview` when it needs a human to look at something. (A worker that parks on its own question, with `parkOnQuestion`, is answered with `answerTask` instead; see [When a task stops on a question](#when-a-task-stops-on-a-question).) By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, waiting for someone to move the task out of `parked`.
 
 That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow. Nothing shortens the wait, though it does end: each worker stops after `maxIterations` (default `10000`), which on the default poll interval is most of a day. The task is left parked, and the board reports `terminationReason: "blocked-by-failures"` even when nothing failed.
 
@@ -225,18 +225,6 @@ A refused answer writes nothing. One park takes one answer: the first accepted a
 **The answering request has to reach the same task list.** The answer is looked up in whatever task list the request reaches, and the collection's `scope` decides which one that is. A `session`-scoped collection is reachable only from the same session under the same tenant. A `user`- or `org`-scoped collection spans every session that principal has, so anyone in the org can answer an org-scoped task. Reach the wrong task list and what happens depends on what it holds. If it has no task by that id, the step throws. If it holds a task with the same id that is also parked, the answer lands on that task and that board drains, with no error. Every board in this mode uses the ids you wrote in `initialTasks`, so two sessions parked at the same step both hold a task called `draft-42`. Nothing checks this for you.
 
 Whichever drain gets there first claims the task and runs it, exactly as if it had been queued that moment. If another drain claims the task before the one `unparkAndDrain` starts, that drain finds nothing to claim and returns.
-
-### Answering through the task tools
-
-`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can write the board can call it:
-
-```ts
-await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
-```
-
-It moves the task back to `pending` with the answer, like `unparkAndDrain`, but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. The claim that follows isn't charged against `maxAttempts`. The next attempt gets the answer as `input.answer`. `answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, one parked for a person's turn or waiting on its own sub-tasks included, and an answer that arrives after the task has moved on to a newer question, writing nothing.
-
-The worker's side is `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task dispatched with `wait` has no `parkOnQuestion`: its worker answers with what it has, or fails.
 
 ### What the mode requires
 
@@ -415,7 +403,7 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 
 The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A task keeps its session for its whole life. If its worker parks it on a question, the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there, or file a follow-up task with `followUpOf`, which runs in the same session. That holds for an assignee that hands off `per-task` and on a Workforce conversation's board; a `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The finished task itself never changes.
+A task keeps its session for its whole life. If its worker [parks it on a question](#when-a-task-stops-on-a-question), the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there, or file a follow-up task with `followUpOf`, which runs in the same session. That holds for an assignee that hands off `per-task` and on a Workforce conversation's board; a `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The finished task itself never changes.
 
 ### Sending a task to a flow chosen per task
 
@@ -591,9 +579,15 @@ Nothing a caller or a model sets can write `run`. Naming a session doesn't grant
 
 ### Giving another worker work
 
-On a board that dispatches, `addTask` records a task without starting it, and `assignTask`
-changes who owns a task, leaving a recorded one recorded. When you want another worker to
-start now, dispatch the task:
+`dispatchTask` is on a board that dispatches: one that starts a ready task as soon as it's
+written, such as a conversation's board in Workforce. A board that a drain runs decides for
+itself when each task runs, so it has no `dispatchTask`, and its `addTask` files a task the
+drain runs.
+
+On a board that dispatches, `addTask` records a task without starting it, and answers
+`{ ok: true, taskId, status: "recorded" }` with a one-line `note` saying the task starts on
+`dispatchTask`. `assignTask` changes who owns a task and leaves a recorded one recorded. When
+you want another worker to start now, dispatch the task:
 
 ```ts
 dispatchTask({ goal: "Draft the release note", assignee: "writer" })
@@ -606,10 +600,6 @@ you recorded earlier, name it instead of describing a new one:
 ```ts
 dispatchTask({ taskId: "task_8f2" })
 ```
-
-On a board that dispatches, `addTask` answers `{ ok: true, taskId, status: "recorded" }`, with a
-one-line `note` saying the task starts on `dispatchTask`. `assignTask` changes a recorded task's
-owner and leaves it recorded.
 
 If your next step needs the result, wait for it:
 
@@ -628,15 +618,15 @@ tool calls it makes.
 
 Only wait when the result changes what you do next. Otherwise let the task run and carry on.
 
-`dispatchTask` is on a board that can start work at once, such as a conversation's board in
-Workforce. A board that a drain runs decides for itself when each task runs, so it has no
-`dispatchTask`, and its `addTask` files a task the drain runs. Waiting needs more: a board that
+Waiting also needs a board that
 wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
 `createTaskToolsCapability` only when something starts a ready row as soon as it's written,
-the way a Workforce conversation does, and add `resumesAsks: true` only when that also calls
-`resumeOwedAsks` each time it touches the board outside a turn.
+the way a Workforce conversation does, and add `resumesWaits: true` only when that also calls
+`resumeOwedWaits(ctx, collection)` each time it touches the board outside a turn, for example
+when it runs the board or handles a task's notice. Without that call, a waiting turn isn't woken
+when its task ends and sits out its whole `timeoutMs`.
 
 | Input | |
 |---|---|
@@ -647,8 +637,11 @@ the way a Workforce conversation does, and add `resumesAsks: true` only when tha
 
 | Error | When |
 |---|---|
-| `assignee_required` | No `assignee`, and the conversation has more than one delegate to choose from. Nothing is filed |
+| `assignee_required` | No `assignee` named or already on the task, and the board has no single worker to give it to. Nothing is filed |
 | `task_not_dispatchable` | The task named by `taskId` has already started, ended, or been dispatched. Nothing changes |
+| `dispatch_target_required` | Neither `goal` nor `taskId`. Give `goal` for a new task or `taskId` for a recorded one. Nothing is filed |
+| `dispatch_target_ambiguous` | Both `goal` and `taskId`. Give one. Nothing is filed |
+| `dispatch_ref_takes_no_task_fields` | `taskId` with `deps`, `priority`, `input`, `metadata` or `followUpOf`. Change the recorded task with `updateTask` first. Nothing is written |
 | `wait_timed_out` | The task didn't end in time. It is cancelled |
 | `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |
 | `wait_timeout_without_wait` | `timeoutMs` without `wait`. Nothing is filed |
@@ -656,8 +649,12 @@ the way a Workforce conversation does, and add `resumesAsks: true` only when tha
 | `wait_already_pending` | This step already waits on a task. One wait per step |
 | `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
 
+A refused call returns `{ ok: false, error, taskId? }`, with `taskId` when a task was filed.
+`error` is the code, then `: ` and a sentence for the model, so match it with
+`error.startsWith("wait_timed_out")`, not `===`.
+
 Stopping a conversation while its turn waits ends the turn and cancels the task. A task you
-wait on is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's limits
+wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's limits
 apply. When it ends, the waiting turn continues with the answer, and the conversation gets no
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.
@@ -910,7 +907,7 @@ defineFlow({
 });
 ```
 
-The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos` and `listTasks_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos`, `listTasks_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
 
 Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. An `addTask`, `assignTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
 
@@ -921,6 +918,29 @@ The board needs a collection that outlives a request, built with `defineTaskColl
 These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers the ones that take a `taskId` on each row.
 
 Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
+
+## When a task stops on a question
+
+A worker that can't go on without an answer calls `parkOnQuestion({ question })`. It parks the task the worker is running, and the turn ends. The task waits until someone answers it with `answerTask`, then picks up again. A Workforce worker has it on every task turn; for a worker flow of your own, build it with `createParkOnQuestion({ resolve })`, which takes the task list the turn's task is on. A task [dispatched with `wait`](#giving-another-worker-work) has no `parkOnQuestion`: its worker answers with what it has, or fails.
+
+`answerTask` (sent as the `answerTask_<board>` action) answers a parked task. Anyone who can call the action can answer, whoever filed the task:
+
+```ts
+await client.sendAction("answerTask_tasks", { taskId: "t-7", answer: "approved" }, { sessionId })
+```
+
+It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#picking-it-back-up), but it doesn't drain the board. On a Workforce conversation's board the task starts on its own; on your own board, drain it afterwards. Its worker picks it up again in the same session, and the next attempt gets the answer as `input.answer`. Answering doesn't use up the task's retries: the claim that follows isn't charged against `maxAttempts`.
+
+`answerTask` takes only a task its worker parked with `parkOnQuestion`, and only for the question it is waiting on now. It declines any other task, including one parked with `awaitReview`, one parked while a person talks to its worker, or one waiting on its own sub-tasks. It also declines an answer that arrives after the task has moved on to a newer question. A declined answer writes nothing. What comes back:
+
+| Returned | When |
+|---|---|
+| `{ ok: true }` | The task was parked on its worker's question, and now holds the answer |
+| `{ ok: false, error: "not_parked_on_question: …" }` | Any other unfinished task, or a late answer |
+| `{ ok: false, error: "terminal_task_write_declined: …" }` | The task has finished |
+| `{ ok: false, error: "task_not_found" }` | The board holds no task with that id |
+
+Until the answered task runs again, `assignTask` and `updateTask` refuse to give it another worker (`task_awaiting_answer: …`), so the answer reaches the session that asked.
 
 ## Collection backing
 

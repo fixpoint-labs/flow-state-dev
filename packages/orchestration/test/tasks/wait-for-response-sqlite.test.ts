@@ -1,7 +1,7 @@
 /**
- * Ask across a SQLite cold restart (FIX-1816 P2, V3 and V4).
+ * Wait across a SQLite cold restart (FIX-1816 P2, V3 and V4).
  *
- * The turn asks and parks; the asked row ends; the runtime is thrown away
+ * The turn dispatches and parks; the waited-on row ends; the runtime is thrown away
  * after the ending's write and before anything resumed the turn. A second
  * runtime opens a fresh store registry on the same file, and the next touch
  * of the board resumes the turn once. The resumed turn replays to the waiting
@@ -15,8 +15,8 @@ import type { GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   act,
-  askCall,
-  askFlow,
+  waitCall,
+  waitFlow,
   finalAnswer,
   rows,
   runtimeFor,
@@ -24,7 +24,7 @@ import {
   stepModel,
   toolResults,
   until
-} from "./ask-fixture";
+} from "./wait-fixture";
 
 let dir: string | undefined;
 const live: Array<ReturnType<typeof runtimeFor>> = [];
@@ -35,14 +35,14 @@ afterEach(async () => {
   dir = undefined;
 });
 
-describe("ask across a SQLite cold restart", () => {
+describe("wait across a SQLite cold restart", () => {
   it("an ending written before the restart is resumed by the next touch after it, once, and files one row", async () => {
-    dir = await mkdtemp(join(tmpdir(), "fsd-ask-board-"));
+    dir = await mkdtemp(join(tmpdir(), "fsd-wait-board-"));
     const filename = join(dir, "store.db");
     // One script across both runtimes: the step before the park, and the one after.
     const seen: GeneratorModelCallOptions[] = [];
 
-    const flowBefore = askFlow(stepModel([askCall("c1"), finalAnswer], seen).model);
+    const flowBefore = waitFlow(stepModel([waitCall("c1"), finalAnswer], seen).model);
     const before = runtimeFor(flowBefore, sqliteStores({ filename }));
     live.push(before);
     const parked = await act(before, flowBefore, "run");
@@ -53,7 +53,7 @@ describe("ask across a SQLite cold restart", () => {
     await before.dispose();
     live.splice(live.indexOf(before), 1);
 
-    const flowAfter = askFlow(stepModel([askCall("c1"), finalAnswer], seen).model);
+    const flowAfter = waitFlow(stepModel([waitCall("c1"), finalAnswer], seen).model);
     const after = runtimeFor(flowAfter, sqliteStores({ filename }));
     live.push(after);
     const touched = await act(after, flowAfter, "touch");
