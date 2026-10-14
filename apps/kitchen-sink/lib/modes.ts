@@ -35,7 +35,7 @@ export interface KitchenSinkMode {
 export const MODES: readonly KitchenSinkMode[] = [
   { id: "flow-state", label: "Flow State", href: "/flow-state" },
   { id: "claude-code", label: "Claude Code", href: "/claude-code", flowKind: "claude-code-session" },
-  { id: "codex", label: "Codex", href: "/codex" },
+  { id: "codex", label: "Codex", href: "/codex", flowKind: "codex-session" },
   { id: "cursor", label: "Cursor", href: "/cursor", flowKind: "cursor-session" },
 ];
 

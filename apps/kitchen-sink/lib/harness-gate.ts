@@ -24,6 +24,7 @@
  * yet" under it: there is nothing to open.
  */
 import { claudeCodeModeCheck } from "./claude-code-mode";
+import { codexModeCheck } from "./codex-mode";
 import { cursorModeCheck } from "./cursor-mode";
 import { goalControl } from "./goal-control";
 import { readHarnessWorkspace, type HarnessWorkspace } from "./harness-workspace";
@@ -57,6 +58,7 @@ export type ModeCheck = (host: ModeCheckHost) => ModeAvailability | Promise<Mode
  */
 export const MODE_CHECKS: Partial<Record<HarnessModeId, ModeCheck>> = {
   "claude-code": claudeCodeModeCheck(),
+  codex: codexModeCheck(),
   cursor: cursorModeCheck(),
 };
 

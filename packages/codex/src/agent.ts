@@ -36,6 +36,7 @@ import {
   CodexAgentConfigError,
   CodexAgentRunError,
   CodexSdkNotInstalledError,
+  isUnknownThreadFailure,
 } from "./errors";
 import {
   CODEX_SOURCE,
@@ -320,7 +321,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
-        const failure = toRunFailure(err, sessionId);
+        const failure = toRunFailure(err, sessionId, hookFired ? null : resumeId);
         await emitTranslatedEvent(
           { kind: "error", message: failure.message, code: failure.code },
           ctx,
@@ -374,8 +375,15 @@ export function codexAgent(options: CodexAgentOptions = {}) {
  *
  * So: our own classes pass through, and a foreign throw is wrapped with its
  * original kept on the native `cause` chain rather than flattened to a string.
+ *
+ * `unnamedResume` is the thread the run asked to resume when the stream never
+ * named one, else `null`: only then can the failure be Codex refusing it.
  */
-function toRunFailure(err: unknown, sessionId: string | null): CodexAgentError {
+function toRunFailure(
+  err: unknown,
+  sessionId: string | null,
+  unnamedResume: string | null,
+): CodexAgentError {
   // Re-minted rather than passed through: the abort raised inside the race
   // knows no thread id, and the id is the whole point of the error — it is what
   // lets a manager resume the run its own deadline killed.
@@ -385,6 +393,17 @@ function toRunFailure(err: unknown, sessionId: string | null): CodexAgentError {
   if (err instanceof CodexSdkNotInstalledError) return err;
   if (err instanceof CodexAgentRunError) return err;
   const reason = err instanceof Error ? err.message : String(err);
+  // Codex refusing the thread this run asked for, before naming any thread, is
+  // the one failure classified in core's vocabulary: a host shows it refused
+  // and keeps the id. Every other failure, early or late, is an ordinary error.
+  if (unnamedResume !== null && isUnknownThreadFailure(reason, unnamedResume)) {
+    return new CodexAgentRunError(
+      `Codex did not continue thread ${unnamedResume}: ${reason}`,
+      { cause: reason },
+      err,
+      "unknown-conversation",
+    );
+  }
   return new CodexAgentRunError(`Codex run failed: ${reason}`, { cause: reason }, err);
 }
 

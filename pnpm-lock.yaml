@@ -154,6 +154,9 @@ importers:
       '@flow-state-dev/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@flow-state-dev/codex':
+        specifier: workspace:*
+        version: link:../../packages/codex
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -205,6 +208,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@openai/codex-sdk':
+        specifier: 0.152.1
+        version: 0.152.1
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
