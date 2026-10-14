@@ -102,6 +102,8 @@ import {
   type BestFitPlacement
 } from "../best-fit";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
+import { markPersonTurn } from "../standing-rules/person-turn";
+import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
 import {
@@ -667,6 +669,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         from: ctx.session.identity.userId ?? "",
         round: 0
       });
+      // A person's own post: the judgment turn it runs is offered the rule
+      // tools (FIX-1945 D2). A round that sends answers back out is not.
+      await markPersonTurn(ctx as never);
       return { message: input.message, policy: post.policy };
     }
   });
@@ -1604,7 +1609,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         block: door,
         userMessage: (input: DoorInput) => input.message,
         concurrency: REPLY_CONCURRENCY
-      }
+      },
+      // A page reads and edits the coordinator's standing rules for the
+      // signed-in person here (FIX-1945 S5).
+      [STANDING_RULES_ACTION]: standingRulesAction
     },
     internal: {
       actions: {
