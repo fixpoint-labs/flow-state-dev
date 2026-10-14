@@ -89,6 +89,11 @@ export function turnChainOf(ctx: Pick<BlockContext, "request" | "session">): str
   return sessionChainOf(ctx.session.state);
 }
 
+/** The hop count and chain a task's session is born with: its filer's, so the task counts on in the filer's exchange. */
+export function carriedHopState(state: unknown): Record<string, unknown> {
+  return { [MESSAGE_HOP_STATE]: sessionHopOf(state), [MESSAGE_CHAIN_STATE]: sessionChainOf(state) ?? null };
+}
+
 /**
  * Start this turn at `hop` in `chain`: the session's current count and chain,
  * and this request's. The session fields are written only when they would

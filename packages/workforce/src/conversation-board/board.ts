@@ -66,7 +66,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
-import { MESSAGE_CHAIN_STATE, MESSAGE_HOP_STATE, sessionChainOf, sessionHopOf } from "../messages/hop";
+import { carriedHopState } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress, TaskTargetQuery } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -357,8 +357,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // The filer's worker-message hop count and chain (FIX-1989): a
         // message from the task counts on in the exchange of the turn that
         // filed it. Never the task chain's.
-        [MESSAGE_HOP_STATE]: sessionHopOf(ctx.session.state),
-        [MESSAGE_CHAIN_STATE]: sessionChainOf(ctx.session.state) ?? null,
+        ...carriedHopState(ctx.session.state),
         ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
         ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project })
