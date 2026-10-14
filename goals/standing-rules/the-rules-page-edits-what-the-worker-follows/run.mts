@@ -32,7 +32,6 @@ const ASKS = [
   "In one sentence, what is the trade-off of a monorepo?",
 ];
 
-/** The control: every page write becomes a local edit of the list drawn, and nothing reaches the Lab. */
 const CONTROL_PATCHES: Patch[] = [
   {
     file: "src/lib/rules.ts",
@@ -54,7 +53,6 @@ function textOf(item: StoredItem): string {
   return "";
 }
 
-/** The rule texts the page draws, in order. */
 async function drawn(page: Page): Promise<string[]> {
   return page.getByTestId("rule-text").allTextContents();
 }

@@ -1,4 +1,4 @@
-/** A roster worker's standing rules at `/roster/<workerId>/rules`. */
+/** `/roster/<workerId>/rules`. A flow that keeps none gets a line, not an empty list. */
 import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
 import { chiefOfStaffOf, workerLabel, type LoadedSnapshot } from "../lib/derive";

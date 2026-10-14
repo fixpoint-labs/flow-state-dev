@@ -1,11 +1,5 @@
 // @vitest-environment happy-dom
-/**
- * A worker's Rules (FIX-1945 S6, BR-19 to BR-21a): which Roster rows open
- * one, what the view draws, and that every edit goes to the Lab naming the
- * version of the list it was drawn from. The Lab is a fake that keeps one
- * list and refuses as the rules action does, so a page that drew its own
- * idea of the list, or wrote without the version, shows here.
- */
+/** The fake list refuses a stale version, so a page that writes its own list shows here. */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";

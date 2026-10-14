@@ -1,36 +1,19 @@
-/**
- * One worker's standing rules for the signed-in user, read and edited
- * through that worker's `standingRules` action.
- */
+/** A worker's standing rules, read and edited through its rules action. */
 import { useCallback, useEffect, useState } from "react";
 import type { StandingRulesActionOutput } from "@flow-state-dev/workforce/browser";
 import { describeFailure, type Failure } from "./reads";
 import { useWorkforce } from "./workforce";
 
-/** One rule as the page draws it. */
 export type StandingRule = StandingRulesActionOutput["rules"][number];
 
-/** The list read: the list, why it couldn't be read, or `undefined` until the first read lands. */
-export type RulesRead = { list: StandingRulesActionOutput } | { failure: Failure } | undefined;
+type RulesRead = { list: StandingRulesActionOutput } | { failure: Failure } | undefined;
 
-/** One edit the page makes. Change and remove name the rule as it was drawn. */
-export type RuleEditInput =
+type RuleEditInput =
   | { op: "add"; text: string }
   | { op: "change"; rule: StandingRule; text: string }
   | { op: "remove"; rule: StandingRule };
 
-export interface StandingRulesView {
-  read: RulesRead;
-  busy: boolean;
-  /** The last edit's refusal; cleared when the next edit starts. */
-  refused: Failure | undefined;
-  reread(): void;
-  /** Applies `input` to the list just read. Resolves `true` when the Lab kept it. */
-  edit(input: RuleEditInput): Promise<boolean>;
-}
-
-/** `worker`'s standing rules for the user, and the edits the page makes to them. */
-export function useStandingRules(workerId: string): StandingRulesView {
+export function useStandingRules(workerId: string) {
   const workforce = useWorkforce();
   const [read, setRead] = useState<RulesRead>(undefined);
   const [busy, setBusy] = useState(false);

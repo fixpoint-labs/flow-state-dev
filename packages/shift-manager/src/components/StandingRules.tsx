@@ -1,12 +1,8 @@
-/**
- * One worker's standing rules: the text, when it was added, and the conversation
- * it came from, with add, edit, and delete. Drawn on the Rules screen and in the
- * Shift Coordinator's panel.
- */
+/** A worker's standing rules. `compact` draws the list in a side panel. */
 import { useState } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { MAX_RULE_CHARS, MAX_RULES } from "@flow-state-dev/workforce/browser";
-import { useStandingRules, type StandingRule, type StandingRulesView } from "../lib/rules";
+import { useStandingRules, type StandingRule } from "../lib/rules";
 import { SectionFailure } from "./ui";
 
 export function StandingRules({ workerId, name, devtoolUrl, compact = false }: { workerId: string; name: string; devtoolUrl?: string; compact?: boolean }) {
@@ -76,7 +72,7 @@ function Origin({ rule, devtoolUrl }: { rule: StandingRule; devtoolUrl?: string 
   );
 }
 
-function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtoolUrl?: string; busy: boolean; edit: StandingRulesView["edit"] }) {
+function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtoolUrl?: string; busy: boolean; edit: ReturnType<typeof useStandingRules>["edit"] }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <li className="flex flex-col gap-1 px-3 py-2" data-testid="rule" data-number={rule.number}>
