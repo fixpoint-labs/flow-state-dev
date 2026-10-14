@@ -47,6 +47,15 @@ It comes down to a check that accepts the old tool: only the strict rule fails i
 accept both names until P2 lands. Then the alternation is admitted only at P1, and the script
 fails it again at the closure commit, where only `dispatchTask` starts work.
 
+<a name="d3"></a>
+## D3 · The map judges each child's own merge, not one diff from the epic's start (amended 2026-10-14)
+
+| | |
+|---|---|
+| **Instead of** | One diff, `f1ae352..HEAD`, over the six checks (and the V9 reruns from the control commit), as first written. Or moving that base forward |
+| **Because** | The claim is that *the epic* changed nothing but names. Fixes from outside the epic changed all three regression checks after this spec was written: FIX-1933 (#3214), FIX-1979 and FIX-1981 (#3346), and, in a coordinator check and a rerun, FIX-1925 (#3188) and FIX-1967 (#3301). The first closure run failed 94 hunks on the single diff, most of them theirs. No base makes that diff pass, and a moved base would drop a child's own changes. Judging each child merge from its first parent (`--base M^1 --head M --rerun-base M^1`) reads exactly what the epic changed |
+| **Locks in** | The runner pins the child PRs (#3168, #3180, #3212, #3232, #3274, #3325, #3358), finds each merge on `main`'s first-parent line, and prints a verdict for each. A child PR added later is added to that list. Two token contexts count as names, each with a control proving a non-name change there still fails: a name as a type-literal or object key (`{ ask?: unknown }` → `{ wait?: unknown }`), and a name ending a regex literal (`/addTask$/` → `/dispatchTask$/`). Nothing else widens: long prose rewritten in place and the #3153 `internal` → `task` entry stay as they were |
+
 ## Decided, not asked
 
 - **The scripts are built now, in this spec, not at the closure run.** FIX-1872's V9, FIX-1876's
@@ -66,8 +75,9 @@ fails it again at the closure commit, where only `dispatchTask` starts work.
   that differs, or a promise nothing reaches, is a finding against the child that published it.
 - **FIX-1820's runner is composed whole.** It also reruns FIX-1791's and FIX-1794's checks and
   `routes-a-follow-up-by-its-conversation`, so those run once, not twice.
-- **The rename-map base is `f1ae352`**, #3109's merge, "since this spec merged". No commit since
-  touched the six checks (`git log f1ae352..9825241` over them is empty).
+- ~~**The rename-map base is `f1ae352`**, #3109's merge, "since this spec merged". No commit since
+  touched the six checks (`git log f1ae352..9825241` over them is empty).~~ Superseded by [D3](#d3):
+  by the closure run, outside fixes had touched them.
 - **`post-to-mailbox` is already gone.** Its sweep rule passes on today's `main`; it stays in
   the sweep so it cannot come back.
 
@@ -90,3 +100,5 @@ fails it again at the closure commit, where only `dispatchTask` starts work.
   to list their tools and exports): the static rules already read those names, and FIX-1875 V6 and
   FIX-1872 BR-18 refuse them at run time. Added a rule for `timeoutMs` on `addTask` and widened the
   `handOff` rule to exports and worker `tools:` lines; 165 live lines on the same `main`.
+- **Amendment** (2026-10-14): the first closure run failed the single diff on fixes from outside
+  the epic; [D3](#d3) judges each child's merge instead, and admits two token contexts.

@@ -25,7 +25,7 @@ shows the rule held.
 | CR-7 | A composed check documents controls | Each runs, and goes red at exactly its documented tags plus its documented co-failures. One that passes, fails at setup, or reddens another tag is a finding against the control | Each verdict line |
 | CR-8 | A model step misses | The composed check's own attempt cap applies (`GOAL_ATTEMPTS`). Every attempt is in the report | Report |
 | CR-9 | The sweep runs | At the commit and at the control commit: the first parent of the merge of FIX-1875's first PR | Both SHAs in the report |
-| CR-10 | The rename-map script runs | Over the six checks, from `f1ae352` to the commit, and over FIX-1872 V9's reruns from the control commit, after `--sources` agrees with the children's tables and `--control` catches every plant | Its three outputs in the report |
+| CR-10 | The rename-map script runs | Over each child merge's diff to the six checks and FIX-1872 V9's reruns, from the merge's first parent ([D3](DECISIONS.md#d3)), after `--sources` agrees with the children's tables and `--control` catches every plant | Its three outputs in the report |
 
 ## What counts as only names
 

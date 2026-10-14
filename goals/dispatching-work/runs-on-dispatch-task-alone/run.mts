@@ -9,7 +9,8 @@
  * (`rename-map.mjs`, `surface-sweep.mjs`), shaped like FIX-1820's closure
  * runner (`goals/hand-offs/survives-a-restart-and-runs-once/run.mts`):
  *
- * - P1.m, P1.s: the two scripts, first, since they need no model.
+ * - P1.m, P1.s: the two scripts, first, since they need no model; P1.m judges each
+ *   epic child's own merge diff (D3).
  * - P1.r: FIX-1820's closure runner, composed whole.
  * - P1.k: FIX-1610's check, plain and under each control its goal.md lists.
  * - P1.c: the controls of FIX-1791's and FIX-1794's checks P1.r runs plain.
@@ -44,6 +45,8 @@ interface Check {
   env?: Record<string, string | null>;
   /** A script graded on its exit code alone. */
   exit?: number;
+  /** What the verdict line names it by, when its arguments would not. */
+  label?: string;
   control?: string;
   /** A control's must-fail tags, by name. */
   mustFail?: string[];
@@ -62,6 +65,24 @@ function controlCommit(): string {
     .at(-1);
   if (first === undefined) throw new Error("no merge of FIX-1875's first PR under HEAD, so there is no control commit");
   return git("rev-parse", `${first.split("\t")[0]}^1`);
+}
+
+/**
+ * The epic's child PRs, merged to main (D3). Pinned, not searched for by title: a child's PR is a
+ * fact of the epic's history, and a list that grew on its own would judge diffs the epic didn't make.
+ * FIX-1875 P1, P2 · FIX-1872 P1, P2 · FIX-1876 P1, P2, P3. FIX-1871 and FIX-1874 were cancelled.
+ */
+const CHILD_PRS = [3168, 3180, 3212, 3232, 3274, 3325, 3358];
+
+/** Each child PR's merge on HEAD's first-parent line, and its first parent; a missing one stops the run. */
+function childMerges(): Array<{ pr: number; merge: string; base: string }> {
+  const merges = git("log", "--first-parent", "--merges", "--format=%H%x09%s", "HEAD").split("\n");
+  return CHILD_PRS.map((pr) => {
+    const line = merges.find((m) => m.includes(`Merge pull request #${pr} `));
+    if (line === undefined) throw new Error(`no merge of #${pr} under HEAD, so its diff can't be judged`);
+    const merge = line.split("\t")[0]!;
+    return { pr, merge, base: git("rev-parse", `${merge}^1`) };
+  });
 }
 
 const goal = (part: string, script: string, more: Partial<Check> = {}): Check => ({ part, bin: "tsx", args: [script], ...more });
@@ -92,7 +113,10 @@ function checks(ctrl: string): Check[] {
     // P1.m: --sources agrees (0), --control catches every plant (2), the diff is explained (0).
     { part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--sources"], exit: 0 },
     { part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--control"], exit: 2 },
-    { part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--rerun-base", ctrl], exit: 0 },
+    // D3: each epic child's own merge, judged from its first parent, the V9 reruns included.
+    ...childMerges().map(
+      ({ pr, merge, base }): Check => ({ part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--base", base, "--head", merge, "--rerun-base", base], exit: 0, label: `#${pr} ${merge.slice(0, 9)}` }),
+    ),
     // P1.s: 0 live lines at HEAD (0), live lines at the control commit (1), every rule catches its plant (2).
     { part: "P1.s", bin: "node", args: [`${HERE}/surface-sweep.mjs`, "--assert"], exit: 0 },
     { part: "P1.s", bin: "node", args: [`${HERE}/surface-sweep.mjs`, "--assert", "--at", ctrl], exit: 1 },
@@ -199,7 +223,7 @@ await runGoal(async (failures) => {
   say(`one commit for every check: ${sha}; the control commit: ${ctrl}; logs in ${LOGS}`);
   const rows: string[] = [];
   for (const [index, check] of list.entries()) {
-    const shown = check.bin === "tsx" ? check.args[0]!.split("/").slice(-2).join("/") : check.args.map((a) => (a === ctrl ? ctrl.slice(0, 9) : a.split("/").at(-1))).join(" ");
+    const shown = check.label !== undefined ? `${check.args[0]!.split("/").at(-1)} ${check.label}` : check.bin === "tsx" ? check.args[0]!.split("/").slice(-2).join("/") : check.args.map((a) => (a === ctrl ? ctrl.slice(0, 9) : a.split("/").at(-1))).join(" ");
     const extra = Object.entries(check.env ?? {}).filter(([k]) => k.startsWith("GOAL_")).map(([k, v]) => ` ${k}=${v}`).join("");
     const name = `${check.part} ${shown}${check.control ? ` GOAL_CONTROL=${check.control}` : ""}${extra}`;
     const now = cleanHead();

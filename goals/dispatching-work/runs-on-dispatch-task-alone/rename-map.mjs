@@ -159,13 +159,25 @@ const SHAPES = {
 
 /** Why a differing token pair is a name, or undefined when it isn't. */
 function pairOk(o, n, i, oldT, newT, group, hunkText) {
+  // A name at the end of a regex literal (`/(^|[._/])addTask$/`): the tokenizer keeps the
+  // anchor on the word, so compare the names without it. Anything else in the literal is
+  // still compared token by token (D3).
+  if (o.endsWith("$") && n.endsWith("$") && oldT[i + 1] === "/" && newT[i + 1] === "/") {
+    const r = pairOk(o.slice(0, -1), n.slice(0, -1), i, oldT, newT, group, hunkText);
+    return r === undefined ? undefined : `${r}, in a regex literal`;
+  }
   const key = `${o}\u0000${n}`;
   if (COORDINATOR_ONLY.has(key)) {
     if (group !== "coordinator") return undefined;
     if (key === "internal\u0000task") return /DELEGATED_POST_ENTRY|delegatedPostEntry/.test(hunkText) ? "#3153 declaration move" : undefined;
     return /handOff/.test(hunkText) ? "#3153 handOff → dispatchTask({ post: true, assignee })" : undefined;
   }
-  if (key === "ask\u0000wait") return oldT[i - 1] === "." ? "FIX-1876 Task.ask" : undefined;
+  if (key === "ask\u0000wait") {
+    if (oldT[i - 1] === ".") return "FIX-1876 Task.ask";
+    // The same field as a type-literal or object key: `{ ask?: unknown }` → `{ wait?: unknown }` (D3).
+    const keyed = ["{", ",", ";"].includes(oldT[i - 1]) && (oldT[i + 1] === ":" || (oldT[i + 1] === "?" && oldT[i + 2] === ":"));
+    return keyed ? "FIX-1876 Task.ask, as a property key" : undefined;
+  }
   if (key === "asked\u0000waitedOn") return oldT[i + 1] === ":" ? "FIX-1876 listing field" : undefined;
   if (PAIRS.has(key)) return "map";
   if (askFamily(o, n)) return "FIX-1876 *Ask* family";
@@ -337,6 +349,13 @@ if (args.includes("--control")) {
     ["a fence line beside a loosened timeout FAILS", [LEDGER_READ, parked], [ROW_READ, parked.replace("120_000", "240_000")], "coordinator", false, FENCE_PATH],
     ["a fence entry in another path admits nothing", [LEDGER_READ], [ROW_READ], "coordinator", false, "goals/coordinators/files-tasks-down-the-owners-chain/run.mts"],
     ["a fence line in a regression check FAILS", [LEDGER_READ], [ROW_READ], "regression", false, FENCE_PATH],
+    // D3: a name as a type-literal key, or at the end of a regex literal, is a name; any other change there is not.
+    ["a type-literal key renamed passes", ["const asked = rows.filter((t) => (t as { ask?: unknown }).ask != null);"], ["const asked = rows.filter((t) => (t as { wait?: unknown }).wait != null);"], "regression", true],
+    ["a type-literal key widened to both names FAILS", ["(t as { ask?: unknown }).ask != null"], ["(t as { ask?: unknown; wait?: unknown }).wait != null"], "regression", false],
+    ["a type-literal key made required FAILS", ["(t as { ask?: unknown }).ask != null"], ["(t as { wait: unknown }).wait != null"], "regression", false],
+    ["a name in a regex literal renamed passes", ['/(^|[._/])addTask$/.test(name)'], ['/(^|[._/])dispatchTask$/.test(name)'], "regression", true],
+    ["a regex literal widened to both names FAILS", ['/(^|[._/])addTask$/.test(name)'], ['/(^|[._/])(addTask|dispatchTask)$/.test(name)'], "regression", false],
+    ["a regex literal's anchor dropped FAILS", ['/(^|[._/])addTask$/.test(name)'], ['/(^|[._/])dispatchTask/.test(name)'], "regression", false],
   ];
   let wrong = 0;
   for (const [name, removed, added, group, want, path] of cases) {

@@ -6,14 +6,14 @@
 
 **Input:** one clean checkout. The runner composes checks it does not own, each run unchanged as its own process, plus two scripts of its own:
 
-- **P1.m** `rename-map.mjs`: the diff to the six checks (the three regression checks, `goals/hand-offs/ask-survives-a-restart/`, `goals/coordinators/task-session-stays-open/`, `goals/hand-offs/survives-a-restart-and-runs-once/`; the three coordinator checks, `goals/coordinators/hands-each-post-to-its-delegates/`, `goals/coordinators/files-tasks-down-the-owners-chain/`, `goals/workforce-mailboxes/a-routed-post-gets-one-answer/`) from `f1ae352` (the epic spec's merge), and FIX-1872 V9's reruns from the control commit. The map is read off FIX-1875's and FIX-1876's pinned tables; `fence-lines.json` lists each admitted fence line with its path, the removed and added text, and why.
+- **P1.m** `rename-map.mjs`: the diff to the six checks (the three regression checks, `goals/hand-offs/ask-survives-a-restart/`, `goals/coordinators/task-session-stays-open/`, `goals/hand-offs/survives-a-restart-and-runs-once/`; the three coordinator checks, `goals/coordinators/hands-each-post-to-its-delegates/`, `goals/coordinators/files-tasks-down-the-owners-chain/`, `goals/workforce-mailboxes/a-routed-post-gets-one-answer/`) and FIX-1872 V9's reruns, judged per epic child merge from its first parent (#3168, #3180, #3212, #3232, #3274, #3325, #3358; FIX-1887 D3). The map is read off FIX-1875's and FIX-1876's pinned tables; `fence-lines.json` lists each admitted fence line with its path, the removed and added text, and why.
 - **P1.s** `surface-sweep.mjs`: seven rules over package source, package READMEs, published pages, team worker files and the reference app, read through `git grep` at one commit.
 - **P1.r** FIX-1820's closure runner (`goals/hand-offs/survives-a-restart-and-runs-once/run.mts`), whole. **P1.k** FIX-1610's check and its controls. **P1.c** the controls of FIX-1791's and FIX-1794's checks that P1.r runs plain.
 - **P3.a** FIX-1875's check (`goals/dispatching-work/a-recorded-task-waits-for-dispatch/`) and leg e of `goals/workers/files-and-splits-down-the-chain/`. **P3.b** FIX-1872's check (`goals/coordinators/one-fence-answers-each-post-once/`), the two project goals, the pentest lab's two checks and kitchen-sink's `no-landing` control (`goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back/`). **P3.c** FIX-1876's sweep (`goals/vocabulary/one-word-per-thing/`) and its leg 2 scenario (`packages/integration-tests/src/scenarios/wait-parked-before-the-rename.test.ts`).
 
 Held out: each composed check picks its own words at run time; the scripts read whatever commit is checked out.
 
-**Signal:** one verdict line per check, each with the commit's SHA. `map:` `rename-map.mjs --rerun-base <control commit>` exits 0, every hunk explained, each fence line printed; `--sources` exits 0 and `--control` exits 2. `sweep:` `surface-sweep.mjs --assert` exits 0 at `HEAD` (0 live lines), exits 1 at the control commit, and `--control` exits 2. Each composed check plain PASS; each control red at exactly its documented tags plus its documented co-failures (CR-7).
+**Signal:** one verdict line per check, each with the commit's SHA. `map:` `rename-map.mjs --base M^1 --head M --rerun-base M^1` exits 0 for each child merge M, every hunk explained, each fence line printed; `--sources` exits 0 and `--control` exits 2. `sweep:` `surface-sweep.mjs --assert` exits 0 at `HEAD` (0 live lines), exits 1 at the control commit, and `--control` exits 2. Each composed check plain PASS; each control red at exactly its documented tags plus its documented co-failures (CR-7).
 
 **The control commit** is the first parent of the merge of FIX-1875's first PR (#3168), found from `git log --first-parent --merges` and printed by the run.
 
@@ -26,7 +26,7 @@ Held out: each composed check picks its own words at run time; the scripts read 
 ```
 node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --sources
 node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --control
-node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --rerun-base <control commit>
+node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --base <M^1> --head <M> --rerun-base <M^1>
 node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --assert [--at <commit>]
 node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --control
 ```
@@ -35,7 +35,7 @@ node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --cont
 
 | Control | Must fail |
 |---|---|
-| `rename-map.mjs --control` | exit 2: a loosened timeout, a dropped leg, an assertion widened to the old name, a shape entry in a regression check, a fence line beside a loosened timeout, in another path or in a regression check, each caught; a pure and a re-wrapped rename explained |
+| `rename-map.mjs --control` | exit 2: a loosened timeout, a dropped leg, an assertion widened to the old name, a shape entry in a regression check, a fence line beside a loosened timeout, in another path or in a regression check, a type-literal key or regex literal widened or otherwise changed, each caught; a pure and a re-wrapped rename explained |
 | `surface-sweep.mjs --assert --at <control commit>` | exit 1: the retired surface is live before FIX-1875's first PR |
 | `surface-sweep.mjs --control` | exit 2: every rule catches its planted line, and the marker clears it |
 
