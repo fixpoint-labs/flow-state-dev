@@ -98,7 +98,7 @@ const flows = hireWorkforce(installation, { messages: { hopLimit: 10, perTurn: 5
 
 | Option | Default | What it limits |
 |--------|---------|----------------|
-| `messages.hopLimit` | `6` | Worker messages in one chain before a person's line. |
+| `messages.hopLimit` | `6` | Worker messages in one chain before a user's line. |
 | `messages.perTurn` | `3` | Messages one turn sends. |
 
 Each must be a whole number of at least 1, or `hireWorkforce` throws.
@@ -202,7 +202,7 @@ Each row has:
 | `exchange` | The id of the first message in the exchange. A message and its answers share one. |
 | `replyTo` | The message this one answers, when it answers one. |
 | `fromSession`, `toSession` | The session it was sent from, and the session it landed in. |
-| `hop` | Its place in the chain since the last person's line, from 1. |
+| `hop` | Its place in the chain since the last user's line, from 1. |
 | `status` | `delivered`, `refused`, or `unconfirmed`. |
 | `reason` | Why it was refused or is unconfirmed. |
 | `at` | When it was sent, in ms. |
