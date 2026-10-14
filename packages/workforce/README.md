@@ -1367,7 +1367,7 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   strict) and returns `{ workstream }`. It always writes the caller's own entry, with no `owner`
   and no `report` (the report stays the lead's). `project` resolves as for `setBrief`
   (`no-such-project`, `other-project`), and an id the caller has no workstream under is refused
-  `no-such-workstream`, including another member's.
+  `no-such-workstream`, including another worker's.
 - **`listLeadsTool`** is a tool named `listLeads` for whoever picks a lead. It takes no input and
   returns `{ leads: [{ id, description }] }` (`listLeadsOutputSchema`; `description` is a string or
   `null`): every worker on the caller's roster, their own and the standard ones, that can lead a
