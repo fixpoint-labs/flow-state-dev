@@ -25,6 +25,7 @@ The direction is settled first (extend the split); the three calls below are wha
 - **Recommendation: any task-taking worker on the roster.** The chain limits (FIX-1802 S5) already bound how deep and wide this goes.
 - **What would change my mind.** Workers getting pieces they shouldn't. Then reach becomes opt-in per worker (a "takes pieces from teammates" flag), with nothing persisted changing shape.
 - **If wrong.** A narrowing later is one roster rule; no data migrates.
+- **Delegates stay, as the reporting line** (Jake, 2026-10-14). A worker's delegates are who it hands its own work to by default and owns the results of. Collaboration, a message or a piece, is open to anyone on the roster.
 
 ![D1: any task-taking worker on the roster, chosen, beside its own delegates only. Decides it: a fact another worker holds. Price: a teammate can get pieces it didn't ask for. Locks in filing on the roster; flips if workers get pieces they shouldn't](figures/d1-who-gets-pieces.svg)
 
