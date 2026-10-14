@@ -22,7 +22,8 @@ These commands should pass cleanly before starting any work.
 
 `pnpm install` also installs a pre-push git hook (husky, `.husky/pre-push`) that
 runs `pnpm lint` and blocks the push if it fails. The first run takes about a
-minute; later runs re-lint only changed files.
+minute. Later runs still walk the whole repo, but ESLint's cache skips files
+that have not changed, so they take a few seconds.
 
 > Run `pnpm packages:build` once after cloning. Workspace packages resolve
 > their `types` condition to `./dist/*.d.ts`, so without it VS Code / `tsserver`
