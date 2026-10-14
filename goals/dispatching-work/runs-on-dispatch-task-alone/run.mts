@@ -82,6 +82,12 @@ function checks(ctrl: string): Check[] {
   const FIX_1875 = "goals/dispatching-work/a-recorded-task-waits-for-dispatch/run.mts";
   const FIX_1872 = "goals/coordinators/one-fence-answers-each-post-once/run.mts";
   const browsers = { PLAYWRIGHT_BROWSERS_PATH: "/opt/pw-browsers" };
+  /** The kitchen-sink check refuses to start while any provider key is set. */
+  const NO_PROVIDER_KEYS = Object.fromEntries(
+    Object.keys(process.env)
+      .filter((k) => /^(AI_GATEWAY|OPENAI|ANTHROPIC|MY_ANTHROPIC|OPENROUTER|GOOGLE_GENERATIVE_AI|GROQ|XAI|MISTRAL)_API_KEY$/.test(k))
+      .map((k) => [k, null]),
+  );
   return [
     // P1.m: --sources agrees (0), --control catches every plant (2), the diff is explained (0).
     { part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--sources"], exit: 0 },
@@ -104,9 +110,11 @@ function checks(ctrl: string): Check[] {
     control("P1.c", FIX_1791, "no-roster-check", ["f:bobs-worker-refused"], ["f:missing-refused", "f:tool-refused"]),
     control("P1.c", FIX_1791, "no-round-limit", ["e:four-then-none"], []),
     control("P1.c", FIX_1791, "no-delegate-read", ["d:reply-equals-list"], ["d:read-equals-list"]),
-    control("P1.c", FIX_1791, "no-self-choice", ["h:hire-turn"], []),
+    // Its verdict log (2026-10-10): "the other three asks of leg h the same".
+    control("P1.c", FIX_1791, "no-self-choice", ["h:hire-turn"], ["h:fire-turn", "h:who-turn", "h:project-turn"]),
     control("P1.c", FIX_1791, "no-floor", ["e:below-floor"], []),
-    control("P1.c", FIX_1791, "turn-after-route", ["a:no-turn"], []),
+    // Its verdict log (2026-10-10, 2026-10-11): "`a:evaluated` red with it".
+    control("P1.c", FIX_1791, "turn-after-route", ["a:no-turn"], ["a:evaluated"]),
     // P1.c: FIX-1794's controls.
     control("P1.c", FIX_1794, "unpartitioned", ["c:runs-its-own"], ["c:lists-its-own", "c:found-its-own", "c:drain-returns"]),
     control("P1.c", FIX_1794, "no-follow-up", ["a:one-notice", "e:one-notice"], ["e:refiled", "e:reply-names"]),
@@ -122,7 +130,7 @@ function checks(ctrl: string): Check[] {
     goal("P3.b", "goals/pentest-lab/a-post-reaches-both-declared-seats/run.mts"),
     goal("P3.b", "goals/pentest-lab/a-seat-answers-from-its-own-document/run.mts"),
     // Kitchen-sink's `no-landing` control: this check runs its plain journey and every control itself, keyless.
-    goal("P3.b", "goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back/run.mts", { env: { ...browsers, AI_GATEWAY_API_KEY: null } }),
+    goal("P3.b", "goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back/run.mts", { env: { ...browsers, ...NO_PROVIDER_KEYS } }),
     // P3.c: FIX-1876's sweep (its run also runs --control) and its leg 2 scenario.
     goal("P3.c", "goals/vocabulary/one-word-per-thing/run.mts"),
     { part: "P3.c", bin: "node", args: ["goals/vocabulary/one-word-per-thing/sweep.mjs", "--control"], exit: 0 },
