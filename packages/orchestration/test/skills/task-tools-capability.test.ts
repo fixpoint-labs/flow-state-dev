@@ -198,6 +198,17 @@ describe("taskTools — happy paths (own-state board)", () => {
     expect(read.task.outputCut).toBe(true);
   });
 
+  it("readTask cuts an input too long to return, the same way", async () => {
+    const { ctx } = buildCtx({
+      preTasks: {
+        big: { id: "big", goal: "g", status: "pending", attempts: 0, input: { notes: "y".repeat(READ_OUTPUT_LIMIT) }, createdAt: Date.now(), updatedAt: Date.now() },
+      },
+    });
+    const read = (await runForTest(findTool("readTask"), { taskId: "big" }, ctx)) as { task: { input: string; inputCut?: true } };
+    expect(read.task.input).toHaveLength(READ_OUTPUT_LIMIT);
+    expect(read.task.inputCut).toBe(true);
+  });
+
   it("readTask answers task_not_found for a task the board doesn't hold", async () => {
     const { ctx } = buildCtx();
     const read = await runForTest(findTool("readTask"), { taskId: "nope" }, ctx);

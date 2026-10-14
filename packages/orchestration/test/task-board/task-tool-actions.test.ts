@@ -1,5 +1,5 @@
 /**
- * `taskToolActions` — a durable board's eight task tools, as flow actions.
+ * `taskToolActions` — a durable board's ten task tools, as flow actions.
  *
  * What the actions are for is changing a task from OUTSIDE the request that
  * filed it: a person in the DevTool cancelling a stuck row, or bumping a

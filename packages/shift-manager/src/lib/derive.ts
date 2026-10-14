@@ -255,9 +255,9 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
   parked: Section<BoardRow[]>;
   running: Section<{ runs: number; workstreams: number }>;
 } {
-  const failed = snapshot.inventory.ok ? boardFailure(snapshot) : snapshot.inventory.failure;
-  const running = openRows(snapshot).filter(isRunning);
   const boardsFailed = boardFailure(snapshot);
+  const failed = snapshot.inventory.ok ? boardsFailed : snapshot.inventory.failure;
+  const running = openRows(snapshot).filter(isRunning);
   return {
     asks: snapshot.asks,
     parked:

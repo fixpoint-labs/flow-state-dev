@@ -771,9 +771,10 @@ claim clears it until the next run starts.
 
 `readTask({ taskId })` returns one task whole, for a model that has to answer from what the
 task found rather than from its `listTasks` row:
-`{ ok: true, task: { id, goal, title?, status, assignee?, input?, output?, outputCut?, error?, question?, followUpOf?, run?, completedAt? } }`.
+`{ ok: true, task: { id, goal, title?, status, assignee?, input?, inputCut?, output?, outputCut?, error?, question?, followUpOf?, run?, completedAt? } }`.
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
-comes back as that text cut to 20,000 characters, with `outputCut: true`. `question` is set only
+comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` that long is
+cut the same way, with `inputCut: true`. `question` is set only
 on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
