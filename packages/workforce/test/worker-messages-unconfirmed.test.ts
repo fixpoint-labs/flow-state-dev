@@ -34,7 +34,8 @@ async function run(times: number) {
   throwing.count = 0;
   throwing.times = times;
   let called = false;
-  const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("codename"), then: { text: "Thinking." } }, { when: () => true, then: { text: "OK." } }] });
+  // The lead's turn ends with no text, so no answer is relayed: only otto's message is in the log.
+  const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("codename"), then: { text: "" } }, { when: () => true, then: { text: "" } }] });
   const h = bootBoardHost({
     judgment,
     agentAnswer: mockGenerator({

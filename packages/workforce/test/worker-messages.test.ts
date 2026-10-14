@@ -61,7 +61,16 @@ function answerOnce(from: string, marker: string, text: string, after = "Answere
   ];
 }
 
-const fallback: MockGeneratorScriptEntry = { when: () => true, then: { text: "OK." } };
+/** Any other turn ends with no text, so a woken one sends no relayed answer. */
+const fallback: MockGeneratorScriptEntry = { when: () => true, then: { text: "" } };
+
+/**
+ * The board host, with a coordinator turn that ends with no text unless a test
+ * scripts one: a woken turn's text is relayed as its answer, and most tests
+ * here are about something else.
+ */
+const boot = (options: Parameters<typeof bootBoardHost>[0] = {}) =>
+  bootBoardHost({ judgment: mockGenerator({ script: [fallback] }), ...options });
 
 async function agentSession(h: BoardHost, userId: string, workerId: string): Promise<string> {
   const created = await h.create(userId, "agent", { state: { workerId } });
@@ -88,7 +97,7 @@ async function toolOutputs(h: BoardHost, sessionId: string): Promise<unknown[]> 
 describe("a worker messages another worker", () => {
   it("lands a line from the sender in the recipient's own conversation, opened at its derived address, and wakes its turn", async () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
-    const h = bootBoardHost({
+    const h = boot({
       judgment,
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
     });
@@ -104,8 +113,9 @@ describe("a worker messages another worker", () => {
       expect(lines.some((line) => line.text === "Thinking."), "the lead's turn ran").toBe(true);
 
       const rows = await logRows(h, "alice");
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
+      // The lead's "Thinking." is relayed back as its answer; the message itself is the first row.
+      expect(rows.map((row) => row.from).sort()).toEqual(["lead", "otto"]);
+      expect(rows.find((row) => row.from === "otto")).toMatchObject({ from: "otto", to: "lead", text: "What is the codename?", status: "delivered", hop: 1, fromSession: otto, toSession: lead!.id });
       // A message is not a task.
       expect(await h.rows("alice")).toEqual([]);
     } finally {
@@ -117,7 +127,7 @@ describe("a worker messages another worker", () => {
 describe("what a worker knows of who it can message", () => {
   it("is the tool's description: every roster worker the send would take, by id and description", async () => {
     const descriptions: string[] = [];
-    const h = bootBoardHost({
+    const h = boot({
       standard: teamWorkers(),
       agentAnswer: mockGenerator({ script: [fallback] }),
       observeTools: (block, _names, options) => {
@@ -147,7 +157,7 @@ describe("what a worker knows of who it can message", () => {
 
 describe("the log, read by an app", () => {
   it("is read through the user's roster session, and holds only that user's messages", async () => {
-    const h = bootBoardHost({
+    const h = boot({
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
@@ -174,6 +184,65 @@ describe("the log, read by an app", () => {
 });
 
 describe("an answer", () => {
+  it("is the woken turn's own text when it ends without messaging the sender back, sent as a reply that wakes the asker", async () => {
+    const h = boot({
+      // The lead answers in plain text, with no messageWorker call.
+      judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "It is Bluebird." } }, fallback] }),
+      agentAnswer: mockGenerator({
+        script: [
+          { when: (input) => textOf(input).includes("From lead: It is Bluebird."), then: { text: "The codename is Bluebird." } },
+          ...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }),
+          fallback
+        ]
+      })
+    });
+    try {
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "run", { message: "Please ask the lead" }, "agent");
+      await h.settled();
+      const rows = await logRows(h, "alice");
+      const question = rows.find((row) => row.from === "otto")!;
+      expect(rows.find((row) => row.from === "lead")).toMatchObject({
+        to: "otto", text: "It is Bluebird.", replyTo: question.id, toSession: otto, status: "delivered", hop: 2
+      });
+      expect((await h.messages(otto)).at(-1)?.text, "otto's turn ran after the answer").toBe("The codename is Bluebird.");
+      // otto's text, in a turn woken by an answer, is not sent back: the exchange ends.
+      expect(rows).toHaveLength(2);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("is not relayed when the woken turn sends the sender a message itself, or ends with no text", async () => {
+    const h = boot({
+      judgment: mockGenerator({
+        script: [
+          ...answerOnce("otto", "first question", "Answered by tool.", "And some text."),
+          { when: (input) => textOf(input).includes("second question"), then: { text: "" } },
+          fallback
+        ]
+      }),
+      agentAnswer: mockGenerator({
+        script: [
+          ...callOnce("ask the first", "messageWorker", { to: "lead", text: "first question" }),
+          ...callOnce("ask the second", "messageWorker", { to: "lead", text: "second question" }),
+          fallback
+        ]
+      })
+    });
+    try {
+      const otto = await agentSession(h, "alice", "otto");
+      await h.post("alice", otto, "run", { message: "Please ask the first" }, "agent");
+      await h.settled();
+      await h.post("alice", otto, "run", { message: "Please ask the second" }, "agent");
+      await h.settled();
+      const fromLead = (await logRows(h, "alice")).filter((row) => row.from === "lead").map((row) => row.text);
+      expect(fromLead).toEqual(["Answered by tool."]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("names the message it answers and lands in the session that asked, under the answerer's name, waking it", async () => {
     const agentAnswer = mockGenerator({
       script: [
@@ -182,7 +251,7 @@ describe("an answer", () => {
         fallback
       ]
     });
-    const h = bootBoardHost({
+    const h = boot({
       judgment: mockGenerator({ script: [...answerOnce("otto", "What is the codename?", "It is Bluebird."), fallback] }),
       agentAnswer
     });
@@ -226,7 +295,7 @@ describe("a message sent from a task's turn", () => {
         fallback
       ]
     });
-    const h = bootBoardHost({ standard: teamWorkers(), agentAnswer });
+    const h = boot({ standard: teamWorkers(), agentAnswer });
     try {
       const chief = await h.conversation("alice", "chief");
       const filed = await h.act("alice", chief, "dispatchTask_tasks", { goal: "Ask helper-a for its favourite colour", assignee: "otto" });
@@ -281,13 +350,14 @@ function ringScript(): MockGeneratorScriptEntry[] {
       },
       then: step
     },
-    { when: () => true, then: { text: "Passed." } }
+    // No text after passing it on, so no answer is relayed back down the ring.
+    fallback
   ];
 }
 
 describe("the hop limit", () => {
   it("stops a ring through three workers at 6 messages with no user in between, and a user's line lets it go on", async () => {
-    const h = bootBoardHost({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }) });
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "run", { message: "Please start the ring" }, "agent");
@@ -341,7 +411,7 @@ function fanOutScript(): MockGeneratorScriptEntry[] {
 
 describe("a Lab's own limits", () => {
   it("takes hireWorkforce's messages.hopLimit and messages.perTurn", async () => {
-    const h = bootBoardHost({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }), hire: { messages: { hopLimit: 2 } } });
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }), hire: { messages: { hopLimit: 2 } } });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "run", { message: "Please start the ring" }, "agent");
@@ -350,7 +420,7 @@ describe("a Lab's own limits", () => {
     } finally {
       await h.dispose();
     }
-    const fan = bootBoardHost({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: fanOutScript() }), hire: { messages: { perTurn: 2 } } });
+    const fan = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: fanOutScript() }), hire: { messages: { perTurn: 2 } } });
     try {
       const otto = await fan.client("alice").ensureWorkerSession({ worker: "otto" });
       await fan.post("alice", otto.id, "run", { message: "Please message every worker on the roster" }, "agent");
@@ -365,7 +435,7 @@ describe("a Lab's own limits", () => {
 
 describe("the per-turn limit", () => {
   it("lets one turn send 3 messages and refuses the rest", async () => {
-    const h = bootBoardHost({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: fanOutScript() }) });
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: fanOutScript() }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
       await h.post("alice", otto.id, "run", { message: "Please message every worker on the roster" }, "agent");
@@ -382,13 +452,13 @@ describe("the per-turn limit", () => {
 
 describe("the hop count through a delegation", () => {
   it("carries into a task the woken worker files, so a message from that task counts on from it", async () => {
-    const h = bootBoardHost({
+    const h = boot({
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, "Told."),
-          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, "Filed."),
-          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, "Asked."),
+          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
+          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
       })
@@ -407,11 +477,11 @@ describe("the hop count through a delegation", () => {
   });
 
   it("never reaches a post: a coordinator woken by a message has no post to hand on, so a message chain can't restart through one", async () => {
-    const h = bootBoardHost({
+    const h = boot({
       standard: teamWorkers(),
       // The coordinator, woken by otto's message, tries to hand it on to otto as a post.
-      judgment: mockGenerator({ script: [...callOnce("Who takes this?", "dispatchTask", { post: true, assignee: "otto" }, "Tried."), fallback] }),
-      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "messageWorker", { to: "chief", text: "Who takes this?" }, "Asked."), fallback] })
+      judgment: mockGenerator({ script: [...callOnce("Who takes this?", "dispatchTask", { post: true, assignee: "otto" }, ""), fallback] }),
+      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "messageWorker", { to: "chief", text: "Who takes this?" }, ""), fallback] })
     });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
@@ -428,13 +498,13 @@ describe("the hop count through a delegation", () => {
   });
 
   it("carries the count through a conversation that predates the hop field, so the chain does not restart at 0", async () => {
-    const h = bootBoardHost({
+    const h = boot({
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
-          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, "Told."),
-          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, "Filed."),
-          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, "Asked."),
+          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, ""),
+          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, ""),
+          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, ""),
           fallback
         ]
       })
@@ -470,7 +540,7 @@ describe("who can be messaged", () => {
       { to: "otto", text: "Hi me." }
     ].map((args, i) => ({ toolCallId: `who-${i}`, toolName: "messageWorker", args }));
     let called = false;
-    const h = bootBoardHost({
+    const h = boot({
       standard: teamWorkers(),
       agentAnswer: mockGenerator({
         script: [
@@ -508,7 +578,7 @@ describe("who can be messaged", () => {
   });
 
   it("refuses a dispatch create at another user's derived conversation address in the create check", async () => {
-    const h = bootBoardHost({ standard: teamWorkers() });
+    const h = boot({ standard: teamWorkers() });
     try {
       const bobsAddress = await deriveWorkerSessionId({ userId: "bob", orgId: ORG, flow: "agent", criteria: { worker: "otto" } });
       const verdict = await h.installation.createCheck({
@@ -544,7 +614,7 @@ describe("a busy recipient", () => {
         fallback
       ]
     });
-    const h = bootBoardHost({
+    const h = boot({
       judgment,
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] }),
       afterModelCall: async (block) => {
@@ -597,7 +667,7 @@ describe("delivery", () => {
 
   it("acts on a message id once: a second copy lands no line and wakes no turn, and a copy into another session does nothing", async () => {
     const judgment = mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "Thinking." } }, fallback] });
-    const h = bootBoardHost({
+    const h = boot({
       judgment,
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
     });
@@ -622,7 +692,7 @@ describe("delivery", () => {
   });
 
   it("marks the row refused, and the tool says why, when the host refuses the dispatch", async () => {
-    const h = bootBoardHost({
+    const h = boot({
       agentAnswer: mockGenerator({ script: [...callOnce("ask the lead", "messageWorker", { to: "lead", text: "What is the codename?" }), fallback] })
     });
     try {
