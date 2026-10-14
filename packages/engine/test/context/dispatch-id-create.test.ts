@@ -1,13 +1,6 @@
 /**
- * An `{ id }` dispatch target that carries starting state: the session is
- * created at that id when it is absent, through the same birth and create
- * check a `{ key }` target's child takes, and delivered into as an existing
- * session when it is present.
- *
- * Why it matters: a server block can then reach a session whose id it
- * computed (a per-user address) before any caller opened it, and a wrong id
- * is still judged by the target flow's own create check rather than written
- * blind. An `{ id }` with no state stays delivery-only (the seam test pins it).
+ * `{ id, state }` creates the session when it is absent and delivers when it
+ * is present. No `state` stays delivery-only.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
@@ -24,7 +17,6 @@ type Observed = {
   checks: SessionCreateCheckInput[];
 };
 
-/** A flow whose `send` action dispatches `work` to `{ id, state }`, and whose create check admits only ids starting `ok_`. */
 function bornFlow(kind: string, observed: Observed) {
   const work = handler({
     name: "work",
@@ -109,13 +101,10 @@ describe("an { id } dispatch target with starting state", () => {
       await until(() => observed.runs.length === 1, "the delivery to run");
       expect(observed.runs[0]).toMatchObject({ sessionId: "ok_alpha", input: { note: "hello" } });
 
-      // Born from the state the block computed, parsed by the flow's schema.
       const record = await runtime.stores.session.get("ok_alpha");
       expect(record).toMatchObject({ flowKind: "id-born", userId: USER_ID, orgId: DEFAULT_ORG_ID, state: { owner: "alpha", seen: 0 } });
-      // A session of its own, not a child of the sender's.
       expect(record?.parentSessionId ?? undefined).toBeUndefined();
 
-      // Judged as a dispatch, for the sending principal.
       expect(observed.checks).toHaveLength(1);
       expect(observed.checks[0]).toMatchObject({ sessionId: "ok_alpha", via: "dispatch", principal: { userId: USER_ID } });
     } finally {
