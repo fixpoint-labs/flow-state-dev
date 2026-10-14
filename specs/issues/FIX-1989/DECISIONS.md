@@ -36,6 +36,14 @@ It comes down to the recipient seeing it: an FYI that does not wake it is read o
 messages answered with no message and no tool call. Then a message gains `wake: false`, and the
 line still lands for the recipient's next turn.
 
+**Amended at implementation (pending Jake's answer on the decision card).** On the real model,
+woken workers often answered in plain text instead of calling `messageWorker`, so the sender
+never heard. The implementation now relays a woken turn's final text as its answer, through the
+same send a `messageWorker` reply takes (replyTo, the hop count, the log row, the wake), when the
+turn never messaged the sender back. A turn with no text sends nothing, so declining to answer
+still works, and a turn woken by an answer is never relayed, so an exchange ends after one answer.
+The relay may be removed if the card goes the other way.
+
 <a name="d1"></a>
 ## D1 · A message lands in the recipient's own conversation with the user, and an answer goes back to the exact session that asked. Nothing waits for it
 

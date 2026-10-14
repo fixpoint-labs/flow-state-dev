@@ -332,7 +332,7 @@ export async function hireTeam(world: World): Promise<string[]> {
     id: HERALD,
     flow: "agent",
     description: "The herald: says hello to people.",
-    instructions: "You are the herald. Do what the user asks.",
+    instructions: "You are the herald. Do what the user asks. When the user asks you to message a worker id, call messageWorker with exactly that id even if it isn't in your list of workers, and report what the tool answered.",
     settings: { model: HIRE_MODEL },
   });
   await hire(world.bob, { id: world.words.bobWorker, flow: "agent", description: "Bob's own assistant.", instructions: "You help Bob.", settings: { model: HIRE_MODEL } });
@@ -585,22 +585,29 @@ export async function leg3(world: World): Promise<LegResult> {
   rows = await ringRows();
   const sent = rows.filter((m) => m.status !== "refused");
   r.notes.push(`ring: ${rows.sort((a, b) => a.hop - b.hop).map((m) => `${m.from}>${m.to}@${m.hop}`).join(", ")}`);
-  if (sent.length !== 6) r.failures.push(`3:ring-stops-at-6 — the ring passed ${sent.length} message(s)${sent.length >= 20 ? " before the run stopped it at 20" : ""}, not 6`);
+  // The limit is per chain (D2): a worker that both passes a message on and answers it
+  // branches the ring, and each branch counts on from the message it came from. So the
+  // ring stops when its longest chain reaches hop 6, however many branches it grew.
+  const longest = Math.max(0, ...sent.map((m) => m.hop));
+  if (longest !== 6) {
+    r.failures.push(`3:ring-stops-at-6 — the ring's longest chain reached hop ${longest}, not 6 (${sent.length} message(s) passed${sent.length >= 20 ? ", and the run stopped it at 20" : ""})`);
+  }
   // The seventh send is refused, and that worker's conversation shows it stopped.
   let stopped: Call | undefined;
   for (const worker of [RESEARCHER, HELPER_A, HELPER_B]) {
     stopped ??= (await callsIn(alice, world.conversation[worker]!.id)).find((c) => errorOf(c).startsWith("hop_limit") && String(c.args.text ?? "").includes(ring));
   }
-  if (stopped === undefined && sent.length <= 6) r.failures.push(`3:seventh-refused — no worker's conversation shows a send refused at the hop limit`);
+  if (stopped === undefined && longest <= 6) r.failures.push(`3:seventh-refused — no worker's conversation shows a send refused at the hop limit`);
   if (stopped !== undefined) r.notes.push(`the seventh send was refused in ${stopped.sessionId}: ${errorOf(stopped).slice(0, 160)}`);
 
   // One more line from the person allows one more round.
-  if (sent.length <= 6) {
+  if (longest <= 6) {
     const again = new Set((await logOf(alice)).map((m) => m.id));
     await talk(turns, "3", alice, RESEARCHER, world.conversation[RESEARCHER]!, `Message ${HELPER_A} with "ring ${ring} again".`);
     await quiet(alice, 300_000);
     const more = (await logOf(alice)).filter((m) => !again.has(m.id) && m.status !== "refused" && m.text.includes(ring));
-    if (more.length < 1 || more.length > 6) r.failures.push(`3:another-round — after one more line from the person the ring passed ${more.length} message(s), wanted 1 to 6`);
+    const deepest = Math.max(0, ...more.map((m) => m.hop));
+    if (more.length < 1 || deepest > 6) r.failures.push(`3:another-round — after one more line from the person the ring passed ${more.length} message(s) reaching hop ${deepest}, wanted at least 1 and no hop past 6`);
     r.notes.push(`after the person's line: ${more.map((m) => `${m.from}>${m.to}@${m.hop}`).join(", ")}`);
   }
   return r;
@@ -614,14 +621,17 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
   const r: LegResult = { failures: [], notes: [] };
   const { alice, bob, turns } = world;
   const researcher = world.conversation[RESEARCHER]!;
+  // The herald's own instructions have it call the tool with any id it is given, so a
+  // refusal is seen at the tool rather than left to a model that skips an unlisted id.
+  const herald = world.conversation[HERALD]!;
   const { bobWorker } = world.words;
 
   // A worker on Bob's roster is refused as if it did not exist, and nothing is written.
   const logBefore = (await logOf(alice)).length;
-  const toBob = await talk(turns, "4", alice, RESEARCHER, researcher, `Send the worker ${bobWorker} a message saying hello. Call messageWorker with exactly that id as "to" even though it isn't in your list: I want to see what the tool answers.`);
+  const toBob = await talk(turns, "4", alice, HERALD, herald, `Message the worker ${bobWorker} saying hello.`);
   const bobCalls = toBob.calls.filter((c) => c.args.to === bobWorker);
   if (bobCalls.length === 0) {
-    r.failures.push(`4:bobs-worker-refused — Researcher made no messageWorker call to ${bobWorker}, so the refusal wasn't seen: ${toBob.reply.slice(0, 200)}`);
+    r.failures.push(`4:bobs-worker-refused — the herald made no messageWorker call to ${bobWorker}, so the refusal wasn't seen: ${toBob.reply.slice(0, 200)}`);
   } else if (!bobCalls.every((c) => errorOf(c).startsWith("no_worker:")) || (await logOf(alice)).length !== logBefore) {
     r.failures.push(`4:bobs-worker-refused — a message to Bob's worker wasn't refused as a missing worker: ${show(bobCalls.map((c) => c.output))}; Alice's log went from ${logBefore} to ${(await logOf(alice)).length} rows`);
   }
@@ -643,7 +653,7 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
   }
 
   // A worker that only takes tasks is refused with "file a task".
-  const toCoder = await talk(turns, "4", alice, RESEARCHER, researcher, "Send the worker eng.coder a message saying hello. Call messageWorker with exactly that id as `to` even though it isn't in your list: I want to see what the tool answers.");
+  const toCoder = await talk(turns, "4", alice, HERALD, herald, "Message the worker eng.coder saying hello.");
   const coderCalls = toCoder.calls.filter((c) => c.args.to === "eng.coder");
   if (coderCalls.length === 0 || !coderCalls.every((c) => errorOf(c).startsWith("takes_tasks_only") && /file a task/i.test(errorOf(c)))) {
     r.failures.push(`4:coder-refused — a message to eng.coder wasn't refused with "file a task": ${show(coderCalls.map((c) => c.output))} ${toCoder.reply.slice(0, 160)}`);
