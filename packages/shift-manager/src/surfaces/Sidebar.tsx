@@ -31,7 +31,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -564,7 +564,7 @@ export function Sidebar({
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${worker.name} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.name)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );

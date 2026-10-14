@@ -119,12 +119,12 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Project** | workforce | A body of work, private to you or shared with your org. See [Projects](./workforce/projects.md). | One row, in user or org scope |
 | **Workstream** | workforce | One area of a shared project, with one owner. Its entry is read by the org and written only by its owner; its lead works it in a workstream session. | A resource row, a session |
 | **Project coordinator** | workforce | Your coordinator for one project: one session per user per project. It reads every workstream's entry and hands work only to your own. | Coordinator, session |
-| **Chief of staff** | workforce | The standard coordinator a user asks who works here, and asks to hire or fire. See [The chief of staff](./workforce/chief-of-staff.md). | Standard worker, coordinator |
+| **Shift Coordinator** | workforce | The standard coordinator a user asks who works here, and asks to hire or fire. See [The Shift Coordinator](./workforce/shift-coordinator.md). | Standard worker, coordinator |
 | **Package** | workforce | A `PACKAGE.md` folder of instructions and tools a worker can hold. See [Packages on disk](./workforce/packages-on-disk.md). | Tools, instructions |
 
 ## Shift Manager: screens over a Workforce
 
-![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a user's session with the Lab's chief of staff. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
+![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator screen is a user's session with the Lab's Shift Coordinator worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
 
 [Shift Manager](./shift-manager/overview.md) is a browser app, published as `@flow-state-dev/shift-manager`. It stores nothing of its own: every screen is a read of the Lab it serves.
 
@@ -132,7 +132,7 @@ These sit beside Orchestration on Core and don't use a task board.
 |---|---|---|---|
 | **Lab** | Shift Manager | The server one `fsdev.config.mts` default-exports, which Shift Manager serves and reads. | FlowState |
 | **Team profile** | Shift Manager | A Lab config kept beside Shift Manager in this repository, which its `start` and `dev` scripts open. `devteam` is the one there. It isn't in the published package. | Lab |
-| **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with your chief of staff. | Chief of staff, session |
+| **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with your Shift Coordinator worker. | Shift Coordinator worker, session |
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a user. | Suspension |
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |

@@ -1185,7 +1185,7 @@ const agent = defineAgentWorkerFlow({ installation, catalog: rosterTools });
 
 A worker holds `hire` or `fire` only when its own `tools:` names them. Each write goes to the roster
 of the user whose turn it is: a worker can't hire for anyone else. The blocks write at once; an
-approval before a fire is yours to add as a step before it, as the chief of staff guide shows.
+approval before a fire is yours to add as a step before it, as the Shift Coordinator guide shows.
 
 ## The inventory
 

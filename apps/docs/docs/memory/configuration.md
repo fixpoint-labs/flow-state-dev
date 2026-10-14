@@ -221,7 +221,7 @@ Episodic, semantic and digest memory live at user (or org) scope, so by default 
 - **`false`**: the tier is shared by every flow for that user (or org), even when the flow sets `isolateUserState: true`.
 - **Omitted**: the tier follows the flow's `isolateUserState` / `isolateOrgState`.
 
-A chief-of-staff flow that keeps its user state to itself might keep its own episodes but read and add to the facts the person's other flows share:
+A Shift Coordinator flow that keeps its user state to itself might keep its own episodes but read and add to the facts the person's other flows share:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
