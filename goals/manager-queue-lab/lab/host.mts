@@ -105,6 +105,15 @@ function noteTool(): GeneratorTool {
 /** One model call of the manager's judgment turn: the tool names it was handed. */
 export interface JudgmentCall {
   tools: string[];
+  /** What {@link OpenLabOptions.probe}'s tool answered when this call ran it, if it did. */
+  probed?: unknown;
+}
+
+/** A call the judgment turn's model makes on the first model call holding the tool. */
+export interface JudgmentProbe {
+  tool: string;
+  /** The call's input, from the builder ids as the tree names them. */
+  input: (builderIds: string[]) => unknown;
 }
 
 /** A task row as the store holds it, with the partition it was filed in. */
@@ -143,6 +152,12 @@ export interface OpenLabOptions {
    * move, so a check reads the oracle off `roster` after open.
    */
   swapBuilders?: boolean;
+  /**
+   * Have the manager's model call one tool it was handed, once, on the first
+   * model call that holds it: the tool runs as the turn's own, and its answer
+   * lands on that call's `probed`. The model-free path otherwise calls none.
+   */
+  probe?: JudgmentProbe;
 }
 
 /** Everything a check needs to drive and observe one lab. */
@@ -191,16 +206,32 @@ export interface Lab {
 function observing(
   base: (modelId: string, blockName?: string, options?: unknown) => GeneratorModel,
   calls: JudgmentCall[],
+  probe?: JudgmentProbe,
+  builderIds: string[] = [],
 ): (modelId: string, blockName?: string, options?: unknown) => GeneratorModel {
+  let probed = false;
   return (modelId, blockName, options) => {
     const model = base(modelId, blockName, options) as GeneratorModel & Record<string, any>;
     if (blockName !== COORDINATOR_JUDGMENT) return model;
-    const record = (opts: { tools?: unknown }) => {
+    // Records the call's tool names, and hands back the probe's run when this
+    // call is the first to hold its tool.
+    const record = (opts: { tools?: unknown }): (() => Promise<void>) | undefined => {
       const tools = opts.tools;
       const names = Array.isArray(tools)
         ? tools.map((tool) => String((tool as { name?: unknown }).name))
         : Object.keys((tools ?? {}) as object);
-      calls.push({ tools: names });
+      const call: JudgmentCall = { tools: names };
+      calls.push(call);
+      if (probe === undefined || probed || !Array.isArray(tools)) return undefined;
+      const tool = (tools as Array<{ name?: unknown; execute?: (args: unknown) => Promise<unknown> }>).find(
+        (entry) => entry.name === probe.tool,
+      );
+      const execute = tool?.execute;
+      if (execute === undefined) return undefined;
+      return async () => {
+        probed = true;
+        call.probed = await execute(probe.input(builderIds));
+      };
     };
     const wrapped: Record<string, unknown> = { ...model };
     // Every way a generator calls a model: the loop it runs itself, and the
@@ -208,10 +239,18 @@ function observing(
     for (const method of ["generate", "stream", "generateStep", "streamStep"] as const) {
       const call = model[method];
       if (typeof call !== "function") continue;
-      wrapped[method] = (opts: any) => {
-        record(opts);
-        return call.call(model, opts);
-      };
+      // The quiet model answers through `generate`, so a probe runs there;
+      // a streamed call only records.
+      wrapped[method] =
+        method === "generate" || method === "generateStep"
+          ? async (opts: any) => {
+              await record(opts)?.();
+              return call.call(model, opts);
+            }
+          : (opts: any) => {
+              record(opts);
+              return call.call(model, opts);
+            };
     }
     return wrapped as unknown as GeneratorModel;
   };
@@ -315,7 +354,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // One resolver: wrapped to observe judgment calls, keeping its own properties.
   const live = options.model === undefined ? undefined : createModelResolver();
   const base = live === undefined ? (modelId: string) => quietModel(modelId) : (live as unknown as (m: string, b?: string, o?: unknown) => GeneratorModel);
-  const resolver = Object.assign(observing(base, judgmentCalls), live ?? {});
+  const resolver = Object.assign(observing(base, judgmentCalls, options.probe, builderIds), live ?? {});
 
   const state = createFlowState({
     flows: instances,

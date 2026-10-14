@@ -79,14 +79,27 @@ async function withLab<T>(options: OpenLabOptions, body: (lab: Lab) => Promise<T
   }
 }
 
-/** The tools the manager's turn is handed on one turn, from a fresh lab built with `options`. */
-async function turnTools(options: OpenLabOptions): Promise<{ tools: string[]; filing: unknown }> {
+/** What the twin's turn files with `dispatchTask` when it holds it: a task, not a post. */
+const PROBE_GOAL = "probe";
+
+/**
+ * The tools the manager's turn is handed on one turn, from a fresh lab built
+ * with `options`; what the turn's own tool call answered, when `options`
+ * carries a probe; what a filing through the public action answered; and
+ * whether either stored a row.
+ */
+async function turnTools(
+  options: OpenLabOptions,
+): Promise<{ tools: string[]; turnFiling: unknown; filing: unknown; stored: boolean }> {
   return withLab(options, async (lab) => {
     const said = await lab.say("Anything new?");
     if (said.error !== undefined) throw new Error(said.error);
     await lab.settled();
-    const filing = await lab.act("dispatchTask_tasks", { goal: "probe", assignee: lab.builderIds[0] });
-    return { tools: lab.judgmentCalls[0]?.tools ?? [], filing: filing.output ?? filing.error };
+    const turnFiling = lab.judgmentCalls.find((call) => "probed" in call)?.probed;
+    const filing = await lab.act("dispatchTask_tasks", { goal: PROBE_GOAL, assignee: lab.builderIds[0] });
+    await lab.settled();
+    const stored = (await lab.rows()).some((row) => row.goal === PROBE_GOAL);
+    return { tools: lab.judgmentCalls[0]?.tools ?? [], turnFiling, filing: filing.output ?? filing.error, stored };
   });
 }
 
@@ -145,7 +158,11 @@ await runGoal(async (failures) => {
     }
     const own = await turnTools(base("own"));
     const withNote = await turnTools({ ...base("note"), managerTools: [NOTE_TOOL] });
-    const twin = await turnTools({ ...base("twin"), builderTakesTasks: false });
+    const twin = await turnTools({
+      ...base("twin"),
+      builderTakesTasks: false,
+      probe: { tool: "dispatchTask", input: (builders) => ({ goal: PROBE_GOAL, assignee: builders[0] }) },
+    });
     const taskTools = (names: string[]) => names.filter((name) => TASK_TOOLS.includes(name));
     for (const tool of TASK_TOOLS) {
       const count = own.tools.filter((name) => name === tool).length;
@@ -156,12 +173,24 @@ await runGoal(async (failures) => {
     if (taskTools(withNote.tools).sort().join() !== taskTools(own.tools).sort().join()) {
       note(`the task tools changed when the manager's \`tools:\` changed; no \`tools:\` line may add or remove one`);
     }
-    if (taskTools(twin.tools).length !== 0) {
-      note(`with builders that take no task the manager still holds ${taskTools(twin.tools).join(", ")}`);
+    // A turn routing a post holds `dispatchTask` for its post form even when
+    // the conversation files no task (FIX-1872), so the twin may hold that one
+    // tool, and only if the turn's own call to it with a task's goal files nothing.
+    const twinTaskTools = taskTools(twin.tools).filter((name) => name !== "dispatchTask");
+    if (twinTaskTools.length !== 0) {
+      note(`with builders that take no task the manager still holds ${twinTaskTools.join(", ")}`);
+    }
+    const twinTurnError = String((twin.turnFiling as { error?: unknown } | undefined)?.error ?? "");
+    if (twin.tools.includes("dispatchTask") && !twinTurnError.startsWith("no_delegation_board")) {
+      note(
+        `with builders that take no task, the turn's dispatchTask filed a task: it answered ` +
+          `${JSON.stringify(twin.turnFiling)}, not no_delegation_board`,
+      );
     }
     if ((twin.filing as { error?: string } | undefined)?.error !== "no_delegation_board") {
       note(`with builders that take no task, a filing answered ${JSON.stringify(twin.filing)}, not no_delegation_board`);
     }
+    if (twin.stored) note(`with builders that take no task, a filing was stored`);
 
     // ---- d. the board's filing check, both arms ------------------------------
     const stranger = "eng.nobody";
@@ -245,7 +274,9 @@ await runGoal(async (failures) => {
       `unregistered flow refused the whole roster naming it. The manager's file says \`tools: []\`, and its live ` +
       `turn was handed ${taskTools(own.tools).length} task tools, each once (${taskTools(own.tools).join(", ")}), ` +
       `and no catalog tool; with \`tools: ["${NOTE_TOOL}"]\` the same task tools plus ${NOTE_TOOL}; with builders ` +
-      `whose work entry takes no conversation's task, none, and its filing answered no_delegation_board. A filing ` +
+      `whose work entry takes no conversation's task, ` +
+      `${twin.tools.includes("dispatchTask") ? "only dispatchTask, for its post form: the turn's own call to it with a task's goal answered " + JSON.stringify(twinTurnError.split(":")[0]) + "," : "none,"} ` +
+      `and the public filing answered no_delegation_board, storing nothing. A filing ` +
       `for ${stranger} answered "${refusal.split(":")[0]}" and stored nothing; one for nobody waits, pending and ` +
       `unassigned. The manager's listTasks left the stored rows byte-identical; each of ${rows.length} rows ` +
       `landed in one column (queued, running, waiting on you with its own reason, done). The manager settling a ` +
