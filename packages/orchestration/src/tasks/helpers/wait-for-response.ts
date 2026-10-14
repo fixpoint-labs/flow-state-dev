@@ -217,8 +217,9 @@ export async function dispatchAndWait(
       ok: false,
       error: "wait_unavailable",
       message:
-        "This turn is itself working a task, so it can't wait for another. Hand the task over without " +
-        "waiting instead. Nothing was filed."
+        "This turn is itself working a task, so it can't wait for another inside the turn. To wait for it, " +
+        "file it without `wait`, then end this turn: when that task ends, its ending wakes this task in a " +
+        "new turn, with the result. Nothing was filed."
     };
   }
   const call = toolCallOf(ctx);

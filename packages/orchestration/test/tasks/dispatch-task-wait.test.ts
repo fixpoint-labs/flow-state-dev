@@ -265,6 +265,13 @@ describe("refused before anything is filed", () => {
       });
       expect(await statusOf(state as never, run.requestId!)).toBe("completed");
       expect(toolResults(seen[1]!.messages)).toContain('"error":"wait_unavailable');
+      // The refusal teaches the way to wait from a task turn, so the worker
+      // doesn't give up on the result: file without `wait`, end the turn, and
+      // the task's ending wakes this one.
+      const refusal = toolResults(seen[1]!.messages);
+      expect(refusal).toContain("without `wait`");
+      expect(refusal).toMatch(/end this turn/);
+      expect(refusal).toMatch(/wakes this task/);
       expect(await listRows(state, flow)).toEqual([]);
     } finally {
       await state.dispose();
