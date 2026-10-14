@@ -58,17 +58,23 @@ const CONTROLS: Record<string, Control> = {
   unpartitioned: {
     name: "unpartitioned",
     legs: ["c"],
-    assertions: ["c:runs-its-own"],
+    // c:lists-its-own too: a control that leaves each conversation's own list
+    // apart never merged the ledger, whatever else went red (FIX-1992).
+    assertions: ["c:runs-its-own", "c:lists-its-own"],
     patches: [
+      // The partition the board's drain claims in (the ledger's `partitionBy`).
       {
         module: "packages/workforce/src/conversation-board/ledger.ts",
         from: String.raw`return filingSessionIdOf\(\{`,
         to: 'return Promise.resolve("one-ledger"); return filingSessionIdOf({',
       },
+      // Every other read and write of the ledger, at whatever partition its
+      // caller names: the task tools, the board's after-run and post filing,
+      // a task session's own claim (FIX-1992: patching one caller missed the rest).
       {
         module: "packages/workforce/src/conversation-board/ledger.ts",
-        from: String.raw`conversationLedgerAt\(ctx, await filingSessionIdOf\(ctx\.session\)\)`,
-        to: 'conversationLedgerAt(ctx, "one-ledger")',
+        from: String.raw`collection,\s*partition,`,
+        to: 'collection, partition: "one-ledger",',
       },
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
@@ -266,11 +272,11 @@ function gradeC(o: any, store: string): LegResult {
 
   const wanted = { t1: [C.c1], t2: [C.c2], t3: [C.c1] };
   const where = { t1: ran(t1), t2: ran(t2), t3: ran(t3) };
-  const reached = refusalOf(C.reach) === undefined;
+  const reached = refusalOf(C.reach) === undefined || refusalOf(C.reachRun) === undefined;
   if (t1 === null || t2 === null || t3 === null || reached || Object.entries(wanted).some(([k, v]) => show(where[k as keyof typeof where]) !== show(v))) {
     r.failures.push(
-      `c:runs-its-own — wanted each task run once, in a session of the conversation that filed it, and the first conversation's assign naming the second's task refused; ` +
-        `ran under ${show({ t1: where.t1.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t2: where.t2.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t3: where.t3.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)) })}, the reach answered ${show(C.reach.output ?? C.reach.error ?? C.reach.status)}`,
+      `c:runs-its-own — wanted each task run once, in a session of the conversation that filed it, and the first conversation's assign and dispatch naming the second's task refused; ` +
+        `ran under ${show({ t1: where.t1.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t2: where.t2.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)), t3: where.t3.map((p) => (p === C.c1 ? "c1" : p === C.c2 ? "c2" : p)) })}, the reach answered ${show(C.reach.output ?? C.reach.error ?? C.reach.status)} and ${show(C.reachRun?.output ?? C.reachRun?.error ?? C.reachRun?.status)}`,
     );
   }
   const idsIn = (list: any) => ((list?.output?.tasks ?? []) as Array<{ id: string }>).map((x) => x.id).sort();
@@ -296,7 +302,7 @@ function gradeC(o: any, store: string): LegResult {
   if (wrong.length > 0 || sid(t1) === null || sid(t2) === null) {
     r.failures.push(`c:found-its-own — wanted findWorkerSession to find each task's session only in its own conversation; wrong: ${show(wrong.map(([k, v]) => `${k}: wanted ${v}, got ${finds[k]?.id ?? null}`))}`);
   }
-  r.notes.push(`c1 ran ${show(where.t1)}/${show(where.t3)}, c2 ran ${show(where.t2)}; c1's reach answered ${show(C.reach.output ?? C.reach.status)}; lists ${show(list1)} | ${show(list2)}`);
+  r.notes.push(`c1 ran ${show(where.t1)}/${show(where.t3)}, c2 ran ${show(where.t2)}; c1's reach answered ${show(C.reach.output ?? C.reach.status)} and ${show(C.reachRun?.output ?? C.reachRun?.status)}; lists ${show(list1)} | ${show(list2)}`);
   return r;
 }
 
