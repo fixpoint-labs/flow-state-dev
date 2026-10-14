@@ -764,7 +764,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
         return {
           ok: false as const,
           error:
-            `asked_task: task "${claim.taskId}" was handed to you by a turn that is waiting ` +
+            `waited_on_task: task "${claim.taskId}" was dispatched to you by a turn that is waiting ` +
             `for it. Answer with what you have, or fail it.`,
         };
       }

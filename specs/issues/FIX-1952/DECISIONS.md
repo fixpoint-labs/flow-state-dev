@@ -80,12 +80,16 @@ a Codex update may break the list until the reader is fixed.
 - **A new session must name its model**; the flow's create check refuses one that doesn't. A
   session stored before this change has none and runs as it did, on the mode's default, and its
   header says so (BP-030).
-- **A harness that can list but whose list call fails** offers its default only, with the reason.
-  No stale fallback list.
+- **A list call fails, and the mode has a concrete default id** (Cursor): the picker says
+  why and offers that id only. No stale fallback list. Codex never fails: its list is kept by hand (D3).
+- **A list call fails, and the default is only an SDK alias** (Claude Code today): the picker says
+  why and offers no models. New session stays disabled until a reload successfully loads the list.
+  An alias can't be pinned without the list to resolve it ([below](#alias)), and Kitchen Sink keeps
+  no Claude model name of its own.
 - **Where each list is read.** Claude Code: the package's no-turn start its sign-in check already
   runs. Cursor: its catalog call, beside its sign-in check. Codex: Codex mode's list, first entry
   the default.
-- **Where an id has an alias** (Claude Code's `sonnet`), the session pins the id it resolves to
+- <a name="alias"></a>**Where an id has an alias** (Claude Code's `sonnet`), the session pins the id it resolves to
   at birth, per D1.
 - **Each harness takes the model on resume**, read off the pinned SDKs: Codex passes `--model` on
   a resumed thread; Claude Code takes `model` beside `resume`; the Cursor package hands
@@ -100,6 +104,8 @@ a Codex update may break the list until the reader is fixed.
 | Wrap each SDK seam (the stand-in client hooks) to slip the model in | Patches a harness gap in the app, which the epic forbids (ER-11), and on Cursor a stand-in client turns off the package's environment filter |
 | Kitchen Sink checks the id against a fresh list before each turn | Starts Claude Code once more per turn to ask, and second-guesses the harness, which is the one that runs it |
 | Lift the model list into core as one shared function | Two harnesses list in different ways and one can't. A shared function with one real caller is surface before need |
+| Kitchen Sink keeps a Claude model name to offer when the list fails | The name ages as Claude Code's default moves, and it is a list kept by hand for a harness that can list (D3's rule) |
+| A package-only "default" API that returns a concrete id without the list | Surface on a published package for one failure case. Waiting for a reload costs less |
 | Flow State mode in scope | It already has its own selector over gateway models, a different mechanism. Out of scope by the ask |
 
 ## Settled
@@ -113,6 +119,11 @@ a Codex update may break the list until the reader is fixed.
 - **Draft** — framed as a model chosen per session that the harness itself must confirm; built on
   the framework's fixed-at-birth session field and a per-run `model` option on the three harness
   blocks; Codex's list kept by hand because its SDK can't list.
+- **Amended 2026-10-14, after merge**, found while building
+  ([#3351](https://github.com/fixpoint-labs/flow-state-dev/pull/3351)): a failed list on Claude
+  Code offers no model, since its default is an alias with no id to pin. Settles
+  [this thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4271267307)
+  by its third option.
 
 ## Notes from review
 

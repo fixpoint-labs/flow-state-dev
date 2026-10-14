@@ -41,6 +41,7 @@
 import {
   createBearerSecretPrincipalResolver,
   createFlowState,
+  ensureSessionRecord,
   PrincipalResolutionError,
   resolveUserStorageKey,
   runAction,
@@ -48,7 +49,7 @@ import {
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import { encodeUserSegment, type BlockContext, type FlowInstance, type ModelResolver } from "@flow-state-dev/core/types";
+import { encodeUserSegment, type BlockContext, type FlowInstance, type HarnessBlock, type ModelResolver } from "@flow-state-dev/core/types";
 import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
@@ -89,6 +90,15 @@ import {
   projectMcpTools,
   type ProjectMcpServers,
   type InventoryActionRequest,
+  createErrorReporter,
+  defineErrorReporterFlow,
+  defineErrorReporterIntakeFlow,
+  ERROR_REPORTER_FLOW,
+  ERROR_REPORTER_INTAKE_FLOW,
+  type ErrorReporter,
+  type ErrorReporterHarnessFeeds,
+  type ErrorReporterHost,
+  type ErrorReporterOptions,
   type ProjectBlocks,
   type WorkstreamBlocks,
 } from "@flow-state-dev/workforce";
@@ -613,6 +623,11 @@ export interface OpenLabOptions {
   mcpServers?: ProjectMcpServers;
   /** Where the start line naming the MCP servers goes; stderr by default. */
   log?: (line: string) => void;
+  /**
+   * The Error Reporter (FIX-1983). Absent leaves its worker off the roster.
+   * Present turns durable execution on, since a report waits for an answer.
+   */
+  errorReporter?: LabErrorReporter;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -672,6 +687,22 @@ export interface OpenLabOptions {
    * doesn't close as completed".
    */
   withoutJudge?: boolean;
+}
+
+/** What a Lab's Error Reporter is opened with (`openLab({ errorReporter })`). */
+export interface LabErrorReporter {
+  /** The harness that drafts and files, from its feeds. Claude Code with read-only tools in a real Lab. */
+  harness: (feeds: ErrorReporterHarnessFeeds) => HarnessBlock;
+  /** Where the harness reads the code. Default the process's working directory. */
+  cwd?: string;
+  /** The project whose MCP servers reach the tracker (`shared/fsd`). Absent: reports are kept, not filed. */
+  tracker?: ErrorReporterOptions["tracker"];
+  /** Error kinds that file without a preview, and a timeout. Both off by default. */
+  preview?: ErrorReporterOptions["preview"];
+  /** The intake's limits. */
+  limits?: ErrorReporterOptions["limits"];
+  /** Values no report may hold, beside the environment's keys and the users' MCP keys. */
+  secrets?: ErrorReporterOptions["secrets"];
 }
 
 /** A workspace host for the lab to build: where its places live, and which remotes it may reach. */
@@ -812,6 +843,8 @@ export interface Lab {
     path: string,
     options?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }>;
+  /** The Error Reporter, when the lab was opened with one. */
+  errorReporter?: ErrorReporter;
   dispose(): Promise<void>;
 }
 
@@ -899,12 +932,21 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
+  // The Error Reporter's worker serves only when the Lab is opened with one;
+  // otherwise it is left off the roster, as if the tree didn't declare it.
+  const reporterRecords = workers.filter((worker) => worker.declared.flow === ERROR_REPORTER_FLOW);
+  if (options.errorReporter !== undefined && reporterRecords.length !== 1) {
+    throw new Error(`openLab: \`errorReporter\` wants one worker on "${ERROR_REPORTER_FLOW}" in the tree, found ${reporterRecords.length}`);
+  }
+  const servingWorkers =
+    options.errorReporter === undefined ? workers.filter((worker) => worker.declared.flow !== ERROR_REPORTER_FLOW) : workers;
+
   // The worker model: the tree's workers are its standard workers, and each
   // runs on one copy of the flow it names. The flows are read when first
   // needed, so the worker flows below can be built on the installation.
   let builtFlows: NonNullable<HireOptions["workerFlows"]> = {};
   const installation = createWorkerInstallation({
-    standardWorkers: workers,
+    standardWorkers: servingWorkers,
     workerFlows: () => builtFlows,
     documents: resources as never,
     // Each user's coordinator for a project, when the tree declares it.
@@ -1020,7 +1062,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         resources: { workerInventory: defineWorkerInventoryCollection() },
       }),
       createWorkforceCapability({
-        roster: { workers: roster.workers },
+        roster: { workers: roster.workers.filter((worker) => servingWorkers.some((serving) => serving.id === worker.id)) },
         inventory: { workers: "workerInventory" },
       }),
     ],
@@ -1045,6 +1087,31 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       }),
     }) as never,
   };
+
+  // The Error Reporter: its worker flow beside the others, and its intake on a
+  // flow of its own, which a board on any flow reaches by name.
+  const reporter =
+    options.errorReporter === undefined
+      ? undefined
+      : createErrorReporter({
+          worker: reporterRecords[0]!.id,
+          operator: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+          ...(options.errorReporter.tracker === undefined ? {} : { tracker: options.errorReporter.tracker }),
+          ...(options.errorReporter.preview === undefined ? {} : { preview: options.errorReporter.preview }),
+          ...(options.errorReporter.limits === undefined ? {} : { limits: options.errorReporter.limits }),
+          ...(options.errorReporter.secrets === undefined ? {} : { secrets: options.errorReporter.secrets }),
+          links: reportLinks,
+          log: options.log ?? ((line: string) => process.stderr.write(`[error-reporter] ${line}\n`)),
+        });
+  if (reporter !== undefined) {
+    builtFlows[ERROR_REPORTER_FLOW] = defineErrorReporterFlow({
+      reporter,
+      installation,
+      harness: options.errorReporter!.harness,
+      ...(options.errorReporter!.cwd === undefined ? {} : { cwd: options.errorReporter!.cwd }),
+      ...(mcpTools === undefined ? {} : { mcpTools }),
+    }) as never;
+  }
 
   // One copy per worker flow, and the roster flow. Refuses the WHOLE tree when
   // a worker would be refused on its first turn, or a worker flow doesn't
@@ -1097,6 +1164,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const flows: Record<string, unknown> = mergeWorkerFlows(
     {
       ...(inventoryWriter === undefined ? {} : { [INVENTORY_WRITER_FLOW]: inventoryWriter }),
+      ...(reporter === undefined
+        ? {}
+        : { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as unknown as () => FlowInstance)() }),
       [PROJECTS_FLOW]: projectsFlow,
     },
     copies,
@@ -1112,9 +1182,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resolvePrincipal: resolveLabPrincipal,
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // When something can wait for a user: the EM's ask, or a worker holding
-    // a tool that asks first. Trees with neither run without it.
-    ...(options.ask === undefined && !asksBeforeChanging ? {} : { durable: true }),
+    // When something can wait for a user: the EM's ask, a worker holding a
+    // tool that asks first, or the Error Reporter. Trees with none run without it.
+    ...(options.ask === undefined && !asksBeforeChanging && reporter === undefined ? {} : { durable: true }),
+    // Every request that settles failed, to the Error Reporter's intake.
+    ...(reporter === undefined ? {} : { errorCapture: (event: unknown) => reporter.capture(event as never) }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
     // Each user's MCP keys are written through the Lab's own route, never an
     // action, whose input its request record keeps.
@@ -1133,6 +1205,23 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // After the logger is set, so the router the door probes run through is
   // built with it too.
   const router = await state.getRouter();
+
+  // The Error Reporter, bound to this runtime: it runs as the Lab's user, and
+  // restarts whatever report the store says is still owed.
+  if (reporter !== undefined) {
+    try {
+      await reporter.bind(
+        reporterHost(runtime, flows, await openWorkerSession(runtime.stores, {
+          flow: copyOf(ERROR_REPORTER_FLOW),
+          workerId: reporterRecords[0]!.id,
+          principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+        })),
+      );
+    } catch (error) {
+      await state.dispose();
+      throw new Error(`openLab: the Error Reporter did not start: ${messageOf(error)}`);
+    }
+  }
 
   // One line naming the MCP servers on offer, and whether the Lab user has a
   // key for each: stored on Settings, seeded from the environment, or not set.
@@ -1518,8 +1607,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(workspaceHost === undefined ? {} : { workspaceHost }),
     state,
     door,
+    ...(reporter === undefined ? {} : { errorReporter: reporter }),
 
-    dispose: () => state.dispose(),
+    dispose: async () => {
+      // No report starts once the stores are closing; one in flight stays owed for the next start.
+      reporter?.dispose();
+      await state.dispose();
+    },
   };
 }
 
@@ -1561,6 +1655,129 @@ function featureRowOf(rows: Record<string, Task>, issue: string): Task | undefin
 }
 
 /** One wording for whatever a refusal turns out to be. */
+/**
+ * Where a report's ids open in Shift Manager: a task's page, on the board of
+ * the conversation it was filed in (the partition's session, everything
+ * before its last `~`). Relative to wherever the Lab is served.
+ */
+function reportLinks(ids: { taskId?: string; partition?: string }): Record<string, string> {
+  if (ids.taskId === undefined || ids.partition === undefined) return {};
+  const conversation = ids.partition.slice(0, Math.max(0, ids.partition.lastIndexOf("~")));
+  if (conversation === "") return {};
+  return { "Task in Shift Manager": `/tasks/${encodeURIComponent(`${conversation}.tasks`)}/${encodeURIComponent(ids.taskId)}/session` };
+}
+
+/** The newest few things said or failed in a session, as text a report can quote. */
+async function sessionSummary(runtime: Awaited<ReturnType<FlowState["getRuntime"]>>, sessionId: string): Promise<string[]> {
+  const requests = (await runtime.stores.request.list({ sessionId, withItems: true } as never)).sort((a, b) => a.startedAtMs - b.startedAtMs);
+  const lines: string[] = [];
+  for (const request of requests.slice(-3)) {
+    for (const item of (request.items ?? []) as Array<Record<string, any>>) {
+      if (item.type === "message") {
+        const text = Array.isArray(item.content) ? item.content.map((part: { text?: string }) => part.text ?? "").join("") : String(item.text ?? "");
+        lines.push(`${request.actionName} · ${item.role ?? "assistant"}: ${text.slice(0, 400)}`);
+      } else if (item.type === "error") {
+        lines.push(`${request.actionName} · error: ${String(item.message ?? "").slice(0, 400)}`);
+      }
+    }
+  }
+  return lines.slice(-12);
+}
+
+/**
+ * The runtime operations the Error Reporter is bound with: run an action as
+ * the Lab's user, open a session, and read what a request or a session holds.
+ */
+function reporterHost(
+  runtime: Awaited<ReturnType<FlowState["getRuntime"]>>,
+  flows: Record<string, unknown>,
+  conversationSessionId: string,
+): ErrorReporterHost {
+  return {
+    conversationSessionId,
+    run: async (request) => {
+      const result = (await runAction({
+        flow: flows[request.flowKind],
+        actionName: request.action,
+        input: request.input,
+        userId: request.userId,
+        orgId: request.orgId,
+        sessionId: request.sessionId,
+        source: request.source,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+      } as never)) as { output?: unknown; error?: unknown };
+      return result.error === undefined ? { output: result.output } : { error: messageOf(result.error) };
+    },
+    openSession: async (open) => {
+      const flow = flows[open.flowKind] as FlowInstance;
+      const now = Date.now();
+      await ensureSessionRecord(
+        runtime.stores,
+        open.sessionId,
+        {
+          flow: flow as never,
+          sessionId: open.sessionId,
+          principal: { userId: open.userId, orgId: open.orgId },
+          state: { ...open.state },
+          fromCaller: true,
+          via: "create",
+        },
+        () => ({
+          id: open.sessionId,
+          flowKind: flow.kind,
+          flowId: flow.id,
+          userId: open.userId,
+          orgId: open.orgId,
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+          journal: [],
+        }),
+      );
+    },
+    readSession: async (sessionId) => {
+      const record = await runtime.stores.session.get(sessionId);
+      if (record === undefined) return undefined;
+      return {
+        id: sessionId,
+        flowKind: record.flowKind,
+        userId: record.userId,
+        state: (record as { state?: Record<string, unknown> }).state ?? {},
+        summary: await sessionSummary(runtime, sessionId),
+      };
+    },
+    readSessionState: async (sessionId) =>
+      ((await runtime.stores.session.get(sessionId)) as { state?: Record<string, unknown> } | undefined)?.state,
+    readRequest: async (requestId) => {
+      const record = await runtime.stores.request.get(requestId);
+      if (record === undefined) return undefined;
+      return {
+        id: requestId,
+        flowKind: record.flowKind,
+        actionName: record.actionName,
+        status: record.status,
+        source: record.source,
+        sessionId: record.sessionId,
+        input: record.input,
+        result: record.result,
+      };
+    },
+    recentSessions: async (userId, limit) => {
+      const sessions = (await runtime.stores.session.list({ userId } as never)).sort((a, b) => b.updatedAt - a.updatedAt);
+      return Promise.all(
+        sessions.slice(0, limit).map(async (record) => ({
+          id: record.id,
+          flowKind: record.flowKind,
+          userId: record.userId,
+          state: (record as { state?: Record<string, unknown> }).state ?? {},
+          summary: await sessionSummary(runtime, record.id),
+        })),
+      );
+    },
+  };
+}
+
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {

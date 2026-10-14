@@ -173,7 +173,7 @@ Tasks are seeded here to keep the example in one piece. A row added later with `
 
 A board with a worker that dispatches needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
 
-Read next: **[Workers that dispatch](/docs/orchestration/task-board#assignees-that-dispatch)** for the `session` policies, what the board refuses at construction, and what the drain reports.
+Read next: **[Assignees that dispatch](/docs/orchestration/task-board#assignees-that-dispatch)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
 Dispatching comes with bounds:
 

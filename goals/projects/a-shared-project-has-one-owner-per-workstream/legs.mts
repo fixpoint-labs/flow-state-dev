@@ -40,7 +40,7 @@ export interface Inputs {
   statusWords: string[];
   tamperWords: string[];
   workWords: string[];
-  asks: { status: string; work: string; tool: string };
+  asks: { status: string; work: string; workAgain: string; tool: string };
 }
 type WorkstreamInput = { id: string; title: string; objectives: string[]; due: string };
 
@@ -121,7 +121,7 @@ const leadIdFor = (project: string, workstream: string) => `lead-${project}-${wo
 /** What a hired lead is told: lead one workstream, and keep its entry current with `updateWorkstream`. */
 const LEAD_INSTRUCTIONS =
   "You lead one workstream of a project, for the person who owns it. When asked for work, file it as a task " +
-  "for eng.coder with dispatchTask, so it starts now. When its status changes, or there is something to report, call updateWorkstream " +
+  "for eng.coder with dispatchTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
 /** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
@@ -504,9 +504,16 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   if (bobsInRead?.status !== d.statusWord) c.failures.push(`c:read-holds-status — Alice's coordinator's readProject output (${reads.length} call(s)) holds Bob's workstream as ${show(bobsInRead)}, not with status "${d.statusWord}"`);
   if (!t1.reply.toLowerCase().includes(d.statusWord.toLowerCase())) c.failures.push(`c:names-status — Alice's coordinator's answer doesn't name Bob's status "${d.statusWord}": ${t1.reply.slice(0, 300)}`);
 
-  const workAsk = fill(d.asks.work, { word: d.workWord });
-  const t2 = await talk(alice, coordinator.flowKind, coordinator.id, workAsk);
-  c.notes.push(`work turn ${t2.status}: tools ${t2.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${t2.reply.slice(0, 300).replace(/\n/g, " ")}${t2.providerRetry === undefined ? "" : ` (after a provider error: ${t2.providerRetry})`}`);
+  const workTurns: Turn[] = [await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.work, { word: d.workWord }))];
+  const first = workTurns[0]!;
+  if (first.status === "completed" && !first.tools.some((t) => calls(t.name, "dispatchTask"))) {
+    workTurns.push(await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.workAgain, { word: d.workWord })));
+  }
+  for (const turn of workTurns) {
+    c.notes.push(`work turn ${turn.status}: tools ${turn.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${turn.reply.slice(0, 300).replace(/\n/g, " ")}${turn.providerRetry === undefined ? "" : ` (after a provider error: ${turn.providerRetry})`}`);
+  }
+  if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "dispatchTask"))) c.notes.push("the coordinator called dispatchTask on no work ask");
+  const postIds = new Set(workTurns.map((t) => t.requestId).filter((id): id is string => id !== null));
   const aliceTarget = `shared/${S.id}/${d.aliceWs.id}`;
   const bobTarget = `shared/${S.id}/${d.bobWs.id}`;
   const holdsWord = (items: StoredItem[]) => items.filter((i) => i.role === "user" && textOf(i).includes(d.workWord));
@@ -514,7 +521,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   let mineItems: StoredItem[] = [];
   const sent = Date.now();
   for (let settledAt: number | undefined; Date.now() - sent < 150_000; await sleep(1_500)) {
-    ledger = t2.requestId === null ? [] : ledgerOf(o.store, alice, coordinator.id).filter((x) => x.postId === t2.requestId);
+    ledger = ledgerOf(o.store, alice, coordinator.id).filter((x) => postIds.has(x.postId));
     mineItems = holdsWord(await alice.routes.items(aliceWs.view.sessionId, "message"));
     if (ledger.length > 0 && ledger.every((x) => x.status !== "pending") && mineItems.length > 0) {
       settledAt ??= Date.now();
@@ -526,7 +533,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   const routing = (await alice.routes.items(coordinator.id, "component"))
     .filter((i) => (i as { component?: string }).component === "coordinator-route")
     .map((i) => i.data as Record<string, any>)
-    .filter((x) => x?.postId === t2.requestId);
+    .filter((x) => postIds.has(x?.postId));
   const bobsItems = holdsWord(await bob.routes.items(bobWs.view.sessionId, "message"));
   c.notes.push(`the post's ledger: ${show(ledger)}; routing: ${show(routing.map((x) => ({ by: x.by, delegates: x.delegates })))}`);
 

@@ -30,6 +30,9 @@ import * as Sentry from "@sentry/node";
 import type { ErrorCaptureEvent } from "@flow-state-dev/engine";
 
 export function captureToSentry(event: ErrorCaptureEvent): void {
+  // A request that ends failed also sends a summary event marked `final`.
+  // This adapter forwards each block failure, so skip it to avoid a duplicate.
+  if (event.final) return;
   Sentry.captureException(event.error, {
     // A retryable failure may still recover, so report it as a warning.
     level: event.error.retryable ? "warning" : "error",
@@ -76,6 +79,15 @@ By default rescued and retried failures fire too, because they are real failures
 ```ts
 export function captureToSentry(event: ErrorCaptureEvent): void {
   if (event.transient || event.error.retryable) return;
+  // ...captureException as above
+}
+```
+
+If you want one Sentry event per request that really failed, after rescues and retries, flip the check instead: keep only `event.final` events and drop the per-block ones.
+
+```ts
+export function captureToSentry(event: ErrorCaptureEvent): void {
+  if (!event.final) return;
   // ...captureException as above
 }
 ```

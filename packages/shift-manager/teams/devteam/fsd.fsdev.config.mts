@@ -32,6 +32,11 @@
  *   mapping misses (a project a user made, or one in another organization) is
  *   refused, naming the remote, and nothing is cloned. The one remote reached
  *   is the checkout's own upstream, fetched before a new run's branch is cut.
+ * - **The Error Reporter**, with Claude Code: every request that stays
+ *   failed and every task that ends errored becomes one report, previewed in
+ *   Inbox and filed in FSD's Linear once the Lab's user answers. Its worker
+ *   is the tree's `error-reporter`. It drafts with Claude Code even when the
+ *   coder is scripted, and a draft waits for an account when there is none.
  * - **Its own store**: SQLite at `FSD_STORE` or
  *   `packages/shift-manager/.fsdev/fsd.sqlite`. DevTeam's rows never show
  *   here. Delete the file for a fresh start.
@@ -44,9 +49,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { CHECKOUTS } from "./fsd-checkouts.mts";
+import { CHECKOUT, CHECKOUTS } from "./fsd-checkouts.mts";
 import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
-import { startHarness } from "./harness.mts";
+import { errorReporterHarness, startHarness } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
 import { EM_FLOW } from "./workforce/flows/workers/em.mts";
@@ -83,6 +88,10 @@ export const lab = await openLab({
   documents: FSD_DOCUMENTS,
   skills: FSD_SKILLS,
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
+  // The Error Reporter files into FSD's Linear, through the FSD project's MCP
+  // servers with the Lab user's key, and drafts with Claude Code from this
+  // checkout's code, whichever coder the Lab runs.
+  errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT, tracker: { project: "shared/fsd" } },
 });
 
 export default lab.state;

@@ -36,7 +36,7 @@ import { taskBoard } from "../../src/task-board";
 import { defineTaskCollection, type TaskWorker } from "../../src/tasks";
 import { assertJsonSafe } from "../../src/task-board/blocks/json-safe";
 
-const USER_ID = "u_hand_off_routing";
+const USER_ID = "u_dispatch_routing";
 
 function worker(name: string) {
   return handler({
