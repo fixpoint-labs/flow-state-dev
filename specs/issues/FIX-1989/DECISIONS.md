@@ -37,13 +37,13 @@ messages answered with no message and no tool call. Then a message gains `wake: 
 line still lands for the recipient's next turn.
 
 <a name="d1"></a>
-## D1 · A message lands in the recipient's own conversation with the user, and an answer goes back to the exact session that asked; a task can wait for it
+## D1 · A message lands in the recipient's own conversation with the user, and an answer goes back to the exact session that asked. Nothing waits for it
 
 | | |
 |---|---|
-| **Instead of** | A separate session for each pair of workers, or always answering into the sender's main conversation |
-| **Because** | In its own conversation the recipient answers with what it already knows, and the user sees the message where they already talk to that worker. A side channel would wake the recipient with none of that context, and add one more place to look. Each worker has one conversation per user at an address Workforce can compute, `ensureWorkerSession({ worker })`, and Shift Manager opens a first line there too, so the server and the screen name the same session. The installation's project coordinator, which keeps one conversation per project, is reached in the one for the sender's project when the sender works in a project. A recipient with no conversation yet has it opened by the message. The answer names the message it answers, and the log row holds the session that sent it, written from the sending turn's own session, so the answer goes back there and wakes it. A turn that cannot finish without the answer, such as a task's, sends with `wait: true` and parks as `dispatchTask({ wait })` does; the answer resumes it, and a recipient that fails or never answers ends the wait with an error. If the asking session has ended, the answer goes to the sender's own conversation |
-| **Locks in** | Worker messages appear in the user's conversations with those workers, and grow them. A worker's conversation lives at one computed address. The sender is server truth, never tool input |
+| **Instead of** | A separate session for each pair of workers, always answering into the sender's main conversation, or letting a turn wait for the answer |
+| **Because** | In its own conversation the recipient answers with what it already knows, and the user sees the message where they already talk to that worker. A side channel would wake the recipient with none of that context, and add one more place to look. Each worker has one conversation per user at an address Workforce can compute, `ensureWorkerSession({ worker })`, and Shift Manager opens a first line there too, so the server and the screen name the same session. The installation's project coordinator, which keeps one conversation per project, is reached in the one for the sender's project when the sender works in a project. A recipient with no conversation yet has it opened by the message. The answer names the message it answers, and the log row holds the session that sent it, written from the sending turn's own session, so the answer goes back there and wakes it. A conversation turn has no need to wait: the answer wakes it. A task's turn can't: the one wait there is, `dispatchTask({ wait })`, refuses a turn that is working a task so that waits stay one deep ([FIX-1816](../FIX-1816/BUSINESS-RULES.md) BR-5a), and a parked task turn would hold its claimed row. So a message has no `wait`. A task's session ends with its turn, so an answer to it goes to the sender's own conversation and wakes it there. A task that can't finish without a fact still asks its filer, as today |
+| **Locks in** | Worker messages appear in the user's conversations with those workers, and grow them. A worker's conversation lives at one computed address. The sender is server truth, never tool input. A task can't hold its turn open for a message's answer |
 
 ![Where a message lands: the recipient's own conversation, chosen, beside a side channel per pair. Decides it: whether the recipient answers with its own context. Price: worker talk appears in the user's conversations. Locks in answers going back to the session that asked; flips if worker talk crowds those conversations](figures/d1-where-it-lands.svg)
 
@@ -51,6 +51,8 @@ It comes down to the recipient's context: a side channel wakes it knowing nothin
 
 **What would change my mind:** users finding worker talk crowds their conversations. Then
 message lines fold under one "worker messages" row in the conversation, with the log unchanged.
+Or tasks that often park on their filer for a fact another worker has. Then a task-turn wait is
+worth relaxing FIX-1816's one-deep rule, with a lease rule for the parked row, as its own issue.
 
 <a name="d3"></a>
 ## D3 · Workers that only take tasks, such as the coder, are left out for now
@@ -70,7 +72,7 @@ could answer. Then FIX-1990 moves up.
 
 ## Decided, not asked
 
-- **Names.** The tool is `messageWorker({ to, text, replyTo?, wait? })`; the internal entry is
+- **Names.** The tool is `messageWorker({ to, text, replyTo? })`; the internal entry is
   `onWorkerMessage`, pinned for the goal check; the Lab option is `hireWorkforce`'s `messages`.
   `to` is a worker id on the user's roster. The tool's input is strict, so it can't name a sender.
 - **Who may message whom.** Any worker on the user's roster (own or standard) may message any
@@ -112,11 +114,8 @@ could answer. Then FIX-1990 moves up.
 - **A coordinator whose routing never runs a turn of its own** (round-robin, everyone) refuses
   a message with that reason, rather than taking a line nobody reads. A best-fit coordinator, such
   as the Shift Coordinator, runs its answer turn, as a task's notice already wakes it.
-- **The wait** is bounded by the same timeout `dispatchTask({ wait })` uses, and one wait per
-  step, as there. Waiting is the sender's choice; a conversation turn does not need it, because the
-  answer wakes the conversation. An answer that arrives after its waiter timed out is delivered
-  as any answer is: a line in the asking session that wakes it, or, when that session has ended,
-  in the sender's own conversation. It never resumes the timed-out call.
+- **An answer to a session that has ended** (a task's) is delivered as a line in the sender's
+  own conversation, and wakes it there. It is never dropped.
 - **Layer rule.** The engine and core gain one generic option, starting state on an `{ id }`
   dispatch target, which creates the session at that id when absent and is judged by the target
   flow's create check, as a `{ key }` child already is. The seam's create path already runs that
@@ -164,12 +163,17 @@ could answer. Then FIX-1990 moves up.
   that prove the first two. Also, a thrown dispatch is no longer marked refused, and the entry dedupes by
   message id, so a retry can't wake a recipient twice. Leg 3 now asks only the refused worker to
   show that it stopped.
+- **Review, round 2** — the architect's coherence check: `wait: true` claimed to reuse
+  `dispatchTask({ wait })`'s gate, which refuses a task turn by FIX-1816's one-deep rule and is
+  keyed to a task row. `wait` is dropped from v1 (D1): a conversation turn doesn't need it, and a
+  task keeps asking its filer. Leg 2 now proves an answer to an ended task lands in the sender's
+  conversation.
 
 ## Notes from review
 
-- "Consider noting whether v1 could ship fire-and-forget `messageWorker({ to, text })` for conversation turns and restrict `wait: true` to task/session-kit internals… Implicit reply could defer `replyTo` in v1." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687755)). Leg 2 needs `wait` from a task's turn, and the Messages view needs `replyTo` for threads.
+- "Consider noting whether v1 could ship fire-and-forget `messageWorker({ to, text })` for conversation turns and restrict `wait: true` to task/session-kit internals… Implicit reply could defer `replyTo` in v1." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687755)). Fire-and-forget adopted in round 2: v1 has no `wait`. The Messages view needs `replyTo` for threads.
 - "A thin v1 (messaging + labelled lines + goal legs 1–4) and a follow-up (Messages view UI, or engine create-on-dispatch)… a short slice order paragraph would help." — cursor (review summary). The PR split is the implementer's; the goal check covers all five legs.
-- "Prefer `parkOnWait` / `resumeWait` with gate id on the log row rather than stretching `WaitGateBinding` / `dispatchAndWait` task semantics." — cursor (review summary)
+- "Prefer `parkOnWait` / `resumeWait` with gate id on the log row rather than stretching `WaitGateBinding` / `dispatchAndWait` task semantics." — cursor (review summary). Moot in v1, which has no `wait`; the starting point if a task-turn wait is taken up later.
 - "Mirror `taskChainsCollection` + CAS for the log; reuse `workerDoorOf` + `rosterWorker` instead of a new `delegate-check` `use` variant." — cursor (review summary)
 - "Call out interaction with the 32 deferred notices cap on a conversation (`task-settled`); bursty messaging + task notices may need an explicit concurrency key or test." — cursor (review summary)
 - "If v1 accepted 'refuse until the user has opened that worker once' you could defer `{ id, state }` create-on-dispatch." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687737)). D1 requires it: a recipient with no conversation is opened by the message.
