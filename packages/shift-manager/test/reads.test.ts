@@ -447,7 +447,7 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.asks.value[0]!.workerId).toBe("ops.loner");
   });
 
-  it("an ask from the user's own worker is in Inbox, and that worker reads as on call", async () => {
+  it("an ask from the user's own worker is in Inbox, and that worker reads as on shift", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
     // A worker of the user's own: on their roster, never in the inventory.
@@ -461,10 +461,10 @@ describe("asks through a coordinator's delivery (V7)", () => {
     expect(snapshot.inventory.value.workers.map((s) => s.id)).not.toContain("ops.mine");
     expect(snapshot.asks.value.map((a) => [a.workerId, a.item.message])).toEqual([["ops.mine", "Approve: ship it"]]);
 
-    // Roster and TEAMS join the roster the same way, so the worker is on call there.
+    // Roster and TEAMS join the roster the same way, so the worker is on shift there.
     const entries = await workforceClientFor(clients).roster();
     const states = workerStates(withRoster(snapshot, { entries }).snapshot);
-    expect(states.workers.get("ops.mine")?.status).toBe("on call");
+    expect(states.workers.get("ops.mine")?.status).toBe("on shift");
   });
 
   it("a roster that fails to load fails Inbox's asks by name, not by dropping the user's own workers", async () => {

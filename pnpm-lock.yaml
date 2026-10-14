@@ -1066,6 +1066,22 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
+    optionalDependencies:
+      '@cursor/sdk-darwin-arm64':
+        specifier: 1.0.31
+        version: 1.0.31
+      '@cursor/sdk-darwin-x64':
+        specifier: 1.0.31
+        version: 1.0.31
+      '@cursor/sdk-linux-arm64':
+        specifier: 1.0.31
+        version: 1.0.31
+      '@cursor/sdk-linux-x64':
+        specifier: 1.0.31
+        version: 1.0.31
+      '@cursor/sdk-win32-x64':
+        specifier: 1.0.31
+        version: 1.0.31
 
   packages/devtool:
     dependencies:

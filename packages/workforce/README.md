@@ -1223,7 +1223,7 @@ const agent = defineAgentWorkerFlow({ installation, catalog: rosterTools });
 
 A worker holds `hire` or `fire` only when its own `tools:` names them. Each write goes to the roster
 of the user whose turn it is: a worker can't hire for anyone else. The blocks write at once; an
-approval before a fire is yours to add as a step before it, as the chief of staff guide shows.
+approval before a fire is yours to add as a step before it, as the Shift Coordinator guide shows.
 
 ## The inventory
 
@@ -1447,7 +1447,8 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   project, and one filed from a conversation with no project works in the project its task names
   as `input.project`, for that project's members only (`not-a-member`). A task filed from a
   workstream or a project's conversation that names a project in `input.project` is filed naming
-  that conversation's project instead. `no-project` when none applies. The block that asks it
+  that conversation's project instead, and a worker filing there is told that project in its
+  task tools' context, so it has no project to name. `no-project` when none applies. The block that asks it
   must hold `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
 
   ```ts
@@ -1885,8 +1886,13 @@ five boards deep and 100 tasks under one top task; a filing past either is answe
 A worker on a task turn has `parkOnQuestion`: it parks the task on its question, and the
 conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
 the task picks up in its own session with the answer as its next message, without spending a
-retry. A task's session stays open after the task finishes: message its worker there, or file a
-follow-up with `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
+retry. A task's session stays open after the task finishes. A message to the built-in `agent`
+worker there (its `run` action) reopens the task, or the latest of its follow-ups, and answers
+`{ reopened: <that task's id> }`. The task goes back on the conversation's board under the same id,
+and its next attempt runs in that session without spending a retry. The worker answers there from
+everything the session holds, and the conversation that filed it hears the new ending. While the task or a
+follow-up of it is unfinished, a message there is an ordinary turn. To file new work on a finished
+task, use `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
 
 A browser reads its user's boards through the ordinary collection read: `tasks`, fetched through
 any of that user's sessions on a flow that carries the session board, answers every one of their
@@ -1991,7 +1997,7 @@ the root exports, and reaches no Node built-in.
 | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
-| `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there, for a message door over the session's run. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |
+| `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there (`{ tasks, runEntry, filingFlow, filingSession }`), for a message door over the session's run; pass `filingSession`, the conversation that filed the task, as the door board's `reopenIn` so a message on a finished task reopens it. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |
 | `defineWorkerInventoryCollection()` | The worker inventory: one org-scoped row per registered worker, at `inventory/workers/<workerId>`. Takes no options; install what it returns under a block's `resources`. |
 | `WorkerInventoryRow` | One row of the inventory. |
 | `workerInventoryRowSchema` | The Zod schema behind the row type. Closed: an undeclared key is dropped on the way in. |

@@ -189,6 +189,23 @@ is rarely what you want.
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
 
+Cursor fails a run whose sandbox can't start rather than running without it.
+`probeCursorSandbox` reports whether the sandbox can start for a run in `cwd`
+with that `env`, without starting a run. It takes about a second, so call it
+once, from a startup or health check.
+
+```ts
+import { probeCursorSandbox } from "@flow-state-dev/cursor";
+
+const result = await probeCursorSandbox({ cwd: repoDir, env });
+// { supported: true } or { supported: false, reason: "<Cursor's message>" }
+```
+
+The sandbox needs a helper binary from Cursor's platform package, which this
+package installs. With `env` set (next section), no extra dependency is needed.
+Without `env`, under pnpm, add `@cursor/sdk-<platform>-<arch>` to your app's
+dependencies, or the sandbox can't start and the run fails.
+
 ## Choosing the environment the run starts with
 
 Cursor's SDK runs in your server's process, and every shell command Cursor runs

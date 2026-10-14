@@ -13,6 +13,8 @@ import { bootBoardHost, boardWorkers, messageOf, type BoardHost } from "./conver
 import { RULE_TOOLS, STANDING_RULES_LINE } from "../src/standing-rules/keys";
 import { MAX_RULES } from "../src/standing-rules/rules-list";
 import { ruleTools } from "../src/standing-rules/rules-capability";
+import { USER_TURN_STATE, markUserTurn } from "../src/standing-rules/user-turn";
+import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../src/workers/keys";
 
 const RULE_TOOL_NAMES = Object.values(RULE_TOOLS).sort();
 
@@ -147,6 +149,18 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(ruleToolsOf(delivered)).toEqual([]);
   });
 
+  // A message reaching the door of an unfinished task's session runs the turn, so the mark itself must skip it.
+  it("never marks a task's session or a conversation's delegate session, and marks any other", async () => {
+    const marked = async (state: Record<string, unknown>) => {
+      const patches: unknown[] = [];
+      await markUserTurn({ session: { state }, request: { patchState: async (p: unknown) => void patches.push(p) } } as never);
+      return patches;
+    };
+    expect(await marked({ [TASK_ID_STATE_KEY]: "t1" })).toEqual([]);
+    expect(await marked({ [FILING_SESSION_STATE_KEY]: "s1" })).toEqual([]);
+    expect(await marked({})).toEqual([{ [USER_TURN_STATE]: true }]);
+  });
+
   it("offers none to a user's message inside a task's session: that is task input", async () => {
     const h = boot();
     const conversation = await h.conversation("alice", "lead");
@@ -161,7 +175,9 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(taskSession?.state).toMatchObject({ workerId: "otto", taskId: expect.any(String) });
     expect(taskSession).toBeDefined();
     calls = [];
+    // The task has finished, so the message reopens it, and the task's next turn is the one graded.
     await h.act("alice", taskSession!.id, "run", { message: "Also add a title." }, "agent");
+    await h.settled();
     const turn = calls.find((c) => c.block === "agent-answer");
     expect(turn).toBeDefined();
     expect(ruleToolsOf(turn)).toEqual([]);

@@ -1,6 +1,6 @@
 /**
  * Goal check: a person opens Roster in Shift Manager and sees every worker the
- * Lab has, each on shift, on call or off shift as the Lab's own records say,
+ * Lab has, each on shift or off shift as the Lab's own records say,
  * with the tasks it holds and what it waits on, for all teams and for each.
  *
  * Real path, no model, out of CI. See goal.md for the contract.
@@ -73,7 +73,7 @@ const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 const STAFF = "Staff";
 /** The collection Workforce keeps every conversation's board in, as a flow's manifest publishes it. */
 const CONVERSATION_LEDGER = "tasks";
-const STATUSES = ["on shift", "on call", "off shift"] as const;
+const STATUSES = ["on shift", "off shift"] as const;
 type Status = (typeof STATUSES)[number];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -270,7 +270,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     return {
       id,
       team: id.includes(".") ? id.slice(0, id.indexOf(".")) : STAFF,
-      status: running.length > 0 ? "on shift" : parked.length > 0 || myAsks.length > 0 ? "on call" : "off shift",
+      status: running.length > 0 || parked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
       held: [...running, ...parked].map((r) => r.key),
       waits: [...parked.map((r) => r.id), ...myAsks.map((a) => a.id)],
       queued: mine.filter((r) => r.status === "pending" || r.status === "blocked").length,
@@ -289,7 +289,6 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
 
 const counts = (workers: Worker[]) => ({
   onShift: workers.filter((w) => w.status === "on shift").length,
-  onCall: workers.filter((w) => w.status === "on call").length,
   offShift: workers.filter((w) => w.status === "off shift").length,
   waiting: workers.reduce((n, w) => n + w.waits.length, 0),
 });
@@ -333,7 +332,7 @@ async function gradeRoster(page: Page, store: Store, team: string | null, fail: 
 
   const c = counts(want);
   const summary = (await page.getByTestId("roster-summary").textContent()) ?? "";
-  const wantSummary = `${c.onShift} on shift · ${c.onCall} on call · ${c.offShift} off shift · ${c.waiting} waiting on you`;
+  const wantSummary = `${c.onShift} on shift · ${c.offShift} off shift · ${c.waiting} waiting on you`;
   if (summary !== wantSummary) fail("summary", `${where}: "${summary}", the store gives "${wantSummary}"`);
   if (team !== null) {
     const title = (await page.getByTestId("roster-title").textContent()) ?? "";
@@ -379,9 +378,10 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
     await open(page, served.origin, "/inbox");
     const all = counts(store.workers);
     const navCount = await page.getByTestId("nav-roster-count").textContent();
-    if (navCount !== `${all.onShift}·${all.onCall}`) fail("sidebar", `the Roster entry says "${navCount}", the store gives ${all.onShift} on shift · ${all.onCall} on call`);
-    const footer = [await page.getByTestId("footer-on-shift").textContent(), await page.getByTestId("footer-on-call").textContent()];
-    if (footer[0] !== `${all.onShift} on shift` || footer[1] !== `${all.onCall} on call`) fail("sidebar", `the footer says "${footer.join(" · ")}"`);
+    if (navCount !== `${all.onShift}`) fail("sidebar", `the Roster entry says "${navCount}", the store gives ${all.onShift} on shift`);
+    const footer = await page.getByTestId("footer-on-shift").textContent();
+    if (footer !== `${all.onShift} on shift`) fail("sidebar", `the footer says "${footer}"`);
+    if ((await page.getByTestId("sidebar").textContent())?.match(/on call/i)) fail("sidebar", "the sidebar still says on call");
 
     const teamRows = (await page.getByTestId("team").evaluateAll((els) => els.map((e) => e.getAttribute("data-team") ?? ""))) as string[];
     if (JSON.stringify(teamRows) !== JSON.stringify(store.teams)) fail("TEAMS", `rows [${teamRows.join(", ")}], the store's groups are [${store.teams.join(", ")}]`);

@@ -92,20 +92,30 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Roster (V3)", () => {
-  it("groups every worker, on shift, on call, off shift, with Staff's worker in it", async () => {
+  it("groups every worker, on shift, off shift, with Staff's worker in it", async () => {
     await open("/roster");
     const page = await screen.findByTestId("roster");
-    expect(attrs(within(page).getAllByTestId("roster-group"), "data-status")).toEqual(["on shift", "on call", "off shift"]);
+    expect(attrs(within(page).getAllByTestId("roster-group"), "data-status")).toEqual(["on shift", "off shift"]);
     const workers = within(page).getAllByTestId("roster-worker");
     expect(workers.map((w) => [w.getAttribute("data-worker-id"), w.getAttribute("data-status")])).toEqual([
       ["eng.coder", "on shift"],
-      ["eng.reviewer", "on call"],
-      ["ops.asker", "on call"],
+      ["eng.reviewer", "on shift"],
+      ["ops.asker", "on shift"],
       // The chief of staff first in its group: the coordinator the user's work goes through (FIX-1791 BR-33).
       ["chief-of-staff", "off shift"],
       ["ops.idle", "off shift"],
     ]);
-    expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call · 2 off shift · 3 waiting on you/);
+    expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^3 on shift · 2 off shift · 3 waiting on you/);
+  });
+
+  it("names the chief-of-staff worker Shift Coordinator, keeping its id, and every other worker by its own name", async () => {
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    const row = (id: string) => within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!;
+    expect(row("chief-of-staff").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
+    expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("coder");
+    // The id is wire data; nothing a user reads on the screen says chief of staff.
+    expect(document.body.textContent).not.toMatch(/chief[ -]of[ -]staff/i);
   });
 
   it("draws the user's own workers from their roster, marked as theirs, beside the inventory's (S12)", async () => {
@@ -174,11 +184,10 @@ describe("Roster (V3)", () => {
     expect(window.location.pathname).toBe("/tasks/s_eng.tasks/E-1/session");
   });
 
-  it("names its gaps: standing watches, which worker holds a task, and the harness", async () => {
+  it("names its gaps: which worker holds a task, and the harness", async () => {
     await open("/roster");
-    expect((await screen.findByTestId("roster-gap-watches")).textContent).toBe(GAPS.roster.watches);
-    expect(screen.getByTestId("roster-gap-worker-match").textContent).toBe(GAPS.roster.workerMatch);
-    expect(GAPS.roster.watches).toMatch(/FIX-1675/);
+    expect((await screen.findByTestId("roster-gap-worker-match")).textContent).toBe(GAPS.roster.workerMatch);
+    expect(screen.queryByTestId("roster-gap-watches")).toBeNull();
     expect(GAPS.roster.workerMatch).toMatch(/FIX-1672/);
     expect(screen.getAllByTestId("roster-worker-harness")[0]!.getAttribute("title")).toBe(GAPS.harness);
   });
@@ -188,7 +197,7 @@ describe("Roster (V3)", () => {
     const page = await screen.findByTestId("roster");
     expect(attrs(within(page).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["ops.asker", "ops.idle"]);
     expect(within(page).getByTestId("roster-title").textContent).toMatch(/ops$/);
-    expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^0 on shift · 1 on call · 1 off shift · 1 waiting on you/);
+    expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 1 off shift · 1 waiting on you/);
     act(() => fireEvent.click(within(page).getAllByTestId("roster-team-option").find((o) => o.getAttribute("data-team") === STAFF_TEAM)!));
     expect(attrs(within(screen.getByTestId("roster")).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["chief-of-staff"]);
   });
@@ -208,7 +217,7 @@ describe("Roster (V3)", () => {
   it("BR-19: a conversation whose board did not load is named, and none of its tasks counts", async () => {
     await open("/roster", lab({ boards: "ops failed" }));
     expect((await screen.findByTestId("roster-boards-failure")).textContent).toMatch(/s_ops/);
-    expect(screen.getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 2 on call/);
+    expect(screen.getByTestId("roster-summary").textContent).toMatch(/^3 on shift · 2 off shift/);
   });
 
   it("BR-20: asks that did not load put the partial mark on Roster", async () => {
@@ -239,11 +248,10 @@ describe("Roster in design v2's form", () => {
   it("heads its columns as v2 does and says what each group's status means", async () => {
     await open("/roster");
     const page = await screen.findByTestId("roster");
-    expect(within(page).getByTestId("roster-columns").textContent).toBe("WORKERSLOTSHOLDINGON CALL FOR");
+    expect(within(page).getByTestId("roster-columns").textContent).toBe("WORKERSLOTSHOLDINGWAITING ON YOU");
     expect(within(page).getAllByTestId("roster-group").map((g) => [g.getAttribute("data-status"), within(g).getByTestId("roster-group-sub").textContent])).toEqual([
-      ["on shift", "holding live work"],
-      ["on call", "subscribed and waiting · wakes on a trigger"],
-      ["off shift", "nothing assigned, nothing subscribed"],
+      ["on shift", "holding live work, running or waiting on you"],
+      ["off shift", "nothing assigned"],
     ]);
   });
 
@@ -303,6 +311,20 @@ describe("Tasks (BR-14)", () => {
     expect(cell("E-2", "task-row-time")).toBe("—");
   });
 
+  it("names a task the chief-of-staff worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
+    const snapshot = lab();
+    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
+    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, row("s_eng", "E-4", "in_progress", "chief-of-staff")];
+    await open("/tasks", snapshot);
+    const table = await screen.findByTestId("tasks-table");
+    const e4 = within(table).getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-4")!;
+    expect(within(e4).getByTestId("task-row-worker").textContent).toBe("Shift Coordinator");
+    act(() => fireEvent.click(screen.getAllByRole("tab").find((t) => t.getAttribute("data-grouping") === "worker")!));
+    const group = screen.getAllByTestId("tasks-group").find((g) => g.getAttribute("data-group") === "chief-of-staff")!;
+    expect(group.textContent).toMatch(/^Shift Coordinator/);
+    expect(screen.getByTestId("tasks-table").textContent).not.toMatch(/chief[ -]of[ -]staff/i);
+  });
+
   it("groups by stream one group per workstream, not per lead, when one worker leads two (BR-40)", async () => {
     const snapshot = lab();
     if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("the fixture loads");
@@ -333,29 +355,30 @@ describe("Tasks (BR-14)", () => {
 
   it("sums up what is in flight, what waits on you, the shift and the streams", async () => {
     await open("/tasks");
-    expect((await screen.findByTestId("tasks-summary")).textContent).toBe("3 in flight · 1 needs you · 1 on shift · 2 on call · 1 stream");
+    expect((await screen.findByTestId("tasks-summary")).textContent).toBe("3 in flight · 1 needs you · 3 on shift · 1 stream");
   });
 });
 
 describe("the sidebar (V4)", () => {
-  it("has Roster under Tasks with on shift · on call, and the footer says the same", async () => {
+  it("has Roster under Tasks with its on-shift count, and the footer says the same; nothing reads on call", async () => {
     await open("/inbox");
     const nav = within(screen.getByTestId("sidebar")).getAllByRole("button").map((b) => b.getAttribute("data-testid"));
     expect(nav.indexOf("nav-roster")).toBe(nav.indexOf("nav-tasks") + 1);
-    expect(screen.getByTestId("nav-roster-count").textContent).toBe("1·2");
-    expect(screen.getByTestId("footer-on-shift").textContent).toBe("1 on shift");
-    expect(screen.getByTestId("footer-on-call").textContent).toBe("2 on call");
+    expect(screen.getByTestId("nav-roster-count").textContent).toBe("3");
+    expect(screen.getByTestId("footer-on-shift").textContent).toBe("3 on shift");
+    expect(screen.queryByTestId("footer-on-call")).toBeNull();
+    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/on call/i);
   });
 
   it("TEAMS is one row per team, Staff first, with a square per worker and its on-shift count; no worker list", async () => {
     await open("/inbox");
     const teams = screen.getAllByTestId("team");
     expect(attrs(teams, "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
-    expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/1", "1/2", "0/2"]);
+    expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/1", "2/2", "1/2"]);
     const eng = teams[1]!;
     expect(within(eng).getAllByTestId("worker").map((w) => [w.getAttribute("data-worker-id"), w.getAttribute("data-status"), w.getAttribute("title")])).toEqual([
       ["eng.coder", "on shift", "coder · on shift"],
-      ["eng.reviewer", "on call", "reviewer · on call"],
+      ["eng.reviewer", "on shift", "reviewer · on shift"],
     ]);
     expect(screen.queryByTestId("worker-flow")).toBeNull();
   });
@@ -382,7 +405,7 @@ describe("the sidebar (V4)", () => {
     expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["chief-of-staff", "amber-1f2e"]);
     // A standard worker the inventory already has is drawn once.
     expect(attrs(within(teams[1]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["eng.coder", "eng.reviewer", "eng.mine"]);
-    expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/2", "1/3", "0/2"]);
+    expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/2", "2/3", "1/2"]);
   });
 
   it("with the inventory unread, TEAMS still lists the roster's workers beside the failure", async () => {

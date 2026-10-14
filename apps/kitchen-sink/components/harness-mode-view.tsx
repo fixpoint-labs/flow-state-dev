@@ -14,10 +14,10 @@ import { HarnessFrame } from "@/components/harness-frame";
 import { HarnessSessionView } from "@/components/harness-session";
 
 /** A harness mode's frame and session view. */
-export function HarnessModeView({ label, flowKind }: { label: string; flowKind: string }) {
+export function HarnessModeView({ label, flowKind, note }: { label: string; flowKind: string; note?: string }) {
   const stream = useCallback(
     (sessionId: string) => <HarnessSessionView key={sessionId} label={label} flowKind={flowKind} sessionId={sessionId} />,
     [label, flowKind],
   );
-  return <HarnessFrame label={label} flowKind={flowKind} stream={stream} />;
+  return <HarnessFrame label={label} flowKind={flowKind} note={note} stream={stream} />;
 }

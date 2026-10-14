@@ -274,7 +274,9 @@ It answers `{ outcome: "continuing" | "kept", taskId }`:
 - **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
 - **claimed, with its run not started yet** → `kept` for that attempt.
 - **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
-- **never started in this session, finished, or on a harness that named no session** → refused. A refusal fails the request, with the reason in words as the error's message and the door's `TurnRefused` error as its cause, so only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
+- **finished (`completed`, `errored` or `cancelled`), on a board with `reopenIn`** → `continuing`. The door keeps the message for the next attempt, [reopens](https://flow-state.dev/docs/orchestration/task-substrate#putting-a-finished-task-back-in-the-queue) the row and runs the board's drain in the `reopenIn` session, so the task reads in progress again and the next attempt resumes the same coding session with the message in its prompt. `kept` if another message reopened it first.
+- **finished, on a board without `reopenIn`** → refused: "This task has finished and can't take a message here." The manager's own `messageDoor` has no `reopenIn`, so it always refuses a finished task.
+- **never started in this session, or on a harness that named no session** → refused. A refusal fails the request, with the reason in words as the error's message and the door's `TurnRefused` error as its cause, so only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
 
 The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.
 
@@ -305,6 +307,7 @@ Resolve each board from server state, such as the session's own fields, never fr
 - `tasks`: its rows, as the substrate resolves them. The door keys run records by the board's ledger id and partition, the same way the manager did.
 - `orgScoped`: the board is kept per organization, so only the run's own user may talk to it.
 - `drain`: the `internal` entry that runs this board's drain, and the flow that declares it. After a stop the door dispatches it into the session that claimed the row.
+- `reopenIn` (optional): the session that runs this board's drain. With it, a message on a finished task reopens the task and drains there; without it, the message is refused. For a Workforce conversation's board, `filingConversationBoard(ctx)` returns this session as `filingSession`.
 - `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for a fixed board's rows, which carry an `{ issue, phase }` payload. For a board read from the claim, return the task id with its payload's phase, or for a task with neither, the phase of the manager that runs it.
 
 The door takes the first board whose row links the calling session. It then behaves exactly like `messageDoor`, with the same answers and the same refusals.

@@ -316,7 +316,7 @@ export const GLOSSARY_TERMS = [
   "Project",
   "Workstream",
   "Project coordinator",
-  "Chief of staff",
+  "Shift Coordinator",
 ];
 
 /**

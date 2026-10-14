@@ -10,8 +10,8 @@
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; otherwise the user's latest with
  * the worker), the name over the worker's messages, the text for an empty conversation, what
- * sits above the feed (`lead`), a line to hand in (`autoSend`), suggestions,
- * the composer's `scale`, and `renderItem` to draw an item its own way (read
+ * sits above the feed (`lead`), a line to hand in (`autoSend`), the
+ * composer's `scale`, and `renderItem` to draw an item its own way (read
  * the session's other items with `useSessionItems()`).
  *
  * {@link ConversationFrame} is the scrolling column with the composer pinned
@@ -28,6 +28,7 @@ import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
+import { workerLabel } from "../lib/derive";
 import { useFollowLatest } from "../lib/follow";
 import { useLab } from "../lib/lab-data";
 import type { Worker } from "../lib/reads";
@@ -75,7 +76,6 @@ export function Conversation({
   emptyText,
   working = false,
   startWork,
-  suggestions,
   autoSend,
   onAutoSend,
   renderItem,
@@ -97,7 +97,6 @@ export function Conversation({
   working?: boolean;
   /** Called as a line goes out; returns the call that says it settled. */
   startWork?: () => () => void;
-  suggestions?: readonly string[];
   /** A line handed in from elsewhere (the palette): sent as if typed, once the composer isn't blocked. */
   autoSend?: string | null;
   onAutoSend?: () => void;
@@ -126,7 +125,7 @@ export function Conversation({
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
     worker.door === null || worker.kind === null
-      ? `${worker.id} ${gaps.turn.noDoor}`
+      ? `${workerLabel(worker.id)} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
         : sessionId !== null && sessionId !== opened && read === undefined
@@ -140,7 +139,6 @@ export function Conversation({
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}
       blocked={blocked}
-      suggestions={suggestions}
       autoSend={autoSend}
       onAutoSend={onAutoSend}
       send={async (message, held) => {
