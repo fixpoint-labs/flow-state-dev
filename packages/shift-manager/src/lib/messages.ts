@@ -43,7 +43,11 @@ export function toMessageRows(items: readonly { clientData?: unknown }[]): Worke
 /** The log as exchanges, the exchange with the newest message first, and each exchange's messages newest first. */
 export function exchangesOf(rows: readonly WorkerMessageRow[]): MessageExchange[] {
   const byExchange = new Map<string, WorkerMessageRow[]>();
-  for (const row of rows) byExchange.set(row.exchange, [...(byExchange.get(row.exchange) ?? []), row]);
+  for (const row of rows) {
+    const bucket = byExchange.get(row.exchange);
+    if (bucket === undefined) byExchange.set(row.exchange, [row]);
+    else bucket.push(row);
+  }
   return [...byExchange.entries()]
     .map(([id, messages]) => {
       const sorted = [...messages].sort((a, b) => b.at - a.at || b.id.localeCompare(a.id));

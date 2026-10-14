@@ -234,6 +234,7 @@ export function Conversation({
                   const item = segment.item;
                   const role = (item as { role?: string }).role ?? "";
                   const own = renderItem?.(item);
+                  const sender = item.type === "message" && role === "assistant" ? senderOf(worker, item, known) : undefined;
                   return (
                     <li
                       key={`${item.requestId}/${item.id}`}
@@ -246,11 +247,11 @@ export function Conversation({
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
                         <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {(senderOf(worker, item, known) ?? name).toUpperCase()}
+                          {(sender ?? name).toUpperCase()}
                           <span className="tracking-normal" data-look="message-time">
                             {clockTime(item.ts)}
                           </span>
-                          {isWorkerMessage(item, senderOf(worker, item, known)) ? (
+                          {isWorkerMessage(item, sender) ? (
                             <button
                               type="button"
                               className="tracking-normal normal-case hover:text-foreground hover:underline"

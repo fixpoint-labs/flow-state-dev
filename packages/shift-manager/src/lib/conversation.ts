@@ -64,30 +64,55 @@ export function conversationAt(sessions: readonly SessionSummary[], derived: str
   return sessions.some((session) => session.id === derived) ? derived : null;
 }
 
+/** Derivations by user, organization, flow and worker, so two views of one conversation hash it once. */
+const derivations = new Map<string, Promise<string>>();
+
+function derivedIdOf(key: string, input: Parameters<typeof deriveWorkerSessionId>[0]): Promise<string> {
+  let pending = derivations.get(key);
+  if (pending === undefined) {
+    pending = deriveWorkerSessionId(input);
+    // A failed derivation is not kept, so a later view can try again.
+    pending.catch(() => derivations.delete(key));
+    derivations.set(key, pending);
+  }
+  return pending;
+}
+
+/** The derived conversation id, while it is computed, and why it couldn't be. */
+interface Derived {
+  /** `undefined` while it is computed, `null` when it can't be (no worker, no flow, no organization yet, or a failure). */
+  id: string | null | undefined;
+  /** Why it couldn't be computed: on a page served over plain HTTP from a host that isn't this machine, the browser has no Web Crypto to hash it with. */
+  failure: Failure | undefined;
+}
+
 /**
- * The worker's derived conversation id for the signed-in user: `undefined`
- * while it is computed, `null` when it can't be (no worker, no flow, no
- * organization yet).
+ * The worker's derived conversation id for the signed-in user.
  */
-function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): string | null | undefined {
+function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): Derived {
   const { clients, snapshot } = useLab();
   const orgId = snapshot !== undefined && "orgId" in snapshot ? snapshot.orgId : undefined;
   const flow = worker?.kind ?? null;
   const id = worker?.id;
-  const [derived, setDerived] = useState<{ key: string; id: string } | null>(null);
+  const [derived, setDerived] = useState<{ key: string; id: string | null; failure?: Failure } | null>(null);
   const key = orgId === undefined || flow === null || id === undefined ? null : `${clients.userId}\n${orgId}\n${flow}\n${id}`;
   useEffect(() => {
     if (key === null || orgId === undefined || flow === null || id === undefined) return;
     let closed = false;
-    void deriveWorkerSessionId({ userId: clients.userId, orgId, flow, criteria: { worker: id } }).then((sessionId) => {
-      if (!closed) setDerived({ key, id: sessionId });
-    });
+    derivedIdOf(key, { userId: clients.userId, orgId, flow, criteria: { worker: id } }).then(
+      (sessionId) => {
+        if (!closed) setDerived({ key, id: sessionId });
+      },
+      (error: unknown) => {
+        if (!closed) setDerived({ key, id: null, failure: describeFailure(error) });
+      }
+    );
     return () => {
       closed = true;
     };
   }, [key, clients.userId, orgId, flow, id]);
-  if (key === null) return null;
-  return derived !== null && derived.key === key ? derived.id : undefined;
+  if (key === null) return { id: null, failure: undefined };
+  return derived !== null && derived.key === key ? { id: derived.id, failure: derived.failure } : { id: undefined, failure: undefined };
 }
 
 /**
@@ -96,7 +121,7 @@ function useDerivedId(worker: Pick<Worker, "id" | "kind"> | undefined): string |
  * delegates, its board) without drawing it.
  */
 export function useConversationSession(worker: Pick<Worker, "id" | "kind"> | undefined, sessions: readonly SessionSummary[]): string | null {
-  return conversationAt(sessions, useDerivedId(worker) ?? null, null);
+  return conversationAt(sessions, useDerivedId(worker).id ?? null, null);
 }
 
 export interface WorkerConversation {
@@ -128,7 +153,7 @@ export interface WorkerConversation {
 export function useWorkerConversation(worker: Worker, sessions: readonly SessionSummary[], pinned?: string): WorkerConversation {
   const { clients } = useLab();
   const workforce = useWorkforce();
-  const derived = useDerivedId(pinned === undefined ? worker : undefined);
+  const { id: derived, failure: underived } = useDerivedId(pinned === undefined ? worker : undefined);
   const [opened, setOpened] = useState<string | null>(null);
   const sessionId = pinned ?? conversationAt(sessions, derived ?? null, opened);
   const resolving = pinned === undefined && opened === null && derived === undefined;
@@ -163,5 +188,13 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
     return session.id;
   }, [sessionId, workforce, worker.id]);
 
-  return { sessionId, opened, read: sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined, failure, reread, resolving, ensure };
+  return {
+    sessionId,
+    opened,
+    read: sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined,
+    failure: failure ?? underived,
+    reread,
+    resolving,
+    ensure
+  };
 }
