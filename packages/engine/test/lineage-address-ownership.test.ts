@@ -119,7 +119,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
     const childId = await dispatchFromRoot(stores);
 
     // 3. Alice's conversation is deleted. The child outlives it — which is the
-    //    whole point of a hand-off — and still points at the deleted id.
+    //    whole point of a dispatch — and still points at the deleted id.
     const deleted = await handleDeleteSession(
       new Request(`http://x/sessions/${ROOT_ID}`, { method: "DELETE" }),
       { kind: "delete_session", flowKind: flow.kind, sessionId: ROOT_ID },

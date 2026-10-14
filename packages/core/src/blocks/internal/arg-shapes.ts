@@ -127,7 +127,7 @@ export type StepOptions = {
    *
    * **Why the outcome is part of the contract.** A caller that releases on
    * every exit alike releases too early on the two exits that are *not*
-   * suspension: `"returned"` and `"threw"` both hand off to a downstream step
+   * suspension: `"returned"` and `"threw"` both pass to a downstream step
    * (a recorder, a `.rescue()` handler) that still has work to do, and this
    * hook fires before that step runs. A lease renewal stopped here has stopped
    * before the write it was protecting. So the useful shape is usually "release

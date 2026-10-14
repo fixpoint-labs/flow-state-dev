@@ -9,7 +9,7 @@
  * - **everyone**, when round r closes, hands each delegate the others'
  *   answers from it, in one delivery;
  * - **judgment**, when round r closes, wakes the coordinator's own turn once
- *   with the round's answers. Its hand-offs in that turn are round r + 1's.
+ *   with the round's answers. Its dispatches in that turn are round r + 1's.
  *
  * At the limit, or with `rounds: 0`, an answer routes nowhere.
  *

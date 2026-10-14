@@ -1,17 +1,17 @@
 /**
- * The claim gate a board puts in front of each task entry its assignees hand off
+ * The claim gate a board puts in front of each task entry its assignees dispatch
  * to — what a `task` dispatch actually enters in the child session.
  *
  * The flow declares a task entry as a plain block, `task: { actions: { implement:
  * { block } } }`. The board cannot wrap it itself — the flow owns the entry — so
- * `taskBoard()` builds this gate once and binds it onto the hand-off it
+ * `taskBoard()` builds this gate once and binds it onto the dispatch it
  * installs at each dispatcher assignee (`bindTaskDispatcher`), and `defineFlow`
- * applies it to every entry a reachable hand-off addresses. A `task` dispatch
+ * applies it to every entry a reachable dispatch addresses. A `task` dispatch
  * therefore resolves the *gate around the block* and never the bare block;
  * there is no path from a `task` dispatch to an entry that skips the sequence
  * below.
  *
- * ## The four things that must happen before a handed-off worker runs
+ * ## The four things that must happen before a dispatched worker runs
  *
  * All four are the same read, which is the point — one durable read per
  * dispatched request, doing four jobs:
@@ -53,14 +53,14 @@
  *
  * ## And what a lapsed lease is allowed to mean here
  *
- * Nothing renews a handed-off row's lease between the parent's hand-off and the
+ * Nothing renews a dispatched row's lease between the parent's dispatch and the
  * child's first breath, so a child that waits in the host's queue longer than
  * the lease arrives at a row the substrate already counts as free. Refusing it
  * on that alone is more conservative than this gate's own evidence: with
  * `attempts`, `createdAt`, the incarnation, the status and the assignee all still
  * matching, no reclaim has happened — a lapsed lease only means one *could*
  * have. Under an external dispatcher with a sustained backlog that reading
- * fails every hand-off before it starts, and each re-dispatch spends an
+ * fails every dispatch before it starts, and each re-dispatch spends an
  * attempt, so backlog alone can fail a task (FIX-1305).
  *
  * So the lapse arm asks the substrate instead of the clock: renew the lease
@@ -81,7 +81,7 @@ import type {
   TaskDispatchInput,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { assertHandOffBlockSupported } from "./hand-off";
+import { assertDispatchEntrySupported } from "./dispatch-assignee";
 import { ticketForClaim, type TaskClaimTicket } from "../tasks/claim-ticket";
 import { startLeaseRenewal } from "../tasks/lease-renewal";
 import {
@@ -168,7 +168,7 @@ export interface TaskGateOptions {
 
 /**
  * Build this board's claim gate: the function `defineFlow` applies to each task
- * entry a reachable hand-off of this board addresses.
+ * entry a reachable dispatch of this board addresses.
  *
  * The gated entry's `inputSchema` is the dispatch envelope narrowed to THIS
  * board — `runAction` parses the input before the block is entered, so a
@@ -224,7 +224,7 @@ export interface TaskLedgersOptions {
   onError?: "skip" | "fail";
   /**
    * Accept an entry whose blocks keep session state. Refused by default, as
-   * on a board's entry, because a hand-off under a shared session policy
+   * on a board's entry, because a dispatch under a shared session policy
    * (`per-worker`, a `key`) runs several rows in one child session. Set it
    * when the entry is handed tasks one session per task, or when its session
    * state is the entry's own, the same shape for every task.
@@ -234,15 +234,15 @@ export interface TaskLedgersOptions {
 
 /**
  * A task entry's own source: take tasks from any ledger `resolve` answers
- * for, read per dispatch, instead of from the one board that hands off to it.
+ * for, read per dispatch, instead of from the one board that dispatches to it.
  *
  * Pass the result as the entry's `from` (`task: { actions: { work: { block,
  * from: taskLedgers({ name, resolve }) } } }`). `defineFlow` then gates the
  * entry with no board in the flow: each dispatch's ledger id is resolved, an
  * id the resolver does not answer for is refused before any row is read, and
  * then every check a board's gate runs (row, attempt, identity, status,
- * assignee, lease, run link) runs on that ledger. A sender's board hands off
- * under its `boardId`, so a board over a shared ledger hands off under the
+ * assignee, lease, run link) runs on that ledger. A sender's board dispatches
+ * under its `boardId`, so a board over a shared ledger dispatches under the
  * ledger's id for a resolver keyed on ledger ids to find it.
  */
 export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
@@ -323,7 +323,7 @@ function buildTaskGate(options: {
     return inPartition(resolved, dispatch.taskId, dispatch.boardId, dispatch.partition);
   };
 
-  // The row read and settled is the one the hand-off named: a resolver that
+  // The row read and settled is the one the dispatch named: a resolver that
   // answered with another partition (or with a whole partitioned ledger) is
   // refused before the read, and again before the recorders write.
   const inPartition = (
@@ -393,7 +393,7 @@ function buildTaskGate(options: {
 
   return (entry: ActionCore, target: string): ActionCore => {
     const worker = entry.block as TaskWorker;
-    if (options.allowSessionState !== true) assertHandOffBlockSupported({ name, target, block: worker });
+    if (options.allowSessionState !== true) assertDispatchEntrySupported({ name, target, block: worker });
 
     const block = sequencer({
       name: `${name}-${target}-gate`,
@@ -445,9 +445,9 @@ function buildTaskGate(options: {
               `the row is "${row.status}", so no claim is outstanding on it`
             );
           }
-          // The row must still route to the assignee that handed it off. A hand-off
+          // The row must still route to the assignee that dispatched it. A dispatch
           // board freezes a running task's assignee precisely because it is
-          // the address the hand-off is reached by; a mismatch means that guard
+          // the address the dispatch is reached by; a mismatch means that guard
           // was bypassed, and running would mix two workers' histories under one
           // child.
           //
@@ -511,7 +511,7 @@ function buildTaskGate(options: {
         ),
         {
           // Losing the claim stops the worker paying for work it can no longer
-          // record; the substrate's write fence is what makes the hand-off safe.
+          // record; the substrate's write fence is what makes the dispatch safe.
           abortSignal: () => currentLeaseRenewal()?.signal,
           // Suspension is the one exit neither recorder sees: `SuspensionError`
           // bypasses `.rescue()` and a suspended request never aborts its signal,

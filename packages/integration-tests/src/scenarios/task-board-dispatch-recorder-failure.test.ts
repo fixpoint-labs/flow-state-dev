@@ -1,8 +1,8 @@
 /**
- * FIX-963, third settlement site — a task handed off to a child run.
+ * FIX-963, third settlement site — a task dispatched to a child run.
  *
  * The same two recorders settle a task in three places: the inline drain's
- * success tap, its rescue, and the gate a handed-off task runs behind in the
+ * success tap, its rescue, and the gate a dispatched task runs behind in the
  * child session. The gate is the one with nowhere to defer to — there is no
  * batch around the task and no drain tail to report at — so a recorder that
  * cannot announce a committed write raises where it stands and fails the child
@@ -105,7 +105,7 @@ function poisonSettlementWrites(stores: StoreRegistry): StoreRegistry {
 
 function buildFlow(kind: string, onError: "skip" | "fail") {
   const worker = handler({
-    name: "hand-off-worker",
+    name: "dispatch-worker",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ handled: z.string() }),
     execute: (input: TaskWorkerInput) => ({ handled: input.goal }),
@@ -117,7 +117,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
     onError,
     workers: {
       background: dispatcher({
-        name: `${kind}-hand-off`,
+        name: `${kind}-dispatch`,
         type: "task",
         action: "background",
         session: "per-task",
@@ -154,7 +154,7 @@ async function durableRow(
 }
 
 /** Drain the parent cleanly, then run the child with the poisoned store. */
-async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
+async function dispatchAndRunChild(kind: string, onError: "skip" | "fail") {
   const stores = createInMemoryStores();
   const flow = buildFlow(kind, onError);
   const dispatched: RecordedDispatch[] = [];
@@ -217,15 +217,15 @@ function recorderFailureEntries(items: readonly unknown[]): Array<{
     .map((i) => i as { data: Record<string, unknown> });
 }
 
-describe("FIX-963: a recorder failure on a handed-off task fails the child run", () => {
+describe("FIX-963: a recorder failure on a dispatched task fails the child run", () => {
   it.each([
     ["skip" as const],
     ["fail" as const],
   ])(
     "fails the child run under onError: %s, and reports on a saved entry",
     async (onError) => {
-      const kind = `hand-off-recorder-${onError}`;
-      const { child } = await handOffAndRunChild(kind, onError);
+      const kind = `dispatch-recorder-${onError}`;
+      const { child } = await dispatchAndRunChild(kind, onError);
 
       // BR-14. The child run carries the work, so the child run is what has to
       // report the failure — a consumer reading run status would otherwise see
@@ -253,11 +253,11 @@ describe("FIX-963: a recorder failure on a handed-off task fails the child run",
     }
   );
 
-  it("leaves a healthy hand-off exactly as it was", async () => {
+  it("leaves a healthy dispatch exactly as it was", async () => {
     // BR-15 / BR-11, the control. Nothing about a settlement that works
     // changes: no entry, no new failure mode.
     const stores = createInMemoryStores();
-    const kind = "hand-off-recorder-healthy";
+    const kind = "dispatch-recorder-healthy";
     const flow = buildFlow(kind, "skip");
     const dispatched: RecordedDispatch[] = [];
 

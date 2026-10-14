@@ -228,8 +228,8 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
 const RAISING_SITES: Array<[string, RecorderFailureWiring | undefined]> = [
   // No wiring at all: a consumer composing the exported block by hand.
   ["composed with no wiring", undefined],
-  // The hand-off gate's composition.
-  ["the hand-off gate", { onRecorderFailure: "raise" }],
+  // The dispatch gate's composition.
+  ["the dispatch gate", { onRecorderFailure: "raise" }],
 ];
 const DEFERRING: RecorderFailureWiring = {
   onRecorderFailure: "defer",
@@ -686,7 +686,7 @@ describe("both recorders", () => {
     ).flatMap((row) =>
       [
         ["the drain", DEFERRING, "run-1"],
-        ["the hand-off gate", { onRecorderFailure: "raise" }, undefined],
+        ["the dispatch gate", { onRecorderFailure: "raise" }, undefined],
       ].map(
         ([site, wiring, runId]) =>
           [...row, site as string, wiring as RecorderFailureWiring, runId as string | undefined] as const

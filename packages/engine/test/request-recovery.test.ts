@@ -6,7 +6,7 @@ import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { detectInterruptedRequests, retryRequest } from "../src/execution/request-recovery";
 
 // retryRequest dispatches via runAction; mock it so the test asserts what
-// retry hands off without executing a real flow.
+// retry dispatches without executing a real flow.
 const runActionMock = vi.fn(() => Promise.resolve(undefined));
 vi.mock("../src/execution/runAction", () => ({
   runAction: (...args: unknown[]) => runActionMock(...args)

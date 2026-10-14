@@ -16,7 +16,7 @@
  * values it has just used to derive the run's id:
  *
  * - `topic` is the **session key** the run was derived from. For a task
- *   board's hand-off that key is what `taskSessionKeyFor`
+ *   board's dispatch that key is what `taskSessionKeyFor`
  *   (`core/src/types/dispatch.ts`) returns for the assignee's session policy:
  *   - `per-task` → `task|framed(boardId)|framed(taskId)`
  *   - `per-worker` → `worker|framed(boardId)|framed(assignee)`
@@ -100,7 +100,7 @@ import type { CollectionView, Task } from "./task-collection-state";
 
 /**
  * A dispatch run's `topic` label, decoded as the session key a task board's
- * hand-off writes. Which of the two preset policies produced it, and what it
+ * dispatch writes. Which of the two preset policies produced it, and what it
  * names on that board.
  */
 export type DispatchRunKey =
@@ -121,7 +121,7 @@ export type DispatchRunKey =
 
 /** A dispatch run's `coordinate` label, split into the entry it was dispatched for. */
 export type DispatchRunEntry = {
-  /** The dispatch type — `task` for a board's hand-off, `internal` otherwise. */
+  /** The dispatch type — `task` for a board's dispatch, `internal` otherwise. */
   type: string;
   /** The entry name on that type's map, e.g. `implement`. */
   action: string;

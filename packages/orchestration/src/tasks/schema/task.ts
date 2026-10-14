@@ -242,7 +242,7 @@ export const taskSchema = z.object({
 
   /**
    * Which run is working this task, or last worked it (FIX-1668) — the
-   * session a handed-off attempt executes in, that attempt's request there,
+   * session a dispatched attempt executes in, that attempt's request there,
    * and the attempt number.
    *
    * **Written from inside the run.** The board's claim gate writes it in the
@@ -250,7 +250,7 @@ export const taskSchema = z.object({
    * first step. Only the run knows for certain which session it landed in:
    * that depends on the assignee's session policy and on the conversation that
    * drained the board, so nothing outside can rebuild it. Distinct from
-   * `claimedBy`, which on a handed-off row names the *claiming* conversation.
+   * `claimedBy`, which on a dispatched row names the *claiming* conversation.
    *
    * **Lifetime: until the next claim.** `applyClaimToTask` clears it in the
    * same write that advances `attempts`; settlement, retry and abandonment
@@ -261,7 +261,7 @@ export const taskSchema = z.object({
    * **Client-visible**, unlike `claimedBy`: a UI opens the run from it. The
    * ids grant nothing; opening the session still passes the server's owner
    * check. The run's flow is not here: read it off the session (`flowId`),
-   * since an assignee may hand off to another flow than the board's.
+   * since an assignee may dispatch to another flow than the board's.
    *
    * Server-set: absent from `TaskInit` and every patch surface. **Absent on
    * rows stored before this shipped, on inline boards, and between a claim and
@@ -499,7 +499,7 @@ export type TaskClaimIdentity = NonNullable<
   z.infer<typeof taskSchema>["claimedBy"]
 >;
 
-/** The run link a handed-off attempt writes onto its task (FIX-1668) — see {@link taskSchema}'s `run`. */
+/** The run link a dispatched attempt writes onto its task (FIX-1668) — see {@link taskSchema}'s `run`. */
 export type TaskRunLink = NonNullable<z.infer<typeof taskSchema>["run"]>;
 
 /** One entry in {@link taskSchema}'s `writeLog` — a caller's write id and the revision it committed at. */

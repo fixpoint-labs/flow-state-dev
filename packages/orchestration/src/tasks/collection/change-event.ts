@@ -29,7 +29,7 @@ export type TaskChangeKind =
   | "priority_changed"
   | "assignee_changed"
   /**
-   * A handed-off run wrote itself onto its task (FIX-1668) — the row's `run`
+   * A dispatched run wrote itself onto its task (FIX-1668) — the row's `run`
    * now names that run. Published on the run's own session, like every write
    * the run makes; a view following another session sees the link on its next
    * read of the row.

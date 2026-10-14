@@ -122,15 +122,66 @@ export const KEEP = [
     why: "the harness question inbox: a coding run asking a person"
   },
   {
-    path: /^packages\/engine\/src\/context\/request-principal\.ts$/,
-    rules: ["handoff-symbol"],
-    why: "a local variable for a request record passed to its holder; not a delivery of work"
-  },
-  {
     path: /^packages\//,
     line: /\babortHandoff\b/,
     rules: ["handoff-symbol", "handoff-prose"],
     why: "WR-5: the engine's abort of a request record handed to its holder; not a delivery of work"
+  },
+  {
+    path: /^packages\/engine\/(src\/(context\/(request-principal|createExecutionContext)|execution\/(runAction|types)|stores\/(types|testing\/request-store-conformance)|transports\/host\/createInboundTransportHost)\.ts|test\/(abort|request-incarnation)\.test\.ts)$/,
+    // Each phrase and name the request-record and abort-controller code uses, so a new
+    // "hand off" line in these files stays open until someone classifies it.
+    line: /same-owner hand-off|last-write-wins hand-off|hand-off writes the holder's value|since the hand-off also replaces|\b(keepHandoff|handoffIncarnation)\b|\bhandoff( !==| ===| =$|\.controller|\.incarnation)|^\s*(const|let) handoff =|lost in the handoff|exercise the handoff|handed-off legacy record|makes the handoff atomic|incarnation \(a hand-off$|the same hand-off the enqueue-time record|the hand-off to a run|queued[-_]abort[-_]handoff|\b[sr]e?q?_queued_handoff\b|The hand-off really did rewrite|"handed off"|for a handed-off$|hand-off never rewrites|loses the race and hands off|the handed-off record|The hand-off overwrites|through the hand-off"/,
+    rules: ["handoff-symbol", "handoff-prose"],
+    why: "WR-5: a claimed request record, or its abort controller, passed to the run that holds it: mid-work (D3)"
+  },
+  {
+    path: /^(packages\/engine\/(src\/transports\/(concurrency\/arbiter|host\/createInboundTransportHost)\.ts|test\/transports\/concurrency\/lease-backend\.test\.ts)|docs\/architecture\/inbound-transports\.md)$/,
+    line: /ConcurrencyAdmission\.handOff|\bhandOff\(|handOff: |\batHandOff\b|^\s*\* handed off\.$|place rides|it is handed off$|cross-call handoff/,
+    rules: ["handoff-symbol", "handoff-symbol-in-docs", "handoff-prose"],
+    why: "D3: a queue place passed to the job that holds it once enqueued, mid-work"
+  },
+  {
+    path: /^packages\/engine\/src\/utils\/keyed-async-gate\.ts$/,
+    rules: ["handoff-prose"],
+    why: "D3: a lock passed straight to the next waiter, mid-work"
+  },
+  {
+    path: /^(packages\/shift-manager\/(src\/(gaps\.ts|surfaces\/TaskFrame\.tsx)|test\/task-screen\.test\.tsx|README\.md)|apps\/docs\/docs\/shift-manager\/overview\.md)$/,
+    line: /\bhandOff\b|"Hand off"|^\| Hand off, reassign|^- On a task: Hand off, reassign/,
+    rules: ["handoff-symbol", "handoff-prose"],
+    why: "D3: the task screen's Hand off action, which moves a task already being worked to another worker"
+  },
+  {
+    path: /^docs\/architecture\/state-and-scopes\.md$/,
+    line: /same-owner hand-off/,
+    rules: ["handoff-prose"],
+    why: "WR-5: a claimed request record passed to the run that holds it, mid-work (D3)"
+  },
+  {
+    path: /^apps\/docs\/docs\/glossary\.md$/,
+    line: /^\| \*\*Hand-off\*\* \| orchestration \| A session that was doing the work passes it to another session, mid-work\./,
+    rules: ["handoff-prose"],
+    why: "D3: the glossary row that defines hand-off as mid-work only"
+  },
+  {
+    path: /^apps\/docs\/docs\/workforce\/workers-on-disk\.md$/,
+    line: /`escalate` hands off to a person\./,
+    rules: ["handoff-prose"],
+    why: "D3: a triage worker escalating a request it is already handling to a person, mid-work"
+  },
+  {
+    path: /^apps\/docs\/docs\/orchestration\/task-board\.md$/,
+    line: /^<a id="assignees-that-hand-off"><\/a>$/,
+    rules: ["handoff-prose"],
+    why: "WR-18: the renamed section keeps its old anchor, so an old link still lands on it"
+  },
+  {
+    path: /^(packages\/workforce\/README\.md|apps\/docs\/docs\/workforce\/coordinators\.md)$/,
+    // FIX-1872's sentences, on a line naming `handOff` once: a stale mention beside them stays open.
+    line: /^(?!.*`handOff`.*`handOff`).*(named the (coordinator's )?dispatch tool `handOff`|names `handOff` is refused)/,
+    rules: ["handoff-symbol-in-docs", "handoff-prose"],
+    why: "WR-25b: FIX-1872's sentences that the tool was named handOff and a worker file naming it is refused; a page can't carry the marker"
   },
   {
     path: /^packages\/(orchestration|engine)\/(src|test)\//,

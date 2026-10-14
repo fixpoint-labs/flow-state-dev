@@ -50,7 +50,7 @@ function boardFlow(ran: Ran[], rows: Array<{ id: string; input: RowInput }>, amo
     collection: defineTaskCollection({ id: LEDGER_ID, scope: "user" }),
     workers: {
       em: dispatcher({
-        name: "per-row-hand-off",
+        name: "per-row-dispatch",
         type: "task",
         action: { among, by: (task) => rowOf(task).entry ?? "" },
         session: {
@@ -119,7 +119,7 @@ function drain(runtime: FlowStateRuntime, flow: ReturnType<typeof boardFlow>) {
 describe("a board that chooses each row's entry", () => {
   it("refuses at definition an entry it chooses among that the flow does not declare", () => {
     expect(() => boardFlow([], [], ["work", "post", "review"])).toThrow(
-      /hands off to task:"review", but the flow declares no such task entry/
+      /dispatches to task:"review", but the flow declares no such task entry/
     );
   });
 

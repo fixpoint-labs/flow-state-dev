@@ -30,7 +30,7 @@
  * when it is (`project-coordinator.ts`). An open made in the owner's
  * coordinator's own turn, with its `openWorkstream` tool, writes the record
  * in that turn instead, since a dispatch into the session it runs in would
- * land after the turn, and the hand-off that follows would find no record
+ * land after the turn, and the dispatch that follows would find no record
  * (BR-38). The coordinator holds at most
  * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
  * project is refused another before anything is written (BR-21b).
@@ -583,7 +583,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     });
     const record = { change: change as RecordChange["change"], worker: workstream.lead, target: workstreamRef({ project: workstream.project, id: workstream.id }) };
     // Written from the owner's coordinator's own turn: the record lands in this
-    // turn, so the hand-off after it finds it (BR-38). Only an open, whose lead
+    // turn, so the dispatch after it finds it (BR-38). Only an open, whose lead
     // was just checked, or a removal, which needs no check: re-adding a
     // reopened workstream's record goes through the checked entry, since its
     // lead may have left the roster since.

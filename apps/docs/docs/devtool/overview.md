@@ -122,7 +122,7 @@ When a block fails, the detail panel surfaces enough context to diagnose without
 
 ## Dispatched runs
 
-Some work leaves the session you are watching. A dispatcher block, or a task board worker that hands its rows off, runs it in a **dispatch run**: a session of its own that keeps going after the request which started it has returned. None of that work shows up in the starting conversation's stream or trace. See [Dispatched work](/docs/server/background-work) for what the server records about one.
+Some work leaves the session you are watching. A dispatcher block, or a task board worker that dispatches its rows, runs it in a **dispatch run**: a session of its own that keeps going after the request which started it has returned. None of that work shows up in the starting conversation's stream or trace. See [Dispatched work](/docs/server/background-work) for what the server records about one.
 
 The rail lists those sessions with the rest of the flow's, indented one level under the session that started each one. Each carries a label saying the dispatcher started it and a link that opens the session it came from. A run started by another run indents once, beside its own parent.
 
@@ -169,7 +169,7 @@ If the task can't move that way, say you cancel a task that already finished, th
 
 The DevTool changes tasks only through your flow's actions. There is no way to edit a task's record directly, so every change is a transition the task can legally make. The action doesn't claim the task. It acts as a coordinator would, so it can settle a task a worker is still running: your change lands, and the worker's result is dropped when it arrives. If a row says the flow has no actions that take a `taskId`, see [changing tasks from outside a run](/docs/orchestration/task-board#changing-tasks-from-outside-a-run).
 
-A row shows the changes made in the session you're looking at. When a worker hands a task off to a run of its own, the row here shows the handoff and the row's dispatch-run link opens the run where the task finished.
+A row shows the changes made in the session you're looking at. When a worker dispatches a task to a run of its own, the row here shows the dispatch and the row's dispatch-run link opens the run where the task finished.
 
 See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview) for parking and resuming.
 

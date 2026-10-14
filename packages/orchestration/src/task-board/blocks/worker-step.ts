@@ -129,9 +129,9 @@ export async function packWorkerInput(
   // one that was checked.
   //
   // `input` and `feedback` were the two that were NOT conditional, and between
-  // them they made the hand-off impossible rather than merely awkward: a
+  // them they made the dispatch impossible rather than merely awkward: a
   // freshly created task has never failed, so `feedback` is always `undefined`
-  // on a first attempt, and every hand-off was refused before it could
+  // on a first attempt, and every dispatch was refused before it could
   // start. Keep new fields on this shape.
   return {
     taskId: task.id,
@@ -145,7 +145,7 @@ export async function packWorkerInput(
     ...(task.answered === true && task.feedback !== undefined ? { answer: task.feedback } : {}),
     // Only to the attempts a person's reopen queued (FIX-1764).
     ...(task.reopened === true ? { reopened: true as const } : {}),
-    // The task a follow-up follows: a `per-task` hand-off keys its session by it.
+    // The task a follow-up follows: a `per-task` dispatch keys its session by it.
     ...(task.followUpOf !== undefined ? { followUpOf: task.followUpOf } : {}),
     ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),
     ...(task.sealed !== undefined ? { sealed: task.sealed } : {}),

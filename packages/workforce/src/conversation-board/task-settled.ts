@@ -345,8 +345,8 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
 
 /**
  * Build the `onPostSettled` internal entry: {@link taskSettledEntry}'s
- * dedupe and hand-off for a post row's ending, acknowledged once the
- * hand-off has run, and queued on the session rather than deferred on the
+ * dedupe and dispatch for a post row's ending, acknowledged once the
+ * dispatch has run, and queued on the session rather than deferred on the
  * reply line, so a delegate's answer lands while a reply runs.
  */
 export function postSettledEntry(options: TaskSettledOptions & { readonly onPost: BlockDefinition<any, any> }) {

@@ -340,7 +340,7 @@ job's next step. It returns one of two shapes:
   spent. Take a place at the back with `take()`, then wait for its turn with
   `planQueueWait({ ..., budgetMs: Infinity })`, which never times out.
 
-The dispatching process counts a handed-off `defer` against its 32-per-key cap
+The dispatching process counts a dispatched `defer` against its 32-per-key cap
 until the job's `finished` settles, including while the job runs.
 
 ## Authentication
@@ -498,7 +498,7 @@ tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 Those runs carry a `metadata.dispatch` bag on the request record: `type` and
 `action` for the entry, `from` naming the block and session that dispatched,
 `key` for the derived session key, and `taskId` naming the task-board row on a
-task hand-off. Read the bag at all only when the record's `source` is
+task dispatch. Read the bag at all only when the record's `source` is
 `"internal"` or `"task"` — `metadata` is caller-writable on an ordinary request,
 `source` is not. The runtime assembles the bag from values it derived itself, and
 it is a correlation rather than an authority: display `taskId`, don't key a

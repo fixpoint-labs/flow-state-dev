@@ -1,5 +1,5 @@
 /**
- * The block that hands a claimed row off instead of running a worker.
+ * The block that dispatches a claimed row instead of running a worker.
  *
  * A board assignee holding a `dispatcher({ type: "task" })` declares that its rows
  * run elsewhere. This block is what the drain installs at that assignee: it takes
@@ -13,13 +13,13 @@
  *
  * The block carries the assignee's address, so `defineFlow` verifies the flow
  * declares `task: { actions: { [target]: { block } } }` and the board's roster shows the
- * hand-off statically; and it carries the board's **binding** — its id and the
+ * dispatch statically; and it carries the board's **binding** — its id and the
  * claim gate — which `defineFlow` uses to put that entry behind the gate.
  *
  * ## How the task survives this request without being settled by it
  *
  * `recordSuccess` settles the claim held on the worker-body state, and returns
- * **without settling** when that slot is empty. So the hand-off is a state
+ * **without settling** when that slot is empty. So the dispatch is a state
  * write: this block clears `currentClaim`, and the recorder that runs next sees
  * nothing of its own to record. The row stays `in_progress`, owned by the child,
  * which re-mints the same ticket from it and settles it there.
@@ -47,7 +47,7 @@
  * ## Why the lease renewal stops here
  *
  * The parent renews the lease to say "a live worker is on this row." After the
- * hand-off that is no longer true of *this* request — the child starts its own
+ * dispatch that is no longer true of *this* request — the child starts its own
  * renewal from its own async chain.
  */
 import { handler } from "@flow-state-dev/core";
@@ -69,22 +69,22 @@ import type {
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskWorker, TaskWorkerInput } from "../../tasks";
-import type { TaskAssigneeAddress } from "../hand-off";
+import type { TaskAssigneeAddress } from "../dispatch-assignee";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
 
-export interface HandOffOptions {
+export interface RowDispatchOptions {
   /** Block-name prefix, so a refusal names the board it came from. */
   name: string;
   /** The declaring board's stable id — half of the durable address. */
   boardId: string;
   /**
-   * The assignee this hand-off stands in for — the row's assignee. Omitted for
+   * The assignee this dispatch stands in for — the row's assignee. Omitted for
    * the board's fallback, which stands in for every assignee the board does
    * not name: each row is handed over under the assignee it was claimed with.
    */
   assignee?: string;
-  /** The assignee's dispatcher address: the entry it hands off to and the session policy. */
+  /** The assignee's dispatcher address: the entry it dispatches to and the session policy. */
   address: TaskAssigneeAddress;
   /** The board's claim gate, bound onto this block for `defineFlow` to apply to the entry. */
   binding: TaskBinding;
@@ -95,9 +95,9 @@ export interface HandOffOptions {
  *
  * Its input is the packed `TaskWorkerInput` the drain already materialized —
  * the same value an inline worker would have received, which is what makes the
- * handed-off and inline paths agree on what the worker sees.
+ * dispatched and inline paths agree on what the worker sees.
  */
-export function createHandOff(options: HandOffOptions): TaskWorker {
+export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
   const { name, boardId, assignee: named, address, binding } = options;
 
   const block = handler({
@@ -114,7 +114,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
         // before any route runs. Named because reaching here would otherwise
         // dispatch a request with no row behind it.
         throw new Error(
-          `[task-board] "${boardId}" cannot hand off assignee "${named ?? "(fallback)"}": no claim is on the ` +
+          `[task-board] "${boardId}" cannot dispatch assignee "${named ?? "(fallback)"}": no claim is on the ` +
             `worker body state. This block must run inside the board's drain, after the claim.`
         );
       }
@@ -128,7 +128,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
           name,
           address,
           "flow-not-found",
-          `[task-board] "${boardId}" could not hand off task "${claim.taskId}": it names no ` +
+          `[task-board] "${boardId}" could not dispatch task "${claim.taskId}": it names no ` +
             `assignee, and the fallback hands a row over by the name on it.`
         );
       }
@@ -139,7 +139,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
       // source of a value that cannot cross a process boundary, and it fails
       // here, after ownership was acquired, rather than at admission.
       assertJsonSafe(payload, {
-        label: `[task-board] "${boardId}" hand-off payload for task "${claim.taskId}"`,
+        label: `[task-board] "${boardId}" dispatch payload for task "${claim.taskId}"`,
       });
 
       // Take the round trip HERE, so both deployment modes send the same value:
@@ -222,7 +222,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
           name,
           address,
           outcome.refused,
-          `[task-board] "${boardId}" could not hand off task "${claim.taskId}" from assignee ` +
+          `[task-board] "${boardId}" could not dispatch task "${claim.taskId}" from assignee ` +
             `"${assignee}": ${outcome.detail}`
         );
       }
@@ -240,7 +240,7 @@ export function createHandOff(options: HandOffOptions): TaskWorker {
       currentLeaseRenewal()?.stop();
 
       return {
-        handedOff: true as const,
+        dispatched: true as const,
         taskId: claim.taskId,
         sessionId: outcome.sessionId,
         requestId: outcome.requestId,

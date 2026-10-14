@@ -4,7 +4,7 @@
  * A turn's tool parks on a wait gate. A later request in the SAME conversation
  * resumes it through `ctx.requestHost.resumeWait`, and the parked request
  * continues under its own id, with the answer as the tool's result. Nothing
- * here files a task: the board and the row arrive with the hand-off itself;
+ * here files a task: the board and the row arrive with the dispatch itself;
  * this proves the park, the resume and the fence they stand on.
  *
  * The waiting turn is a generator inside a plain (non-durable) sequencer — the

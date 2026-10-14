@@ -403,7 +403,7 @@ You never add or remove a project coordinator's workstream delegates yourself. T
 - **When you start your coordinator**, its delegates are the workstreams you have open in the project.
 - **When you open a workstream**, `openWorkstream` adds its delegate: the lead, with the workstream's address as the target. If you haven't started your coordinator yet, nothing changes now; it picks the workstream up when it starts.
 - **When you mark a workstream `done`**, `updateWorkstream` removes its delegate. Change the status from `done` to anything else and the delegate comes back. The lead's own `updateWorkstream` tool does the same, and so does the coordinator's `editWorkstream`.
-- **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the hand-off fails with that reason.
+- **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the dispatch fails with that reason.
 
 A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
 
@@ -517,7 +517,7 @@ Left out, `project` is the coordinator's own project. A refused change writes no
 | `other-project` | The conversation belongs to one project and you named another |
 | `no-such-project` | You left `project` out in a conversation that belongs to no project |
 
-Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate is removed in that same turn, so a hand-off later in the turn never reaches a workstream it just closed.
+Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate is removed in that same turn, so a dispatch later in the turn never reaches a workstream it just closed.
 
 ### Managing the project from the coordinator
 

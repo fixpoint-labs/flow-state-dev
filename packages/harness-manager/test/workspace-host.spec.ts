@@ -2,7 +2,7 @@
  * A run provisioned through a workspace host (FIX-1762).
  *
  * Driven end to end, in process, like `message-door.spec.ts`: a real
- * `createFlowState`, a real board and hand-off, and a real
+ * `createFlowState`, a real board and dispatch, and a real
  * `localWorkspaceHost`. Only the harness is a stub, and each attempt does one
  * scripted thing in the directory the manager hands it.
  *
@@ -197,7 +197,7 @@ function lab(options: {
     onReview: "exit",
     dispatcher: runOwnerDispatcher(),
     workers: {
-      coder: dispatcher({ name: "host-board-hand-off", action: "work", session: "per-task" }),
+      coder: dispatcher({ name: "host-board-dispatch", action: "work", session: "per-task" }),
     },
   });
   const seed = handler({

@@ -45,7 +45,7 @@ const emptyMemorySystem = {
 // Minimal flow instance with artifacts collection for testBlock.
 const testFlow = defineFlow({
   kind: "chat-agent-test",
-  // The router reaches the background-work board, whose hand-off worker
+  // The router reaches the background-work board, whose dispatching worker
   // addresses a task entry; a flow that reaches it must declare the entries.
   task: { actions: backgroundWorkTasks },
   actions: {

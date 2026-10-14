@@ -3,8 +3,8 @@
  * (FIX-1234 §9).
  *
  * The exclusion itself is a few lines. This is where the complexity is: what a
- * board says when the rows it has left are a mixture — some parked, some handed
- * off, some genuinely failed — and the fact that a parked row usually has
+ * board says when the rows it has left are a mixture — some parked, some
+ * dispatched, some genuinely failed — and the fact that a parked row usually has
  * downstream tasks waiting on it, so the naive answer is "blocked by failures"
  * on a board where nothing failed.
  *
@@ -41,7 +41,7 @@ let seq = 0;
 /**
  * A collection whose clock the test drives, so a lease can lapse *between* two
  * reads of the same rows. Nothing else in this file needs one: leases only
- * matter where the hand-off exclusion does.
+ * matter where the dispatch exclusion does.
  */
 function clockedCollection(): {
   collection: TaskCollectionRef;
@@ -131,8 +131,8 @@ async function settle(
   else await collection.fail(id, "boom");
 }
 
-/** A row claimed for a handed-off assignee and still holding a live lease. */
-async function handOff(
+/** A row claimed for a dispatched assignee and still holding a live lease. */
+async function dispatchRow(
   collection: TaskCollectionRef,
   id: string
 ): Promise<RunsElsewhere> {
@@ -157,7 +157,7 @@ function legacyReason(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhe
   if (anyDenied) return "retry-budget-exhausted";
   const remaining = all.filter((t) => t.status !== "completed");
   if (remaining.length === 0) return "all-completed";
-  const allHandedOff =
+  const allDispatched =
     remaining.length > 0 &&
     remaining.every(
       (t) =>
@@ -166,7 +166,7 @@ function legacyReason(collection: TaskCollectionRef, runsElsewhere?: RunsElsewhe
         runsElsewhere(t) &&
         !leaseLapsed(t, now)
     );
-  return allHandedOff ? "handed-off" : "blocked-by-failures";
+  return allDispatched ? "dispatched" : "blocked-by-failures";
 }
 
 describe("termination ladder — the order is the contract (§9)", () => {
@@ -234,18 +234,18 @@ describe("termination ladder — the order is the contract (§9)", () => {
     expect(await reasonFor(collection, parkedExit)).toBe("all-completed");
   });
 
-  it("the park outranks the hand-off: a parked row alongside a handed-off one reports the park", async () => {
+  it("the park outranks the dispatch: a parked row alongside a dispatched one reports the park", async () => {
     // Both are released from this drain. The one a human owes an answer to is
     // what the operator needs to see.
     //
     // KEEP THIS PAIRING. It is the reason the "going nowhere" rung below asks
     // what will never run rather than what contributed to the exit. Under a
-    // "the park was the sole cause" rule the hand-off also contributed, so the
-    // reason would fall through to `handed-off` and the operator would lose the
+    // "the park was the sole cause" rule the dispatch also contributed, so the
+    // reason would fall through to `dispatched` and the operator would lose the
     // fact that somebody is owed an answer. Any future attempt to simplify that
     // rung into a sole-cause guard fails here, which is the point.
     const collection = freshCollection();
-    const runsElsewhere = await handOff(collection, "background-work");
+    const runsElsewhere = await dispatchRow(collection, "background-work");
     await park(collection, "ask");
 
     expect(await reasonFor(collection, parkedExit, runsElsewhere)).toBe(
@@ -317,13 +317,13 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
 
-  it("reports the stall when a handed-off row's lease lapsed after the pool classified", async () => {
+  it("reports the stall when a dispatched row's lease lapsed after the pool classified", async () => {
     // Written as a flip on the clock, and it is the sharpest shape in this file:
     // the rows never change, the carried verdict never changes, and only time
     // moves between the two assertions.
     //
     // At the pool's last classification the row's lease was live, so
-    // `countWaitable` excused it as handed off and the drain honestly exited
+    // `countWaitable` excused it as dispatched and the drain honestly exited
     // `drained` with a park verdict. By the time the completion block takes its
     // own `collection.now()` the lease has lapsed, and that row is no longer
     // work in flight — it is ABANDONED. Answering the review does not recover
@@ -331,7 +331,7 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     // mechanism, so a reason pointing at the human is the wrong one.
     //
     // The ladder already treats this state as a stall when no review is
-    // outstanding: `allRemainingHandedOff` re-reads the lease, finds it lapsed,
+    // outstanding: `allRemainingDispatched` re-reads the lease, finds it lapsed,
     // and falls through to `blocked-by-failures`. This test is what stops the
     // park rung masking that.
     const { collection, advance } = clockedCollection();
@@ -343,8 +343,8 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     });
     const runsElsewhere = (task: Task): boolean => task.assignee === "background";
 
-    // Lease live: the hand-off is real work in flight, and the review is why
-    // the board stopped. This is the parked-plus-handed-off guard.
+    // Lease live: the dispatch is real work in flight, and the review is why
+    // the board stopped. This is the parked-plus-dispatched guard.
     expect(await reasonFor(collection, parkedExit, runsElsewhere)).toBe(
       "parked-for-review"
     );
@@ -378,11 +378,11 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
   });
 
-  it("does not fire on a handed-off row, which is going somewhere", async () => {
-    // The separation the rung rests on: handed-off work is progressing
+  it("does not fire on a dispatched row, which is going somewhere", async () => {
+    // The separation the rung rests on: dispatched work is progressing
     // elsewhere, so a row waiting on it is waiting on something that moves.
     const collection = freshCollection();
-    const runsElsewhere = await handOff(collection, "background-work");
+    const runsElsewhere = await dispatchRow(collection, "background-work");
     await park(collection, "ask");
     await collection.addTask({
       id: "after",
@@ -462,21 +462,21 @@ describe("termination ladder — equivalence with the pre-FIX-1234 classifier", 
       },
     },
     {
-      name: "every remaining row handed off",
-      build: async (c) => handOff(c, "background-work"),
+      name: "every remaining row dispatched",
+      build: async (c) => dispatchRow(c, "background-work"),
     },
     {
-      name: "a handed-off row alongside an errored one",
+      name: "a dispatched row alongside an errored one",
       build: async (c) => {
-        const runsElsewhere = await handOff(c, "background-work");
+        const runsElsewhere = await dispatchRow(c, "background-work");
         await settle(c, "broke", "errored");
         return runsElsewhere;
       },
     },
     {
-      name: "a handed-off row alongside a blocked one",
+      name: "a dispatched row alongside a blocked one",
       build: async (c) => {
-        const runsElsewhere = await handOff(c, "background-work");
+        const runsElsewhere = await dispatchRow(c, "background-work");
         await settle(c, "held", "blocked");
         return runsElsewhere;
       },
@@ -498,7 +498,7 @@ describe("termination ladder — equivalence with the pre-FIX-1234 classifier", 
       // that carried a park verdict" cannot both be true. Feeding a park
       // verdict in here would assert on a state the system cannot reach — and
       // would assert the wrong thing, since rung 4 deliberately outranks the
-      // hand-off and default rungs (§9's parked-plus-handed-off row, and its
+      // dispatch and default rungs (§9's parked-plus-dispatched row, and its
       // resume-lands-in-the-window row).
       expect(await reasonFor(collection, plainExit, runsElsewhere)).toBe(expected);
     });
@@ -539,7 +539,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     expect(collection.count({ status: "parked" })).toBe(0);
 
     // Falls through to what a board in this shape reported before FIX-1234: one
-    // un-completed row remaining, nothing stuck, nothing handed off.
+    // un-completed row remaining, nothing stuck, nothing dispatched.
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
 

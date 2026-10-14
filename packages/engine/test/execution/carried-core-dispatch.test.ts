@@ -7,7 +7,7 @@
  * `defineFlow`'s address walk never sees it. If it contains a `dispatcher()`
  * whose action the flow does not declare, nothing catches that until the
  * dispatcher actually runs and the seam refuses `no-entry` — after the
- * request has already been admitted and, for a task hand-off, after a row has
+ * request has already been admitted and, for a task dispatch, after a row has
  * already been claimed. That is the class this epic keeps closing: work that
  * stalls without erroring.
  *
@@ -258,7 +258,7 @@ describe("a carried core that dispatches to another flow is not checked against 
 });
 
 describe("a carried task dispatcher must be held by the board that gates its entry", () => {
-  // Target existence is not routability for a hand-off. The entry runs behind
+  // Target existence is not routability for a dispatch. The entry runs behind
   // ONE board's gate; a worker another board holds would claim a row on its own
   // ledger and have the child refuse it at the gate — after the dispatch was
   // accepted — so the row sits `in_progress` until lease recovery. `defineFlow`
