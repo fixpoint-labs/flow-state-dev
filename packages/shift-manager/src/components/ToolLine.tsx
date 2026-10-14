@@ -153,7 +153,7 @@ function MessageCallLine({ item }: { item: ToolOutputItem }) {
       <p className="mt-0.5 flex gap-3 text-xs text-muted-foreground">
         {refused && reason !== undefined ? <span data-testid="message-call-reason">{reason}</span> : null}
         {unconfirmed !== undefined ? (
-          <span className="text-amber-700 dark:text-amber-400" data-testid="message-call-unconfirmed">
+          <span className="text-warning" data-testid="message-call-unconfirmed">
             Sent, but not confirmed delivered: {unconfirmed}
           </span>
         ) : null}
