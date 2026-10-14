@@ -107,6 +107,10 @@ could set.
 Every item carries provenance, so the devtool shows the full trace of what the
 run did.
 
+In the version this package supports, Codex doesn't send a to-do list, and a Codex block
+records no [run's plan](./coding-agents.md#the-runs-plan). Show its plan as not reported
+rather than empty.
+
 Output this package doesn't recognize becomes a status note rather than an error.
 The format is experimental, so unknown output doesn't fail the run.
 
@@ -180,6 +184,9 @@ covers why the hook exists alongside the handle's own `sessionId`.
 `onSession` fires only when Codex actually names a thread. If you resume an id
 Codex no longer has, it names none, the run fails, and the id you already hold is
 left exactly as it was rather than being overwritten with a dead one.
+`harnessFailureKind(error)` from `@flow-state-dev/core` returns
+`"unknown-conversation"` for that failure, and `null` for any other, including a
+sign-in error before Codex names a thread.
 
 Keeping no session state also means the block declares none, which is what lets a
 task board hand it off without any further option. The Claude Code harness needs
@@ -220,6 +227,7 @@ Every one of these is fatal for the run that raised it:
 | A different SDK version installed, or one whose version cannot be read | Throws when the block is built |
 | A working directory or a signal in `thread` or `client` | Throws when the block is built |
 | The CLI exits non-zero | Throws, carrying its stderr |
+| Codex doesn't have the thread `resume` named | Throws a `CodexAgentRunError` whose `harnessFailure` is `"unknown-conversation"` |
 | The deadline fires | Throws |
 
 A turn the model itself fails is not in that list. It comes back as a handle with
