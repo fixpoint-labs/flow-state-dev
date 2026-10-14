@@ -2,7 +2,7 @@
 title: Delegating work
 sidebar_position: 3.6
 sidebar_label: Delegating work
-description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for its own."
+description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for any worker on your roster that takes tasks."
 ---
 
 # Delegating work
@@ -28,7 +28,7 @@ delegates: [eng.coder, eng.reviewer]
 
 When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` records a task without starting it, until `dispatchTask` names it by its `taskId`. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
 
-A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer:
+A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer (a worker working a task is different, see [Splitting a task](#splitting-a-task)):
 
 ```json
 { "ok": false, "error": "no_delegation_board" }
@@ -142,14 +142,29 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it, as long as it has delegates of its own that take tasks. It files the pieces on its own task session's board, for its own delegates, and its task waits until every piece has ended. Then the task completes with what the pieces returned, or fails naming the pieces that failed for good, and the session above hears it.
+A worker given a task can split it into pieces. It can hand a piece to any worker on your roster that takes tasks, not only its own delegates, so a task that needs something another worker knows can get it from that worker. Its delegates are still who it reports to: a piece filed with no assignee goes to its only delegate.
+
+The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
+
+```json
+{
+  "answer": "The codename is Bluebird.",
+  "pieces": [
+    { "taskId": "task_8f2…", "goal": "Ask the archivist for the codename", "assignee": "archivist", "status": "completed", "output": "Bluebird" }
+  ]
+}
+```
+
+If the task settles with no such turn behind it, for example after a restart, the output is the `pieces` list alone. A task with a piece that failed for good fails, naming it. Only the conversation above hears the task end; it doesn't hear each piece.
 
 ```text
 your conversation ── task ──▶ lead's task session ── pieces ──▶ two task sessions
-        ◀── "completed, with both results" ──┘
+        ◀── "completed, with lead's answer" ──┘
 ```
 
-Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can dispatch the work again, for the same delegate or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
+A worker on a task can't wait for a piece inside its turn: `dispatchTask` with `wait` is refused there. It files the piece without `wait` and ends its turn, and the piece's ending wakes it.
+
+When a piece fails for good, the turn its ending woke can dispatch the work again, to the same worker or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
 
 Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
 

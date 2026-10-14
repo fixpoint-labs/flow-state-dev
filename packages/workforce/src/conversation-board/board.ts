@@ -15,7 +15,9 @@
  * - **The grant** (FIX-1802 D1). A session files when its delegate list holds
  *   one that takes a task now: the same list the roster reads, read on every
  *   call, server-side. A task session files too: its pieces, which its task
- *   then waits on (`./split`).
+ *   then waits on (`./split`), for any worker on the user's roster that takes
+ *   a task (`rosterTaskTakers`), its delegates or not. Delegates stay the
+ *   reporting line: an unassigned row goes to the only one.
  * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
  *   breadth is refused in the ref the resolver returns (`./chain`), as the
  *   task substrate refuses a full board: `total_task_cap_exceeded`.
@@ -25,7 +27,8 @@
  *   files, read per call. The resolver is the running session's own board,
  *   and none while it doesn't file, so an action answers
  *   `no_delegation_board`. The roster is the session's delegates that take a
- *   task, read on every call.
+ *   task, and in a task session every worker on the user's roster that takes
+ *   one, read on every call.
  * - **The start.** A filing or an assign dispatches a run of the board into
  *   the conversation as a request of its own, and returns without waiting for
  *   it. The start it owes is the row's own state, pending and assigned
@@ -120,6 +123,12 @@ export interface ConversationBoardOptions {
    * for the grant on every call.
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
+  /**
+   * Every worker on the session user's roster that takes a task now, read per
+   * call: who a task session's pieces can go to, beside its delegates. A
+   * session that works no task never reads it.
+   */
+  rosterTaskTakers: (ctx: BlockContext) => Promise<TaskDelegates>;
   /**
    * The worker flow the board's sessions run on: where each task it
    * hands over sends its notice back, as the task session's `filingFlow`.
@@ -266,14 +275,33 @@ export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): P
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
-  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
+  /**
+   * Who a filing in the running session can name, read now: its delegates
+   * that take a task, and in a task session (its pieces) every worker on the
+   * user's roster that takes one too. Server-side only: the session's task
+   * and its delegate list are server-written state, never input.
+   */
+  const reach = async (ctx: BlockContext): Promise<TaskDelegates> => {
+    const delegates = await options.delegates(ctx);
+    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+    if (typeof state[TASK_ID_STATE_KEY] !== "string") return delegates;
+    const available = new Map([...delegates.available, ...(await options.rosterTaskTakers(ctx)).available]);
+    const unavailable = new Map([...delegates.unavailable].filter(([worker]) => !available.has(worker)));
+    return { available, unavailable };
+  };
+
+  /** The roster the task tools and actions check an assignee against; its sole assignee is still the only delegate. */
+  const roster: AssigneeRosterSource = async (ctx) => {
+    const delegates = await options.delegates(ctx);
+    return { ...rosterOf(await reach(ctx)), soleAssignee: rosterOf(delegates).soleAssignee };
+  };
 
   /**
    * Whether the running session files now (FIX-1802 D1): one of its
-   * delegates takes a task, read from its list as it stands. Server-side
-   * only: the list is server-written state, never input.
+   * delegates takes a task, read from its list as it stands; in a task
+   * session, any worker on the roster that takes one.
    */
-  const files = async (ctx: BlockContext): Promise<boolean> => (await options.delegates(ctx)).available.size > 0;
+  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than
@@ -310,7 +338,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return { key: taskSessionKey(claim?.followUpOf ?? task.taskId, worker) };
       }
     },
-    // Re-run the delegate check at hand-over: a delegate fired, removed or
+    // Re-run the delegate check at hand-over (a task session's pieces: the
+    // roster check): a delegate fired, removed or
     // moved to a flow that takes no tasks since the filing is refused here,
     // with the claim held, so the task fails and the conversation hears it.
     // A post row's delegate is checked for a post instead.
@@ -319,7 +348,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (options.postFlow === undefined) throw new Error(`Task "${task.taskId}" is a post, and this board hands over none.`);
         return options.postFlow(ctx, task.assignee);
       }
-      const delegates = await options.delegates(ctx);
+      const delegates = await reach(ctx);
       const flow = delegates.available.get(task.assignee);
       if (flow !== undefined) return flow;
       const why = delegates.unavailable.get(task.assignee) ?? "it isn't one of this conversation's delegates";
@@ -341,7 +370,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (postOf(task) !== undefined) {
         return { [WORKER_ID_STATE_KEY]: task.assignee, [FILING_SESSION_STATE_KEY]: partition };
       }
-      const flow = (await options.delegates(ctx)).available.get(task.assignee);
+      const flow = (await reach(ctx)).available.get(task.assignee);
       // The session's task: a follow-up's root, though the root's own
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;

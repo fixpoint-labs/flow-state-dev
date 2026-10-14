@@ -22,6 +22,7 @@ import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verif
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { DELEGATE_TAKES, createDelegateCheck, flowTakes, postTakingFlows, type DelegateTakes } from "./delegate-check";
+import { takesConversationTasks } from "../worker-task-entry";
 import { ADD_DELEGATE, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
 import {
   changeDelegates,
@@ -290,6 +291,20 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     return { available, unavailable };
   };
 
+  /**
+   * Every worker on the session user's roster that takes a task now, with the
+   * flow it runs on: who a task session's pieces can go to. Read per call, as
+   * {@link taskDelegates} is. A worker whose row can't be read takes none.
+   */
+  const rosterTaskTakers = async (ctx: BlockContext): Promise<TaskDelegates> => {
+    const available = new Map<string, string>();
+    for (const worker of await installation.roster(ctx as never)) {
+      if (worker.problem !== undefined) continue;
+      if (takesConversationTasks(installation.workerFlows()[worker.flow]?.flow)) available.set(worker.id, worker.flow);
+    }
+    return { available, unavailable: new Map() };
+  };
+
   return {
     /** The one check, for an add, a post or a task. */
     check,
@@ -299,6 +314,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     postFlows,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates,
+    /** Every worker on the session user's roster that takes a task now. */
+    rosterTaskTakers,
     /** The four delegate actions, for the flow's `actions`. */
     actions: {
       [ADD_DELEGATE]: {

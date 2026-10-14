@@ -16,7 +16,10 @@
  *   the writes that made them so, and nothing else. It is paid after the turn
  *   a piece's notice woke, in that notice's own request, and never inside a
  *   turn, so the turn can still file a piece again or cancel one. Every piece
- *   completed: the task completes with their outputs. Any failed for good: it
+ *   completed: the task completes with the answer of the turn that notice
+ *   woke, the worker's own reading of its pieces, with their outputs listed
+ *   under it (`{ answer, pieces }`); with no such turn (a settle replayed on a
+ *   later touch), with their outputs alone (`{ pieces }`). Any failed for good: it
  *   fails, naming them, and the substrate's retry budget decides the rest. A
  *   piece filed in the turn a failure's notice woke is that piece's retry
  *   (`RETRY_OF`): the failure no longer counts, and the retry is judged in its
@@ -138,6 +141,36 @@ export function retryingPiece(ctx: BlockContext): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+/**
+ * Request state: the answer of the turn a piece's notice woke in the running
+ * request, which its settle completes the task with. Request-scoped, so a
+ * settle in any other request (a replay) finds none.
+ */
+const WOKEN_ANSWER_STATE = "splitAnswer";
+
+/** The answer of the turn a notice woke in the running request, when one answered. */
+function wokenAnswerOf(ctx: BlockContext): unknown {
+  return (ctx.request?.state as Record<string, unknown> | undefined)?.[WOKEN_ANSWER_STATE];
+}
+
+/**
+ * After the turn a notice woke: keep its answer on the request, in a task
+ * session whose task waits on its pieces, for the settle that follows it.
+ * Passes the answer through.
+ */
+export const noteWokenAnswer = handler({
+  name: "split-note-answer",
+  inputSchema: z.unknown(),
+  outputSchema: z.unknown(),
+  execute: async (answer, rawCtx) => {
+    const ctx = rawCtx as unknown as BlockContext;
+    if (answer !== undefined && parentBindingOf(ctx) !== undefined) {
+      await ctx.request.patchState({ [WOKEN_ANSWER_STATE]: answer } as never);
+    }
+    return answer;
+  }
+});
+
 /** The rows on `ref` that are pieces of `taskId`. */
 function piecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
   return ref.list().filter((row) => pieceOf(row) === taskId);
@@ -255,7 +288,10 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
     if (failed.length > 0) {
       await above.fail(binding.taskId, failedPiecesText(failed), guards);
     } else {
+      const answer = wokenAnswerOf(ctx);
       const output = {
+        // First, so a notice's summary of the output leads with it.
+        ...(answer !== undefined ? { answer } : {}),
         pieces: pieces.map((row) => ({
           taskId: row.id,
           goal: row.title ?? row.goal,
