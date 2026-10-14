@@ -196,17 +196,8 @@ export const updateWorkstreamInputSchema = z
 /** @see updateWorkstreamInputSchema */
 export type UpdateWorkstreamInput = z.infer<typeof updateWorkstreamInputSchema>;
 
-/**
- * What the lead's tool takes: the changes, but never a title. Its workstream is
- * the one its session leads. A workstream's name is its owner's, set at the
- * open and changed by the owner or their project coordinator: a lead of
- * several workstreams is handed each post with the coordinator conversation's
- * recent lines, which name the others, and with a title to write it could put
- * one's name on another.
- */
-export const updateOwnWorkstreamInputSchema = z
-  .object({ status: changesShape.status, due: changesShape.due, objectives: changesShape.objectives, report: changesShape.report })
-  .strict();
+/** What the lead's tool takes: the changes except `title`. Its workstream is the one its session leads. */
+export const updateOwnWorkstreamInputSchema = z.object(changesShape).omit({ title: true }).strict();
 
 /** @see updateOwnWorkstreamInputSchema */
 export type UpdateOwnWorkstreamInput = z.infer<typeof updateOwnWorkstreamInputSchema>;

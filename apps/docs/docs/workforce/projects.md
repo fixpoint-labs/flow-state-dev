@@ -296,7 +296,7 @@ It returns `{ workstream }`, the entry as written.
 
 The entries are an [owner-writes collection](../resources/collections.md#owner-writes-collections), so a write to someone else's entry throws "A row of an owner-writes collection is written only by the user it belongs to." and changes nothing, whichever flow sends it. A workstream you don't have is refused with `no-such-workstream`. A workstream is never deleted: mark it `done` and it stays listed.
 
-**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. It can't rename the workstream: it takes everything but `title`, since the name is the owner's to change, here or through their project coordinator. One worker can lead several workstreams, and each post it gets can mention the others, so a lead that could rename would sometimes write one workstream's name onto another. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
+**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. The title is not one of those changes: the owner sets it through `updateWorkstream`, and their project coordinator through `editWorkstream`. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
 
 ```ts
 const agent = defineAgentWorkerFlow({
