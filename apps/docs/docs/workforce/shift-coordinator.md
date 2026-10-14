@@ -22,7 +22,7 @@ A worker it hires belongs to the user it is talking to: it is on their roster an
 
 A Shift Coordinator can also run on the built-in `agent` flow. It then answers and changes your roster the same way, but has no delegates and hands nothing on. Name `flow: agent`, leave `routing:` and `delegates:` out (the `agent` flow refuses settings it doesn't declare), and give the `agent` flow the catalog and capabilities shown below.
 
-Shift Manager's [`devteam` profile](../shift-manager/overview.md#the-devteam-profile) ships one on the `coordinator` flow.
+Shift Manager's [`devteam` profile](../shift-manager/from-a-checkout.md#the-devteam-profile) ships one on the `coordinator` flow.
 
 ## Adding one
 

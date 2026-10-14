@@ -247,7 +247,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Shift Manager",
-      items: ["shift-manager/overview", "shift-manager/settings"],
+      items: ["shift-manager/overview", "shift-manager/settings", "shift-manager/from-a-checkout"],
     },
     {
       type: "category",
