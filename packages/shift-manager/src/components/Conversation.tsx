@@ -28,7 +28,7 @@ import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
-import { SessionScope } from "../lib/task-board-ref";
+import { SessionScope } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";

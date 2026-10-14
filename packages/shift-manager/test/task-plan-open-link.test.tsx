@@ -7,9 +7,8 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { TaskBoardMeta } from "../src/components/TaskBoardMeta";
+import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
 import { SessionItemsProvider } from "../src/components/flow-state/session-items-context";
-import { SessionScope } from "../src/lib/task-board-ref";
 
 afterEach(cleanup);
 
