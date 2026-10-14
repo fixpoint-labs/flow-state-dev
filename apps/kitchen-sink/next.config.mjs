@@ -21,8 +21,9 @@ const nextConfig = {
   // by name at run time and starts the Claude Code executable it ships, so it
   // stays a package on disk, never bundled. The Cursor SDK is the same: it
   // ships its local runtime as a native binary, and the Cursor package loads
-  // it by name, in the runtime's own process.
-  serverExternalPackages: ["pg", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk", "@cursor/sdk"],
+  // it by name, in the runtime's own process. The Codex SDK is the same: it
+  // starts the Codex program its platform package ships.
+  serverExternalPackages: ["pg", "bullmq", "ioredis", "express", "@anthropic-ai/claude-agent-sdk", "@cursor/sdk", "@openai/codex-sdk"],
   transpilePackages: workspacePackages,
   turbopack: {
     root: resolve(__dirname, "../../"),

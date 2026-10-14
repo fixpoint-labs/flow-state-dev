@@ -14,7 +14,9 @@
  * knows a tool's name.
  */
 import { useEffect, useRef, useState } from "react";
-import { columnFor } from "../lib/columns";
+import { ChevronRightIcon } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { columnFor, isDone, readStatus } from "../lib/columns";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
@@ -32,7 +34,20 @@ const isOpen = (task: ConversationTask) => task.status === "pending" || task.sta
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 
-export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sessionId: string | null; readAt: number }) {
+const isErrored = (task: ConversationTask) => readStatus(task.status) === "errored";
+
+export function TasksPanel({
+  worker,
+  sessionId,
+  readAt,
+  activeOnly = false,
+}: {
+  worker: Worker;
+  sessionId: string | null;
+  readAt: number;
+  /** List only the active tasks, with the done and the errored each folded into a closed group. */
+  activeOnly?: boolean;
+}) {
   const { clients, refresh } = useLab();
   const [read, setRead] = useState<Read>(undefined);
   const [polls, setPolls] = useState(0);
@@ -99,9 +114,46 @@ export function TasksPanel({ worker, sessionId, readAt }: { worker: Worker; sess
       </p>
     );
   }
+  if (!activeOnly) return <TaskList tasks={read.tasks} />;
+  const done = read.tasks.filter((task) => isDone(task.status));
+  const errored = read.tasks.filter(isErrored);
+  const active = read.tasks.filter((task) => !isDone(task.status) && !isErrored(task));
+  return (
+    <div className="space-y-1">
+      {active.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-tasks-none-active">
+          No task is active.
+        </p>
+      ) : (
+        <TaskList tasks={active} />
+      )}
+      <TaskGroup tasks={done} name="done" />
+      <TaskGroup tasks={errored} name="errored" />
+    </div>
+  );
+}
+
+function TaskGroup({ tasks, name }: { tasks: readonly ConversationTask[]; name: string }) {
+  if (tasks.length === 0) return null;
+  return (
+    <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={name}>
+      <CollapsibleTrigger className="inline-flex items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground">
+        <span className={name === "errored" ? "text-destructive" : undefined}>
+          {tasks.length} {name}
+        </span>
+        <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tasks:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="outline-none">
+        <TaskList tasks={tasks} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function TaskList({ tasks }: { tasks: readonly ConversationTask[] }) {
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">
-      {read.tasks.map((task) => (
+      {tasks.map((task) => (
         <li
           key={task.id}
           className="flex items-start gap-2 px-1 py-1 text-sm"

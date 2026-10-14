@@ -33,6 +33,7 @@ import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import { buildKitchenSinkWorkforce } from "@/workforce/hire";
 import { availableHarnessFlows } from "@/lib/harness-gate";
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
+import { codexSessionFlow } from "@/lib/codex-mode";
 import { cursorSessionFlow } from "@/lib/cursor-mode";
 import { mergeWorkerFlows } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
@@ -94,6 +95,7 @@ for (const failedPath of workforce.errors) {
 // A mode's issue adds its flow here, by mode id.
 const harnessFlows = await availableHarnessFlows<FlowInstance<any, any>>({
   "claude-code": claudeCodeSessionFlow,
+  codex: codexSessionFlow,
   cursor: cursorSessionFlow,
 });
 
