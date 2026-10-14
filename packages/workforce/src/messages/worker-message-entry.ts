@@ -14,8 +14,7 @@
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
-import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
 import { messageTurnStateSchema, startTurnAtHop } from "./hop";
@@ -60,12 +59,8 @@ function turnPrompt(row: { id: string; from: string; text: string; replyTo?: str
  * `internal: { actions: { [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ ... }) } }`.
  *
  * @param options.turn The flow's turn for one message (`{ message }` in).
- * @param options.policy Whether a message wakes the turn (`judgment`) or lands as a line only (`fixed`).
  */
-export function workerMessageEntry(options: {
-  readonly turn: BlockDefinition<any, any>;
-  readonly policy: (ctx: BlockContext) => NoticePolicy;
-}) {
+export function workerMessageEntry(options: { readonly turn: BlockDefinition<any, any> }) {
   const heard = handler({
     name: "worker-message-heard",
     inputSchema: workerMessageInputSchema,
@@ -88,7 +83,8 @@ export function workerMessageEntry(options: {
       if (first !== true) return { act: "none" };
       await startTurnAtHop(ctx as never, row.hop);
       return {
-        act: options.policy(ctx as never) === "judgment" ? "wake-turn" : "line",
+        // Every message wakes its recipient (D2), whatever the flow's notice policy.
+        act: "wake-turn",
         from: row.from,
         line: `From ${row.from}: ${row.text}`,
         prompt: turnPrompt(row)

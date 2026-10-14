@@ -406,6 +406,27 @@ describe("the hop count through a delegation", () => {
     }
   });
 
+  it("never reaches a post: a coordinator woken by a message has no post to hand on, so a message chain can't restart through one", async () => {
+    const h = bootBoardHost({
+      standard: teamWorkers(),
+      // The coordinator, woken by otto's message, tries to hand it on to otto as a post.
+      judgment: mockGenerator({ script: [...callOnce("Who takes this?", "dispatchTask", { post: true, assignee: "otto" }, "Tried."), fallback] }),
+      agentAnswer: mockGenerator({ script: [...callOnce("Please ask chief", "messageWorker", { to: "chief", text: "Who takes this?" }, "Asked."), fallback] })
+    });
+    try {
+      const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask chief" }, "agent");
+      await h.settled();
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>chief@1"]);
+      // A post is filed only from a user's line, which starts the count at 0 anyway.
+      expect(JSON.stringify(await toolOutputs(h, rows[0]!.toSession))).toMatch(/post_unavailable/);
+      expect(await h.rows("alice")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("carries the count through a conversation that predates the hop field, so the chain does not restart at 0", async () => {
     const h = bootBoardHost({
       standard: teamWorkers(),

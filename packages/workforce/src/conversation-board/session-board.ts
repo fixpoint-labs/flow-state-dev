@@ -25,7 +25,9 @@
  * ```ts
  * workerFlow((installation) => {
  *   const board = defineSessionBoard({ installation, flowKind: "em" });
- *   const answer = generator({ name: "em-answer", uses: [board.tools], ... });
+ *   // `board.messages` is what lets the worker send and answer the messages
+ *   // `board.entries` delivers to it.
+ *   const answer = generator({ name: "em-answer", uses: [board.tools, board.messages], ... });
  *   return defineFlow({
  *     kind: "em",
  *     configSchema: workerConfigSchema().extend({ ... }),
@@ -168,7 +170,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * The internal entries the board needs on its flow: a run of the board,
      * the notice of a task the session filed, a split task's settle and
      * the cancel of its pieces, and a worker's message (`onWorkerMessage`,
-     * FIX-1989), which wakes the turn under the same policy as a notice.
+     * FIX-1989), which always wakes the turn: `policy` is the notices' only.
      * Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
@@ -189,7 +191,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ runBoard: board.runBoard, turn, policy, onPost }) }),
         [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
         [CANCEL_PIECES_ENTRY]: { inputSchema: cancelPiecesInputSchema, block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY },
-        [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, policy })
+        [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn })
       };
     }
   };
