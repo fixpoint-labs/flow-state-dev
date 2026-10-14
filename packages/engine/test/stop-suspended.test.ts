@@ -761,12 +761,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
 });
 
 describe("the sweep re-drives a gate a person resolved whose turn never continued (FIX-1850)", () => {
-  /**
-   * Park an `approve` turn, resolve its gate as a person would, and end the
-   * turn either live (the resume runs) or crashed (the gate's write lands
-   * under the lease, then the process dies before the turn continues; the
-   * lease runs out). Returns what the turn came to after one sweep.
-   */
+  /** Live runs the resume. Crashed writes the gate, then the lease runs out before the turn continues. */
   async function resolve(
     action: "approve" | "reject" | "submit" | "skip",
     data: unknown,
@@ -802,7 +797,6 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     });
     expect(resumed.ok).toBe(true);
     if (mode === "crashed") {
-      // The process died: the turn never left `suspended`, and its lease ran out.
       expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
       const lease = await h.stores.leases.get(requestId);
       await h.stores.leases.release(requestId, lease!.leaseId);
@@ -824,8 +818,6 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     };
   }
 
-  // Each resolution a person can give: the crashed turn must end exactly as
-  // the live one did, with the person's own answer, never a different one.
   const cases = [
     { name: "an approval", action: "approve", data: { ok: true }, resolution: "approved" },
     { name: "a rejection", action: "reject", data: { reason: "no" }, resolution: "rejected" },
@@ -850,23 +842,19 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
       expect(crashed.seen).toEqual(live.seen);
       expect(crashed.output).toEqual(live.output);
       expect(crashed.answers).toEqual(live.answers);
-      // The person's resolution is the one recorded, once.
       expect(crashed.resumes).toEqual([{ suspensionId: crashed.gate.suspensionId, resolution: c.resolution }]);
       expect(crashed.gateStatus).toBe(live.gateStatus);
+      if (c.action === "approve") {
+        expect(crashed.status).toBe("completed");
+        expect(crashed.seen).toEqual(["after-gate"]);
+        expect(crashed.answers).toEqual([{ ok: true }]);
+      }
 
-      // A second sweep has nothing left to do.
       const continued = crashed.h.finished.length;
       await runTick(tickArgs(crashed.h));
       expect(crashed.h.finished).toHaveLength(continued);
     });
   }
-
-  it("the approval reaches the gated call: it runs once and the turn completes", async () => {
-    const crashed = await resolve("approve", { ok: true }, "crashed");
-    expect(crashed.status).toBe("completed");
-    expect(crashed.seen).toEqual(["after-gate"]);
-    expect(crashed.answers).toEqual([{ ok: true }]);
-  });
 
   it("the re-drive of an approval waits for a live resume holding the turn's lease", async () => {
     const seen: string[] = [];
@@ -900,8 +888,6 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     expect(seen).toEqual(["first:approved"]);
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
 
-    // Parked at the second gate, still pending: the first gate's approval is
-    // not owed again.
     await runTick(tickArgs(h));
     await drain(h);
     expect(seen).toEqual(["first:approved"]);
@@ -932,8 +918,6 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("crash before continuing"));
     await runTick(tickArgs(h));
     await drain(h);
-    // A person's resolution is reopened on a setup failure, as a live resume's
-    // is: the gate takes an answer again, and the turn's lease is free.
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
     expect(await h.stores.leases.get(requestId)).toBeNull();
@@ -958,15 +942,13 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     const flow = parkingFlow(seen);
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, "approve");
-    // The approval resolved the gate first, so the stop lost the race to it;
-    // the stop is still recorded on the turn, and neither is lost.
+    // The approval won the gate; the stop stays on the turn.
     await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
     await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["suspended"], Date.now());
 
     await runTick(tickArgs(h));
     await drain(h);
     expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
-    // A second sweep revives nothing.
     const continued = h.finished.length;
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(continued);
@@ -1356,9 +1338,7 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     // The accepted approval stands.
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
 
-    // The dead run's lease runs out; the sweep must not reject the approval.
-    // It carries the approval on (FIX-1850): the first gate's call runs, and
-    // the turn parks at the second approval.
+    // The dead run's lease runs out. The sweep carries the approval on and does not reject it.
     const lease = await h.stores.leases.get(requestId);
     await h.stores.leases.release(requestId, lease!.leaseId);
     await runTick(tickArgs(h));
