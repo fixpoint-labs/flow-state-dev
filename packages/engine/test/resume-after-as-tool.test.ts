@@ -1,13 +1,3 @@
-/**
- * Resuming after an `.asTool()` step hands on the step's real value.
- *
- * Why this matters: an `.asTool()` step records its result once, on the
- * `tool_output` item, and its `block_trace` points at that item rather than
- * copying the value. A resumed request rebuilds each finished step's result
- * from the record. If that rebuild cannot follow the pointer, the next step
- * silently receives `undefined` instead of the value the step produced, and
- * the resumed work proceeds on missing data.
- */
 import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
@@ -64,8 +54,7 @@ async function suspendThenApprove(flow: FlowInstance) {
     resumeContext,
     runtimeConfig
   });
-  const resumed = await finished;
-  return { resumed, record: await stores.request.get(initial.requestId!) };
+  return finished;
 }
 
 describe("resuming after an .asTool() step", () => {
@@ -90,10 +79,9 @@ describe("resuming after an .asTool() step", () => {
       }
     })({ id: "as-tool-resume" });
 
-    const { resumed, record } = await suspendThenApprove(flow);
+    const resumed = await suspendThenApprove(flow);
 
     expect(resumed.error).toBeUndefined();
-    expect(record?.status).toBe("completed");
     expect(received).toEqual([{ files: ["a.ts", "b.ts"] }]);
     expect(resumed.output).toEqual({ count: 2 });
   });

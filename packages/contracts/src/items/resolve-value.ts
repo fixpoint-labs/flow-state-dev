@@ -13,7 +13,9 @@
  * FIX-480 §3.2: refs may now point at `MessageItem` ids (in addition to
  * `BlockTraceItem` ids), so a streaming-text generator's `block_trace.output`
  * can carry a ref to its own emitted message instead of duplicating the
- * text. Resolution returns the joined `output_text` content.
+ * text. Resolution returns the joined `output_text` content. Refs may also
+ * point at `ToolOutputItem` ids: a block run as a tool (or an `.asTool()`
+ * step) refs the tool result it recorded, and resolution returns its `output`.
  */
 import type {
   BlockTraceItem,
@@ -122,14 +124,12 @@ function resolveInternal(
       return joinMessageText(target as MessageItem);
     }
     if (target.type === "tool_output") {
-      // Terminal node — a block run as a tool records its result once, on the
-      // `tool_output` item, and its `block_trace` refs that item (FIX-1847).
-      // A result left out of the record carries `outputOmitted` and no `output`.
+      // Terminal node — the recorded output IS the resolved value. No recursion.
       return (target as ToolOutputItem).output;
     }
     // Unknown ref target type. Returning `undefined` is the safe choice —
     // callers already tolerate ref-misses (e.g. retention eviction), and a
-    // hard throw would break adapters for any future non-message content
+    // hard throw would break adapters for any unknown ref target type
     // that legitimately becomes ref-able.
     return undefined;
   }
@@ -166,8 +166,8 @@ function joinMessageText(item: MessageItem): string {
 
 /**
  * Build a lookup closure from a flat items list. Indexes every item by
- * id (not just `block_trace`) so refs may resolve to `message` items
- * as well — FIX-480 widened the source pool. Callers with a Map already
+ * id (not just `block_trace`) so refs may resolve to `message` and
+ * `tool_output` items as well. Callers with a Map already
  * indexed by id should wrap that directly.
  */
 export function buildItemLookup(items: readonly OutputItem[] | readonly { id: string; type: string }[]): ItemLookup {
