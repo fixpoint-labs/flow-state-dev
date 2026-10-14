@@ -146,18 +146,11 @@ function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
 }
 
-/**
- * A task's `input` with the project its filing session works in written over
- * the one the filer named. The session's project is server-written
- * (`own`, from {@link filingProjectAddressOf}); the filer's is a model's guess
- * at best, and a run would be refused `other-project` on it (BP-031). Input
- * that names no project, and a session with none, are left as they are: the
- * run finds the session's project without it.
- */
+/** Write the session's project over a named `project`, so a guess isn't refused `other-project`. */
 function ownProjectIn(input: unknown, own: ProjectAddressRef | undefined): unknown {
   if (own === undefined || input === null || typeof input !== "object" || Array.isArray(input)) return input;
   if ((input as { project?: unknown }).project == null) return input;
-  return { ...input, project: { visibility: own.visibility, id: own.id } };
+  return { ...input, project: own };
 }
 
 /** A roster over the session's task-taking delegates, naming why each other one can't take a task. */

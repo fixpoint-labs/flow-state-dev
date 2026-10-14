@@ -14,8 +14,7 @@
  *    run's own user, never anything in the task.
  * 4. With none of these, `no-project`, saying the task can name one.
  *
- * A task filed from a conversation with a project names that project: the
- * board writes it over whatever the filer named. Each
+ * A task filed from a conversation with a project names that project. Each
  * delegate's turn asks the source the way a coding run's would, and keeps
  * what it answered.
  */
