@@ -107,8 +107,9 @@ the ids come from you; `codex debug models` shows what the installed Codex knows
 | File change | `tool_output` naming each path and whether it was added, updated or deleted |
 | MCP tool call | `tool_output`, named `mcp:<server>/<tool>` |
 | Web search, to-do list | `tool_output` |
-| Thread and turn lifecycle | transient `status` |
-| Errors | `error` |
+| Thread and turn lifecycle, reconnect attempts | transient `status` |
+| Warnings, such as a setting the model doesn't support | `status`, kept in the session's history |
+| A failed run | `error`: one line saying why, with everything Codex printed under `details.output` |
 
 Every item carries provenance, so the devtool shows the full trace of what the
 run did.

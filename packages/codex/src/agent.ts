@@ -342,9 +342,16 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
-        const failure = toRunFailure(err, sessionId, hookFired ? null : resumeId);
+        const failure = toRunFailure(err, sessionId, hookFired ? null : resumeId, failureMessage);
+        // One line; what the CLI said on its way out rides along as details.
+        const said = failure instanceof CodexAgentRunError ? failure.detail?.cause : undefined;
         await emitTranslatedEvent(
-          { kind: "error", message: failure.message, code: failure.code },
+          {
+            kind: "error",
+            message: failure.message,
+            code: failure.code,
+            ...(said !== undefined && !failure.message.includes(said) ? { details: { output: said } } : {}),
+          },
           ctx,
           emitState,
           name,
@@ -399,11 +406,17 @@ export function codexAgent(options: CodexAgentOptions = {}) {
  *
  * `unnamedResume` is the thread the run asked to resume when the stream never
  * named one, else `null`: only then can the failure be Codex refusing it.
+ *
+ * `turnFailure` is the message of a `turn.failed` the stream already carried.
+ * The CLI exits non-zero after one, and the SDK's throw then holds the whole
+ * of the CLI's stderr (every log line of the run), so the turn's own message
+ * is the failure and the throw's is kept on `detail.cause`.
  */
 function toRunFailure(
   err: unknown,
   sessionId: string | null,
   unnamedResume: string | null,
+  turnFailure: string | null = null,
 ): CodexAgentError {
   // Re-minted rather than passed through: the abort raised inside the race
   // knows no thread id, and the id is the whole point of the error — it is what
@@ -424,6 +437,9 @@ function toRunFailure(
       err,
       "unknown-conversation",
     );
+  }
+  if (turnFailure !== null) {
+    return new CodexAgentRunError(`Codex run failed: ${turnFailure}`, { cause: reason }, err);
   }
   return new CodexAgentRunError(`Codex run failed: ${reason}`, { cause: reason }, err);
 }
