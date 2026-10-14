@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 /**
- * A worker's Rules (FIX-1945 S6, BR-19 to BR-21a): which Roster rows open
- * one, what the view draws, and that every edit goes to the Lab naming the
+ * A worker's settings page and its Rules section (FIX-1945 S6, BR-19 to
+ * BR-21a; FIX-2007): every Roster row opens one, the Shift Coordinator's
+ * gear opens its own, the old `/rules` address still lands there, the
+ * panel no longer draws the rules, and every edit goes to the Lab naming the
  * version of the list it was drawn from. The Lab is a fake that keeps one
  * list and refuses as the rules action does, so a page that drew its own
  * idea of the list, or wrote without the version, shows here.
@@ -82,45 +84,60 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("the Roster's way in (BR-20, BR-21a)", () => {
-  it("offers Rules on a worker that keeps them, and says so on one whose flow doesn't", async () => {
+  it("offers Settings on every worker, and the researcher's opens its settings page with its Rules", async () => {
     await open("/roster");
     const rows = await screen.findAllByTestId("roster-worker");
     const row = (id: string) => rows.find((r) => r.getAttribute("data-worker-id") === id)!;
-    expect(within(row("eng.coder")).queryByTestId("roster-worker-rules")).toBeNull();
-    expect(within(row("eng.coder")).getByTestId("roster-worker-no-rules").textContent).toMatch(/doesn't keep standing rules/);
-    // An app's own `agent` flow may leave the rules action out: the row's flag decides, not the flow's name.
-    expect(within(row("eng.helper")).queryByTestId("roster-worker-rules")).toBeNull();
-    fireEvent.click(within(row("researcher")).getByTestId("roster-worker-rules"));
+    // A worker whose flow keeps no rules still has a settings page; the row no longer carries the line.
+    for (const id of ["researcher", "eng.coder", "eng.helper"]) expect(within(row(id)).getByTestId("roster-worker-settings").textContent).toBe("Settings");
+    expect(screen.queryByTestId("roster-worker-no-rules")).toBeNull();
+    expect(screen.queryByTestId("roster-worker-rules")).toBeNull();
+    fireEvent.click(within(row("researcher")).getByTestId("roster-worker-settings"));
+    expect(window.location.pathname).toBe("/roster/researcher/settings");
+    const page = await screen.findByTestId("worker-settings");
+    expect(page.getAttribute("data-worker-id")).toBe("researcher");
+    expect(within(page).getByTestId("worker-settings-tag").textContent).toBe("SETTINGS");
+    expect(await within(page).findByTestId("rules")).toBeTruthy();
+  });
+
+  it("opens the same settings page at the old /rules address, leaving the address as typed", async () => {
+    await open("/roster/researcher/rules");
+    const page = await screen.findByTestId("worker-settings");
+    expect(page.getAttribute("data-worker-id")).toBe("researcher");
+    expect(await within(page).findByTestId("rules")).toBeTruthy();
+    expect(screen.queryByTestId("cos")).toBeNull();
     expect(window.location.pathname).toBe("/roster/researcher/rules");
-    expect(await screen.findByTestId("rules")).toBeTruthy();
+    // Roster stays highlighted, as on the page's own address.
+    expect(screen.getByTestId("nav-roster").getAttribute("aria-current")).toBe("page");
   });
 
   it("says the roster didn't load, not that the worker is missing, when the user's own roster read fails", async () => {
     roster = async () => {
       throw new Error("the roster store is down");
     };
-    await open("/roster/hired.helper/rules");
-    expect((await screen.findByTestId("rules-roster-failure")).textContent).toMatch(/the roster store is down/);
-    expect(screen.queryByTestId("rules-no-worker")).toBeNull();
+    await open("/roster/hired.helper/settings");
+    expect((await screen.findByTestId("worker-settings-roster-failure")).textContent).toMatch(/the roster store is down/);
+    expect(screen.queryByTestId("worker-settings-no-worker")).toBeNull();
   });
 
-  it("draws no list for a worker whose flow keeps none, even at its address, and never asks the Lab for one", async () => {
-    await open("/roster/eng.coder/rules");
+  it("draws no list for a worker whose flow keeps none, says so in its Rules section, and never asks the Lab for one", async () => {
+    await open("/roster/eng.coder/settings");
     expect((await screen.findByTestId("rules-not-kept")).textContent).toMatch(/doesn't keep standing rules/);
+    expect(screen.queryByTestId("rules")).toBeNull();
     expect(calls).toEqual([]);
   });
 });
 
 describe("a worker's Rules (BR-19 to BR-21)", () => {
   it("says the worker keeps none and offers to add one, with the limits shown", async () => {
-    await open("/roster/researcher/rules");
+    await open("/roster/researcher/settings");
     expect((await screen.findByTestId("rules-empty")).textContent).toMatch(/keeps no rules for you yet/);
     expect(screen.getByTestId("rules-limits").textContent).toMatch(/Up to 20, each one line of up to 300 characters/);
     expect(screen.getByTestId("rule-add-input")).toBeTruthy();
   });
 
   it("adds, edits and deletes through the Lab, each write naming the version it was drawn from", async () => {
-    await open("/roster/researcher/rules");
+    await open("/roster/researcher/settings");
     await screen.findByTestId("rules-empty");
 
     fireEvent.change(screen.getByTestId("rule-add-input"), { target: { value: "Name the project first." } });
@@ -147,7 +164,7 @@ describe("a worker's Rules (BR-19 to BR-21)", () => {
 
   it("shows the Lab's refusal and draws the list the Lab holds when the worker changed it first", async () => {
     held = { version: 1, rules: [{ text: "Keep replies short.", addedAt: 500, sessionId: "conv_abc" }] };
-    await open("/roster/researcher/rules");
+    await open("/roster/researcher/settings");
     await waitFor(() => expect(texts()).toEqual(["Keep replies short."]));
     // The worker drops it and adds another in a conversation, after the page drew the list.
     held = { version: 3, rules: [{ text: "Answer in French.", addedAt: 900, sessionId: "conv_def" }] };
@@ -158,7 +175,7 @@ describe("a worker's Rules (BR-19 to BR-21)", () => {
   });
 
   it("refuses a rule over the limit with the Lab's reason, keeping what was typed", async () => {
-    await open("/roster/researcher/rules");
+    await open("/roster/researcher/settings");
     await screen.findByTestId("rules-empty");
     fireEvent.change(screen.getByTestId("rule-add-input"), { target: { value: "x".repeat(301) } });
     expect(screen.getByTestId("rule-add-chars").textContent).toBe("301/300");
@@ -170,7 +187,7 @@ describe("a worker's Rules (BR-19 to BR-21)", () => {
 
   it("links a rule to the conversation it came from in the DevTool", async () => {
     held = { version: 1, rules: [{ text: "Keep replies short.", addedAt: 500, sessionId: "conv_abc" }] };
-    await open("/roster/researcher/rules", "http://127.0.0.1:4100/");
+    await open("/roster/researcher/settings", "http://127.0.0.1:4100/");
     const origin = await screen.findByTestId("rule-origin");
     expect(origin.getAttribute("data-session-id")).toBe("conv_abc");
     expect(origin.getAttribute("href")).toContain("conv_abc");
@@ -178,33 +195,46 @@ describe("a worker's Rules (BR-19 to BR-21)", () => {
 
   it("offers no add at 20 of 20, saying why", async () => {
     held = { version: 20, rules: Array.from({ length: 20 }, (_, i) => ({ text: `rule ${i + 1}`, addedAt: i, sessionId: null })) };
-    await open("/roster/researcher/rules");
+    await open("/roster/researcher/settings");
     expect((await screen.findByTestId("rules-full")).textContent).toMatch(/full \(20 of 20\)/);
     expect(screen.queryByTestId("rule-add-input")).toBeNull();
   });
 });
 
-describe("the Shift Coordinator's panel (BR-21a)", () => {
-  const withCos = (kind: string, rules: boolean) => lab(toWorker({ id: "chief-of-staff", kind, rules })!);
+describe("the Shift Coordinator: no rules in its panel, a gear to its settings", () => {
+  const withCos = (id: string, kind: string, rules: boolean) => lab(toWorker({ id, kind, rules })!);
   // The panel opens beside the conversation only on a wide window.
   beforeEach(() => {
     (window as unknown as { happyDOM: { setViewport(v: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 });
   });
 
-  it("draws RULES for a chief of staff on `agent` whose row says it keeps them, without the coordinator's delegates", async () => {
-    fixture = withCos("agent", true);
+  it("draws no rules section in the panel, and never asks the Lab, even for a chief of staff that keeps them", async () => {
+    fixture = withCos("chief-of-staff", "agent", true);
     await open("/cos");
     const panel = await screen.findByTestId("cos-panel");
-    expect(await within(panel).findByTestId("rules")).toBeTruthy();
     expect(within(panel).getByTestId("cos-panel-empty")).toBeTruthy();
+    expect(within(panel).queryByTestId("rules")).toBeNull();
+    expect(panel.textContent).not.toMatch(/RULES/);
+    expect(calls).toEqual([]);
+  });
+
+  it("opens the org coordinator's settings, with its Rules, from the gear in its header", async () => {
+    fixture = withCos("chief-of-staff", "agent", true);
+    await open("/cos");
+    fireEvent.click(await within(await screen.findByTestId("cos-header")).findByTestId("cos-settings"));
+    expect(window.location.pathname).toBe("/roster/chief-of-staff/settings");
+    const page = await screen.findByTestId("worker-settings");
+    expect(within(page).getByTestId("worker-settings-title").textContent).toBe("Shift Coordinator");
+    expect((await within(page).findByTestId("rules")).getAttribute("data-worker-id")).toBe("chief-of-staff");
     await waitFor(() => expect(calls).toEqual([{ worker: "chief-of-staff", input: { op: "read" } }]));
   });
 
-  it("draws no RULES, and never asks the Lab, for a chief of staff whose row says its flow keeps none", async () => {
-    fixture = withCos("coordinator", false);
+  it("links the gear to a team's coordinator by its own id, and shows it even when its flow keeps no rules", async () => {
+    fixture = withCos("ops.chief-of-staff", "coordinator", false);
     await open("/cos");
-    const panel = await screen.findByTestId("cos-panel");
-    expect(within(panel).queryByTestId("rules")).toBeNull();
+    fireEvent.click(await within(await screen.findByTestId("cos-header")).findByTestId("cos-settings"));
+    expect(window.location.pathname).toBe("/roster/ops.chief-of-staff/settings");
+    expect((await screen.findByTestId("rules-not-kept")).textContent).toMatch(/doesn't keep standing rules/);
     expect(calls).toEqual([]);
   });
 });

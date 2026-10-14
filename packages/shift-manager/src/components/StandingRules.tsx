@@ -1,7 +1,7 @@
 /**
  * A worker's standing rules for the user (FIX-1945 S6): each rule with when
  * it was added and the conversation it came from, and add, edit and delete.
- * Drawn on a roster worker's Rules view and in the Shift Coordinator's panel.
+ * Drawn as the Rules section of a roster worker's settings page.
  *
  * Every edit goes to the Lab, which checks it with the limits the worker's
  * own tools obey; what is drawn is the list the Lab answered with. A refused
@@ -17,16 +17,15 @@ import { SectionFailure } from "./ui";
  * @param workerId The worker whose rules these are.
  * @param name What the page calls the worker.
  * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
- * @param compact Drawn in a side panel rather than as a screen.
  */
-export function StandingRules({ workerId, name, devtoolUrl, compact = false }: { workerId: string; name: string; devtoolUrl?: string; compact?: boolean }) {
+export function StandingRules({ workerId, name, devtoolUrl }: { workerId: string; name: string; devtoolUrl?: string }) {
   const rules = useStandingRules(workerId);
   const { read } = rules;
   const list = read !== undefined && "list" in read ? read.list : undefined;
   const full = list !== undefined && list.rules.length >= MAX_RULES;
 
   return (
-    <section className={compact ? "space-y-2" : "max-w-2xl space-y-3"} data-testid="rules" data-worker-id={workerId} data-version={list?.version ?? ""}>
+    <section className="max-w-2xl space-y-3" data-testid="rules" data-worker-id={workerId} data-version={list?.version ?? ""}>
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-mono text-[11px] font-semibold tracking-[0.1em]">RULES</h2>
         <span className="font-mono text-[11px] text-muted-foreground" data-testid="rules-count">
