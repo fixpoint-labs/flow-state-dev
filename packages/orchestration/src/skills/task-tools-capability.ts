@@ -1194,7 +1194,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "bounds the wait, from 30000 (30 seconds) to 3600000 (an hour), five minutes when " +
     "unset, and is only valid with wait. Errors: wait_timed_out (it didn't end in time; it " +
     "is cancelled), wait_task_failed, wait_task_cancelled, wait_already_pending, " +
-    "wait_unavailable (you are working a task yourself, so you can't wait), " +
+    "wait_unavailable (you are working a task yourself: file it without wait and end your turn, and its ending wakes you), " +
     "wait_timeout_out_of_range.";
   const dispatchFields = {
     ...addTaskFields,

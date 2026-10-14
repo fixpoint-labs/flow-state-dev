@@ -1865,7 +1865,8 @@ Orchestration's task tools (`dispatchTask`, `addTask`, `assignTask`, `listTasks`
 the rest), and the conversation's session takes them as actions named for the board:
 `dispatchTask_tasks`, `addTask_tasks`, `listTasks_tasks` and so on.
 
-An assignee must be one of the conversation's delegates whose flow takes tasks. Any other is
+An assignee must be one of the conversation's delegates whose flow takes tasks (a task session's
+pieces can go further; see below). Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
 `addTask` records a task; `dispatchTask` starts it in its task session, which belongs to you.
@@ -1880,10 +1881,11 @@ A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes ta
 that carries the session board: the built-in `agent` and `coordinator` flows do, and your own flow
 does through `defineSessionBoard({ installation, flowKind })` (see its row under Exports). A worker with no such delegate gets no task tools, and its actions answer
 `{ ok: false, error: "no_delegation_board" }`. A task's worker can split it into pieces for any
-worker on the user's roster that takes tasks, its delegates or not; an unassigned piece still goes
-to its only delegate. Each piece's ending wakes a turn in the task session, and the task completes
-with `{ answer, pieces }`: the answer of the last turn a piece's ending woke, and the pieces'
-outputs (`{ pieces }` alone when it settles with no such turn, as after a restart). Splitting goes up to
+worker on the user's roster that takes tasks, its delegates or not; an unassigned piece goes to
+its delegate when it has exactly one. Each piece's ending wakes a turn in the task session. The task
+completes with `{ answer, pieces }`: `answer` is what the worker said in the turn after the last
+piece ended, and `pieces` lists each piece's output. With no such turn (after a restart, for
+example), `answer` is absent. Splitting goes up to
 five boards deep and 100 tasks under one top task; a filing past either is answered
 `{ ok: false, error: "total_task_cap_exceeded" }`. Raise the 100 with `hireWorkforce`'s
 `taskChainLimit`. See [Delegating work](https://flow-state.dev/docs/workforce/delegating-work).

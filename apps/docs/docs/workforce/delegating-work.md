@@ -28,11 +28,13 @@ delegates: [eng.coder, eng.reviewer]
 
 When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` records a task without starting it, until `dispatchTask` names it by its `taskId`. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
 
-A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer (a worker working a task is different, see [Splitting a task](#splitting-a-task)):
+A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer:
 
 ```json
 { "ok": false, "error": "no_delegation_board" }
 ```
+
+In a task session the rule is wider: a worker working a task can split it whatever its delegates. See [Splitting a task](#splitting-a-task).
 
 Add a delegate that takes tasks partway through a conversation and the tools are there on the next call; remove the last one and they're gone.
 
@@ -142,7 +144,7 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it into pieces. It can hand a piece to any worker on your roster that takes tasks, not only its own delegates, so a task that needs something another worker knows can get it from that worker. Its delegates are still who it reports to: a piece filed with no assignee goes to its only delegate.
+A worker given a task can split it into pieces. It can hand a piece to any worker on your roster that takes tasks, not only its own delegates, so a task that needs something another worker knows can get it from that worker. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
 
 The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
 
@@ -155,7 +157,7 @@ The pieces go on the task session's own board. The worker's turn ends, and its t
 }
 ```
 
-If the task settles with no such turn behind it, for example after a restart, the output is the `pieces` list alone. A task with a piece that failed for good fails, naming it. Only the conversation above hears the task end; it doesn't hear each piece.
+If the worker didn't get a turn after the last piece ended (after a server restart, for example), the output is `{ pieces }` with no `answer`, so treat `answer` as optional. A task with a piece that failed for good fails, naming it. Only the session that filed the task hears it end; it doesn't hear each piece.
 
 ```text
 your conversation ── task ──▶ lead's task session ── pieces ──▶ two task sessions
