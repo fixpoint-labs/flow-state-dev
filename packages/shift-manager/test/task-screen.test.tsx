@@ -404,8 +404,7 @@ describe("a line sent from a task's composer (FIX-2009)", () => {
     fireEvent.change(input, { target: { value: line } });
     fireEvent.click(screen.getByTestId("task-composer-send"));
     await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
-    // The door's turn is not the task's run, so nothing it stores is stamped
-    // with the task: shown only because this view sent it.
+    // Shown because this view sent it: the door turn stores no task stamp.
     const session = screen.getByTestId("session-items");
     await waitFor(() => {
       expect(session.textContent).toContain(line);

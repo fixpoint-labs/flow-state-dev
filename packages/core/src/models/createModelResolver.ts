@@ -989,11 +989,6 @@ export function createModelResolver(
     }
   }
 
-  /**
-   * The model an intent falls back to. With none configured this is a setup
-   * error the app's author reads, so it names the intent and where a model
-   * can be set, not the resolver's own option.
-   */
   function resolveDefaultModel(intentName: string): GeneratorModel {
     if (!options?.defaultModel) {
       throw new Error(

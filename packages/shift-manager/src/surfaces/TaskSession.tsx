@@ -128,8 +128,7 @@ function RunItems({ run }: { run: OpenRun }) {
     };
   }, [clients, run, attempt, reportStatus]);
 
-  // A line this screen's composer sent: follow its request live, and read the
-  // session once it ends, so the line and the reply show here (FIX-2009).
+  // Follow each request in `sent`, and re-read the session when it leaves in_progress.
   const { sent } = task;
   const following = useRef(new Map<string, { close(): void }>());
   useEffect(() => {

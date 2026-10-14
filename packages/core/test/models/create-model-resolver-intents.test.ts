@@ -139,18 +139,9 @@ describe("createModelResolver — intent resolution", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     // `env: {}` keeps a developer's own FSDEV_DEFAULT_MODEL out of the check.
     const resolver = createModelResolver({ env: {} });
-    let message = "";
-    try {
-      resolver("intent/chat");
-    } catch (error) {
-      message = (error as Error).message;
-    }
-    // The app author reads this, not the resolver's author: what is missing,
-    // for which intent, and the two places a model can be set.
-    expect(message).toMatch(/no model is configured for "intent\/chat"/i);
-    expect(message).toContain("models.default");
-    expect(message).toContain("models.intents.chat");
-    expect(message).toContain("FSDEV_DEFAULT_MODEL");
+    expect(() => resolver("intent/chat")).toThrow(
+      /no model is configured for "intent\/chat".*models\.intents\.chat.*models\.default.*FSDEV_DEFAULT_MODEL/i,
+    );
     vi.restoreAllMocks();
   });
 
