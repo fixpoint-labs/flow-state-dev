@@ -1,19 +1,8 @@
 /**
- * The feed's task board. On the conversation's own board, each turn that
- * filed a task draws one card for it: its title, its worker, where it stands,
- * and Open, which goes to that task's session. The conversation's whole list
- * is the rail's (`TasksPanel`), so the feed doesn't repeat it.
- *
- * Where a task stands comes from the board, not the feed. A delegate settles
- * the task in its own session, so the conversation's feed only ever holds the
- * task as it was filed. {@link SessionScope} reads the conversation's
- * `listTasks` while a task on it can still move, and again each time the Lab
- * is read, and the cards draw that read.
- *
- * Any other board (a plan a worker runs in its own turn) is drawn whole by
- * `flow-state/task-plan.tsx`, the registry's copy, which stays byte-equal to
- * it and knows no router. This swaps in for the `task-board-meta` renderer in
- * {@link shiftManagerRenderers}.
+ * The feed's task board. One card per task the turn filed on the conversation's
+ * board; status comes from that board, because the feed only holds the task as
+ * filed. Any other board is drawn by `TaskPlan` (`flow-state/task-plan.tsx`,
+ * byte-equal to the registry, no router).
  */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
@@ -39,9 +28,6 @@ const BoardContext = createContext<Board>({});
  * in its own session's feed), so the board its task cards show is that
  * session's, not one read from the item: every conversation's board shares
  * one `collectionId`, which names no board.
- *
- * With the session's `flow`, and once the feed holds a task on that board,
- * the board is read for where its tasks stand. One read serves every card.
  */
 export function SessionScope({
   sessionId,
@@ -74,11 +60,7 @@ function isConversationTaskChange(item: OutputItem): boolean {
   );
 }
 
-/**
- * Reads the conversation's board when the feed opens and each time the Lab is
- * read, and every {@link TASKS_POLL_MS} while a task on it is queued or
- * running. A read that fails leaves the last one, or the feed's record, standing.
- */
+/** A failed read leaves the last one, or the feed's record. */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
   const { clients, snapshot } = useLab();
   const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
@@ -101,7 +83,6 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
     };
   }, [clients, flow, sessionId, readAt, polls]);
 
-  // Another conversation's read never stands for this one.
   const board = useMemo(() => ({ boardRef, read: read?.sessionId === sessionId ? read.tasks : undefined }), [boardRef, read, sessionId]);
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;
 }
@@ -117,7 +98,6 @@ export function TaskBoardMeta({ item }: { item: ComponentItem }) {
   return <FiledTasks requestId={item.requestId} boardRef={boardRef} read={read} />;
 }
 
-/** One card per task the turn `requestId` filed or moved, as the board last read it. */
 function FiledTasks({ requestId, boardRef, read }: { requestId: string; boardRef: string; read?: ReadonlyMap<string, ConversationTask> }) {
   const items = useSessionItems();
   const entries = useMemo(
@@ -134,7 +114,6 @@ function FiledTasks({ requestId, boardRef, read }: { requestId: string; boardRef
   );
 }
 
-/** What the card says a status is, where the stored word isn't one a reader uses. */
 const STATUS_WORD: Record<string, string> = { pending: "queued", in_progress: "running", parked: "needs you" };
 
 function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goal" | "title" | "status" | "assignee">; boardRef: string }) {
