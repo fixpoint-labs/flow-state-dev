@@ -100,6 +100,9 @@ import {
 import { WORKER_DISCOVER_KEY } from "./worker-discovery";
 import { workerSkillSchema, workerConfigSchema } from "./worker-config";
 import { turnConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
+import { markUserTurnStep } from "./standing-rules/user-turn";
+import { standingRulesCapability } from "./standing-rules/rules-capability";
+import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
 import { replyOrReopen } from "./conversation-board/reopen";
 
@@ -963,6 +966,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       : undefined);
   const usesEntries = [
     ...(options.uses ?? []),
+    standingRulesCapability,
     ...(workerCapabilityCatalog.size > 0 ? [workerCapabilities] : []),
     ...(board !== undefined ? [board.tools, board.questions] : [])
   ];
@@ -1292,6 +1296,9 @@ function defineAgentFlowAround(
    */
   const taskEntry = workerTaskEntry({ name: "agent-task-turn", turn: run });
 
+  // Only this door marks a user turn. Task, delegated-post, notice and workstream entries run `run` unmarked.
+  const userTurn = sequencer({ name: "agent-user-turn", inputSchema }).tap(markUserTurnStep).step(run);
+
   const flow = defineFlow({
     kind: AGENT_FLOW,
     // Required by contract C2. A plain singleton's workers mint and are then
@@ -1314,10 +1321,11 @@ function defineAgentFlowAround(
       // A reply: its notice waits for it to end. A finished task session reopens the task instead (FIX-1764).
       run: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
-        block: replyOrReopen(run),
+        block: replyOrReopen(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY
       },
+      [STANDING_RULES_ACTION]: standingRulesAction,
       // On an installation: the eight task actions (`addTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A
       // session whose delegates take no task answers `no_delegation_board`.

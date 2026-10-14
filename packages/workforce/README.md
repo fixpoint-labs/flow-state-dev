@@ -629,6 +629,9 @@ machinery rather than a tool from the app's catalog, switched on by the worker's
 - the **controls a capability preset declares**, when the worker selects that preset in its
   `capabilities:` key — a preset's `controlTools` reach the worker even with `tools: []`.
 
+The four standing-rules tools (`rules/read`, `rules/add`, `rules/change`, `rules/remove`) sit
+outside `tools:` too: see [Standing rules](#standing-rules).
+
 #### The memory recipe
 
 Memory is one thing you can pass through these options. Install `@flow-state-dev/memory`
@@ -692,6 +695,41 @@ as for any data a worker flow keeps per user ([Workers as data](#workers-as-data
 Every problem with a standard worker is a startup misconfiguration: `hireWorkforce` collects them
 and throws one error naming every bad worker, and registers nothing, so a bad record cannot leave a
 short roster.
+
+#### Standing rules
+
+Workers on `agent` and coordinators keep standing rules: notes a user asked a worker to keep,
+one list per worker per user, put in the prompt on every turn that worker takes for that user
+(after its instructions, team instructions and packages). The worker edits them with four tools,
+`rules/read`, `rules/add`, `rules/change` and `rules/remove`, offered only on a turn a user's own
+message started and not fenced by `tools:`. A task turn, a post to a delegate and a delegate's
+answer get none. A write posts a line in the conversation, such as
+`✎ Rule added (3 of 20): "Name the project before giving a status."`, that the model doesn't get
+back as history.
+
+An app reads and edits them through the workforce client:
+
+```ts
+import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
+
+const workforce = createWorkforceClient({ userId, baseUrl });
+const { version } = await workforce.standingRules("eng-lead", { op: "read" });
+await workforce.standingRules("eng-lead", { op: "add", version, text: "Name the project first." });
+```
+
+`input` is `{ op: "read" }`, `{ op: "add", version, text }`,
+`{ op: "change", version, number, current, text }` or `{ op: "remove", version, number, current }`.
+Each call answers `{ version, rules: [{ number, text, addedAt, sessionId }], line? }`. A write
+against a stale version, an add to a full list, a rule that isn't one line of 1 to 300 characters,
+or a change or remove whose `current` isn't that rule's text is refused: the promise rejects with
+the reason and nothing changes. The tools go through the same check.
+
+Limits: 20 rules (`MAX_RULES`), 300 characters each (`MAX_RULE_CHARS`). The list lives in the
+`standing-rules` resource (`STANDING_RULES_RESOURCE`) in the user's own scope; a browser can
+read it and can't write it. A fork starts with none, and a worker moved to another worker flow
+leaves its rules behind. If the list can't be read, the turn runs without it and says so in a
+status line. See
+[Standing rules](https://flow-state.dev/docs/workforce/standing-rules).
 
 ## Worker flows and blocks from files
 
@@ -1203,7 +1241,7 @@ where it is when a later roster no longer names the worker. The rows are the sta
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
+| `defineWorkerInventoryCollection()` | registered worker, at `inventory/workers/<id>` | `id`, `kind` (the worker flow the standard worker runs on), `door` (the action that takes a user's message, or `null`), `rules` (whether its flow declares the standing rules action), `hired` and `incarnation` (`false` and `null` on every row `openInventory` writes, since it lists only standard workers) |
 
 The collection is readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares it: the
@@ -1877,7 +1915,8 @@ import { COORDINATOR_FLOW, createWorkforceClient } from "@flow-state-dev/workfor
 It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSessionId`,
 `ROSTER_FLOW`, `WORKER_ID_STATE_KEY`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE`, `COORDINATOR_JUDGMENT` (the
 coordinator's own turn's answer name, which its messages carry as `agentName`) and
-`sessionIdOfFiling` (the conversation a board row was filed in), the same values
+`sessionIdOfFiling` (the conversation a board row was filed in), `RULE_TOOLS`, `MAX_RULES`,
+`MAX_RULE_CHARS`, `STANDING_RULES_ACTION` and `STANDING_RULES_LINE`, the same values
 the root exports, and reaches no Node built-in.
 
 ## Exports
@@ -1903,7 +1942,8 @@ the root exports, and reaches no Node built-in.
 | `workerConfigOf(ctx)` | The configuration of the worker the turn loaded, synchronously, for a prompt, a tool list or a step condition. Throws when the turn loaded no worker: call `installation.resolveWorker` in the flow's `request.onStarted`. |
 | `createWorkerHireBlocks(installation)` | `{ hire, fork, edit, fire }`: writes to the caller's own roster, each checked as a turn would check it before anything is written, each refusing a standard worker's id. |
 | `defineWorkerRosterFlow(installation, actions?)` | The roster flow (`workforce-roster`), which declares the two worker collections so a client reads a user's roster through one session of it. Mount the hire blocks on it as actions. |
-| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)` and `ensureWorkerSession(criteria)`, over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
+| `createWorkforceClient({ userId, baseUrl?, apiPath?, fetcher? })` | `roster()`, `findWorkerSession(criteria)`, `ensureWorkerSession(criteria)` and `standingRules(worker, input)` (see [Standing rules](#standing-rules)), over the session and resource clients. `criteria` is a `WorkerSessionCriteria`: `worker`, and optional keys such as `projectId`, which finds or starts the user's project coordinator for that project. From `./browser` only. |
+| `RULE_TOOLS`, `MAX_RULES`, `MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `STANDING_RULES_RESOURCE` | The four rule tools' names, the list's limits (20 and 300), the flow action `standingRules` calls, the `agentName` a rule write's line carries, and the resource the list is kept under. All but `STANDING_RULES_RESOURCE` are also exported from `./browser`. |
 | `deriveWorkerSessionId({ userId, orgId, flow, criteria })` / `isDerivedWorkerSessionId(id)` | The id `ensureWorkerSession` creates a session at, and the shape a worker flow's create check reserves for the user it derives to. |
 | `WorkerTurnRefusedError` | What `resolveWorker` throws when a turn can't run as the session's worker; nothing is written. |
 | `defineWorkerCollection()` / `workerRowSchema` / `parseWorkerRow(value)` | The user's worker collection at `workforce/workers/*`, user scope, and its row. |
@@ -1965,7 +2005,7 @@ the root exports, and reaches no Node built-in.
 | `inventoryWriterActions()` | The action that writes the inventory's rows, keyed by its name (`registerWorkersInInventory`). Spread it into a flow's `internal.actions`, never `actions`: its input is row data, with nothing to check it against. Name that flow as `openInventory`'s `workerWriter`. |
 | `INVENTORY_REGISTER_WORKERS` | The action name the writer runs: `"registerWorkersInInventory"`. |
 | `INVENTORY_WORKER_WRITER_SESSION` | The session id the worker-registration action runs under when `workerWriter` names none: `"inventory-binder"`. |
-| `InventoryRoster` / `InventoryWorker` / `InventoryWorkerWriter` | What `openInventory` takes: the roster (`{ workers }`), one worker (`{ id, kind, actions }`: its `door` action read from `actions`, `{}` for a worker with none), and which flow writes the rows (`{ flowKind, sessionId? }`). |
+| `InventoryRoster` / `InventoryWorker` / `InventoryWorkerWriter` | What `openInventory` takes: the roster (`{ workers }`), one worker (`{ id, kind, actions }`: its `door` action and `rules` read from `actions`, `{}` for a worker with none), and which flow writes the rows (`{ flowKind, sessionId? }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the request and must reach `runAction`), and what one boot of `openInventory` returns (`{ workers, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `workerWriter`, `userId`, `orgId`. |
 | `workerDoorOf(worker)` / `WorkerDoor` | A hired worker's door: the one public action its worker flow declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the flow has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the worker's row. A worker flow with none or two is refused when hired, so a hired worker always has one. |
