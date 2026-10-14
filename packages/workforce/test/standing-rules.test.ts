@@ -1,14 +1,9 @@
 /**
- * Standing rules on the real engine (FIX-1945 V1, V3–V6): where the record
- * lives and who can write it, which turns get the rule tools, what every turn
- * reads, whose rules they are, and the page's action.
+ * Standing rules on the real engine (FIX-1945): where the record lives, which
+ * turns get the tools, what a turn reads, and the page action.
  *
- * One host: the built-in `agent` flow, the coordinator, and the roster, on one
- * installation. Models are scripted: a user message `call <tool> <json>; …`
- * makes the turn call those tools for real, then answer. Graded on what each
- * model call was handed (its tools and its system prompt), on the lines a
- * user sees, and on the list the action reads back, never on a tool's own
- * say-so.
+ * Graded on the tools and system prompt a model call was handed, the lines a
+ * user sees, and the list the action reads back. Not on a tool's own say-so.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import type { MockGeneratorInstance } from "@flow-state-dev/testing";

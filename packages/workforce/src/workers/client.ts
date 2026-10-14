@@ -85,13 +85,10 @@ export interface WorkforceClient {
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
   /**
-   * The user's standing rules with `worker` (FIX-1945): read them, or make one
-   * write naming the version of the list it read. Runs the rules action in the
-   * user's session with the worker ({@link ensureWorkerSession}), so the
-   * worker must run on the built-in `agent` flow or be a coordinator. A
-   * refused write (a stale version, a full list, a rule that isn't one line
-   * of up to 300 characters, or a change or remove whose `current` isn't the
-   * rule's text) rejects with the reason, and nothing changes.
+   * Read or edit the user's standing rules with `worker`, in that user's
+   * session with the worker. The worker's flow must declare the rules action
+   * (its inventory row says `rules: true`). A refused write rejects with the
+   * reason and stores nothing.
    */
   standingRules(worker: string, input: StandingRulesActionInput): Promise<StandingRulesActionOutput>;
 }

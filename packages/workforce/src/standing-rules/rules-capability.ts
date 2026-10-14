@@ -1,28 +1,11 @@
 /**
- * Standing rules on a worker's turn (FIX-1945 S3, S4): the list in context on
- * every turn, and the four rule tools on a turn a user's own message
- * started.
+ * Standing rules on a worker's turn (FIX-1945): the numbered list in context,
+ * and the rule tools as `controlTools` on a user turn, so a `tools:` line
+ * doesn't fence them. A task turn reads the filing user's list because it
+ * runs at that user's scope.
  *
- * One capability, composed onto the agent turn the `agent` and `coordinator`
- * flows share, so both carry it the same way:
- *
- * - **Context.** The worker's rules for the turn's user, numbered, after its
- *   own instructions, team instructions and packages. A task turn runs at the
- *   filing user's scope, so it reads that user's list. No rules, no
- *   text. A read that fails is said once in the trace and the turn runs
- *   without rules; it never fails the turn.
- * - **Tools.** `rules/read`, `rules/add`, `rules/change`, `rules/remove`, as
- *   `controlTools`: a worker's `tools:` line doesn't fence them, and they are
- *   offered only while the request carries the user-turn mark
- *   (`./user-turn`). Each write also refuses on an unmarked turn, so a task
- *   turn can't edit even by naming a tool. Each write that lands posts a line
- *   the user sees, from the tool, not from the model's reply.
- *
- * Every write names the version of the list the model last saw. That is the
- * request's own read of the record: the list in context came from it, and a
- * write that lands or is refused refreshes it to the list the tool answered.
- * So a write racing a page edit is refused with the list as it stands rather
- * than landing on one the model never saw.
+ * A write names the version in the request's own read of the record: the
+ * context came from it, and a write that lands or is refused refreshes it.
  */
 import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -37,7 +20,6 @@ const saidReadFailed = new WeakSet<object>();
 
 const resources = { [STANDING_RULES_RESOURCE]: standingRulesCollection };
 
-/** The rules as this turn reads them, or `undefined` for none or a failed read. */
 async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   let list: StandingRules;
   try {
@@ -53,7 +35,6 @@ async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   return renderRules(list);
 }
 
-/** The list as a tool answers it. */
 const listOutput = (list: StandingRules) => ({ rules: numberedRules(list).map(({ number, text }) => ({ number, text })), max: MAX_RULES });
 
 const ruleSchema = z.object({ number: z.number(), text: z.string() });
@@ -63,8 +44,8 @@ const toolOutputSchema = z.union([
   listOutputSchema.extend({ refused: z.string() })
 ]);
 
-/** Apply `edit` from a tool, as the list the model last saw. */
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
+  // Withheld on an unmarked turn, and a caller that names the tool still can't write.
   if (!isUserTurn(ctx)) {
     const refused = "Standing rules change only on a turn a user started; this one can't edit them.";
     const current = await readStandingRules(ctx).catch(() => undefined);
@@ -84,6 +65,7 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   }
   if (!outcome.ok) {
     if (outcome.full === true) {
+      // The user sees the line. `history: false` keeps it out of the model's next turn.
       ctx.emit.message(`✎ Rule not added: ${outcome.reason}.`, {
         agentName: STANDING_RULES_LINE,
         itemVisibility: { client: true, history: false }

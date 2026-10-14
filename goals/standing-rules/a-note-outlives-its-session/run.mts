@@ -1,23 +1,4 @@
-/**
- * Goal check: a note a person gives a worker in one session governs that
- * worker's replies in every later session with that person, across a server
- * restart, until the person or the worker changes it; a second person's
- * sessions never follow it; and a 21st note is refused out loud.
- *
- * Runs DevTeam's Shift Manager install twice, each on a store of its own: once
- * talking to the chief of staff (a `coordinator` worker), once to the
- * researcher (an ordinary `agent` worker). Alice and Bob are the install's
- * owner and member, each with their own verified bearer. Every reply graded is
- * read back from the session it was stored in, by request id; the rules store
- * is never an oracle. A page edit goes through the same worker-flow action the
- * Rules page calls (`createWorkforceClient().standingRules`).
- *
- * Control: `GOAL_CONTROL=no-rules-context` patches the capability so the list
- * never reaches the prompt. The tools still save the note, so only the
- * later-session legs can tell; it must fail `next-session-follows`.
- *
- * Run: pnpm tsx goals/standing-rules/a-note-outlives-its-session/run.mts
- */
+/** What this run proves is `goal.md` beside this file. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createSessionClient } from "@flow-state-dev/client";

@@ -102,8 +102,6 @@ export async function writeStandingRules(
   if (collection === undefined) throw new Error(`This flow doesn't declare "${STANDING_RULES_RESOURCE}".`);
   const ref = await collection.getOrCreate(keyOf(ctx), EMPTY_RULES);
   const now = Date.now();
-  // The updater re-runs against fresher state when another write lands first;
-  // the outcome returned is the one from the attempt that committed.
   const outcome = await updateStateWith(ref as never, (current: unknown) => {
     const result = applyRuleEdit(parsed(current), version, edit, { sessionId, now });
     return { state: result.ok ? result.list : current, result };

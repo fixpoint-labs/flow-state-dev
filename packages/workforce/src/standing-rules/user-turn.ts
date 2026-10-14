@@ -22,11 +22,7 @@ export const USER_TURN_STATE = "workforceUserTurn";
 /** The request state the mark is kept in. */
 export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().optional() });
 
-/**
- * Mark this request as a user's turn, unless its session is a task's or a
- * conversation's delegate session: a message there is task input, not a
- * user speaking to the worker.
- */
+/** Mark this request as a user's turn. Skips a task session and a conversation's delegate session: that message is task input. */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
   if (typeof state[TASK_ID_STATE_KEY] === "string" || typeof state[FILING_SESSION_STATE_KEY] === "string") return;
