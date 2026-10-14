@@ -84,7 +84,7 @@
   <text x="42" y="392" class="code">/roster</text>
   <rect x="344" y="352" width="548" height="52" rx="10" class="card-org"/>
   <text x="358" y="373" class="tag-org">ROSTER</text>
-  <text x="508" y="373" class="p">Your workers. On shift, on call and off shift are</text>
+  <text x="508" y="373" class="p">Your workers. On shift and off shift are</text>
   <text x="508" y="391" class="p">worked out from their tasks and asks.</text>
   <path d="M296 378 L342 378" class="edge"/>
   <rect x="28" y="414" width="268" height="52" rx="10" class="card-warm"/>

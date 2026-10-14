@@ -38,8 +38,7 @@ export type StoreScreens = {
   /** Every seat's rows waiting on the person: Roster's task WAITING entries, by id and title. */
   parked: Array<{ id: string; title: string; seatId: string }>;
   onShift: number;
-  onCall: number;
-  /** The ON CALL FOR entries every seat has: its parked rows and its asks. */
+  /** The WAITING ON YOU entries every seat has: its parked rows and its asks. */
   waits: number;
 };
 
@@ -158,17 +157,15 @@ export async function readScreensStore(
     seen.rows.filter((r) => wanted(String(r.status)) && (r.assignee === seat.id || r.assignee === seat.name)).length;
   const parked: StoreScreens["parked"] = [];
   let onShift = 0;
-  let onCall = 0;
   let waits = 0;
   for (const seat of seen.seats) {
     const held = seen.rows.filter((r) => isParked(String(r.status)) && (r.assignee === seat.id || r.assignee === seat.name));
     parked.push(...held.map((r) => ({ id: String(r.id), title: String(r.title ?? ""), seatId: seat.id })));
     const asked = asks.filter((a) => a.seatId === seat.id).length;
     waits += held.length + asked;
-    if (holds(seat, (s) => s === RUNNING) > 0) onShift += 1;
-    else if (held.length + asked > 0) onCall += 1;
+    if (holds(seat, (s) => s === RUNNING) > 0 || held.length + asked > 0) onShift += 1;
   }
-  return { asks, open, parked, onShift, onCall, waits };
+  return { asks, open, parked, onShift, waits };
 }
 
 // ---- the look table's rows --------------------------------------------------------
@@ -233,10 +230,10 @@ export const ROWS: Row[] = [
   { id: "Roster column head", audit: "R1", v2: { line: 701, has: "font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--ink3)\"><span></span><span>WORKER</span>" }, select: "[data-testid=roster-columns], [data-testid=roster-columns] > span", on: ROSTER, min: 5, want: { family: "mono", size: 10, tracking: 0.12 } },
   { id: "Roster group heading", audit: "R8", v2: { line: 705, has: "border-bottom:1px solid rgba(var(--inkrgb),.3);font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=roster-group] > h2, [data-testid=roster-group] > h2 > span", on: ROSTER, min: 1, want: { family: "mono", size: 11 } },
   { id: "Roster group name", audit: "R8", v2: { line: 705, has: "font-weight:600;letter-spacing:.1em;color:var(--ink)\">{{ g.label }}" }, select: "[data-testid=roster-group-label]", on: ROSTER, min: 1, want: { weight: 600, tracking: 0.1 } },
-  { id: "ON CALL FOR tag", audit: "R6", v2: { line: 717, has: "grid-template-columns:66px minmax(0,1fr);gap:8px;align-items:baseline;font:500 11px 'IBM Plex Mono',monospace\"><span style=\"font-size:9.5px;letter-spacing:.1em" }, select: "[data-testid=roster-wait-tag]", on: ROSTER, min: ({ store }) => store.screens.waits, want: { family: "mono", size: 9.5, tracking: 0.1, width: 66 } },
-  // Everything ON CALL FOR lists here waits on the person: WAITING, on the highlighter.
-  { id: "ON CALL FOR, WAITING", audit: "R6", v2: { line: 1393, has: "WAITING: [INK, Y, 'var(--onhl)']" }, select: "[data-testid=roster-wait-tag]", on: ROSTER, min: ({ store }) => store.screens.waits, want: { square: "needs" } },
-  { id: "ON CALL FOR lines", audit: "R6", v2: { line: 717, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=roster-wait-what], [data-testid=roster-wait-when], [data-testid=roster-no-wait]", on: ROSTER, min: ({ store }) => store.screens.waits * 2, want: { family: "mono", size: 11 } },
+  { id: "WAITING ON YOU tag", audit: "R6", v2: { line: 717, has: "grid-template-columns:66px minmax(0,1fr);gap:8px;align-items:baseline;font:500 11px 'IBM Plex Mono',monospace\"><span style=\"font-size:9.5px;letter-spacing:.1em" }, select: "[data-testid=roster-wait-tag]", on: ROSTER, min: ({ store }) => store.screens.waits, want: { family: "mono", size: 9.5, tracking: 0.1, width: 66 } },
+  // Everything WAITING ON YOU lists here waits on the person: WAITING, on the highlighter.
+  { id: "WAITING ON YOU, WAITING", audit: "R6", v2: { line: 1393, has: "WAITING: [INK, Y, 'var(--onhl)']" }, select: "[data-testid=roster-wait-tag]", on: ROSTER, min: ({ store }) => store.screens.waits, want: { square: "needs" } },
+  { id: "WAITING ON YOU lines", audit: "R6", v2: { line: 717, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=roster-wait-what], [data-testid=roster-wait-when], [data-testid=roster-no-wait]", on: ROSTER, min: ({ store }) => store.screens.waits * 2, want: { family: "mono", size: 11 } },
 ];
 
 export const EXCEPTIONS: Exception[] = [
@@ -286,11 +283,10 @@ export const TEXTS: Record<string, string> = {
 export type Read = { text: string; data: Record<string, string>; parts: Record<string, string> };
 
 const COLUMNS = ["", "ID", "TASK", "NOW", "STREAM", "WORKER", "TIME", "COST"];
-const ROSTER_COLUMNS = ["WORKER", "SLOTS", "HOLDING", "ON CALL FOR"];
+const ROSTER_COLUMNS = ["WORKER", "SLOTS", "HOLDING", "WAITING ON YOU"];
 const GROUP_SUB: Record<string, string> = {
-  "on shift": "holding live work",
-  "on call": "subscribed and waiting · wakes on a trigger",
-  "off shift": "nothing assigned, nothing subscribed",
+  "on shift": "holding live work, running or waiting on you",
+  "off shift": "nothing assigned",
 };
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const list = (xs: readonly string[]) => `[${xs.join(", ")}]`;
@@ -312,7 +308,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
   const one = (key: string) => texts[key]?.[0]?.text ?? null;
   if (where.screen === "inbox") {
     if (store.asks.length === 0) {
-      const want = `Nothing needs you. ${plural(runningSessions(store.open), "session is", "sessions are")} still running and ${plural(store.onCall, "worker is", "workers are")} on call.`;
+      const want = `Nothing needs you. ${plural(runningSessions(store.open), "session is", "sessions are")} still running.`;
       if (one("inboxEmpty") !== want) fail("content", `Inbox with nothing waiting reads "${one("inboxEmpty") ?? "nothing"}", the store gives "${want}" (v2:1354, audit I8)`);
       return;
     }
@@ -345,7 +341,6 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
       `${flying.length} in flight`,
       `${store.asks.length} ${store.asks.length === 1 ? "needs" : "need"} you`,
       `${store.onShift} on shift`,
-      `${store.onCall} on call`,
       plural(new Set(flying.map((r) => r.mailboxId)).size, "stream", "streams"),
     ].join(" · ");
     if (one("tasksSummary") !== summary) fail("content", `Tasks' summary reads "${one("tasksSummary") ?? ""}", the store gives "${summary}" (v2:1384, audit K1)`);
@@ -397,7 +392,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
         continue;
       }
       if (wait.parts["roster-wait-tag"] !== "WAITING" || wait.parts["roster-wait-what"] !== want[0] || wait.parts["roster-wait-when"] !== want[1]) {
-        fail("content", `Roster's ON CALL FOR entry ${wait.data.id} reads "${wait.parts["roster-wait-tag"]} ${wait.parts["roster-wait-what"]} / ${wait.parts["roster-wait-when"]}", the store gives "WAITING ${want[0]} / ${want[1]}" (v2:1130, audit R6)`);
+        fail("content", `Roster's WAITING ON YOU entry ${wait.data.id} reads "${wait.parts["roster-wait-tag"]} ${wait.parts["roster-wait-what"]} / ${wait.parts["roster-wait-when"]}", the store gives "WAITING ${want[0]} / ${want[1]}" (v2:1130, audit R6)`);
       }
     }
     const parkedIds = store.parked.map((r) => r.id).sort();

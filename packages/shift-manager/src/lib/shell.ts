@@ -24,8 +24,3 @@ export function initialsOf(userId: string): string {
 export function clockTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
-
-/** The lines Chief of Staff offers above its composer, each of which only fills the draft (v2:174). */
-export function chiefOfStaffSuggestions(): string[] {
-  return ["Who's on call?"];
-}
