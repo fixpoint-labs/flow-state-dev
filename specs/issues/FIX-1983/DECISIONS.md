@@ -41,8 +41,8 @@ timeout (say a day) after which the report files as drafted.
 | | |
 |---|---|
 | **Instead of** | Every `errorCapture` event as it fires, which is one per failed attempt, rescued failures included |
-| **Because** | A report for a run that a retry fixed is noise, and noise trains people to ignore the reporter. The engine knows when a request settles failed and says so once, marked final. A task's attempts are separate requests, so a failed request that belongs to a task waits for the task's ending; every task ending, including one with no failed request (a refused dispatch, a worker that died too often), comes from orchestration's one ending signal, where the Workforce board's recorder marks a report owed. A harness run that fails for good is its task ending errored, so it takes that path. A Lab can narrow the set with a filter; the default is all three |
-| **Locks in** | `errorCapture` sends one more event per failed request, marked final, and existing adapters see it too. Browser-page bugs are still filed by hand until [FIX-1984](https://linear.app/fixpoint-labs/issue/FIX-1984) |
+| **Because** | A report for a run that a retry fixed is noise, and noise trains people to ignore the reporter. The engine knows when a request settles failed and says so once, marked final. A task's attempts are separate requests, so a failed request that belongs to a task waits for the task's ending; every task ending, including one with no failed request (a refused dispatch, a worker that died too often), comes from orchestration's one ending signal, where the Workforce board's recorder marks a report owed. A harness run counts when its failure reaches one of those two: the run throws, or the task's worker turns a failed result into a failed attempt (the harness manager does), so the task ends errored. A flow that records a returned `failed` outcome as data and finishes normally, as the kitchen-sink harness page does, has not failed to the engine and is not reported; a flow that wants a report for it throws. A Lab can narrow the set with a filter; the default is all three |
+| **Locks in** | `errorCapture` sends one more event per failed request, marked final, and existing adapters see it too. A harness failure returned as data and never thrown is not reported. Browser-page bugs are still filed by hand until [FIX-1984](https://linear.app/fixpoint-labs/issue/FIX-1984) |
 
 ![What counts as an error to report: final failures only, chosen, beside every capture event. Decides it: a run that fails once then passes on retry. Price: browser exceptions wait for a follow-up. Locks in a final-failure event on the engine's error sink; flips if per-attempt failures turn out to be bugs worth filing](figures/d1-what-counts.svg)
 
@@ -144,6 +144,9 @@ the stack's top frame too, at the cost of more duplicates.
 - **Review** — the task ending now rides orchestration's one ending signal as a report mark on
   the board's recorder, instead of a new observer, because the architect's coherence check
   found `endingOf` already is that signal.
+- **Review, round 2** — the goal check now proves a failed report is retried after restart, that a
+  task with no failed request is reported, and that the storm report lists only what got no report
+  of its own. D1 now says a harness failure returned as data is not reported unless it is thrown.
 
 ## Notes from review
 
@@ -152,6 +155,11 @@ the stack's top frame too, at the cost of more duplicates.
 - "Automatic full harness run per new fingerprint (under the hourly cap) will dominate cost during incidents… code-built draft from a bounded dossier → Inbox ask → harness only when the operator asks to refine. If the goal check must keep 'real Claude Code' on leg 1, say that explicitly." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878418)). The goal check does name real Claude Code; the dossier's size bound is the implementer's.
 - "Could the spec require the same marker/claim/clear pattern as `task-notice.ts` (typed row: `task-settled` vs `error-report`) rather than 'beside' as a parallel design?" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878436)). The task path now rides the same recorder; the report row's own shape is the implementer's.
 - "Prefer a single `composeErrorCapture(sentry, reporter.capture)` helper in engine (mirror 'observer must not throw')." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878454))
+- "Exercise recovery of a failed reporter run." — codex ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273890528)). Folded: leg 6 now retries the same row after restart.
+- "Exercise task failures with no failed request." — codex ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273890545)). Folded: leg 7.
+- "Align storm membership with D2." — codex ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273890553)) and greptile ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273898208)). Folded: leg 3 and the D2 figure.
+- "Remove the speculative preview bypasses." — codex ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273890537)). Kept: the product lead asked for the option, and both are off by default.
+- "Failed harness turns go unreported" when a harness returns `outcome: "failed"` without throwing. — greptile ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273898201)). Folded: D1 now says such a run is reported only when it throws or its task ends errored.
 - "`capture` must enqueue and return immediately (engine awaits handlers today — see `safeCaptureError`)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878406)). Already under *Decided, not asked*.
 
 These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
