@@ -1,29 +1,7 @@
 /**
- * The Error Reporter's flow (FIX-1983): a worker told about every failure that
- * stays failed, which drafts a bug report, asks the operator in Inbox, and
- * files it in the tracker once they answer.
- *
- * **It runs on its own flow and never through the Shift Coordinator**, which
- * is the part most likely to have failed. Every way in is this flow's:
- *
- * - the intake ({@link defineErrorReporterIntakeFlow}), on a flow of its own
- *   so a board on any flow can reach it without opening a worker's session:
- *   the one intake ({@link intakeOccurrence}).
- * - `report`: one report's run, in its own session, as the operator. Public
- *   only so Inbox can answer its preview (the engine reopens no dispatched
- *   run); it takes no input and refuses anyone but the operator. The dossier
- *   is gathered by code before the harness starts; the harness reads the code and
- *   drafts; the operator answers an ordinary form suspension, which Inbox draws
- *   like any other ask; the harness then files through the project's MCP
- *   servers with the answer folded in.
- * - `comment` (internal): a repeat after filing adds a counted comment, at most
- *   one per interval, or finds the issue closed.
- * - `run` (the door): the reporter's conversation. A person tells it standing
- *   rules, or reports a problem by describing it, which goes through the same
- *   intake, preview and filing.
- *
- * Harness is a slot, like `coder`'s: Claude Code by default in a Lab. Every
- * argument its run hands an MCP tool is redacted first.
+ * The Error Reporter's flow (FIX-1983): drafts a bug report, asks the operator
+ * in Inbox, and files it once they answer. It runs on its own flow, never
+ * through the Shift Coordinator, which is the part most likely to have failed.
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { BlockContext, HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";

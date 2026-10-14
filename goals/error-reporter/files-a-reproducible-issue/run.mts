@@ -1,45 +1,4 @@
-/**
- * Goal check — when something in a Lab fails for good, the operator gets one
- * report in Inbox they can check and add to, and the tracker then gets one
- * issue an engineer can reproduce from, even when the Shift Coordinator is what
- * failed.
- *
- * The devteam Lab, opened in-process through `openLab` with its own tree and
- * the Error Reporter on, served over HTTP so Inbox is read the way Shift
- * Manager reads it (`createLabReader`). The reporter drafts and files with
- * real Claude Code (`errorReporterHarness`) reading this checkout. A local MCP
- * server stands in for Linear and records every call (`recording-tracker.mts`).
- * The bugs are planted in `plant.mts`, a file the reporter can read.
- *
- * Legs, in one run (see goal.md for what each grades):
- *   1  the coordinator's planted bug → one report in Inbox, nothing filed;
- *      its ids are the store's; the operator's answer files exactly one issue
- *      that says P1 and the coordinator's model; a second Claude Code run,
- *      given only the issue, names a message that trips the same fingerprint
- *      in a clean Lab
- *   2  the same failure 10 more times → count 11, no second card
- *   4  a task that fails once and passes on retry → no report
- *   H  the bug planted in a worker's harness run → one report, whose link
- *      opens the task
- *   7  a task that ends errored with no thrown failure → one report
- *   M  a person reports a problem in the reporter's conversation → one report
- *      in Inbox, nothing filed
- *   6  the reporter's own planted failure → its report unfiled, no report of
- *      itself; after a restart with the plant gone, the report is retried and
- *      reaches Inbox; leg 2's count is still 11
- *   5  no report, report session or tracker call holds a secret
- *   3  in a fresh Lab, 30 different failures → 1 to 5 reports and 1 storm
- *      report, each failure in exactly one of them
- *
- * Controls (`GOAL_CONTROL=list` prints them) run only the legs they break,
- * with the product patched as it loads (`module-patch.mts`).
- *
- * Needs: a Claude Code that can run (ANTHROPIC_API_KEY, or MY_ANTHROPIC_API_KEY
- * which is copied to it), AI_GATEWAY_API_KEY for the reporter's conversation
- * turn (leg M), git.
- *
- * Run: pnpm tsx goals/error-reporter/files-a-reproducible-issue/run.mts
- */
+/** What this run proves is `goal.md` beside this file. */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -206,7 +165,7 @@ async function until<T>(read: () => Promise<T | undefined>, ms: number, every = 
   }
 }
 
-/** The models: the chief of staff's is the planted one; the reporter's conversation turn and the rest are real. */
+/** `coordinator-judgment` is the planted model; every other block is real. */
 function labModels(projects: readonly KnownProject[]): ModelResolver {
   const base = createModelResolver();
   const resolver = ((id: string, block?: string) => {

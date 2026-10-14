@@ -1,9 +1,4 @@
-/**
- * The final-failure event on `errorCapture` (FIX-1983 D1): one event per
- * request that settles `failed`, marked `final: true`, sent after the failed
- * record is written. A sink that files bugs keys on it, so a failure a retry
- * or a rescue healed must never produce one.
- */
+/** One `final: true` event when a request settles failed (FIX-1983). */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";

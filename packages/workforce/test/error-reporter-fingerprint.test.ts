@@ -1,12 +1,4 @@
-/**
- * The Error Reporter's fingerprint and redaction (FIX-1983 D2, leg 5).
- *
- * The fingerprint decides what "the same bug" is: two failures that differ
- * only in ids, numbers and paths are one report, and two that fail at a
- * different block or with a different code are two. Redaction decides that no
- * key reaches a report: a secret value, a bearer token or a key-shaped string
- * is gone from anything a report is built from, however deep it sits.
- */
+/** The Error Reporter's fingerprint and redaction (FIX-1983). */
 import { describe, expect, it } from "vitest";
 import { fingerprintOf, normalizeErrorMessage } from "../src/error-reporter/fingerprint";
 import { redact, secretsFromEnv } from "../src/error-reporter/redact";

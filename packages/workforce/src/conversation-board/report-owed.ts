@@ -1,14 +1,7 @@
 /**
- * A task that ended errored owes the Error Reporter an occurrence (FIX-1983).
- *
- * The same outbox as a notice (`./ledger`): the ledger's ending recorder puts
- * a `reportOwed:<attempt>` mark on the row in the write that records the
- * errored ending, so the ending and the debt land together or not at all.
- * The board's next touch and the task session's tell send it to the
- * reporter's intake, and clear it once the reporter took it, or once the Lab
- * turns out to run no reporter.
- *
- * Orchestration never reads the mark: what it means is Workforce's.
+ * A task that ended errored owes the Error Reporter an occurrence (FIX-1983),
+ * marked in the ending's write the way a notice is (`./ledger`). Orchestration
+ * never reads the mark.
  */
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
