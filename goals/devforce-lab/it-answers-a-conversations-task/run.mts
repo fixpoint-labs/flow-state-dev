@@ -451,7 +451,7 @@ function gradeAnswered(leg: string, filed: Filed, marker: string, note: (asserti
     note(`${leg}:turn-returns`, `the filing turn took ${filed.turnMs} ms, ${filed.turnMs - filed.modelMs} ms of it outside the model's calls, over ${TURN_BUDGET_MS} ms`);
   }
   // A turn that waits on the task hears its ending as a tool result, not a line.
-  if (filed.row?.ask != null) note(`${leg}:turn-did-not-wait`, `the coordinator dispatched the task with wait, so its turn waited for the run`);
+  if (filed.row?.wait != null) note(`${leg}:turn-did-not-wait`, `the coordinator dispatched the task with wait, so its turn waited for the run`);
   // One line from the worker the row names: a retry or a second delivery would make two.
   const fromWorker = filed.named.filter((line) => line.agentName === filed.task?.assignee);
   if (filed.task?.assignee !== CODER || fromWorker.length !== 1) {
@@ -728,7 +728,7 @@ await runGoal(async (failures) => {
           const judgedBefore = verdicts.length;
           const d2 = await fileLive("d2");
           if (d2 !== undefined) {
-            if (d2.row?.ask != null) note("d2:turn-did-not-wait", "the coordinator dispatched the task with wait, so its turn waited for the run");
+            if (d2.row?.wait != null) note("d2:turn-did-not-wait", "the coordinator dispatched the task with wait, so its turn waited for the run");
             const failed = d2.named.filter((line) => line.agentName === CODER && line.text.includes("failed for good"));
             const jev = show(verdicts.slice(judgedBefore).map(({ choice, confidence }) => ({ choice, confidence })));
             if (d2.task?.status !== "errored" || failed.length !== 1) {

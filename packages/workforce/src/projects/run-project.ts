@@ -21,13 +21,13 @@
 import type { LooseBlockContext } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { RunSourceRefusal } from "@flow-state-dev/workspace";
-import { filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
+import { filingProjectAddressOf, filingProjectOf, filingWorkstreamOf } from "../conversation-board/filing-session";
 import { heldTask } from "../conversation-board/held-task";
 import { projectAddressSchema, projectRowSchema, type ProjectAddress, type ProjectRow, type ProjectVisibility } from "./collections";
 import { isMember } from "./membership-gate";
 import { projectRowsAt, workstreamsAt, type MissingCollection } from "./project-address";
 import { workstreamEntryKey } from "./workstream-collections";
-import { parseProjectRef, parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
+import { parseWorkstreamRef, type WorkstreamAddress } from "./workstream-ref";
 
 /**
  * Why a run's project lookup refused. The refusal's `message` names the
@@ -60,26 +60,18 @@ export interface RunProject {
 export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject | RunSourceRefusal> {
   const named = await namedProjectOf(ctx);
   if (named.kind === "malformed") return named.refusal;
-  const link = filingWorkstreamOf(ctx.session?.state);
-  if (link !== undefined) {
-    const conflict = otherProject(named, parseWorkstreamRef(link)?.project);
-    return conflict ?? fromWorkstream(ctx, link);
-  }
-  const filedIn = filingProjectOf(ctx.session?.state);
+  // The session's project address is the one the board writes on a task it
+  // files (`filingProjectAddressOf`), so the two can't disagree.
+  const state = ctx.session?.state;
+  const own = filingProjectAddressOf(state);
+  const link = filingWorkstreamOf(state);
+  if (link !== undefined) return otherProject(named, own) ?? fromWorkstream(ctx, link);
+  const filedIn = filingProjectOf(state);
   if (filedIn !== undefined) {
-    const address = parseProjectRef(filedIn);
-    if (address === undefined) return refused("no-project", `this run's session names project "${filedIn}", which names no project.`);
-    return otherProject(named, address) ?? fromProject(ctx, address);
+    if (own === undefined) return refused("no-project", `this run's session names project "${filedIn}", which names no project.`);
+    return otherProject(named, own) ?? fromProject(ctx, own);
   }
   if (named.kind === "named") return fromProject(ctx, named.address);
-  if (named.kind === "none" && named.inputIsNot !== undefined) {
-    return refused(
-      "no-project",
-      `this run's session works for no workstream or project, and its task's input is ${named.inputIsNot}, ` +
-        'not an object, so it names none. A task names a project as `input.project`, inside an input that is an object: ' +
-        '`{ "project": { "visibility": "shared", "id": "<project>" } }`.'
-    );
-  }
   return refused(
     "no-project",
     "this run's session works for no workstream or project, and its task names none, so its coding runs have " +
@@ -89,7 +81,7 @@ export async function runProjectOf(ctx: LooseBlockContext): Promise<RunProject |
 
 /** What the task this run holds says about its project. */
 type NamedProject =
-  | { readonly kind: "none"; readonly inputIsNot?: string }
+  | { readonly kind: "none" }
   | { readonly kind: "named"; readonly address: ProjectAddress }
   | { readonly kind: "malformed"; readonly refusal: RunSourceRefusal };
 
@@ -103,12 +95,7 @@ type NamedProject =
 async function namedProjectOf(ctx: LooseBlockContext): Promise<NamedProject> {
   const held = await heldTask(ctx as unknown as BlockContext);
   const input = held?.row.input as { project?: unknown } | null | undefined;
-  if (input == null) return { kind: "none" };
-  // An input that isn't an object (a string of JSON, say) can't hold a project;
-  // say so, where the refusal would otherwise read as "the task named none".
-  if (typeof input !== "object") return { kind: "none", inputIsNot: `a ${typeof input}` };
-  if (Array.isArray(input)) return { kind: "none", inputIsNot: "an array" };
-  if (input.project == null) return { kind: "none" };
+  if (input == null || typeof input !== "object" || input.project == null) return { kind: "none" };
   const parsed = projectAddressSchema.safeParse(input.project);
   if (parsed.success) return { kind: "named", address: parsed.data };
   return {

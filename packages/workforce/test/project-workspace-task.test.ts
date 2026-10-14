@@ -14,7 +14,7 @@
  *    run's own user, never anything in the task.
  * 4. With none of these, `no-project`, saying the task can name one.
  *
- * A task that names a project other than its conversation's is refused. Each
+ * A task filed from a conversation with a project names that project. Each
  * delegate's turn asks the source the way a coding run's would, and keeps
  * what it answered.
  */
@@ -38,6 +38,7 @@ import {
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry
 } from "../src/index";
+import { heldTask } from "../src/conversation-board/held-task";
 import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerManifest } from "../src/manifest";
 import { PROJECT_ROW_RESOURCES } from "../src/projects/project-address";
@@ -79,8 +80,8 @@ function filerFlow(installation: WorkerInstallation) {
   } as never);
 }
 
-/** One run of a delegate's task: its session's state and what the source answered. */
-type Asked = { state: Record<string, unknown>; answer: unknown };
+/** One run of a delegate's task: its session's state, the held row's `input`, and what the source answered. */
+type Asked = { state: Record<string, unknown>; input: unknown; answer: unknown };
 
 /** A delegate that takes a task: its turn asks the run source, as a coding run's would, and keeps the answer. */
 function takerFlow(installation: WorkerInstallation, asked: Asked[], source: RunSource) {
@@ -91,7 +92,8 @@ function takerFlow(installation: WorkerInstallation, asked: Asked[], source: Run
     resources: { ...installation.resources },
     execute: async (_input, ctx) => {
       await installation.resolveWorker(ctx, "taker");
-      asked.push({ state: { ...(ctx.session.state as object) }, answer: view(await source(ctx as never)) });
+      const input = (await heldTask(ctx as never))?.row.input;
+      asked.push({ state: { ...(ctx.session.state as object) }, input, answer: view(await source(ctx as never)) });
       return "asked";
     }
   });
@@ -232,57 +234,36 @@ describe("projectWorkspace for a task a conversation filed", () => {
     expect((run.answer as { message: string }).message).toContain("input.project");
   });
 
-  it("says an input that isn't an object names nothing, instead of reading as if the task named no project", async () => {
-    const h = await boot();
-    const run = await h.file("alice", await h.plainConversation("alice"), { input: "the project is fsd" });
-    expect(run.answer).toMatchObject({ kind: "refused", reason: "no-project" });
-    const message = (run.answer as { message: string }).message;
-    expect(message).toContain("not an object");
-    expect(message).toContain("input.project");
-  });
-
-  it("still works in the conversation's project when the task's input is a plain string", async () => {
-    const h = await boot();
-    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
-    const run = await h.file("alice", await h.projectConversation("alice", storefront), { input: "the project is fsd" });
-    expect(run.answer).toMatchObject({ kind: "repo" });
-  });
-
-  it("works in the project a task names when the dispatcher passed its input as a string of JSON", async () => {
-    const h = await boot();
-    await h.createProject("alice", { id: "sandbox", title: "Sandbox", repository: STOREFRONT_REPO });
-    const run = await h.file("alice", await h.plainConversation("alice"), {
-      input: JSON.stringify({ project: { visibility: "shared", id: "sandbox" } })
-    });
-    expect(run.answer).toMatchObject({ kind: "repo", projectId: "sandbox" });
-  });
-
-  it("refuses a named project other than the project conversation's, naming both (BR-9)", async () => {
+  it("works in the project conversation's project whatever project the task names, and the row names that one (BR-9)", async () => {
     const h = await boot();
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
     await h.createProject("alice", { id: "billing", title: "Billing" });
-    const run = await h.file("alice", await h.projectConversation("alice", storefront), {
-      input: { project: { visibility: "shared", id: "billing" } }
-    });
-    expect(run.answer).toMatchObject({ kind: "refused", reason: "other-project" });
-    const message = (run.answer as { message: string }).message;
-    expect(message).toContain('"billing"');
-    expect(message).toContain('"storefront"');
-
-    // Naming the conversation's own project is no conflict.
-    h.asked.length = 0;
-    const same = await h.file("alice", await h.projectConversation("alice", storefront), { input: { project: storefront } });
-    expect(same.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+    const session = await h.projectConversation("alice", storefront);
+    const run = await h.file("alice", session, { input: { project: { visibility: "shared", id: "billing" } } });
+    expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+    expect(run.input).toEqual({ project: storefront });
   });
 
-  it("refuses a named project other than the workstream's it was filed from (BR-9)", async () => {
+  // The EM leading a Storefront workstream filed its coder's tasks
+  // naming a project it guessed (the user's id), and every run was refused
+  // `other-project`. The project comes from the workstream, never the model.
+  it("works in the workstream's project when its lead names a guessed one, and the row names the workstream's (BR-9)", async () => {
+    const h = await boot();
+    await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
+    const session = await h.workstreamConversation("alice", storefront, "cart-enhancements");
+    const guessed = { issue: "save-for-later-button", phase: "implement", project: { visibility: "shared", id: "u_devforce_lab" } };
+    const run = await h.file("alice", session, { input: guessed }, "filer");
+    expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
+    expect(run.input).toEqual({ ...guessed, project: storefront });
+  });
+
+  it("works in the workstream's project when its lead names another the owner is on (BR-9)", async () => {
     const h = await boot();
     await h.createProject("alice", { id: "storefront", title: "Storefront", repository: STOREFRONT_REPO });
     await h.createProject("alice", { id: "billing", title: "Billing" });
     const session = await h.workstreamConversation("alice", storefront, "checkout");
     const run = await h.file("alice", session, { input: { project: { visibility: "shared", id: "billing" } } }, "filer");
-    expect(run.answer).toMatchObject({ kind: "refused", reason: "other-project" });
-    expect((run.answer as { message: string }).message).toContain('"billing"');
+    expect(run.answer).toEqual({ kind: "repo", repo: STOREFRONT_REPO, projectId: "storefront" });
   });
 
   it("works in the one named by visibility and id when a private and a shared project share an id, and refuses an id alone (BR-9a)", async () => {

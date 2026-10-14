@@ -184,44 +184,23 @@ describe("dispatchTask replayed after the team changed (BR-15)", () => {
   });
 });
 
-describe("dispatchTask input that arrives as a string of JSON", () => {
-  // The workspace source finds a task's project at `input.project`. A model that
-  // passes the object as a string of JSON must still name its project.
-  it("stores a JSON object passed as a string as the object, so its fields are readable", async () => {
-    const collection = await board();
-    const t = team(["eng.coder"]);
-    const named = { project: { visibility: "shared", id: "fsd" } };
-    const result = await run(
-      dispatchTool(collection, t.roster),
-      { goal: "Look at the repo", assignee: "eng.coder", input: JSON.stringify(named) },
-      turnCtx(new Map())
-    );
-    expect(result.ok).toBe(true);
-    expect(collection.get(result.taskId!)?.input).toEqual(named);
-  });
+describe("a new task's input is an object, never its JSON as a string", () => {
+  const project = { project: { visibility: "shared", id: "shift-manager" } };
+  const tools = taskToolsForTurn(async () => {
+    throw new Error("unused");
+  }, () => team(["eng.coder"]).roster, { dispatches: true })({});
 
-  it("leaves an object input, and a string that is not a JSON object, as given", async () => {
-    const collection = await board();
-    const t = team(["eng.coder"]);
-    const object = await run(
-      dispatchTool(collection, t.roster),
-      { goal: "A", assignee: "eng.coder", input: { project: { visibility: "shared", id: "fsd" } } },
-      turnCtx(new Map(), "c1")
-    );
-    const plain = await run(
-      dispatchTool(collection, t.roster),
-      { goal: "B", assignee: "eng.coder", input: "use the staging cluster" },
-      turnCtx(new Map(), "c2")
-    );
-    const number = await run(
-      dispatchTool(collection, t.roster),
-      { goal: "C", assignee: "eng.coder", input: "42" },
-      turnCtx(new Map(), "c3")
-    );
-    expect(collection.get(object.taskId!)?.input).toEqual({ project: { visibility: "shared", id: "fsd" } });
-    expect(collection.get(plain.taskId!)?.input).toBe("use the staging cluster");
-    expect(collection.get(number.taskId!)?.input).toBe("42");
-  });
+  for (const name of ["dispatchTask", "addTask"]) {
+    it(`${name} refuses the payload as a string, so the model is told to send the object`, () => {
+      const tool = tools.find((t) => (t as { name?: string }).name === name);
+      if (tool === undefined) throw new Error(`${name} is not offered`);
+      const base = { goal: "Create a file and commit it", assignee: "eng.coder" };
+      expect(tool.inputSchema.safeParse({ ...base, input: JSON.stringify(project) }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: 1 }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: [project] }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: project }).success).toBe(true);
+    });
+  }
 });
 
 describe("dispatchTask title", () => {

@@ -14,7 +14,7 @@ import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
-import type { AskResumeOperation } from "./ask-resume-operation";
+import type { WaitResumeOperation } from "./wait-resume-operation";
 import type { SuspendedStopDeps } from "../durability/stop-suspended";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -168,20 +168,20 @@ export type RequestHostConstructionInputs = {
   /** The parent-board row this request was dispatched for, stamped at spawn. */
   parentTask?: ParentTaskBinding;
   /**
-   * Resumes a turn parked on an ask gate (`RequestHost.resumeAsk`). Installed
+   * Resumes a turn parked on a wait gate (`RequestHost.resumeWait`). Installed
    * by the host only when it has a durability provider, on the same terms as
    * `dispatchOperation`. Absent → the verb is absent.
    */
-  askResume?: AskResumeOperation;
+  waitResume?: WaitResumeOperation;
   /**
-   * Whether a durability sweeper that times out asks runs in this process,
-   * read as each request starts (`RequestHost.hasAskSweeper`). Installed
-   * beside `askResume`. Absent → no request is told an ask is bounded.
+   * Whether a durability sweeper that times out waits runs in this process,
+   * read as each request starts (`RequestHost.hasWaitSweeper`). Installed
+   * beside `waitResume`. Absent → no request is told a wait is bounded.
    */
-  askSweeper?: () => boolean;
+  waitSweeper?: () => boolean;
   /**
    * How this host stops a parked (`suspended`) request, for
-   * `ctx.session.stopRequest`. Installed beside `askResume`, only with durable
+   * `ctx.session.stopRequest`. Installed beside `waitResume`, only with durable
    * execution. Absent → a parked request answers `"already-finished"`.
    */
   parkedStop?: SuspendedStopDeps;

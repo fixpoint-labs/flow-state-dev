@@ -41,6 +41,12 @@
     },
     "project-coordinator": {
       "kind": "coordinator"
+    },
+    "general-lead": {
+      "kind": "agent"
+    },
+    "researcher": {
+      "kind": "agent"
     }
   },
   "teamCoordinators": {

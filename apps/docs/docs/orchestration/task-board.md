@@ -623,8 +623,8 @@ wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
 `createTaskToolsCapability` only when something starts a ready row as soon as it's written,
-the way a Workforce conversation does, and add `resumesAsks: true` only when that also calls
-`resumeOwedAsks(ctx, collection)` each time it touches the board outside a turn, for example
+the way a Workforce conversation does, and add `resumesWaits: true` only when that also calls
+`resumeOwedWaits(ctx, collection)` each time it touches the board outside a turn, for example
 when it runs the board or handles a task's notice. Without that call, a waiting turn isn't woken
 when its task ends and sits out its whole `timeoutMs`.
 
@@ -654,7 +654,7 @@ A refused call returns `{ ok: false, error, taskId? }`, with `taskId` when a tas
 `error.startsWith("wait_timed_out")`, not `===`.
 
 Stopping a conversation while its turn waits ends the turn and cancels the task. A task you
-wait on is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's limits
+wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's limits
 apply. When it ends, the waiting turn continues with the answer, and the conversation gets no
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.
