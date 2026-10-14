@@ -116,6 +116,7 @@ export async function emitTranslatedEvent(
     case "tool_result":
       return emitToolResult(event, ctx, state, provenance, blockName);
     case "status":
+    case "stream_error":
       ctx.emit.status(event.message);
       return;
     case "notice":

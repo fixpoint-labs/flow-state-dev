@@ -29,7 +29,7 @@ import {
   readInstalledCodexSdkVersion,
 } from "./codex-client";
 import { createEmitState, emitTranslatedEvent, finalizeOpenItems } from "./emit";
-import { translateCodexEvent } from "./translate";
+import { readableFailure, translateCodexEvent } from "./translate";
 import { estimateCodexCost } from "./cost";
 import {
   CodexAgentAbortedError,
@@ -279,6 +279,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       let hookFired = false;
       let usage: CodexRunUsage | null = null;
       let failureMessage: string | null = null;
+      // The stream's last own `error`: the failure when no terminal turn event follows.
+      let streamError: string | null = null;
       // Tracked beside the outcome, never derived from it: a terminal turn
       // event that ARRIVED and one this version does not recognise are
       // different facts, and only `null` may mean "nothing terminal arrived".
@@ -329,6 +331,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
                 outcome = "failed";
                 failureMessage = event.message;
               }
+              if (event.kind === "stream_error") streamError = event.message;
               await emitTranslatedEvent(event, ctx, emitState, name);
             }
           }
@@ -342,7 +345,12 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
-        const failure = toRunFailure(err, sessionId, hookFired ? null : resumeId, failureMessage);
+        const failure = toRunFailure(
+          err,
+          sessionId,
+          hookFired ? null : resumeId,
+          failureMessage ?? (streamError === null ? null : readableFailure(streamError)),
+        );
         // One line; what the CLI said on its way out rides along as details.
         const said = failure instanceof CodexAgentRunError ? failure.detail?.cause : undefined;
         await emitTranslatedEvent(
@@ -360,6 +368,13 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       }
 
       await finalizeOpenItems(ctx, emitState, name);
+
+      // A stream that errored and then ended with no terminal turn event: its
+      // error is what happened, kept as the run's one failure line.
+      if (outcome === null && streamError !== null) {
+        failureMessage = readableFailure(streamError);
+        await emitTranslatedEvent({ kind: "error", message: failureMessage }, ctx, emitState, name);
+      }
 
       const handle: CodexAgentHandle = {
         source: CODEX_SOURCE,
@@ -407,7 +422,8 @@ export function codexAgent(options: CodexAgentOptions = {}) {
  * `unnamedResume` is the thread the run asked to resume when the stream never
  * named one, else `null`: only then can the failure be Codex refusing it.
  *
- * `turnFailure` is the message of a `turn.failed` the stream already carried.
+ * `turnFailure` is the message of a `turn.failed` the stream already carried
+ * (else of its last own `error`).
  * The CLI exits non-zero after one, and the SDK's throw then holds the whole
  * of the CLI's stderr (every log line of the run), so the turn's own message
  * is the failure and the throw's is kept on `detail.cause`.

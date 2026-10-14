@@ -192,8 +192,18 @@ export function codexClient(
 ): ResolveCodexClient {
   let resolver: Promise<ResolveCodexClient> | undefined;
   return async (ctx) => {
-    resolver ??= listMcpServers(codexEnv()).then((names) =>
-      createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
+    resolver ??= listMcpServers(codexEnv()).then(
+      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
+      (error: unknown) => {
+        // Not kept: the next run asks again. This one starts with whatever
+        // servers Codex has, and the session says so, so it is never silent.
+        resolver = undefined;
+        ctx.emit.status(
+          `Codex's MCP servers could not be listed, so this run may start the ones your Codex settings name: ${error instanceof Error ? error.message : String(error)}`,
+          { transient: false },
+        );
+        return createDefaultResolveCodexClient(codexClientOptions(process.env));
+      },
     );
     const stopped = ctx.signal;
     if (stopped === undefined) return (await resolver)(ctx);
@@ -314,31 +324,26 @@ function failureOf(result: ReturnType<typeof spawnSync>): string {
 
 /**
  * The MCP servers Codex's settings name, as Codex itself lists them
- * (`codex mcp list --json`) over `env`. Empty when Codex can't say: the run
- * then starts with whatever servers it has, as it would without this.
+ * (`codex mcp list --json`) over `env`. Throws when Codex can't say.
  */
 export async function userMcpServers(env: Record<string, string>): Promise<readonly string[]> {
-  try {
-    // Not `runCodex`: listing asks each server how it signs in, and this runs
-    // on a turn, where a blocking wait would stall every other request.
-    const program = await codexProgram(env);
-    const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
-    const stdout = await new Promise<string>((resolve, reject) =>
-      execFile(
-        program.path,
-        ["mcp", "list", "--json"],
-        { env: { ...env, PATH } as Record<string, string> as NodeJS.ProcessEnv, encoding: "utf8", timeout: 30_000 },
-        (error, out) => (error ? reject(error) : resolve(out)),
-      ),
-    );
-    const listed = JSON.parse(stdout) as unknown;
-    if (!Array.isArray(listed)) return [];
-    return listed.flatMap((server) =>
-      typeof (server as { name?: unknown })?.name === "string" ? [(server as { name: string }).name] : [],
-    );
-  } catch {
-    return [];
-  }
+  // Not `runCodex`: listing asks each server how it signs in, and this runs
+  // on a turn, where a blocking wait would stall every other request.
+  const program = await codexProgram(env);
+  const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
+  const stdout = await new Promise<string>((resolve, reject) =>
+    execFile(
+      program.path,
+      ["mcp", "list", "--json"],
+      { env: { ...env, PATH } as Record<string, string> as NodeJS.ProcessEnv, encoding: "utf8", timeout: 30_000 },
+      (error, out) => (error ? reject(error) : resolve(out)),
+    ),
+  );
+  const listed = JSON.parse(stdout) as unknown;
+  if (!Array.isArray(listed)) throw new Error("`codex mcp list --json` did not print a list");
+  return listed.flatMap((server) =>
+  typeof (server as { name?: unknown })?.name === "string" ? [(server as { name: string }).name] : [],
+  );
 }
 
 /** The host's own answers. */
