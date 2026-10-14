@@ -85,6 +85,13 @@ describe("probeClaudeAccount, scripted", () => {
     expect(sdk.seen.closed).toBe(true);
   });
 
+  it("says none when the plan is null or absent", async () => {
+    for (const info of [{ apiProvider: "firstParty", subscriptionType: null }, { apiProvider: "firstParty" }]) {
+      const sdk = scriptedSdk(async () => info);
+      expect((await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).status).toBe("none");
+    }
+  });
+
   it("says none when Claude Code does not answer within timeoutMs", async () => {
     const sdk = scriptedSdk(() => new Promise(() => {}));
     const result = await probeClaudeAccount({ env: {}, timeoutMs: 50, importSdk: sdk.importSdk });
