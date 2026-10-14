@@ -506,8 +506,10 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
 
   // A turn that dispatches nothing (the model lists its delegates and asks first) is asked once more,
   // as a user answers that question, so both "only hers" and the control are graded on a dispatch.
+  // A turn that didn't complete is not a question: it is graded as it stands.
   const workTurns: Turn[] = [await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.work, { word: d.workWord }))];
-  if (!workTurns[0]!.tools.some((t) => calls(t.name, "dispatchTask"))) {
+  const first = workTurns[0]!;
+  if (first.status === "completed" && !first.tools.some((t) => calls(t.name, "dispatchTask"))) {
     workTurns.push(await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.workAgain, { word: d.workWord })));
   }
   for (const turn of workTurns) {
