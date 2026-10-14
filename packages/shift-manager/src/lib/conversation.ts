@@ -3,15 +3,18 @@
  *
  * The session is the worker's derived address: `ensureWorkerSession({ worker })`
  * opens it, and another worker's message lands there. A session at any other
- * id is not this view's. Items are read when the view opens and after each
- * line, never on the snapshot's refresh. Nothing is sent until that read
- * has landed, and a session a line opened here holds nothing the user
- * hasn't seen.
+ * id is not this view's. Items are read when the view opens, after each
+ * line, and every {@link MESSAGES_POLL_MS} while it is open (another worker's
+ * message can land at any time), never on the snapshot's refresh. Nothing is
+ * sent until the first read has landed, and a session a line opened here
+ * holds nothing the user hasn't seen. A failed later read keeps the last one
+ * on screen; only a failed first read shows.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { COORDINATOR_FLOW, deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { useLab } from "./lab-data";
+import { MESSAGES_POLL_MS } from "./messages";
 import { describeFailure, workerOf, type Failure, type Worker } from "./reads";
 import { readSessionItems, RunReadError, type SessionItems } from "./run";
 import { useWorkforce } from "./workforce";
@@ -105,7 +108,7 @@ export interface WorkerConversation {
   opened: string | null;
   /** What the session stores, once read, for the session shown. */
   read: SessionItems | undefined;
-  /** Why the last read failed; cleared by the next that succeeds. */
+  /** Why the first read failed; cleared by the next that succeeds. A failed later read keeps the last one. */
   failure: Failure | undefined;
   /** Read the session again. */
   reread(): void;
@@ -132,6 +135,7 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
   useEffect(() => {
     if (sessionId === null) return;
     let closed = false;
+    let next: ReturnType<typeof setTimeout> | undefined;
     readSessionItems(clients, sessionId)
       .then((read) => {
         if (closed) return;
@@ -140,9 +144,13 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
       })
       .catch((error: unknown) => {
         if (!closed) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
+      })
+      .finally(() => {
+        if (!closed) next = setTimeout(() => setReads((n) => n + 1), MESSAGES_POLL_MS);
       });
     return () => {
       closed = true;
+      if (next !== undefined) clearTimeout(next);
     };
   }, [clients, sessionId, reads]);
 
@@ -154,11 +162,12 @@ export function useWorkerConversation(worker: Worker, sessions: readonly Session
     return session.id;
   }, [sessionId, workforce, worker.id]);
 
+  const read = sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined;
   return {
     sessionId,
     opened,
-    read: sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined,
-    failure: failure ?? underived,
+    read,
+    failure: (read === undefined ? failure : undefined) ?? underived,
     reread,
     resolving,
     ensure

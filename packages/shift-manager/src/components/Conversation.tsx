@@ -91,6 +91,7 @@ export function Conversation({
   scale = "default",
   testId = "conversation",
   startAtEnd = false,
+  readOnly,
 }: {
   worker: Worker;
   /** The session this conversation is, when the view found it: every line goes there. Absent, the user's conversation with the worker, at its derived address. */
@@ -121,6 +122,8 @@ export function Conversation({
    * with a `lead` above the feed leaves this off so it opens on the lead.
    */
   startAtEnd?: boolean;
+  /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
+  readOnly?: string;
 }) {
   const { clients, refresh, answered, snapshot } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
@@ -142,7 +145,9 @@ export function Conversation({
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
-    worker.door === null || worker.kind === null
+    readOnly !== undefined
+      ? readOnly
+      : worker.door === null || worker.kind === null
       ? `${workerLabel(worker.id)} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."

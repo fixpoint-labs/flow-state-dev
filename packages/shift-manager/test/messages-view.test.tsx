@@ -116,4 +116,17 @@ describe("a message the worker sent, in its own conversation", () => {
     expect(screen.getByTestId("message-call").textContent).toContain("Not sent to eng.coder: hi");
     expect(screen.getByTestId("message-call-reason").textContent).toContain("takes_tasks_only");
   });
+
+  it("says it was sent but not confirmed delivered, and why, when the delivery couldn't be confirmed", () => {
+    const why = "the delivery couldn't be confirmed (socket hang up); it may still arrive.";
+    render(<ToolLineGroup items={[call("t1", { to: "coordinator", text: "hi" }, { sent: "msg_a", unconfirmed: why })]} />);
+    expect(screen.getByTestId("message-call").textContent).toContain("To coordinator: hi");
+    expect(screen.getByTestId("message-call-unconfirmed").textContent).toBe(`Sent, but not confirmed delivered: ${why}`);
+    expect(screen.queryByTestId("message-call-reason")).toBeNull();
+  });
+
+  it("draws no warning for a delivered send", () => {
+    render(<ToolLineGroup items={[call("t1", { to: "coordinator", text: "hi" }, { sent: "msg_a" })]} />);
+    expect(screen.queryByTestId("message-call-unconfirmed")).toBeNull();
+  });
 });

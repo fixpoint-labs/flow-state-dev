@@ -29,6 +29,16 @@ vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/workforce", () => ({ useWorkforce: () => workforce }));
 vi.mock("../src/lib/run", async (original) => ({ ...(await original<typeof import("../src/lib/run")>()), readSessionItems: (...a: unknown[]) => read(...a) }));
 vi.mock("../src/lib/send", async (original) => ({ ...(await original<typeof import("../src/lib/send")>()), sendTurn: (...a: unknown[]) => sendTurn(...a) }));
+// A page with no Web Crypto can't hash a derived address: this worker's derivation fails the way it would there.
+const UNHASHABLE = "eng.unhashable";
+vi.mock("@flow-state-dev/workforce/browser", async (original) => {
+  const real = await original<typeof import("@flow-state-dev/workforce/browser")>();
+  return {
+    ...real,
+    deriveWorkerSessionId: (input: Parameters<typeof real.deriveWorkerSessionId>[0]) =>
+      input.criteria.worker === UNHASHABLE ? Promise.reject(new Error("crypto.subtle is not available")) : real.deriveWorkerSessionId(input),
+  };
+});
 
 import { deriveWorkerSessionId } from "@flow-state-dev/workforce/browser";
 import { Conversation } from "../src/components/Conversation";
@@ -152,12 +162,61 @@ describe("when a line may go", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("holds it, and says why, when the conversation's address couldn't be worked out, rather than reading forever", async () => {
+    drawn([], { worker: { id: UNHASHABLE, kind: "agent", door: "talk" } as unknown as Worker });
+    await waitFor(() => expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("didn't load"));
+    expect(ensureWorkerSession).not.toHaveBeenCalled();
+  });
+
   it("holds it when the conversation failed to load", async () => {
     read.mockRejectedValue(new Error("down"));
     drawn([session(s1)]);
     // The composer is blocked from the first render ("Reading the conversation first…"), so a
     // findByTestId would return before the failed read re-renders it; wait for the failure's text.
     await waitFor(() => expect(screen.getByTestId("rev-composer-blocked").textContent).toContain("didn't load"));
+  });
+});
+
+describe("an open conversation", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("is read again every 5 s, so another worker's message shows without a line sent (FIX-1989)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    read.mockResolvedValueOnce({ items: [], truncated: false });
+    read.mockResolvedValue({ items: [item("i1", "From eng.author: the build is green.")], truncated: false });
+    drawn([session(s1)]);
+    await act(async () => {});
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("mine")).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_999);
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("mine").textContent).toBe("From eng.author: the build is green.");
+  });
+
+  it("keeps the last read on screen, and the composer open, when a later read fails", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    read.mockResolvedValueOnce({ items: [item("i1", "Shipped.")], truncated: false });
+    read.mockRejectedValue(new Error("down"));
+    drawn([session(s1)]);
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("mine").textContent).toBe("Shipped.");
+    expect(screen.queryByTestId("rev-composer-blocked")).toBeNull();
+  });
+
+  it("sends nothing into a session the view draws read-only, and says why, whatever the worker", async () => {
+    drawn([session(s1)], { readOnly: "This is a task's session. It is read here, not written to." });
+    await act(async () => {});
+    expect(screen.getByTestId("rev-composer-blocked").textContent).toBe("This is a task's session. It is read here, not written to.");
   });
 });
 
