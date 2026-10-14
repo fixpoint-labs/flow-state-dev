@@ -84,8 +84,7 @@ describe("what a view of its own draws", () => {
   });
 
   it("says what it is in a session that holds only state writes, rather than drawing an empty list", async () => {
-    // Reading the worker's standing rules runs in this session before any line is sent, and the Lab
-    // keeps the write it makes: the person has still said nothing, so the screen must say so.
+    // A standing-rules read writes into this session before any line is sent.
     read.mockResolvedValue({
       items: [{ id: "sc1", requestId: "r", type: "state_change", ts: 1 }, { id: "rc1", requestId: "r", type: "resource_change", ts: 1 }],
       truncated: false,

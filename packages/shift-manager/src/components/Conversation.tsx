@@ -35,9 +35,6 @@ import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
-/** Items that only say a state or resource changed: nothing in them is for the person to read. */
-const INVALIDATIONS = new Set<string>(["state_change", "resource_change"]);
-
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
   children,
@@ -129,20 +126,16 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line. A state or resource
-  // change only says something moved, and the Lab keeps one for every write (a standing-rules read
-  // writes one into the session before any line is sent), so the feed leaves them out.
-  const shown = useMemo(
-    () =>
-      read === undefined
-        ? []
-        : buildItemRenderStream(
-            read.items.filter((item) => !INVALIDATIONS.has(item.type)),
-            shiftManagerRenderers,
-            { groupToolCalls: true },
-          ),
-    [read],
-  );
+  // A run of tool calls stays one segment: the feed draws it as one quiet line.
+  // A state or resource change is a write the Lab kept, not a line.
+  const shown = useMemo(() => {
+    if (read === undefined) return [];
+    return buildItemRenderStream(
+      read.items.filter((item) => item.type !== "state_change" && item.type !== "resource_change"),
+      shiftManagerRenderers,
+      { groupToolCalls: true },
+    );
+  }, [read]);
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
@@ -206,8 +199,7 @@ export function Conversation({
         {failure !== undefined ? (
           <SectionFailure what="The conversation" failure={failure} onRetry={reread} testId={`${testId}-conversation-failure`} />
         ) : sessionId === null || (read !== undefined && shown.length === 0) ? (
-          // A session the view opened before a first line (a project's Stream), or one holding nothing the
-          // feed draws, reads empty: say so, never draw nothing.
+          // Opened before a first line (a project's Stream), or holding nothing the feed draws: say so.
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
             {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
           </p>
