@@ -3,4 +3,4 @@
 "@flow-state-dev/shift-manager": patch
 ---
 
-An `intent/<name>` model with no intent ladder and no default model now fails with a setup error that names the intent and where to set a model (`models.default`, `models.intents.<name>`, or `FSDEV_DEFAULT_MODEL`). The DevTeam and `fsd` Labs ship a default model (`openai/gpt-5.4-mini`), so a worker that names no `model:` answers instead of failing every turn (FIX-2008).
+The DevTeam and `fsd` Labs now ship a default model, so a worker that names no `model:` answers instead of failing every turn, and an `intent/<name>` with no model to fall back to fails with a setup error that names where to set one (FIX-2008).
