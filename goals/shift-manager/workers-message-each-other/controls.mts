@@ -34,7 +34,7 @@ export const CONTROLS: Record<ControlName, Control> = {
     legs: ["1"],
     assertion: "1:answer-holds-codename",
     module: `${MESSAGES}/worker-message-entry.ts`,
-    from: String.raw`act: options\.policy\(ctx(?: as never)?\) === "judgment" \? "wake-turn" : "line",`,
+    from: String.raw`act: "wake-turn",`,
     to: 'act: "line",',
     does: "a message lands as a line in the recipient's conversation and never wakes its turn",
   },

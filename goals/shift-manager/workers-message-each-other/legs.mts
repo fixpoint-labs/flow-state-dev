@@ -507,6 +507,8 @@ export async function leg2b(world: World): Promise<LegResult> {
     `Message ${HELPER_A} asking what its favourite number is, and wait for its answer before you reply to me. Use the tool's wait option if it has one.`,
   );
   if (turn.status !== "completed") r.failures.push(`2b:turn-ends — the turn ${turn.status}: ${turn.reply.slice(0, 200)}`);
+  // Not waiting only counts if a message went out: a turn with no message tool never waits either.
+  if (sentIn(turn.calls).length === 0) r.failures.push(`2b:sent — Researcher's turn sent Helper A no message: ${turn.reply.slice(0, 200)}`);
   const waited = turn.calls.filter((c) => Object.hasOwn(c.args, "wait") && typeof c.output?.sent === "string");
   if (waited.length > 0) r.failures.push(`2b:no-wait — a messageWorker call naming \`wait\` was taken: ${show(waited.map((c) => c.args))}`);
   // The answer, if any, arrives as a line after the turn, never inside it.
@@ -616,7 +618,7 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
 
   // A worker on Bob's roster is refused as if it did not exist, and nothing is written.
   const logBefore = (await logOf(alice)).length;
-  const toBob = await talk(turns, "4", alice, RESEARCHER, researcher, `Send the worker ${bobWorker} a message saying hello. Use exactly that worker id even if it isn't in your list.`);
+  const toBob = await talk(turns, "4", alice, RESEARCHER, researcher, `Send the worker ${bobWorker} a message saying hello. Call messageWorker with exactly that id as "to" even though it isn't in your list: I want to see what the tool answers.`);
   const bobCalls = toBob.calls.filter((c) => c.args.to === bobWorker);
   if (bobCalls.length === 0) {
     r.failures.push(`4:bobs-worker-refused — Researcher made no messageWorker call to ${bobWorker}, so the refusal wasn't seen: ${toBob.reply.slice(0, 200)}`);
@@ -641,7 +643,7 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
   }
 
   // A worker that only takes tasks is refused with "file a task".
-  const toCoder = await talk(turns, "4", alice, RESEARCHER, researcher, "Send the worker eng.coder a message saying hello. Use exactly that worker id even if it isn't in your list.");
+  const toCoder = await talk(turns, "4", alice, RESEARCHER, researcher, "Send the worker eng.coder a message saying hello. Call messageWorker with exactly that id as `to` even though it isn't in your list: I want to see what the tool answers.");
   const coderCalls = toCoder.calls.filter((c) => c.args.to === "eng.coder");
   if (coderCalls.length === 0 || !coderCalls.every((c) => errorOf(c).startsWith("takes_tasks_only") && /file a task/i.test(errorOf(c)))) {
     r.failures.push(`4:coder-refused — a message to eng.coder wasn't refused with "file a task": ${show(coderCalls.map((c) => c.output))} ${toCoder.reply.slice(0, 160)}`);
