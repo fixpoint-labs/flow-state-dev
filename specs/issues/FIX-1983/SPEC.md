@@ -89,15 +89,15 @@ Coordinator*). Update `advanced/error-capture.md`, the engine README's *Error ca
 the `errorCapture` row of `configuration/runtime.md` and `guides/routing-errors-to-sentry.md` for
 the final-failure event. Update `shift-manager/overview.md` (*What a Lab's config provides*, Inbox),
 `shift-manager/settings.md` (whose Linear key it files with), `workforce/overview.md`, the
-glossary, and the `workforce`, `orchestration` and `shift-manager` READMEs. A changeset for
-`engine`, `orchestration` and `workforce`.
+glossary, and the `workforce` and `shift-manager` READMEs. A changeset for `engine` and
+`workforce`.
 
 ## How a failure reaches the tracker
 
 ```mermaid
 flowchart LR
   E["engine · a request ends failed"] -->|"errorCapture · final"| N["intake · Workforce"]
-  T["orchestration · a task ends errored"] -->|"task-ending observer"| N
+  T["a board ends a task errored"] -->|"report owed · same write as the ending"| N
   N -->|"new fingerprint, under the cap"| R["Error Reporter flow · its own session"]
   N -->|"seen before"| K["count on the report row"]
   R --> D["dossier · redacted"]
@@ -106,10 +106,11 @@ flowchart LR
   W -->|"answered · project MCP"| L["Linear issue or comment"]
 ```
 
-The engine only says a request ended failed, and orchestration only says a task ended errored.
-Everything that knows about workers, previews and trackers is Workforce's, behind one intake. A
-failed request that belongs to a task waits for that task's ending, so a retry that passes
-reports nothing.
+The engine only says a request ended failed. A task's ending comes from orchestration's one
+ending signal, where the Workforce board's recorder marks a report owed in the same write as the
+ending. Everything that knows about workers, previews and trackers is Workforce's, behind one
+intake. A failed request that belongs to a task waits for that task's ending, so a retry that
+passes reports nothing. A harness run that fails for good is its task ending errored.
 
 ## What stays as it is
 
@@ -123,7 +124,8 @@ reports nothing.
 | Already here | What this does with it |
 |---|---|
 | **Whatever already hears about errors**: `errorCapture` (engine), `onErrored` hooks (per flow), the HTTP `onError` (route errors only), the task board's `errored` change, harness-manager's failed run row | **Extends the closest**, `errorCapture`: the one sink that sees every flow's failures, the coordinator's included. It gains one event per request that settles failed, marked final ([D1](DECISIONS.md#d1)). Searched `errorCapture`, `onErrored`, `onError`, `errored`, `report`, `incident` across `packages/`: nothing files issues, and no Lab wires `errorCapture` |
-| The task board's `errored` change, emitted only to the request that made it | **Extends.** Orchestration gains a Lab-wide task-ending observer, with no worker vocabulary, so tasks that error without a failed request are seen too |
+| Orchestration's one ending signal: [`endingOf`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/orchestration/src/tasks/collection/ending.ts), called from `applyTransition` and `applyAbandonmentSettlement` in `internal.ts`, then each ledger's pure `recordEnding` (FIX-1794 P2, FIX-1816) | **Builds on, unchanged.** Every errored ending (a worker's settle, a refused dispatch, the claim path settling a worker that died too often) already passes it |
+| The Workforce board's recorder ([`conversation-board/ledger.ts`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/workforce/src/conversation-board/ledger.ts)), which marks a notice owed in the ending's own write, drained by `sendOwedNotices` and the board's next touch (FIX-1780) | **Extends.** The same recorder also marks a report owed on an `errored` ending. The same drain points hand it to the intake, which clears the mark only when it accepts. Boards outside Workforce's ledger are not covered |
 | `docs/architecture/internal-execution-seams.md`: error reporting goes through `errorCapture` and `onErrored` | **Kept.** The reporter consumes that seam |
 | Inbox: every suspension a worker's session is waiting on | **Builds on.** The preview is an ordinary ask from the reporter's session; Inbox needs no coordinator |
 | [FIX-1780](../FIX-1780/SPEC.md): a task's ending is delivered once, deduped, with the row as the outbox | **Builds on** its pattern. Its receiver runs in the filing conversation, so the reporter does not use it |
@@ -137,10 +139,10 @@ reports nothing.
 | The debt | |
 |---|---|
 | **Removes** | Nothing |
-| **Adds** | A final-failure event on `errorCapture`: permanent by design. An adapter that forwards every event (the Sentry guide's) gets one more per failed request until it filters on `final`; the guide changes in this issue. A task-ending observer in orchestration: permanent. A report collection with its own fingerprint and cap, beside the task-notice dedupe: permanent, since it keys on failures, not tasks |
+| **Adds** | A final-failure event on `errorCapture`: permanent by design. An adapter that forwards every event (the Sentry guide's) gets one more per failed request until it filters on `final`; the guide changes in this issue. A report collection with its own fingerprint and cap, beside the task-notice dedupe: permanent, since it keys on failures, not tasks |
 | **Leaves** | Browser exceptions ([FIX-1984](https://linear.app/fixpoint-labs/issue/FIX-1984)) and crash-interrupted requests ([FIX-1985](https://linear.app/fixpoint-labs/issue/FIX-1985)) are not captured. Codex and Cursor runs get no project MCP, so a reporter on them cannot file ([FIX-1986](https://linear.app/fixpoint-labs/issue/FIX-1986)) |
 
-**Net: up.** One engine event, one orchestration observer and one Workforce collection come in; nothing goes.
+**Net: up.** One engine event, one report mark on the board's recorder and one Workforce collection come in; nothing goes.
 
 ## Sign off
 
@@ -149,7 +151,7 @@ per failure that stays failed, filed even when the coordinator broke, proved by 
 issue. If wrong: we ship a forwarder whose issues nobody can act on.
 
 **[The debt](#whats-already-here-and-the-debt), net up:** a final-failure event in the engine, a
-task-ending observer in orchestration, and a report collection in Workforce. If wrong: existing
+report mark on the board's ending recorder, and a report collection in Workforce. If wrong: existing
 Sentry adapters see an extra event, and two dedupe stores drift.
 
 1. **[D3](DECISIONS.md#d3) · Every report waits for the operator in Inbox before it files. A Lab
@@ -164,4 +166,4 @@ Sentry adapters see an extra event, and two dedupe stores drift.
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
-Feature · `engine` + `orchestration` + `workforce` + `shift-manager` · large · no epic
+Feature · `engine` + `workforce` + `shift-manager` · large · no epic · lands after #3304 (FIX-1959) and #3325 (FIX-1876 P2, renames the ending vocabulary)

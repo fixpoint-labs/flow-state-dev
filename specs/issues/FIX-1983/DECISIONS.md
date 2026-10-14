@@ -41,7 +41,7 @@ timeout (say a day) after which the report files as drafted.
 | | |
 |---|---|
 | **Instead of** | Every `errorCapture` event as it fires, which is one per failed attempt, rescued failures included |
-| **Because** | A report for a run that a retry fixed is noise, and noise trains people to ignore the reporter. The engine knows when a request settles failed and says so once, marked final. A task's attempts are separate requests, so a failed request that belongs to a task waits for the task's ending; a task that errors without a failed request (a refused dispatch, a worker that died too often) comes from orchestration's task-ending observer. A Lab can narrow the set with a filter; the default is all three |
+| **Because** | A report for a run that a retry fixed is noise, and noise trains people to ignore the reporter. The engine knows when a request settles failed and says so once, marked final. A task's attempts are separate requests, so a failed request that belongs to a task waits for the task's ending; every task ending, including one with no failed request (a refused dispatch, a worker that died too often), comes from orchestration's one ending signal, where the Workforce board's recorder marks a report owed. A harness run that fails for good is its task ending errored, so it takes that path. A Lab can narrow the set with a filter; the default is all three |
 | **Locks in** | `errorCapture` sends one more event per failed request, marked final, and existing adapters see it too. Browser-page bugs are still filed by hand until [FIX-1984](https://linear.app/fixpoint-labs/issue/FIX-1984) |
 
 ![What counts as an error to report: final failures only, chosen, beside every capture event. Decides it: a run that fails once then passes on retry. Price: browser exceptions wait for a follow-up. Locks in a final-failure event on the engine's error sink; flips if per-attempt failures turn out to be bugs worth filing](figures/d1-what-counts.svg)
@@ -80,7 +80,7 @@ the stack's top frame too, at the cost of more duplicates.
 - **The fingerprint** is flow kind, action, block path, error code, and the message with ids,
   numbers and paths stripped.
 - **One intake is the convergence point for "one report per fingerprint"** (tenet 5). The
-  engine's final event and orchestration's task-ending observer both go through it; it
+  engine's final event and the board's owed-report marks both go through it; it
   fingerprints, claims the report row, counts and applies the cap before anything runs. A failed
   request that carries a dispatch task id is held until that task ends, and then joins the task's
   report rather than making its own.
@@ -109,14 +109,25 @@ the stack's top frame too, at the cost of more duplicates.
   that report; a rule that should stick is said in its conversation.
 - **Teams:** an org worker named *Error Reporter*, under *General* (FIX-1959). Its conversation
   holds one line per issue filed or commented, with the link. It hires and routes nothing.
-- **The engine and orchestration carry no worker, preview or tracker word** (layer rule).
+- **The report mark rides the ending signal, never a second path.** `endingOf` stays the one
+  place an ending is detected. The board's recorder stays pure (it may re-run on a version
+  conflict): it only adds a `reportOwed` mark to the row's metadata. The mark is drained where
+  owed notices are, after the write and on the board's next touch, by dispatching to the
+  intake's internal action, never through the coordinator. No post-commit callback, so a crash
+  can't drop a report.
+- **Sequencing:** lands after #3304 (FIX-1959, display names) and #3325 (FIX-1876 P2, which
+  renames the board's ending vocabulary). If FIX-1872 P2's per-row ending handling lands first,
+  the recorder change builds on it.
+- **The engine carries no worker, preview or tracker word** (layer rule). Orchestration is not
+  changed.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
 | A new engine hook beside `errorCapture` | Two sinks for one job. The architecture names `errorCapture` as the error-reporting seam |
-| Correlate request failures to tasks only, with no task-ending observer | Misses tasks that error without a failed request: a refused dispatch, a worker that died too often |
+| Correlate request failures to tasks only, with nothing on the board | Misses tasks that error without a failed request: a refused dispatch, a worker that died too often |
+| A new Lab-wide task-ending observer in orchestration | A second ending path beside `endingOf`, and a post-commit callback a crash can drop |
 | Use FIX-1780's task-ending notice | Its receiver runs in the filing conversation, often the coordinator's |
 | Use `onErrored` on each flow | Per flow, so a Lab wires every flow, and it misses setup failures after acceptance |
 | Preview through the coordinator's "needs you" list | Puts the coordinator back on the path |
@@ -129,7 +140,9 @@ the stack's top frame too, at the cost of more duplicates.
   engine's existing `errorCapture` sink; Workforce owns intake, dedupe, storm cap and filing.
 - **Preview** — D3 became "every report waits for the operator in Inbox", because the product
   lead asked that Jake review each report before it files. Running as the operator moved to
-  *Decided, not asked*. Validation added the task-ending observer, because a task's retry is a
-  new request.
+  *Decided, not asked*. Validation made a task's failure wait for its ending, because a task's retry is a new request.
+- **Review** — the task ending now rides orchestration's one ending signal as a report mark on
+  the board's recorder, instead of a new observer, because the architect's coherence check
+  found `endingOf` already is that signal.
 
 **Open: none.**

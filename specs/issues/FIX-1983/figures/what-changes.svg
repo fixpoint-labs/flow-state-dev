@@ -30,7 +30,7 @@
     <text class="t-s" x="28" y="80">any flow, the coordinator's too</text>
     <rect class="src" x="16" y="110" width="210" height="58" rx="5"/>
     <text class="t-h" x="28" y="132">A task ends errored</text>
-    <text class="t-s" x="28" y="150">orchestration, Lab-wide</text>
+    <text class="t-s" x="28" y="150">the board's ending signal</text>
     <rect class="src" x="16" y="180" width="210" height="58" rx="5"/>
     <text class="t-h" x="28" y="202">A harness run fails</text>
     <text class="t-s" x="28" y="220">for good, after its retries</text>
