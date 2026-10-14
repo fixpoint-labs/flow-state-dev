@@ -1,13 +1,4 @@
-/**
- * The resource content routes resolve a `contentTemplateRef` from the store
- * by the template's storage key. When that key carries an owner segment, the
- * template is another user's row unless the caller owns it, so the route
- * reads it only where a run's cache would have seeded it: the caller's own
- * row, or a row an owner-writes collection serves to everyone.
- *
- * Rows are planted store-direct, as another process or an earlier deployment
- * would leave them. The caller is the session's user, set by the server.
- */
+/** Store-planted rows. The content route admits a template only where `ownerKeyMaySeed` would seed the run cache. */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResource, defineResourceCollection } from "@flow-state-dev/core";
@@ -27,11 +18,7 @@ const verified = {
   },
 };
 
-/**
- * One flow whose templates point at owner-keyed rows. A collection accessor
- * named by the row's key is what makes `contentTemplateRef` resolve to that
- * storage key on the route; its own pattern reaches nothing.
- */
+/** Accessor name is the storage key. `findResourceConfig` resolves names only; these patterns match nothing. */
 const templates = {
   [ALICE_KEY]: defineResourceCollection({ pattern: "unrelated-a/*", scope: "org", stateSchema: passthrough }),
   [BOARD_KEY]: defineResourceCollection({ pattern: "unrelated-b/*", scope: "org", stateSchema: passthrough }),
@@ -58,7 +45,6 @@ async function boot() {
   await primary.content!.set("org", "acme", "templates/plain", "PLAIN-TEMPLATE");
   const state = createFlowState({
     flows: { tpl: flow } as never,
-    resolvePrincipal: verified.resolvePrincipal,
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
   });
