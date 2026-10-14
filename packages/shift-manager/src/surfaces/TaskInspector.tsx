@@ -12,7 +12,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
-import { asksOfTask, rosterOf, workerFor, waited, type LoadedSnapshot } from "../lib/derive";
+import { asksOfTask, rosterOf, workerFor, workerLabel, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -53,7 +53,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
       <div data-testid="task-inspector">
         <Section title="WORKER" testId="inspector-worker">
           <p className="text-sm" data-testid="inspector-worker-id" data-worker-id={worker?.id ?? ""}>
-            {worker?.id ?? row?.assignee ?? "No worker named"}
+            {workerLabel(worker?.id ?? row?.assignee ?? "No worker named")}
           </p>
           <p className="text-xs text-muted-foreground" data-testid="inspector-team">
             {worker === undefined ? "" : worker.team === STAFF_TEAM ? STAFF_TEAM : `team ${worker.team}`}

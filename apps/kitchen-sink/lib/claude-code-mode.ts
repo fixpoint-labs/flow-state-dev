@@ -7,6 +7,9 @@
  * asks for no approval: the sandbox is the fence. Writes stay in the
  * session's worktree, never the repository's `.git` (so the run edits files
  * but cannot commit), and the run starts with an allowlisted environment.
+ * `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` (`lib/harness-sandbox.ts`) removes the
+ * fence and leaves no other: the run still asks for no approval, so it writes,
+ * commits and runs commands wherever the server's OS user can.
  * That filters what the run is handed; it is not a boundary. A command the run
  * starts as the same OS user can still read the server's own environment (on
  * Linux, from `/proc`). Run the server as a separate OS user or in a container
@@ -29,6 +32,7 @@ import {
 } from "@flow-state-dev/claude-code/sdk";
 
 import { goalControl } from "./goal-control";
+import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
@@ -104,17 +108,23 @@ export function claudeCodeBlock(feeds: HarnessFeeds, seams: ClaudeCodeSeams = {}
     // sandbox on the next turn.
     settingSources: [],
     env: claudeCodeEnv(),
-    sandbox: async (ctx) => {
-      const worktree = await feeds.worktree(ctx);
-      const fence = containmentSandbox(worktree);
-      return {
-        ...fence,
-        // The worktree's `.git` points git at the repository. A run that could
-        // rewrite it could point the person's next git command at hooks of its own.
-        filesystem: { ...fence.filesystem, denyWrite: [join(worktree, ".git")] },
-        failIfUnavailable: true,
-      };
-    },
+    // Unsandboxed on request only: with no sandbox and `bypassPermissions`,
+    // nothing confines the run (`lib/harness-sandbox.ts`).
+    ...(harnessUnsandboxed()
+      ? {}
+      : {
+          sandbox: async (ctx: Parameters<HarnessFeeds["worktree"]>[0]) => {
+            const worktree = await feeds.worktree(ctx);
+            const fence = containmentSandbox(worktree);
+            return {
+              ...fence,
+              // The worktree's `.git` points git at the repository. A run that could
+              // rewrite it could point the person's next git command at hooks of its own.
+              filesystem: { ...fence.filesystem, denyWrite: [join(worktree, ".git")] },
+              failIfUnavailable: true,
+            };
+          },
+        }),
     ...(resolveClaudeAgent !== undefined ? { resolveClaudeAgent } : {}),
     name: "claude-code",
     // Claude Code's handle is core's plus its own fields, and a block's hooks
@@ -182,7 +192,9 @@ export const HOST_CHECKS: ClaudeCodeHostChecks = {
  * Claude Code mode's own check, for the gate's mode-check slot: the server
  * isn't root, the sandbox can start, the worktree root can be made, and
  * Claude Code finds its SDK and a sign-in over the environment the run gets.
- * The first that fails is the reason.
+ * The first that fails is the reason. Under `KITCHEN_SINK_HARNESS_UNSANDBOXED=1`
+ * the sandbox isn't checked, and the available mode's note says the run is
+ * unsandboxed.
  */
 export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
@@ -191,8 +203,11 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
       return { available: false, reason: "The server runs as root. Claude Code runs without approval prompts only as an ordinary user." };
     }
     const env = claudeCodeEnv();
-    const sandbox = checks.sandboxMissing(env);
-    if (sandbox !== null) return { available: false, reason: sandbox };
+    const unsandboxed = harnessUnsandboxed();
+    const sandbox = unsandboxed ? null : checks.sandboxMissing(env);
+    if (sandbox !== null) {
+      return { available: false, reason: `${sandbox} ${unsandboxedHint("Claude Code")}` };
+    }
     try {
       checks.makeRoot(repository);
     } catch (error) {
@@ -206,6 +221,6 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
     if (account.status === "none") {
       return { available: false, reason: `Claude Code is not signed in on this host (${account.reason}). Sign in with \`claude\`, then restart.` };
     }
-    return { available: true };
+    return unsandboxed ? { available: true, note: unsandboxedNote("Claude Code") } : { available: true };
   };
 }

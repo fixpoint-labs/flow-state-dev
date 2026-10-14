@@ -236,6 +236,7 @@ describe("what one boot writes", () => {
         id: "eng.coder",
         kind: "coder",
         door: null,
+        rules: false,
         hired: false,
         incarnation: null
       });
@@ -256,6 +257,7 @@ describe("what one boot writes", () => {
         id: "eng.lead",
         kind: "agent",
         door: null,
+        rules: false,
         hired: false,
         incarnation: null
       });

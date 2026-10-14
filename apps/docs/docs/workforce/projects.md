@@ -166,12 +166,12 @@ const agent = defineAgentWorkerFlow({
 });
 ```
 
-[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a user's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
+[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a user's approval first, keep a sequencer that asks before the step, as the [Shift Coordinator](./shift-coordinator.md) does for `fire`.
 
 A worker calls them only when its own `tools:` names them. The owner is the user whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
 
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
+[The Shift Coordinator](./shift-coordinator.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
 
 ## Workstreams
 
@@ -296,7 +296,7 @@ It returns `{ workstream }`, the entry as written.
 
 The entries are an [owner-writes collection](../resources/collections.md#owner-writes-collections), so a write to someone else's entry throws "A row of an owner-writes collection is written only by the user it belongs to." and changes nothing, whichever flow sends it. A workstream you don't have is refused with `no-such-workstream`. A workstream is never deleted: mark it `done` and it stays listed.
 
-**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
+**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. The title is not one of those changes: the owner sets it through `updateWorkstream`, and their project coordinator through `editWorkstream`. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
 
 ```ts
 const agent = defineAgentWorkerFlow({
@@ -559,7 +559,7 @@ brief and no `project`. When they name the project's repository, call
 
 Left out, `project` is the coordinator's own project, and naming any other one is refused with `other-project`. Called from a conversation that belongs to no project, such as a user's own coordinator, a write without `project` is refused with `no-such-project`. Either way, only the project's members can change it.
 
-If a user should approve the repository before it's written, give the catalog a `setRepository` that asks first: a sequencer, a block that runs steps in order, with a step that waits for the user's approval before the write, as the [chief of staff](./chief-of-staff.md) does for `fire`. When the input leaves `project` out, that step can name the project with `linkedProjectOf(ctx.session.state)` from `@flow-state-dev/workforce`. It returns the session's `{ visibility, id }`, or `undefined` for a session that belongs to no project:
+If a user should approve the repository before it's written, give the catalog a `setRepository` that asks first: a sequencer, a block that runs steps in order, with a step that waits for the user's approval before the write, as the [Shift Coordinator](./shift-coordinator.md) does for `fire`. When the input leaves `project` out, that step can name the project with `linkedProjectOf(ctx.session.state)` from `@flow-state-dev/workforce`. It returns the session's `{ visibility, id }`, or `undefined` for a session that belongs to no project:
 
 ```ts
 setRepository: sequencer({
@@ -633,11 +633,13 @@ harnessManager({
 2. The project the task came from, when it was filed from a project's conversation.
 3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
 
+A task filed from a workstream or a project's conversation is stored naming that project, whatever the filer put in `input.project`. A worker filing from one is told which project it works in, so it doesn't have to name one.
+
 The run is refused, before any file is read, when:
 
 | Refusal | When |
 |---|---|
-| `other-project` | The task names a project other than the one its conversation belongs to. The refusal names both. |
+| `other-project` | The task names a project other than the one its conversation belongs to, which a task filed through the conversation's own task tools never does. The refusal names both. |
 | `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
 | `no-project` | None of the three steps finds a project. The message says the task can name one in `input.project`. |
 | `not-a-member` | The user the run belongs to isn't one of the project's members. |

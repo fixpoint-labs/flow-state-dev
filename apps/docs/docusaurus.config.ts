@@ -75,6 +75,10 @@ const config: Config = {
       {
         redirects: [
           {
+            from: "/docs/workforce/chief-of-staff",
+            to: "/docs/workforce/shift-coordinator",
+          },
+          {
             from: "/docs/patterns/task-board",
             to: "/docs/orchestration/task-board",
           },

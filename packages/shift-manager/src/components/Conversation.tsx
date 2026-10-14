@@ -10,8 +10,8 @@
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; otherwise the user's latest with
  * the worker), the name over the worker's messages, the text for an empty conversation, what
- * sits above the feed (`lead`), a line to hand in (`autoSend`), suggestions,
- * the composer's `scale`, and `renderItem` to draw an item its own way (read
+ * sits above the feed (`lead`), a line to hand in (`autoSend`), the
+ * composer's `scale`, and `renderItem` to draw an item its own way (read
  * the session's other items with `useSessionItems()`).
  *
  * {@link ConversationFrame} is the scrolling column with the composer pinned
@@ -23,12 +23,13 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
+import { workerLabel } from "../lib/derive";
 import { useFollowLatest } from "../lib/follow";
+import { SessionScope } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
@@ -75,12 +76,12 @@ export function Conversation({
   emptyText,
   working = false,
   startWork,
-  suggestions,
   autoSend,
   onAutoSend,
   renderItem,
   scale = "default",
   testId = "conversation",
+  startAtEnd = false,
 }: {
   worker: Worker;
   /** The session this conversation is, when the view found it: every line goes there. Absent, the user's latest with the worker. */
@@ -97,7 +98,6 @@ export function Conversation({
   working?: boolean;
   /** Called as a line goes out; returns the call that says it settled. */
   startWork?: () => () => void;
-  suggestions?: readonly string[];
   /** A line handed in from elsewhere (the palette): sent as if typed, once the composer isn't blocked. */
   autoSend?: string | null;
   onAutoSend?: () => void;
@@ -107,11 +107,17 @@ export function Conversation({
   scale?: "default" | "cos";
   /** Prefix for every test id inside: `cos` gives `cos`, `cos-conversation`, `cos-item`. */
   testId?: string;
+  /**
+   * Open on the latest turn, and follow it, rather than at the top. A view
+   * with a `lead` above the feed leaves this off so it opens on the lead.
+   */
+  startAtEnd?: boolean;
 }) {
   const { clients, refresh, answered } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
-  // The feed opens where it starts, and follows once the user reaches the end or sends a line.
-  const feed = useFollowLatest({ startAtEnd: false });
+  // The feed opens where it starts, and follows once the user reaches the end or sends a line;
+  // with `startAtEnd`, it opens on the latest turn, and again on each conversation it is shown.
+  const feed = useFollowLatest({ startAtEnd, resetKey: conversation.sessionId });
   const { sessionId, opened, read, failure, reread } = conversation;
 
   // An ask in this conversation answered in Inbox or the summary: read the conversation back.
@@ -126,7 +132,7 @@ export function Conversation({
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
     worker.door === null || worker.kind === null
-      ? `${worker.id} ${gaps.turn.noDoor}`
+      ? `${workerLabel(worker.id)} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
         : sessionId !== null && sessionId !== opened && read === undefined
@@ -140,7 +146,6 @@ export function Conversation({
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}
       blocked={blocked}
-      suggestions={suggestions}
       autoSend={autoSend}
       onAutoSend={onAutoSend}
       send={async (message, held) => {
@@ -196,7 +201,7 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <SessionItemsProvider value={read.items}>
+            <SessionScope sessionId={sessionId} items={read.items}>
               {read.truncated ? (
                 <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
                   More than shown: this conversation holds more than one read returns.
@@ -251,7 +256,7 @@ export function Conversation({
                   );
                 })}
               </ol>
-            </SessionItemsProvider>
+            </SessionScope>
           </FlowProvider>
         )}
         {working ? (

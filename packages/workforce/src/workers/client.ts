@@ -11,6 +11,7 @@
  */
 import {
   ClientHttpError,
+  createClient,
   createResourceClient,
   createSessionClient,
   readEveryCollectionPage,
@@ -26,6 +27,8 @@ import {
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
 import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
+import { STANDING_RULES_ACTION } from "../standing-rules/keys";
+import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -81,6 +84,13 @@ export interface WorkforceClient {
    * user's roster.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
+  /**
+   * Read or edit the user's standing rules with `worker`, in that user's
+   * session with the worker. The worker's flow must declare the rules action
+   * (its inventory row says `rules: true`). A refused write rejects with the
+   * reason and stores nothing.
+   */
+  standingRules(worker: string, input: StandingRulesActionInput): Promise<StandingRulesActionOutput>;
 }
 
 function stateOf(session: SessionSummary): Record<string, unknown> {
@@ -91,6 +101,10 @@ function stateOf(session: SessionSummary): Record<string, unknown> {
 function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: readonly T[]): T | undefined {
   return [...rows].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0];
 }
+
+/** How often an action run through the client checks whether its request ended, and how long it waits. */
+const ACTION_POLL_MS = 100;
+const ACTION_TIMEOUT_MS = 30_000;
 
 /**
  * Build a workforce client.
@@ -208,7 +222,26 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
-  return {
+  /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
+  const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
+    const actions = createClient({ flowKind: flow, userId, ...transport });
+    const started = await actions.sendAction(action, input, { sessionId });
+    const requestId = started.request.id;
+    const until = Date.now() + ACTION_TIMEOUT_MS;
+    let status: Awaited<ReturnType<typeof actions.getRequestStatus>>["status"] = started.status;
+    while (status === "in_progress") {
+      if (Date.now() > until) throw new Error(`${action} did not finish in time.`);
+      await new Promise((resolve) => setTimeout(resolve, ACTION_POLL_MS));
+      status = (await actions.getRequestStatus(requestId)).status;
+    }
+    const listed = await sessions.listSessionRequests(sessionId, { status, includeResultOutput: true, limit: 100 });
+    const found = listed.find((request) => request.id === requestId);
+    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}.`);
+    if (found === undefined) throw new Error(`${action} finished, but its answer could not be read.`);
+    return found.result?.output;
+  };
+
+  const client: WorkforceClient = {
     roster: async () => readRoster((await roster()).id),
     findWorkerSession: async (criteria) => {
       const { id } = await roster();
@@ -263,6 +296,12 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
         if (error instanceof ClientHttpError && error.status === 409) return sessions.getSession(sessionId);
         throw error;
       }
+    },
+    standingRules: async (worker, input) => {
+      const session = await client.ensureWorkerSession({ worker });
+      const flow = flowOf(await readRoster((await roster()).id), worker);
+      return (await runIn(flow, session.id, STANDING_RULES_ACTION, input)) as StandingRulesActionOutput;
     }
   };
+  return client;
 }

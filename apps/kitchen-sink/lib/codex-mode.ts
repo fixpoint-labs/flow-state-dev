@@ -41,6 +41,7 @@ import {
   type ResolveCodexClient,
 } from "@flow-state-dev/codex";
 
+import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -96,15 +97,13 @@ export function codexIsScripted(env: Record<string, string | undefined> = proces
 }
 
 /**
- * Whether Codex mode runs Codex in its sandbox, and requires one on the host.
- * Always `true` today.
- *
- * The one place a harness-wide opt-out of the sandbox requirement wires in:
- * the block's sandbox options and the host check's sandbox probe both read
+ * Whether Codex mode runs Codex in its sandbox, and requires one on the host:
+ * yes unless `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` (`lib/harness-sandbox.ts`).
+ * The block's sandbox options and the host check's sandbox probe both read
  * this, and nothing else decides it.
  */
 export function codexSandboxed(): boolean {
-  return true;
+  return !harnessUnsandboxed();
 }
 
 /** The SDK's thread options Codex mode runs with. */
@@ -286,9 +285,13 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
         reason: "Codex is not signed in on this host (`codex login status` fails and there is no CODEX_API_KEY in the run's environment). Sign in with `codex login`, then restart.",
       };
     }
-    if (codexSandboxed()) {
-      const sandbox = await checks.sandboxFails(root, env);
-      if (sandbox !== null) return { available: false, reason: `Codex's sandbox can't run on this host: ${sandbox}` };
+    if (!codexSandboxed()) return { available: true, note: unsandboxedNote("Codex") };
+    const sandbox = await checks.sandboxFails(root, env);
+    if (sandbox !== null) {
+      return {
+        available: false,
+        reason: `Codex's sandbox can't run on this host: ${sandbox} ${unsandboxedHint("Codex")}`,
+      };
     }
     return { available: true };
   };

@@ -1,12 +1,13 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
  * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
- * (BR-6) with the on-shift and on-call counts. A header above them all carries
+ * (BR-6) with the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `workerStates` result, so they agree with Roster. PROJECTS lists each project;
+ * `workerStates` result, so they agree with Roster. PROJECTS lists each project,
+ * its workstreams beneath it while it is open, read as its view reads them;
  * TEAMS is one row per
  * team with a status square per worker, the user's own workers included,
  * opening Roster for that team. A failed
@@ -16,7 +17,8 @@
  * the page; square; labels, counts and the footer in mono (v2:26-113). Shift
  * Coordinator is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
  * Inbox's count wears the highlighter only while an ask waits, and Tasks' is
- * blue; the current row is v2's blue tint at 700; TEAMS says what its counts are; and the
+ * blue; the current row is v2's blue tint at 700; each workstream has its `#`;
+ * TEAMS says what its counts are; and the
  * footer ends its counts with the user's initials (v2:52-113, 1173-1188).
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
@@ -29,7 +31,9 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
+import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
@@ -292,27 +296,124 @@ function SidebarRail({
   );
 }
 
-/** PROJECTS (BR-22): each project by title. */
+/**
+ * One project under PROJECTS, its workstreams beneath it while it is open. A
+ * project opens with its toggle, and is open while it is the current screen.
+ * Only an open project's entries are read, by its one prefix, as its view
+ * reads them (BR-18); a closed one costs nothing.
+ */
+function ProjectGroup({
+  project,
+  route,
+  reader,
+  readAt,
+}: {
+  project: Project;
+  route: Route;
+  reader: string | null;
+  readAt: number;
+}) {
+  // `null` follows the route; a toggle overrides it.
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const { id, title, visibility } = project;
+  // A project's address is its visibility and its id: a private project and a shared one can share an id.
+  const here = route.level === "project" && route.projectId === id && (route.visibility ?? "shared") === visibility;
+  const open = toggled ?? here;
+  const { read, reread } = useProjectRead({ visibility, id }, open ? reader : null, readAt);
+  const testId = visibility === "private" ? `nav-project-private-${id}` : `nav-project-${id}`;
+  const entries = read !== undefined && "value" in read && read.value !== null ? read.value.entries : undefined;
+  const to = (entry?: { owner: string; id: string }): Route => ({
+    level: "project",
+    projectId: id,
+    tab: entry === undefined ? "stream" : "workstreams",
+    ...(visibility === "private" ? { visibility } : {}),
+    ...(entry === undefined ? {} : { entry }),
+  });
+  return (
+    <div data-testid="project-group" data-project-id={id} data-visibility={visibility} data-open={open}>
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setToggled(!open)}
+          aria-expanded={open}
+          aria-label={open ? `Hide ${title}'s workstreams` : `Show ${title}'s workstreams`}
+          data-testid={`${testId}-toggle`}
+          className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+        >
+          <Meta className={`text-[10px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
+        </button>
+        <div className="min-w-0 flex-1">
+          <NavItem
+            label={visibility === "private" ? `${title} · private` : title}
+            active={here && route.entry === undefined}
+            onClick={() => navigate(to())}
+            testId={testId}
+          />
+        </div>
+      </div>
+      {!open ? null : (
+        <div className="pl-6" data-testid="nav-project-workstreams">
+          {read !== undefined && "failure" in read ? (
+            <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-failure">
+              Workstreams didn't load.{" "}
+              <button type="button" className="underline" onClick={reread}>
+                Retry
+              </button>
+            </p>
+          ) : entries === undefined ? null : entries.length === 0 ? (
+            <p className="px-1.5 py-[5px] text-xs text-muted-foreground" data-testid="nav-workstreams-none">
+              No workstreams
+            </p>
+          ) : (
+            entries.map((entry) => (
+              <StreamItem
+                key={`${entry.owner}/${entry.id}`}
+                entry={entry}
+                active={here && route.entry?.owner === entry.owner && route.entry.id === entry.id}
+                onClick={() => navigate(to({ owner: entry.owner, id: entry.id }))}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A workstream under its project (v2:88): a mono `#` and its title, opening on its own view. */
+function StreamItem({ entry, active, onClick }: { entry: WorkstreamEntry; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      title={`${entry.title} · ${entry.owner} · ${entry.status}`}
+      data-testid="nav-workstream"
+      data-owner={entry.owner}
+      data-workstream-id={entry.id}
+      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-[13px] ${
+        active ? "bg-accent font-semibold text-accent-foreground" : "hover:bg-foreground/6"
+      }`}
+    >
+      <Meta className="text-[11.5px] text-muted-foreground">#</Meta>
+      <span className="min-w-0 flex-1 truncate" data-look="nav-label">
+        {entry.title}
+      </span>
+    </button>
+  );
+}
+
+/** PROJECTS (BR-22): each project by title, with its workstreams beneath it while it is open. */
 function ProjectsSection({ snapshot, route, onRetry }: { snapshot: LoadedSnapshot; route: Route; onRetry: () => void }) {
   const view = projectsOf(snapshot);
   if (!view.ok) {
     return <SectionFailure what="Projects" failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
   }
-  // A project's address is its visibility and its id: a private project and a shared one can share an id.
-  const projectItem = (projectId: string, label: string, visibility: "shared" | "private" = "shared") => (
-    <NavItem
-      label={visibility === "private" ? `${label} · private` : label}
-      active={route.level === "project" && route.projectId === projectId && (route.visibility ?? "shared") === visibility}
-      onClick={() => navigate({ level: "project", projectId, tab: "stream", ...(visibility === "private" ? { visibility } : {}) })}
-      testId={visibility === "private" ? `nav-project-private-${projectId}` : `nav-project-${projectId}`}
-    />
-  );
+  const reader = projectReaderOf(snapshot.sessions);
   return (
     <>
       {view.value.projects.map((project) => (
-        <div key={`${project.visibility}/${project.id}`} data-testid="project-group" data-project-id={project.id} data-visibility={project.visibility}>
-          {projectItem(project.id, project.title, project.visibility)}
-        </div>
+        <ProjectGroup key={`${project.visibility}/${project.id}`} project={project} route={route} reader={reader} readAt={snapshot.readAt} />
       ))}
     </>
   );
@@ -421,7 +522,7 @@ export function Sidebar({
               <NavItem
                 label="Roster"
                 icon={<NavIcon name="roster" />}
-                count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
+                count={counts?.["on shift"]}
                 mark={partial}
                 active={route.level === "roster" && route.team === null}
                 onClick={() => navigate({ level: "roster", team: null })}
@@ -463,7 +564,7 @@ export function Sidebar({
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${worker.name} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.name)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );
@@ -496,10 +597,6 @@ export function Sidebar({
                   <span className="inline-flex items-center gap-1.5">
                     <ShiftMark status="on shift" />
                     <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <ShiftMark status="on call" />
-                    <span data-testid="footer-on-call">{counts["on call"]} on call</span>
                   </span>
                   {partial}
                 </>

@@ -9,7 +9,7 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { STAFF_TEAM, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -149,6 +149,59 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
     const noBoard = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
     expect(noBoard.running).toEqual({ ok: false, failure });
     expect(noBoard.asks.ok).toBe(true);
+  });
+});
+
+// A worker's proposal waiting on approval is a task parked on its question: it
+// needs the user as much as a suspension does, so the summary lists it rather
+// than letting it vanish from "what needs you" (FIX-1972).
+describe("the tasks waiting on the user, in the shift summary", () => {
+  const parked = (holder: string, id: string, extra: Partial<BoardRow> = {}): BoardRow => ({
+    ...row(holder, id, "parked"),
+    assignee: "eng.coder",
+    question: "Approve the plan to merge the rounding copies?",
+    ...extra,
+  });
+
+  it("lists every parked row, with its question, beside the asks", () => {
+    const waiting = parked("s_side", "6");
+    const summary = shiftSummary(
+      snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [waiting, row("s_side", "7", "completed")] } } } }),
+    );
+    expect(summary.parked).toEqual({ ok: true, value: [waiting] });
+    expect(summary.asks).toEqual(snapshotOf().asks);
+  });
+
+  it("leaves out a parked row whose run holds one of the asks, which already counts it", () => {
+    const pendingAsk = { ...ask("eng.coder", "q"), sessionId: "s_run", item: { suspensionId: "q", taskId: "6" } as Ask["item"] };
+    const held = parked("s_side", "6", { run: { sessionId: "s_run", requestId: "r", attempt: 1 } });
+    const summary = shiftSummary(
+      snapshotOf({
+        asks: { ok: true, value: [pendingAsk] },
+        boards: { s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [held] } } },
+      }),
+    );
+    expect(summary.parked).toEqual({ ok: true, value: [] });
+  });
+
+  it("reads a row's question only when it is parked on one", () => {
+    const base = { id: "6", title: "plan", status: "parked", feedback: "Approve the plan?" };
+    expect(toBoardRow("s.tasks", "s", "6", { ...base, parkedOnQuestion: true }).question).toBe("Approve the plan?");
+    expect(toBoardRow("s.tasks", "s", "6", base)).not.toHaveProperty("question");
+  });
+
+  it("leaves out a park that waits on workers, not on a question for the user", () => {
+    const pieces = parked("s_side", "8");
+    delete pieces.question;
+    const summary = shiftSummary(snapshotOf({ boards: { s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [pieces] } } } }));
+    expect(summary.parked).toEqual({ ok: true, value: [] });
+  });
+
+  it("fails as its own line when a board didn't load", () => {
+    const failure = { message: "store offline", httpStatus: 503 };
+    const summary = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
+    expect(summary.parked).toEqual({ ok: false, failure });
+    expect(summary.asks.ok).toBe(true);
   });
 });
 

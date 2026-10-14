@@ -86,10 +86,9 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
-  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -127,6 +126,9 @@ import {
   dispatchWrite,
   parkPatch,
   unparkPatch,
+  reopenPatch,
+  assertEdgeAllowed,
+  type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskEndingRecorder } from "./ending";
@@ -233,8 +235,9 @@ export interface ResourceBackedOptions {
 /**
  * The read boundary for this backing. Collection instances are stored, not
  * parsed, so a row written before the `parked` rename arrives carrying the
- * legacy status; it is mapped forward here (see `withMigratedStatus`), before
- * any filter or the transition guard sees it.
+ * legacy status, and one written before the wait rename its legacy wait mark;
+ * both are mapped forward here (see `withMigratedStatus` and
+ * `withMigratedWait`), before any filter or the transition guard sees it.
  *
  * Every read of committed task state goes through this — `readTaskState` for
  * a ref, and directly for the `current` a CAS updater is handed, since that
@@ -243,7 +246,7 @@ export interface ResourceBackedOptions {
 function readTaskStateOf<TInput, TOutput>(
   state: JsonObject
 ): Task<TInput, TOutput> {
-  return withMigratedStatus(state) as unknown as Task<TInput, TOutput>;
+  return withMigratedWait(withMigratedStatus(state)) as unknown as Task<TInput, TOutput>;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -470,7 +473,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus,
+    requireFrom?: EdgeSource,
     quiet?: boolean
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
@@ -496,7 +499,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           throw new WriteDeclined(reason, task.status);
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertTransitionAllowed(task.status, targetStatus, id);
+        assertEdgeAllowed(task.status, targetStatus, id, requireFrom);
         // Stamped here, inside the serialized write, off the `task` this
         // invocation read. Since FIX-992 this updater is re-run against
         // refreshed state on a version conflict, so a stamp derived from
@@ -803,6 +806,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               return {
                 feedback: error,
                 answered: undefined,
+                reopened: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -891,6 +895,18 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
+      );
+    },
+
+    async reopen(id, options) {
+      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
+      return transitionRef(
+        id,
+        "pending",
+        "reopened",
+        (task) => reopenPatch(task as Task) as Partial<Task<TInput, TOutput>>,
+        { ...options, ifAllowed: true },
+        "finished"
       );
     },
 
@@ -1048,7 +1064,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async markCancelOwed(id) {
       return patchRef(id, "cancel_owed", (task) =>
-        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+        task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
       );

@@ -18,13 +18,18 @@ const AT_END_SLACK = 32;
  * @param options.startAtEnd open at the end, following (the default); `false`
  * opens where the element starts, and follows once the user reaches the end
  * or {@link follow} is called.
+ * @param options.resetKey what the feed shows, such as a session id. When it
+ * changes, a feed that starts at the end opens at the end again, whatever the
+ * user had scrolled to in the last one. Replacing the scrolling element does
+ * not count: only the key does.
  * @returns `ref`, to attach to the scrolling element; `follow`, which jumps
  * to the end and follows from there; and `stay`, which stops following, for a
  * caller about to load earlier history above what is shown.
  */
-export function useFollowLatest(options: { startAtEnd?: boolean } = {}) {
+export function useFollowLatest(options: { startAtEnd?: boolean; resetKey?: string | null } = {}) {
   const [node, setNode] = useState<HTMLElement | null>(null);
-  const following = useRef(options.startAtEnd ?? true);
+  const startAtEnd = options.startAtEnd ?? true;
+  const following = useRef(startAtEnd);
 
   useEffect(() => {
     if (node === null) return;
@@ -58,6 +63,16 @@ export function useFollowLatest(options: { startAtEnd?: boolean } = {}) {
       sizes?.disconnect();
     };
   }, [node]);
+
+  // A different thing shown opens at the end again; the same thing in a new element leaves the user be.
+  const shown = useRef(options.resetKey);
+  useEffect(() => {
+    if (shown.current === options.resetKey) return;
+    shown.current = options.resetKey;
+    if (!startAtEnd) return;
+    following.current = true;
+    if (node !== null) node.scrollTop = node.scrollHeight;
+  }, [options.resetKey, startAtEnd, node]);
 
   const follow = useCallback(() => {
     following.current = true;

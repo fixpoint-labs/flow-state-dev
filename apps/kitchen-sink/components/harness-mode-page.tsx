@@ -1,6 +1,6 @@
 /**
  * What a coding harness mode's address shows: its frame when the mode can run
- * on this host, and otherwise the picker's reason with a link back, and
+ * on this host, with the mode's note when it has one, and otherwise the picker's reason with a link back, and
  * nothing else. No rail, no composer, no session is drawn or created for an
  * unavailable mode, wherever it was reached from.
  *
@@ -19,7 +19,7 @@ export async function HarnessModePage({ id }: { id: HarnessModeId }) {
   const mode = modeById(id);
   const availability = (await modeAvailability())[id];
   // Trusted: the gate makes a harness mode available only once it has a flow kind.
-  if (availability.available) return <HarnessModeView label={mode.label} flowKind={flowKindOf(mode)} />;
+  if (availability.available) return <HarnessModeView label={mode.label} flowKind={flowKindOf(mode)} note={availability.note} />;
   const reason = availability.reason;
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10 sm:px-6" data-testid="mode-unavailable" data-mode-id={id}>

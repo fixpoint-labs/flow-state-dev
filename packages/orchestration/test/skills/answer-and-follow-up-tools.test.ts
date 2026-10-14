@@ -78,10 +78,10 @@ const turnCtx = (base: object, requestId: string) => ({
 });
 
 describe("answerTask (S2)", () => {
-  it("is one of the task tools, beside the eight", () => {
+  it("is one of the task tools, beside the other nine", () => {
     const names = buildTaskToolsList(defaultOwnStateResolver).map((t) => (t as any).config.name);
     expect(names.filter((n: string) => n === "answerTask")).toHaveLength(1);
-    expect(names).toHaveLength(9);
+    expect(names).toHaveLength(10);
   });
 
   it("re-queues a task parked on a question with the answer, counted as a re-entry (BR-6, BR-8)", async () => {
@@ -253,8 +253,8 @@ describe("addTask's followUpOf (S4)", () => {
   it("allows wait beside followUpOf on dispatchTask, and refuses before anything is filed, so nothing parks (BR-22a)", async () => {
     const b = await board([row("root", { status: "in_progress", assignee: "researcher", attempts: 1 })]);
     // A host that can hold a wait, so dispatchTask carries wait.
-    const ctx = { ...b.ctx, requestHost: { resumeAsk: async () => undefined, hasAskSweeper: true } };
-    const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesAsks: true, dispatches: true })(ctx);
+    const ctx = { ...b.ctx, requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } };
+    const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesWaits: true, dispatches: true })(ctx);
     const dispatchTask = toolNamed(tools, "dispatchTask");
     expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
     const unfinished = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
@@ -344,8 +344,8 @@ describe("parkOnQuestion (S1)", () => {
     expect(b.get("t")!.status).toBe("cancelled");
   });
 
-  it("is not offered, and declines, on an asked row (BR-1a, ER-22)", async () => {
-    const b = await board([row("t", { assignee: "w", ask: { gateId: "g", deadline: 9e12 } })]);
+  it("is not offered, and declines, on a waited-on row (BR-1a, ER-22)", async () => {
+    const b = await board([row("t", { assignee: "w", wait: { gateId: "g", deadline: 9e12 } })]);
     const turn = await claimAsGate(b.ref, "t", b.ctx);
     expect(await park.offered(turn as never)).toBe(false);
     expect(await ask(turn)).toMatchObject({ ok: false, error: expect.stringMatching(/^asked_task/) });

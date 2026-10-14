@@ -1,7 +1,7 @@
 /**
  * Chief of Staff (FIX-1722): where Shift Manager opens. The shift summary,
  * then the user's conversation with the Lab's chief-of-staff worker; the right
- * panel lists who is on call.
+ * panel lists its delegates and tasks.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
@@ -18,7 +18,7 @@
  * **Drawn in design v2's form (v2:120-180).** A 720px feed under v2's header,
  * the summary as unboxed prose with its asks in one bordered list, each
  * tagged with the highlighter; the worker's messages labelled with the time;
- * and the composer pinned under the feed with suggestions above it. The
+ * and the composer pinned under the feed. The
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
  */
@@ -33,12 +33,11 @@ import { useSessionItems } from "../components/flow-state/session-items-context"
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { chiefOfStaffOf, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { chiefOfStaffOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
 import { navigate } from "../lib/routes";
-import { chiefOfStaffSuggestions } from "../lib/shell";
 import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
@@ -119,7 +118,10 @@ function NeedsYouTag() {
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh } = useLab();
   const retry = () => void refresh();
-  const { asks, running } = shiftSummary(snapshot);
+  const { asks, parked, running } = shiftSummary(snapshot);
+  // Asks and parked tasks are both what needs the user; a list that didn't load counts nothing.
+  const waitingTasks = parked.ok ? parked.value : [];
+  const needsYou = (asks.ok ? asks.value.length : 0) + waitingTasks.length;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="cos-summary">
       <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
@@ -128,16 +130,19 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
       <div className="text-base leading-[1.55]" data-look="summary-prose">
         {asks.ok ? (
           <p data-testid="cos-summary-asks">
-            {asks.value.length === 0 ? (
+            {needsYou === 0 ? (
               "Nothing needs you."
             ) : (
               <>
-                <span data-testid="cos-needs-you">{asks.value.length}</span> {asks.value.length === 1 ? "thing needs" : "things need"} you.
+                <span data-testid="cos-needs-you">{needsYou}</span> {needsYou === 1 ? "thing needs" : "things need"} you.
               </>
             )}
           </p>
         ) : (
           <SectionFailure what="What needs you" failure={asks.failure} onRetry={retry} testId="cos-summary-asks-failure" />
+        )}
+        {parked.ok ? null : (
+          <SectionFailure what="The tasks waiting on you" failure={parked.failure} onRetry={retry} testId="cos-summary-parked-failure" />
         )}
         {running.ok ? (
           <p data-testid="cos-summary-running" data-runs={running.value.runs} data-workstreams={running.value.workstreams}>
@@ -147,6 +152,42 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
           <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="cos-summary-running-failure" />
         )}
       </div>
+      {waitingTasks.length > 0 ? (
+        <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-parked">
+          {waitingTasks.map((row, i) => (
+            <li
+              key={`${row.boardRef}/${row.id}`}
+              className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
+              data-testid="cos-parked-task"
+              data-task-id={row.id}
+            >
+              <div className="flex items-baseline gap-[9px]">
+                <NeedsYouTag />
+                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
+                  {row.assignee ?? "a worker"} waits on you · {row.id}
+                  {" · "}
+                  <button
+                    type="button"
+                    className="text-info hover:text-foreground"
+                    onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+                    data-testid="cos-parked-open"
+                  >
+                    open task
+                  </button>
+                </p>
+              </div>
+              <p className="text-sm" data-testid="cos-parked-title">
+                {row.title}
+              </p>
+              {row.question === undefined ? null : (
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground" data-testid="cos-parked-question">
+                  {row.question}
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {asks.ok && asks.value.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-asks">
           {asks.value.map((ask, i) => (
@@ -159,7 +200,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {ask.workerId ?? "unknown worker"} asks{" · "}
+                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
                   <button
                     type="button"
                     className="text-info hover:text-foreground"
@@ -218,7 +259,7 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
     );
   }
   return (
-    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions()} />
+    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} />
   );
 }
 
@@ -262,13 +303,11 @@ function Talk({
   sessions,
   gaps,
   lead,
-  suggestions,
 }: {
   worker: Worker;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
   lead: ReactNode;
-  suggestions: readonly string[];
 }) {
   const working = useChiefOfStaffWorking();
   // A line the palette handed over is sent by this screen's composer, and is dropped if it is never taken.
@@ -284,58 +323,33 @@ function Talk({
       lead={lead}
       working={working}
       startWork={startChiefOfStaffWork}
-      suggestions={suggestions}
       autoSend={handed}
       onAutoSend={clearHandedLine}
       renderItem={renderAsk}
       scale="cos"
+      startAtEnd
     />
   );
 }
 
-/** The right panel at Shift Coordinator: ON CALL, the workers Roster reads on call. */
-export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
-  const states = workerStates(snapshot);
-  const onCall = [...states.workers.values()].filter((state) => state.status === "on call");
-  // The delegates and tasks panels: only for a chief of staff that runs on the coordinator flow.
+/** The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow. */
+export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
   const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
-      <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
-        ON CALL
-        {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
-      </p>
-      {onCall.length === 0 ? (
-        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-on-call-none">
-          No worker is on call.
-        </p>
-      ) : (
-        <ul className="space-y-0.5">
-          {onCall.map(({ worker }) => (
-            <li key={worker.id}>
-              <button
-                type="button"
-                onClick={() => navigate({ level: "roster", team: worker.team })}
-                className="flex w-full items-center gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
-                data-testid="cos-on-call"
-                data-worker-id={worker.id}
-              >
-                <ShiftMark status="on call" />
-                <span className="truncate">{worker.id}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
       {cos !== undefined ? (
         <>
-          <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
+          <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
           <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
         </>
-      ) : null}
+      ) : (
+        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-panel-empty">
+          No delegates or tasks yet.
+        </p>
+      )}
     </div>
   );
 }

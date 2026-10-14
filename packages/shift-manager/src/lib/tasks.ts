@@ -25,11 +25,21 @@ export function elapsed(row: BoardRow, now: number): string | null {
   return minutes < 10 ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${minutes}m`;
 }
 
+/**
+ * The row's own title, or `null` when it has none to show: a row filed with no
+ * title reads its goal as its title (`toBoardRow`), and a Brief that prints
+ * both says the same thing twice.
+ */
+export function distinctTitle(row: Pick<BoardRow, "title" | "goal"> | undefined): string | null {
+  if (row === undefined || row.title === row.goal) return null;
+  return row.title;
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Tasks' summary line (v2:1384): the rows in flight (open and not queued), the
- * asks waiting on the user, who is on shift and on call, and how many
+ * asks waiting on the user, who is on shift, and how many
  * streams (the conversations holding their boards) the rows in flight run in.
  */
 export function tasksSummary(snapshot: LoadedSnapshot): string {
@@ -40,7 +50,6 @@ export function tasksSummary(snapshot: LoadedSnapshot): string {
     `${inFlight.length} in flight`,
     `${asks} ${asks === 1 ? "needs" : "need"} you`,
     `${counts["on shift"]} on shift`,
-    `${counts["on call"]} on call`,
     plural(new Set(inFlight.map((row) => row.holderSessionId)).size, "stream", "streams"),
   ].join(" · ");
 }
@@ -57,9 +66,8 @@ export function runningSessions(rows: readonly BoardRow[]): number {
   return linked.size + running.filter((row) => row.run == null).length;
 }
 
-/** What Inbox says when nothing waits on the user (v2:1354): the sessions still running, and who is on call. */
+/** What Inbox says when nothing waits on the user (v2:1354): the sessions still running. */
 export function emptyInboxSentence(snapshot: LoadedSnapshot): string {
   const running = runningSessions(openRows(snapshot));
-  const onCall = shiftCounts(workerStates(snapshot))["on call"];
-  return `Nothing needs you. ${plural(running, "session is", "sessions are")} still running and ${plural(onCall, "worker is", "workers are")} on call.`;
+  return `Nothing needs you. ${plural(running, "session is", "sessions are")} still running.`;
 }

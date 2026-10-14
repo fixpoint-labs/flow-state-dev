@@ -176,7 +176,7 @@ function isRefusedAdmission(error: unknown): boolean {
  * adapter builds its own resolution context, so an adapter declaring any
  * source of its own could still stamp `cli` on the context it resolves.
  */
-const inProcessAsks = new WeakSet<PrincipalResolutionContext>();
+const inProcessWaits = new WeakSet<PrincipalResolutionContext>();
 
 /** An answer to "who is this caller", with whether the framework supplied it. */
 type PrincipalResolution = {
@@ -266,7 +266,7 @@ function createPrincipalResolution(options: {
     // before any resolver runs, whatever source the adapter that built this
     // context declared — a resolver branching on `source === "cli"` must never
     // see a network request.
-    if (context.source === CLI_SOURCE && !inProcessAsks.has(context)) {
+    if (context.source === CLI_SOURCE && !inProcessWaits.has(context)) {
       throw new PrincipalResolutionError(
         `source "${CLI_SOURCE}" is reserved for the engine's in-process entry point ` +
           `(fsdev run and fsdev chat); a transport adapter cannot resolve a request under it.`,
@@ -411,7 +411,7 @@ export async function resolveInProcessPrincipal(
       })
     })
   });
-  inProcessAsks.add(context);
+  inProcessWaits.add(context);
   const { principal, isDevelopmentDefault } = await resolution(context);
   return {
     ...principal,

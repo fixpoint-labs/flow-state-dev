@@ -47,7 +47,7 @@ workforce/
     …
 ```
 
-An org worker is one worker the whole organization shares, such as a chief of staff, rather than a member of any team.
+An org worker is one worker the whole organization shares, such as a Shift Coordinator, rather than a member of any team.
 
 Every example below reads the first tree, the one without `org/`.
 

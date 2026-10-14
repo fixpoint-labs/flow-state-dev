@@ -25,7 +25,7 @@ import { pendingGatesOf, stopSuspendedRequest, type SuspendedStopDeps } from "..
  *   up on its next heartbeat.
  * - `stopped-parked`: the request was parked (`suspended`, or `interrupted` on a
  *   pending gate) and the stop resolved its gate (FIX-1816). It ends
- *   `aborted`; a turn parked on an ask first cancels the task it asked for.
+ *   `aborted`; a turn parked on a wait first cancels the task it waits on.
  * - `already-resolved`: the request was parked, but its gate was resolved
  *   first (an answer won the race), so it runs again. Nothing was written.
  */

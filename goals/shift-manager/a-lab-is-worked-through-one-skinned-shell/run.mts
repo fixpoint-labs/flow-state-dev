@@ -424,8 +424,8 @@ const CHILDREN: Child[] = [
   { id: "P3.1 design-system", run: "goals/design-system/skins-reused-components-from-one-token-set/run.mts", control: "hardcoded-accent", must: /b:themed[^\n]*tool:awaiting/, allowed: /tool:awaiting|b:themed summary — 1 components: tool\.tsx/ },
   // P3.2: each child's merged goal check, with its controls.
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab") },
-  // Written-in seats leave multi-seat-collab's parked row with no seat, so its empty Inbox counts no worker
-  // on call and its task composer finds no door: both follow from the names, as the goal records.
+  // Written-in seats leave multi-seat-collab's parked row with no seat, so its task composer finds no
+  // door: that follows from the names, as the goal records.
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-seat-collab\] TEAMS equals the store's seats/, allowed: /\[multi-seat-collab\] (TEAMS equals the store's seats|Inbox equals the store's pending asks|the post appears on screen)/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "optimistic-post", must: /the post is in the stored transcript/, allowed: /the post is in the stored transcript/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer lands in the store/, allowed: /an answer lands in the store/ },

@@ -1,22 +1,22 @@
 /**
- * Ask on the board: `dispatchAndWait` files a task, the turn parks, and the
+ * Wait on the board: `dispatchAndWait` files a task, the turn parks, and the
  * row's ending resumes it with the answer (FIX-1816 P2, V3 V4 and BR-12a).
  *
- * The asking turn is a generator in a plain sequencer, the shape a Workforce
+ * The waiting turn is a generator in a plain sequencer, the shape a Workforce
  * turn has. "The colleague" is a later request in the same conversation that
  * claims and settles the row, and the board touch is a request that calls
- * `resumeOwedAsks` directly: the notice that will call it on its own arrives
+ * `resumeOwedWaits` directly: the notice that will call it on its own arrives
  * with the child-finished signal (FIX-1816 P3).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
-import { askGateId } from "../../src/tasks/helpers/wait-for-response";
+import { waitGateId } from "../../src/tasks/helpers/wait-for-response";
 import {
   act,
-  askCall,
-  askFlow,
+  waitCall,
+  waitFlow,
   BOARD,
   finalAnswer,
   rows,
@@ -27,12 +27,12 @@ import {
   toolResults,
   until,
   USER
-} from "./ask-fixture";
+} from "./wait-fixture";
 
-describe("ask on the board: file, park, and resume on the row's ending", () => {
-  it("files one row marked asked, parks, and resumes with the row's output as the answer (BR-1, BR-2)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+describe("wait on the board: file, park, and resume on the row's ending", () => {
+  it("files one row marked waited-on, parks, and resumes with the row's output as the answer (BR-1, BR-2)", async () => {
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = runtimeFor(flow);
     try {
       const parked = await act(state, flow, "run");
@@ -40,9 +40,9 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
 
       const [row] = await rows(state, flow);
       expect(row).toMatchObject({ status: "pending", resumeOwed: false });
-      expect(row!.ask?.gateId.startsWith(`${askGateId(BOARD, row!.id)}#`)).toBe(true);
+      expect(row!.wait?.gateId.startsWith(`${waitGateId(BOARD, row!.id)}#`)).toBe(true);
       // The default bound: five minutes from filing (BR-14).
-      const left = row!.ask!.deadline - Date.now();
+      const left = row!.wait!.deadline - Date.now();
       expect(left).toBeGreaterThan(4 * 60_000);
       expect(left).toBeLessThanOrEqual(5 * 60_000);
 
@@ -67,9 +67,9 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
     ["fails for good", { kind: "fail", error: "the source was unreachable" }, "wait_task_failed"],
     ["is cancelled", { kind: "cancel" }, "wait_task_cancelled"]
   ] as const) {
-    it(`an asked row that ${ending} resumes the turn with ${code} (BR-3)`, async () => {
-      const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-      const flow = askFlow(model);
+    it(`a waited-on row that ${ending} resumes the turn with ${code} (BR-3)`, async () => {
+      const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+      const flow = waitFlow(model);
       const state = runtimeFor(flow);
       try {
         const parked = await act(state, flow, "run");
@@ -84,8 +84,8 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   }
 
   it("a row that fails once, is retried, then completes resumes the turn once, with the final answer (BR-12a)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model, { maxAttempts: 2 });
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { maxAttempts: 2 });
     const state = runtimeFor(flow);
     try {
       const parked = await act(state, flow, "run");
@@ -112,8 +112,8 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   });
 
   it("a resume accepted but never cleared by the touch is cleared by the turn itself (crash between resume and clear)", async () => {
-    const { model } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+    const { model } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = runtimeFor(flow);
     try {
       const parked = await act(state, flow, "run");
@@ -128,12 +128,12 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
         inputSchema: z.object({}).passthrough(),
         outputSchema: z.any(),
         execute: async (_i, ctx) =>
-          ctx.requestHost!.resumeAsk!({
-            gateId: row!.ask!.gateId,
+          ctx.requestHost!.resumeWait!({
+            gateId: row!.wait!.gateId,
             outcome: { answered: true, answer: "answer" }
           })
       });
-      const resumer = defineFlow({ kind: "ask-board", actions: { go: { block: resumeOnly } } })({ id: "ask-board" });
+      const resumer = defineFlow({ kind: "wait-board", actions: { go: { block: resumeOnly } } })({ id: "wait-board" });
       const resumed = await runAction({
         orgId: DEFAULT_ORG_ID,
         flow: resumer,
@@ -160,14 +160,14 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
     const { model, seen } = stepModel([
       () => ({
         toolCalls: [
-          { toolCallId: "c1", toolName: "ask_colleague", args: { question: "first" } },
-          { toolCallId: "c2", toolName: "ask_colleague", args: { question: "second" } }
+          { toolCallId: "c1", toolName: "wait_on_colleague", args: { question: "first" } },
+          { toolCallId: "c2", toolName: "wait_on_colleague", args: { question: "second" } }
         ],
         finishReason: "tool-calls"
       }),
       finalAnswer
     ]);
-    const flow = askFlow(model);
+    const flow = waitFlow(model);
     const state = runtimeFor(flow);
     try {
       const parked = await act(state, flow, "run");
@@ -188,8 +188,8 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   });
 
   it("OFF STATE: without durable execution nothing is filed and the call answers wait_unavailable", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = runtimeFor(flow, inMemoryStores(), false);
     try {
       const run = await act(state, flow, "run");
@@ -202,15 +202,15 @@ describe("ask on the board: file, park, and resume on the row's ending", () => {
   });
 });
 
-describe("ask on the board: the answer always comes back", () => {
+describe("wait on the board: the answer always comes back", () => {
   it("a marker clear that fails after the answer still returns the answer; the next touch clears the marker", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model, { failClearOnce: true });
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { failClearOnce: true });
     const state = runtimeFor(flow);
     try {
       const parked = await act(state, flow, "run");
       await act(state, flow, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
-      // The touch resumes the turn; the asking call's own clear of the marker is the one that fails.
+      // The touch resumes the turn; the waiting call's own clear of the marker is the one that fails.
       await act(state, flow, "touch");
       await until(state, parked.requestId!, "completed");
       expect(toolResults(seen[1]!.messages)).toContain("Yes, renewed 2026-08");
@@ -223,10 +223,10 @@ describe("ask on the board: the answer always comes back", () => {
   });
 });
 
-describe("ask on the board: a host that can't bound the ask", () => {
+describe("wait on the board: a host that can't bound the wait", () => {
   it("OFF STATE: durable execution with no durability sweeper refuses wait_unavailable, and files nothing (BR-5)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = runtimeFor(flow);
     try {
       // A direct caller of dispatchAndWait, on a host whose router (and so its sweeper) was never built.
@@ -241,14 +241,14 @@ describe("ask on the board: a host that can't bound the ask", () => {
   });
 });
 
-describe("ask on the board: the row ended first, and the deadline", () => {
+describe("wait on the board: the row ended first, and the deadline", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("a row that ended before the turn parked answers at once, without parking, and clears its marker (BR-7)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model, { endsOnFiling: "already done" });
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { endsOnFiling: "already done" });
     const state = runtimeFor(flow);
     try {
       const run = await act(state, flow, "run");
@@ -263,8 +263,8 @@ describe("ask on the board: the row ended first, and the deadline", () => {
   });
 
   it("a row that ended between the check and the park, with no touch after, answers at the deadline, not wait_timed_out", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model, { endsBeforePark: "Yes, renewed 2026-08" });
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { endsBeforePark: "Yes, renewed 2026-08" });
     const state = runtimeFor(flow, inMemoryStores(), true, 25);
     try {
       const parked = await act(state, flow, "run");
@@ -282,9 +282,9 @@ describe("ask on the board: the row ended first, and the deadline", () => {
     }
   });
 
-  it("an ask open past its deadline is resumed by a real sweep with wait_timed_out, and its row is cancelled (BR-14)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+  it("a wait open past its deadline is resumed by a real sweep with wait_timed_out, and its row is cancelled (BR-14)", async () => {
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = runtimeFor(flow, inMemoryStores(), true, 25);
     try {
       await state.getRouter(); // the router builds the sweeper
