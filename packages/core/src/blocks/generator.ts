@@ -647,15 +647,17 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
       throw new Error(`Generator "${blockName}" model array cannot be empty`);
     }
     const { createFallbackModel } = await import("../models/fallbackModel");
-    const { parseModelString } = await import("../models/providerDetection");
-    const entries = modelValue.map((modelStr) => {
-      const parsed = parseModelString(modelStr);
-      return {
-        modelId: modelStr,
-        providerName: parsed.provider ?? "unknown",
-        model: ctx.resolveModel(modelStr, blockName, callOptions),
-      };
-    });
+    const { extractProviderName } = await import("../models/providerDetection");
+    // The resolver holds the app's providers and gateways, so it names the
+    // provider of a `name:model` string; the config-free guess is for a
+    // resolver without `providerOf`.
+    const providerOf = (modelStr: string) =>
+      ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr);
+    const entries = modelValue.map((modelStr) => ({
+      modelId: modelStr,
+      model: ctx.resolveModel(modelStr, blockName, callOptions),
+      providerName: providerOf(modelStr),
+    }));
     const fallback = createFallbackModel({
       groupName: `${blockName}-fallback`,
       models: entries,

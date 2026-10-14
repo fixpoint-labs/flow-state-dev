@@ -94,7 +94,7 @@ export const ASK_LAB_COORDINATORS = ["ops.desk", "ops.side"] as const;
  * The model best fit's one evaluator call would run on. Both coordinators
  * route to everyone and never make that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 
 /** The flow the inventory is written from: the Lab's own, carrying the writer. */
 const INVENTORY_WRITER_FLOW = "inventory-writer";

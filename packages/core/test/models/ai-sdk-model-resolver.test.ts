@@ -141,7 +141,7 @@ describe("createAiSdkModelResolver — prompt caching", () => {
     (model as any).provider = "gateway.chat";
 
     const resolver = createAiSdkModelResolver(() => model);
-    await resolver("vercel/anthropic/claude-sonnet-4-6", "gen").generate({
+    await resolver("vercel:anthropic/claude-sonnet-4-6", "gen").generate({
       messages: [{ role: "user", content: "hi" }],
     });
 

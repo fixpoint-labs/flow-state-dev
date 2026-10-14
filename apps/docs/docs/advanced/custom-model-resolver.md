@@ -18,7 +18,7 @@ const chatGen = generator({
 });
 ```
 
-Model strings use slash format: `"provider/model"`. For gateway routing, use three segments: `"vercel/openai/gpt-5.4"`.
+Model strings use slash format: `"provider/model"`. For gateway routing, use three segments: `"vercel:openai/gpt-5.4"`.
 
 ## Zero-Config Resolver
 
@@ -80,7 +80,7 @@ const resolver = createModelResolver({
 });
 ```
 
-`defaultModel` is required when `intents` is non-empty. It must parse as `provider/model` or `gateway/provider/model` — never another `intent/*`. The resolver validates these constraints at construction; misconfigured intents throw immediately rather than at first generator call.
+`defaultModel` is required when `intents` is non-empty. It must parse as `provider/model` or `name:model` — never another `intent/*`. The resolver validates these constraints at construction; misconfigured intents throw immediately rather than at first generator call.
 
 Framework canonical intent names are documented in [Models](/docs/fundamentals/models#canonical-intent-names). Apps can add more — names match `^[a-zA-Z][a-zA-Z0-9_-]*$`.
 
@@ -98,7 +98,7 @@ Env vars overlay `intents` and `defaultModel` at construction. The `env` option 
 
 | Variable | Effect | Value shape |
 | --- | --- | --- |
-| `FSDEV_INTENT_<NAME>` | Replaces `intents[name]` with a one-element candidate list. | `provider/model` or `gateway/provider/model`. |
+| `FSDEV_INTENT_<NAME>` | Replaces `intents[name]` with a one-element candidate list. | `provider/model` or `name:model`. |
 | `FSDEV_DEFAULT_MODEL` | Replaces `defaultModel`. | Same as above. |
 
 `<NAME>` is `intentName.toUpperCase().replace(/-/g, "_")`. Disallowed values: `intent/*`, empty / whitespace-only strings, and anything `parseModelString` rejects.
@@ -115,7 +115,7 @@ Each env-var value passes through the same `parseModelString` parser used for in
 
 ```
 createModelResolver: FSDEV_INTENT_CHAT: Invalid model format: "garbage". ...
-createModelResolver: FSDEV_INTENT_CHAT must be a 'provider/model' or 'gateway/provider/model' string; received "intent/foo".
+createModelResolver: FSDEV_INTENT_CHAT must be a 'provider/model' or 'name:model' string; received "intent/foo".
 ```
 
 An `FSDEV_INTENT_*` for an intent that isn't declared warns and is skipped rather than throwing:
@@ -140,7 +140,7 @@ When `env` is passed, the resolver does not read `process.env` for intent overri
 
 ### Precedence
 
-1. A hard-coded `provider/model` or `gateway/provider/model` string passed to a generator (no env-var hook at this layer).
+1. A hard-coded `provider/model` or `name:model` string passed to a generator (no env-var hook at this layer).
 2. An intent's env override (`FSDEV_INTENT_<NAME>`).
 3. The intent's in-code candidate list.
 4. The `FSDEV_DEFAULT_MODEL` override.

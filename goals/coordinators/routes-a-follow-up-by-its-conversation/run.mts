@@ -55,7 +55,7 @@ const OWNER = "u_followup";
 const ORG = "org_followup";
 
 /** Best fit's evaluation model, named the way the app names it. */
-const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** One thread: an opener the `on` specialist answers, and a follow-up whose words point elsewhere. */
 type Thread = { on: string; opener: string; followUp: string };

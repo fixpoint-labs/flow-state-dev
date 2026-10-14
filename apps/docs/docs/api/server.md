@@ -221,11 +221,19 @@ const resolver = createModelResolver({
 });
 ```
 
-Model strings use slash format: `"openai/gpt-5.4"`, `"anthropic/claude-sonnet-4-6"`, `"vercel/openai/gpt-5.4"`.
+Model strings look like `"openai/gpt-5.4"` or `"anthropic/claude-sonnet-4-6"`. To name the gateway that serves a model, put it before a colon: `"vercel:openai/gpt-5.4"`.
 
 ### `parseModelString(modelString)`
 
-Parse a slash-format model string into its components (provider, model, gateway).
+Split a model string by lane, using the string alone:
+
+```ts
+parseModelString("openai/gpt-5.4");          // { type: "direct", provider: "openai", modelId: "gpt-5.4" }
+parseModelString("vercel:openai/gpt-5.4");   // { type: "alias", alias: "vercel", modelId: "openai/gpt-5.4" }
+parseModelString("intent/chat");             // { type: "intent", intentName: "chat" }
+```
+
+An `alias` result doesn't say whether the name is a gateway or a provider. The resolver decides that from its `providers` and `gateways`. A string with three slash-separated parts throws, naming its colon spelling.
 
 ## Voice
 

@@ -70,7 +70,7 @@ export const REPLY_MARKER = "[reply:fresh-host]";
  * coordinator routes to everyone and never makes that call, but the flow
  * names no default, so the app names one.
  */
-const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** This app's own worker flow: takes a note when asked directly, and takes no posts. */
 const defineNote = (installation: WorkerInstallation) =>

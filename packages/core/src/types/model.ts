@@ -365,4 +365,14 @@ export type ModelResolver = ((
     modelId: string,
     blockName?: string
   ): EvaluationModel | Promise<EvaluationModel>;
+
+  /**
+   * The provider a model string's call reaches, classified against this
+   * resolver's own `providers` and `gateways` maps: `"anthropic"` for
+   * `"vercel:anthropic/claude-sonnet-5"`, `"triage"` for `"triage:native"`.
+   * Returns `"unknown"` when the string names no provider. Optional: a
+   * generator's model-array fallback uses it to label each entry, and falls
+   * back to `extractProviderName`'s config-free guess when it is absent.
+   */
+  providerOf?(modelId: string): string;
 };

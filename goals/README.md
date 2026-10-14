@@ -105,7 +105,7 @@ Every goal repeats the same scaffolding around the part that is actually its own
 
 The library covers scaffolding only. **The grading logic is the goal** and belongs in `run.mts`. So does retry *policy* — the corpus has three, and they mean different things (retry-until-first-pass over model flakiness vs. require-k-of-k where the stability number is itself the published result).
 
-**Model ids.** `DEFAULT_MODEL` is the portable id (`openai/gpt-5.4-mini`), for when an app's configured resolver applies its own gateway. `gatewayModel()` qualifies it (`vercel/…`) for a goal that builds its own resolver and must name the gateway. `goalModel()` lets `GOAL_MODEL` override either. A goal pinned to a specific model to reproduce a bug names it literally and says why.
+**Model ids.** `DEFAULT_MODEL` is the portable id (`openai/gpt-5.4-mini`), for when an app's configured resolver applies its own gateway. `gatewayModel()` qualifies it (`vercel:…`) for a goal that builds its own resolver and must name the gateway. `goalModel()` lets `GOAL_MODEL` override either. A goal pinned to a specific model to reproduce a bug names it literally and says why.
 
 ### Harnesses
 

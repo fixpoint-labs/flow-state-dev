@@ -4,7 +4,8 @@ import { providerNames, type GatewayConfig } from "./types";
 // Standard env var mappings
 // ---------------------------------------------------------------------------
 
-const DEFAULT_ENV_VARS: Record<string, string> = {
+/** Env-var name that supplies the API key for each built-in provider. */
+export const PROVIDER_ENV_VARS: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   openai: "OPENAI_API_KEY",
   google: "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -49,7 +50,7 @@ export function detectAvailableProviders(config: {
   const available = new Map<string, ProviderAvailability>();
 
   // Phase 1: Check direct provider keys (explicit config + env vars)
-  for (const [provider, envVar] of Object.entries(DEFAULT_ENV_VARS)) {
+  for (const [provider, envVar] of Object.entries(PROVIDER_ENV_VARS)) {
     const key = config.keys?.[provider] ?? env[envVar];
     if (key) {
       available.set(provider, { provider, source: "key", apiKey: key });
@@ -125,15 +126,28 @@ export function detectAvailableProviders(config: {
 // Model string parsing
 // ---------------------------------------------------------------------------
 
+/**
+ * One model string, split by the lane it is in. The parser sees only the
+ * string, so it decides the lane and nothing more:
+ *
+ * - `"direct"`: `provider/model`. Resolves however it can: the provider
+ *   directly, else a configured gateway.
+ * - `"intent"`: `intent/<name>`.
+ * - `"alias"`: `<name>:<model id>`, a string that names its route. Whether
+ *   the name is a gateway or a provider is decided by the resolver, which
+ *   holds the app's `providers` and `gateways` maps.
+ */
 export interface ParsedModelString {
-  /** "direct" = provider/model, "gateway" = gateway/provider/model, "intent" = intent/name */
-  type: "direct" | "gateway" | "intent";
-  /** Provider name (e.g., "openai"). Present for direct and gateway types. */
+  type: "direct" | "intent" | "alias";
+  /** Provider name (e.g., "openai"). Present for the direct type only. */
   provider?: string;
-  /** Model ID (e.g., "gpt-5.4"). Present for direct and gateway types. */
+  /**
+   * Model ID. For direct, the part after the slash (`gpt-5.4`). For alias,
+   * everything after the first colon, untouched (`anthropic/claude-sonnet-5`).
+   */
   modelId?: string;
-  /** Gateway name (e.g., "vercel"). Only present for gateway type. */
-  gateway?: string;
+  /** The route name before the first colon (e.g., "vercel", "triage"). Alias type only. */
+  alias?: string;
   /** Intent name (e.g., "utility"). Only present for intent type. */
   intentName?: string;
 }
@@ -153,17 +167,37 @@ export function canonicalizeIntentName(intentName: string): string {
 }
 
 /**
- * Parse a model string into its components.
+ * Parse a model string into its lane.
  *
  * Supported formats:
- * - `"provider/model"` → direct provider access
- * - `"gateway/provider/model"` → route through a gateway
- * - `"intent/name"` → resolve a named intent (configured via createModelResolver)
+ * - `"provider/model"` → the provider-model lane (`"openai/gpt-5.4"`)
+ * - `"intent/name"` → a named intent (configured via createModelResolver)
+ * - `"name:model"` → a named route, split at the first colon, the way AI SDK's
+ *   provider registry splits: `"vercel:anthropic/claude-sonnet-5"`,
+ *   `"openai:gpt-5.4"`, `"triage:native"`. A string is in this lane when its
+ *   first `:` comes before its first `/`, so `"openai/gpt-oss:free"` stays a
+ *   slash id.
+ *
+ * The removed `gateway/provider/model` form throws, naming its colon spelling.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
   if (trimmed.length === 0) {
     throw new Error("Model string cannot be empty.");
+  }
+
+  const colon = trimmed.indexOf(":");
+  const slash = trimmed.indexOf("/");
+  if (colon !== -1 && (slash === -1 || colon < slash)) {
+    const alias = trimmed.slice(0, colon);
+    const modelId = trimmed.slice(colon + 1);
+    if (alias.length === 0 || modelId.length === 0) {
+      throw new Error(
+        `Invalid model format: "${modelString}". ` +
+          `A named route needs a name and a model id, e.g. "vercel:openai/gpt-5.4" or "openai:gpt-5.4".`
+      );
+    }
+    return { type: "alias", alias, modelId };
   }
 
   const parts = trimmed.split("/");
@@ -181,36 +215,43 @@ export function parseModelString(modelString: string): ParsedModelString {
     return { type: "direct", provider: parts[0], modelId: parts[1] };
   }
 
-  if (parts.length === 3) {
+  if (parts.length >= 3) {
     if (parts[0] === "intent") {
       throw new Error(
         `Invalid model format: "${modelString}". intent/* model strings must be 2 parts (intent/name).`
       );
     }
-    return {
-      type: "gateway",
-      gateway: parts[0],
-      provider: parts[1],
-      modelId: parts[2],
-    };
+    const renamed = `${parts[0]}:${parts.slice(1).join("/")}`;
+    throw new Error(
+      `Invalid model format: "${modelString}". The "gateway/provider/model" form was removed; ` +
+        `name the route with a colon: "${renamed}".`
+    );
   }
 
   throw new Error(
     `Invalid model format: "${modelString}". ` +
-      `Expected "provider/model" (e.g., "openai/gpt-5.4") or ` +
-      `"gateway/provider/model" (e.g., "vercel/openai/gpt-5.4").`
+      `Expected "provider/model" (e.g., "openai/gpt-5.4") or a named route ` +
+      `"name:model" (e.g., "vercel:openai/gpt-5.4").`
   );
 }
 
 /**
- * Extract the provider segment from a model string. For direct strings this
- * is `parts[0]`; for gateway strings it is the inner provider segment
- * (`parts[1]`). Returns `"unknown"` for malformed strings or intent strings.
+ * Best-guess provider name for a model string, without the app's config.
+ * Direct strings return the provider segment; a named route returns the
+ * segment before the model id's first slash (`anthropic` in
+ * `vercel:anthropic/claude-sonnet-5`), else the name itself (`openai` in
+ * `openai:gpt-5.4`). Returns `"unknown"` for malformed strings or intent
+ * strings. A resolver classifies a named route against its own maps
+ * (`ModelResolver.providerOf`); this guess is for callers without one.
  */
 export function extractProviderName(modelString: string): string {
   try {
     const parsed = parseModelString(modelString);
     if (parsed.type === "intent") return "unknown";
+    if (parsed.type === "alias") {
+      const slash = parsed.modelId!.indexOf("/");
+      return slash > 0 ? parsed.modelId!.slice(0, slash) : parsed.alias!;
+    }
     return parsed.provider ?? "unknown";
   } catch {
     return "unknown";

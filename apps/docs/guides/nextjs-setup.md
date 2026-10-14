@@ -140,14 +140,14 @@ export const flowstate = createFlowState({
   models: {
     default: "openai/gpt-5.4-mini",
     intents: {
-      chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+      chat: ["vercel:anthropic/claude-sonnet-4.6", "vercel:openai/gpt-5.5"],
     },
   },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
 
-Model strings use slash format: `"openai/gpt-5.4-mini"`, `"anthropic/claude-sonnet-4-6"`. For gateway routing: `"vercel/openai/gpt-5.4"`. `intents` maps a named intent to an ordered list of candidate models the resolver tries in turn.
+Model strings look like `"openai/gpt-5.4-mini"` or `"anthropic/claude-sonnet-4-6"`. To name the gateway that serves a model, put it before a colon: `"vercel:openai/gpt-5.4"`. `intents` maps a named intent to an ordered list of candidate models the resolver tries in turn.
 
 ---
 

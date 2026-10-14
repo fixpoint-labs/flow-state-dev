@@ -61,10 +61,13 @@ export function baselineSubject(opts: {
   };
 }
 
-/** Last path segment of a model id, for compact baseline names. */
+/**
+ * Last path segment of a model id, for compact baseline names. A named route
+ * with no slash (`openai:gpt-5.4`) drops its name.
+ */
 function shortModel(model: string): string {
-  const parts = model.split("/");
-  return parts[parts.length - 1];
+  const slash = model.lastIndexOf("/");
+  return slash === -1 ? model.slice(model.indexOf(":") + 1) : model.slice(slash + 1);
 }
 
 /** Config for `comparePatterns` — `runBenchmark` config minus the resolved subjects. */
