@@ -22,7 +22,7 @@ import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../li
 import { assertPatched, describePatches, modulePatchEnv, type ModulePatch } from "../../lib/module-patch.mts";
 import { buildShiftManagerPages, startShiftManager } from "../../lib/shift-manager.mts";
 import { loadScriptedClients } from "../files-tasks-down-the-owners-chain/scripted.mts";
-import { items, requests, sessions, taskRows, textOf, toolOutput, type StoredTask } from "../files-tasks-down-the-owners-chain/store.mts";
+import { items, requests, sessions, taskRows, toolOutput, type StoredTask } from "../files-tasks-down-the-owners-chain/store.mts";
 import { ALICE, ORG } from "./lab/people.mts";
 
 const HERE = new URL(".", import.meta.url).pathname;
@@ -65,8 +65,8 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/workforce/src/conversation-board/board.ts",
-        from: String.raw`return taskSessionKey\(claim\?\.followUpOf \?\? payload\.taskId, worker\);`,
-        to: "return taskSessionKey(`${payload.taskId}#${payload.attempts}`, worker);",
+        from: String.raw`return \{ key: taskSessionKey\(claim\?\.followUpOf \?\? task\.taskId, worker\) \};`,
+        to: "return { key: taskSessionKey(`${task.taskId}#${task.input.attempts}`, worker) };",
       },
     ],
     does: "every attempt, and every follow-up, is handed to a fresh session: the answer's re-entry and the follow-up run where nothing was done",
@@ -160,10 +160,13 @@ async function drive(origin: string, store: string) {
   const ended = parked && (await waitFor(() => ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 90_000));
   const endedIn = Date.now() - answeredAt;
   await quiet();
+  // Leg a is graded on the row as it stands here: leg b's line reopens it (FIX-1764).
+  const endedRow = row(taskId);
 
   // Leg b: the door into the finished task's session, found as an app finds it.
   const found = taskId === undefined || filingSessionId === undefined ? undefined : await app.findWorkerSession({ worker: "desk.ops", taskId, filingSessionId });
   const asked = found?.id === undefined ? null : await act("agent", found.id, "run", { message: LEG_B });
+  await waitFor(() => (row(taskId)?.attempts ?? 0) > (endedRow?.attempts ?? 0) && ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 120_000);
   await quiet();
 
   // Leg c: a follow-up task naming the finished one.
@@ -174,7 +177,7 @@ async function drive(origin: string, store: string) {
   await sleep(5_000);
   await quiet();
 
-  return { region, followUp, conv, filingSessionId, filed, taskId, parked, parkedRow, answered, ended, endedIn, found, asked, follow, followId };
+  return { region, followUp, conv, filingSessionId, filed, taskId, parked, parkedRow, answered, ended, endedIn, endedRow, found, asked, follow, followId };
 }
 
 // ---- grading ----------------------------------------------------------------------------
@@ -183,7 +186,8 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const failures: string[] = [];
   const notes: string[] = [];
   const rows = taskRows(store, ALICE.userId, ORG);
-  const task = rows.find((t) => t.id === o.taskId) as (StoredTask & { turnReentries?: number; abandonments?: number }) | undefined;
+  const task = o.endedRow as (StoredTask & { turnReentries?: number; abandonments?: number }) | undefined;
+  const reopened = rows.find((t) => t.id === o.taskId);
   const follow = rows.find((t) => t.id === o.followId) as (StoredTask & { followUpOf?: string }) | undefined;
   const all = sessions(store);
   const parkedSession = o.parkedRow?.run?.sessionId;
@@ -198,6 +202,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const conv = all.find((s) => s.id === o.conv);
   const keys = (conv?.state.taskNotices as string[] | undefined) ?? [];
   const noticesOf = (id: string | undefined, ending: string) => keys.filter((k) => id !== undefined && k.startsWith(`${id}:`) && k.endsWith(`:${ending}`));
+  const attemptOf = (key: string) => Number(key.split(":").at(-2));
 
   // Leg a.
   if (!o.parked || noticesOf(o.taskId, "parked").length !== 1) {
@@ -210,14 +215,19 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   }
   if (!names(outputText(task), ticket)) failures.push(`a:names-ticket — wanted the output to name the ticket drawn before the question (${ticket}); it said ${show(task?.output)}`);
   if (!names(outputText(task), o.region)) failures.push(`a:names-region — wanted the output to name the answered region (${o.region}); it said ${show(task?.output)}`);
-  if (noticesOf(o.taskId, "completed").length !== 1) failures.push(`a:one-completed — wanted one completed notice; ${show(noticesOf(o.taskId, "completed"))}`);
+  const aCompleted = noticesOf(o.taskId, "completed").filter((k) => attemptOf(k) <= (task?.attempts ?? 0));
+  if (aCompleted.length !== 1) failures.push(`a:one-completed — wanted one completed notice before leg b; ${show(aCompleted)}`);
   const charged = (task?.attempts ?? 0) - (task?.turnReentries ?? 0) - (task?.abandonments ?? 0);
   if (charged !== 1) failures.push(`a:unspent — wanted the answer's re-entry not charged: one attempt charged; attempts ${task?.attempts}, re-entries ${task?.turnReentries}`);
 
-  // Leg b.
-  const reply = o.asked === null ? "" : items(store, o.found!.id, "message").filter((m) => m.requestId === o.asked!.requestId && m.role === "assistant").map(textOf).join("\n");
-  if (o.found?.id !== parkedSession || !names(reply, ticket)) {
-    failures.push(`b:names-ticket — wanted the task's own session (${parkedSession}, found ${o.found?.id}) to answer "${LEG_B}" with the ticket ${ticket}; it said ${show(reply)} (${o.asked?.status})`);
+  // Leg b: the line reopens the finished task, whose next attempt answers it in the task's session (FIX-1764).
+  const reply = outputText(reopened);
+  const reopenedRan = reopened?.status === "completed" && (reopened.attempts ?? 0) > (task?.attempts ?? 0) && reopened.run?.sessionId === parkedSession;
+  if (o.found?.id !== parkedSession || o.asked?.output?.reopened !== o.taskId || !reopenedRan || !names(reply, ticket)) {
+    failures.push(
+      `b:names-ticket — wanted "${LEG_B}" in the task's own session (${parkedSession}, found ${o.found?.id}) to reopen it (${show(o.asked?.output ?? o.asked?.error)}) and complete there naming the ticket ${ticket}; ` +
+        `it is ${reopened?.status} after ${reopened?.attempts} attempts in ${reopened?.run?.sessionId}, saying ${show(reopened?.output)}`,
+    );
   }
 
   // Leg c.
