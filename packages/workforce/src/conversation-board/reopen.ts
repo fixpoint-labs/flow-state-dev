@@ -1,7 +1,7 @@
 /**
- * A person's message on a finished task picks it up again (FIX-1764).
+ * A user's message on a finished task picks it up again (FIX-1764).
  *
- * A worker's door (`run` on the agent flow) answers a person's line with a
+ * A worker's door (`run` on the agent flow) answers a user's line with a
  * turn. In a conversation's task session whose task has finished, the line
  * reopens the task instead: the row goes back on the conversation's board
  * (orchestration's `reopen`, which only a finished row takes) and the board
@@ -15,7 +15,7 @@
  *   line is a turn, as it always was.
  * - **Server state only (BP-031).** The task, the board and where it runs are
  *   read off the session's own fields, written once by the hand-over; nothing
- *   in the person's input picks a row.
+ *   in the user's input picks a row.
  * - **A start that is lost** leaves the row pending and assigned, which is its
  *   start debt: the conversation's next touch of its board starts it.
  */
@@ -101,7 +101,7 @@ const reopenFinishedTask = handler({
 });
 
 /**
- * A worker's reply to a person, which reopens the session's task when that
+ * A worker's reply to a user, which reopens the session's task when that
  * task has finished, and is `turn` otherwise.
  *
  * @param turn The worker's turn for one message: what the door ran before.

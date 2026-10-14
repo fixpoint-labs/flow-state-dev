@@ -1,7 +1,7 @@
 /**
- * A person's message on a finished task reopens it (FIX-1764).
+ * A user's message on a finished task reopens it (FIX-1764).
  *
- * The task's own session still holds its context, so a person who writes
+ * The task's own session still holds its context, so a user who writes
  * there after the task finished is picking it up again: the line stays in the
  * session, the task goes back on the conversation's board and reads in
  * progress, and its next attempt runs in the same session, where the worker
@@ -67,7 +67,7 @@ async function finishedTask(h: BoardHost, goal: string) {
 const heardEndings = async (h: BoardHost, conv: string) =>
   (await h.requestsOf(conv)).filter((r) => r.actionName === "onTaskSettled").length;
 
-describe("a person's message on a finished task", () => {
+describe("a user's message on a finished task", () => {
   it("puts the task back in progress, runs it again in its own session, and the conversation hears it end again", async () => {
     const h = host([{ when: () => true, then: { text: "done" } }]);
     try {
@@ -93,14 +93,14 @@ describe("a person's message on a finished task", () => {
     }
   });
 
-  it("hands the reopened turn the person's message once, then points at it", async () => {
+  it("hands the reopened turn the user's message once, then points at it", async () => {
     const h = host([{ when: () => true, then: { text: "done" } }]);
     try {
       const { row } = await finishedTask(h, "Write the release note");
       await h.act("alice", row.run!.sessionId, "run", { message: "Mention the new flag too." }, "agent");
       await h.settled();
 
-      // Two model calls: the task, then the reopened attempt. The person's
+      // Two model calls: the task, then the reopened attempt. The user's
       // message never ran a turn of its own.
       expect(h.agentAnswer.calls).toHaveLength(2);
       const messages = sent(h.agentAnswer.calls[1]!.input);

@@ -63,7 +63,7 @@ const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) 
 };
 
 describe("V1 · the task session keeps its prompt (S5)", () => {
-  it("F1 · a person's later message reopens the finished task, whose turn is handed the task as filed (FIX-1764)", async () => {
+  it("F1 · a user's later message reopens the finished task, whose turn is handed the task as filed (FIX-1764)", async () => {
     const h = host([
       {
         when: (input) => textOf(input).includes("GOAL-audit") && !textOf(input).includes("KESTREL-41"),
@@ -83,7 +83,7 @@ describe("V1 · the task session keeps its prompt (S5)", () => {
       expect(later.error, messageOf(later.error)).toBeUndefined();
       await h.settled();
       const messages = sent(h.agentAnswer.calls.at(-1)!.input);
-      // The task as filed, the worker's answer, then the person's message, in that order.
+      // The task as filed, the worker's answer, then the user's message, in that order.
       const ask = messages.findIndex((m) => m.role === "user" && m.text.includes("GOAL-audit"));
       const did = messages.findIndex((m) => m.role === "assistant" && m.text.includes("KESTREL-41"));
       const now = messages.findIndex((m) => m.role === "user" && m.text.includes("Which licence"));

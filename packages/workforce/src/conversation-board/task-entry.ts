@@ -71,7 +71,7 @@ export function taskMessage(task: TaskWorkerInput): string {
  * never an answer. Shares its invariant with `packWorkerInput`'s `answer`
  * (orchestration `worker-step.ts`, `answer-envelope.test.ts`).
  *
- * On the attempt a person's message reopened (FIX-1764), the message is
+ * On the attempt a user's message reopened (FIX-1764), the message is
  * already in the session, written there by the worker's door, so the turn
  * points at it rather than repeating it.
  */
@@ -81,9 +81,9 @@ export function taskTurnMessage(task: TaskWorkerInput): string {
   return taskMessage(task);
 }
 
-/** What the turn of a reopened task says: the person's message is the line above it. */
+/** What the turn of a reopened task says: the user's message is the line above it. */
 export const REOPENED_TURN =
-  "A person wrote to you about this task after you finished it; their message is just above. Pick the task up again from there.";
+  "The user wrote to you about this task after you finished it; their message is just above. Pick the task up again from there.";
 
 /** True for a task input worth showing: present, and not an empty object. */
 function hasInput(input: unknown): boolean {
@@ -261,7 +261,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
 
   // A task whose pieces its session already filed (a retry, or a takeover
   // after a crash) runs no turn: it parks on them again. An answer to the
-  // worker's question always runs the turn (FIX-1817), and so does a person's
+  // worker's question always runs the turn (FIX-1817), and so does a user's
   // message that reopened it (FIX-1764). A `block` is handed the task and the
   // claim the gate verified; a `turn`, the task's message.
   const runs = async (task: TaskWorkerInput, ctx: unknown) =>
