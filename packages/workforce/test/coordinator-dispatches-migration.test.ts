@@ -1,7 +1,6 @@
 /**
- * A coordinator request opened while the judgment turn's record was named `handOffs`
- * (retired-name-refusal: BP-030), and resumed since, still reads what that turn
- * dispatched. Request state is not parsed on read, so `withDispatches` is the only
+ * A coordinator request opened while the judgment turn's record was named `handOffs` (retired-name-refusal)
+ * (BP-030), and resumed since, still reads what that turn dispatched. Request state is not parsed on read, so `withDispatches` is the only
  * thing between the old record and the judgment turn's `post.dispatches`: miss it and
  * the turn reports it dispatched to no delegate, and the next dispatch drops the ones
  * before it.

@@ -129,8 +129,9 @@ export const KEEP = [
   },
   {
     path: /^packages\/engine\/(src\/(context\/(request-principal|createExecutionContext)|execution\/(runAction|types)|stores\/(types|testing\/request-store-conformance)|transports\/host\/createInboundTransportHost)\.ts|test\/(abort|request-incarnation)\.test\.ts)$/,
-    // Only on a line naming no task, board, row or dispatch: one that does is a delivery of work.
-    line: /^(?!.*\b(tasks?|boards?|rows?|dispatch\w*)\b)/i,
+    // Each phrase and name the request-record and abort-controller code uses, so a new
+    // "hand off" line in these files stays open until someone classifies it.
+    line: /same-owner hand-off|last-write-wins hand-off|hand-off writes the holder's value|since the hand-off also replaces|\b(keepHandoff|handoffIncarnation)\b|\bhandoff( !==| ===| =$|\.controller|\.incarnation)|^\s*(const|let) handoff =|lost in the handoff|exercise the handoff|handed-off legacy record|makes the handoff atomic|incarnation \(a hand-off$|the same hand-off the enqueue-time record|the hand-off to a run|queued[-_]abort[-_]handoff|\b[sr]e?q?_queued_handoff\b|The hand-off really did rewrite|"handed off"|for a handed-off$|hand-off never rewrites|loses the race and hands off|the handed-off record|The hand-off overwrites|through the hand-off"/,
     rules: ["handoff-symbol", "handoff-prose"],
     why: "WR-5: a claimed request record, or its abort controller, passed to the run that holds it: mid-work (D3)"
   },
