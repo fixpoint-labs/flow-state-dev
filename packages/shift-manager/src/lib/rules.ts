@@ -1,12 +1,6 @@
 /**
- * A worker's standing rules for the user (FIX-1945 S6): the notes the user
- * asked that worker to keep, read and edited through the worker's own rules
- * action (`createWorkforceClient().standingRules`).
- *
- * The page holds no rule of its own. Every edit names the version of the list
- * it was drawn from, and the Lab checks it with the same limits the worker's
- * tools obey: a refused edit comes back with the Lab's reason and the list is
- * read again, so the page never shows a list the Lab doesn't hold.
+ * One worker's standing rules for the signed-in user, read and edited
+ * through that worker's `standingRules` action.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { StandingRulesActionOutput } from "@flow-state-dev/workforce/browser";
@@ -27,13 +21,11 @@ export type RuleEditInput =
 
 export interface StandingRulesView {
   read: RulesRead;
-  /** Whether an edit is on its way. */
   busy: boolean;
-  /** Why the last edit was refused; cleared by the next edit. */
+  /** The last edit's refusal; cleared when the next edit starts. */
   refused: Failure | undefined;
-  /** Read the list again. */
   reread(): void;
-  /** Make one edit, as the list drawn now. Resolves `true` when it landed. */
+  /** Applies `input` to the list just read. Resolves `true` when the Lab kept it. */
   edit(input: RuleEditInput): Promise<boolean>;
 }
 
