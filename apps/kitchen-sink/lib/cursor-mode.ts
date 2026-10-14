@@ -160,18 +160,29 @@ const listCursorModels: CursorModelList = async (env) => {
   return items.map((item) => ({ id: item.id, label: item.displayName || item.id }));
 };
 
+/** How long the page waits for Cursor's catalog before offering the default alone. */
+const CURSOR_LIST_TIMEOUT_MS = 10_000;
+
 /**
  * What Cursor mode's New session offers: Cursor's own list, with the mode's
  * default preselected (and put first when Cursor doesn't list it). When the
- * list can't be read, the default alone, with the reason. Under the scripted
- * Cursor, the default alone and no reason.
+ * list can't be read, or doesn't come back within `timeoutMs`, the default
+ * alone, with the reason. Under the scripted Cursor, the default alone and no
+ * reason.
  */
-export async function cursorModelChoices(list: CursorModelList = listCursorModels): Promise<ModelChoices> {
+export async function cursorModelChoices(
+  list: CursorModelList = listCursorModels,
+  timeoutMs: number = CURSOR_LIST_TIMEOUT_MS,
+): Promise<ModelChoices> {
   const fallback: HarnessModel = { id: CURSOR_DEFAULT_MODEL, label: CURSOR_DEFAULT_MODEL };
   const base = { defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL };
   if (cursorIsScripted()) return { ...base, models: [fallback], reason: null };
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const models = await list(cursorEnv());
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+    });
+    const models = await Promise.race([list(cursorEnv()), timedOut]);
     const listed = models.some((model) => model.id === CURSOR_DEFAULT_MODEL);
     return { ...base, models: listed ? models : [fallback, ...models], reason: null };
   } catch (error) {
@@ -180,6 +191,8 @@ export async function cursorModelChoices(list: CursorModelList = listCursorModel
       models: [fallback],
       reason: `Cursor's model list can't be read (${error instanceof Error ? error.message : String(error)}), so only Cursor mode's default is offered.`,
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -12,7 +12,8 @@
  * `sonnet` and the "default" row name whatever model they point at today, and
  * a host that stores the id keeps that model after the alias moves on.
  */
-import { defaultSdkImporter, type SdkImporter } from "./sdk-client";
+import { askIdleQuery } from "./idle-query";
+import type { SdkImporter } from "./sdk-client";
 
 /** One model Claude Code offers. */
 export interface ClaudeModelInfo {
@@ -68,49 +69,24 @@ const DEFAULT_ROW = "default";
  */
 export async function listClaudeModels(options: ListClaudeModelsOptions): Promise<ClaudeModelList> {
   const timeoutMs = options.timeoutMs ?? 10_000;
-  let query: (args: { prompt: AsyncIterable<never>; options: { env: Record<string, string> } }) => ModelQuery;
-  try {
-    const mod = await (options.importSdk ?? defaultSdkImporter)();
-    if (typeof mod.query !== "function") throw new Error("the module has no `query` export");
-    query = mod.query as typeof query;
-  } catch (error) {
-    return { status: "failed", reason: `@anthropic-ai/claude-agent-sdk could not be loaded: ${messageOf(error)}` };
-  }
-
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => (release = resolve));
-  async function* noMessages(): AsyncGenerator<never> {
-    await held;
-  }
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let handle: ModelQuery | undefined;
-  try {
-    handle = query({ prompt: noMessages(), options: { env: options.env } });
-    const timedOut = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), timeoutMs)));
-    const rows = await Promise.race([handle.supportedModels(), timedOut]);
-    if (rows === "timeout") return { status: "failed", reason: `Claude Code did not list its models within ${timeoutMs} ms` };
-    const models = toModels(Array.isArray(rows) ? rows : []);
-    if (models.length === 0) return { status: "failed", reason: "Claude Code listed no models" };
-    return { status: "models", models };
-  } catch (error) {
-    return { status: "failed", reason: `Claude Code could not be asked for its models: ${messageOf(error)}` };
-  } finally {
-    clearTimeout(timer);
-    release();
-    try {
-      handle?.close?.();
-    } catch {
-      // Already closed: nothing is left running either way.
-    }
-  }
+  const asked = await askIdleQuery<ModelQuery, SdkModelRow[]>(
+    { env: options.env, timeoutMs, importSdk: options.importSdk },
+    (handle) => handle.supportedModels(),
+  );
+  if (asked.status === "sdk-missing") return { status: "failed", reason: asked.reason };
+  if (asked.status === "timeout") return { status: "failed", reason: `Claude Code did not list its models within ${timeoutMs} ms` };
+  if (asked.status === "error") return { status: "failed", reason: `Claude Code could not be asked for its models: ${asked.reason}` };
+  const models = toModels(Array.isArray(asked.value) ? asked.value : []);
+  if (models.length === 0) return { status: "failed", reason: "Claude Code listed no models" };
+  return { status: "models", models };
 }
 
 /**
  * The SDK's rows as models: each under its resolved id, one per id, the
  * default first. A named row's label wins over the default row's ("Default
- * (recommended)" names no model). A row with no id to pin is dropped: the
- * default row when the SDK doesn't say what it resolves to.
+ * (recommended)" names no model). A row with no id to pin is dropped: one the
+ * SDK doesn't resolve whose value is an alias (the default row included), since
+ * a stored alias would follow Claude Code to another model.
  */
 function toModels(rows: readonly SdkModelRow[]): ClaudeModelInfo[] {
   const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
@@ -123,7 +99,7 @@ function toModels(rows: readonly SdkModelRow[]): ClaudeModelInfo[] {
       defaultId ??= resolved;
       continue;
     }
-    const id = resolved ?? value;
+    const id = resolved ?? (value !== undefined && !isAlias(value) ? value : undefined);
     if (id === undefined || byId.has(id)) continue;
     const description = text(row.description);
     byId.set(id, { id, label: text(row.displayName) ?? id, ...(description === undefined ? {} : { description }), isDefault: false });
@@ -141,6 +117,11 @@ function toModels(rows: readonly SdkModelRow[]): ClaudeModelInfo[] {
   return [...byId.values()];
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/**
+ * Whether `value` is one of Claude Code's model aliases (`sonnet`, `opus[1m]`,
+ * `opusplan`): a bare word, with an optional bracketed variant. A model id has
+ * a hyphen or a dot in it (`claude-sonnet-5`, `us.anthropic.claude-...`).
+ */
+function isAlias(value: string): boolean {
+  return /^[a-z]+(\[[^\]]*\])?$/i.test(value);
 }

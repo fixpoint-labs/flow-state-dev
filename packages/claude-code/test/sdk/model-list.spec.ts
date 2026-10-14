@@ -47,10 +47,11 @@ describe("listClaudeModels, scripted", () => {
       models: [
         { id: "claude-big-2", label: "Big", isDefault: true },
         { id: "claude-mid-5", label: "Mid", description: "fast", isDefault: false },
-        // No resolved id from the SDK: the value is all there is.
-        { id: "haiku", label: "Small", isDefault: false },
+        // `haiku` came back with no resolved id: an alias stored on a session
+        // would follow Claude Code to another model, so it isn't offered.
       ],
     });
+    expect(list.status === "models" && list.models.map((m) => m.id)).not.toContain("haiku");
     expect(sdk.seen.env).toEqual(env);
     expect(sdk.seen.messagesSent).toBe(0);
     expect(sdk.seen.closed).toBe(true);
@@ -68,6 +69,27 @@ describe("listClaudeModels, scripted", () => {
       importSdk: scriptedSdk(async () => [{ value: "default", displayName: "Default" }, { value: "claude-y", displayName: "Y" }]).importSdk,
     });
     expect(unresolved).toEqual({ status: "models", models: [{ id: "claude-y", label: "Y", isDefault: false }] });
+  });
+
+  it("offers no alias it can't resolve, so a stored id never moves when the alias does", async () => {
+    const list = await listClaudeModels({
+      env: {},
+      importSdk: scriptedSdk(async () => [
+        { value: "sonnet[1m]", displayName: "Mid, long context" },
+        { value: "opusplan", displayName: "Plan with Big" },
+        { value: "us.anthropic.claude-mid-5", displayName: "Mid on Bedrock" },
+      ]).importSdk,
+    });
+    expect(list).toEqual({
+      status: "models",
+      models: [{ id: "us.anthropic.claude-mid-5", label: "Mid on Bedrock", isDefault: false }],
+    });
+
+    const onlyAliases = await listClaudeModels({
+      env: {},
+      importSdk: scriptedSdk(async () => [{ value: "haiku", displayName: "Small" }]).importSdk,
+    });
+    expect(onlyAliases).toEqual({ status: "failed", reason: "Claude Code listed no models" });
   });
 
   it("fails with a reason, never a throw: an error, an empty list, no answer in time, no SDK", async () => {

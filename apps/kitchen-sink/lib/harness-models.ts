@@ -5,9 +5,10 @@
  * Server only. Each list is the harness's own where its SDK can list (Claude
  * Code, Cursor) and one Kitchen Sink keeps where it can't (Codex). The mode
  * files read them (`claudeCodeModelChoices`, `codexModelChoices`,
- * `cursorModelChoices`); this module keeps a list that was read in full until
- * the server restarts, and asks again on the next page load after one that
- * wasn't. Browser code imports only the types.
+ * `cursorModelChoices`); this module shares one read among the page loads that
+ * arrive during it, keeps a list that was read in full until the server
+ * restarts, and asks again on the next page load after one that wasn't.
+ * Browser code imports only the types.
  *
  * Kitchen Sink never checks a picked id against the list: the harness judges
  * what it runs.
@@ -47,30 +48,39 @@ const LISTS: Record<HarnessModeId, () => Promise<ModelChoices>> = {
 
 /** Kept on `globalThis` beside the harness gate's answer, for the same reason (`lib/harness-gate.ts`). */
 const MEMO = Symbol.for("kitchen-sink.harness-models");
-type Memo = typeof globalThis & { [MEMO]?: Map<HarnessModeId, ModelChoices> };
+type Memo = typeof globalThis & { [MEMO]?: Map<HarnessModeId, Promise<ModelChoices>> };
 
 /**
- * The models harness mode `id` offers. A list read in full is kept until the
- * server restarts; one with a reason is asked for again next time.
+ * The models harness mode `id` offers. Page loads that arrive while a list is
+ * being read share that one read (for Claude Code, one SDK start). A list read
+ * in full is kept until the server restarts; one with a reason is asked for
+ * again on the next load after it.
  *
  * @param lists Each mode's list. A seam for tests.
  */
-export async function harnessModelChoices(
+export function harnessModelChoices(
   id: HarnessModeId,
   lists: Record<HarnessModeId, () => Promise<ModelChoices>> = LISTS,
 ): Promise<ModelChoices> {
   const memo = ((globalThis as Memo)[MEMO] ??= new Map());
   const kept = memo.get(id);
   if (kept !== undefined) return kept;
-  let choices: ModelChoices;
+  const reading: Promise<ModelChoices> = read(lists[id]).then((choices) => {
+    if (choices.reason !== null && memo.get(id) === reading) memo.delete(id);
+    return choices;
+  });
+  memo.set(id, reading);
+  return reading;
+}
+
+/** One list read, its throw turned into an empty list with the reason. */
+async function read(list: () => Promise<ModelChoices>): Promise<ModelChoices> {
   try {
-    choices = await lists[id]();
+    return await list();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { models: [], defaultId: null, reason: `The model list can't be read: ${message}`, fallbackId: null };
   }
-  if (choices.reason === null) memo.set(id, choices);
-  return choices;
 }
 
 /** Forget every kept list. Tests only. */

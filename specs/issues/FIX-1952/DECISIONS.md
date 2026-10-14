@@ -82,6 +82,13 @@ a Codex update may break the list until the reader is fixed.
   header says so (BP-030).
 - **A harness that can list but whose list call fails** offers its default only, with the reason.
   No stale fallback list.
+  *Amended 2026-10-14, in the implementation PR:* Claude Code is the exception. Its default is
+  an alias Claude Code resolves, so with no list there is no concrete id to pin at birth (D1),
+  and Kitchen Sink keeps no Claude model name that would age as the default moves. Claude Code
+  mode offers nothing, says why, and New session starts no session until a reload reads the list.
+  Cursor and Codex keep a default of their own and offer it alone. Settles
+  [this thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3332#discussion_r4271267307)
+  by its third option.
 - **Where each list is read.** Claude Code: the package's no-turn start its sign-in check already
   runs. Cursor: its catalog call, beside its sign-in check. Codex: Codex mode's list, first entry
   the default.

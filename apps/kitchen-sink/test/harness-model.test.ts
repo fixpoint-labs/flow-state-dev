@@ -313,6 +313,13 @@ describe("what each mode offers to pick", () => {
     expect(failed.reason).toMatch(/can't be read \(offline\), so only Cursor mode's default is offered/);
   });
 
+  it("Cursor: a catalog call that never answers gives up in time and offers the default, so an existing session still opens", async () => {
+    const stalled = await cursorModelChoices(() => new Promise(() => {}), 20);
+    expect(stalled).toMatchObject({ defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL });
+    expect(stalled.models.map((m) => m.id)).toEqual([CURSOR_DEFAULT_MODEL]);
+    expect(stalled.reason).toMatch(/can't be read \(no answer within 20 ms\)/);
+  });
+
   it("a full list is kept until restart; a short one is asked for again", async () => {
     let asked = 0;
     const full: ModelChoices = { models: [{ id: "a", label: "A" }], defaultId: "a", reason: null, fallbackId: null };
@@ -321,6 +328,33 @@ describe("what each mode offers to pick", () => {
     const lists = { "claude-code": async () => answers[asked++]!, codex: codexModelChoices, cursor: async () => full };
     expect(await harnessModelChoices("claude-code", lists)).toBe(short);
     expect(await harnessModelChoices("claude-code", lists)).toBe(full);
+    expect(await harnessModelChoices("claude-code", lists)).toBe(full);
+    expect(asked).toBe(2);
+  });
+
+  it("page loads during a read share it, so Claude Code is started once; a failed read is asked for again", async () => {
+    let asked = 0;
+    let answer!: (choices: ModelChoices) => void;
+    const full: ModelChoices = { models: [{ id: "a", label: "A" }], defaultId: "a", reason: null, fallbackId: null };
+    const lists = {
+      "claude-code": () => {
+        asked += 1;
+        return new Promise<ModelChoices>((resolve) => (answer = resolve));
+      },
+      codex: codexModelChoices,
+      cursor: async () => full,
+    };
+    const first = harnessModelChoices("claude-code", lists);
+    const second = harnessModelChoices("claude-code", lists);
+    expect(asked).toBe(1);
+    answer({ models: [], defaultId: null, reason: "down", fallbackId: null });
+    expect((await first).reason).toBe("down");
+    expect((await second).reason).toBe("down");
+
+    const retry = harnessModelChoices("claude-code", lists);
+    expect(asked).toBe(2);
+    answer(full);
+    expect(await retry).toBe(full);
     expect(await harnessModelChoices("claude-code", lists)).toBe(full);
     expect(asked).toBe(2);
   });
