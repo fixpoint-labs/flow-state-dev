@@ -216,9 +216,9 @@ describe("translateCodexEvent — items", () => {
     ).toEqual([{ kind: "notice", message: warning }]);
   });
 
-  it("the stream's own error is the in-flight status: Codex's retries say nothing that ended the run", () => {
+  it("the stream's own error is a stream_error the block shows as status and keeps for the end", () => {
     const retry = "Reconnecting... 2/5 (stream disconnected before completion: error sending request)";
-    expect(tr({ type: "error", message: retry })).toEqual([{ kind: "status", message: retry }]);
+    expect(tr({ type: "error", message: retry })).toEqual([{ kind: "stream_error", message: retry }]);
   });
 
   it("item.updated is not re-emitted — the started/completed pair is the whole record", () => {

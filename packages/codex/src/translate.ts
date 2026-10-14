@@ -84,14 +84,13 @@ export function translateCodexEvent(event: CodexThreadEvent): TranslatedEvent[] 
 
     // The stream's own error. Measured at 0.152.1 it is Codex's retry progress
     // ("Reconnecting... 2/5 (…)") or a copy of the failure the `turn.failed`
-    // that follows carries, so it is the in-flight status, not an error item:
-    // a turn that fails says so through `turn.failed`, and a CLI that dies
-    // throws. The run settles on whatever terminal turn event does or does not
-    // follow.
+    // that follows carries, so it is shown as the in-flight status, not an
+    // error item. The block keeps the last one: when no terminal turn event
+    // follows, it is the run's failure (the SDK's type calls it unrecoverable).
     case "error":
       return [
         {
-          kind: "status",
+          kind: "stream_error",
           message:
             readString((event as { message?: unknown }).message) ??
             "Codex reported an error with no message.",

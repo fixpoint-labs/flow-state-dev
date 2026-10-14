@@ -303,6 +303,24 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     expect(first.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
   });
 
+  it("a list Codex can't give is said in the session and asked again on the next run, never silently skipped", async () => {
+    let asked = 0;
+    const resolve = codexClient(async () => {
+      asked += 1;
+      if (asked === 1) throw new Error("codex mcp list timed out");
+      return ["vercel"];
+    });
+    const notes: Array<{ message: string; transient?: boolean }> = [];
+    const ctx = (signal: AbortSignal) =>
+      ({ signal, emit: { status: (message: string, opts?: { transient?: boolean }) => notes.push({ message, transient: opts?.transient }) } }) as never;
+    const first = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    expect(first.exec.configOverrides).not.toHaveProperty("mcp_servers");
+    expect(notes).toEqual([{ message: expect.stringContaining("codex mcp list timed out"), transient: false }]);
+    const next = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    expect(asked).toBe(2);
+    expect(next.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+  });
+
   it("a run stopped while the first MCP list is still coming stops then, and the list still serves the next run", async () => {
     let finish: (names: readonly string[]) => void = () => {};
     const resolve = codexClient(() => new Promise((done) => (finish = done)));

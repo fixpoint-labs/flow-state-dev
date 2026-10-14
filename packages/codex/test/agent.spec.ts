@@ -442,6 +442,35 @@ describe("codexAgent — the endings", () => {
     expect(errorItems[0]!.details?.output).toContain("worker quit with fatal");
   });
 
+  it("a stream that errors and ends with no terminal turn event fails with that error, kept as an error item", async () => {
+    // The SDK calls the stream's own `error` unrecoverable: with nothing after
+    // it, it is the only record of what happened, and a transient status would lose it.
+    const { resolve } = scripted([
+      { type: "thread.started", thread_id: "thr_1" },
+      { type: "error", message: "Reconnecting... 2/5 (stream disconnected)" },
+      { type: "error", message: '{"detail":"stream closed for good"}' },
+    ] as CodexThreadEvent[]);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { output, items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(output as CodexAgentHandle).toMatchObject({ outcome: null, status: "errored", failureMessage: "stream closed for good" });
+    const errors = items.filter((i) => i.type === "error") as Array<{ message: string }>;
+    expect(errors.map((e) => e.message)).toEqual(["stream closed for good"]);
+  });
+
+  it("a stream error followed by turn.failed stays a status: the turn's failure is the one error", async () => {
+    const { resolve } = scripted([
+      { type: "thread.started", thread_id: "thr_1" },
+      { type: "error", message: '{"detail":"nope"}' },
+      { type: "turn.failed", error: { message: '{"detail":"nope"}' } },
+    ] as CodexThreadEvent[]);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve });
+    const { output, items } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(output as CodexAgentHandle).toMatchObject({ outcome: "failed", failureMessage: "nope" });
+    expect(items.some((i) => i.type === "error")).toBe(false);
+  });
+
   it("Codex's warnings are kept notes, never error items", async () => {
     const { resolve } = scripted([
       { type: "thread.started", thread_id: "thr_1" },
