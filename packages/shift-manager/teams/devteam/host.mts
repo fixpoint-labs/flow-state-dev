@@ -154,6 +154,14 @@ export const PROJECT_COORDINATOR = "project-coordinator";
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
 
+/**
+ * The model a turn falls back to when its worker names none (FIX-2008): a
+ * worker hired on `agent` without a `model:` runs on the flow's stock
+ * `intent/chat`, which the Lab declares no intents for, so it resolves here.
+ * The model the tree's own workers name.
+ */
+export const LAB_DEFAULT_MODEL = "openai/gpt-5.4-mini";
+
 /** The Lab user's cell in the Lab org, where every flow keeps that user's data. */
 const LAB_USER_CELL = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
 
@@ -1110,6 +1118,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
+    // A turn whose worker names no model resolves to the Lab's default; a
+    // given resolver (a check's scripted one) replaces it whole.
+    models: { default: LAB_DEFAULT_MODEL },
     ...(options.modelResolver === undefined ? {} : { modelResolver: options.modelResolver }),
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
     // When something can wait for a user: the EM's ask, or a worker holding

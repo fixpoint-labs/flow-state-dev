@@ -77,6 +77,14 @@ export type TaskView = {
   interrupt: InterruptState;
   requestInterrupt(): Promise<void>;
   devtoolUrl: string | undefined;
+  /**
+   * The requests this screen's composer started, newest last: the Session
+   * shows their items (the user's line and the reply) beside the run's, and
+   * follows each live (FIX-2009). Held for the open task only.
+   */
+  sent: readonly string[];
+  /** A line the composer sent started request `requestId`. */
+  noteSent(requestId: string): void;
 };
 
 const TaskContext = createContext<TaskView | null>(null);
@@ -283,6 +291,11 @@ export function TaskProvider({
     }
   }, [clients, openRun, interrupt.kind, reportStatus]);
 
+  // ---- what this screen's composer sent, for the Session to show.
+  const [sent, setSent] = useState<string[]>([]);
+  useEffect(() => setSent([]), [boardRef, taskId]);
+  const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
+
   const value: TaskView = {
     boardRef,
     taskId,
@@ -303,6 +316,8 @@ export function TaskProvider({
     interrupt,
     requestInterrupt,
     devtoolUrl,
+    sent,
+    noteSent,
   };
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
 }

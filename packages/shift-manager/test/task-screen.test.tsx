@@ -392,6 +392,28 @@ describe("a finished task's composer (FIX-1764)", () => {
   }, 30_000);
 });
 
+describe("a line sent from a task's composer (FIX-2009)", () => {
+  it("shows in the task's Session with the worker's reply, though neither carries the task's stamp", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await screen.findByTestId("session", {}, { timeout: 10_000 });
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    fireEvent.change(input, { target: { value: line } });
+    fireEvent.click(screen.getByTestId("task-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
+    // The door's turn is not the task's run, so nothing it stores is stamped
+    // with the task: shown only because this view sent it.
+    const session = screen.getByTestId("session-items");
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 40_000);
+});
+
 describe("the inspector (BR-18 to BR-23)", () => {
   it("shows the worker, started, the harness gap, what a recording run recorded, and the trace link with the session beside it", async () => {
     const opened = await openLab();

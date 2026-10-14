@@ -53,7 +53,7 @@ Only those two projects get a worktree of your checkout. Apart from that fetch, 
 
 Open **Settings** and paste a Linear API key, and every coding run you ask for on either project can read and update Linear, as you. Each user sets their own. A run for someone who hasn't set one works without Linear and says so. For runs with nobody at the keyboard, such as a goal check or CI, `LINEAR_MCP_API_KEY` stands in for the Lab's own user until that user sets a key. An `MCP servers:` line at start says whether the Lab's own user has a key. The profile's projects and its MCP servers are in `teams/devteam/fsd-projects.mts`.
 
-The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The Shift Coordinator answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
+The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The Shift Coordinator answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-5.4-mini`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
 
 The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/fsd.sqlite`, or wherever `FSD_STORE` points. Delete the file to start fresh.
 
@@ -297,7 +297,7 @@ In your own app, Workforce's `openWorkstream` takes whichever lead you name.
 
 ## A task
 
-Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. If the worker keeps one session for several tasks, the tab shows only this task's steps and says the session is shared. A task dispatched a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
+Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. A message you send from the task's composer shows there too, with the worker's reply. If the worker keeps one session for several tasks, the tab shows only this task's steps and the messages you sent from it, and says the session is shared. A task dispatched a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
 
 **Interrupt** stops the run (Esc does the same while the Session has focus). The line above the composer names the worker and the run's state: *running*, then *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not Shift Manager.
 

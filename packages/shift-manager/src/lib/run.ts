@@ -131,11 +131,21 @@ export function mergeItems(held: readonly OutputItem[], incoming: readonly Outpu
 /**
  * What the Session shows of a session's items (BR-8): the items stamped with
  * this task's id, through the attribution helper the substrate and the UI
- * share, and whether the session also holds another task's work.
+ * share, and whether the session also holds another task's work. Items of a
+ * request in `sent` show too: a line the task's composer sent and the worker's
+ * reply to it (FIX-2009). The door's turn is not the task's run, so nothing it
+ * stores carries the task's stamp, and in a session shared with other tasks
+ * the stamp is all the filter has.
  */
-export function taskItems(items: readonly OutputItem[], boardRef: string, taskId: string): { items: OutputItem[]; shared: boolean } {
+export function taskItems(
+  items: readonly OutputItem[],
+  boardRef: string,
+  taskId: string,
+  sent: ReadonlySet<string> = new Set(),
+): { items: OutputItem[]; shared: boolean } {
+  const own = new Set(itemsForTask(items, boardRef, taskId));
   return {
-    items: [...itemsForTask(items, boardRef, taskId)],
+    items: items.filter((item) => own.has(item) || sent.has(item.requestId)),
     shared: items.some((item) => item.taskId !== undefined && item.taskId !== taskId),
   };
 }

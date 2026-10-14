@@ -5,14 +5,15 @@
  * One read of the run session's stored items, then one stream: the run's
  * request, through the flow its session names. Mounted only while the tab is
  * open, so a user reading Brief pays for no stream. A session shared with
- * other tasks shows only the items stamped with this task's id, and says so.
+ * other tasks shows only the items stamped with this task's id, and the lines
+ * its composer sent with their replies (FIX-2009), and says so.
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
  * plan), the same copies the design system skins. An ask the run raised and
  * that still waits is drawn inline, with the one ask card Inbox uses.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
@@ -127,16 +128,47 @@ function RunItems({ run }: { run: OpenRun }) {
     };
   }, [clients, run, attempt, reportStatus]);
 
+  // A line this screen's composer sent: follow its request live, and read the
+  // session once it ends, so the line and the reply show here (FIX-2009).
+  const { sent } = task;
+  const following = useRef(new Map<string, { close(): void }>());
+  useEffect(() => {
+    for (const requestId of sent) {
+      if (following.current.has(requestId)) continue;
+      const settle = () =>
+        void readSessionItems(clients, run.sessionId)
+          .then((read) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, read.items) })))
+          .catch((error: unknown) => setFailure(error instanceof RunReadError ? error.failure : describeFailure(error)));
+      following.current.set(
+        requestId,
+        followRequest(clients, { flowId: run.flowId, requestId }, {
+          onItem: (item) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, [item]) })),
+          onStatus: (status) => {
+            if (status !== "in_progress") settle();
+          },
+          onError: () => settle(),
+        }),
+      );
+    }
+  }, [clients, run, sent]);
+  useEffect(() => {
+    const streams = following.current;
+    return () => {
+      for (const stream of streams.values()) stream.close();
+      streams.clear();
+    };
+  }, [run]);
+
   // This task's items, then the same render filters `ItemsRenderer` applies:
   // a keyed snapshot shows its latest version only, and a container with its
   // own renderer draws the items it owns.
   const { renderers } = useFlowContext();
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
-    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId);
+    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, new Set(sent));
     const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
     return { items, shared: mine.shared };
-  }, [stored, task.boardRef, task.taskId, renderers]);
+  }, [stored, task.boardRef, task.taskId, sent, renderers]);
 
   if (failure !== undefined) {
     return (
@@ -151,7 +183,7 @@ function RunItems({ run }: { run: OpenRun }) {
     <div ref={feed.ref} className="min-h-0 flex-1 overflow-y-auto" data-testid="session" data-session-id={run.sessionId} data-request-id={run.requestId}>
       {shown.shared ? (
         <p className="px-4 pt-3 text-xs text-muted-foreground" data-testid="session-shared">
-          This worker keeps one session for several tasks. Only this task's steps are shown.
+          This worker keeps one session for several tasks. Only this task's steps, and the messages you send from here, are shown.
         </p>
       ) : null}
       {stored?.truncated === true ? (

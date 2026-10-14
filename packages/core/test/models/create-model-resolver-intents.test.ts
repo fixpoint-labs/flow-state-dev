@@ -135,6 +135,25 @@ describe("createModelResolver — intent resolution", () => {
     expect(result.text).toBe("response:fallback-default");
   });
 
+  it("an intent with nothing to fall back to is a setup error that names the intent and where to set a model", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // `env: {}` keeps a developer's own FSDEV_DEFAULT_MODEL out of the check.
+    const resolver = createModelResolver({ env: {} });
+    let message = "";
+    try {
+      resolver("intent/chat");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    // The app author reads this, not the resolver's author: what is missing,
+    // for which intent, and the two places a model can be set.
+    expect(message).toMatch(/no model is configured for "intent\/chat"/i);
+    expect(message).toContain("models.default");
+    expect(message).toContain("models.intents.chat");
+    expect(message).toContain("FSDEV_DEFAULT_MODEL");
+    vi.restoreAllMocks();
+  });
+
   it("unknown intent warns once and falls back to defaultModel", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

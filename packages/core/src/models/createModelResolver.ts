@@ -989,10 +989,18 @@ export function createModelResolver(
     }
   }
 
-  function resolveDefaultModel(): GeneratorModel {
+  /**
+   * The model an intent falls back to. With none configured this is a setup
+   * error the app's author reads, so it names the intent and where a model
+   * can be set, not the resolver's own option.
+   */
+  function resolveDefaultModel(intentName: string): GeneratorModel {
     if (!options?.defaultModel) {
       throw new Error(
-        `createModelResolver: defaultModel is not configured; cannot fall back from an intent.`
+        `No model is configured for "intent/${intentName}": the app sets no \`models.intents.${intentName}\` ` +
+          `and no \`models.default\` to fall back on. Set one where the app creates its FlowState ` +
+          `(\`createFlowState({ models: { default: "<provider>/<model>" } })\`, or \`defaultModel\` on ` +
+          `\`createModelResolver\`), or set the FSDEV_DEFAULT_MODEL environment variable.`
       );
     }
     return resolveSingleModel(options.defaultModel);
@@ -1014,7 +1022,7 @@ export function createModelResolver(
         `intent/${name}`,
         `Unknown or empty intent "${name}"; falling back to defaultModel.`
       );
-      const fallback = resolveDefaultModel();
+      const fallback = resolveDefaultModel(name);
       intentCache.set(cacheKey, fallback);
       return fallback;
     }
@@ -1044,7 +1052,7 @@ export function createModelResolver(
     }
 
     const result = resolved.length === 0
-      ? resolveDefaultModel()
+      ? resolveDefaultModel(name)
       : createFallbackModel({
           groupName: `intent/${name}`,
           models: resolved,

@@ -277,7 +277,10 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       // No `held`: the Session tab draws only the task's own run, not this line's
       // request, so the line keeps its draft until delivered.
       send={async (message) => {
-        const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+        // The Session shows this request's items, the line and the reply, from the moment it starts (FIX-2009).
+        const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message, {
+          onStarted: task.noteSent,
+        });
         // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
         if (sent.suspended) void refresh();
         return sent;
