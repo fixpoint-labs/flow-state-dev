@@ -459,6 +459,8 @@ await runGoal(async (failures) => {
       }
 
       if (runs("1") && leg1 !== undefined) {
+        // Let the report's run reach wherever it stops on its own: the preview, or a filed issue.
+        await lab.lab.errorReporter!.idle();
         const asks = await lab.reportAsks();
         const mine = asks.filter((a) => a.sessionId === leg1!.row.sessionId);
         say(`leg 1: ${asks.length} report ask(s) in Inbox, ${mine.length} for this report; ${tracker.calls.length} tracker call(s) before the answer`);
