@@ -30,9 +30,13 @@
  * call does not run and the model is told the approval is no longer valid.
  * A stop of a turn parked behind one still ends it `aborted`: the stop is
  * recorded on the turn, which its first abort poll reads before anything runs.
+ *
+ * And it carries a gate a person resolved (approved, rejected, submitted or
+ * skipped) whose turn never continued (FIX-1850): the turn continues with the
+ * person's recorded resolution, as their resume would have.
  */
-import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
-import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
+import { isWaitGate, isExpiredApproval, RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import type { ResumeAction, ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { resumeWaitGate } from "./resume-wait-gate";
@@ -204,6 +208,33 @@ async function continueWithStop(
   return result.ok;
 }
 
+/**
+ * The resume action a person's recorded resolution of a non-wait gate replays:
+ * the action whose status the gate was written with. `undefined` for a wait
+ * gate (its outcome is replayed as a wait's), a pending gate, or a status no
+ * person writes (a stop, an expiry, a timeout).
+ */
+function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): ResumeAction | undefined {
+  if (isWaitGate(gate)) return undefined;
+  const actions = Object.keys(RESUME_ACTION_STATUS) as ResumeAction[];
+  return actions.find((action) => RESUME_ACTION_STATUS[action] === gate.status);
+}
+
+/**
+ * Whether a resolved gate owes its parked turn a re-drive: a wait's outcome
+ * (answer, failure, timeout or stop), any gate stopped, an approval that
+ * expired, or a person's resolution of any other gate (FIX-1850). The one
+ * predicate the sweep and {@link redriveResolvedGate} share.
+ */
+export function owesRedrive(gate: Pick<SuspensionRecord, "reason" | "status" | "allow">): boolean {
+  return (
+    gate.status === "stopped" ||
+    (gate.status === "submitted" && isWaitGate(gate)) ||
+    isExpiredApproval(gate) ||
+    personResolutionOf(gate) !== undefined
+  );
+}
+
 /** Why a re-drive left a request alone. */
 export type RedriveRefusal = "not-parked" | "superseded";
 
@@ -213,8 +244,9 @@ export type RedriveRefusal = "not-parked" | "superseded";
  * recorded outcome, never a new one; a non-wait gate resolved `stopped`
  * continues it with the stop recorded on it, so it ends `aborted` through its
  * own lifecycle; an approval that expired continues it with a rejection that
- * `runAction` marks expired from the gate (FIX-1846). Under the request's
- * lease, so a live resume is never raced.
+ * `runAction` marks expired from the gate (FIX-1846); a person's resolution of
+ * any other gate continues it with that resolution and its data (FIX-1850).
+ * Under the request's lease, so a live resume is never raced.
  *
  * `gate` must be the request's latest gate; a request that has since parked
  * on a newer one is left alone (`superseded`).
@@ -223,7 +255,7 @@ export async function redriveResolvedGate(
   deps: SuspendedStopDeps,
   gate: SuspensionRecord
 ): Promise<"redriven" | "busy" | RedriveRefusal> {
-  if (!isWaitGate(gate) && gate.status !== "stopped" && !isExpiredApproval(gate)) return "not-parked";
+  if (!isWaitGate(gate) && !owesRedrive(gate)) return "not-parked";
 
   const result = await continueUnderLease<RedriveRefusal>(deps, {
     requestId: gate.requestId,
@@ -246,9 +278,21 @@ export async function redriveResolvedGate(
           }
         };
       }
+      const personAction = personResolutionOf(current);
+      if (personAction !== undefined) {
+        // A person's resolution: replayed as they gave it, with their data.
+        return {
+          resumeContext: {
+            suspensionId: current.suspensionId,
+            action: personAction,
+            data: current.resumeData,
+            resumedBy: current.resolvedBy
+          }
+        };
+      }
       if (!isWaitGate(current)) {
         // A stopped approval: the stop recorded on the turn ends it.
-        if (!(await recordStop(deps, record))) return { refusal: "not-parked" };
+        if (current.status !== "stopped" || !(await recordStop(deps, record))) return { refusal: "not-parked" };
         return {
           resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy }
         };
