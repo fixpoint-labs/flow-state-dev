@@ -42,6 +42,7 @@ import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
+import { safeCaptureError, toFinalErrorCaptureEvent } from "../errors/error-capture";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
@@ -2078,6 +2079,22 @@ async function runActionAttempt<
         error: setupError,
         logger
       });
+      // FIX-1983: the final-failure event, only when the failed write landed.
+      const errorCapture = options.runtimeConfig.errorCapture;
+      if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
+        void safeCaptureError(
+          errorCapture,
+          toFinalErrorCaptureEvent(normalizeError(setupError, { scope: "request" }), {
+            requestId,
+            flowKind: options.flow.kind,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            orgId: options.orgId
+          }),
+          logger
+        );
+      }
     }
     throw setupError;
   }
@@ -2875,6 +2892,11 @@ async function runActionAttempt<
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
+
+      // FIX-1983: the request's one final-failure event, as soon as the failed
+      // record is written, so a status event that throws can't lose it. Only a
+      // request this run settled sends it.
+      if (terminalRecordIncarnation !== undefined) ctx._captureFinalError?.(error);
 
       await response.emitRequestStatus("failed");
 

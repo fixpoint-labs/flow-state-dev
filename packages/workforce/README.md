@@ -1902,6 +1902,32 @@ conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that 
 session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
 and the like), never a task's input, output or metadata.
 
+## Error Reporter
+
+A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task on a conversation board that ended errored, and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
+
+```ts
+import { createErrorReporter, defineErrorReporterFlow, defineErrorReporterIntakeFlow } from "@flow-state-dev/workforce";
+
+const reporter = createErrorReporter({
+  worker: "error-reporter",                       // a WORKER.md whose flow is `error-reporter`
+  operator: { userId: "olive", orgId: "acme" },   // who previews and files
+  tracker: { project: "shared/storefront" },      // absent: reports are kept, never filed
+});
+const reporterFlow = defineErrorReporterFlow({ reporter, installation, harness, mcpTools }); // a worker flow
+const intake = defineErrorReporterIntakeFlow({ reporter });                                  // a plain flow
+
+createFlowState({ flows: { /* ..., intake */ }, durable: true, errorCapture: reporter.capture });
+await reporter.bind(host); // after the runtime exists; restarts owed work
+```
+
+- **One report per fingerprint** (flow, action, error code, normalized message). A repeat raises the count; a redelivered occurrence counts once. At most `limits.newPerWindow` (5) new reports per `limits.windowMs` (1 hour); the rest go into one storm report.
+- **Secrets are redacted at intake**, before a row, a held request or a storm entry is written: the environment's keys, `secrets()`, and the operator's stored MCP keys.
+- **The draft run has no tracker tools.** A separate filing run gets the tracker project's MCP servers, and a failed filing is tried again.
+- **Preview.** The draft waits on a `human_input` suspension (so the runtime needs `durable: true`) until the operator files or dismisses it, unless `preview.autoFile` or `preview.autoFileAfterMs` say otherwise.
+- **A filed report's repeats** add a comment at most every `limits.commentEveryMs`.
+- **It never reports its own failures**, and runs on its own flow, never through a coordinator.
+
 ## Importing from a browser component
 
 The package root is server code. It reaches the task board, which imports

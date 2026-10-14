@@ -182,6 +182,10 @@ export type BoardHostOptions = {
   generators?: Record<string, MockGeneratorInstance>;
   /** What `hireWorkforce` is called with beside the installation. */
   hire?: HireWorkforceOptions;
+  /** Flows that are no worker flow, registered beside them as they are, keyed by id. */
+  plainFlows?: Record<string, FlowInstance>;
+  /** The engine's `errorCapture` handler (FIX-1983's reporter). */
+  errorCapture?: (event: any) => void;
 };
 
 /**
@@ -255,6 +259,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   const instances: Record<string, FlowInstance> = Object.fromEntries(
     hireWorkforce(installation, options.hire).map((copy) => [copy.id === ROSTER_FLOW ? "roster" : copy.id, copy])
   );
+  Object.assign(instances, options.plainFlows ?? {});
   const judgment = options.judgment ?? mockGenerator({ script: [{ when: () => true, then: { text: QUIET_TURN } }] });
   const agentAnswer = options.agentAnswer ?? mockGenerator({ script: [] });
   const models = createMockModelResolver({
@@ -267,6 +272,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     flows: instances,
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
+    ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
     modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models

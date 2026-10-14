@@ -103,6 +103,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { POST_SETTLED_ENTRY, sendOwedNotices } from "./notice-delivery";
+import { sendOwedReports } from "./report-owed";
 import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
 
 /**
@@ -558,6 +559,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     if (hasStartable(ref)) await wake(ctx);
     const rows = ref.list();
     await replayNotices(ctx, rows);
+    await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
     // And the settles owed down the chain: each parked split row's session
     // settles its task once its pieces are done, this one's included, behind
     // any turn it is running (FIX-1802 BR-17).
@@ -596,6 +598,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       await resumeOwedWaits(ctx as never, ref);
       const rows = ref.list();
       const replayed = await replayNotices(ctx, rows);
+      await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
       await replaySplits(ctx, rows);
       const top = taskChainOf(ctx)?.top;
       if (top !== undefined) await markAddedInChain(ctx, top, rows.map((row) => chainEntryKey(partition, row.id)));

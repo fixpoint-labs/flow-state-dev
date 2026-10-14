@@ -150,6 +150,8 @@ createFlowState({
 });
 ```
 
+A request that settles `failed` sends one more event, marked `final: true` with `scope: "request"`. It comes after rescues and retries had their chance and after the failed record is written, so a failure a retry healed never gets one. Use it when you want one event per failed request (filing a bug, paging someone). If you forward every block failure, as above, skip it with `if (event.final) return;` so the same failure isn't sent twice.
+
 See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture) for the full event shape and filtering guidance.
 
 ### Connection resilience
