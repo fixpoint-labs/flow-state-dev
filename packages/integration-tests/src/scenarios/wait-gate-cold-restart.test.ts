@@ -1,10 +1,10 @@
 /**
- * An ask gate survives a cold restart on SQLite.
+ * A wait gate survives a cold restart on SQLite.
  *
- * A chat turn's tool parks on an ask gate, served by one runtime over HTTP.
+ * A chat turn's tool parks on a wait gate, served by one runtime over HTTP.
  * That runtime is thrown away. A second runtime opens a fresh store registry on
  * the same SQLite file, and a later request in the same conversation resumes
- * the parked turn through `ctx.requestHost.resumeAsk`, which the shipped
+ * the parked turn through `ctx.requestHost.resumeWait`, which the shipped
  * `createFlowState` install wires. The turn ends `completed` with the answer as
  * its tool's result, under its own request id.
  *
@@ -20,13 +20,13 @@ import {
   defineFlow,
   generator,
   handler,
-  parkOnAsk,
+  parkOnWait,
   requireRequestHost,
   sequencer,
   type FlowInstance
 } from "@flow-state-dev/core";
 import type {
-  AskOutcome,
+  WaitOutcome,
   GeneratorModel,
   GeneratorModelCallOptions,
   GeneratorModelResult
@@ -69,13 +69,13 @@ function toolResults(messages: unknown[]): string {
 }
 
 /** The same flow definition each runtime registers, with that runtime's model. */
-function askFlow(model: GeneratorModel): FlowInstance {
-  const ask = handler({
-    name: "ask_colleague",
+function waitFlow(model: GeneratorModel): FlowInstance {
+  const wait = handler({
+    name: "wait_on_colleague",
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.object({ answer: z.unknown() }),
     execute: async (_input, ctx) => ({
-      answer: await parkOnAsk(ctx, {
+      answer: await parkOnWait(ctx, {
         gateId: GATE_ID,
         binding: { board: "conversation", taskId: "task_restart" }
       })
@@ -86,34 +86,34 @@ function askFlow(model: GeneratorModel): FlowInstance {
     inputSchema: z.object({ gateId: z.string(), outcome: z.any() }),
     outputSchema: z.any(),
     execute: async (input, ctx) =>
-      requireRequestHost(ctx).resumeAsk!({
+      requireRequestHost(ctx).resumeWait!({
         gateId: input.gateId,
-        outcome: input.outcome as AskOutcome
+        outcome: input.outcome as WaitOutcome
       })
   });
   return defineFlow({
-    kind: "ask-restart",
+    kind: "wait-restart",
     actions: {
       chat: {
         block: sequencer({ name: "turn" }).step(
-          generator({ name: "agent", model, prompt: "p", tools: [ask] })
+          generator({ name: "agent", model, prompt: "p", tools: [wait] })
         ),
         inputSchema: z.object({}).passthrough()
       },
       touch: { block: touch }
     }
-  })({ id: "ask-restart" });
+  })({ id: "wait-restart" });
 }
 
 async function post(state: FlowState, action: string, input: unknown): Promise<string> {
   const router = await state.getRouter();
   const res = await router.POST(
-    new Request(`http://localhost/api/flows/ask-restart/actions/${action}`, {
+    new Request(`http://localhost/api/flows/wait-restart/actions/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
       body: JSON.stringify({ userId: USER, sessionId: SESSION, input })
     }),
-    { params: { path: ["ask-restart", "actions", action] } }
+    { params: { path: ["wait-restart", "actions", action] } }
   );
   expect(res.status).toBeLessThan(300);
   const body = await res.text();
@@ -147,7 +147,7 @@ afterEach(async () => {
 
 function runtimeOn(filename: string, model: GeneratorModel): FlowState {
   const state = createFlowState({
-    flows: { "ask-restart": askFlow(model) },
+    flows: { "wait-restart": waitFlow(model) },
     stores: { default: { primary: sqliteStores({ filename }) } },
     durable: true
   });
@@ -155,15 +155,15 @@ function runtimeOn(filename: string, model: GeneratorModel): FlowState {
   return state;
 }
 
-describe("ask gate across a SQLite cold restart", () => {
+describe("wait gate across a SQLite cold restart", () => {
   it("a parked turn resumes with the answer after the runtime that parked it is gone", async () => {
-    dir = await mkdtemp(join(tmpdir(), "fsd-ask-restart-"));
+    dir = await mkdtemp(join(tmpdir(), "fsd-wait-restart-"));
     const filename = join(dir, "store.db");
 
-    // Runtime 1: the turn asks and parks.
+    // Runtime 1: the turn waits and parks.
     const first = stepModel([
       () => ({
-        toolCalls: [{ toolCallId: "c1", toolName: "ask_colleague", args: { question: "SOC 2?" } }],
+        toolCalls: [{ toolCallId: "c1", toolName: "wait_on_colleague", args: { question: "SOC 2?" } }],
         finishReason: "tool-calls"
       })
     ]);
@@ -171,7 +171,7 @@ describe("ask gate across a SQLite cold restart", () => {
     await post(before, "chat", {});
 
     const [gate] = await (await before.getRuntime()).stores.suspensions.list({ sessionId: SESSION });
-    expect(gate).toMatchObject({ suspensionId: GATE_ID, reason: "ask", status: "pending" });
+    expect(gate).toMatchObject({ suspensionId: GATE_ID, reason: "wait", status: "pending" });
     const parkedRequestId = gate!.requestId;
     await waitForStatus(before, parkedRequestId, "suspended");
     await before.dispose();

@@ -376,16 +376,17 @@ export const taskSchema = z.object({
   createdBy: z.string().optional(),
 
   /**
-   * Set when this row is an **ask**: a turn filed it and parked until it ends
-   * (FIX-1816). `gateId` names the gate the asking turn parks on, derived from
+   * Set when this row is **waited on**: a turn filed it and parked until it ends
+   * (FIX-1816). `gateId` names the gate the waiting turn parks on, derived from
    * this row, so it is unique within the conversation; `deadline` is when the
-   * ask times out (epoch ms), the same instant the gate expires.
+   * wait times out (epoch ms), the same instant the gate expires.
    *
-   * Written once, in the write that files the row, by the ask path only. Never
+   * Written once, in the write that files the row, by the wait path only. Never
    * a model-facing field: the task tools build a row's init field by field.
-   * **Absent** on every row that is not an ask (BP-030).
+   * **Absent** on every row nobody waits on (BP-030). A row stored before the
+   * rename carries it as `ask`; {@link withMigratedWait} reads that as this.
    */
-  ask: z
+  wait: z
     .object({
       gateId: z.string(),
       deadline: z.number(),
@@ -393,8 +394,8 @@ export const taskSchema = z.object({
     .optional(),
 
   /**
-   * The asking turn is owed its answer: written in the same write that ends an
-   * asked row (`ask` set), whoever ends it, and cleared once the turn has its
+   * The waiting turn is owed its answer: written in the same write that ends a
+   * waited-on row (`wait` set), whoever ends it, and cleared once the turn has its
    * answer (FIX-1816). A touch of the board replays it by resuming the parked
    * turn, so an ending that lands while nothing is listening, or a resume lost
    * to a restart, is never lost.
@@ -406,7 +407,7 @@ export const taskSchema = z.object({
   resumeOwed: z.boolean().optional(),
 
   /**
-   * The ask on this row is over (its turn was stopped, or it timed out) but
+   * The wait on this row is over (its turn was stopped, or it timed out) but
    * the cancel that should have ended the row failed (FIX-1844). A touch of
    * the board pays it by cancelling the row. Whatever ends the row pays it,
    * in that ending's write, and owes the turn no resume: nobody waits.
@@ -457,6 +458,22 @@ export const taskSchema = z.object({
   startedAt: z.number().optional(),
   completedAt: z.number().optional(),
 });
+
+/**
+ * A stored row with its wait mark read under the current name: a row written
+ * before the rename carries `ask` where it now carries `wait`, and reads as
+ * waited on all the same (BP-030). The one reader of that mark: both backings'
+ * read boundaries and the parse paths call it, so no consumer sees the old
+ * name. A row with no old mark is returned as-is, so the common path
+ * allocates nothing.
+ */
+export function withMigratedWait<T>(row: T): T {
+  if (row === null || typeof row !== "object") return row;
+  const stored = row as Record<string, unknown>;
+  if (stored.ask == null) return row; // retired-name-refusal: WR-8, a row stored before the rename
+  const { ask: legacy, ...rest } = stored;
+  return (stored.wait != null ? rest : { ...rest, wait: legacy }) as T;
+}
 
 /**
  * Generic Task type. Pattern code typically narrows `TInput` / `TOutput`

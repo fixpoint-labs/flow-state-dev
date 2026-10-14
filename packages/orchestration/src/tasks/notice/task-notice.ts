@@ -1,6 +1,6 @@
 /**
  * The child-finished signal: how a task's ending becomes one notice to the
- * conversation that filed it (FIX-1794 P2, S6 and S7), and, for an asked row,
+ * conversation that filed it (FIX-1794 P2, S6 and S7), and, for a waited-on row,
  * the resume of the turn that waits on it (FIX-1816 S9).
  *
  * Pure functions over a board row and the notice it owes. Nothing here reads
@@ -24,14 +24,14 @@
  * board refusing a hand-off, and the board settling a row whose worker died
  * too often. A cancel owes no notice, and neither does a park that asks nobody
  * anything (a park the board makes for its own reasons, or one for a person's
- * turn): {@link recordEnding} returns those rows unchanged. An asked row is
+ * turn): {@link recordEnding} returns those rows unchanged. A waited-on row is
  * the exception for a cancel: its turn waits on every ending, so a cancel owes
  * the notice that resumes it.
  *
  * ## What an ending does
  *
  * {@link decideNotice} is the one choice: a retried attempt runs the board
- * again with no turn; an asked row's ending resumes the turn parked on it
+ * again with no turn; a waited-on row's ending resumes the turn parked on it
  * (`dispatchTask` with `wait`) and wakes none; any other ending wakes the coordinator's
  * judgment turn, or lands as a line under a fixed routing policy. The
  * receiving entry only acts on the value. {@link noticeKey} is the dedupe key,
@@ -42,7 +42,7 @@ import type { Task } from "../schema/task";
 import type { TaskEnding } from "../collection/ending";
 
 /**
- * The endings a conversation hears about. A cancel is one only for an asked
+ * The endings a conversation hears about. A cancel is one only for a waited-on
  * row, whose waiting turn must hear every ending (BR-29 otherwise).
  */
 export type NoticeEnding = "completed" | "errored" | "parked" | "retried" | "cancelled";
@@ -62,7 +62,7 @@ export interface TaskNotice {
   readonly output?: unknown;
   readonly error?: string;
   readonly question?: string;
-  /** The row is asked (`dispatchTask` with `wait`): a turn is parked on its ending. */
+  /** The row is waited on (`dispatchTask` with `wait`): a turn is parked on its ending. */
   readonly asked?: true;
 }
 
@@ -98,8 +98,8 @@ function markerFor(row: Task, ending: TaskEnding): OwedMarker | undefined {
         ...(ending.question !== undefined ? { question: ending.question } : {})
       };
     case "cancelled":
-      // Only an asked row's turn hears a cancel: it waits on every ending.
-      return row.ask != null ? { attempt: row.attempts, ending: "cancelled" } : undefined;
+      // Only a waited-on row's turn hears a cancel: it waits on every ending.
+      return row.wait != null ? { attempt: row.attempts, ending: "cancelled" } : undefined;
   }
 }
 
@@ -145,7 +145,7 @@ export function owedNotices(row: Task, boardId: string): TaskNotice[] {
       ...(value.ending === "completed" ? { output: row.output } : {}),
       ...(value.error !== undefined ? { error: value.error } : {}),
       ...(value.question !== undefined ? { question: value.question } : {}),
-      ...(row.ask != null ? { asked: true as const } : {})
+      ...(row.wait != null ? { asked: true as const } : {})
     });
   }
   return notices.sort((a, b) => a.attempt - b.attempt);
@@ -185,16 +185,16 @@ export type NoticeDecision =
   /** An ending, under a fixed policy: a line in the conversation. */
   | { readonly act: "line" }
   /**
-   * An asked row's ending: resume the turn parked on it through the request
-   * host's ask resume (`resumeOwedAsks`), with no turn woken and no line: the
+   * A waited-on row's ending: resume the turn parked on it through the request
+   * host's wait resume (`resumeOwedWaits`), with no turn woken and no line: the
    * answer is the waiting call's result.
    */
-  | { readonly act: "resume-ask" };
+  | { readonly act: "resume-wait" };
 
 /** The one choice of what a notice does. */
 export function decideNotice(notice: Pick<TaskNotice, "ending" | "asked">, policy: NoticePolicy): NoticeDecision {
   if (notice.ending === "retried") return { act: "run-board" };
-  if (notice.asked === true) return { act: "resume-ask" };
+  if (notice.asked === true) return { act: "resume-wait" };
   return policy === "judgment" ? { act: "wake-turn" } : { act: "line" };
 }
 

@@ -255,7 +255,7 @@ export { currentWorkerClaim } from "./flow-policy-wiring";
 export {
   dispatchAndWait,
   canHoldWait,
-  askGateId,
+  waitGateId,
   DEFAULT_WAIT_TIMEOUT_MS,
   MIN_WAIT_TIMEOUT_MS,
   MAX_WAIT_TIMEOUT_MS,

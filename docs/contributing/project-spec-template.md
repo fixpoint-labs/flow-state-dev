@@ -29,8 +29,8 @@ as the project does.
 
 ## The four documents, at project altitude
 
-Projects keep the original four-document shape below; the issue/epic template's added
-`DOCS.md` and conditional `EVOLUTION.md` do not migrate this standing project artifact.
+Projects keep the original four-document shape below; the issue/epic templates' move to
+two documents does not migrate this standing project artifact.
 Budgets are **smaller than an epic's**, not larger — a project-spec that out-weighs the epic
 it is supposed to orient has lost its altitude.
 
@@ -38,9 +38,9 @@ it is supposed to orient has lost its altitude.
 |---|---|---|---|
 | `SPEC.md` | The objective for the teams who feel it · the box · the set · the dependency graph | **The outcome** the project is driving at and how we'd know · **the territory** as one figure · **the epics, with live status** · **what this project is not** | ~700 |
 | `DECISIONS.md` | Cross-cutting calls across issues · ownership matrix | Calls that bind **more than one epic** · what was **decided once** so no epic reopens it | ~900 |
-| `BUSINESS-RULES.md` | ER-n: rules every issue obeys | **PR-n: rules every epic obeys**, with owner and where each is checked · what no epic may do | ~600 |
-| `PLAN.md` | The path: issues against time | **The arc**: epics against time · what each epic consumes and releases · what is deliberately not next | ~700 |
-| `figures/` | Three the PR body carries | **Two** the PR body carries: the territory, and the arc once there are two epics. A third — the rule × epic matrix — only once `BUSINESS-RULES.md` carries three or more rules | — |
+| `BUSINESS-RULES.md` | None: ER-n, the rules every issue obeys, sit in `DECISIONS.md` → *Who owns what* | **PR-n: rules every epic obeys**, with owner and where each is checked · what no epic may do | ~600 |
+| `PLAN.md` | None: the dependency graph in `SPEC.md` is the epic's whole sequencing | **The arc**: epics against time · what each epic consumes and releases · what is deliberately not next | ~700 |
+| `figures/` | Two the PR body carries | **Two** the PR body carries: the territory, and the arc once there are two epics. A third — the rule × epic matrix — only once `BUSINESS-RULES.md` carries three or more rules | — |
 
 **Project navigation keeps its four-document line.** Line 3 of every project document is
 `[Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md)` with

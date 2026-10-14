@@ -1,8 +1,8 @@
 /**
- * Stopping a turn parked on an ask (FIX-1816 P2c: BR-16, BR-16b, BR-16c, BR-11a).
+ * Stopping a turn parked on a wait (FIX-1816 P2c: BR-16, BR-16b, BR-16c, BR-11a).
  *
  * The person's stop arrives through the abort route. The parked call cancels
- * its asked row and ends the turn `aborted`, with no model call after the
+ * its waited-on row and ends the turn `aborted`, with no model call after the
  * stop. A stop or an answer recorded on the gate survives a process death: the
  * next durability sweep drives the turn on (proved on a SQLite cold restart).
  */
@@ -15,8 +15,8 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import {
   act,
-  askCall,
-  askFlow,
+  waitCall,
+  waitFlow,
   finalAnswer,
   rows,
   runtimeFor,
@@ -26,7 +26,7 @@ import {
   toolResults,
   until,
   USER
-} from "./ask-fixture";
+} from "./wait-fixture";
 
 type State = ReturnType<typeof runtimeFor>;
 
@@ -48,12 +48,12 @@ function track(state: State): State {
 async function stop(state: State, requestId: string): Promise<Response> {
   const router = await state.getRouter();
   return router.POST(
-    new Request(`http://localhost/api/flows/ask-board/requests/${requestId}/abort`, {
+    new Request(`http://localhost/api/flows/wait-board/requests/${requestId}/abort`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ userId: USER })
     }),
-    { params: { path: ["ask-board", "requests", requestId, "abort"] } }
+    { params: { path: ["wait-board", "requests", requestId, "abort"] } }
   );
 }
 
@@ -67,10 +67,10 @@ async function untilStatus(state: State, requestId: string, status: string): Pro
   }
 }
 
-describe("stop a turn parked on an ask", () => {
-  it("cancels the asked row and ends the turn aborted, with no model call after the stop (BR-16)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+describe("stop a turn parked on a wait", () => {
+  it("cancels the waited-on row and ends the turn aborted, with no model call after the stop (BR-16)", async () => {
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
     expect(await statusOf(state, parked.requestId!)).toBe("suspended");
@@ -88,8 +88,8 @@ describe("stop a turn parked on an ask", () => {
   });
 
   it("a stop that wins over an ending already on the row leaves the row as it is and still ends the turn (BR-16b, BR-16c)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
     // The colleague finished, but nothing has resumed the turn yet.
@@ -107,8 +107,8 @@ describe("stop a turn parked on an ask", () => {
   });
 
   it("a stop whose row cancel fails still ends the turn aborted, and the next touch cancels the row (FIX-1844)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model, { failCancelOnce: true });
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model, { failCancelOnce: true });
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
 
@@ -125,24 +125,24 @@ describe("stop a turn parked on an ask", () => {
     await expect(act(state, flow, "settle", { outcome: { kind: "complete", output: "late" } })).rejects.toThrow();
   });
 
-  it("a touch long past an ask's deadline leaves a row whose turn still waits on it alone", async () => {
-    const { model } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+  it("a touch long past a wait's deadline leaves a row whose turn still waits on it alone", async () => {
+    const { model } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
     const [row] = await rows(state, flow);
 
-    // No sweep has timed the ask out (a cron host between runs): it still waits.
+    // No sweep has timed the wait out (a cron host between runs): it still waits.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(row!.ask.deadline + 10 * 60_000);
+    vi.setSystemTime(row!.wait.deadline + 10 * 60_000);
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
     expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
     expect(await statusOf(state, parked.requestId!)).toBe("suspended");
   });
 
   it("an answer refused while the turn is interrupted before its log holds the gate stays owed, and arrives once it parks again", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
     const requestId = parked.requestId!;
@@ -175,8 +175,8 @@ describe("stop a turn parked on an ask", () => {
   });
 
   it("an answer that wins leaves the stop to a finished turn (BR-16b, the answer first)", async () => {
-    const { model, seen } = stepModel([askCall("c1"), finalAnswer]);
-    const flow = askFlow(model);
+    const { model, seen } = stepModel([waitCall("c1"), finalAnswer]);
+    const flow = waitFlow(model);
     const state = track(runtimeFor(flow));
     const parked = await act(state, flow, "run");
     await act(state, flow, "settle", { outcome: { kind: "complete", output: "the answer" } });
@@ -189,11 +189,11 @@ describe("stop a turn parked on an ask", () => {
   });
 });
 
-describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () => {
+describe("a resolved wait survives a SQLite cold restart (BR-16c, BR-11a)", () => {
   async function parkOnSqlite(seen: GeneratorModelCallOptions[]) {
-    dir = await mkdtemp(join(tmpdir(), "fsd-ask-stop-"));
+    dir = await mkdtemp(join(tmpdir(), "fsd-wait-stop-"));
     const filename = join(dir, "store.db");
-    const flow = askFlow(stepModel([askCall("c1"), finalAnswer], seen).model);
+    const flow = waitFlow(stepModel([waitCall("c1"), finalAnswer], seen).model);
     const before = runtimeFor(flow, sqliteStores({ filename }));
     const parked = await act(before, flow, "run");
     const runtime = await before.getRuntime();
@@ -204,7 +204,7 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
   }
 
   async function restart(filename: string, seen: GeneratorModelCallOptions[]) {
-    const flow = askFlow(stepModel([askCall("c1"), finalAnswer], seen).model);
+    const flow = waitFlow(stepModel([waitCall("c1"), finalAnswer], seen).model);
     // A long-lived host: the router runs the durability sweep.
     const after = track(runtimeFor(flow, sqliteStores({ filename }), true, 50));
     await after.getRouter();
@@ -230,22 +230,22 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     expect(await rows(after, flow)).toEqual([expect.objectContaining({ status: "cancelled", resumeOwed: false })]);
   });
 
-  it("a timed-out ask killed after its row's cancel is driven on as wait_timed_out, not wait_task_cancelled", async () => {
+  it("a timed-out wait killed after its row's cancel is driven on as wait_timed_out, not wait_task_cancelled", async () => {
     const seen: GeneratorModelCallOptions[] = [];
     const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
-    // The sweep timed the ask out and the resumed call cancelled its row; the
+    // The sweep timed the wait out and the resumed call cancelled its row; the
     // process died before the turn moved on.
     await provider.suspend({
       ...gate,
       status: "submitted",
       resolvedAt: Date.now(),
       resolvedBy: "sweep",
-      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The wait timed out." } }
     });
     // The timeout's cancel lands after the deadline, as the sweep fires it.
     const real = Date.now.bind(Date);
     vi.spyOn(Date, "now").mockImplementation(() => real() + 6 * 60_000);
-    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "The ask timed out before the task finished." } });
+    await act(before, flowBefore, "settle", { outcome: { kind: "cancel", reason: "The wait timed out before the task finished." } });
     vi.restoreAllMocks();
     await before.dispose();
 
@@ -263,14 +263,14 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     // A colleague cancelled the task with the timeout's own words; the touch
     // resolved the gate with that cancel; the process died before the turn moved on.
     await act(before, flowBefore, "settle", {
-      outcome: { kind: "cancel", reason: "The ask timed out before the task finished." }
+      outcome: { kind: "cancel", reason: "The wait timed out before the task finished." }
     });
     await provider.suspend({
       ...gate,
       status: "submitted",
       resolvedAt: Date.now(),
       resolvedBy: `ask:${SESSION}`,
-      resumeData: { answered: false, error: { code: "wait_task_cancelled", message: "The asked task was cancelled." } }
+      resumeData: { answered: false, error: { code: "wait_task_cancelled", message: "The waited-on task was cancelled." } }
     });
     await before.dispose();
 
@@ -284,16 +284,16 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     ["after the deadline: the recorded timeout stands", 6 * 60_000, "wait_timed_out"],
     ["before the deadline: its answer comes back late", 0, "the late answer"]
   ] as const) {
-    it(`a timed-out ask whose row then completed ${label}, after a re-drive`, async () => {
+    it(`a timed-out wait whose row then completed ${label}, after a re-drive`, async () => {
       const seen: GeneratorModelCallOptions[] = [];
       const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
-      // The sweep timed the ask out; the colleague's row completed (when, varies); the process died.
+      // The sweep timed the wait out; the colleague's row completed (when, varies); the process died.
       await provider.suspend({
         ...gate,
         status: "submitted",
         resolvedAt: Date.now(),
         resolvedBy: "sweep",
-        resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+        resumeData: { answered: false, error: { code: "wait_timed_out", message: "The wait timed out." } }
       });
       const real = Date.now.bind(Date);
       vi.spyOn(Date, "now").mockImplementation(() => real() + offset);
@@ -307,7 +307,7 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     });
   }
 
-  it("a task cancelled by someone else before the deadline keeps its cancel, though the sweep then timed the ask out", async () => {
+  it("a task cancelled by someone else before the deadline keeps its cancel, though the sweep then timed the wait out", async () => {
     const seen: GeneratorModelCallOptions[] = [];
     const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
     // A colleague cancels the task in time; its resume is lost to a crash; the
@@ -318,7 +318,7 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
       status: "submitted",
       resolvedAt: Date.now(),
       resolvedBy: "sweep",
-      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The ask timed out." } }
+      resumeData: { answered: false, error: { code: "wait_timed_out", message: "The wait timed out." } }
     });
     await before.dispose();
 
@@ -328,7 +328,7 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
     expect(toolResults(seen[1]!.messages)).not.toContain("wait_timed_out");
   });
 
-  it("an answered ask killed before its turn continued is driven on to completion, once (V9)", async () => {
+  it("an answered wait killed before its turn continued is driven on to completion, once (V9)", async () => {
     const seen: GeneratorModelCallOptions[] = [];
     const { filename, flow: flowBefore, before, requestId, gate, provider } = await parkOnSqlite(seen);
     await act(before, flowBefore, "settle", { outcome: { kind: "complete", output: "Yes, renewed 2026-08" } });
@@ -354,8 +354,8 @@ describe("a resolved ask survives a SQLite cold restart (BR-16c, BR-11a)", () =>
 
 it("OFF STATE: a store without durable execution still refuses to stop a parked turn", async () => {
   // Nothing parks without durable execution, so there is nothing to stop.
-  const { model } = stepModel([askCall("c1"), finalAnswer]);
-  const flow = askFlow(model);
+  const { model } = stepModel([waitCall("c1"), finalAnswer]);
+  const flow = waitFlow(model);
   const state = track(runtimeFor(flow, inMemoryStores(), false));
   const run = await act(state, flow, "run");
   expect(await statusOf(state, run.requestId!)).toBe("completed");

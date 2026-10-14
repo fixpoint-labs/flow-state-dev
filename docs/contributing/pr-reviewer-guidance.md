@@ -200,7 +200,7 @@ spoken for.** The problem and the solution are one **people table** — *someone
 after* (a spec) or *a team that… · today · after this epic* (an epic) — cut from the spec's own
 `SPEC.md`. Under it goes the spec's figure, as a raw image pinned to the commit that holds it
 ([`spec-figures.md`](spec-figures.md) → "In the PR body"), with its one sentence: the *what
-changes* figure on a spec PR; on an epic PR the box, then the path and the ownership matrix
+changes* figure on a spec PR; on an epic PR the box, then the ownership matrix
 further down. Between the table and that figure sits **the goal**: one sentence, the *how
 we'll know it's met* figure as a mermaid fence, and one line naming the goal check and the
 control that must fail. So the question on those PRs is not *does a diagram earn its place* but whether
@@ -481,7 +481,7 @@ What goes down here:
   construction ([`spec-template.md`](spec-template.md) → `DECISIONS.md`), so normally nothing
   filters out and the block is omitted. It appears only when the decisions doc collected an
   implementation call the filters caught, which keeps it complete without the reader having to
-  approve it. **Implementation calls a compliant spec made deliberately live in `PLAN.md` →
+  approve it. **Implementation calls a compliant spec made deliberately live in `DECISIONS.md` →
   Decided, not asked**, which is in the committed doc diff a reviewer already reads — don't
   copy them into the body.
 - **The long-form case.** On a spec or epic PR, **nothing**: the document set is the diff,
@@ -497,8 +497,8 @@ collapsed **How to review this** section.
 
 | PR kind | The one question | The human judges | Automated review helps most on | Do **not** report |
 |---|---|---|---|---|
-| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The goal's size and its check, the numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing rules, documentation promises, predecessor treatment and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, sketch and POC production polish |
-| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The goal's size and the closure issue that checks it, set size and cross-cutting decisions | Conflicting decisions, rule ownership, missing/unnecessary issues, shared documentation ownership and lineage | Single-issue design details and routine status movement since the dated snapshot |
+| **Spec PR** (`spec/<ISSUE-ID>`, merges after approval/checks) | Is this the right approach? | The goal's size and its check, the numbered decisions, scope, whether it's worth building | Design-invalidating constraints, missing cases a person sees, the debt section, predecessor rows and experimental isolation | Unpinned names/layout, local structure, test names, pixel-level figures, POC production polish |
+| **Epic PR** (`epic/<name>`, merges after approval/checks) | Is this body of work worth doing — and does the set overbuild? | The goal's size and the closure issue that checks it, set size and cross-cutting decisions | Conflicting decisions, rule ownership in `DECISIONS.md`, missing/unnecessary issues, the docs line, *what's already here* and the set's debt | Single-issue design details and routine status movement since the dated snapshot |
 | **Implementation PR** (`fix/<ISSUE-ID>`, merges) | Is this correct, and does it match the approved direction? | The implementation decisions and their ramifications, what was subtracted, whether the goal was actually *proved*: a PASS on the spec's goal check, after its control was seen to FAIL | Correctness, second paths (BP-035), auth/routing from caller-controllable input (BP-031), legacy-shape tolerance (BP-030), concurrency and null boundaries | Re-litigating a Decision the spec already settled and a human approved; style the codebase has already settled |
 
 **The implementation row is the asymmetry worth noticing.** On a spec or epic PR we are
@@ -512,8 +512,9 @@ The [canonical convergence rule](orchestration.md#spec-review-the-bar-and-the-co
 still limits design rounds. Optional comments do not demand zero-thread convergence;
 required checks, approvals and thread-resolution policy still apply before merge.
 Retained POCs are experimental, but isolation and absence of secrets/generated
-dependencies remain reviewable. Implementation must reconcile `DOCS.md` against behavior
-and publish it, and account for the relevant predecessors in `EVOLUTION.md`.
+dependencies remain reviewable. Implementation writes the docs to the destinations
+`SPEC.md`'s docs line names, against what shipped, and honours the spec's debt verdict; a set
+retained in the older shape binds it to its `DOCS.md` and `EVOLUTION.md` instead.
 
 ## Where each block is authored
 

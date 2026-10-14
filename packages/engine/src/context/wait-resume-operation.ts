@@ -1,38 +1,38 @@
 /**
- * The server-side resume of a turn parked on an ask gate: the host operation
- * behind `RequestHost.resumeAsk`, as `dispatch-operation.ts` is behind the
+ * The server-side resume of a turn parked on a wait gate: the host operation
+ * behind `RequestHost.resumeWait`, as `dispatch-operation.ts` is behind the
  * dispatch seam.
  *
  * The public resume route (`routes/resume-routes.ts`) takes a request id and
- * caller-supplied gate data, so it is closed to every ask gate. This is the
- * other way in: a running request in the asker's own session resumes the turn
- * through `RequestHost.resumeAsk` (`create-request-host.ts` closes over the
+ * caller-supplied gate data, so it is closed to every wait gate. This is the
+ * other way in: a running request in the waiting turn's own session resumes the turn
+ * through `RequestHost.resumeWait` (`create-request-host.ts` closes over the
  * session and finds the gate).
  *
  * This module only finds the gate within the session; the resume itself is
- * `durability/resume-ask-gate.ts`, which the durability sweep also calls to
- * resume an ask past its deadline with `wait_timed_out`.
+ * `durability/resume-wait-gate.ts`, which the durability sweep also calls to
+ * resume a wait past its deadline with `wait_timed_out`.
  */
-import { isAskGate } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/types";
 import type {
-  AskOutcome,
-  ResumeAskResult,
+  WaitOutcome,
+  ResumeWaitResult,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
-import { resumeAskGate, type AskResumeDeps } from "../durability/resume-ask-gate";
+import { resumeWaitGate, type WaitResumeDeps } from "../durability/resume-wait-gate";
 import { ownsRecord, type OwnerIdentity } from "./record-owner";
 
 /**
- * The session-scoped half of `RequestHost.resumeAsk`: find an ask gate by id
+ * The session-scoped half of `RequestHost.resumeWait`: find a wait gate by id
  * among the suspensions of one session and principal, then resume it.
  *
  * Built once per host and handed to every request's request host, which closes
  * it over the running request's identity. The identity arrives from there,
  * never from the block that calls the verb.
  */
-export type AskResumeOperation = (input: {
+export type WaitResumeOperation = (input: {
   gateId: string;
-  outcome: AskOutcome;
+  outcome: WaitOutcome;
   /** The running request's identity, server-derived. */
   owner: {
     sessionId: string;
@@ -42,15 +42,15 @@ export type AskResumeOperation = (input: {
     /** The flow instance that runs the request. */
     flow: OwnerIdentity;
   };
-}) => Promise<ResumeAskResult>;
+}) => Promise<ResumeWaitResult>;
 
-/** Build the {@link AskResumeOperation} a host hands its request hosts. */
-export function createAskResumeOperation(deps: AskResumeDeps): AskResumeOperation {
+/** Build the {@link WaitResumeOperation} a host hands its request hosts. */
+export function createWaitResumeOperation(deps: WaitResumeDeps): WaitResumeOperation {
   return async ({ gateId, outcome, owner }) => {
-    const notFound: ResumeAskResult = {
+    const notFound: ResumeWaitResult = {
       ok: false,
       refused: "gate-not-found",
-      detail: `no ask gate "${gateId}" parks a turn in this session`
+      detail: `no wait gate "${gateId}" parks a turn in this session`
     };
     // Bounded by the session: a conversation holds few suspensions, and the
     // retention sweep prunes resolved ones. No status filter, so a resolved
@@ -66,7 +66,7 @@ export function createAskResumeOperation(deps: AskResumeDeps): AskResumeOperatio
     // conversation's, and is treated exactly as one that does not exist.
     const owned: SuspensionRecord[] = [];
     for (const candidate of candidates) {
-      if (candidate.suspensionId !== gateId || !isAskGate(candidate)) continue;
+      if (candidate.suspensionId !== gateId || !isWaitGate(candidate)) continue;
       const request = await deps.stores.request.get(candidate.requestId);
       if (
         request === undefined ||
@@ -84,19 +84,19 @@ export function createAskResumeOperation(deps: AskResumeDeps): AskResumeOperatio
 
     // A gate id is unique per request, not per session. Two turns of this
     // conversation parked under one id cannot be told apart, and guessing
-    // would hand one ask's answer to the other: refuse, resume neither.
+    // would hand one wait's answer to the other: refuse, resume neither.
     const pending = owned.filter((s) => s.status === "pending");
     if (pending.length > 1) {
       return {
         ok: false,
         refused: "ambiguous",
-        detail: `${pending.length} turns in this session are parked on ask gate "${gateId}"`
+        detail: `${pending.length} turns in this session are parked on wait gate "${gateId}"`
       };
     }
 
     // One pending gate is the one to resume; with none, any owned gate answers
     // `already-resolved` through the same path.
     const gate = pending[0] ?? owned[0]!;
-    return resumeAskGate(deps, gate, outcome, `ask:${owner.sessionId}`);
+    return resumeWaitGate(deps, gate, outcome, `ask:${owner.sessionId}`);
   };
 }

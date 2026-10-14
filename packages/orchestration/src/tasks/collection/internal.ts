@@ -101,7 +101,7 @@ export function buildInitialTask<TInput, TOutput>(
     labels: init.labels,
     metadata: init.metadata,
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
-    ...(init.ask !== undefined ? { ask: { gateId: init.ask.gateId, deadline: init.ask.deadline } } : {}),
+    ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
     ...(init.undispatched === true ? { undispatched: true } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
@@ -238,7 +238,7 @@ export function assertEdgeAllowed(
  * a claim landing between a caller's read and the write is honoured.
  *
  * - `awaiting-answer`: an answer re-queued the row and it hasn't run again
- *   (pending, or blocked since); it must run in the session that asked,
+ *   (pending, or blocked since); it must run in the session that filed it,
  *   which its assignee keys.
  * - `follow-up`: a follow-up keeps the worker of the task it follows, whose
  *   session it runs in.
@@ -269,7 +269,7 @@ export function dispatchWrite(
     return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
   }
   if (task.status !== "pending") return { decline: "disallowed" };
-  if (options.ask !== undefined && task.ask != null) return { decline: "disallowed" };
+  if (options.wait !== undefined && task.wait != null) return { decline: "disallowed" };
   if (options.assignee !== undefined) {
     const refused = assigneeChangeDecline(task, options.assignee);
     if (refused !== undefined) return { decline: refused };
@@ -279,7 +279,7 @@ export function dispatchWrite(
       undispatched: undefined,
       dispatchCall: options.call,
       ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
-      ...(options.ask !== undefined ? { ask: { gateId: options.ask.gateId, deadline: options.ask.deadline } } : {}),
+      ...(options.wait !== undefined ? { wait: { gateId: options.wait.gateId, deadline: options.wait.deadline } } : {}),
     },
   };
 }
@@ -1171,7 +1171,7 @@ export interface EndingRecording {
  * every recorder runs, in that same write:
  *
  * 1. Orchestration's own: {@link recordResumeOwed}, which writes the typed
- *    `Task.resumeOwed` on an asked row's ending.
+ *    `Task.resumeOwed` on a waited-on row's ending.
  * 2. The ledger's declared `recordEnding`, handed the {@link endingOf} this
  *    write, metadata only.
  *
@@ -1189,21 +1189,21 @@ function recordEnding<TInput, TOutput>(
 
 /**
  * Orchestration's resume recorder (FIX-1816): stamp the resume-owed marker
- * when this write ends an asked row.
+ * when this write ends a waited-on row.
  *
- * Every way an asked row can end (its worker's result, a failure past its
- * retries, a cancel, the cancel its ask's timeout writes, the board's
+ * Every way a waited-on row can end (its worker's result, a failure past its
+ * retries, a cancel, the cancel its wait's timeout writes, the board's
  * abandonment settle) reaches it in the same write as the ending. A retried
  * failure re-pends the row, which is not an ending, and writes nothing.
  *
- * A row that owes its cancel (`Task.cancelOwed`, FIX-1844) has an ask that is
+ * A row that owes its cancel (`Task.cancelOwed`, FIX-1844) has a wait that is
  * already over: its ending pays that debt and owes no resume, as no turn waits.
  */
 function recordResumeOwed<TInput, TOutput>(
   prev: Task<TInput, TOutput>,
   next: Task<TInput, TOutput>
 ): Task<TInput, TOutput> {
-  if (prev.ask == null || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
+  if (prev.wait == null || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
     return next;
   }
   if (prev.cancelOwed === true) return { ...next, cancelOwed: undefined };

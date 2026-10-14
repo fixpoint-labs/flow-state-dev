@@ -139,6 +139,87 @@ export const KEEP = [
     why: "D2: the run-once keys are a process-internal wire value, kept so a replay across the upgrade finds its record (WR-11)"
   },
   {
+    path: /^(packages|apps|docs\/architecture)\//,
+    // A capitalized English verb ("Ask the team anything.", "Asked of the host here", "Self-Ask"),
+    // on a line naming no identifier built on ask: the symbol rules' pattern can't tell them apart.
+    line: /^(?!.*\b\w+Ask)(?!.*\bask[A-Z])(?!.*\bASK_)(?!.*\bAsk[A-Z]).*\b(Ask|Asks|Asked|Asking)\b/,
+    rules: ["ask-symbol", "ask-symbol-in-docs"],
+    why: "WR-5: the English verb, not a name; the line names no identifier built on ask"
+  },
+  {
+    path: /^packages\/harness-manager\//,
+    rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
+    why: "WR-3: the harness question inbox, where a coding run's ask is a question to a person"
+  },
+  {
+    path: /^apps\/kitchen-sink\/(flows\/chat-agent\/|e2e\/smoke-ask\.spec\.ts$)|^packages\/integration-tests\/src\/scenarios\/chat-ask\.test\.ts$/,
+    rules: ["ask-symbol", "ask-mark"],
+    why: "WR-3: the kitchen sink's Ask mode and its clarifying question: a question to the person chatting"
+  },
+  {
+    path: /^apps\/kitchen-sink\/(lib\/workforce-shell\.ts|components\/picked-session-panel\.tsx|test\/workforce-shell\.test\.ts)$/,
+    line: /COORDINATOR_ASK|WORKER_ASKS|[Ww]orkerAsk/,
+    rules: ["ask-symbol"],
+    why: "WR-5: the kitchen sink shell's message box, where the person asks a worker; nothing waits on a task"
+  },
+  {
+    path: /^packages\/cli\/src\//,
+    rules: ["ask-symbol", "ask-prose"],
+    why: "WR-5: the CLI asks the app who an in-process caller is; not a wait"
+  },
+  {
+    path: /(^|\/)cascading-router(\.test|\.test-d)?\.ts$/,
+    rules: ["ask-symbol", "ask-mark"],
+    why: "WR-5: a cascading router level's `ask`, the evaluator it asks a question of"
+  },
+  {
+    path: /^(packages\/core\/test\/flow-config\.test\.ts|packages\/engine\/test\/(faceted-collection|flow-instance-ownership|request-action-result|suspension-resume)\.test\.ts|packages\/integration-tests\/src\/scenarios\/request-action-result\.test\.ts|packages\/workforce\/test\/(split-resource-modules|worker-door)\.test\.ts|docs\/architecture\/action-forms\.md)$/,
+    line: /\bask\??:\s*\{|askSeq/,
+    rules: ["ask-mark", "ask-symbol"],
+    why: "WR-5: a test flow's action named ask, a chat or approval turn a person starts; not a wait"
+  },
+  {
+    path: /^packages\/engine\/test\/context\/request-host-e2e\.test\.ts$/,
+    line: /\bask\??:\s*z\./,
+    rules: ["ask-mark"],
+    why: "WR-5: the ids a liveness probe asks about"
+  },
+  {
+    path: /^packages\/orchestration\/test\/skills\/skill-activator-evaluator\.test\.ts$/,
+    line: /\b[st]\.ask\(/,
+    rules: ["ask-mark"],
+    why: "WR-5: the test's helper that asks the skill evaluator a question"
+  },
+  {
+    path: /^packages\/orchestration\/test\/(task-board\/task-board-park-exit-drain|collection\/answer-reentry)\.test\.ts$/,
+    rules: ["ask-symbol"],
+    why: "WR-3: a task parked on its worker's question to a person"
+  },
+  {
+    path: /^packages\/workforce\/(src\/coordinator\/(coordinator-flow|coordinator-keys)\.ts|test\/(worker-discovery|project-workspace-workstream|project-workspace-task)\.test\.ts)$/,
+    line: /COORDINATOR_ROUTE_ASK|routeAsked|askRoute|askDoor|askThroughHiredWorker|askSource|\bAsked\b/,
+    rules: ["ask-symbol"],
+    why: "WR-5: asking a model to route, or asking a door or a source a question; not a wait"
+  },
+  {
+    path: /^packages\/integration-tests\/src\/two-users-one-tenant\/non-streaming-text\.test\.ts$/,
+    line: /askStreamed|askGenerated/,
+    rules: ["ask-symbol"],
+    why: "WR-5: two actions that ask a desk a question; not a wait"
+  },
+  {
+    path: /^packages\/workspace\/src\/local-host\.ts$/,
+    line: /core\.askPass/,
+    rules: ["ask-symbol"],
+    why: "git's own setting name"
+  },
+  {
+    path: /^packages\/ui\/test\/render\/status-tokens\.test\.tsx$/,
+    line: /never as an ask/,
+    rules: ["ask-prose"],
+    why: "WR-3: a person's approval or question, which a blocked task's notes are not drawn as"
+  },
+  {
     path: /^packages\/(orchestration\/(src\/tasks\/notice\/task-notice\.ts|test\/tasks\/task-notice\.test\.ts)|workforce\/src\/conversation-board\/task-settled\.ts)$/,
     line: /\basked\??:/,
     rules: ["ask-mark", "ask-prose"],

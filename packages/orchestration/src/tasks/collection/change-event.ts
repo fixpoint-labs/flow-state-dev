@@ -35,11 +35,11 @@ export type TaskChangeKind =
    * read of the row.
    */
   | "run_linked"
-  /** An asked row's resume-owed marker was cleared: its asking turn has its answer (FIX-1816). */
+  /** A waited-on row's resume-owed marker was cleared: its waiting turn has its answer (FIX-1816). */
   | "resume_settled"
   /** A finished row went back to the queue: a person picked it up again (FIX-1764). */
   | "reopened"
-  /** An asked row's ask is over and its cancel failed: the row owes that cancel (FIX-1844). */
+  /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
   | "cancel_owed"
   /** A recorded row was dispatched: it is ready to start now (FIX-1875). */
   | "dispatched";

@@ -9,10 +9,11 @@ what the system does now, then compare the spec to the implementation.
 | Issue | `issues/<ISSUE-ID>/` | [Issue template](../docs/contributing/spec-template.md) |
 | Epic | `epics/<EPIC-ISSUE-ID>/` | [Epic template](../docs/contributing/epic-spec-template.md) |
 
-Each set contains `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, and
-`DOCS.md`, with conditional `EVOLUTION.md` for relevant predecessor designs.
+Each set contains `SPEC.md` (direction, what changes, what's already here and the debt,
+including predecessor designs it keeps, amends or supersedes) and `DECISIONS.md`.
 Authored `figures/`, `assets/`, and `poc/<experiment>/` stay with that owner.
-The templates include worked documentation-draft and multi-predecessor evolution examples.
+Sets retained before that shape also carry `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`,
+and sometimes `EVOLUTION.md`; they stay as they are and are read as written.
 
 The canonical rules are in **[Spec retention and authority](../docs/contributing/orchestration.md#spec-retention-and-authority)**.
 For approval, required repository checks, confirmed merge and subsequent changes, use

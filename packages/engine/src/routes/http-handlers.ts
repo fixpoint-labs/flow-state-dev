@@ -73,8 +73,8 @@ import { pinRejectsCaller } from "../context/instance-pin";
 import { createInstanceCallerResolver, type InstanceCallerResolver } from "./instance-caller";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
-import { createAskResumeOperation } from "../context/ask-resume-operation";
-import { installAskSweeperFact } from "../durability/ask-deadlines";
+import { createWaitResumeOperation } from "../context/wait-resume-operation";
+import { installWaitSweeperFact } from "../durability/wait-deadlines";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 
 export type RequestContext = {
@@ -298,22 +298,22 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig.requestHost.dispatchOperation = createDispatchOperation({ host });
   }
 
-  // Same last-resort terms for the ask resume, and only with durable execution:
-  // a router mounted without a `FlowState` can still serve asks.
+  // Same last-resort terms for the wait resume, and only with durable execution:
+  // a router mounted without a `FlowState` can still serve waits.
   if (
     runtimeConfig.requestHost !== undefined &&
-    runtimeConfig.requestHost.askResume === undefined &&
+    runtimeConfig.requestHost.waitResume === undefined &&
     runtimeConfig.durabilityProvider !== undefined
   ) {
-    runtimeConfig.requestHost.askResume = createAskResumeOperation({
+    runtimeConfig.requestHost.waitResume = createWaitResumeOperation({
       provider: runtimeConfig.durabilityProvider,
       stores,
       continueRequest: (opts) => host.continueRequest(opts)
     });
   }
-  // And whether a sweeper bounds an ask here, so the turn is offered one.
+  // And whether a sweeper bounds a wait here, so the turn is offered one.
   if (runtimeConfig.requestHost !== undefined && runtimeConfig.durabilityProvider !== undefined) {
-    installAskSweeperFact(runtimeConfig.requestHost, runtimeConfig.durabilityProvider);
+    installWaitSweeperFact(runtimeConfig.requestHost, runtimeConfig.durabilityProvider);
   }
   // How this router stops a parked request (FIX-1816), with durable
   // execution only: for the abort route, and, on the same last-resort terms,

@@ -17,7 +17,7 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
   isTerminalStatus,
@@ -143,8 +143,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   /**
    * The read boundary for this backing — same job as the resource backing's
    * `readTaskState`. Atomic state is stored, not parsed, so a row written
-   * before the `parked` rename arrives carrying the legacy status and is
-   * mapped forward here, before any filter or the transition guard sees it.
+   * before the `parked` rename arrives carrying the legacy status, and one
+   * written before the wait rename its legacy wait mark; both are mapped
+   * forward here, before any filter or the transition guard sees it.
    *
    * The map is rebuilt only when a legacy row is actually present, so the
    * common path returns the stored object itself.
@@ -154,7 +155,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     const stored = slot as Record<string, Task<TInput, TOutput>>;
     let migrated: Record<string, Task<TInput, TOutput>> | undefined;
     for (const [id, task] of Object.entries(stored)) {
-      const next = withMigratedStatus(task);
+      const next = withMigratedWait(withMigratedStatus(task));
       if (next === task) continue;
       migrated ??= { ...stored };
       migrated[id] = next;
@@ -878,7 +879,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async markCancelOwed(id) {
       return patchOne(id, "cancel_owed", (task) =>
-        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+        task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
       );

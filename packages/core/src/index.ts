@@ -133,31 +133,31 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
-  ResumeAskInput,
-  ResumeAskResult,
+  ResumeWaitInput,
+  ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult
 } from "./types/request-host";
 
 /**
- * The ask gate — what a turn parks on while a colleague answers, and how the
+ * The wait gate — what a turn parks on while a colleague answers, and how the
  * answer comes back as the result of the call that parked.
  */
 export {
-  ASK_GATE_REASON,
+  WAIT_GATE_REASON,
   WaitEndedError,
   WaitStoppedError,
-  isAskGate,
-  parkOnAsk,
-  parseAskOutcome,
-  recordedAskOutcome
-} from "./types/ask-gate";
+  isWaitGate,
+  parkOnWait,
+  parseWaitOutcome,
+  recordedWaitOutcome
+} from "./types/wait-gate";
 export type {
-  AskEndingErrorCode,
-  AskGateBinding,
-  AskOutcome,
-  ParkOnAskInput
-} from "./types/ask-gate";
+  WaitEndingErrorCode,
+  WaitGateBinding,
+  WaitOutcome,
+  ParkOnWaitInput
+} from "./types/wait-gate";
 
 /**
  * One dispatch protocol — typed entries addressed `(type, name)`, the

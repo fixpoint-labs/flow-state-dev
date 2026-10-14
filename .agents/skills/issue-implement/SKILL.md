@@ -8,7 +8,7 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 ## Core Principles
 
-**The retained spec is the design authority, not the issue description.** Read `specs/issues/<ISSUE-ID>/` on `main`: `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, and applicable `EVOLUTION.md`, with owned artifacts. Build from its rules and plan, reconcile its documentation draft with real behavior, and honor retained versus superseded predecessor decisions. Approved intent is not proof of shipped behavior; current code and published docs establish that. Linear holds status and links, not a competing full spec. Spec-backed implementation starts only after confirmed spec merge; bugs and brief-backed work keep their existing direct route.
+**The retained spec is the design authority, not the issue description.** Read `specs/issues/<ISSUE-ID>/` on `main`: `SPEC.md` and `DECISIONS.md`, with owned artifacts (a set retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md` or `EVOLUTION.md`; read those too). It settles direction — the goal, the decisions, the debt verdict — and you plan the build against the code (Step 4.2). Honor what its what's-already-here rows keep, amend or supersede. Approved intent is not proof of shipped behavior; current code and published docs establish that. Linear holds status and links, not a competing full spec. Spec-backed implementation starts only after confirmed spec merge; bugs and brief-backed work keep their existing direct route.
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
@@ -43,9 +43,9 @@ Fetch everything about the issue:
 2. `list_comments` — read any discussion or decisions
 3. **Read the repository spec and its review history.** For direct-route bugs, first perform the spec-PR lookup below; if none exists, the issue, comments, and reproduction are the contract.
    1. Locate the original and amendment spec PRs across all states and read their merge status, head SHA, and review provenance. A closed-unmerged PR is not a merged spec.
-   2. Read the retained set from fresh `origin/main`, including `DOCS.md`, applicable `EVOLUTION.md`, and its exact predecessor anchors. Read current code/docs to distinguish approved intent from shipped behavior. Historical designs lacking retained files may be researched through their actual PR/Linear artifacts; do not invent paths or backfill them.
+   2. Read the retained set from fresh `origin/main`, including the exact predecessor anchors its what's-already-here rows cite. Read current code/docs to distinguish approved intent from shipped behavior. Historical designs lacking retained files may be researched through their actual PR/Linear artifacts; do not invent paths or backfill them.
    3. Read the spec-PR discussion on all three surfaces (inline, top-level comments, reviews). Apply the canonical spec-review bar: direction findings require decisions; below-the-bar notes are implementer input, not instructions.
-   4. Read `PLAN.md → Notes from review`; adopt, adapt, or discard against the code. Linear supplies status and links only. Never overwrite retained content with an old Linear mirror.
+   4. Read `DECISIONS.md → Notes from review` (an older set: wherever it carries them); adopt, adapt, or discard against the code. Linear supplies status and links only. Never overwrite retained content with an old Linear mirror.
 4. If the issue has sub-tasks, fetch those too — they may represent the intended PR breakdown
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` using it as a query.
@@ -72,7 +72,7 @@ Before starting work, check:
    - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/issue-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
-2. **Full spec approved and merged?** Require the five documents under `specs/issues/<ISSUE-ID>/`, applicable evolution, human approval bound to the reviewed head, and confirmed merge after required checks and review-thread policy. A merged spec PR satisfies both: the owner's merge is the approval. Follow [`orchestration.md`](../../../docs/contributing/orchestration.md#merging-and-amending-a-spec) → "Merging and amending a spec". A standing label does not approve a changed head; invoking this skill is not a merge bypass. If approval exists but merge is pending, only an explicitly authorized `implement` backstop may execute that canonical merge contract before creating the implementation branch, then continue and return the matching `specMerge` receipt. Otherwise return the exact merge wait for the coordinator to dispatch `issue-worker` **MERGE-ONLY**; do not start implementation. Bugs and brief-backed issues with no spec PR skip this gate.
+2. **Full spec approved and merged?** Require the retained set under `specs/issues/<ISSUE-ID>/`, human approval bound to the reviewed head, and confirmed merge after required checks and review-thread policy. A merged spec PR satisfies both: the owner's merge is the approval. Follow [`orchestration.md`](../../../docs/contributing/orchestration.md#merging-and-amending-a-spec) → "Merging and amending a spec". A standing label does not approve a changed head; invoking this skill is not a merge bypass. If approval exists but merge is pending, only an explicitly authorized `implement` backstop may execute that canonical merge contract before creating the implementation branch, then continue and return the matching `specMerge` receipt. Otherwise return the exact merge wait for the coordinator to dispatch `issue-worker` **MERGE-ONLY**; do not start implementation. Bugs and brief-backed issues with no spec PR skip this gate.
 
 3. **Dependencies resolved?** Check blocking issues:
    - **Read the direction, don't infer it.** On the GraphQL channel, this issue's blockers are its `inverseRelations` of type `blocks` (the node's `issue` is the blocker); its own `relations` of type `blocks` are issues *it* blocks. Reading `relations` as blocked-by inverts the dependency — the prerequisite parks and its dependents run first.
@@ -96,10 +96,10 @@ If all clear, move to Step 3.
    worktree and never occupies the shared `main` ref (which parallel workers would collide on).
    This runs only when *creating* the branch — the re-entry guard above sends an in-flight impl
    PR straight to Step 10, so you never reset a branch that already carries pushed commits.
-   - **Sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one node of the spec's
-     PR plan.) Use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement **only that sub-PR's
-     deliverables** (not the whole issue), and base it on the dependency's branch if it has one
-     (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
+   - **Sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one node of the issue's
+     PR plan — Step 4.2's, or an older spec's.) Use branch `fix/{ISSUE-ID}-{sub-PR id}`,
+     implement **only that sub-PR's deliverables** (not the whole issue), and base it on the
+     dependency's branch if it has one (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
      — else on `origin/main` as above. The branch must include the merged spec; do not repeat its merge per sub-PR.
      When the git base is a dependency branch, the GitHub PR you open in Step 9 goes in a
      GitHub stack on the dependency's PR (`--base` is that branch, not main).
@@ -117,18 +117,26 @@ If all clear, move to Step 3.
 
 Record the discipline; you'll inject it into the implementer prompt at Step 5.
 
-#### 4.2: Assess complexity
+#### 4.2: Plan the build, then assess complexity
 
-Read the spec's "Implementation Sequence" section (or equivalent) to determine scope:
+**On the spec route the build plan is yours.** The spec settles direction; you work out the rest against the code (take 4.3's map first if the area is unfamiliar). Read its goal, decision cards, *Decided, not asked* and debt section, then settle:
+
+- **Order, surfaces and edge cases** — what changes where, in what sequence.
+- **Tests** — at least one check per decision card, plus its second path (BP-035).
+- **Docs destinations** — from `SPEC.md`'s docs line. Step 5C writes the prose.
+- **The debt verdict holds.** Debt you'd add that the spec's debt table doesn't list is a direction finding for the challenger, never a silent addition.
+- **One PR or several.** If more than one, write the PR plan: a small DAG, one row per sub-PR, `id · deliverables · depends_on`. Under a lifecycle, return the table and stop; the coordinator seeds `subPrs` from it and dispatches each slice back here (Step 3's sub-PR form). Standalone, build the slices in its order. An older spec that already carries a PR plan: use that one.
+
+Then size the work:
 
 **Simple** (implement directly — no sub-agents):
 - Single file change or tightly coupled changes in 2-3 files
 - No architectural decisions to make
-- Clear, unambiguous spec with < 3 implementation steps
+- Clear, unambiguous spec and a plan of < 3 steps
 - Bugs where the feedback loop is trivial (single vitest spec) and the fix is local
 
 **Complex** (dispatch sub-agents):
-- 3+ implementation steps in the spec
+- 3+ steps in your plan
 - Multiple packages or subsystems touched
 - New APIs, types, or abstractions to create
 - Integration work across package boundaries
@@ -143,7 +151,7 @@ If the area being touched is unfamiliar to you (whether running this skill direc
 
 ### Step 5A: Simple Implementation
 
-Follow the discipline picked at Step 4.1. As you work, at any boundary that resists the spec's plan or sits on a decision card, run the challenger (Core Principles → Meta-awareness; `./challenger-prompt.md`) before committing to that direction. Skip it at trivial boundaries.
+Follow the discipline picked at Step 4.1. As you work, at any boundary that resists the spec's direction or sits on a decision card, run the challenger (Core Principles → Meta-awareness; `./challenger-prompt.md`) before committing to that direction. Skip it at trivial boundaries.
 
 **For bugs (`diagnose` discipline):**
 
@@ -156,7 +164,7 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 3. Reproduce the bug through the loop. Confirm the failure mode matches what the user described.
 4. Hypothesise: 3–5 ranked falsifiable hypotheses before testing any.
 5. Instrument with `[DEBUG-<short-hash>]` tags so cleanup is a single grep at the end.
-6. **Write the regression test before the fix** (Phase 5 of diagnose), at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided. Run it and confirm it fails for the bug's actual reason, not a typo or setup error. Capture the failing output — you'll need it for the report.
+6. **Write the regression test before the fix** (Phase 5 of diagnose), at the correct seam — the one your feedback loop exercises, unless a spec names another. Run it and confirm it fails for the bug's actual reason, not a typo or setup error. Capture the failing output — you'll need it for the report.
 7. Apply the fix.
 8. Run the regression test again and capture the passing output. Run the loop again; verify the original repro no longer reproduces. If the bug was user-visible behaviour (not a pure type/unit regression), confirm the fix through the **real path** too — `fsdev run` against a real model — not only the mocked regression spec, so you've proven the symptom is actually gone. This is the bug's goal proof and is required verification: same anti-cost-skip rule as step 8 of the feature path (real API credits by design — don't skip on cost; the credential is normally in the env, so attempt the run).
    - **UI-layer bugs** (item renderers, streaming display, the DevTool embed, prompt input): the real-path check above runs *below* the UI. If the fix touches the browser-rendered surface, decide per `apps/docs/docs/testing/end-to-end-tests.md` whether a kitchen-sink Playwright scenario should be added/updated to lock it; otherwise note why browser verification isn't needed.
@@ -168,13 +176,13 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 **For features/enhancements (`tdd` discipline):**
 
 1. Read relevant code to understand the area (use `zoom-out` shape if unfamiliar)
-2. List the behaviours to test from the spec's Testing Strategy — observable outcomes through the public surface (items emitted, state changes, return values), not implementation steps
+2. List the behaviours to test from your plan (Step 4.2) — observable outcomes through the public surface (items emitted, state changes, return values), not implementation steps
 3. **Tracer bullet**: write ONE test for the first behaviour through `@flow-state-dev/testing`'s mock context. Run it — confirm it fails for the intended reason (the behaviour doesn't exist yet, not a typo or import error) — and capture the failing output. Only then write the minimal code to make it pass, run it again, and capture the passing output.
 4. **Incremental loop**: for each remaining behaviour, RED (write the test, run it, confirm it fails for the intended reason, capture the output) → GREEN (minimal code, run it, capture the passing output). One test at a time. Do not write all tests first, and do not write a test and its implementation together without running the test red first.
 5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
 6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
 7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
-8. **Run the goal check** that `SPEC.md` → *The goal, and how we'll know it's met* names (a spec retained before that section existed names it in `PLAN.md`'s checks or its testing strategy; use that, and treat an unnamed control as one to construct per `goals/README.md` → Proving a check can fail) (real model, real path — see `tdd` → "Two kinds of test"). **Run its control first** and confirm it FAILS on the signal the spec names, not just on its leg; a PASS from a check you never saw fail proves nothing. Then run it for real, and check the result against the spec's *not done if* list, not just the PASS line. Green specs are mocked; they don't prove the goal. This is required verification. For a **model-backed** goal, running it spends real API credits, which is the point, so don't defer or push back on cost grounds; the inference credential is normally in the env (e.g. `AI_GATEWAY_API_KEY`), so attempt the run rather than assume it's absent. (A model-free goal — `Model: n/a` — just runs its real path, no credential.) Full guidance: `goals/README.md` → Running. Run `fsdev run` against a real model or `pnpm tsx goals/<describe>/<it>/run.mts` and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
+8. **Run the goal check** that `SPEC.md` → *The goal, and how we'll know it's met* names (a spec retained before that section existed may name it in another of its documents; use that, and treat an unnamed control as one to construct per `goals/README.md` → Proving a check can fail) (real model, real path — see `tdd` → "Two kinds of test"). **Run its control first** and confirm it FAILS on the signal the spec names, not just on its leg; a PASS from a check you never saw fail proves nothing. Then run it for real, and check the result against the spec's *not done if* list, not just the PASS line. Green specs are mocked; they don't prove the goal. This is required verification. For a **model-backed** goal, running it spends real API credits, which is the point, so don't defer or push back on cost grounds; the inference credential is normally in the env (e.g. `AI_GATEWAY_API_KEY`), so attempt the run rather than assume it's absent. (A model-free goal — `Model: n/a` — just runs its real path, no credential.) Full guidance: `goals/README.md` → Running. Run `fsdev run` against a real model or `pnpm tsx goals/<describe>/<it>/run.mts` and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
    - **A check that needs a browser:** run it yourself first (Chromium via `goals/lib/playwright.mts`). Only when that attempt fails, or the check needs something this environment can't have, hand it to `fsd-qa` over the mailbox and wait for its verdict on your pushed SHA ([`agent-mailbox`](../agent-mailbox/SKILL.md) → "Hand a browser check to `fsd-qa`"). Until it answers, the goal is blocked, not passed.
    - **UI-layer changes** (item renderers, streaming display, the DevTool embed, prompt input): the goal check above runs *below* the UI. If the change touches the browser-rendered surface, decide per `apps/docs/docs/testing/end-to-end-tests.md` whether to add/update a kitchen-sink Playwright scenario; otherwise note why browser verification isn't needed.
 9. Commit with a conventional commit message referencing the issue ID
@@ -182,12 +190,12 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 
 ### Step 5B: Complex Implementation (Sub-agent Team)
 
-#### 5B.1: Extract Tasks from Spec
+#### 5B.1: Split the build into tasks
 
-Parse the spec's "Implementation Sequence" into discrete, ordered tasks. The spec is directional — it names the modules/layers and behaviors, not exact files and signatures — so the exact targets are the implementer's to settle. For each task, note:
+Split your Step 4.2 plan into discrete, ordered tasks. For each task, note:
 - What to build (the modules/layers involved and the behavior to land — the exact files, functions, and types are the implementer's to settle in the code)
 - What it depends on (which prior tasks must complete first)
-- How to test it (acceptance criteria from spec)
+- How to test it (the checks your plan gave it, including any decision card it carries)
 - What NOT to build (scope boundaries)
 
 Create a TodoWrite with all tasks.
@@ -238,21 +246,20 @@ external communication stays with the coordinator. Claude's path below is unchan
 
 For each task, sequentially dispatch an implementer sub-agent using the template in `./implementer-prompt.md`. The template has a `[Discipline]` slot — fill it based on Step 4.1:
 
-- **Bug** → fill with the `diagnose` discipline block (see template). Sub-agent must build a feedback loop and reproduce before changing code; produces a regression test at the spec's named seam; runs the cleanup pass before reporting.
+- **Bug** → fill with the `diagnose` discipline block (see template). Sub-agent must build a feedback loop and reproduce before changing code; produces a regression test at the seam its loop exercises; runs the cleanup pass before reporting.
 - **Feature/Enhancement** → fill with the `tdd` discipline block (see template). Sub-agent runs red-green-refactor with tracer bullets, one test → one impl, no horizontal slicing.
 
 Provide:
 
-- **Full task text** from the spec (don't make the sub-agent read files)
+- **Full task text** from your plan (don't make the sub-agent read files)
 - **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints. If the sub-agent is landing in unfamiliar code, include a `zoom-out` shape map up front
-- **The relevant spec sections** that inform this task (Technical Design, Edge Cases, Testing Strategy — Testing Strategy is especially load-bearing because it names the discipline's seam)
+- **The relevant spec sections** that inform this task — the goal, the decision cards and *Decided, not asked* lines it touches, and the debt verdict it must not break — plus the tests your plan gave it, which name the discipline's seam
 - **Codebase conventions** from AGENTS.md and best-practices.md — universal rules + index inline; situational rule text (e.g. BP-010 react, BP-011–BP-016 blocks/generators/resources) in `docs/contributing/best-practices/<category>.md`
 - **The chosen discipline block** filled into the `[Discipline]` slot
 
-**Model selection (per the AGENTS.md model-tiering policy — "Opus judges, Sonnet executes decided work, Haiku fetches"):**
-- **Decided execution** — a well-specified task whose architecture the spec already settled (mechanical or integration) → dispatch the **`spec-implementer`** agent (Sonnet). It escalates any un-decided fork as a blocker rather than inventing it, so judgment stays upstream.
-- **Architecture / design tasks** (a new abstraction, a genuinely open shape the spec left to the implementer) → keep on the **default (Opus)** model; the judgment isn't settled yet.
-- **Bugs with non-trivial reproduction** → **default (Opus)**; the diagnose loop benefits from careful reading (cheaper models often skip Phase 1). Once the repro and fix approach are clear, the mechanical fix itself can go to `spec-implementer`.
+**Model selection (per the AGENTS.md model-tiering policy — "Opus coordinates, judges and implements · Sonnet checks decided work · Haiku fetches and scouts"):**
+- **An implementation slice** → dispatch the **`spec-implementer`** agent (Opus). It plans its slice against the code and stops only on a direction fork — one that would change a decision card, the goal, or the debt verdict.
+- **Bugs with non-trivial reproduction** → also Opus (`spec-implementer` or the default); the diagnose loop benefits from careful reading (cheaper models often skip Phase 1).
 - **Read-only orientation** before a task (a `zoom-out` map, locating callers) → the **`scout`** agent (Haiku).
 
 **Handle implementer status:**
@@ -263,7 +270,7 @@ Provide:
 
 #### 5B.3: Spec Compliance Review (per task)
 
-For a task on a high-risk boundary (it resisted the spec's plan, exposed a checkable assumption, or sits on a decision card), **run the challenger first** (`./challenger-prompt.md`) — catch a spec blind spot before the compliance check, since compliance assumes the spec is right. Skip the challenger for mechanical tasks.
+For a task on a high-risk boundary (it resisted the spec's direction, exposed a checkable assumption, sits on a decision card, or would add debt the spec doesn't list), **run the challenger first** (`./challenger-prompt.md`) — catch a spec blind spot before the compliance check, since compliance assumes the spec is right. Skip the challenger for mechanical tasks.
 
 After each task, dispatch a spec reviewer sub-agent using `./spec-reviewer-prompt.md`:
 - Provide the spec requirements for this task
@@ -300,16 +307,17 @@ work to is [`docs/contributing/user-docs.md`](../../../docs/contributing/user-do
    - **Behavior** — what a caller sees, including failure results and their exact shapes.
    - **Limits** — what it won't do, where a reader would assume otherwise.
    - **Targets** — pages and READMEs that state the affected contract today.
-   - **Draft** — `DOCS.md`'s reader-facing prose/examples and target create/update/remove
-     operations, including shared epic ownership; no other spec narrative.
+   - **Docs line** — `SPEC.md`'s create/update/remove destinations or its no-impact reason,
+     and under an epic whether this child publishes the shared story. An older set's docs
+     draft goes in as it is; no other spec narrative.
 
    No design *why*, defect story, or alternatives considered. A labelled migration
    section may carry only the actions readers need to move from the old public contract.
 
-2. **Dispatch `docs-writer`** with the brief and that narrow draft. It reconciles the
-   proposed content with public behavior and current docs, performs the target operations,
+2. **Dispatch `docs-writer`** with the brief (and an older set's draft, when there is one). It
+   writes from public behavior and current docs, performs the destination operations,
    and publishes to the actual docs. Honor justified no-impact outcomes; don't duplicate
-   unchanged pages or shared epic prose. Report unfulfilled draft operations explicitly.
+   unchanged pages or shared epic prose. Report unfulfilled destination operations explicitly.
 
 3. **Dispatch `docs-editor`** on the result. Send its findings back to the same writer and re-check.
    **Three rounds**, then bring it to the user rather than looping — prose that hasn't converged by
@@ -412,7 +420,7 @@ Once approved:
      - **Scope that grew beyond the approved spec never collapses.** It is the one piece of news a reviewer of a spec-backed change cannot get from the diff.
 
      **Pick the contract by what backs this change** — three of the four variants reach this skill's routes, they are not interchangeable, and the wrong one inverts the review you get:
-     - **Spec-backed** → review against the human-approved retained decisions and applicable evolution, not a stale predecessor. Link `specs/issues/<ISSUE-ID>/` on `main` and the original review PR. A genuine blind spot returns through a follow-up amendment PR, not an edit to the merged review branch.
+     - **Spec-backed** → review against the human-approved retained decisions and the spec's what's-already-here rows, not a stale predecessor. Link `specs/issues/<ISSUE-ID>/` on `main` and the original review PR. A genuine blind spot returns through a follow-up amendment PR, not an edit to the merged review branch.
      - **A bug (direct route)** → there is **no spec, no decisions doc, and no spec PR**, so claiming otherwise dangles a broken link *and* suppresses exactly the review this route needs. Nothing was signed off: this PR **is** the first and only gate, the approach is in scope, and the diagnosis (repro → cause → fix → regression test) is what a reviewer should check hardest.
      - **Brief-backed** (a one-screen agent brief is the contract, per Step 2) → also no spec and no gate upstream, but **it is not a bug**, so don't paste the bug text and send reviewers looking for a repro that doesn't exist. Point them at whether the change really is as small and local as the brief assumed — one that turns out to touch a contract or add public surface was mis-routed and should have been specced.
 
