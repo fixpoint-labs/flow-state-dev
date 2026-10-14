@@ -1,15 +1,8 @@
 // @vitest-environment happy-dom
-/**
- * Messages (FIX-1989): who talked to whom, read from the user's message log.
- * Jake asked to see it, so the view must show both sides of every message,
- * newest first and grouped by exchange, with each side opening the session
- * that holds it; and the sender's conversation must show a message it sent
- * as one, not as a buried tool call.
- */
+/** Messages: both sides, newest first, grouped by exchange; a sent message is its own tool line. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
-import { GAPS } from "../src/gaps";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { firstLine, exchangesOf, toMessageRows, type WorkerMessageRow } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
@@ -69,7 +62,7 @@ describe("the message log, as exchanges", () => {
 describe("the Messages view", () => {
   it("lists every message with both sides, read through the user's roster session, and opens either side's session", async () => {
     readPages.mockResolvedValue([ask, answer, other].map((r) => ({ topic: `workforce/messages/${r.id}`, clientData: r })));
-    render(<Messages snapshot={snapshot} gaps={GAPS} />);
+    render(<Messages snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("message");
     expect(readPages.mock.calls[0]![1]).toBe("workforce-roster-own-u_1");
     expect(lines.map((l) => `${l.getAttribute("data-from")}>${l.getAttribute("data-to")}`)).toEqual([
@@ -79,7 +72,6 @@ describe("the Messages view", () => {
     ]);
     expect(within(lines[1]!).getByTestId("message-text").textContent).toBe("What is the codename?");
     expect(within(lines[2]!).getByTestId("message-status").textContent).toBe("not delivered");
-    // Each side opens the session that holds the message on that side.
     act(() => fireEvent.click(within(lines[1]!).getByTestId("message-to")));
     expect(window.location.pathname).toBe("/s/s_coordinator");
     act(() => fireEvent.click(within(lines[1]!).getByTestId("message-from")));
@@ -88,13 +80,13 @@ describe("the Messages view", () => {
 
   it("says so when there are none", async () => {
     readPages.mockResolvedValue([]);
-    render(<Messages snapshot={snapshot} gaps={GAPS} />);
+    render(<Messages snapshot={snapshot} />);
     expect((await screen.findByTestId("messages-empty")).textContent).toContain("No messages yet");
   });
 
   it("says what the Lab answered when the log didn't load", async () => {
     readPages.mockRejectedValue(new Error("store offline"));
-    render(<Messages snapshot={snapshot} gaps={GAPS} />);
+    render(<Messages snapshot={snapshot} />);
     await waitFor(() => expect(screen.getByTestId("messages-failure").textContent).toContain("store offline"));
   });
 

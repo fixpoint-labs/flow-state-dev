@@ -1,24 +1,15 @@
 /**
- * The goal's six controls, each one scratch patch to one Workforce module,
- * applied as the process under test loads it (`goals/lib/module-patch.mjs`).
- * Nothing is written to the checkout, and nothing here is committed code.
- *
- * Each patch's anchor reads the same in the TypeScript source and in tsx's
- * JavaScript output; the hook throws when it matches nothing, and marks a
- * file when it applied, so a control that never reached the served code fails
- * the run instead of passing on it.
+ * The goal's six controls. Each is one scratch patch, applied as the process
+ * under test loads the module (`goals/lib/module-patch.mjs`).
  */
-import { describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 
 export const CONTROL_NAMES = ["no-wake", "drop-ended", "no-hop-cap", "no-roster-check", "fresh-hop-on-task", "memory-log"] as const;
 export type ControlName = (typeof CONTROL_NAMES)[number];
 
-/** One control: the legs it runs, the assertion that must go red, and its patch. */
+/** One control: the legs it runs (the one that must fail, and any that leg needs first), the assertion that must go red, and its patch. */
 export interface Control {
   name: ControlName;
-  /** The legs it runs: the one it must fail, and any that leg needs first. */
   legs: string[];
-  /** The assertion, by name, that must go red. */
   assertion: string;
   module: string;
   from: string;
@@ -88,13 +79,3 @@ export const CONTROLS: Record<ControlName, Control> = {
     does: "the message log is kept in the server's memory, not in the store",
   },
 };
-
-/** The environment that applies `control` to the served checkout at `root`, marking `mark` when it loads. */
-export function controlEnv(control: Control, root: string, mark: string): Record<string, string> {
-  return modulePatchEnv([control], root, mark);
-}
-
-/** The patch in full, for the run's log. */
-export function describeControl(control: Control, root: string): string {
-  return describePatches([control], root);
-}

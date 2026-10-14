@@ -130,12 +130,10 @@ function QuietLine({ label, state, nested = false, children }: { label: string; 
   );
 }
 
-/** Whether a call is a worker message, drawn as its own line. */
 function isMessageCall(item: ToolOutputItem): boolean {
   return item.toolCall?.name === MESSAGE_WORKER_TOOL;
 }
 
-/** A worker message the turn sent: *To <recipient>: <text>*, or why it wasn't sent. */
 function MessageCallLine({ item }: { item: ToolOutputItem }) {
   const args = argsOf(item) as { to?: unknown; text?: unknown } | undefined;
   const to = typeof args?.to === "string" ? args.to : "another worker";
@@ -170,7 +168,7 @@ function MessageCallLine({ item }: { item: ToolOutputItem }) {
 /**
  * A run of tool calls as one quiet line: the call's own name for one call, a
  * count for several. Opens to the call's details, or to one line per call that
- * opens to its own. A worker message in the run is its own line, in order.
+ * opens to its own.
  */
 export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
   if (items.length === 0) return null;

@@ -1,16 +1,9 @@
 /**
- * One of the user's sessions with a worker, opened by id (FIX-1989): where
- * a link from Messages lands, on either side of a message. Drawn as that
- * worker's conversation, the session pinned, so a line typed here goes into
- * this session and no other.
- *
- * The worker is the one the session names. Its door comes from the
- * inventory; a worker the inventory doesn't register (one of the user's own)
- * is drawn read-only, since Shift Manager can't name its door.
- *
- * A session the snapshot doesn't list yet (a recipient's conversation a
- * message opened after the last Lab read) is looked up in a fresh listing
- * before the view says it isn't there.
+ * One session with a worker, opened by id from Messages, pinned so a line
+ * typed here stays in it. A worker the inventory doesn't register is drawn
+ * read-only: its door isn't known.
+ * A session the snapshot doesn't list yet (one a message opened after the
+ * last Lab read) is looked up in a fresh listing first.
  */
 import { useEffect, useState } from "react";
 import type { SessionSummary } from "@flow-state-dev/client";

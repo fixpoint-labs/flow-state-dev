@@ -1,25 +1,15 @@
 /**
- * Messages (FIX-1989): who talked to whom. Every message one of the user's
- * workers sent another, from the user's message log, beside Tasks.
- *
- * Newest first, grouped by exchange (a first message and its answers), one line
- * per message: from, to, when, and the text's first line. Each side is a
- * link that opens the session that holds it: the sender's, and the one the
- * message landed in. A message the recipient's host refused, or whose
- * delivery couldn't be confirmed, says so.
- *
- * Talk, not delegation: a message makes no task row, so nothing here is on
- * Tasks, and nothing on Tasks is here.
+ * Who talked to whom (FIX-1989), from the user's message log.
+ * A message makes no task row, so nothing here is on Tasks.
  */
+import { useMemo } from "react";
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
-import type { Gaps } from "../gaps";
 import { workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { firstLine, exchangesOf, useMessages, type WorkerMessageRow } from "../lib/messages";
 import { projectReaderOf } from "../lib/projects";
 import { navigate } from "../lib/routes";
 import { clockTime } from "../lib/shell";
 
-/** One side of a message: the worker, as a link to the session that holds the message on that side. */
 function Side({ worker, sessionId, testId }: { worker: string; sessionId: string; testId: string }) {
   return (
     <button
@@ -35,7 +25,6 @@ function Side({ worker, sessionId, testId }: { worker: string; sessionId: string
   );
 }
 
-/** What a message that didn't plainly arrive says beside it. */
 function statusNote(row: WorkerMessageRow): string | null {
   if (row.status === "refused") return "not delivered";
   if (row.status === "unconfirmed") return "delivery unconfirmed";
@@ -75,10 +64,10 @@ function MessageLine({ row }: { row: WorkerMessageRow }) {
   );
 }
 
-export function Messages({ snapshot }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+export function Messages({ snapshot }: { snapshot: LoadedSnapshot }) {
   const reader = projectReaderOf(snapshot.sessions);
   const { rows, failure, reread } = useMessages(reader, snapshot.readAt);
-  const exchanges = rows === undefined ? [] : exchangesOf(rows);
+  const exchanges = useMemo(() => (rows === undefined ? [] : exchangesOf(rows)), [rows]);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="messages">

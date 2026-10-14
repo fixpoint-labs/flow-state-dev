@@ -124,7 +124,6 @@ export function Conversation({
 }) {
   const { clients, refresh, answered, snapshot } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
-  // Who else a line can be from: another worker's message, a delegate's answer, a task's notice.
   const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
   const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
   // The feed opens where it starts, and follows once the user reaches the end or sends a line;

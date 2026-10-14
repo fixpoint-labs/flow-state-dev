@@ -1,14 +1,5 @@
 /**
- * Goal check: any worker can message any other worker on its user's roster,
- * and the answer comes back, without a task, a delegation or a person
- * relaying it; a chain of messages stops; and the person can see who talked
- * to whom, across a restart (FIX-1989). See goal.md.
- *
- * Shift Manager's DevTeam install, served by its own command over a fresh
- * SQLite store, with Alice (its owner) and Bob (its second member) through the
- * shipped clients, every worker turn on the real model its file names. Leg 5
- * restarts the server on the same store and reads the Messages view in a
- * browser.
+ * Goal check for FIX-1989. See goal.md.
  *
  * Run:      pnpm tsx goals/shift-manager/workers-message-each-other/run.mts
  * Controls: GOAL_CONTROL=no-wake | drop-ended | no-hop-cap | no-roster-check | fresh-hop-on-task | memory-log
@@ -17,14 +8,15 @@
  * Legs:     GOAL_LEGS=1,1b,2,2b,3b,3,4,5 (default: all, in that order)
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, keysServing, runGoal } from "../../lib/index.mts";
+import { assertPatched, describePatches, modulePatchEnv } from "../../lib/module-patch.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerPages, openShiftManager, personPage, startShiftManager, type ServedShiftManager } from "../../lib/shift-manager.mts";
-import { CONTROL_NAMES, CONTROLS, controlEnv, describeControl, type Control } from "./controls.mts";
+import { CONTROL_NAMES, CONTROLS, type Control } from "./controls.mts";
 import {
   connect,
   hireTeam,
@@ -142,9 +134,9 @@ await runGoal(async () => {
   mkdirSync(SCRATCH, { recursive: true });
   const mark = join(SCRATCH, `patch-mark-${RUN_STAMP}`);
   rmSync(mark, { force: true });
-  const env = control === undefined ? {} : controlEnv(control, checkout.root, mark);
+  const env = control === undefined ? {} : modulePatchEnv([control], checkout.root, mark);
   say(`serving ${checkout.describe}; legs ${[...legs].join(", ")}${control === undefined ? "" : `; control ${control.name}`}`);
-  if (control !== undefined) say(`control ${control.name}: ${control.does}\n${describeControl(control, checkout.root)}`);
+  if (control !== undefined) say(`control ${control.name}: ${control.does}\n${describePatches([control], checkout.root)}`);
 
   const profile = join(checkout.root, "packages", "shift-manager", "teams", "devteam");
   for (const model of ["openai/gpt-5.4-mini", "anthropic/claude-haiku-5-5"]) {
@@ -241,10 +233,7 @@ await runGoal(async () => {
   else say(`store kept at ${store}`);
 
   if (control !== undefined) {
-    const marked = existsSync(mark) ? readFileSync(mark, "utf8") : "";
-    if (!marked.includes(join(checkout.root, control.module))) {
-      throw new Error(`setup: control ${control.name}'s patch never reached ${control.module} in the code under test, so this run shows nothing`);
-    }
+    assertPatched([control], checkout.root, mark);
     say(`control ${control.name}: the patch reached ${control.module}`);
   }
 

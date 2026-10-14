@@ -1,17 +1,10 @@
 /**
- * The user's message log (FIX-1989): every message one of their workers sent
- * another, as Workforce's `workforce/messages/*` collection holds it, read
- * through the user's own roster session (the one Shift Manager reads
- * projects through), whose flow declares it with a browser read. The log is the user's: another user's messages are never in it.
- *
- * Read when the Messages view opens, each time the Lab is read again, and
- * every {@link MESSAGES_POLL_MS} while it is on screen, since messages are
- * sent by worker turns the page didn't start.
+ * The user's message log (FIX-1989): Workforce's `workforce/messages/*`,
+ * read through the user's roster session. Another user's messages are not in it.
  */
 import { useCallback, useEffect, useState } from "react";
 import { readEveryCollectionPage } from "@flow-state-dev/client";
 import { WORKER_MESSAGES_RESOURCE, workerMessageRowSchema, type WorkerMessageRow } from "@flow-state-dev/workforce/browser";
-import type { LabClients } from "./connection";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure } from "./reads";
 
@@ -22,11 +15,8 @@ export const MESSAGES_POLL_MS = 5_000;
 
 /** One exchange: a first message and every answer to it, newest first. */
 export type MessageExchange = {
-  /** The first message's id. */
   id: string;
-  /** Its messages, newest first. */
   messages: WorkerMessageRow[];
-  /** When its newest message was sent, epoch ms. */
   latest: number;
 };
 
@@ -62,15 +52,10 @@ export function firstLine(text: string): string {
   return line.trim();
 }
 
-/** Read the whole log, through the user's roster session `readerSessionId`. */
-export async function readMessages(clients: LabClients, readerSessionId: string): Promise<WorkerMessageRow[]> {
-  return toMessageRows(await readEveryCollectionPage(clients.resources, readerSessionId, WORKER_MESSAGES_RESOURCE));
-}
-
 /**
  * The log, read when the view opens, again on each Lab read (`readAt`), and
- * every {@link MESSAGES_POLL_MS}. A read again keeps the last one on screen
- * until it lands, and keeps it if it fails; only a failed first read shows.
+ * every {@link MESSAGES_POLL_MS}. A later read keeps the last rows until it
+ * lands, and a failed later read keeps them; only a failed first read shows.
  */
 export function useMessages(
   readerSessionId: string | null,
@@ -84,7 +69,8 @@ export function useMessages(
     if (readerSessionId === null) return;
     let closed = false;
     let next: ReturnType<typeof setTimeout> | undefined;
-    readMessages(clients, readerSessionId)
+    readEveryCollectionPage(clients.resources, readerSessionId, WORKER_MESSAGES_RESOURCE)
+      .then(toMessageRows)
       .then((value) => {
         if (closed) return;
         setRows(value);
