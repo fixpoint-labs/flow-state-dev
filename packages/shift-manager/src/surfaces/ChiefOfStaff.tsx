@@ -33,7 +33,7 @@ import { useSessionItems } from "../components/flow-state/session-items-context"
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { chiefOfStaffOf, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { chiefOfStaffOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -158,7 +158,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {ask.workerId ?? "unknown worker"} asks{" · "}
+                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
                   <button
                     type="button"
                     className="text-info hover:text-foreground"

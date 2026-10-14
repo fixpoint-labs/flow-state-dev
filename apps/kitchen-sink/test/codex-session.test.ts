@@ -274,6 +274,13 @@ describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
     expect(CODEX_MODEL).toBeUndefined();
   });
 
+  it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 a real run starts with no sandbox and no sandbox config", () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+    const options = codexBlockOptions(harnessFeeds(CODEX_SESSION));
+    expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "danger-full-access" });
+    expect(options.client!.config).toBeUndefined();
+  });
+
   it("test mode runs the scripted Codex", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     expect(codexBlockOptions(harnessFeeds(CODEX_SESSION)).resolveCodexClient).toBeDefined();

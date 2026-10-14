@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { columnFor, isDone, readStatus } from "../lib/columns";
+import { workerLabel } from "../lib/derive";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
@@ -165,7 +166,7 @@ function TaskList({ tasks }: { tasks: readonly ConversationTask[] }) {
           <span className="min-w-0">
             <span className="line-clamp-2">{task.goal}</span>
             <span className="block text-xs text-muted-foreground">
-              {task.status} · {task.assignee ?? "unassigned"}
+              {task.status} · {task.assignee == null ? "unassigned" : workerLabel(task.assignee)}
             </span>
           </span>
         </li>

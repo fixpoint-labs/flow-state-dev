@@ -637,6 +637,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           if (await files(ctx as never)) return eight(ctx as never);
           if (posts === undefined || !posts.routing(ctx as never)) return [];
           return eight(ctx as never).filter((tool) => tool.name === "dispatchTask");
+        },
+        // The session's project, read from its server-written fields (BP-031),
+        // so a filer in a workstream or a project's conversation never has to
+        // guess one: the board writes it on every task filed here anyway.
+        context: async (_input, ctx) => {
+          const own = filingProjectAddressOf(ctx.session.state);
+          if (own === undefined || !(await files(ctx as never))) return undefined;
+          // A project id is its creator's text and may hold quotes, so it goes
+          // in as a JSON string: it can't close the name and start a sentence.
+          return (
+            `This conversation works in the ${own.visibility} project ${JSON.stringify(own.id)}. ` +
+            "Every task you file here works in that project, so leave `project` out of a task's `input`."
+          );
         }
       },
       default: ["tools"]
