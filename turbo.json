@@ -24,7 +24,6 @@
       "dependsOn": ["^build"],
       "env": ["CI", "REDIS_URL"]
     },
-    "lint": {},
     "dev": {
       "cache": false,
       "persistent": true
