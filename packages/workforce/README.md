@@ -1362,6 +1362,12 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   sends it. Nothing deletes an entry. **`updateWorkstreamTool`** is the same write as the lead's tool,
   named `updateWorkstream`: it takes only the changes and writes the workstream its session leads
   (`not-a-workstream-session` elsewhere).
+- **`editWorkstreamTool`** is a tool named `editWorkstream` for the owner's project coordinator.
+  It takes `{ project?, id, title?, status?, due?, objectives? }` (`editWorkstreamInputSchema`,
+  strict) and returns `{ workstream }`. It always writes the caller's own entry, with no `owner`
+  and no `report` (the report stays the lead's). `project` resolves as for `setBrief`
+  (`no-such-project`, `other-project`), and an id the caller has no workstream under is refused
+  `no-such-workstream`, including another worker's.
 - **`listLeadsTool`** is a tool named `listLeads` for whoever picks a lead. It takes no input and
   returns `{ leads: [{ id, description }] }` (`listLeadsOutputSchema`; `description` is a string or
   `null`): every worker on the caller's roster, their own and the standard ones, that can lead a
@@ -1470,8 +1476,8 @@ can't read is refused. Its `readProject` tool (`projectCoordinatorTools`) reads 
 delegates are the user's open workstreams in the project, one per workstream: the lead, with the
 workstream's address as the target, so it hands work only to the user's own workstreams. They
 follow the workstreams: the session's delegate list starts with one per open workstream the first
-time it's read; `openWorkstream` adds one; `updateWorkstream` removes it when the status becomes
-`"done"` and adds it back when it leaves `"done"`; and a hand-off to one is delivered into the
+time it's read; `openWorkstream` adds one; `updateWorkstream` and `editWorkstream` remove it when the status becomes
+`"done"` and add it back when it leaves `"done"`; and a hand-off to one is delivered into the
 session the user's entry names, looked up at delivery, so the post lands in that workstream's
 session.
 
@@ -1482,6 +1488,11 @@ opens a workstream with the one whose description fits (leaving `project` out, s
 coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
 built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
 take the hand-off as soon as `openWorkstream` returns.
+
+To let it change the user's workstreams (title, status, due date, objectives), add
+`editWorkstream: workstreams.editWorkstreamTool` to its catalog (the block is already named, so no
+`.as()`) and name `editWorkstream` in its `tools:`. When it runs in the owner's own coordinator turn, closing
+a workstream drops its delegate in that turn, so a later hand-off in the turn never targets it.
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
 with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
@@ -1931,7 +1942,7 @@ the root exports, and reaches no Node built-in.
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
-| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |

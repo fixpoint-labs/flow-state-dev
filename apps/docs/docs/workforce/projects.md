@@ -25,7 +25,7 @@ A **private** project lives with you. Nobody else can list, open or read it, its
 
 Either way it's the same kind of project, with the same fields. A private project can't become shared later, or the other way round.
 
-A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exceptions are the writes a project coordinator makes in its own project: `openWorkstream`, covered in [Opening one](#opening-one), and `setBrief` and `setRepository`, covered in [Managing the project from the coordinator](#managing-the-project-from-the-coordinator). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
+A project's address is its visibility and its id, `{ visibility: "shared", id: "apollo" }`. Every project read and write after the create takes one. The exceptions are the writes a project coordinator makes in its own project: `openWorkstream` is covered in [Opening one](#opening-one); `editWorkstream` in [Changing workstreams from the coordinator](#changing-workstreams-from-the-coordinator); `setBrief` and `setRepository` in [Managing the project from the coordinator](#managing-the-project-from-the-coordinator). Your private `apollo` and the org's shared `apollo` are two different projects. Another user's private project can't be addressed at all: a call naming one is refused with `no-such-project`, exactly as if it didn't exist.
 
 ## The row
 
@@ -203,7 +203,7 @@ export const projectsFlow = defineFlow({
 });
 ```
 
-It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, `updateWorkstreamTool` for a lead, and `listLeadsTool` and `openWorkstreamTool` for a worker that picks a lead and opens the workstream (see [Opening workstreams from the coordinator](#opening-workstreams-from-the-coordinator)).
+It returns `openWorkstream` and `updateWorkstream`, the same two as `actions`, `updateWorkstreamTool` for a lead, `editWorkstreamTool` for a project coordinator (see [Changing workstreams from the coordinator](#changing-workstreams-from-the-coordinator)), and `listLeadsTool` and `openWorkstreamTool` for a worker that picks a lead and opens the workstream (see [Opening workstreams from the coordinator](#opening-workstreams-from-the-coordinator)).
 
 Pass `leadFit: { model }` to have `openWorkstreamTool` check a worker's pick of lead against the work before it opens. Left out, `openWorkstreamTool` is the same block as `openWorkstream`.
 
@@ -402,7 +402,7 @@ You never add or remove a project coordinator's workstream delegates yourself. T
 
 - **When you start your coordinator**, its delegates are the workstreams you have open in the project.
 - **When you open a workstream**, `openWorkstream` adds its delegate: the lead, with the workstream's address as the target. If you haven't started your coordinator yet, nothing changes now; it picks the workstream up when it starts.
-- **When you mark a workstream `done`**, `updateWorkstream` removes its delegate. Change the status from `done` to anything else and the delegate comes back. The lead's own `updateWorkstream` tool does the same.
+- **When you mark a workstream `done`**, `updateWorkstream` removes its delegate. Change the status from `done` to anything else and the delegate comes back. The lead's own `updateWorkstream` tool does the same, and so does the coordinator's `editWorkstream`.
 - **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the hand-off fails with that reason.
 
 A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
@@ -466,6 +466,58 @@ The check runs only once every other refusal has passed, so a bad id or a lead t
 The open goes through without a verdict when the model call fails or the lead has no description, so a model outage never stops a workstream opening. Opens through the `openWorkstream` action, such as a user's own open from the app, are never checked.
 
 The tool's answer says what became of the check in `leadFit`: `{ checked: true }` when the lead passed, or `{ checked: false, why }` when it went unchecked. `why` is `already-open`, `no-description`, or `unanswered:` followed by the model call's error, so a check that has stopped answering shows up in the answers rather than nowhere.
+
+### Changing workstreams from the coordinator
+
+Your coordinator can change your workstreams in its project when you ask: rename one, move its due date, rewrite its objectives, or close it. Add `editWorkstreamTool` from `defineWorkstreamBlocks` to its catalog. The block is already named `editWorkstream`, so it needs no `.as()`:
+
+```ts
+const coordinator = defineCoordinatorFlow({
+  installation,
+  delegateFlows: [agent],
+  routeModel: "openai/gpt-5.4-mini",
+  agent: {
+    catalog: {
+      ...projectCoordinatorTools,
+      listLeads: workstreams.listLeadsTool,
+      openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream" }),
+      editWorkstream: workstreams.editWorkstreamTool,
+    },
+  },
+});
+```
+
+```md title="workforce/org/workers/project-coordinator/WORKER.md"
+---
+description: Your coordinator for one project. Says how its workstreams are going, opens and changes your workstreams, and hands your asks to the workstreams you own there.
+flow: coordinator
+routing: judgment
+tools: [readProject, listLeads, openWorkstream, editWorkstream]
+---
+
+When the user wants one of their workstreams renamed, re-dated, its
+objectives changed or closed, call `editWorkstream` with its `id` and no
+`project`.
+```
+
+The tool takes the workstream's `id`, an optional `project`, and any of `title`, `status`, `due` and `objectives`, which mean what they do for `updateWorkstream`. `due` is `YYYY-MM-DD`, or `null` to clear it. What you leave out stays. It returns `{ workstream }`, the entry as written.
+
+```ts
+{ id: "checkout", title: "Guest checkout", due: "2026-11-30" }
+{ id: "checkout", status: "done" }
+```
+
+It always writes the caller's own entry, so it has no `owner` field. It has no `report` either: the report is the lead's, written with `updateWorkstreamTool`. A call that passes either fails validation.
+
+Left out, `project` is the coordinator's own project. A refused change writes nothing and returns one of these reasons:
+
+| `reason` | When |
+|----------|------|
+| `no-such-workstream` | You have no workstream with that id in the project. Another member's workstream id is refused the same way |
+| `other-project` | The conversation belongs to one project and you named another |
+| `no-such-project` | You left `project` out in a conversation that belongs to no project |
+
+Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate is removed in that same turn, so a hand-off later in the turn never reaches a workstream it just closed.
 
 ### Managing the project from the coordinator
 
