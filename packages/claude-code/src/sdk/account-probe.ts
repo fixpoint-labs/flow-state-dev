@@ -21,8 +21,7 @@ export type ClaudeAccountProbe =
   /**
    * A credential source came back: the SDK's `apiKeySource`, its `tokenSource`,
    * or a sign-in (`email`, `subscriptionType`). A subscription login (the
-   * keychain or `~/.claude`) is reported by the last pair alone. The plan name
-   * `Claude API` is not counted: Claude Code reports it with no sign-in at all.
+   * keychain or `~/.claude`) is reported by the last pair alone.
    */
   | { status: "account"; apiKeySource?: string; tokenSource?: string; email?: string; subscriptionType?: string }
   /** No credential source, or no answer in time. `reason` says which, for a message to a person. */
@@ -49,12 +48,6 @@ interface AccountQuery {
   accountInfo(): Promise<{ apiKeySource?: unknown; tokenSource?: unknown; email?: unknown; subscriptionType?: unknown }>;
   close?: () => void;
 }
-
-/**
- * The plan name Claude Code reports when nobody is signed in to a plan: its
- * label for the Anthropic API, given whether or not any credential is set.
- */
-const NO_PLAN = "Claude API";
 
 /** {@link ProbeClaudeAccountOptions.timeoutMs}'s default. */
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -94,11 +87,10 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
     const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
     const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
     // A subscription sign-in names no key or token source: it comes back as who
-    // is signed in and on what plan. With no plan, Claude Code still reports a
-    // plan name, `Claude API`, so that one is not a sign-in.
+    // is signed in and on what plan. "Claude API" is the no-plan label, not a sign-in.
     const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
     const subscriptionType =
-      typeof info.subscriptionType === "string" && info.subscriptionType !== "" && info.subscriptionType !== NO_PLAN
+      typeof info.subscriptionType === "string" && info.subscriptionType !== "" && info.subscriptionType !== "Claude API"
         ? info.subscriptionType
         : undefined;
     if (apiKeySource === undefined && tokenSource === undefined && email === undefined && subscriptionType === undefined) {
