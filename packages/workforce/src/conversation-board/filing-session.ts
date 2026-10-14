@@ -43,7 +43,7 @@ export function filingProjectOf(state: unknown): string | undefined {
   return typeof filed === "string" ? filed : undefined;
 }
 
-/** The session's project, in the run's order: its workstream's, else its own. */
+/** Workstream's project, else the session's. An unparseable workstream does not fall through: the run source refuses it. */
 export function filingProjectAddressOf(state: unknown): ProjectAddressRef | undefined {
   const workstream = filingWorkstreamOf(state);
   if (workstream !== undefined) return parseWorkstreamRef(workstream)?.project;
