@@ -14,7 +14,7 @@ and the person's turn. The **fact the proof turns on is generated per run**, nev
 
 1. Attempt 1 is `in_progress`, waiting, with a **harness session id** on its run row, when the turn
    is sent.
-2. The conductor's `message` action, called in the run's own session, answers **`continuing`**.
+2. The host's `message` action, called in the run's own session, answers **`continuing`**.
 3. The **fact file exists in the run's checkout and holds the generated fact**, which attempt 2 was
    never told in any form.
 4. Attempt 2's run row carries the **same harness session id** as attempt 1.
@@ -44,7 +44,7 @@ process.
 sessions of its own:
 
 ```bash
-GOAL_CONDUCTOR_REPO=<a clone that ignores **/.fsdev/> \
+GOAL_HARNESS_REPO=<a clone that ignores **/.fsdev/> \
   env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_REMOTE_SESSION_ID \
       -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_AUTO_BACKGROUND_TASKS \
   pnpm tsx goals/harness-manager/a-persons-turn-continues-its-session/run.mts

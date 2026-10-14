@@ -10,6 +10,6 @@
     "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["lib/**/*.mts", "**/run.mts", "_template/*.mts"],
+  "include": ["lib/**/*.mts", "**/run.mts", "_template/*.mts", "harness-manager/host.mts"],
   "exclude": ["node_modules", "**/harness.mts"]
 }

@@ -60,11 +60,11 @@ is the one that was honoured — only that the knowledge crossed.
 
 **Run:** `pnpm tsx goals/harness-manager/answered-run-continues-its-session/run.mts`
 
-Requires a real Claude Code Agent SDK and `GOAL_CONDUCTOR_REPO` pointing at a clone the check may
+Requires a real Claude Code Agent SDK and `GOAL_HARNESS_REPO` pointing at a clone the check may
 cut worktrees from. That repository must ignore `**/.fsdev/` — a run writes the question it needs
 answered under that path inside its own checkout, and provisioning refuses a repository that would
-let the agent commit it. Unlike the LAB-138 goal, this one needs no `gh`: its done-condition is the
-fact file, not a pull request.
+let the agent commit it. This check needs no `gh`: its done-condition is the fact file, not a
+pull request.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

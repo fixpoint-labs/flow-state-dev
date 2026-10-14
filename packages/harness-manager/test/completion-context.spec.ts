@@ -11,9 +11,8 @@
  * ## Why parts of this read the source
  *
  * The seam is inside `decide`, which needs a board, a claim and a dispatched
- * child session to reach — `labs/conductor` drives that whole loop and is where
- * the settle behaviour is staged. But conductor's suite runs the Claude Code
- * SDK harness, and that harness ties `status` to `outcome === "finished"`, so it
+ * child session to reach. A real-model goal check drives that whole loop. A
+ * Claude Code SDK harness ties `status` to `outcome === "finished"`, so it
  * cannot produce the one combination this file is about. The shape checks below
  * guard the invariants at the place they actually live, the way
  * `fences.spec.ts` does for the same reason.
