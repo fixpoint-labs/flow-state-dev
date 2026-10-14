@@ -533,6 +533,16 @@ export interface OpenLabOptions {
   modelResolver?: ModelResolver;
   /** The tree to read. Defaults to the lab's own. */
   root?: string;
+  /**
+   * Replace a declared document's body, by ref, including for a worker hired
+   * onto it. An unknown ref is refused, so a rename cannot leave the old body.
+   */
+  documents?: Record<string, string>;
+  /**
+   * Replace a skill's `SKILL.md` by its name, on every worker the tree gives
+   * it. A name no worker carries is refused, as `documents` refuses a ref.
+   */
+  skills?: Record<string, string>;
   /** Silence the engine's own logging. */
   logger?: unknown;
   /**
@@ -833,7 +843,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the workers' document reads — and BR-17 — matter.
-  const resources = resourcesFromDocs(roster.documents);
+  const replaced = options.documents ?? {};
+  for (const ref of Object.keys(replaced)) {
+    if (!roster.documents.some((doc) => doc.ref === ref)) {
+      throw new Error(`openLab: \`documents\` replaces "${ref}", which the tree does not declare`);
+    }
+  }
+  const resources = resourcesFromDocs(
+    roster.documents.map((doc) => (Object.hasOwn(replaced, doc.ref) ? { ...doc, body: replaced[doc.ref]! } : doc)),
+  );
 
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the chief of staff calls the same ones as tools. The
@@ -848,7 +866,22 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // genuinely runs on what the control gave it rather than being graded as if
   // it did.
   const overrides = options.documentOverrides ?? {};
-  const workers = roster.workers.map((worker) => {
+  const replacedSkills = options.skills ?? {};
+  for (const name of Object.keys(replacedSkills)) {
+    if (!roster.workers.some((worker) => (worker.skills ?? []).some((skill) => skill.name === name))) {
+      throw new Error(`openLab: \`skills\` replaces "${name}", which no worker in the tree carries`);
+    }
+  }
+  const workers = roster.workers.map((tree) => {
+    const worker =
+      tree.skills === undefined
+        ? tree
+        : {
+            ...tree,
+            skills: tree.skills.map((skill) =>
+              Object.hasOwn(replacedSkills, skill.name) ? { ...skill, skillMd: replacedSkills[skill.name]! } : skill,
+            ),
+          };
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
