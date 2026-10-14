@@ -78,13 +78,7 @@ type ResourceRouteContext = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * The raw template a `contentTemplateRef` names, read from the store for the
- * checked session's user. A template keyed to another user's owner segment
- * resolves as absent, the same rows a run's cache keeps out
- * ({@link ownerKeyMaySeed}): the caller's own row and any owner-writes row in
- * the template's scope are read, another user's owner-private row is not.
- */
+/** Absent unless `ownerKeyMaySeed` admits the key for this user against the template scope's collections. */
 async function resolveTemplateRaw(
   ctx: ResourceRouteContext,
   flow: ResourceOwnerFlow,
