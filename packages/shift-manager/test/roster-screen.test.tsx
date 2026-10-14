@@ -108,6 +108,16 @@ describe("Roster (V3)", () => {
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^3 on shift · 2 off shift · 3 waiting on you/);
   });
 
+  it("names the chief-of-staff worker Shift Coordinator, keeping its id, and every other worker by its own name", async () => {
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    const row = (id: string) => within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!;
+    expect(row("chief-of-staff").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
+    expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("coder");
+    // The id is wire data; nothing a user reads on the screen says chief of staff.
+    expect(document.body.textContent).not.toMatch(/chief[ -]of[ -]staff/i);
+  });
+
   it("draws the user's own workers from their roster, marked as theirs, beside the inventory's (S12)", async () => {
     rosterRead = async () => [
       { id: "amber-1f2e", flow: "coder", standard: false, description: "Alice's own" },
@@ -299,6 +309,20 @@ describe("Tasks (BR-14)", () => {
     expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
     // E-2 is parked: it waits on you, so its clock isn't running.
     expect(cell("E-2", "task-row-time")).toBe("—");
+  });
+
+  it("names a task the chief-of-staff worker holds as the Shift Coordinator's, in its row and its worker group", async () => {
+    const snapshot = lab();
+    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["s_eng"] : undefined;
+    if (eng?.ok === true) eng.value.rows = [...eng.value.rows, row("s_eng", "E-4", "in_progress", "chief-of-staff")];
+    await open("/tasks", snapshot);
+    const table = await screen.findByTestId("tasks-table");
+    const e4 = within(table).getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === "E-4")!;
+    expect(within(e4).getByTestId("task-row-worker").textContent).toBe("Shift Coordinator");
+    act(() => fireEvent.click(screen.getAllByRole("tab").find((t) => t.getAttribute("data-grouping") === "worker")!));
+    const group = screen.getAllByTestId("tasks-group").find((g) => g.getAttribute("data-group") === "chief-of-staff")!;
+    expect(group.textContent).toMatch(/^Shift Coordinator/);
+    expect(screen.getByTestId("tasks-table").textContent).not.toMatch(/chief[ -]of[ -]staff/i);
   });
 
   it("groups by stream one group per workstream, not per lead, when one worker leads two (BR-40)", async () => {

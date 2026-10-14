@@ -219,6 +219,13 @@ export function pickedTeam(workers: readonly Worker[], team: string | null): str
  */
 const CHIEF_OF_STAFF = "chief-of-staff";
 
+const isChiefOfStaff = (idOrName: string) => idOrName.slice(idOrName.indexOf(".") + 1) === CHIEF_OF_STAFF;
+
+/** How the screens name a worker: the chief of staff is the Shift Coordinator; its id stays `chief-of-staff`. */
+export function workerLabel(idOrName: string): string {
+  return isChiefOfStaff(idOrName) ? "Shift Coordinator" : idOrName;
+}
+
 /** Which worker Shift Manager talks to as the chief of staff, if exactly one is. */
 export type ChiefOfStaff = { kind: "one"; worker: Worker } | { kind: "none" } | { kind: "several"; workers: Worker[] };
 
@@ -229,7 +236,7 @@ export type ChiefOfStaff = { kind: "one"; worker: Worker } | { kind: "none" } | 
  * more are a state, never a guess.
  */
 export function chiefOfStaffOf(workers: readonly Worker[]): ChiefOfStaff {
-  const found = workers.filter((worker) => worker.id.slice(worker.id.indexOf(".") + 1) === CHIEF_OF_STAFF);
+  const found = workers.filter((worker) => isChiefOfStaff(worker.id));
   if (found.length === 0) return { kind: "none" };
   return found.length === 1 ? { kind: "one", worker: found[0]! } : { kind: "several", workers: found };
 }

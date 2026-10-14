@@ -1185,7 +1185,7 @@ const agent = defineAgentWorkerFlow({ installation, catalog: rosterTools });
 
 A worker holds `hire` or `fire` only when its own `tools:` names them. Each write goes to the roster
 of the user whose turn it is: a worker can't hire for anyone else. The blocks write at once; an
-approval before a fire is yours to add as a step before it, as the chief of staff guide shows.
+approval before a fire is yours to add as a step before it, as the Shift Coordinator guide shows.
 
 ## The inventory
 
@@ -1409,7 +1409,8 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   project, and one filed from a conversation with no project works in the project its task names
   as `input.project`, for that project's members only (`not-a-member`). A task filed from a
   workstream or a project's conversation that names a project in `input.project` is filed naming
-  that conversation's project instead. `no-project` when none applies. The block that asks it
+  that conversation's project instead, and a worker filing there is told that project in its
+  task tools' context, so it has no project to name. `no-project` when none applies. The block that asks it
   must hold `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
 
   ```ts

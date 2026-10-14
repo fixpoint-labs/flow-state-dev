@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 510" role="img" aria-labelledby="title desc">
   <title id="title">Shift Manager: what each screen reads</title>
-  <desc id="desc">Each Shift Manager screen beside what it reads. A Lab is the FlowState an fsdev config exports. The Shift Coordinator is your session with your chief of staff. Inbox lists asks, runs suspended on a user. Tasks lists the tasks on your boards. Roster lists your workers with a derived status. The project view shows a project, its workstreams with their progress, your own workstreams’ boards, and your own project coordinator.</desc>
+  <desc id="desc">Each Shift Manager screen beside what it reads. A Lab is the FlowState an fsdev config exports. The Shift Coordinator screen is your session with your Shift Coordinator worker. Inbox lists asks, runs suspended on a user. Tasks lists the tasks on your boards. Roster lists your workers with a derived status. The project view shows a project, its workstreams with their progress, your own workstreams’ boards, and your own project coordinator.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
@@ -60,7 +60,7 @@
   <text x="42" y="206" class="code">the home screen</text>
   <rect x="344" y="166" width="548" height="52" rx="10" class="card-org"/>
   <text x="358" y="187" class="tag-org">WORKER + SESSION</text>
-  <text x="508" y="187" class="p">Your session with your chief of staff, under a</text>
+  <text x="508" y="187" class="p">Your session with your Shift Coordinator, under a</text>
   <text x="508" y="205" class="p">summary of what waits and runs.</text>
   <path d="M296 192 L342 192" class="edge"/>
   <rect x="28" y="228" width="268" height="52" rx="10" class="card-warm"/>

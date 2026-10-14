@@ -782,7 +782,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/", { chiefOfStaff: true, doors: false });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);
-    expect(screen.getByTestId("cos-composer-blocked").textContent).toBe(`ops.chief-of-staff ${GAPS.turn.noDoor}`);
+    expect(screen.getByTestId("cos-composer-blocked").textContent).toBe(`Shift Coordinator ${GAPS.turn.noDoor}`);
   });
 });
 
