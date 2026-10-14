@@ -39,8 +39,6 @@ export const GAPS = {
   turn: {
     /** BR-14: the row has no linked run. */
     notStarted: "This task hasn't started, so there's no session to write into.",
-    /** BR-15. */
-    finished: "A finished task takes no message.",
     /** The run's worker flow declares no door. Drawn after the worker's name. */
     noDoor: "takes no message.",
     /** BR-22: Inbox's reply, to a worker flow with no door. Drawn after the worker's name. */
@@ -48,11 +46,9 @@ export const GAPS = {
   },
   /** Roster's gaps, and the partial mark every status screen shares (FIX-1723). */
   roster: {
-    watches:
-      "What a worker is on call for beyond you, such as webhooks, schedules and other standing watches, arrives with FIX-1675. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.",
     workerMatch:
       "Which worker holds a task is a best match on the task's assignee: its id, then a unique name. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
-    partial: "Asks did not load, so on call may be missing workers waiting on you.",
+    partial: "Asks did not load, so on shift may be missing workers waiting on you.",
   },
   /** The Chief of Staff view's named states (BR-11, BR-12). */
   chiefOfStaff: {

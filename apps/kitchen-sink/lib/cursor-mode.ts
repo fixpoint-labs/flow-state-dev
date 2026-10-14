@@ -25,13 +25,16 @@ import { harnessEnv } from "@flow-state-dev/core";
 import {
   TESTED_SDK_VERSION,
   cursorAgent,
+  probeCursorSandbox,
   readInstalledCursorSdkVersion,
+  type CursorSandboxSupport,
   type CursorAgentOptions,
   type InstalledSdkVersion,
   type ResolveCursorClient,
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
+import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -105,7 +108,9 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
       mode: "agent",
       // Writes confined to the run's `cwd`, the session's worktree. Cursor fails
       // the run when its sandbox can't start, rather than running without it.
-      local: { sandboxOptions: { enabled: true } },
+      // `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` turns it off (`lib/harness-sandbox.ts`):
+      // the run then writes wherever the server's OS user can.
+      local: { sandboxOptions: { enabled: !harnessUnsandboxed() } },
     },
     // A stand-in client runs in this process, so it takes no `env`; the real
     // runtime always gets the allowlist, in its own process.
@@ -144,6 +149,8 @@ export interface CursorHostChecks {
   readonly childStarts: (env: Record<string, string>) => string | null;
   /** Cursor's sign-in over the run's own environment: its key, or the SDK's stored login. No run. */
   readonly signIn: (env: Record<string, string>) => Promise<CursorSignIn>;
+  /** Whether Cursor's sandbox can start for a run in `cwd` with exactly `env`, in Cursor's words. No run. */
+  readonly sandbox: (cwd: string, env: Record<string, string>) => CursorSandboxSupport;
 }
 
 /**
@@ -180,17 +187,20 @@ export const HOST_CHECKS: CursorHostChecks = {
   },
   childStarts,
   signIn,
+  sandbox: (cwd, env) => probeCursorSandbox({ cwd, env }),
 };
 
 /**
  * Cursor mode's own check, for the gate's mode-check slot: the pinned Cursor
  * SDK is installed, the worktree root can be made, a process with only the
  * run's environment can start (the Cursor package runs the runtime in one),
- * and Cursor is signed in over that environment. The first that fails is the
- * reason.
+ * Cursor is signed in over that environment, and Cursor's sandbox can start
+ * here. The first that fails is the reason.
  *
- * Cursor's sandbox is not probed here: the SDK starts it only for a run, and a
- * run fails with Cursor's own error when it can't, rather than running unsandboxed.
+ * Cursor fails a run whose sandbox can't start rather than running without
+ * it, hence the sandbox check (`probeCursorSandbox`). Under
+ * `KITCHEN_SINK_HARNESS_UNSANDBOXED=1` it is skipped, and the available
+ * mode's note says the run is unsandboxed.
  */
 export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeCheck {
   return async ({ repository }): Promise<ModeAvailability> => {
@@ -223,6 +233,14 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
       return {
         available: false,
         reason: `Cursor is not signed in on this host (${signedIn.reason}). Set CURSOR_API_KEY, or log in with the Cursor SDK, then restart.`,
+      };
+    }
+    if (harnessUnsandboxed()) return { available: true, note: unsandboxedNote("Cursor") };
+    const sandbox = checks.sandbox(repository, env);
+    if (!sandbox.supported) {
+      return {
+        available: false,
+        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason} ${unsandboxedHint("Cursor")}`,
       };
     }
     return { available: true };

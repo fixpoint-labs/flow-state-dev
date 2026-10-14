@@ -86,7 +86,7 @@ const startsWith = (reply: string, marker: string) => edges(reply).startsWith(ma
 const endsWith = (reply: string, marker: string) => edges(reply).endsWith(marker);
 
 /** One person on one served install. */
-class Seat {
+class SignedIn {
   readonly routes: LabRoutes;
   readonly workforce: ReturnType<typeof createWorkforceClient>;
   readonly sessions: ReturnType<typeof createSessionClient>;
@@ -149,9 +149,9 @@ class Seat {
 }
 
 /** Three fresh sessions with `worker`, one unrelated ask each. */
-async function threeFresh(seat: Seat, worker: { id: string; flow: string }, asks: string[]): Promise<Turn[]> {
+async function threeFresh(user: SignedIn, worker: { id: string; flow: string }, asks: string[]): Promise<Turn[]> {
   const turns: Turn[] = [];
-  for (const ask of asks) turns.push(await seat.say(worker, await seat.fresh(worker), ask));
+  for (const ask of asks) turns.push(await user.say(worker, await user.fresh(worker), ask));
   return turns;
 }
 
@@ -191,7 +191,7 @@ await runGoal(async (failures) => {
     let served = await boot("boot-1");
     let worker: { id: string; flow: string };
     try {
-      const a = new Seat(alice, served.origin);
+      const a = new SignedIn(alice, served.origin);
       worker = await a.worker(workerName);
       const s1 = await a.fresh(worker);
       const given = [await a.say(worker, s1, NOTES.start.words), await a.say(worker, s1, NOTES.end.words)];
@@ -205,8 +205,8 @@ await runGoal(async (failures) => {
 
     served = await boot("boot-2");
     try {
-      const a = new Seat(alice, served.origin);
-      const b = new Seat(bob, served.origin);
+      const a = new SignedIn(alice, served.origin);
+      const b = new SignedIn(bob, served.origin);
 
       // next-session-follows: after the restart, three fresh sessions, unrelated asks, both markers.
       const after = await threeFresh(a, worker, asks);

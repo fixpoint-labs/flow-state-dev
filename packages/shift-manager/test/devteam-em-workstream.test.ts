@@ -70,9 +70,10 @@ function lastText(messages: unknown[]): string {
 /**
  * The EM's turn. A turn that starts on the handed post files the coder's two
  * tasks; each later turn (a task's end heard) updates the workstream entry.
- * `turns` records what started each turn.
+ * `turns` records what started each turn; `prompts`, everything each turn's
+ * first call was handed.
  */
-function emModel(turns: string[]): GeneratorModel {
+function emModel(turns: string[], prompts: string[]): GeneratorModel {
   let queue: ToolCall[] = [];
   let step = 0;
   return {
@@ -85,6 +86,7 @@ function emModel(turns: string[]): GeneratorModel {
       if (last?.role !== "tool") {
         // A new turn: what it is depends on whether it is the first.
         turns.push(lastText(options.messages));
+        prompts.push(JSON.stringify(options.messages));
         queue =
           turns.length === 1
             ? ISSUES.map((issue) => ({
@@ -118,9 +120,9 @@ const judge = {
   },
 };
 
-function scripted(emTurns: string[]): ModelResolver {
+function scripted(emTurns: string[], emPrompts: string[] = []): ModelResolver {
   const judgment = stepping("test/judgment", [{ toolName: "dispatchTask", args: { post: true, assignee: EM, target: "shared/storefront/feature" } }], "Handed on.");
-  const em = emModel(emTurns);
+  const em = emModel(emTurns, emPrompts);
   const helper = stepping("test/helper", [], "On it.");
   return Object.assign(
     (_id: string, block?: string) => (block?.startsWith("coordinator-judgment") ? judgment : block === EM_TURN ? em : helper),
@@ -144,6 +146,7 @@ afterEach(async () => {
 describe("the EM files from the workstream it leads", () => {
   it("files the coder's tasks from Alice's `feature` session, hears each end there once, and updates the entry", async () => {
     const emTurns: string[] = [];
+    const emPrompts: string[] = [];
     const remote = createBareRemote("em-workstream", { seed: { "README.md": "storefront\n" } });
     const stub = harnessStub({
       finalMessage: "Done.",
@@ -154,7 +157,7 @@ describe("the EM files from the workstream it leads", () => {
     });
     root = mkdtempSync(join(tmpdir(), "sm-em-workstream-"));
     lab = await openLab({
-      modelResolver: scripted(emTurns),
+      modelResolver: scripted(emTurns, emPrompts),
       stores: inMemoryStores(),
       harness: stub.slot,
       runTimeoutMs: 30_000,
@@ -206,6 +209,8 @@ describe("the EM files from the workstream it leads", () => {
       ISSUES.map((issue) => ({ issue, phase: "implement" })),
     );
     expect(settled.every((r) => r.assignee === CODER)).toBe(true);
+    // The EM was told its workstream's project before it filed, so it never has to guess one.
+    expect(emPrompts[0]).toContain(JSON.stringify('the shared project "storefront"').slice(1, -1));
     // Every row is on the workstream session's board: none filed anywhere else.
     expect(Object.keys(await lab.stored("user", `tasks/${encodeUserSegment(`${workstream}~`)}`))).toHaveLength(ISSUES.length);
     // Each ran in a checkout of Storefront's repository, found through the workstream.

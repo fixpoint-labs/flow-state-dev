@@ -1,7 +1,7 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
  * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
- * (BR-6) with the on-shift and on-call counts. A header above them all carries
+ * (BR-6) with the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
@@ -31,7 +31,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -522,7 +522,7 @@ export function Sidebar({
               <NavItem
                 label="Roster"
                 icon={<NavIcon name="roster" />}
-                count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
+                count={counts?.["on shift"]}
                 mark={partial}
                 active={(route.level === "roster" && route.team === null) || route.level === "rules"}
                 onClick={() => navigate({ level: "roster", team: null })}
@@ -564,7 +564,7 @@ export function Sidebar({
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${worker.name} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.name)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );
@@ -597,10 +597,6 @@ export function Sidebar({
                   <span className="inline-flex items-center gap-1.5">
                     <ShiftMark status="on shift" />
                     <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <ShiftMark status="on call" />
-                    <span data-testid="footer-on-call">{counts["on call"]} on call</span>
                   </span>
                   {partial}
                 </>

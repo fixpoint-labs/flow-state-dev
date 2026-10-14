@@ -30,9 +30,9 @@ import { goalControl } from "./goal-control";
 import { readHarnessWorkspace, type HarnessWorkspace } from "./harness-workspace";
 import { MODES, isHarnessMode, type HarnessModeId, type KitchenSinkMode, type ModeId } from "./modes";
 
-/** Whether one mode can run here, and if not, why. */
+/** Whether one mode can run here. An available mode's `note`, when set, is shown where an unavailable mode's reason is. */
 export type ModeAvailability =
-  | { readonly available: true }
+  | { readonly available: true; readonly note?: string }
   | { readonly available: false; readonly reason: string };
 
 /** Every mode's availability, by id. */

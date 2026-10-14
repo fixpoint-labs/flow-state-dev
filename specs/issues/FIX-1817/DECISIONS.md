@@ -39,6 +39,8 @@ adds it as a second mode rather than replacing the first.
 <a name="d2"></a>
 ## D2 · A reply to a finished task is a turn in its session; more work is a follow-up task in that session; nothing reopens
 
+> **Superseded by FIX-1764 (2026-10-13).** Jake decided that a message on a finished task reopens it: the task goes back to in progress under the same id and its next attempt runs in this session. Reopen ships as its own verb, `reopen`, the only write out of a finished status. Follow-up tasks are unchanged.
+
 | | |
 |---|---|
 | **Instead of** | Reopening the finished task, or keeping a note on its closed row |

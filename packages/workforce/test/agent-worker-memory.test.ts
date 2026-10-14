@@ -254,7 +254,10 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     expect(Object.keys(worker!.resources ?? {})).toEqual(
       expect.arrayContaining(["workingMemory", "semanticMemory", "episodicMemory"])
     );
-    const children = stepNames(worker!.actions.run!.block);
+    // The door's block reaches the turn through its finished-task router (FIX-1764).
+    type Named = { name: string; childBlocks?: readonly Named[] };
+    const names = (block: Named): string[] => [block.name, ...(block.childBlocks ?? []).flatMap(names)];
+    const children = names(worker!.actions.run!.block as Named);
     expect(children.some((name) => name.startsWith("memory/"))).toBe(true);
     expect(worker!.isolateUserState).toBe(true);
   });

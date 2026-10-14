@@ -104,6 +104,7 @@ import { markUserTurnStep } from "./standing-rules/user-turn";
 import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
+import { replyOrReopen } from "./conversation-board/reopen";
 
 /**
  * The worker flow name the hire step resolves a record to when it names none, and the
@@ -1317,10 +1318,10 @@ function defineAgentFlowAround(
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      // A reply: a task's notice to this session waits for it to end.
+      // A reply: its notice waits for it to end. A finished task session reopens the task instead (FIX-1764).
       run: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
-        block: userTurn,
+        block: replyOrReopen(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY
       },

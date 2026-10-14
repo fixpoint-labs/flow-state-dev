@@ -41,7 +41,7 @@ export const J4_PAGES = [
   "apps/docs/docs/workforce/overview.md",
   "apps/docs/docs/workforce/projects.md",
   "apps/docs/docs/workforce/coordinators.md",
-  "apps/docs/docs/workforce/chief-of-staff.md",
+  "apps/docs/docs/workforce/shift-coordinator.md",
   "apps/docs/docs/workforce/durable-hire.md",
   "apps/docs/docs/workforce/workers-on-disk.md",
   "packages/workforce/README.md",

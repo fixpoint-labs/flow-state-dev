@@ -25,8 +25,8 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 0. every held-out token lives in exactly one convention file, in none of `packages/shift-manager/teams/devteam/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
 1. one root produces exactly three team seats on the two kinds their files name, plus the org's
-   chief of staff and project coordinator on `coordinator`, its general lead and researcher on `agent`,
-   the teams' two coordinator workers (`eng.triage`, `ops.oncall`) on `coordinator`, two documents
+   shift coordinator and project coordinator on `coordinator`, its general lead and researcher on `agent`,
+   the eng team's coordinator worker (`eng.triage`) on `coordinator`, two documents
    and no mailbox (the feature and release work are workstreams the EM leads); a tree naming an
    unregistered kind refuses the **whole** roster by name, and its corrected twin hires cleanly
    *(BR-1, BR-2)*;
