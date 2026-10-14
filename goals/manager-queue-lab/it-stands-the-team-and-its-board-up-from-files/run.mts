@@ -82,12 +82,7 @@ async function withLab<T>(options: OpenLabOptions, body: (lab: Lab) => Promise<T
 /** What the twin's turn files with `dispatchTask` when it holds it: a task, not a post. */
 const PROBE_GOAL = "probe";
 
-/**
- * The tools the manager's turn is handed on one turn, from a fresh lab built
- * with `options`; what the turn's own tool call answered, when `options`
- * carries a probe; what a filing through the public action answered; and
- * whether either stored a row.
- */
+/** One manager turn on a fresh lab: the tools it was handed, and what the filings answered. */
 async function turnTools(
   options: OpenLabOptions,
 ): Promise<{ tools: string[]; turnFiling: unknown; filing: unknown; stored: boolean }> {
@@ -173,9 +168,7 @@ await runGoal(async (failures) => {
     if (taskTools(withNote.tools).sort().join() !== taskTools(own.tools).sort().join()) {
       note(`the task tools changed when the manager's \`tools:\` changed; no \`tools:\` line may add or remove one`);
     }
-    // A turn routing a post holds `dispatchTask` for its post form even when
-    // the conversation files no task (FIX-1872), so the twin may hold that one
-    // tool, and only if the turn's own call to it with a task's goal files nothing.
+    // FIX-1872: a turn routing a post still holds dispatchTask.
     const twinTaskTools = taskTools(twin.tools).filter((name) => name !== "dispatchTask");
     if (twinTaskTools.length !== 0) {
       note(`with builders that take no task the manager still holds ${twinTaskTools.join(", ")}`);
