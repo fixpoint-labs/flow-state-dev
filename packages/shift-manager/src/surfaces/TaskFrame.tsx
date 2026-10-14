@@ -18,6 +18,7 @@ import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
 import { useTask } from "../lib/task";
+import { distinctTitle } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -208,12 +209,15 @@ function Actions({ gaps }: { gaps: Gaps }) {
 /** Brief (BR-24): the row's fields as stored. */
 function Brief({ gaps }: { gaps: Gaps }) {
   const { row } = useTask();
+  const title = distinctTitle(row);
   return (
     <dl className="mx-auto w-full max-w-3xl space-y-3 px-4 py-4 text-sm" data-testid="task-brief">
-      <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
-        <dd data-testid="brief-title">{row?.title ?? "—"}</dd>
-      </div>
+      {title === null ? null : (
+        <div>
+          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
+          <dd data-testid="brief-title">{title}</dd>
+        </div>
+      )}
       <div>
         <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">GOAL</dt>
         <dd className="whitespace-pre-wrap" data-testid="brief-goal">

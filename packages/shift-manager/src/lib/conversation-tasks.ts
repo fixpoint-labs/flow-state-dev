@@ -19,6 +19,8 @@ export const LIST_TASKS_ACTION = "listTasks_tasks";
 export type ConversationTask = {
   id: string;
   goal: string;
+  /** The short label the task was filed under; absent when it was filed with none. */
+  title?: string;
   /** The status as stored: `pending`, `in_progress`, `completed`, `errored` and the rest. */
   status: string;
   /** The delegate it is handed to; absent while it waits to be assigned. */
