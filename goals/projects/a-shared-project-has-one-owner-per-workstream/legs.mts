@@ -121,7 +121,7 @@ const leadIdFor = (project: string, workstream: string) => `lead-${project}-${wo
 /** What a hired lead is told: lead one workstream, and keep its entry current with `updateWorkstream`. */
 const LEAD_INSTRUCTIONS =
   "You lead one workstream of a project, for the person who owns it. When asked for work, file it as a task " +
-  "for eng.coder with dispatchTask, so it starts now. When its status changes, or there is something to report, call updateWorkstream " +
+  "for eng.coder with dispatchTask. When its status changes, or there is something to report, call updateWorkstream " +
   "with a short status in your own words and your latest report. Mark it done only when the owner says it is finished.";
 
 /** The person's own session on a flow, at the id Shift Manager reads under (`readerSessionId`). */
