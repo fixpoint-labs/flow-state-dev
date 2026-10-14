@@ -334,12 +334,14 @@ function Talk({
 }
 
 /**
- * The right panel at Shift Coordinator: the delegates, tasks and standing rules of a chief of staff on the coordinator flow.
+ * The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow,
+ * and the standing rules of one whose inventory row says it keeps them, on whichever flow.
  * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
  */
 export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSnapshot; devtoolUrl?: string }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
-  const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
+  const one = found?.kind === "one" ? found.worker : undefined;
+  const cos = one?.kind === COORDINATOR_FLOW ? one : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
       {cos !== undefined ? (
@@ -348,15 +350,17 @@ export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSn
           <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
           <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
-          <div className="px-1 pt-4">
-            <StandingRules key={`rules-${cos.id}`} workerId={cos.id} name={NAME} devtoolUrl={devtoolUrl} compact />
-          </div>
         </>
       ) : (
         <p className="px-1 text-xs text-muted-foreground" data-testid="cos-panel-empty">
           No delegates or tasks yet.
         </p>
       )}
+      {one?.rules ? (
+        <div className="px-1 pt-4">
+          <StandingRules key={`rules-${one.id}`} workerId={one.id} name={NAME} devtoolUrl={devtoolUrl} compact />
+        </div>
+      ) : null}
     </div>
   );
 }

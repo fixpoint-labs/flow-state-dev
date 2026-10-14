@@ -10,7 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import type { LabClients } from "../src/lib/connection";
-import { toWorker, type LabSnapshot } from "../src/lib/reads";
+import { toWorker, type LabSnapshot, type Worker } from "../src/lib/reads";
 import { MAX_RULE_CHARS } from "@flow-state-dev/workforce/browser";
 
 type Rule = { number: number; text: string; addedAt: number; sessionId: string | null };
@@ -40,8 +40,10 @@ async function standingRules(worker: string, input: Input) {
 /** The user's own roster read: empty, unless a test makes it fail. */
 let roster: () => Promise<unknown[]>;
 
+// One client for the page, as the app's own hook keeps one: a new one per render would read the list again on every render.
+const workforce = { roster: () => roster(), standingRules };
 vi.mock("../src/lib/workforce", () => ({
-  useWorkforce: () => ({ roster: () => roster(), standingRules }),
+  useWorkforce: () => workforce,
 }));
 
 let fixture: LabSnapshot;
@@ -50,12 +52,12 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
   return { ...real, createLabReader: () => ({ read: async () => fixture, readBoard: async () => [], resume: async () => {} }) };
 });
 
-function lab(): LabSnapshot {
+function lab(...more: Worker[]): LabSnapshot {
   return {
     readAt: Date.UTC(2026, 9, 14, 9, 30),
     sessions: [],
     orgId: "acme",
-    inventory: { ok: true, value: { workers: [toWorker({ id: "researcher", kind: "agent", rules: true })!, toWorker({ id: "eng.coder", kind: "coder" })!, toWorker({ id: "eng.helper", kind: "agent", rules: false })!] } },
+    inventory: { ok: true, value: { workers: [toWorker({ id: "researcher", kind: "agent", rules: true })!, toWorker({ id: "eng.coder", kind: "coder" })!, toWorker({ id: "eng.helper", kind: "agent", rules: false })!, ...more] } },
     boards: {},
     asks: { ok: true, value: [] },
     resources: { ok: true, value: [] },
@@ -179,5 +181,30 @@ describe("a worker's Rules (BR-19 to BR-21)", () => {
     await open("/roster/researcher/rules");
     expect((await screen.findByTestId("rules-full")).textContent).toMatch(/full \(20 of 20\)/);
     expect(screen.queryByTestId("rule-add-input")).toBeNull();
+  });
+});
+
+describe("the Shift Coordinator's panel (BR-21a)", () => {
+  const withCos = (kind: string, rules: boolean) => lab(toWorker({ id: "chief-of-staff", kind, rules })!);
+  // The panel opens beside the conversation only on a wide window.
+  beforeEach(() => {
+    (window as unknown as { happyDOM: { setViewport(v: { width: number; height: number }): void } }).happyDOM.setViewport({ width: 1600, height: 900 });
+  });
+
+  it("draws RULES for a chief of staff on `agent` whose row says it keeps them, without the coordinator's delegates", async () => {
+    fixture = withCos("agent", true);
+    await open("/cos");
+    const panel = await screen.findByTestId("cos-panel");
+    expect(await within(panel).findByTestId("rules")).toBeTruthy();
+    expect(within(panel).getByTestId("cos-panel-empty")).toBeTruthy();
+    await waitFor(() => expect(calls).toEqual([{ worker: "chief-of-staff", input: { op: "read" } }]));
+  });
+
+  it("draws no RULES, and never asks the Lab, for a chief of staff whose row says its flow keeps none", async () => {
+    fixture = withCos("coordinator", false);
+    await open("/cos");
+    const panel = await screen.findByTestId("cos-panel");
+    expect(within(panel).queryByTestId("rules")).toBeNull();
+    expect(calls).toEqual([]);
   });
 });
