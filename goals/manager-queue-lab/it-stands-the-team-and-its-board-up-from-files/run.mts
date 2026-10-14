@@ -174,7 +174,9 @@ await runGoal(async (failures) => {
       note(`with builders that take no task the manager still holds ${twinTaskTools.join(", ")}`);
     }
     const twinTurnError = String((twin.turnFiling as { error?: unknown } | undefined)?.error ?? "");
-    if (twin.tools.includes("dispatchTask") && !twinTurnError.startsWith("no_delegation_board")) {
+    if (!twin.tools.includes("dispatchTask")) {
+      note(`with builders that take no task, the turn routing a post lost dispatchTask, its post form`);
+    } else if (!twinTurnError.startsWith("no_delegation_board")) {
       note(
         `with builders that take no task, the turn's dispatchTask filed a task: it answered ` +
           `${JSON.stringify(twin.turnFiling)}, not no_delegation_board`,
@@ -268,7 +270,8 @@ await runGoal(async (failures) => {
       `turn was handed ${taskTools(own.tools).length} task tools, each once (${taskTools(own.tools).join(", ")}), ` +
       `and no catalog tool; with \`tools: ["${NOTE_TOOL}"]\` the same task tools plus ${NOTE_TOOL}; with builders ` +
       `whose work entry takes no conversation's task, ` +
-      `${twin.tools.includes("dispatchTask") ? "only dispatchTask, for its post form: the turn's own call to it with a task's goal answered " + JSON.stringify(twinTurnError.split(":")[0]) + "," : "none,"} ` +
+      `only dispatchTask, for its post form: the turn's own call to it with a task's goal answered ` +
+      `${JSON.stringify(twinTurnError.split(":")[0])}, ` +
       `and the public filing answered no_delegation_board, storing nothing. A filing ` +
       `for ${stranger} answered "${refusal.split(":")[0]}" and stored nothing; one for nobody waits, pending and ` +
       `unassigned. The manager's listTasks left the stored rows byte-identical; each of ${rows.length} rows ` +
