@@ -757,13 +757,12 @@ export function createInboundTransportHost(
     // SSE client gets an open stream while queued. External dispatch without a
     // shared backend skips arbitration (no key, nothing taken).
     //
-    // WHEN the place is taken depends on the backend. Over the in-memory
-    // default it is taken here, synchronously, before any record or stream
-    // exists, so a `reject` is still thrown from `dispatch`. Over a shared
-    // backend it is taken only once `admitOwnership` has passed (BP-031): a
-    // caller that does not own the session or request id must not hold, or
-    // stand in line on, its key, where every process would honour the place.
-    // That refusal, and the backend's own errors, arrive through `accepted`.
+    // The place is taken only once `admitOwnership` has passed, on every
+    // backend (BP-031, FIX-1837): a caller that does not own the session or
+    // request id must not hold, or stand in line on, its key, not even for the
+    // one store read the check takes. A `reject` refusal, and a shared
+    // backend's own errors, therefore arrive through `accepted` / `finished`,
+    // never as a synchronous throw from `dispatch`.
     //
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
@@ -771,13 +770,10 @@ export function createInboundTransportHost(
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    // `hold` and `defer` take their place only once ownership has passed, on
-    // every backend. Neither is refused synchronously (a `defer` over its cap
-    // is refused through the handle), so nothing is lost by waiting, and a
-    // caller who does not own the session never marks its key held or uses
-    // up its defer cap, not even for the moment before the refusal (BP-031).
-    const admitsAfterOwnership =
-      arbiter.arbitratesAcrossProcesses || decision.policy === "hold" || decision.policy === "defer";
+    // Every arbitrated policy waits on ownership; only `allow` (or no key),
+    // which takes nothing, is admitted up front, keeping its timing to the
+    // microtask.
+    const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
     const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its
     // run, every failure gives it back: the synchronous setup is wrapped below,
@@ -1191,12 +1187,8 @@ export function createInboundTransportHost(
             });
         } else {
           // Nothing is written before the run here (`runAction` writes its own
-          // records), so a shared backend's place waits only on ownership.
-          const arbitrated =
-            admitsAfterOwnership &&
-            decision.key !== undefined &&
-            decision.policy !== "allow";
-          finished = arbitrated
+          // records), so the place waits only on ownership.
+          finished = admitsAfterOwnership
             ? admitOwnership(flow, dispatchEnvelope).then(() =>
                 admitThen((admitted) => admitted.run(startRun))
               )

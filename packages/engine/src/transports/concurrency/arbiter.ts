@@ -25,12 +25,13 @@
  *     place the backend dropped takes a new one at the back of the line; a
  *     running holder whose place cannot be kept is told to stop (`lost`).
  *
- * Over the in-memory default backend all of this is synchronous where it was
- * before backends existed: a `reject` throws from `dispatch`, and a queued run
- * is woken when the run ahead of it settles. Over an adapter-supplied backend
- * (FIX-1634) admission is asynchronous — a `reject` refusal arrives through the
- * dispatch's `accepted` — and a queued run re-checks its turn on the schedule
- * `planQueueWait` sets. An unreachable backend refuses the dispatch; nothing
+ * Over the in-memory default backend `admit` is synchronous — a `reject`
+ * refusal is thrown from it — and a queued run is woken when the run ahead of
+ * it settles. Over an adapter-supplied backend (FIX-1634) admission is
+ * asynchronous, and a queued run re-checks its turn on the schedule
+ * `planQueueWait` sets. Either way the host calls `admit` only once the
+ * caller's ownership has been checked (FIX-1837), so `dispatch` reports a
+ * `reject` refusal through its handle's `accepted`, never by throwing. An unreachable backend refuses the dispatch; nothing
  * runs unarbitrated.
  *
  * Without a supplied backend the arbiter holds keys in this process only, so a
@@ -144,8 +145,9 @@ export interface ConcurrencyArbiter {
     envelope: DispatchEnvelope
   ): ResolvedDecision;
   /**
-   * Take a dispatch's place on its key. Call at the top of `dispatch`, before
-   * any record/stream is created:
+   * Take a dispatch's place on its key. Call once the caller's ownership of
+   * the session and request id has been checked, and before any record is
+   * created:
    *   - `reject` → claim the key only if it is free; if another request holds
    *     it, refuse with `ConcurrencyRejectedError(key, inFlightRequestId)` (so
    *     no record is created for the dropped caller).

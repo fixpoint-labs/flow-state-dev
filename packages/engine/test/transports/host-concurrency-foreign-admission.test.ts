@@ -1,0 +1,184 @@
+/**
+ * A caller who does not own a session must never hold, or stand in line on,
+ * that session's concurrency key — on the in-memory default backend too.
+ *
+ * The owner's experience is what is asserted: a `reject` action of theirs is
+ * not refused, and a `queue` action of theirs is not kept waiting, because a
+ * stranger's request for the same session happened to arrive first. The
+ * stranger's ownership read is held open by a store wrapper, so the window
+ * between "place taken" and "ownership checked" is as wide as the test wants
+ * rather than one store read wide.
+ */
+import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+import {
+  createFlowRegistry,
+  createInMemoryStores,
+  createInboundTransportHost,
+  defaultBodyUserIdPrincipalResolver
+} from "../../src";
+import { ConcurrencyRejectedError } from "../../src/transports/errors";
+
+type Gate = { id: string; release: () => void };
+
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/**
+ * One flow with a `reject` and a `queue` action that block until released.
+ * `pauseNextSessionRead()` holds the next session read open until the
+ * returned function is called.
+ */
+function buildHost() {
+  const registry = createFlowRegistry();
+  const stores = createInMemoryStores();
+  const gates: Gate[] = [];
+  const started: string[] = [];
+
+  let pending: Promise<void> | undefined;
+  const sessionGet = stores.session.get.bind(stores.session);
+  stores.session.get = async (...args: Parameters<typeof sessionGet>) => {
+    const wait = pending;
+    pending = undefined;
+    if (wait !== undefined) await wait;
+    return sessionGet(...args);
+  };
+
+  const block = (name: string) =>
+    handler<{ value: string }, { ok: true }>({
+      name,
+      execute: async (input) => {
+        started.push(input.value);
+        await new Promise<void>((resolve) => gates.push({ id: input.value, release: resolve }));
+        return { ok: true };
+      }
+    });
+
+  registry.register(
+    defineFlow({
+      kind: "conversation",
+      actions: {
+        strict: {
+          concurrency: "reject",
+          inputSchema: z.object({ value: z.string() }),
+          block: block("strict")
+        },
+        line: {
+          concurrency: "queue",
+          inputSchema: z.object({ value: z.string() }),
+          block: block("line")
+        }
+      }
+    })({ id: "conversation" })
+  );
+
+  const host = createInboundTransportHost({
+    registry,
+    stores,
+    resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+    runtimeConfig: {}
+  });
+
+  const release = (id: string) => {
+    const found = gates.find((g) => g.id === id);
+    if (found === undefined) throw new Error(`"${id}" is not running`);
+    gates.splice(gates.indexOf(found), 1);
+    found.release();
+  };
+
+  return {
+    started,
+    release,
+    pauseNextSessionRead: (): (() => void) => {
+      let resume!: () => void;
+      pending = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      return resume;
+    },
+    dispatch: (action: "strict" | "line", value: string, userId = "u_1") =>
+      host.dispatch({
+        source: "http" as const,
+        flowKind: "conversation",
+        action,
+        input: { value },
+        sessionId: "s_1",
+        principal: { userId, orgId: DEFAULT_ORG_ID }
+      })
+  };
+}
+
+/** u_1 owns s_1 once its first request has run there. */
+async function ownedSession(h: ReturnType<typeof buildHost>) {
+  const first = h.dispatch("strict", "owner-first");
+  await tick();
+  h.release("owner-first");
+  await first.finished;
+}
+
+describe("a caller who does not own the session (in-memory backend)", () => {
+  it("cannot get the owner's `reject` request refused", async () => {
+    const h = buildHost();
+    await ownedSession(h);
+
+    const resume = h.pauseNextSessionRead();
+    const foreign = h.dispatch("strict", "x-1", "u_2");
+    void foreign.finished.catch(() => {});
+
+    // The owner's own request, while the stranger's ownership check is pending.
+    let owner: ReturnType<typeof h.dispatch> | undefined;
+    let refusedSync: unknown;
+    try {
+      owner = h.dispatch("strict", "owner-2");
+    } catch (error) {
+      refusedSync = error;
+    }
+    expect(refusedSync).toBeUndefined();
+    await owner!.accepted;
+    await tick();
+    expect(h.started).toEqual(["owner-first", "owner-2"]);
+
+    resume();
+    await expect(foreign.finished).rejects.not.toBeInstanceOf(ConcurrencyRejectedError);
+    h.release("owner-2");
+    await owner!.finished;
+    expect(h.started).not.toContain("x-1");
+  });
+
+  it("cannot stand in front of the owner's `queue` request", async () => {
+    const h = buildHost();
+    await ownedSession(h);
+
+    const resume = h.pauseNextSessionRead();
+    const foreign = h.dispatch("line", "x-1", "u_2");
+    void foreign.finished.catch(() => {});
+
+    const owner = h.dispatch("line", "owner-2");
+    await owner.accepted;
+    await tick();
+    await tick();
+    // The owner's run starts without waiting on the stranger's refusal.
+    expect(h.started).toEqual(["owner-first", "owner-2"]);
+
+    resume();
+    await expect(foreign.finished).rejects.toBeDefined();
+    h.release("owner-2");
+    await owner.finished;
+    expect(h.started).not.toContain("x-1");
+  });
+
+  it("is refused with nothing left held: the owner's next `reject` request runs", async () => {
+    const h = buildHost();
+    await ownedSession(h);
+
+    const foreign = h.dispatch("strict", "x-1", "u_2");
+    await expect(foreign.finished).rejects.not.toBeInstanceOf(ConcurrencyRejectedError);
+
+    const owner = h.dispatch("strict", "owner-2");
+    await owner.accepted;
+    await tick();
+    h.release("owner-2");
+    await owner.finished;
+    expect(h.started).toEqual(["owner-first", "owner-2"]);
+  });
+});
