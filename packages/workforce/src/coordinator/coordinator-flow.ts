@@ -1124,7 +1124,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       await reportRescuedFailure(ctx as never, {
         flowKind: COORDINATOR_FLOW,
         actionName: post.round === 0 ? "run" : ROUTE_ON_ACTION,
-        blockName: "coordinator-judgment",
+        blockName: COORDINATOR_JUDGMENT,
         error
       });
       // A user's post is answered in the conversation; answers going back out aren't.

@@ -46,9 +46,22 @@ describe("a coordinator's failures reach the Error Reporter", () => {
     const turn = (await host.act("alice", id, "run", { message: "no mark, and no judgment script" })) as { error?: unknown; requestId?: string };
     // The request completes on "Nobody took this post", so the engine sends no final event for it.
     expect(turn.error).toBeUndefined();
-    expect((await host.items(id)).messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
+    const said = (await host.items(id)).messages.at(-1)!.text;
+    expect(said).toMatch(/^Nobody took this post: /);
     expect(taken).toEqual([
-      expect.objectContaining({ kind: "request", flowKind: "coordinator", actionName: "run", blockName: "coordinator-judgment", sessionId: id, userId: "alice" })
+      expect.objectContaining({
+        kind: "request",
+        requestId: turn.requestId,
+        flowKind: "coordinator",
+        actionName: "run",
+        blockName: "coordinator-judgment",
+        sessionId: id,
+        userId: "alice",
+        message: expect.any(String)
+      })
     ]);
+    // The crash it reports is the one the conversation was told about.
+    expect(turn.requestId).toBeDefined();
+    expect(said).toContain(String(taken[0]!.message));
   });
 });
