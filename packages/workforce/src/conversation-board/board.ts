@@ -93,7 +93,8 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import { filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
+import type { ProjectAddressRef } from "../projects/workstream-ref";
+import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
@@ -143,6 +144,13 @@ export interface ConversationBoardOptions {
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
 function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+}
+
+/** Write the session's project over a named `project`, so a guess isn't refused `other-project`. */
+function ownProjectIn(input: unknown, own: ProjectAddressRef | undefined): unknown {
+  if (own === undefined || input === null || typeof input !== "object" || Array.isArray(input)) return input;
+  if ((input as { project?: unknown }).project == null) return input;
+  return { ...input, project: own };
 }
 
 /** A roster over the session's task-taking delegates, naming why each other one can't take a task. */
@@ -419,8 +427,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         owner === undefined
           ? given
           : { ...(given ?? {}), [PIECE_OF]: owner, ...(retrying !== undefined ? { [RETRY_OF]: retrying } : {}) };
+      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       const added = await ref.addTask({
         ...init,
+        ...(input !== undefined ? { input } : {}),
         id,
         maxAttempts: init.maxAttempts ?? TASK_ATTEMPTS,
         ...(assignee !== undefined ? { assignee } : {}),

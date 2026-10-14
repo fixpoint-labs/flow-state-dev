@@ -633,11 +633,13 @@ harnessManager({
 2. The project the task came from, when it was filed from a project's conversation.
 3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
 
+A task filed from a workstream or a project's conversation is stored naming that project, whatever the filer put in `input.project`.
+
 The run is refused, before any file is read, when:
 
 | Refusal | When |
 |---|---|
-| `other-project` | The task names a project other than the one its conversation belongs to. The refusal names both. |
+| `other-project` | The task names a project other than the one its conversation belongs to, which a task filed through the conversation's own task tools never does. The refusal names both. |
 | `no-project` | The task names a project by its id alone. A private and a shared project can share an id, so a project is named by its visibility and id. |
 | `no-project` | None of the three steps finds a project. The message says the task can name one in `input.project`. |
 | `not-a-member` | The user the run belongs to isn't one of the project's members. |
