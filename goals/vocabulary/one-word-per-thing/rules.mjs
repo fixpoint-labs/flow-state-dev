@@ -81,6 +81,7 @@ export const EXCLUDE = [
     over: true, why: "the FIX-1816 and FIX-1820 regression checks: ER-11 allows names only, and the closure renames them by map"
   },
   { path: /^goals\/coordinators\/(task-session-stays-open|hands-each-post-to-its-delegates|files-tasks-down-the-owners-chain)\//, over: true, why: "epic regression and coordinator checks: renamed only by the closure's map (ER-11)" },
+  { path: /^goals\/vocabulary\/one-word-per-thing\//, over: true, why: "this sweep: its rules name every retired word on purpose" },
   { path: /^goals\/workforce-mailboxes\/a-routed-post-gets-one-answer\//, over: true, why: "epic coordinator check: renamed only by the closure's map (ER-11)" },
   {
     path: /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|json|jsonl|ya?ml|lock|css|scss|html|txt|toml|sh|py|sql|snap|map|gitignore|npmignore|env|example|d\.ts\.map)$|(^|\/)\.[^/]+$|(^|\/)(LICENSE|Dockerfile)$/,
@@ -93,18 +94,30 @@ export const EXCLUDE = [
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
   {
+    path: /^apps\/docs\/docs\/orchestration\/task-board\.md$/,
+    line: /Older logs report `"handed-off"` for the same thing\.$/,
+    rules: ["handoff-symbol-in-docs", "handoff-prose"],
+    why: "WR-14: the ending's old stored value, so a reader of an old log knows what it means"
+  },
+  {
+    path: /^goals\//,
+    line: /^\| \d{4}-\d{2}-\d{2} \||no longer posts its answer with a `post-to-mailbox` tool|`post-to-mailbox`, which went with mailboxes/,
+    rules: ["post-to-mailbox"],
+    why: "WR-7: a goal's dated verdict row, or a line saying the tool was removed: history"
+  },
+  {
     path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/)/,
     line: /Shift Manager|AskCard|Inbox|approval|question|suspended|\bAsks?\b \|/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "Shift Manager's Ask: an approval or question to a person"
   },
   {
-    path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
+    path: /^apps\/docs\/docs\/workforce\/shift-coordinator\.md$/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "the chief of staff's approval ask: a question to a person"
+    why: "the Shift Coordinator's approval ask: a question to a person"
   },
   {
-    path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
+    path: /^apps\/docs\/docs\/workforce\/shift-coordinator\.md$/,
     // FIX-1872's exact sentence, and only on a line naming `handOff` once: a stale mention beside it stays open.
     line: /^(?!.*`handOff`.*`handOff`).*A file that still names `handOff` is refused\b/,
     rules: ["handoff-symbol-in-docs", "handoff-prose"],

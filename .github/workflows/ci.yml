@@ -299,6 +299,17 @@ jobs:
       - name: The retired-term guard refuses its plants
         run: node scripts/check-retired-terms.mjs --control
 
+      # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
+      # name one mechanism. The goal's rules own the words, the keep list and
+      # the exclusions; goals/vocabulary/one-word-per-thing/goal.md says why.
+      - name: One word per thing
+        run: node goals/vocabulary/one-word-per-thing/sweep.mjs
+
+      # The planted parkOnAsk must still be reported, or the sweep above could
+      # pass because it stopped reading a file.
+      - name: The vocabulary sweep reports its plant
+        run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest
