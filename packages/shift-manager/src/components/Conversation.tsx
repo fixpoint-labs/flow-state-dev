@@ -35,7 +35,7 @@ import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
-/** Items that only say a state or resource changed: nothing in them is for the person to read. */
+/** Items that only say a state or resource changed: nothing in them is for the user to read. */
 const INVALIDATIONS = new Set<string>(["state_change", "resource_change"]);
 
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
