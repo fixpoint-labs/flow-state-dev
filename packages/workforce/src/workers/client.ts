@@ -62,10 +62,13 @@ export interface WorkforceClient {
    */
   roster(): Promise<RosterEntry[]>;
   /**
-   * The user's most recent session with the worker the criteria name, on the
-   * worker's current flow, or `undefined` when there is none. Matches on the
-   * criteria's keys: a session that carries a criteria key the call doesn't
-   * name is not returned. With `workstreamId`, the one session the user's
+   * The user's session with the worker the criteria name, on the worker's
+   * current flow, or `undefined` when there is none. With `worker` alone, or
+   * with `projectId`, that is the session at the derived address
+   * {@link ensureWorkerSession} creates, where another worker's message
+   * lands: a session the user opened at any other id is not returned.
+   * Otherwise the most recent match on the criteria's keys: a session that
+   * carries a criteria key the call doesn't name is not returned. With `workstreamId`, the one session the user's
    * entry for that workstream names, or `undefined` while it names none.
    * Throws when the worker isn't on the user's roster.
    */
@@ -184,11 +187,34 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return typeof sessionId === "string" ? sessionId : null;
   };
 
+  /**
+   * Whether the criteria name a session the client opens itself: a worker's
+   * own conversation, or a project coordinator's for one project. Those live
+   * at one derived address, the one a worker's message lands in (FIX-1989).
+   */
+  const derivable = (criteria: WorkerSessionCriteria): boolean =>
+    criteria.taskId === undefined && criteria.filingSessionId === undefined && criteria.workstreamId === undefined;
+
+  /** The session at the criteria's derived address, or `undefined` while there is none. */
+  const atDerived = async (criteria: WorkerSessionCriteria, flow: string, orgId: string): Promise<SessionSummary | undefined> => {
+    const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
+    try {
+      return await sessions.getSession(sessionId);
+    } catch (error) {
+      if (error instanceof ClientHttpError && error.status === 404) return undefined;
+      throw error;
+    }
+  };
+
   const find = async (
     criteria: WorkerSessionCriteria,
     flow: string,
-    rosterId: string
+    rosterId: string,
+    orgId: string
   ): Promise<SessionSummary | undefined> => {
+    // A conversation opened at another id (a random one, from before the
+    // derived address) stays in the session lists but is never returned.
+    if (derivable(criteria)) return atDerived(criteria, flow, orgId);
     const filter = criteriaState(criteria);
     const named = new Set(Object.keys(filter));
     const rows = await sessions.listSessions({
@@ -244,15 +270,15 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   const client: WorkforceClient = {
     roster: async () => readRoster((await roster()).id),
     findWorkerSession: async (criteria) => {
-      const { id } = await roster();
-      return find(criteria, flowOf(await readRoster(id), criteria.worker), id);
+      const { id, orgId } = await roster();
+      return find(criteria, flowOf(await readRoster(id), criteria.worker), id, orgId);
     },
     ensureWorkerSession: async (criteria) => {
       // One roster read per call, and the roster session's organization from
       // the same lookup.
       const { id, orgId } = await roster();
       const flow = flowOf(await readRoster(id), criteria.worker);
-      const existing = await find(criteria, flow, id);
+      const existing = await find(criteria, flow, id, orgId);
       if (existing !== undefined) return existing;
       if (criteria.taskId !== undefined) {
         // Only the hand-over opens a task's session: it is a child of the
