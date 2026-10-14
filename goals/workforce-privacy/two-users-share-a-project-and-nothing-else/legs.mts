@@ -43,30 +43,10 @@ const PROJECT_COORDINATOR = "project-coordinator";
 /** Orchestration's eight `taskTools` (b6), by the names a turn calls them. */
 export const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"] as const;
 
-/**
- * a4's held-out asks, by the standard worker a2 forked: each fits that
- * worker's description, so best fit has a delegate to pick. An engineering
- * ask on a research fork fits no delegate, and best fit rightly takes it to
- * the coordinator's own turn. A fork with no asks here is NOT RUN at a4.
- */
-const feature = (what: string) => (w: string) => `Please get this feature filed for the engineering team (${w}): ${what}.`;
-const research = (question: string) => (w: string) => `Please research this and write up the options with a recommendation, no code (${w}): ${question}?`;
-const RESEARCH_ASKS = [
-  research("should we offer free returns on sale items"),
-  research("which payment methods should our EU checkout support first"),
-  research("how do comparable stores price same-day delivery"),
-  research("is a loyalty points program worth it for a store our size"),
-];
-const ASKS_BY_STANDARD: Record<string, ReadonlyArray<(w: string) => string>> = {
-  "eng.em": [
-    feature("a gift-wrap option at checkout"),
-    feature("a recently-viewed strip on the product page"),
-    feature("a back-in-stock email signup on sold-out items"),
-    feature("a size guide link beside each size picker"),
-  ],
-  researcher: RESEARCH_ASKS,
-  "general-lead": RESEARCH_ASKS,
-};
+/** An engineering ask on a research fork fits no delegate, so a4 is NOT RUN when the fork has none of these. */
+const feature = (w: string) => `Please get this feature filed for the engineering team (${w}): ${pick(["a gift-wrap option at checkout", "a recently-viewed strip on the product page", "a back-in-stock email signup on sold-out items", "a size guide link beside each size picker"])}.`;
+const research = (w: string) => `Please research this and write up the options with a recommendation, no code (${w}): ${pick(["should we offer free returns on sale items", "which payment methods should our EU checkout support first", "how do comparable stores price same-day delivery", "is a loyalty points program worth it for a store our size"])}?`;
+const ASK: Record<string, (w: string) => string> = { "eng.em": feature, researcher: research, "general-lead": research };
 
 export type LegControl = null | "unpartitioned" | "no-follow-up" | "no-delegate-check" | "no-roster-check" | "org-scoped-workers";
 
@@ -226,8 +206,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   // ---- a2 · fork ----
   // The standard worker forked: one whose flow takes a delegated post, so a
   // coordinator can hand the fork a post (a4). On the shipped DevTeam that is
-  // the EM, the researcher or the general lead; the coordinators' flow takes
-  // none. a4's ask is picked to fit whichever was forked (ASKS_BY_STANDARD).
+  // the EM, the researcher or the general lead; the coordinators' flow takes none.
   const forkable = standard.filter((e) => e.flow !== COORDINATOR && e.flow !== "coder");
   if (runs("a2")) {
     o.say("a2: Alice forks a standard worker under a held-out name");
@@ -329,10 +308,10 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     if (convId === undefined || facts.fork === undefined) r.notRun("a4", "needs a3's coordinator and a2's fork");
     else {
       const w = `${word()}-${hex()}`;
-      const asks = facts.standard === undefined ? undefined : ASKS_BY_STANDARD[facts.standard];
-      if (asks === undefined) r.notRun("a4", `setup: no held-out ask is written for a fork of \`${facts.standard}\`, so none is known to fit it`);
+      const ask = facts.standard === undefined ? undefined : ASK[facts.standard];
+      if (ask === undefined) r.notRun("a4", `setup: no held-out ask is written for a fork of \`${facts.standard}\`, so none is known to fit it`);
       else {
-        facts.ask = pick(asks)(w);
+        facts.ask = ask(w);
         const before = sessionIds(o.store);
         const turn = await talk(r, "a4", alice, { id: convId, flowKind: COORDINATOR }, "run", facts.ask);
         let mine: Delivery[] = [];
