@@ -1,6 +1,6 @@
 /**
- * Standing rules (FIX-1945): the notes a person asks a worker to keep, per
- * worker and per person, read on every turn and edited by the worker's rule
+ * Standing rules (FIX-1945): the notes a user asks a worker to keep, per
+ * worker and per user, read on every turn and edited by the worker's rule
  * tools or the rules action.
  */
 export {

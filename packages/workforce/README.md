@@ -698,10 +698,10 @@ short roster.
 
 #### Standing rules
 
-Workers on `agent` and coordinators keep standing rules: notes a person asked a worker to keep,
-one list per worker per person, put in the prompt on every turn that worker takes for that person
+Workers on `agent` and coordinators keep standing rules: notes a user asked a worker to keep,
+one list per worker per user, put in the prompt on every turn that worker takes for that user
 (after its instructions, team instructions and packages). The worker edits them with four tools,
-`rules/read`, `rules/add`, `rules/change` and `rules/remove`, offered only on a turn a person's own
+`rules/read`, `rules/add`, `rules/change` and `rules/remove`, offered only on a turn a user's own
 message started and not fenced by `tools:`. A task turn, a post to a delegate and a delegate's
 answer get none. A write posts a line in the conversation, such as
 `✎ Rule added (3 of 20): "Name the project before giving a status."`, that the model doesn't get
@@ -725,7 +725,7 @@ or a change or remove whose `current` isn't that rule's text is refused: the pro
 the reason and nothing changes. The tools go through the same check.
 
 Limits: 20 rules (`MAX_RULES`), 300 characters each (`MAX_RULE_CHARS`). The list lives in the
-`standing-rules` resource (`STANDING_RULES_RESOURCE`) in the person's user scope; a browser can
+`standing-rules` resource (`STANDING_RULES_RESOURCE`) in the user's own scope; a browser can
 read it and can't write it. A fork starts with none, and a worker moved to another worker flow
 leaves its rules behind. If the list can't be read, the turn runs without it and says so in a
 status line. See

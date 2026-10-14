@@ -2,7 +2,7 @@
 title: Standing rules
 sidebar_position: 3.4
 sidebar_label: Standing rules
-description: "Notes a person asks a worker to keep, such as 'name the project first'. The worker saves each as a rule and follows it on every later turn with that person."
+description: "Notes a user asks a worker to keep, such as 'name the project first'. The worker saves each as a rule and follows it on every later turn with that user."
 ---
 
 # Standing rules
@@ -40,11 +40,11 @@ A change or remove whose quoted text doesn't match the rule with that number is 
 
 Every worker on the built-in `agent` flow and every [coordinator](./coordinators.md) has these tools. A `tools:` line in `WORKER.md` doesn't need to list them, and doesn't take them away.
 
-They are offered only on a turn a person's own message started. A task turn, a coordinator's post to a delegate, and a delegate's answer get no rule tools. A task the worker runs for you follows your rules but can't change them.
+They are offered only on a turn a user's own message started. A task turn, a coordinator's post to a delegate, and a delegate's answer get no rule tools. A task the worker runs for you follows your rules but can't change them.
 
 ## Where they apply
 
-Every turn the worker takes for you gets your rules, in any session, including tasks you filed. They go in the prompt numbered, under the heading `Standing rules (notes this person asked you to keep; follow them on every turn):`, after the worker's own instructions, its team's instructions and its packages. An empty list adds nothing.
+Every turn the worker takes for you gets your rules, in any session, including tasks you filed. They go in the prompt numbered, under the heading `Standing rules (notes this user asked you to keep; follow them on every turn):`, after the worker's own instructions, its team's instructions and its packages. An empty list adds nothing.
 
 An edit counts from the next turn. You don't need a new session.
 
@@ -52,9 +52,9 @@ If the rules can't be read, for example because the store is down, the turn runs
 
 ## Whose rules they are
 
-Rules belong to one worker and one person. A note you give a coordinator doesn't reach your other workers, and two people using the same worker each have their own list. A [fork](./durable-hire.md), a worker with a different id, starts with none.
+Rules belong to one worker and one user. A note you give a coordinator doesn't reach your other workers, and two people using the same worker each have their own list. A [fork](./durable-hire.md), a worker with a different id, starts with none.
 
-Rules aren't memory. [Memory](../memory/overview.md), once you add it, is shared by all of a person's workers and comes back when a search finds it. A rule comes back on every turn, for one worker.
+Rules aren't memory. [Memory](../memory/overview.md), once you add it, is shared by all of a user's workers and comes back when a search finds it. A rule comes back on every turn, for one worker.
 
 ## Limits
 
@@ -68,7 +68,7 @@ The worker is told to ask you which rule to merge or drop.
 
 ## Editing them yourself
 
-An app reads and edits a person's rules through the workforce client's `standingRules(workerId, input)`, for a worker on `agent` or a coordinator:
+An app reads and edits a user's rules through the workforce client's `standingRules(workerId, input)`, for a worker on `agent` or a coordinator:
 
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
@@ -121,7 +121,7 @@ Every write names the `version` it read. The write is refused, the promise rejec
 
 The client goes through the same check as the worker's tools, so the same limits apply. The next turn reads the change.
 
-Rules are kept in a `standing-rules` resource in the person's user scope. A browser can read its state but can't write it directly; writes go through the worker's tools or `standingRules`.
+Rules are kept in a `standing-rules` resource in the user's own scope. A browser can read its state but can't write it directly; writes go through the worker's tools or `standingRules`.
 
 ## What it won't do
 

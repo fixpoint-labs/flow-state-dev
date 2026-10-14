@@ -1,5 +1,5 @@
 /**
- * A worker's standing rules for one person, as a list: its shape, the one
+ * A worker's standing rules for one user, as a list: its shape, the one
  * validator every writer goes through, and how the list reads in a prompt
  * (FIX-1945 S2).
  *
@@ -12,7 +12,7 @@
  */
 import { z } from "zod";
 
-/** The most rules one worker keeps for one person. */
+/** The most rules one worker keeps for one user. */
 export const MAX_RULES = 20;
 
 /** The most characters one rule may hold. */
@@ -30,7 +30,7 @@ export const standingRuleSchema = z.object({
 export type StandingRule = z.infer<typeof standingRuleSchema>;
 
 /**
- * A worker's rules for one person. `version` counts the writes the list has
+ * A worker's rules for one user. `version` counts the writes the list has
  * taken: every write names the version it read, and one that read an older
  * list is refused rather than landing on a list it never saw.
  */
@@ -153,7 +153,7 @@ export function renderRules(list: StandingRules): string | undefined {
   if (list.rules.length === 0) return undefined;
   const lines = list.rules.map((rule, at) => `${at + 1}. ${rule.text}`);
   return [
-    "Standing rules (notes this person asked you to keep; follow them on every turn):",
+    "Standing rules (notes this user asked you to keep; follow them on every turn):",
     ...lines
   ].join("\n");
 }

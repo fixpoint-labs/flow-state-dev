@@ -37,7 +37,7 @@ import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { RULE_TOOLS } from "../src/standing-rules/keys";
 
-const OFFERED_ON_EVERY_PERSON_TURN = new Set<string>(Object.values(RULE_TOOLS));
+const OFFERED_ON_EVERY_USER_TURN = new Set<string>(Object.values(RULE_TOOLS));
 
 const USER_ID = "one-human";
 const FACT = "the human prefers dark mode";
@@ -220,7 +220,7 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     expect(second).toContain(FACT);
   });
 
-  /** Every step under the `run` door, at any depth: the person's turn wraps the agent's run (FIX-1945). */
+  /** Every step under the `run` door, at any depth: the user's turn wraps the agent's run (FIX-1945). */
   const stepNames = (block: { name: string; childBlocks?: ReadonlyArray<unknown> }): string[] =>
     (block.childBlocks ?? []).flatMap((child) => {
       const named = child as { name: string; childBlocks?: ReadonlyArray<unknown> };
@@ -233,7 +233,7 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
     // The skills collection and the conversation ledger its task entry reads
     // tasks off are the whole resource surface — no memory store is declared
     // anywhere in the default worker flow.
-    // The standing-rules record is the worker's notes for each person, not memory (FIX-1945).
+    // The standing-rules record is the worker's notes for each user, not memory (FIX-1945).
     expect(Object.keys(plain!.resources ?? {}).sort()).toEqual(["skills", "standing-rules", "tasks"]);
     // Nothing runs after the answer — the sequence is what it was.
     const children = stepNames(plain!.actions.run!.block);
@@ -329,9 +329,9 @@ describe("memory attaches to the built-in agent worker flow by composition", () 
       modelId: "m",
       async generate(options: { tools?: Array<{ name: string }> }) {
         generateCalls += 1;
-        // The rule tools ride every person's turn as a control; they have tests of their own (FIX-1945).
+        // The rule tools ride every user's turn as a control; they have tests of their own (FIX-1945).
         seen.push(...(options.tools ?? [])
-          .filter((t) => !OFFERED_ON_EVERY_PERSON_TURN.has(t.name))
+          .filter((t) => !OFFERED_ON_EVERY_USER_TURN.has(t.name))
           .map((tool) => tool.name));
         return { text: "done" };
       }

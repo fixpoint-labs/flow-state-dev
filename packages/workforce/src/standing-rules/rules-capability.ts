@@ -1,22 +1,22 @@
 /**
  * Standing rules on a worker's turn (FIX-1945 S3, S4): the list in context on
- * every turn, and the four rule tools on a turn a person's own message
+ * every turn, and the four rule tools on a turn a user's own message
  * started.
  *
  * One capability, composed onto the agent turn the `agent` and `coordinator`
  * flows share, so both carry it the same way:
  *
- * - **Context.** The worker's rules for the turn's person, numbered, after its
+ * - **Context.** The worker's rules for the turn's user, numbered, after its
  *   own instructions, team instructions and packages. A task turn runs at the
- *   filing person's user scope, so it reads that person's list. No rules, no
+ *   filing user's scope, so it reads that user's list. No rules, no
  *   text. A read that fails is said once in the trace and the turn runs
  *   without rules; it never fails the turn.
  * - **Tools.** `rules/read`, `rules/add`, `rules/change`, `rules/remove`, as
  *   `controlTools`: a worker's `tools:` line doesn't fence them, and they are
- *   offered only while the request carries the person-turn mark
- *   (`./person-turn`). Each write also refuses on an unmarked turn, so a task
+ *   offered only while the request carries the user-turn mark
+ *   (`./user-turn`). Each write also refuses on an unmarked turn, so a task
  *   turn can't edit even by naming a tool. Each write that lands posts a line
- *   the person sees, from the tool, not from the model's reply.
+ *   the user sees, from the tool, not from the model's reply.
  *
  * Every write names the version of the list the model last saw (the list in
  * context, or a tool's answer since), so a write racing a page edit is
@@ -26,7 +26,7 @@ import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { RULE_TOOLS, STANDING_RULES_LINE } from "./keys";
-import { isPersonTurn } from "./person-turn";
+import { isUserTurn } from "./user-turn";
 import { MAX_RULES, numberedRules, renderRules, type RuleEdit, type StandingRules } from "./rules-list";
 import { STANDING_RULES_RESOURCE, readStandingRules, standingRulesCollection, writeStandingRules } from "./rules-record";
 
@@ -69,10 +69,10 @@ const toolOutputSchema = z.union([
 
 /** Apply `edit` from a tool, as the list the model last saw. */
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
-  if (!isPersonTurn(ctx)) {
+  if (!isUserTurn(ctx)) {
     return {
       ...listOutput(await readStandingRules(ctx)),
-      refused: "Standing rules change only on a turn a person started; this one can't edit them."
+      refused: "Standing rules change only on a turn a user started; this one can't edit them."
     };
   }
   const session = ctx.session as object;
@@ -82,11 +82,12 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   try {
     outcome = await writeStandingRules(ctx, version, edit, ctx.session.identity.id);
   } catch (error) {
-    const current = await readStandingRules(ctx).catch(() => ({ version, rules: [] }) as StandingRules);
-    return {
-      ...listOutput(current),
-      refused: `Not saved: ${error instanceof Error ? error.message : String(error)}`
-    };
+    const reason = `Not saved: ${error instanceof Error ? error.message : String(error)}`;
+    const current = await readStandingRules(ctx).catch(() => undefined);
+    // An unreadable record is said as such, never shown as an empty list.
+    return current === undefined
+      ? { rules: [], max: MAX_RULES, refused: `${reason} The current rules couldn't be read either; this list is not them.` }
+      : { ...listOutput(current), refused: reason };
   }
   // The model sees this list now, refused or not, so the next write names it.
   seen.set(session, outcome.list.version);
@@ -106,7 +107,7 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
 const readTool = handler({
   name: RULE_TOOLS.read,
   description:
-    "List your standing rules for this person, numbered. They are already in your instructions every turn; read them here before changing one.",
+    "List your standing rules for this user, numbered. They are already in your instructions every turn; read them here before changing one.",
   inputSchema: z.object({}).strict(),
   outputSchema: listOutputSchema,
   resources,
@@ -120,7 +121,7 @@ const readTool = handler({
 const addTool = handler({
   name: RULE_TOOLS.add,
   description:
-    "Save a note this person gave you as a standing rule you follow in every later conversation with them. " +
+    "Save a note this user gave you as a standing rule you follow in every later conversation with them. " +
     `Use it when they tell you how to work from now on. One line, at most 300 characters, in your words; at most ${MAX_RULES} rules. ` +
     "If the list is full, ask them which rule to merge or drop.",
   inputSchema: z.object({ text: z.string() }).strict(),
@@ -132,7 +133,7 @@ const addTool = handler({
 const changeTool = handler({
   name: RULE_TOOLS.change,
   description:
-    "Rewrite one of your standing rules when this person asks you to change it. Name it by number and quote its current text exactly.",
+    "Rewrite one of your standing rules when this user asks you to change it. Name it by number and quote its current text exactly.",
   inputSchema: z.object({ number: z.number().int(), current: z.string(), text: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
@@ -142,7 +143,7 @@ const changeTool = handler({
 const removeTool = handler({
   name: RULE_TOOLS.remove,
   description:
-    "Drop one of your standing rules when this person asks you to. Name it by number and quote its current text exactly.",
+    "Drop one of your standing rules when this user asks you to. Name it by number and quote its current text exactly.",
   inputSchema: z.object({ number: z.number().int(), current: z.string() }).strict(),
   outputSchema: toolOutputSchema,
   resources,
@@ -152,14 +153,14 @@ const removeTool = handler({
 /** The four rule tools. */
 export const ruleTools = [readTool, addTool, changeTool, removeTool];
 
-/** Standing rules on a worker's turn: the list in context, and the tools on a person's turn. */
+/** Standing rules on a worker's turn: the list in context, and the tools on a user's turn. */
 export const standingRulesCapability = defineCapability({
   name: "standingRules",
   resources,
   presets: {
     rules: {
       context: (_input, ctx) => rulesContext(ctx as never),
-      controlTools: (ctx) => (isPersonTurn(ctx as never) ? ruleTools : [])
+      controlTools: (ctx) => (isUserTurn(ctx as never) ? ruleTools : [])
     },
     default: ["rules"]
   }

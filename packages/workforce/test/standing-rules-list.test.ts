@@ -37,7 +37,7 @@ describe("adding a rule", () => {
     });
   });
 
-  it("refuses a 21st rule, naming the cap and the count, and marks it full so the person is told (BR-16)", () => {
+  it("refuses a 21st rule, naming the cap and the count, and marks it full so the user is told (BR-16)", () => {
     const full = listOf(MAX_RULES);
     const outcome = applyRuleEdit(full, MAX_RULES, { op: "add", text: "one more" }, at);
     expect(outcome).toMatchObject({ ok: false, full: true, list: full });

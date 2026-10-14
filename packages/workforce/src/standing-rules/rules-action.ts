@@ -1,12 +1,12 @@
 /**
  * The rules action (FIX-1945 S5): how a page reads and edits a worker's
- * standing rules for the signed-in person, on the worker's own flow.
+ * standing rules for the signed-in user, on the worker's own flow.
  *
- * Declared on the `agent` and `coordinator` flows and run in the person's own
+ * Declared on the `agent` and `coordinator` flows and run in the user's own
  * session with that worker, because the record's storage belongs to the
  * worker's flow copy: the roster flow can't open it. The worker is the one the
- * session was verified to run as and the person is the request's signed-in
- * user; the input names neither, and a key it doesn't declare is refused
+ * session was verified to run as, and the user is the request's own; the
+ * input names neither, and a key it doesn't declare is refused
  * (BP-031). Writes go through the same validator as the rule tools, and a
  * refusal fails the request with its reason, storing nothing.
  */

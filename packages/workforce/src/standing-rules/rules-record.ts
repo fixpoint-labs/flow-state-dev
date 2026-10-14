@@ -1,6 +1,6 @@
 /**
- * Where a worker keeps its standing rules for one person (FIX-1945 S1): the
- * `standing-rules` record, one per worker in each person's own scope.
+ * Where a worker keeps its standing rules for one user (FIX-1945 S1): the
+ * `standing-rules` record, one per worker in each user's own scope.
  *
  * Keyed like the worker's skills drawer, and beside it rather than in it: user
  * scope, isolated per worker flow copy, and one record per worker the turn was
@@ -13,6 +13,7 @@
  * worker, never from input (BP-031).
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { verifiedWorkerOf } from "../workers/verified-worker";
@@ -73,7 +74,7 @@ function parsed(state: unknown): StandingRules {
 }
 
 /**
- * This request's worker's rules for the request's person, read now. Throws
+ * This request's worker's rules for the request's user, read now. Throws
  * when the record can't be read; a turn catches that and runs without rules.
  */
 export async function readStandingRules(ctx: BlockContext): Promise<StandingRules> {
@@ -100,13 +101,12 @@ export async function writeStandingRules(
   const collection = collectionOf(ctx);
   if (collection === undefined) throw new Error(`This flow doesn't declare "${STANDING_RULES_RESOURCE}".`);
   const ref = await collection.getOrCreate(keyOf(ctx), EMPTY_RULES);
-  let outcome: RuleEditOutcome | undefined;
   const now = Date.now();
-  // The updater re-runs against fresher state when another write lands first,
-  // so the outcome kept is the one from the attempt that committed.
-  await ref.updateState((current) => {
-    outcome = applyRuleEdit(parsed(current), version, edit, { sessionId, now });
-    return outcome.ok ? (outcome.list as never) : current;
+  // The updater re-runs against fresher state when another write lands first;
+  // the outcome returned is the one from the attempt that committed.
+  const outcome = await updateStateWith(ref as never, (current: unknown) => {
+    const result = applyRuleEdit(parsed(current), version, edit, { sessionId, now });
+    return { state: result.ok ? result.list : current, result };
   });
   if (outcome === undefined) throw new Error("The standing rules write never ran.");
   return outcome;

@@ -100,7 +100,7 @@ import {
 import { WORKER_DISCOVER_KEY } from "./worker-discovery";
 import { workerSkillSchema, workerConfigSchema } from "./worker-config";
 import { turnConfigOf, verifiedWorkerOf } from "./workers/verified-worker";
-import { markPersonTurnStep } from "./standing-rules/person-turn";
+import { markUserTurnStep } from "./standing-rules/user-turn";
 import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
@@ -961,8 +961,8 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     (options.installation !== undefined
       ? defineSessionBoard({ installation: options.installation, flowKind: share.kind })
       : undefined);
-  // The worker's standing rules for the turn's person (FIX-1945): its list in
-  // context on every turn, and the rule tools on a turn a person started.
+  // The worker's standing rules for the turn's user (FIX-1945): its list in
+  // context on every turn, and the rule tools on a turn a user started.
   const usesEntries = [
     ...(options.uses ?? []),
     standingRulesCapability,
@@ -1296,11 +1296,11 @@ function defineAgentFlowAround(
   const taskEntry = workerTaskEntry({ name: "agent-task-turn", turn: run });
 
   /**
-   * A person's own message: the turn, marked as theirs first, so it is
+   * A user's own message: the turn, marked as theirs first, so it is
    * offered the rule tools (FIX-1945 D2). Only this door marks a turn; the
    * task, delegated-post, notice and workstream entries run `run` unmarked.
    */
-  const personTurn = sequencer({ name: "agent-person-turn", inputSchema }).tap(markPersonTurnStep).step(run);
+  const userTurn = sequencer({ name: "agent-user-turn", inputSchema }).tap(markUserTurnStep).step(run);
 
   const flow = defineFlow({
     kind: AGENT_FLOW,
@@ -1324,12 +1324,12 @@ function defineAgentFlowAround(
       // A reply: a task's notice to this session waits for it to end.
       run: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
-        block: personTurn,
+        block: userTurn,
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY
       },
       // A page reads and edits this worker's standing rules for the signed-in
-      // person here, in that person's session with the worker (FIX-1945 S5).
+      // user here, in that user's session with the worker (FIX-1945 S5).
       [STANDING_RULES_ACTION]: standingRulesAction,
       // On an installation: the eight task actions (`addTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A

@@ -273,7 +273,7 @@ has nothing on it, say you have no memory of it. Never make up a memory.
 
 ## Coaching it
 
-Tell the chief of staff how you want it to work, on Shift Manager's Shift Coordinator screen or in any conversation with it, and it keeps the note as a [standing rule](./standing-rules.md) for you. Your rules are yours: another person on the same Shift Manager has their own.
+Tell the chief of staff how you want it to work, on Shift Manager's Shift Coordinator screen or in any conversation with it, and it keeps the note as a [standing rule](./standing-rules.md) for you. Your rules are yours: another user on the same Shift Manager has their own.
 
 ## The tools
 

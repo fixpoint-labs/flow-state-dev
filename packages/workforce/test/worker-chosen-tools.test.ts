@@ -23,7 +23,7 @@ import { mintWorkers, type HireOptions } from "../src/hire";
 import type { WorkerManifest } from "../src/manifest";
 import { RULE_TOOLS } from "../src/standing-rules/keys";
 
-const OFFERED_ON_EVERY_PERSON_TURN = new Set<string>(Object.values(RULE_TOOLS));
+const OFFERED_ON_EVERY_USER_TURN = new Set<string>(Object.values(RULE_TOOLS));
 
 /** A named tool that does nothing; the checks read whether it was OFFERED. */
 function tool(name: string) {
@@ -114,9 +114,9 @@ async function offered(worker: FlowInstance, orgId = "test-org"): Promise<string
     modelId: "m",
     async generate(options: { tools?: Array<{ name: string }> }) {
       generateCalls += 1;
-      // The rule tools ride every person's turn as a control; they have tests of their own (FIX-1945).
+      // The rule tools ride every user's turn as a control; they have tests of their own (FIX-1945).
       seen.push(...(options.tools ?? [])
-        .filter((t) => !OFFERED_ON_EVERY_PERSON_TURN.has(t.name))
+        .filter((t) => !OFFERED_ON_EVERY_USER_TURN.has(t.name))
         .map((t) => t.name));
       return { text: "done" };
     }
