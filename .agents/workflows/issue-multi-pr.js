@@ -692,6 +692,7 @@ const built = await parallel(
             ? `Fetch origin/main first — the checkout you inherited drifts behind as sibling PRs merge.\n`
             : stackedOpenNote(item)) +
           resolutionNote(item.node.id) +
+          (item.node.deliverables ? `Deliverables: ${item.node.deliverables}\n` : '') +
           `Run issue-implement scoped to THIS sub-PR's deliverables only: implement the slice, run \`review\`, open the sub-PR. Stop before merge. Do not prompt the user.`,
       {
         label: `${item.action}:${item.node.id}`,

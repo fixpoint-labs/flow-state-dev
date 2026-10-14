@@ -337,7 +337,7 @@ Workflow tool:
   args: {
     issueId: "<ISSUE>",
     cap: <a few — one worktree per sub-PR>,
-    subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
+    subPrs: [ { id, deliverables, dependsOn: [], branch, pr, status, stackedOn } ],
     assembledGoal: <persist VERBATIM — see below>
   }
 ```
@@ -422,8 +422,9 @@ What the script decides, so you don't:
    out of DONE until that lands.
 
 `subPrs` comes from the handle cache and goes back to it: the `.orchestration/<ISSUE>.md` record
-adds one row per sub-PR — `id · dependsOn · branch · PR# · stackedOn · status (pending / open /
-merged)` — alongside the issue-level fields. (`issue-multi-pr` also accepts the `depends_on` spelling
+adds one row per sub-PR — `id · deliverables · dependsOn · branch · PR# · stackedOn · status (pending /
+open / merged)` — alongside the issue-level fields. Carry `deliverables` verbatim from the PR plan: it is
+the only record of a slice's scope, and each slice worker is told it. (`issue-multi-pr` also accepts the `depends_on` spelling
 a PR-plan table uses, so a row copied straight out of the table still carries its edges; write
 `dependsOn` in new records. Getting this wrong used to read as *no dependencies*, which builds a
 dependent onto `origin/main` beside the prerequisite it declared.) There is deliberately no `building`: a wake is
