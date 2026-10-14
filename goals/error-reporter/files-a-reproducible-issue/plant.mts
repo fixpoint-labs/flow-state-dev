@@ -51,6 +51,14 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
           finishReason: "tool-calls",
         };
       }
+      // "post to <worker>: ..." hands the post to that delegate.
+      const post = /^post to ([a-z.-]+):/i.exec(said);
+      if (post !== null) {
+        return {
+          toolCalls: [{ toolCallId: `t-${Date.now()}`, toolName: "dispatchTask", args: { post: true, assignee: post[1]! } }],
+          finishReason: "tool-calls",
+        };
+      }
       const burst = /^burst:\s*([a-z]+)/i.exec(said);
       if (burst !== null) throw new Error(`The ${burst[1]!.toLowerCase()} upstream refused the request`);
       const named = projects.find((p) => said.toLowerCase().includes(p.id) || said.toLowerCase().includes(p.title.toLowerCase()));
@@ -60,6 +68,28 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
       return { text: "Noted.", finishReason: "stop" };
     },
   } as GeneratorModel;
+}
+
+/**
+ * An agent worker's model, with a bug planted in its turn: a post that says
+ * `[post-bug]` makes it throw. Anything else goes to the real model.
+ *
+ * @param real The model the Lab resolved for the turn.
+ */
+export function plantedAgentModel(real: GeneratorModel): GeneratorModel {
+  const tripped = (options: unknown) =>
+    ((options as { messages?: Array<{ content: unknown }> }).messages ?? []).some((m) => textOf(m.content).includes("[post-bug]"));
+  const broken = new Error("The agent's notes index is empty: cannot summarize 0 documents");
+  return new Proxy(real, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver) as unknown;
+      if (typeof value !== "function" || key === "constructor") return value;
+      return (...args: unknown[]) => {
+        if (tripped(args[0])) throw broken;
+        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
 }
 
 const attemptsByGoal = new Map<string, number>();

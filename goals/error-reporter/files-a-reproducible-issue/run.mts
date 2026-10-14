@@ -30,7 +30,7 @@ import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conve
 import { createLabClients } from "../../../packages/shift-manager/src/lib/connection.ts";
 import { createLabReader, type Ask } from "../../../packages/shift-manager/src/lib/reads.ts";
 import { parseRoute } from "../../../packages/shift-manager/src/lib/routes.ts";
-import { plantedCoderRun, plantedCoderStatus, plantedCoordinatorModel, type KnownProject } from "./plant.mts";
+import { plantedAgentModel, plantedCoderRun, plantedCoderStatus, plantedCoordinatorModel, type KnownProject } from "./plant.mts";
 import { startRecordingTracker, type TrackerCall } from "./recording-tracker.mts";
 
 const SLUG = "error-reporter-files-a-reproducible-issue";
@@ -42,6 +42,8 @@ const FLOW = "packages/workforce/src/error-reporter/flow.ts";
 const REPORTS = "packages/workforce/src/error-reporter/reports.ts";
 const REPORTER_SRC = "packages/workforce/src/error-reporter/reporter.ts";
 const OWED = "packages/workforce/src/conversation-board/report-owed.ts";
+const COORDINATOR_SRC = "packages/workforce/src/coordinator/coordinator-flow.ts";
+const POST_SRC = "packages/workforce/src/coordinator/delegated-post.ts";
 
 const CONTROLS: Record<string, { legs: string[]; does: string; fails: string; patches: ModulePatch[] }> = {
   "via-coordinator": {
@@ -82,6 +84,18 @@ const CONTROLS: Record<string, { legs: string[]; does: string; fails: string; pa
     does: "a task's failed attempt is reported even when the task retries",
     fails: "leg 4: no report for a task that passed on retry",
     patches: [{ module: OWED, from: 'if \\(ending\\.kind !== "errored"\\) return row;', to: 'if (ending.kind !== "errored" && ending.kind !== "retried") return row;' }],
+  },
+  "rescue-unreported": {
+    legs: ["C"],
+    does: "the chief of staff's rescued crash is answered and not reported",
+    fails: "leg C: the chief of staff's own crash reaches Inbox",
+    patches: [{ module: COORDINATOR_SRC, from: "await reportRescuedFailure\\(ctx as never, \\{", to: "if (false) await reportRescuedFailure(ctx as never, {" }],
+  },
+  "post-on-touch": {
+    legs: ["C"],
+    does: "a delegate's failed post is sent to the reporter only on the board's next touch",
+    fails: "leg C: the delegate's failed post reaches Inbox",
+    patches: [{ module: POST_SRC, from: "await sendOwedReports\\(ctx, ref, \\[row\\]", to: "if (false) await sendOwedReports(ctx, ref, [row]" }],
   },
   "no-redact": {
     legs: ["5"],
@@ -130,14 +144,15 @@ const MCP_KEY = `lin_api_goalRecordingKey${Date.now()}z9`;
 
 const CHIEF = "chief-of-staff";
 /**
- * The Shift Coordinator the planted failures are sent to: Sandbox's project
+ * The coordinator most planted failures are sent to: Sandbox's project
  * coordinator. Its routing is `judgment`, so a failure in its turn fails the
- * request. The chief of staff's `best-fit` routing rescues a failure in its own
- * turn into a "Nobody took this post" line and completes the request, so no
- * final failure is ever sent for it (reported with this check).
+ * request. Leg C sends them to the chief of staff, whose `best-fit` routing
+ * answers a crash in its own turn with "Nobody took this post".
  */
 const PROJECT_COORDINATOR = "project-coordinator";
 const CODER = "eng.coder";
+/** An agent worker that takes the chief of staff's posts in leg C. */
+const POST_TAKER = "researcher";
 const REPORTER = "error-reporter";
 const FSD = { visibility: "shared" as const, id: "fsd" };
 /** The model the project coordinator runs, as its WORKER.md declares it. */
@@ -171,6 +186,7 @@ function labModels(projects: readonly KnownProject[]): ModelResolver {
   const resolver = ((id: string, block?: string) => {
     if (block === "coordinator-route-ask") throw new Error("no route model in this check");
     if (block === "coordinator-judgment") return plantedCoordinatorModel(base.resolveId?.(id) ?? id, projects);
+    if (block === "agent-answer") return plantedAgentModel(base(id, block) as GeneratorModel);
     return base(id, block);
   }) as ModelResolver;
   return Object.assign(resolver, { resolveId: (id: string) => base.resolveId?.(id) ?? id });
@@ -220,6 +236,8 @@ interface Opened {
   tellProject(projectId: string, message: string): Promise<{ requestId: string; failed: boolean; error?: string }>;
   /** The chief of staff's tasks. */
   tasks(): Promise<Array<Record<string, any>>>;
+  /** Make `worker` one of the chief of staff's delegates. */
+  addDelegate(worker: string): Promise<void>;
   chiefSession: string;
 }
 
@@ -331,6 +349,10 @@ async function open(options: {
     tellChief: async (message) => told(await act(coordinator, chiefSession, "run", { message })),
     tellProject: async (projectId, message) => told(await act(coordinator, await projectSession(projectId), "run", { message })),
     tasks: async () => ((await act(coordinator, chiefSession, LIST_TASKS_ACTION, {})).output?.tasks ?? []) as Array<Record<string, any>>,
+    addDelegate: async (worker) => {
+      const added = await act(coordinator, chiefSession, "addDelegate", { worker });
+      if (added.error !== undefined) throw new Error(`adding ${worker} as a delegate failed: ${JSON.stringify(added.error)}`);
+    },
   };
 }
 
@@ -630,6 +652,40 @@ await runGoal(async (failures) => {
         if (found.length === 0) evidence.push("leg 5: no secret in any report, report session or tracker call");
       }
       await lab?.close();
+      lab = undefined;
+    }
+
+
+    // ---- leg C: the chief of staff, in a fresh Lab ------------------------------
+    if (runs("C")) {
+      lab = await open({ store: "memory", tracker: undefined, harness: draftingStub });
+      const inInbox = async (row: ReportRow | undefined) =>
+        row !== undefined && (await lab!.reportAsks()).some((a) => a.sessionId === row.sessionId);
+
+      // The chief of staff's own turn crashes, and best fit answers it.
+      const crashed = await lab.tellChief("What's the status of the Sandbox project?");
+      say(`leg C: the chief of staff's turn ${crashed.failed ? "failed" : "completed"} (request ${crashed.requestId}${crashed.error === undefined ? "" : `: ${crashed.error}`})`);
+      if (crashed.failed) fail("C", "the chief of staff answers its own crash: the request failed");
+      const own = await until(async () => {
+        const row = (await lab!.rows()).find((r) => r.occurrences.some((o) => o.requestId === crashed.requestId));
+        return row !== undefined && row.status === "previewing" ? row : undefined;
+      }, 120_000);
+      say(`leg C: ${own === undefined ? "no report" : `report ${own.id}, ${own.status}`} for the chief of staff's crash`);
+      if (!(await inInbox(own))) fail("C", "the chief of staff's own crash reaches Inbox: it did not");
+      else evidence.push("leg C: the chief of staff's crash, answered with \"Nobody took this post\", reached Inbox as a report");
+
+      // The chief of staff hands a post to a delegate, whose turn fails on it.
+      await lab.addDelegate(POST_TAKER);
+      const posted = await lab.tellChief(`post to ${POST_TAKER}: Summarize the Sandbox notes [post-bug]`);
+      if (posted.failed) fail("C", `the post was handed on: ${posted.error}`);
+      const delegated = await until(async () => {
+        const row = (await lab!.rows()).find((r) => r.source === "task" && r.task?.assignee === POST_TAKER);
+        return row !== undefined && row.status === "previewing" ? row : undefined;
+      }, 120_000);
+      say(`leg C: ${delegated === undefined ? "no report" : `report ${delegated.id}, ${delegated.status}: ${delegated.task?.error}`} for ${POST_TAKER}'s failed post`);
+      if (!(await inInbox(delegated))) fail("C", "the delegate's failed post reaches Inbox: it did not");
+      else evidence.push(`leg C: ${POST_TAKER}'s failed post reached Inbox as a report`);
+      await lab.close();
       lab = undefined;
     }
 

@@ -125,6 +125,7 @@ import {
   type PostEnding
 } from "../conversation-board/task-settled";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { reportRescuedFailure } from "../error-reporter/rescued";
 import { workerConfigOf } from "../workers/verified-worker";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
@@ -1118,6 +1119,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         delegates: [],
         none: why,
         ...(post.fit === undefined ? {} : { fit: post.fit })
+      });
+      // The request completes on this answer, so no final failure is sent for it: the crash is reported here.
+      await reportRescuedFailure(ctx as never, {
+        flowKind: COORDINATOR_FLOW,
+        actionName: post.round === 0 ? "run" : ROUTE_ON_ACTION,
+        blockName: "coordinator-judgment",
+        error
       });
       // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
