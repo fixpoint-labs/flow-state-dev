@@ -11,18 +11,21 @@ import { TASKS_POLL_MS } from "../src/components/TasksPanel";
 
 type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
 let rows: Row[] = [];
+let failing = false;
 const calls: string[] = [];
 const lab = { clients: { userId: "alice" }, snapshot: { readAt: 1 } };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/conversation-tasks", () => ({
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);
+    if (failing) throw new Error("network");
     return rows.map((row) => ({ ...row }));
   },
 }));
 
 beforeEach(() => {
   rows = [];
+  failing = false;
   calls.length = 0;
   lab.snapshot = { readAt: 1 };
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -109,6 +112,19 @@ describe("a delegated post's task in the feed", () => {
     rerender(scope(items, ["r1"]));
     await tick(0);
     expect(cards()[0]!.status).toBe("in_progress");
+  });
+
+  it("keeps reading through a failed read, so a task that ended while the read failed still shows ended", async () => {
+    rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "in_progress", assignee: "eng.pm", attempts: 1 }];
+    render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    failing = true;
+    await tick(TASKS_POLL_MS);
+    expect(cards()[0]!.status).toBe("in_progress");
+    failing = false;
+    rows = [{ ...rows[0]!, status: "errored" }];
+    await tick(TASKS_POLL_MS);
+    expect(cards()[0]!.status).toBe("errored");
   });
 
   it("reads one board for every card in the feed", async () => {

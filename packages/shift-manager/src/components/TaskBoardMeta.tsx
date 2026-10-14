@@ -4,7 +4,7 @@
  * filed. Any other board is drawn by `TaskPlan` (`flow-state/task-plan.tsx`,
  * byte-equal to the registry, no router).
  */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
 import { SessionItemsProvider, useSessionItems } from "./flow-state/session-items-context";
 import { TaskPlan } from "./flow-state/task-plan";
@@ -60,12 +60,17 @@ function isConversationTaskChange(item: OutputItem): boolean {
   );
 }
 
-/** A failed read leaves the last one, or the feed's record. */
+/** A failed read leaves the last one, or the feed's record, and is tried again while a task can still move. */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
   const { clients, snapshot } = useLab();
   const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
   const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
   const [polls, setPolls] = useState(0);
+  // Whether the last read left a task that can still move; before any read lands, assume one can.
+  const moving = useRef(true);
+  useEffect(() => {
+    moving.current = true;
+  }, [flow, sessionId]);
 
   useEffect(() => {
     let closed = false;
@@ -74,9 +79,12 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
       .then((tasks) => {
         if (closed) return;
         setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
-        if (tasks.some(isOpen)) next = setTimeout(() => setPolls((n) => n + 1), TASKS_POLL_MS);
+        moving.current = tasks.some(isOpen);
+        if (moving.current) next = setTimeout(() => setPolls((n) => n + 1), TASKS_POLL_MS);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!closed && moving.current) next = setTimeout(() => setPolls((n) => n + 1), TASKS_POLL_MS);
+      });
     return () => {
       closed = true;
       if (next !== undefined) clearTimeout(next);
