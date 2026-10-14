@@ -80,8 +80,8 @@ a Codex update may break the list until the reader is fixed.
 - **A new session must name its model**; the flow's create check refuses one that doesn't. A
   session stored before this change has none and runs as it did, on the mode's default, and its
   header says so (BP-030).
-- **A list call fails, and the mode has a concrete default id** (Cursor, Codex): the picker says
-  why and offers that id only. No stale fallback list.
+- **A list call fails, and the mode has a concrete default id** (Cursor): the picker says
+  why and offers that id only. No stale fallback list. Codex never fails: its list is kept by hand (D3).
 - **A list call fails, and the default is only an SDK alias** (Claude Code today): the picker says
   why and offers no models. New session stays disabled until a reload successfully loads the list.
   An alias can't be pinned without the list to resolve it ([below](#alias)), and Kitchen Sink keeps
