@@ -9,9 +9,9 @@ sign-off surface. Everything else here is context for them.
 
 ```mermaid
 flowchart TD
-  I["FIX-1989"] --> D2["D2 · every message wakes its recipient<br/>6 messages with no person, then stop"]
+  I["FIX-1989"] --> D2["D2 · every message wakes its recipient<br/>6 in a chain with no person, then stop"]
   D2 -.->|"rejected"| X2["an FYI that never wakes<br/>it is read only by luck"]
-  I --> D1["D1 · lands in the recipient's own conversation<br/>an answer goes back to the session that asked"]
+  I --> D1["D1 · lands in the recipient's own conversation<br/>answers go back to the session that asked"]
   D1 -.->|"rejected"| X1["a side channel per pair<br/>the recipient answers without its context"]
   I --> D3["D3 · task-only workers wait<br/>FIX-1990"]
   D3 -.->|"rejected"| X3["coding runs in this issue<br/>a second delivery path into a running harness"]
@@ -20,13 +20,13 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d2"></a>
-## D2 · Every message wakes its recipient. A back-and-forth stops after 6 messages with no person in between, and a turn sends at most 3
+## D2 · Every message wakes its recipient. A chain of messages stops after 6 with no person in between, and a turn sends at most 3
 
 | | |
 |---|---|
 | **Instead of** | Letting the sender mark a message as an FYI that does not wake the recipient, or having no limit beyond the model's good sense |
-| **Because** | Jake asked that the recipient *sees* the message. A worker sees only what is in a turn it runs, so a message that does not wake it is read only if something else happens to wake it. The wake waits behind any turn the recipient is already running, as a task's ending notice does. A woken worker can decide that nothing needs an answer; that is the FYI case, at the price of one short turn. Two workers that each answer every message would talk forever, so each message carries a hop count, written by the server: a person's turn starts it at 0, and a turn woken by a message carries that message's count plus one. A send from a turn at 6 is refused with a reason the model reads, and each side's conversation shows that it stopped. A person's next line in either conversation starts the count again. 3 sends per turn stops one turn from fanning out to the whole roster |
-| **Locks in** | Every message costs the recipient a turn. A long worker-only exchange needs a person to step in after 6 messages. Both numbers are Lab settings (`messages.hopLimit`, `messages.perTurn`) |
+| **Because** | Jake asked that the recipient *sees* the message. A worker sees only what is in a turn it runs, so a message that does not wake it is read only if something else happens to wake it. The wake waits behind any turn the recipient is already running, as a task's ending notice does. A woken worker can decide that nothing needs an answer; that is the FYI case, at the price of one short turn. Workers that each answer every message would talk forever, so each message carries a hop count, written by the server, and only a person resets it: a person's turn is at 0, a turn woken by a message is at that message's count, and every other turn (a task's, a notice's, a post's) is at the count of the turn that started it. A message is sent at its turn's count plus one, so a ring through any number of workers is counted as one chain. A send past 6 is refused with a reason the model reads, and the refused worker's conversation shows that it stopped. A person's next line starts the count again. 3 sends per turn stops one turn from fanning out to the whole roster |
+| **Locks in** | Every message costs the recipient a turn. A long worker-only exchange needs a person to step in after 6 messages. A message to a busy worker waits behind its running turn, as a task's notice does. Both numbers are Lab settings (`messages.hopLimit`, `messages.perTurn`) |
 
 ![When a message wakes its recipient: always, with a hop limit, chosen, beside a sender-chosen FYI that does not wake. Decides it: whether the recipient sees the message. Price: one turn per message. Locks in a limit of 6 worker messages between person turns; flips if FYI turns cost too much](figures/d2-wake-and-limits.svg)
 
@@ -36,13 +36,13 @@ It comes down to the recipient seeing it: an FYI that does not wake it is read o
 `wake: false`, and the line still lands for the recipient's next turn.
 
 <a name="d1"></a>
-## D1 · A message lands in the recipient's own conversation with the user (in the sender's project, when the recipient has one there), and an answer goes back to the exact session that asked
+## D1 · A message lands in the recipient's own conversation with the user, and an answer goes back to the exact session that asked; a task can wait for it
 
 | | |
 |---|---|
 | **Instead of** | A separate session for each pair of workers, or always answering into the sender's main conversation |
-| **Because** | In its own conversation the recipient answers with what it already knows, and the user sees the message where they already talk to that worker. A side channel would wake the recipient with none of that context, and add one more place to look. The coordinator keeps one conversation per project, so a sender working in a project reaches the coordinator's conversation for that project; any worker with no conversation in that project is reached in its main one. A recipient with no conversation yet gets one opened, as Shift Manager would open it. The answer names the message it answers, and the message log holds the session that sent it, so it goes back there: a task session that asked gets its answer inside the task, which is what lets the task finish with it. If that session has ended, the answer goes to the sender's main conversation |
-| **Locks in** | Worker messages appear in the user's conversations with those workers, and grow them. The sending session is server truth, read from the dispatch stamp, never from the model |
+| **Because** | In its own conversation the recipient answers with what it already knows, and the user sees the message where they already talk to that worker. A side channel would wake the recipient with none of that context, and add one more place to look. Each worker has one conversation per user at an address Workforce can compute, `ensureWorkerSession({ worker })`, and Shift Manager opens a first line there too, so the server and the screen name the same session. The installation's project coordinator, which keeps one conversation per project, is reached in the one for the sender's project when the sender works in a project. A recipient with no conversation yet has it opened by the message. The answer names the message it answers, and the log row holds the session that sent it, written from the sending turn's own session, so the answer goes back there and wakes it. A turn that cannot finish without the answer, such as a task's, sends with `wait: true` and parks as `dispatchTask({ wait })` does; the answer resumes it, and a recipient that fails or never answers ends the wait with an error. If the asking session has ended, the answer goes to the sender's own conversation |
+| **Locks in** | Worker messages appear in the user's conversations with those workers, and grow them. A worker's conversation lives at one computed address. The sender is server truth, never tool input |
 
 ![Where a message lands: the recipient's own conversation, chosen, beside a side channel per pair. Decides it: whether the recipient answers with its own context. Price: worker talk appears in the user's conversations. Locks in answers going back to the session that asked; flips if worker talk crowds those conversations](figures/d1-where-it-lands.svg)
 
@@ -69,9 +69,9 @@ could answer. Then FIX-1990 moves up.
 
 ## Decided, not asked
 
-- **Names.** The tool is `messageWorker({ to, text, replyTo? })`; the internal entry is
-  `onWorkerMessage`, pinned for the goal check; the Lab option is `messages`. `to` takes a
-  worker id or display name on the user's roster.
+- **Names.** The tool is `messageWorker({ to, text, replyTo?, wait? })`; the internal entry is
+  `onWorkerMessage`, pinned for the goal check; the Lab option is `hireWorkforce`'s `messages`.
+  `to` is a worker id on the user's roster. The tool's input is strict, so it can't name a sender.
 - **Who may message whom.** Any worker on the user's roster (own or standard) may message any
   other there, the coordinator included. Not itself. Another user's worker looks missing, as it
   does to the delegate check. Messages never cross users.
@@ -96,10 +96,23 @@ could answer. Then FIX-1990 moves up.
   message (from, to, when, the text's first line), grouped by thread, each side a link that opens
   that session. It reads the user's own log only.
 - **What a worker knows of who it can message.** The tool's description lists the roster
-  workers that have a conversation, by name and one-line description, bounded as
-  `listDelegates` is.
-- **Layer rule.** The core and engine change nothing. The dispatch seam already carries an
-  internal entry on another flow to a session by id, and stamps the sender.
+  workers that have a conversation, by id, the `name:` of their worker file when it has one
+  (FIX-1959), and one-line description, bounded as `listDelegates` is.
+- **A coordinator whose routing never runs a turn of its own** (round-robin, everyone) refuses
+  a message with that reason, rather than taking a line nobody reads. A best-fit coordinator, such
+  as the Shift Coordinator, runs its answer turn, as a task's notice already wakes it.
+- **The wait** is bounded by the same timeout `dispatchTask({ wait })` uses, and one wait per
+  step, as there. Waiting is the sender's choice; a conversation turn does not need it, because the
+  answer wakes the conversation.
+- **Layer rule.** The engine and core gain one generic option, starting state on an `{ id }`
+  dispatch target, which creates the session at that id when absent and is judged by the target
+  flow's create check, as a `{ key }` child already is. The create check on a derived id already
+  refuses a create that is not the user's own derivation. No worker word reaches the core or
+  engine; an `{ id }` with no state is still never created.
+- **Shift Manager's conversation address.** A first line opens a worker's conversation with
+  `ensureWorkerSession({ worker })` instead of a random id, and the view shows that session
+  when it exists, else the newest one as today, so an older conversation is still shown until the
+  derived one is opened.
 
 ## Considered and dropped
 
@@ -110,6 +123,9 @@ could answer. Then FIX-1990 moves up.
 | Reuse the task notice's rows as the message store | A notice belongs to a task row and is cleared when acted on; a message has no row and must stay visible in the log |
 | A per-pair rate limit instead of a hop count | A rate limit slows a loop, it doesn't end one. The hop count ends it, and a person restarts it |
 | An outbox that retries delivery until it lands | Adds the machinery the task notices have, for a message whose sender is still running and can retry |
+| Send answers back with the seam's `{ from: true }` | An answer is a later turn of the recipient, not the dispatched request, so the sender's stamp is gone by then. The log row keeps the sending session |
+| Hold a message until the recipient's conversation is first opened | The recipient is not woken, so it never sees the message, which is the need |
+| A new engine call to create or list sessions from a block | Two ways to reach a session. Starting state on the existing `{ id }` target reuses the create check `{ key }` children already go through |
 
 ## How it got here
 
@@ -117,5 +133,10 @@ could answer. Then FIX-1990 moves up.
   both worker flows get from the session kit they share, built on the ending notice's
   *line, then wake* step and the engine's existing dispatch seam, with a user-scoped log behind a
   Messages view and a server-written hop count as the loop guard. Coding runs split out to FIX-1990.
+- **Validation** — a server block can't find Shift Manager's conversation (a random id) or create
+  a session, so the conversation moved to a computed address and the seam's `{ id }` target gained
+  starting state. A task ends with its turn, so `wait: true` was added for a task that needs the
+  answer. The hop count now resets only on a person's turn, across every kind of turn, and the goal
+  check gained a three-worker ring, a fan-out, the other direction and a failing recipient.
 
 **Open: none.**

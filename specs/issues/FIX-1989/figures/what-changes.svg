@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 360" role="img" aria-label="On the left, Researcher's turn, in its main conversation or a task session, calls messageWorker. The call goes into one new check in Workforce: the recipient is on the user's roster, has a conversation, and the hop count and per-turn count are under their limits. An accepted message is written as one row in the user's message log, then dispatched to the recipient's own conversation, here the Shift Coordinator's conversation for the project. There it shows as a line from Researcher and wakes the coordinator's turn. The coordinator's answer names the message, is written to the log, and goes back to the exact session that sent it. The Messages view in Shift Manager reads the log. Below, crossed out and off the path: the task board, delegate lists and the task chain."
+<svg viewBox="0 0 940 360" role="img" aria-label="On the left, Researcher's turn, in its main conversation or a task session, calls messageWorker. The call goes into one new check in Workforce: the recipient is on the user's roster, has a conversation, and the hop count and per-turn count are under their limits. An accepted message is written as one row in the user's message log, then dispatched to the recipient's own conversation, opened if absent, here the Shift Coordinator's. There it shows as a line from Researcher and wakes the coordinator's turn. The coordinator's answer names the message, is written to the log, and goes back to the exact session that sent it. The Messages view in Shift Manager reads the log. Below, dashed and off the path: the task board, delegate lists and the task chain."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -59,7 +59,7 @@
     <text class="t-lbl" x="682" y="28">RECIPIENT · ITS OWN CONVERSATION · D1</text>
     <rect class="flow" x="678" y="40" width="246" height="104" rx="6"/>
     <text class="t-h" x="692" y="62">Shift Coordinator</text>
-    <text class="t-s" x="692" y="80">its conversation for the project</text>
+    <text class="t-s" x="692" y="80">its own conversation, opened if absent</text>
     <text class="t-b" x="692" y="106">a line: From Researcher</text>
     <text class="t-b" x="692" y="124">then its turn, woken · D2</text>
   </g>
@@ -81,5 +81,5 @@
     <text class="t-s" x="30" y="266">not on the path: a message is not delegation</text>
   </g>
 
-  <text class="t-s" x="16" y="320">The core and engine change nothing: the existing dispatch seam carries the message to a session on another flow, and stamps the sender.</text>
+  <text class="t-s" x="16" y="320">The engine's dispatch seam carries the message to the recipient's session on its flow; its one new option opens that session when absent.</text>
 </svg>
