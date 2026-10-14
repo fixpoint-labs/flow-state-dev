@@ -15,6 +15,7 @@ import {
   PROJECT_STATE_KEY,
   WORKSTREAM_STATE_KEY
 } from "../workers/keys";
+import { parseProjectRef, parseWorkstreamRef, type ProjectAddressRef } from "../projects/workstream-ref";
 
 /**
  * The workstream a session works for, from its server-written fields: the one
@@ -40,6 +41,20 @@ export function filingProjectOf(state: unknown): string | undefined {
   if (typeof own === "string") return own;
   const filed = fields?.[FILING_PROJECT_STATE_KEY];
   return typeof filed === "string" ? filed : undefined;
+}
+
+/**
+ * The project a session works in, as an address: its workstream's project
+ * ({@link filingWorkstreamOf}), else its own or its filing project
+ * ({@link filingProjectOf}). The order a run's project is found in. Read from
+ * server-written fields only; `undefined` when the session has neither, or
+ * names one that doesn't parse.
+ */
+export function filingProjectAddressOf(state: unknown): ProjectAddressRef | undefined {
+  const workstream = filingWorkstreamOf(state);
+  if (workstream !== undefined) return parseWorkstreamRef(workstream)?.project;
+  const project = filingProjectOf(state);
+  return project === undefined ? undefined : parseProjectRef(project);
 }
 
 /** Hex of the first 8 bytes of the SHA-256 of `text`. */
