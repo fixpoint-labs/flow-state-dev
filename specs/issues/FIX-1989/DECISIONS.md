@@ -32,8 +32,9 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to the recipient seeing it: an FYI that does not wake it is read only by luck.
 
-**What would change my mind:** FYI turns showing up as a real cost. Then a message gains
-`wake: false`, and the line still lands for the recipient's next turn.
+**What would change my mind:** FYI turns showing up as a real cost: say, more than half of
+messages answered with no message and no tool call. Then a message gains `wake: false`, and the
+line still lands for the recipient's next turn.
 
 <a name="d1"></a>
 ## D1 · A message lands in the recipient's own conversation with the user, and an answer goes back to the exact session that asked; a task can wait for it
@@ -86,9 +87,12 @@ could answer. Then FIX-1990 moves up.
   thread (the first message's id), `replyTo`, the sending and receiving sessions, hop count,
   status (delivered, refused) and time. It is what the Messages view reads, what an answer is
   routed by, and it survives a restart. Text over a size bound is refused, not cut (BP-042).
-- **Delivery.** The row is written, then dispatched. A dispatch the host refuses marks the row
-  refused and the sender's tool call fails with the reason. A thrown dispatch is retried once
-  before it fails the same way. There is no outbox: the sender knows at once and can try again.
+- **Delivery.** The row is written, then dispatched. `onWorkerMessage` acts on a message id
+  once, with a versioned dedupe write in the recipient's session as a task's notice does, so a
+  copy sent twice wakes the recipient once. A dispatch the host refuses marks the row refused and
+  the sender's tool call fails with the reason. A thrown dispatch may have started, so it is
+  never marked refused: it is sent again once, which the dedupe makes safe, and if that throws
+  too the row stays *unconfirmed* and the tool says so. There is no outbox.
 - **What each side sees.** The recipient's conversation shows *From <sender>: <text>* under the
   sender's name, then its own turn. The sender's conversation shows the tool call as *To <recipient>:
   <text>*, and later the answer under the recipient's name. Both lines link to the Messages view.
@@ -138,5 +142,27 @@ could answer. Then FIX-1990 moves up.
   starting state. A task ends with its turn, so `wait: true` was added for a task that needs the
   answer. The hop count now resets only on a person's turn, across every kind of turn, and the goal
   check gained a three-worker ring, a fan-out, the other direction and a failing recipient.
+
+- **Review, round 1** — a thrown dispatch is no longer marked refused, and the entry dedupes by
+  message id, so a retry can't wake a recipient twice. Leg 3 now asks only the refused worker to
+  show that it stopped.
+
+## Notes from review
+
+- "Consider noting whether v1 could ship fire-and-forget `messageWorker({ to, text })` for conversation turns and restrict `wait: true` to task/session-kit internals… Implicit reply could defer `replyTo` in v1." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687755)). Leg 2 needs `wait` from a task's turn, and the Messages view needs `replyTo` for threads.
+- "A thin v1 (messaging + labelled lines + goal legs 1–4) and a follow-up (Messages view UI, or engine create-on-dispatch)… a short slice order paragraph would help." — cursor (review summary). The PR split is the implementer's; the goal check covers all five legs.
+- "Prefer `parkOnWait` / `resumeWait` with gate id on the log row rather than stretching `WaitGateBinding` / `dispatchAndWait` task semantics." — cursor (review summary)
+- "Mirror `taskChainsCollection` + CAS for the log; reuse `workerDoorOf` + `rosterWorker` instead of a new `delegate-check` `use` variant." — cursor (review summary)
+- "Call out interaction with the 32 deferred notices cap on a conversation (`task-settled`); bursty messaging + task notices may need an explicit concurrency key or test." — cursor (review summary)
+- "If v1 accepted 'refuse until the user has opened that worker once' you could defer `{ id, state }` create-on-dispatch." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687737)). D1 requires it: a recipient with no conversation is opened by the message.
+- "One shared automation budget on request state with different increment rules… if you keep separate hops, say hop lives on request state, not in `taskChainsCollection`." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687751))
+- "Calling out minimal row shape for v1 vs view-enrichment fields." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687759))
+- "Leg 5 ties durability to the Messages view UI… could follow." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687747)). Kept: Jake asked to see who talked to whom.
+- "Specify idempotent `onWorkerMessage` by message id." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687773)) and codex ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274704737)). Folded into *Delivery*.
+- "What metric would trigger the `wake: false` flip." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3365#discussion_r4274687765)). Folded into D2.
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one. A note that turns out to reveal a design problem is a spec blind spot —
+surface it and fold it back, per the challenger discipline in `issue-implement`.
 
 **Open: none.**
