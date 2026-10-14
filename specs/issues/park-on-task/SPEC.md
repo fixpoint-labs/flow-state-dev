@@ -21,6 +21,18 @@ That is the behaviour Jake asked for: *"we send and don't wait, but we also end 
 
 **A worker on a task can get a result from any task-taking worker on the roster by filing a piece, ending its turn, and finishing its task from its own reading of that result, with nothing held open while it waits.**
 
+```mermaid
+flowchart LR
+  A["Worker A on a task"] -->|"files a piece"| B["Worker B · not A's delegate"]
+  A -->|"turn ends"| P["A's task parked · no request"]
+  B -->|"completes with the codename"| W["A's woken turn writes a report"]
+  W --> S["A's task completes with the report · PASS"]
+  B -.->|"delegates-only: piece refused"| F1["FAIL"]
+  W -.->|"pieces-output: list, not report"| F2["FAIL"]
+```
+
+Leg 1 passes only when the piece reaches a worker A doesn't manage and A's own report is what comes back; each dashed path is a control that must fail.
+
 | Is it the right goal? | |
 |---|---|
 | **The real need** | FIX-1989 left one gap: a task that needs a fact another worker has. Workers can already talk; a task can't get work back from anyone but its delegates |
@@ -35,6 +47,26 @@ That is the behaviour Jake asked for: *"we send and don't wait, but we also end 
 | **Control that must fail** | `delegates-only` FAILS leg 1 (the piece to B is refused) · `pieces-output` FAILS leg 1 (output is the pieces' list) · `wake-coordinator` FAILS leg 4. Today's `main` FAILS leg 1 |
 
 ## What changes
+
+**Before**
+
+```mermaid
+flowchart LR
+  T["Task turn"] -->|"pieces"| D["Its delegates only"]
+  D -->|"each ending wakes"| W["Woken turn · answer dropped"]
+  W --> S["Task settles with the pieces' list"]
+```
+
+**After**
+
+```mermaid
+flowchart LR
+  T["Task turn"] -->|"pieces"| R["Any task-taking worker on the roster"]
+  R -->|"each ending wakes"| W["Woken turn · answer kept"]
+  W --> S["Task settles with the worker's answer · pieces under it"]
+```
+
+The park, the wake and the settle are the split as it runs today; only who a piece can reach and what the settle writes change.
 
 1. **A piece can go to any worker on the roster that takes tasks** ([D1](DECISIONS.md#d1)). A task session's roster for filing is the user's roster, read per call as the delegate list is today; a conversation session's grant (FIX-1802 D1) is unchanged. The chain limits (`./chain`, FIX-1802 S5) still bound depth and breadth.
 2. **The worker's answer is the task's result** ([D2](DECISIONS.md#d2)). The settle that runs after the turn the last piece's ending woke completes the task with that turn's answer, and lists the pieces under it. A woken turn that files another piece holds the settle, as today. If no turn answered (a replay settling after a crash, say), the output is the pieces' list, as today.
