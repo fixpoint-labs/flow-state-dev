@@ -274,10 +274,8 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       label={`Message ${worker ?? "this worker"}`}
       placeholder={`Message ${worker ?? "this worker"}…`}
       blocked={blocked}
-      // No `held`: the Session tab draws only the task's own run, not this line's
-      // request, so the line keeps its draft until delivered.
+      // No `held`: the draft stays until the door turn ends. The Session follows the request from `onStarted`.
       send={async (message) => {
-        // The Session shows this request's items, the line and the reply, from the moment it starts (FIX-2009).
         const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message, {
           onStarted: task.noteSent,
         });

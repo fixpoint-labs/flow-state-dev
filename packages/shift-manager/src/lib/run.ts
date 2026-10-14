@@ -117,11 +117,19 @@ export function followRequest(clients: LabClients, run: Pick<OpenRun, "flowId" |
   });
 }
 
+/** An item's identity across reads: its request and its id. */
+function itemKey(item: OutputItem): string {
+  return `${item.requestId}\u0000${item.id}`;
+}
+
+/** No request sent from the screen. */
+const NONE_SENT: ReadonlySet<string> = new Set();
+
 /** Merge items, each `(request, id)` once, keeping the finished copy, in stored order. */
 export function mergeItems(held: readonly OutputItem[], incoming: readonly OutputItem[]): OutputItem[] {
   const byKey = new Map<string, OutputItem>();
   for (const item of [...held, ...incoming]) {
-    const key = `${item.requestId}\u0000${item.id}`;
+    const key = itemKey(item);
     const seen = byKey.get(key);
     if (seen === undefined || compareItemOrder(item, seen) >= 0) byKey.set(key, item);
   }
@@ -131,21 +139,18 @@ export function mergeItems(held: readonly OutputItem[], incoming: readonly Outpu
 /**
  * What the Session shows of a session's items (BR-8): the items stamped with
  * this task's id, through the attribution helper the substrate and the UI
- * share, and whether the session also holds another task's work. Items of a
- * request in `sent` show too: a line the task's composer sent and the worker's
- * reply to it (FIX-2009). The door's turn is not the task's run, so nothing it
- * stores carries the task's stamp, and in a session shared with other tasks
- * the stamp is all the filter has.
+ * share, and whether the session also holds another task's work. A request
+ * in `sent` shows too: its door turn stores no task stamp (FIX-2009).
  */
 export function taskItems(
   items: readonly OutputItem[],
   boardRef: string,
   taskId: string,
-  sent: ReadonlySet<string> = new Set(),
+  sent: ReadonlySet<string> = NONE_SENT,
 ): { items: OutputItem[]; shared: boolean } {
-  const own = new Set(itemsForTask(items, boardRef, taskId));
+  const own = new Set(itemsForTask(items, boardRef, taskId).map(itemKey));
   return {
-    items: items.filter((item) => own.has(item) || sent.has(item.requestId)),
+    items: items.filter((item) => own.has(itemKey(item)) || sent.has(item.requestId)),
     shared: items.some((item) => item.taskId !== undefined && item.taskId !== taskId),
   };
 }

@@ -13,7 +13,7 @@
  * plan), the same copies the design system skins. An ask the run raised and
  * that still waits is drawn inline, with the one ask card Inbox uses.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
@@ -102,6 +102,13 @@ function RunItems({ run }: { run: OpenRun }) {
   const feed = useFollowLatest();
   const { reportStatus } = task;
 
+  /** Merge items into what is held; nothing until the first read lands. */
+  const mergeIn = useCallback(
+    (items: readonly OutputItem[]) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, items) })),
+    [],
+  );
+  const failWith = useCallback((error: unknown) => setFailure(error instanceof RunReadError ? error.failure : describeFailure(error)), []);
+
   useEffect(() => {
     let closed = false;
     let stream: { close(): void } | undefined;
@@ -112,7 +119,7 @@ function RunItems({ run }: { run: OpenRun }) {
         if (closed) return;
         setStored(read);
         stream = followRequest(clients, run, {
-          onItem: (item) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, [item]) })),
+          onItem: (item) => mergeIn([item]),
           onStatus: reportStatus,
           onError: (f) => {
             if (!closed) setFailure(f);
@@ -120,55 +127,56 @@ function RunItems({ run }: { run: OpenRun }) {
         });
       })
       .catch((error: unknown) => {
-        if (!closed) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
+        if (!closed) failWith(error);
       });
     return () => {
       closed = true;
       stream?.close();
     };
-  }, [clients, run, attempt, reportStatus]);
+  }, [clients, run, attempt, reportStatus, mergeIn, failWith]);
 
-  // A line this screen's composer sent: follow its request live, and read the
-  // session once it ends, so the line and the reply show here (FIX-2009).
+  // Follow each request in `sent` once the first read has landed, so its replay has
+  // something to merge into, and re-read the session once when it leaves in_progress.
+  // A settled request is never followed again: a new send reopens only the open ones.
   const { sent } = task;
-  const following = useRef(new Map<string, { close(): void }>());
+  const loaded = stored !== undefined;
+  const settled = useRef(new Set<string>());
   useEffect(() => {
-    for (const requestId of sent) {
-      if (following.current.has(requestId)) continue;
-      const settle = () =>
-        void readSessionItems(clients, run.sessionId)
-          .then((read) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, read.items) })))
-          .catch((error: unknown) => setFailure(error instanceof RunReadError ? error.failure : describeFailure(error)));
-      following.current.set(
-        requestId,
-        followRequest(clients, { flowId: run.flowId, requestId }, {
-          onItem: (item) => setStored((held) => (held === undefined ? held : { ...held, items: mergeItems(held.items, [item]) })),
-          onStatus: (status) => {
-            if (status !== "in_progress") settle();
-          },
-          onError: () => settle(),
-        }),
-      );
-    }
-  }, [clients, run, sent]);
-  useEffect(() => {
-    const streams = following.current;
+    if (!loaded) return;
+    let closed = false;
+    const streams = sent.filter((requestId) => !settled.current.has(requestId)).map((requestId) => {
+      const settle = () => {
+        if (closed || settled.current.has(requestId)) return;
+        settled.current.add(requestId);
+        // Merged even if a newer send has re-run this effect since: the request
+        // counts as settled, so no later follower brings its items.
+        readSessionItems(clients, run.sessionId).then((read) => mergeIn(read.items), failWith);
+      };
+      return followRequest(clients, { flowId: run.flowId, requestId }, {
+        onItem: (item) => mergeIn([item]),
+        onStatus: (status) => {
+          if (status !== "in_progress") settle();
+        },
+        onError: settle,
+      });
+    });
     return () => {
-      for (const stream of streams.values()) stream.close();
-      streams.clear();
+      closed = true;
+      for (const stream of streams) stream.close();
     };
-  }, [run]);
+  }, [clients, run, sent, loaded, mergeIn, failWith]);
 
   // This task's items, then the same render filters `ItemsRenderer` applies:
   // a keyed snapshot shows its latest version only, and a container with its
   // own renderer draws the items it owns.
   const { renderers } = useFlowContext();
+  const sentSet = useMemo(() => new Set(sent), [sent]);
   const shown = useMemo(() => {
     if (stored === undefined) return undefined;
-    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, new Set(sent));
+    const mine = taskItems(stored.items, collectionOfBoard(task.boardRef), task.taskId, sentSet);
     const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
     return { items, shared: mine.shared };
-  }, [stored, task.boardRef, task.taskId, sent, renderers]);
+  }, [stored, task.boardRef, task.taskId, sentSet, renderers]);
 
   if (failure !== undefined) {
     return (

@@ -198,9 +198,7 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
  * @param options.onHeld called once, while the request is still running, when
  * the session first holds the line. A request that ends before a poll sees it
  * running never calls it: the send's own resolve says the same thing then.
- * @param options.onStarted called once with the door's request id, as soon as
- * the Lab started it: a view can then show that request's items (the line and
- * the reply) whether or not anything else in the session is its own.
+ * @param options.onStarted called once with the request id as soon as the Lab started it.
  * @returns the door's request; `suspended`, whether the poll saw it suspended,
  * which is when a caller reads the Lab again; and what it `stopped` on
  * ({@link TurnStop}), for the words only.
