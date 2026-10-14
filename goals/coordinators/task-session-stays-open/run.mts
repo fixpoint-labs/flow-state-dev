@@ -166,7 +166,7 @@ async function drive(origin: string, store: string) {
   // Leg b: the door into the finished task's session, found as an app finds it.
   const found = taskId === undefined || filingSessionId === undefined ? undefined : await app.findWorkerSession({ worker: "desk.ops", taskId, filingSessionId });
   const asked = found?.id === undefined ? null : await act("agent", found.id, "run", { message: LEG_B });
-  await waitFor(() => (row(taskId)?.attempts ?? 0) > (endedRow?.attempts ?? 0) && ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 120_000);
+  if (asked !== null) await waitFor(() => (row(taskId)?.attempts ?? 0) > (endedRow?.attempts ?? 0) && ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 120_000);
   await quiet();
 
   // Leg c: a follow-up task naming the finished one.
@@ -202,6 +202,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const conv = all.find((s) => s.id === o.conv);
   const keys = (conv?.state.taskNotices as string[] | undefined) ?? [];
   const noticesOf = (id: string | undefined, ending: string) => keys.filter((k) => id !== undefined && k.startsWith(`${id}:`) && k.endsWith(`:${ending}`));
+  // Keys are `taskId:attempt:ending` (orchestration's notice key).
   const attemptOf = (key: string) => Number(key.split(":").at(-2));
 
   // Leg a.
@@ -221,9 +222,9 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   if (charged !== 1) failures.push(`a:unspent — wanted the answer's re-entry not charged: one attempt charged; attempts ${task?.attempts}, re-entries ${task?.turnReentries}`);
 
   // Leg b: the line reopens the finished task, whose next attempt answers it in the task's session (FIX-1764).
-  const reply = outputText(reopened);
+  const reopenOutput = outputText(reopened);
   const reopenedRan = reopened?.status === "completed" && (reopened.attempts ?? 0) > (task?.attempts ?? 0) && reopened.run?.sessionId === parkedSession;
-  if (o.found?.id !== parkedSession || o.asked?.output?.reopened !== o.taskId || !reopenedRan || !names(reply, ticket)) {
+  if (o.found?.id !== parkedSession || o.asked?.output?.reopened !== o.taskId || !reopenedRan || !names(reopenOutput, ticket)) {
     failures.push(
       `b:names-ticket — wanted "${LEG_B}" in the task's own session (${parkedSession}, found ${o.found?.id}) to reopen it (${show(o.asked?.output ?? o.asked?.error)}) and complete there naming the ticket ${ticket}; ` +
         `it is ${reopened?.status} after ${reopened?.attempts} attempts in ${reopened?.run?.sessionId}, saying ${show(reopened?.output)}`,
@@ -243,7 +244,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
 
   notes.push(
     `region ${o.region}; ticket ${ticket}; task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} (parked in ${parkedSession}), attempts ${task?.attempts}, re-entries ${task?.turnReentries}, ended ${o.endedIn} ms after the answer; output ${show(task?.output)}`,
-    `b: ${show(reply)}`,
+    `b: ${show(reopenOutput)}`,
     `c: "${o.followUp}" → ${follow?.status} in ${follow?.run?.sessionId}; output ${show(follow?.output)}; draws ${draws.length}`,
   );
   return { failures, notes };

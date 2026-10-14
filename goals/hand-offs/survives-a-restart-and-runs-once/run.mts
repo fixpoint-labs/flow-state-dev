@@ -57,7 +57,7 @@ interface ControlCheck {
 type Check = PlainCheck | ControlCheck;
 
 /** J4's tags after the answer: with no answer accepted there is no task to finish, so all of them go red with `j:answered`. */
-const AFTER_THE_ANSWER = ["j:completed", "j:same-session", "j:names-ticket", "j:names-region", "j:one-draw", "j:one-completed", "j:second-answer", "j:still-answers", "j:row-unchanged"];
+const AFTER_THE_ANSWER = ["j:completed", "j:same-session", "j:names-ticket", "j:names-region", "j:one-draw", "j:one-completed", "j:second-answer", "j:still-answers", "j:reopened"];
 
 const CHECKS: Check[] = [
   { id: "P1.a", script: "goals/hand-offs/ask-survives-a-restart/run.mts" },
