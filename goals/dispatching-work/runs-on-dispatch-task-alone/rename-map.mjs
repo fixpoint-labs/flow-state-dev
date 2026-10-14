@@ -10,6 +10,7 @@
 //
 //   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs                   # base..HEAD
 //   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --head <ref>      # base..<ref>
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --head M --fix F  # F's files judged base..F (D4)
 //   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --sources         # the map against the
 //                                                                         # children's pinned tables
 //   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --control         # planted edits, must FAIL
@@ -43,6 +44,11 @@ const HEAD = opt("--head", "HEAD");
  * first PR merged), passed by the closure runner. Not given: not judged, said so.
  */
 const RERUN_BASE = opt("--rerun-base", undefined);
+/**
+ * D4: a finding's fix PR for a child merge. The files it touches are judged from the base to the
+ * fix's merge (the child's change and its fix together); every other file is judged at `--head` alone.
+ */
+const FIX = opt("--fix", undefined);
 
 const REGRESSION = [
   "goals/hand-offs/ask-survives-a-restart/",
@@ -261,8 +267,11 @@ function run(base, head) {
   const groups = [["regression", REGRESSION, base], ["coordinator", COORDINATOR, base]];
   if (RERUN_BASE !== undefined) groups.push(["coordinator", RERUNS, RERUN_BASE]);
   else console.log("  (FIX-1872 V9's reruns not judged: pass --rerun-base <control commit>)");
+  const fixed = FIX === undefined ? [] : execFileSync("git", ["diff", "--name-only", `${FIX}^1`, FIX], { encoding: "utf8" }).split("\n").filter(Boolean);
   for (const [group, dirs, from] of groups) {
-    for (const h of hunks(from, head, dirs)) {
+    const ours = fixed.filter((f) => dirs.some((d) => f.startsWith(d)));
+    const diffs = [...hunks(from, head, [...dirs, ...ours.map((f) => `:(exclude)${f}`)]), ...(ours.length > 0 ? hunks(from, FIX, ours) : [])];
+    for (const h of diffs) {
       const v = judge(h.removed, h.added, group, fences, h.path);
       if (v.ok) {
         good++;
@@ -393,6 +402,7 @@ if (args.includes("--control")) {
 }
 
 console.log(`rename-map check · ${BASE.slice(0, 12)}..${execFileSync("git", ["rev-parse", HEAD], { encoding: "utf8" }).trim().slice(0, 12)}`);
+if (FIX !== undefined) console.log(`  with its fix ${FIX.slice(0, 12)}: the files it touches judged ${BASE.slice(0, 12)}..${FIX.slice(0, 12)}`);
 const { good, bad } = run(BASE, HEAD);
 console.log(`\n${bad === 0 ? "PASS" : "FAIL"} · ${good} hunk(s) explained, ${bad} not`);
 process.exit(bad === 0 ? 0 : 1);

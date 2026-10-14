@@ -690,5 +690,41 @@
     "removed": "each of those four deliveries is answered (the ledger)",
     "added": "each of those four deliveries is answered (their rows)",
     "why": "FIX-1872 (#3232), ER-6: e:four-then-none's claim (four deliveries, each answered) is unchanged; answered is now read as row.status === \"completed\" (goals/lib/post-rows.mts toPostDeliveries)"
+  },
+  {
+    "path": "goals/coordinators/files-tasks-down-the-owners-chain/goal.md",
+    "removed": "(`addTask`'s `waitForResponse`, FIX-1817)",
+    "added": "(`dispatchTask`'s `wait`, FIX-1875)",
+    "why": "FIX-1875 P2 (#3180): leg e's input names the waiting filing it excludes by its new tool and option, and by the issue that now owns it. Input text, no outcome line moves"
+  },
+  {
+    "path": "goals/coordinators/files-tasks-down-the-owners-chain/scripted.mts",
+    "removed": "// Unassigned, with three delegates that take tasks: it waits to be assigned.",
+    "added": "// Recorded unassigned, with three delegates that take tasks: it waits to be assigned and dispatched.",
+    "why": "FIX-1875 P2 (#3180): the comment on leg c's unassigned filing says it now waits for a dispatch too (FIX-1875 D1: addTask only records)"
+  },
+  {
+    "path": "goals/coordinators/files-tasks-down-the-owners-chain/scripted.mts",
+    "removed": "// The second assigns its own task, which runs for a while.",
+    "added": "// The second assigns its own task and dispatches it, and it runs for a while.",
+    "why": "FIX-1875 P2 (#3180): the comment names the dispatch step the next fence line adds"
+  },
+  {
+    "path": "goals/coordinators/files-tasks-down-the-owners-chain/scripted.mts",
+    "removed": null,
+    "added": "await act(alice, \"coordinator\", c2, \"dispatchTask_tasks\", { taskId: taskIdOf(t2) ?? \"none\" });",
+    "why": "FIX-1875 P2 (#3180): assigning a recorded task no longer starts it (FIX-1875 D1), so leg c dispatches t2 after assigning it, to reach the same state the old assign reached. A step, not a grade: every c:* assertion is unchanged."
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/goal.md",
+    "removed": "every filing it makes is a call of its turn's own `addTask` tool:",
+    "added": "every filing it makes is a call of its turn's own task tools, `dispatchTask` for a filing with an owner and `addTask` for an unassigned one:",
+    "why": "FIX-1875 P1/P2 (#3168 fence table, #3180): the input names the two tools the scripted turns now call, as the addTasks(tool) call sites already split them. Input text, no outcome line moves"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/lab/fsdev.config.mts",
+    "removed": "* Every filing is a call of the turn's own `addTask` tool. After the calls,",
+    "added": "* Every filing is a call of the turn's own task tools: `dispatchTask` for a piece with an owner, `addTask` for an unassigned one, which stays recorded. After the calls,",
+    "why": "FIX-1875 P2 (#3180): the scripted turn's doc comment names the same split as goal.md's input"
   }
 ]

@@ -74,14 +74,23 @@ function controlCommit(): string {
  */
 const CHILD_PRS = [3168, 3180, 3212, 3232, 3274, 3325, 3358];
 
-/** Each child PR's merge on HEAD's first-parent line, and its first parent; a missing one stops the run. */
-function childMerges(): Array<{ pr: number; merge: string; base: string }> {
+/**
+ * D4: a finding's fix PR, judged with the child merge it fixes once it is on main (the files it
+ * touches, from the merge's first parent to the fix's merge). Not merged yet: the child is judged alone.
+ * #3377 (FIX-1994) returns the projects rerun's lead prompt in #3180 to a name-only change.
+ */
+const FIX_PRS: Record<number, number> = { 3180: 3377 };
+
+/** Each child PR's merge on HEAD's first-parent line, its first parent, and its fix's merge if landed; a missing child stops the run. */
+function childMerges(): Array<{ pr: number; merge: string; base: string; fix?: { pr: number; merge: string } }> {
   const merges = git("log", "--first-parent", "--merges", "--format=%H%x09%s", "HEAD").split("\n");
+  const mergeOf = (pr: number) => merges.find((m) => m.includes(`Merge pull request #${pr} `))?.split("\t")[0];
   return CHILD_PRS.map((pr) => {
-    const line = merges.find((m) => m.includes(`Merge pull request #${pr} `));
-    if (line === undefined) throw new Error(`no merge of #${pr} under HEAD, so its diff can't be judged`);
-    const merge = line.split("\t")[0]!;
-    return { pr, merge, base: git("rev-parse", `${merge}^1`) };
+    const merge = mergeOf(pr);
+    if (merge === undefined) throw new Error(`no merge of #${pr} under HEAD, so its diff can't be judged`);
+    const fixPr = FIX_PRS[pr];
+    const fixMerge = fixPr === undefined ? undefined : mergeOf(fixPr);
+    return { pr, merge, base: git("rev-parse", `${merge}^1`), ...(fixMerge === undefined ? {} : { fix: { pr: fixPr!, merge: fixMerge } }) };
   });
 }
 
@@ -113,9 +122,15 @@ function checks(ctrl: string): Check[] {
     // P1.m: --sources agrees (0), --control catches every plant (2), the diff is explained (0).
     { part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--sources"], exit: 0 },
     { part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--control"], exit: 2 },
-    // D3: each epic child's own merge, judged from its first parent, the V9 reruns included.
+    // D3: each epic child's own merge, judged from its first parent, the V9 reruns included; D4: with its fix PR once merged.
     ...childMerges().map(
-      ({ pr, merge, base }): Check => ({ part: "P1.m", bin: "node", args: [`${HERE}/rename-map.mjs`, "--base", base, "--head", merge, "--rerun-base", base], exit: 0, label: `#${pr} ${merge.slice(0, 9)}` }),
+      ({ pr, merge, base, fix }): Check => ({
+        part: "P1.m",
+        bin: "node",
+        args: [`${HERE}/rename-map.mjs`, "--base", base, "--head", merge, "--rerun-base", base, ...(fix ? ["--fix", fix.merge] : [])],
+        exit: 0,
+        label: `#${pr} ${merge.slice(0, 9)}${fix ? ` with #${fix.pr} ${fix.merge.slice(0, 9)}` : ""}`,
+      }),
     ),
     // P1.s: 0 live lines at HEAD (0), live lines at the control commit (1), every rule catches its plant (2).
     { part: "P1.s", bin: "node", args: [`${HERE}/surface-sweep.mjs`, "--assert"], exit: 0 },
