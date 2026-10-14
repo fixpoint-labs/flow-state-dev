@@ -533,6 +533,13 @@ export interface OpenLabOptions {
   modelResolver?: ModelResolver;
   /** The tree to read. Defaults to the lab's own. */
   root?: string;
+  /**
+   * Replace the body of a document the tree declares, by its ref. Every worker
+   * that names the ref, and every worker hired onto it, reads the body given
+   * here and never the file's. A ref the tree does not declare is refused, so
+   * a renamed document cannot leave its old body in place unnoticed.
+   */
+  documents?: Record<string, string>;
   /** Silence the engine's own logging. */
   logger?: unknown;
   /**
@@ -833,7 +840,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the workers' document reads — and BR-17 — matter.
-  const resources = resourcesFromDocs(roster.documents);
+  const replaced = options.documents ?? {};
+  for (const ref of Object.keys(replaced)) {
+    if (!roster.documents.some((doc) => doc.ref === ref)) {
+      throw new Error(`openLab: \`documents\` replaces "${ref}", which the tree does not declare`);
+    }
+  }
+  const resources = resourcesFromDocs(
+    roster.documents.map((doc) => (Object.hasOwn(replaced, doc.ref) ? { ...doc, body: replaced[doc.ref]! } : doc)),
+  );
 
   // The project writes, built once: the flow that creates projects at open runs
   // them as actions, and the chief of staff calls the same ones as tools. The
