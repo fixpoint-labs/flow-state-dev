@@ -44,6 +44,12 @@ turn never messaged the sender back. A turn with no text sends nothing, so decli
 still works, and a turn woken by an answer is never relayed, so an exchange ends after one answer.
 The relay may be removed if the card goes the other way.
 
+**Also amended at implementation (review).** The hop limit counts the whole exchange, not one
+path: everything descending from one user's turn shares one budget of `hopLimit` messages. A
+worker that both passes a message on and answers it would otherwise branch the exchange, with
+each branch counting to 6 on its own. A user's turn starts a chain id that travels with the count,
+and each send takes its place in that chain's user-scoped row with one guarded write.
+
 <a name="d1"></a>
 ## D1 · A message lands in the recipient's own conversation with the user, and an answer goes back to the exact session that asked. Nothing waits for it
 

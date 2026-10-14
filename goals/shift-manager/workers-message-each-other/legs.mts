@@ -242,6 +242,7 @@ export type Row = {
   fromSession: string;
   toSession: string;
   hop: number;
+  chain?: string;
   status: string;
 };
 
@@ -496,7 +497,14 @@ export async function leg3b(world: World): Promise<LegResult> {
     r.failures.push(`3b:reached — no message from Helper B to Researcher carrying ${w3b} within 360 s; the log's rows with it: ${show(log.map((m) => `${m.from}>${m.to}@${m.hop}`))}`);
     return r;
   }
-  if (back.hop !== 2) r.failures.push(`3b:hop-2 — Helper B's task's message to Researcher carries hop ${back.hop}, not 2 (Researcher > Helper A was 1, and the task Helper A filed carries its count)`);
+  // The task counts on in the exchange the Researcher's line started: the same chain, a later place.
+  const first = (await logOf(alice)).find((m) => m.from === RESEARCHER && m.to === HELPER_A && m.text.includes(w3b));
+  if (first === undefined || back.chain === undefined || back.chain !== first.chain || back.hop <= first.hop) {
+    r.failures.push(
+      `3b:counts-on — Helper B's task's message to Researcher is not counted in the exchange Researcher's message to Helper A started: ` +
+        `${show({ first: first && { hop: first.hop, chain: first.chain }, back: { hop: back.hop, chain: back.chain } })}`,
+    );
+  }
   r.notes.push(`Helper B's task messaged Researcher at hop ${back.hop} from ${back.fromSession}`);
   await quiet(alice, 240_000);
   return r;
@@ -533,23 +541,20 @@ export async function leg3(world: World): Promise<LegResult> {
   rows = await ringRows();
   const sent = rows.filter((m) => m.status !== "refused");
   r.notes.push(`ring: ${rows.sort((a, b) => a.hop - b.hop).map((m) => `${m.from}>${m.to}@${m.hop}`).join(", ")}`);
-  // The limit is per chain (D2): a worker that both passes a message on and answers it
-  // branches the ring, and each branch counts on from the message it came from. So the
-  // ring stops when its longest chain reaches hop 6, however many branches it grew.
-  const longest = Math.max(0, ...sent.map((m) => m.hop));
-  if (longest !== 6) {
-    r.failures.push(`3:ring-stops-at-6 — the ring's longest chain reached hop ${longest}, not 6 (${sent.length} message(s) passed${sent.length >= 20 ? ", and the run stopped it at 20" : ""})`);
+  // The limit is the whole exchange's (D2): however the ring branches, 6 messages in all.
+  if (sent.length !== 6) {
+    r.failures.push(`3:ring-stops-at-6 — the ring passed ${sent.length} message(s), not 6${sent.length >= 20 ? " (the run stopped it at 20)" : ""}`);
   }
   // The seventh send is refused, and that worker's conversation shows it stopped.
   let stopped: Call | undefined;
   for (const worker of [RESEARCHER, HELPER_A, HELPER_B]) {
     stopped ??= (await callsIn(alice, world.conversation[worker]!.id)).find((c) => errorOf(c).startsWith("hop_limit") && String(c.args.text ?? "").includes(ring));
   }
-  if (stopped === undefined && longest <= 6) r.failures.push(`3:seventh-refused — no worker's conversation shows a send refused at the hop limit`);
+  if (stopped === undefined && sent.length <= 6) r.failures.push(`3:seventh-refused — no worker's conversation shows a send refused at the hop limit`);
   if (stopped !== undefined) r.notes.push(`the seventh send was refused in ${stopped.sessionId}: ${errorOf(stopped).slice(0, 160)}`);
 
   // One more line from the person allows one more round.
-  if (longest <= 6) {
+  if (sent.length <= 6) {
     const again = new Set((await logOf(alice)).map((m) => m.id));
     await talk(turns, "3", alice, RESEARCHER, world.conversation[RESEARCHER]!, `Message ${HELPER_A} with "ring ${ring} again".`);
     await quiet(alice, 300_000);

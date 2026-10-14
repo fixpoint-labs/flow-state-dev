@@ -43,9 +43,9 @@ export const CONTROLS: Record<ControlName, Control> = {
     legs: ["3"],
     assertion: "3:ring-stops-at-6",
     module: `${MESSAGES}/send-message.ts`,
-    from: String.raw`if \(hop > limits\.hopLimit\) \{`,
-    to: "if (false) {",
-    does: "a chain of worker messages has no hop limit (the per-turn limit stays)",
+    from: String.raw`const limits = messageLimitsOf\(installation\);`,
+    to: "const limits = { ...messageLimitsOf(installation), hopLimit: Number.POSITIVE_INFINITY };",
+    does: "an exchange of worker messages has no hop limit (the per-turn limit stays)",
   },
   "no-roster-check": {
     name: "no-roster-check",
@@ -59,11 +59,11 @@ export const CONTROLS: Record<ControlName, Control> = {
   "fresh-hop-on-task": {
     name: "fresh-hop-on-task",
     legs: ["3b"],
-    assertion: "3b:hop-2",
+    assertion: "3b:counts-on",
     module: "packages/workforce/src/conversation-board/board.ts",
-    from: String.raw`\[MESSAGE_HOP_STATE\]: sessionHopOf\(ctx\.session\.state\)`,
-    to: "[MESSAGE_HOP_STATE]: 0",
-    does: "a task's session starts its message hop count at 0, not at the count of the turn that filed it",
+    from: String.raw`\.\.\.carriedHopState\(ctx\.session\.state\),`,
+    to: "workforceMessageHop: 0,",
+    does: "a task's session starts a fresh exchange at 0, not in the exchange of the turn that filed it",
   },
   "memory-log": {
     name: "memory-log",
