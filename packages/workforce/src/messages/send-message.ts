@@ -1,31 +1,9 @@
 /**
- * Sending a worker message (FIX-1989): the one check every send passes, the
- * log row, and the delivery. The `messageWorker` tool calls it, and so will
- * any later caller (a coding run's tool, FIX-1990).
- *
- * The check, in order, before anything is written:
- *
- * - the session runs a worker, and the text fits;
- * - the recipient is another worker on the user's roster now (one of theirs or
- *   a standard one: another user's worker is simply not there), whose row
- *   reads;
- * - it has a conversation: its flow declares the `onWorkerMessage` entry. A
- *   worker that only takes tasks (the coder) is told to be filed a task;
- * - a coordinator whose routing never runs a turn of its own (round robin,
- *   everyone) refuses: nobody would read the line;
- * - an answer (`replyTo`) names a message the recipient sent this worker;
- * - the hop count stays within the chain limit, and the turn within its sends.
- *
- * Then one row is written to the user's message log, and the message is
- * dispatched to the recipient's `onWorkerMessage`: into its own conversation
- * (the worker's derived address, opened by the dispatch when absent), or for
- * an answer, back where the row it answers says. A dispatch the host refuses
- * marks the row refused. A thrown one may have started, so it is sent again
- * once (the entry acts on a message id once); if that throws too, the row
- * stays unconfirmed.
- *
- * The sender, the sessions and the hop count come from the sending turn's
- * own session and request state, never from the tool's input.
+ * Send one worker message (FIX-1989). `messageWorker` calls this, and so
+ * will a coding run's tool (FIX-1990). The sender, the sessions and the hop
+ * come from the running turn, never the tool input. A dispatch that throws
+ * is sent once more; the entry acts on a message id once. A second throw
+ * leaves the row `unconfirmed`.
  */
 import { dispatchThroughSeam, type BlockContext, type DispatchOutcome } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
@@ -50,8 +28,6 @@ import {
   type MessageAddress,
   type WorkerMessageRow
 } from "./message-log";
-
-export { WORKER_MESSAGE_ENTRY };
 
 /** What a send asks for: the tool's input. */
 export interface SendWorkerMessage {
@@ -136,7 +112,6 @@ export async function sendWorkerMessage(
   }
   if (input.to === sender) return refuse("not_yourself: you can't message yourself.");
 
-  // ---- the recipient: on the roster, and with a conversation --------------
   const recipient = await installation.rosterWorker(ctx as never, input.to);
   if (recipient === undefined) return refuse(`no_worker: no worker "${input.to}" on your roster.`);
   if (recipient.problem !== undefined) return refuse(`worker_unavailable: worker "${input.to}" can't be messaged: ${recipient.problem}.`);
@@ -151,7 +126,6 @@ export async function sendWorkerMessage(
     );
   }
 
-  // ---- where it goes ---------------------------------------------------------
   const log = messageLogOf(ctx);
   let destination: MessageAddress;
   let thread: string | undefined;
@@ -166,7 +140,6 @@ export async function sendWorkerMessage(
     destination = await conversationAddress(ctx, installation, input.to, recipient.flow, state);
   }
 
-  // ---- the limits --------------------------------------------------------------
   const limits = messageLimitsOf(installation);
   const hop = turnHopOf(ctx) + 1;
   if (hop > limits.hopLimit) {
@@ -187,7 +160,6 @@ export async function sendWorkerMessage(
     return refuse(`per_turn_limit: one turn sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.`);
   }
 
-  // ---- the row, then the delivery ----------------------------------------------
   const id = newMessageId();
   const sessionId = ctx.session.identity.id;
   // A task's session ends with its turn, and nothing runs there again, so an

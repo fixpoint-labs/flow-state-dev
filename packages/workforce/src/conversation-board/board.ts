@@ -354,8 +354,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [FILING_FLOW_STATE_KEY]: options.flowKind,
         [TASK_ID_STATE_KEY]: taskId,
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
-        // The filer's worker-message hop count (FIX-1989): a message from
-        // the task counts on from the turn that filed it. Never the chain's.
+        // The filer's hop: a message from the task counts on from that turn, not the task chain.
         [MESSAGE_HOP_STATE]: sessionHopOf(ctx.session.state),
         ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),

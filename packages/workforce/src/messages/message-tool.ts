@@ -1,13 +1,7 @@
 /**
- * `messageWorker` (FIX-1989): the tool a worker's model sends a message with,
- * as one capability a worker turn composes. Talk, not delegation: no task
- * row, no delegate, no result owed.
- *
- * Its input is strict (`to`, `text`, `replyTo`), so a call can't name a
- * sender, a hop count or a session, and there is no `wait`: an answer arrives
- * later as a line from the recipient and wakes this worker. Its description
- * lists who the worker can message, read before each model call: the roster's
- * workers that have a conversation, by id and description.
+ * `messageWorker` (FIX-1989), composed onto a worker turn. No `wait`: an
+ * answer arrives later as its own line. The description is rebuilt each
+ * turn from roster workers that have a conversation.
  */
 import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -18,8 +12,6 @@ import { messageTurnStateSchema } from "./hop";
 import { MESSAGE_WORKER_TOOL } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { sendWorkerMessage, takesWorkerMessages } from "./send-message";
-
-export { MESSAGE_WORKER_TOOL };
 
 /** The most workers the description lists, and the longest description it quotes for one. */
 const MAX_LISTED = 25;

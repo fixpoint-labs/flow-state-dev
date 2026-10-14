@@ -1,9 +1,6 @@
 /**
- * The two limits on worker messages (FIX-1989 D2) an app sets through
- * `hireWorkforce`'s `messages`: how many messages a chain may pass with no
- * person in between (`hopLimit`), and how many one turn may send
- * (`perTurn`). A leaf module, so the session kit reads them without importing
- * the installation.
+ * Limits from `hireWorkforce`'s `messages` (FIX-1989 D2). A leaf, so the
+ * session kit reads them without importing the installation.
  */
 
 /** A chain of worker messages with no person in between stops after this many, when the app sets none. */

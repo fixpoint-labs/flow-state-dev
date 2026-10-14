@@ -43,11 +43,11 @@ import type { NoticePolicy } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { DELEGATE_SERVER_OWNED, delegateStateShape, type DelegateRecord } from "../delegates/delegate-list";
 import { defineWorkerDelegates, type TaskDelegates } from "../delegates/worker-delegates";
-import { messageHopStateShape, MESSAGE_HOP_STATE } from "../messages/hop";
+import { messageHopStateShape } from "../messages/hop";
+import { WORKER_MESSAGE_ENTRY } from "../messages/keys";
 import { workerMessagesResources } from "../messages/message-log";
 import { defineMessageWorkerCapability } from "../messages/message-tool";
-import { WORKER_MESSAGE_ENTRY } from "../messages/send-message";
-import { workerMessageEntry, workerMessageSeenStateShape, WORKER_MESSAGES_SEEN_STATE } from "../messages/worker-message-entry";
+import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/worker-message-entry";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
@@ -63,6 +63,12 @@ import {
   taskSettledEntry
 } from "./task-settled";
 
+/** The session state worker messages keep (FIX-1989): hop count and acted-on ids. */
+export const workerMessageStateShape = { ...messageHopStateShape, ...workerMessageSeenStateShape } as const;
+
+/** {@link workerMessageStateShape}'s keys, for a flow's `session.serverOwned`. */
+export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
+
 /**
  * The session-state fields this kit's delegate list and board write, and only
  * they: what a flow declares as `session.serverOwned`. `installation.session()`
@@ -71,18 +77,8 @@ import {
 export const SESSION_BOARD_SERVER_OWNED: readonly string[] = [
   ...DELEGATE_SERVER_OWNED,
   ...CONVERSATION_BOARD_SERVER_OWNED,
-  MESSAGE_HOP_STATE,
-  WORKER_MESSAGES_SEEN_STATE
+  ...WORKER_MESSAGE_SERVER_OWNED
 ];
-
-/**
- * The session state worker messages keep (FIX-1989): the session's hop count
- * and the message ids it has acted on. Both server-owned.
- */
-export const workerMessageStateShape = { ...messageHopStateShape, ...workerMessageSeenStateShape } as const;
-
-/** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
-export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = [MESSAGE_HOP_STATE, WORKER_MESSAGES_SEEN_STATE];
 
 /** What a session board is built from. */
 export interface SessionBoardOptions {
@@ -146,10 +142,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * (FIX-1817): one entry for the model block's `uses`, beside `tools`.
      */
     questions: questionPark,
-    /**
-     * `messageWorker` (FIX-1989), on every turn of a session that runs a
-     * worker: one entry for the model block's `uses`, beside `tools`.
-     */
+    /** `messageWorker`, for the model block's `uses`, beside `tools`. */
     messages,
     /** Whether the running session files now: one of its delegates takes a task. A task session files its task's pieces. */
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
@@ -168,8 +161,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /**
      * The internal entries the board needs on its flow: a run of the board,
      * the notice of a task the session filed, a split task's settle and
-     * the cancel of its pieces, and a worker's message (`onWorkerMessage`,
-     * FIX-1989), which wakes the turn under the same policy as a notice.
+     * the cancel of its pieces, and a worker's message (`onWorkerMessage`).
      * Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken

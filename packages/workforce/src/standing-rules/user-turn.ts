@@ -26,7 +26,7 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
 /**
  * Mark this request as a user's turn. Skips a task session and a
  * conversation's delegate session: that message is task input. A person's
- * turn also starts the worker-message hop count again, at 0 (FIX-1989 D2).
+ * turn starts the hop count at 0.
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;

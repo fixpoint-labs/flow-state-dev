@@ -1,16 +1,8 @@
 /**
- * How a worker hears a message (FIX-1989): the `onWorkerMessage` internal
- * entry, on every flow that carries the session kit.
- *
- * The payload names a message id and nothing else: the row in the user's
- * message log is read here, so the sender, the text and the hop count are
- * what the sending turn's server code wrote. The entry acts on a message id
- * once (a versioned dedupe write in this session), so a copy sent twice wakes
- * the recipient once. Then the message lands as a line under the sender's
- * name, the session's hop count becomes the message's, and the recipient's
- * turn is woken to read it and decide whether it needs an answer. A worker in
- * the middle of a turn hears it after that turn, as a task's notice does: the
- * entry waits on the reply line.
+ * The `onWorkerMessage` entry (FIX-1989). The payload is a message id; the
+ * row is read here. A session acts on an id once. The line is under the
+ * sender's name, and the turn waits out any running turn
+ * (`AFTER_REPLY_CONCURRENCY`), the same wait a task notice uses.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";

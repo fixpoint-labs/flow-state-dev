@@ -1,14 +1,8 @@
 /**
- * A message log row's shape and the log's pinned names (FIX-1989): a leaf
- * module (zod only), so a browser reads the log with the schema the server
- * writes it with. The log itself is `message-log.ts`.
- *
- * The message log: one row per message a worker sent another, in
- * the user's own scope. What the Messages view reads, what an answer is routed
- * by (the row keeps where an answer to it goes), and what survives a restart.
- *
- * Written by the server only, from the sending turn's own session: the sender,
- * the hop count and the sessions are never tool input.
+ * A message row and the log's pinned names (FIX-1989). Zod only, so a
+ * browser reads the schema the server writes. The collection is
+ * `message-log.ts`. Server-written: sender, hop and sessions are never
+ * tool input.
  */
 import { z } from "zod";
 

@@ -1,20 +1,8 @@
 /**
- * The hop count (FIX-1989 D2): how many worker messages a turn is from the
- * last person's turn, so a ring of workers passing messages on stops however
- * many workers it goes through.
- *
- * Written by the server only. A session keeps its current count in a
- * server-owned session-state field; a turn copies it into request state when
- * it starts from something that sets it:
- *
- * - a person's turn writes 0, at the person's-turn mark (`markUserTurn`);
- * - a turn a message wakes is at that message's count (`onWorkerMessage`);
- * - a task session is born with its filer's current count, beside the task
- *   chain fields the hand-over sets;
- * - every other turn (a notice's, a post's, a task's) reads the session's.
- *
- * A message is sent at its turn's count plus one. Messages never touch the
- * task chain, and the task chain never touches this.
+ * Server-owned hop count (FIX-1989 D2): worker messages since the last
+ * person's turn. A person's turn writes 0; a message's turn writes that
+ * message's count; a task session is born with its filer's count. A send
+ * uses the turn's count plus one. The task chain is a different counter.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
