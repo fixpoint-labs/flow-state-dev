@@ -279,7 +279,7 @@ function projectSetup(installation: WorkerInstallation) {
 const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
 /** The project tools, by the names the chief of staff's and the project coordinator's `tools:` lines spell. */
-const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "listProjects"];
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "editWorkstream", "listProjects"];
 
 /** The user's projects, with what a coder's task that names no project does next. */
 const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
@@ -978,7 +978,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ...projectCoordinatorTools,
       listLeads: workstreamBlocks.listLeadsTool,
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
-      editWorkstream: workstreamBlocks.editWorkstreamTool,
+      ...(options.withoutProjectTools === true ? {} : { editWorkstream: workstreamBlocks.editWorkstreamTool }),
     },
     uses: [
       // The worker inventory, which the discovery door reads.

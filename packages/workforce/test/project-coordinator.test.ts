@@ -710,6 +710,35 @@ describe("changing her workstreams from the coordinator", () => {
     expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/search" }]);
   });
 
+  it("reopening one gets its record back only through the checked entry: a lead fired since takes none", async () => {
+    const judgment = scripted([{ toolName: "editWorkstream", args: { id: "checkout", status: "on-track" } }]);
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    await h.mark("alice", "checkout", "done");
+    await h.eventually(async () => expect(await h.delegates("alice", id)).toEqual([]));
+    await h.ok("alice", ROSTER_FLOW, await h.openSession("alice", ROSTER_FLOW), "fire", { id: "alice-lead" });
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Reopen checkout." });
+    await h.settled();
+    expect((await entries(h)).find((entry) => entry.id === "checkout")).toMatchObject({ status: "on-track" });
+    // The record add ran the delegate check, which refuses a lead no longer on her roster.
+    expect(await h.delegates("alice", id)).toEqual([]);
+  });
+
+  it("reopening one whose lead is still hers brings its record back", async () => {
+    const judgment = scripted([{ toolName: "editWorkstream", args: { id: "checkout", status: "on-track" } }]);
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    await h.mark("alice", "checkout", "done");
+    await h.eventually(async () => expect(await h.delegates("alice", id)).toEqual([]));
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Reopen checkout." });
+    await h.settled();
+    await h.eventually(async () =>
+      expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/checkout" }])
+    );
+  });
+
   it.each([
     { refused: "no-such-workstream", what: "Bob's billing, by its id", args: { id: "billing", status: "done" } },
     { refused: "other-project", what: "her drafts in another project", args: { project: notes, id: "drafts", status: "done" } }

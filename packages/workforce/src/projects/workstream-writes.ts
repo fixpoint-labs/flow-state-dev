@@ -573,8 +573,12 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     });
     const record = { change: change as RecordChange["change"], worker: workstream.lead, target: workstreamRef({ project: workstream.project, id: workstream.id }) };
     // Written from the owner's coordinator's own turn: the record lands in this
-    // turn, so the hand-off after it finds it (BR-38).
-    if (coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
+    // turn, so the hand-off after it finds it (BR-38). Only an open, whose lead
+    // was just checked, or a removal, which needs no check: re-adding a
+    // reopened workstream's record goes through the checked entry, since its
+    // lead may have left the roster since.
+    const here = before === undefined || change === "remove";
+    if (here && coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
       await changeWorkstreamRecordHere(ctx as never, record);
       return undefined;
     }
