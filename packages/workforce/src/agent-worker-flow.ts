@@ -105,11 +105,9 @@ import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
 
-/**
- * The worker flow name the hire step resolves a record to when it names none, and the
- * key an app registers its own flow under to replace this one.
- */
-export const AGENT_FLOW = "agent";
+// Declared in the leaf keys module, so a browser can name the flow without this one.
+import { AGENT_FLOW } from "./workers/keys";
+export { AGENT_FLOW };
 
 /**
  * The stock model, used when neither the app nor the worker names one.
