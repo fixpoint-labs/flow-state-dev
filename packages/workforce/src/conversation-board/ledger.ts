@@ -60,7 +60,7 @@ export function conversationPartition(view: TaskPartitionContext): Promise<strin
  * The fields of a row a browser reads: what a task screen or a board column
  * draws, and nothing a run keeps for itself (its input, output, metadata and
  * write log stay on the server, BP-015). A row parked on a question shows its
- * question (`feedback`, with `parkedOnQuestion`): it is what waits on a person.
+ * question (`feedback`, with `parkedOnQuestion`): it is what waits on the user.
  */
 export const CONVERSATION_BOARD_CLIENT_FIELDS = [
   "id",
