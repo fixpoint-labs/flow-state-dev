@@ -96,6 +96,13 @@ describe("what a view of its own draws", () => {
     expect(screen.queryByTestId("mine")).toBeNull();
   });
 
+  it("doesn't call a cut-short read empty when what it holds draws nothing: later items may", async () => {
+    read.mockResolvedValue({ items: [{ id: "sc1", requestId: "r", type: "state_change", ts: 1 }], truncated: true });
+    drawn([session("s1")]);
+    expect(await screen.findByTestId("rev-truncated")).toBeTruthy();
+    expect(screen.queryByTestId("rev-conversation-empty")).toBeNull();
+  });
+
   it("keeps its look hooks the same whatever its test id, so one rule styles every conversation", () => {
     const { container } = drawn([]);
     expect(container.querySelector('[data-look="conversation-feed"]')).toBeTruthy();
