@@ -29,7 +29,7 @@ export {
   isDerivedWorkerSessionId,
   type WorkerSessionCriteria
 } from "./workers/derive-session-id";
-export { PROJECT_STATE_KEY, ROSTER_FLOW, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
+export { FILING_SESSION_STATE_KEY, PROJECT_STATE_KEY, ROSTER_FLOW, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
   parseProjectRef,
