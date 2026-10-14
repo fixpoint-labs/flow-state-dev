@@ -57,8 +57,10 @@ export const workerMessageRowSchema = z.object({
   toFlow: z.string().min(1),
   /** Where an answer to this message goes: the sending session, or the sender's own conversation when that session was a task's. */
   answerTo: messageAddressSchema,
-  /** How many worker messages this one is from the last user's turn. */
+  /** How many worker messages this one is from the last user's turn, counted across the whole exchange. */
   hop: z.number().int().min(1),
+  /** The chain the hop is counted in: the user's turn the exchange descends from. Absent on rows from before rows carried one. */
+  chain: z.string().min(1).optional(),
   status: z.enum(MESSAGE_STATUSES),
   /** Why the host refused it, or why it is unconfirmed. */
   reason: z.string().optional(),

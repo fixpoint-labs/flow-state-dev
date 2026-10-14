@@ -7,7 +7,7 @@
  * what the sending turn's server code wrote. The entry acts on a message id
  * once (a versioned dedupe write in this session), so a copy sent twice wakes
  * the recipient once. Then the message lands as a line under the sender's
- * name, the session's hop count becomes the message's, and the recipient's
+ * name, the session's hop count and chain become the message's, and the recipient's
  * turn is woken to read it and decide whether it needs an answer. A worker in
  * the middle of a turn hears it after that turn, as a task's notice does: the
  * entry waits on the reply line.
@@ -104,7 +104,7 @@ export function workerMessageEntry(options: {
       );
       if (first !== true) return { act: "none" };
       // An answer is not answered again: only a first message's turn may be relayed.
-      await startTurnAtHop(ctx as never, row.hop, row.replyTo === undefined ? { [RELAY_STATE]: { id: row.id, from: row.from } } : {});
+      await startTurnAtHop(ctx as never, row.hop, row.chain ?? null, row.replyTo === undefined ? { [RELAY_STATE]: { id: row.id, from: row.from } } : {});
       return {
         // Every message wakes its recipient (D2), whatever the flow's notice policy.
         act: "wake-turn",

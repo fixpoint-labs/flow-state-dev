@@ -14,7 +14,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { messageTurnStateSchema, startTurnAtHop } from "../messages/hop";
+import { messageTurnStateSchema, newChainId, startTurnAtHop } from "../messages/hop";
 import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 
 /** The request-state field the mark is kept in. */
@@ -26,12 +26,13 @@ export const userTurnStateSchema = z.object({ [USER_TURN_STATE]: z.boolean().opt
 /**
  * Mark this request as a user's turn. Skips a task session and a
  * conversation's delegate session: that message is task input. A user's
- * turn also starts the worker-message hop count again, at 0 (FIX-1989 D2).
+ * turn also starts the worker-message hop count again, at 0 in a new chain
+ * (FIX-1989 D2).
  */
 export async function markUserTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
   if (typeof state[TASK_ID_STATE_KEY] === "string" || typeof state[FILING_SESSION_STATE_KEY] === "string") return;
-  await startTurnAtHop(ctx, 0, { [USER_TURN_STATE]: true });
+  await startTurnAtHop(ctx, 0, newChainId(), { [USER_TURN_STATE]: true });
 }
 
 /** Whether this request is a turn a user's own message started. */

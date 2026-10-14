@@ -14,7 +14,8 @@
  * - a coordinator whose routing never runs a turn of its own (round robin,
  *   everyone) refuses: nobody would read the line;
  * - an answer (`replyTo`) names a message the recipient sent this worker;
- * - the hop count stays within the chain limit, and the turn within its sends.
+ * - the hop count stays within the limit, counted across the whole exchange
+ *   (`hop.ts`), and the turn within its sends.
  *
  * Then one row is written to the user's message log, and the message is
  * dispatched to the recipient's `onWorkerMessage`: into its own conversation
@@ -41,11 +42,12 @@ import {
   WORKERS_RESOURCE
 } from "../workers/keys";
 import { parseWorkerRow } from "../workers/worker-row";
-import { TURN_MESSAGED_STATE, TURN_SENT_STATE, turnHopOf } from "./hop";
+import { newChainId, TURN_CHAIN_STATE, TURN_MESSAGED_STATE, TURN_SENT_STATE, turnChainOf, turnHopOf } from "./hop";
 import { WORKER_MESSAGE_ENTRY } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import {
   MAX_MESSAGE_CHARS,
+  messageChainsOf,
   messageLogOf,
   newMessageId,
   type MessageAddress,
@@ -182,29 +184,46 @@ export async function sendWorkerMessage(
   }
 
   // ---- the limits --------------------------------------------------------------
+  // The hop limit counts the whole exchange: a send's count is its place in
+  // its chain's row, and never less than one past its own turn's (a chain
+  // from before rows carried one starts empty). A full chain is refused
+  // before anything is written; the place a send takes is the final word.
   const limits = messageLimitsOf(installation);
-  const hop = turnHopOf(ctx) + 1;
-  if (hop > limits.hopLimit) {
-    return refuse(
-      `hop_limit: this would be message ${hop} in a chain of worker messages with no user in between, and the limit is ${limits.hopLimit}. ` +
+  const chains = messageChainsOf(ctx);
+  const floor = turnHopOf(ctx) + 1;
+  const hopRefusal = (hop: number): SendOutcome =>
+    refuse(
+      `hop_limit: this would be message ${hop} in an exchange of worker messages with no user in between, and the limit is ${limits.hopLimit}. ` +
         "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
     );
-  }
+  const known = turnChainOf(ctx);
+  const counted = known === undefined ? 0 : ((await chains.getOptional(known))?.state.sent.length ?? 0);
+  if (Math.max(floor, counted + 1) > limits.hopLimit) return hopRefusal(Math.max(floor, counted + 1));
   const reserved = await withOutcome(
     (mutator: (s: Readonly<Record<string, unknown>>) => Record<string, unknown>) => ctx.request.atomicState(mutator as never),
     (current: Readonly<Record<string, unknown>>) => {
       const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
-      if (sent >= limits.perTurn) return { state: {}, result: false };
+      if (sent >= limits.perTurn) return { state: {}, result: undefined };
       const messaged = Array.isArray(current[TURN_MESSAGED_STATE]) ? (current[TURN_MESSAGED_STATE] as string[]) : [];
-      return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_MESSAGED_STATE]: [...messaged, input.to] }, result: true };
+      // A turn with no chain yet (one that started before turns kept one) starts one here, for all its sends.
+      const turnChain = typeof current[TURN_CHAIN_STATE] === "string" ? (current[TURN_CHAIN_STATE] as string) : (known ?? newChainId());
+      return {
+        state: { [TURN_SENT_STATE]: sent + 1, [TURN_MESSAGED_STATE]: [...messaged, input.to], [TURN_CHAIN_STATE]: turnChain },
+        result: turnChain
+      };
     }
   );
-  if (reserved !== true) {
+  if (typeof reserved !== "string") {
     return refuse(`per_turn_limit: one turn sends at most ${limits.perTurn} messages, and this one has. Nothing was sent.`);
   }
+  const chain = reserved;
+  const id = newMessageId();
+  const chainRow = await chains.getOrCreate(chain, { sent: [] });
+  await chainRow.pushState("sent", id);
+  const hop = Math.max(floor, chainRow.state.sent.indexOf(id) + 1);
+  if (hop > limits.hopLimit) return hopRefusal(hop);
 
   // ---- the row, then the delivery ----------------------------------------------
-  const id = newMessageId();
   const sessionId = ctx.session.identity.id;
   // A task's session ends with its turn, and nothing runs there again, so an
   // answer to a message sent from one goes to the sender's own conversation.
@@ -226,6 +245,7 @@ export async function sendWorkerMessage(
     toFlow: destination.flow,
     answerTo,
     hop,
+    chain,
     status: "unconfirmed",
     at: Date.now()
   };

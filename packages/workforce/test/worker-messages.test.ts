@@ -184,7 +184,7 @@ describe("the log, read by an app", () => {
 });
 
 describe("an answer", () => {
-  it("is the woken turn's own text when it ends without messaging the sender back, sent as a reply that wakes the asker", async () => {
+  it("is the woken turn's own text when it ends without messaging the sender back, sent as a reply that wakes the sender", async () => {
     const h = boot({
       // The lead answers in plain text, with no messageWorker call.
       judgment: mockGenerator({ script: [{ when: (input) => textOf(input).includes("What is the codename?"), then: { text: "It is Bluebird." } }, fallback] }),
@@ -328,7 +328,7 @@ describe("a message sent from a task's turn", () => {
  * it on to the next worker once; the user's line in otto's conversation
  * starts it.
  */
-function ringScript(): MockGeneratorScriptEntry[] {
+function ringScript(after = ""): MockGeneratorScriptEntry[] {
   const next: Record<string, string> = { otto: "helper-a", "helper-a": "helper-b", "helper-b": "otto" };
   const handled = new Set<string>();
   const step = { toolCalls: [{ toolCallId: "pass", toolName: "messageWorker", args: {} as Record<string, unknown> }] };
@@ -350,8 +350,9 @@ function ringScript(): MockGeneratorScriptEntry[] {
       },
       then: step
     },
-    // No text after passing it on, so no answer is relayed back down the ring.
-    fallback
+    // No text after passing it on, so no answer is relayed back down the ring,
+    // unless the test asks for some.
+    { when: () => true, then: { text: after } }
   ];
 }
 
@@ -409,6 +410,28 @@ function fanOutScript(): MockGeneratorScriptEntry[] {
   ];
 }
 
+describe("the hop limit across a branching exchange", () => {
+  // A worker that both passes a message on and answers it sends two messages
+  // from one; each answer wakes its sender, who passes that on as well. The
+  // limit is the whole exchange's, so the exchange stops at 6 messages in all,
+  // not at 6 down each branch.
+  it("stops everything descending from one user's line at 6 messages in all", async () => {
+    const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript("Passed it on.") }) });
+    try {
+      const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please start the ring" }, "agent");
+      await h.settled();
+
+      const rows = await logRows(h, "alice");
+      expect(rows.some((row) => row.replyTo !== undefined), "the exchange branched: some message is an answer").toBe(true);
+      expect(rows.filter((row) => row.status !== "refused")).toHaveLength(6);
+      expect(rows.map((row) => row.hop).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
 describe("a Lab's own limits", () => {
   it("takes hireWorkforce's messages.hopLimit and messages.perTurn", async () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }), hire: { messages: { hopLimit: 2 } } });
@@ -442,6 +465,8 @@ describe("the per-turn limit", () => {
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.filter((row) => row.from === "otto")).toHaveLength(3);
+      // One turn's sends share its exchange's budget: each takes its own place.
+      expect(rows.map((row) => row.hop).sort((a, b) => a - b)).toEqual([1, 2, 3]);
       const refused = (await toolOutputs(h, otto.id)).filter((output) => /per_turn_limit/.test(JSON.stringify(output)));
       expect(refused).toHaveLength(2);
     } finally {
