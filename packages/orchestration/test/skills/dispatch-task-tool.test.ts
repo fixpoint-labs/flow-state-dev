@@ -185,21 +185,16 @@ describe("dispatchTask replayed after the team changed (BR-15)", () => {
 });
 
 describe("a new task's input is an object, never its JSON as a string", () => {
-  // A model handed a schema with no type for `input` may send the payload as a
-  // JSON string. Every reader of the row then misses its fields: a coder bound
-  // to a project reads `input.project`, finds none, and its run is refused.
   const project = { project: { visibility: "shared", id: "shift-manager" } };
-  const toolsOf = () =>
-    taskToolsForTurn(async () => {
-      throw new Error("unused");
-    }, () => team(["eng.coder"]).roster, { dispatches: true })({});
+  const base = { goal: "Create a file and commit it", assignee: "eng.coder" };
+  const tools = taskToolsForTurn(async () => {
+    throw new Error("unused");
+  }, () => team(["eng.coder"]).roster, { dispatches: true })({});
 
   for (const name of ["dispatchTask", "addTask"]) {
     it(`${name} refuses the payload as a string, so the model is told to send the object`, () => {
-      const tool = toolsOf().find((t) => (t as { name?: string }).name === name) as unknown as {
-        inputSchema: { safeParse(v: unknown): { success: boolean } };
-      };
-      const base = { goal: "Create a file and commit it", assignee: "eng.coder" };
+      const tool = tools.find((t) => (t as { name?: string }).name === name);
+      if (tool === undefined) throw new Error(`${name} is not offered`);
       expect(tool.inputSchema.safeParse({ ...base, input: JSON.stringify(project) }).success).toBe(false);
       expect(tool.inputSchema.safeParse({ ...base, input: project }).success).toBe(true);
     });
