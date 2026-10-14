@@ -83,11 +83,16 @@ describe("what a view of its own draws", () => {
     expect(read.mock.calls[0]![1]).toBe("s1");
   });
 
-  it("says what it is in a session that holds only state writes, rather than drawing an empty list", async () => {
+  it("says what it is in a session that holds only items the feed never draws, rather than drawing an empty list", async () => {
     // Reading the worker's standing rules runs in this session before any line is sent, and the Lab
     // keeps the write it makes: the user has still said nothing, so the screen must say so.
     read.mockResolvedValue({
-      items: [{ id: "sc1", requestId: "r", type: "state_change", ts: 1 }, { id: "rc1", requestId: "r", type: "resource_change", ts: 1 }],
+      items: [
+        { id: "sc1", requestId: "r", type: "state_change", ts: 1 },
+        { id: "rc1", requestId: "r", type: "resource_change", ts: 1 },
+        { id: "sr1", requestId: "r", type: "suspension_resume", ts: 1 },
+        { id: "co1", requestId: "r", type: "continuation", ts: 1 },
+      ],
       truncated: false,
     });
     drawn([session("s1")]);

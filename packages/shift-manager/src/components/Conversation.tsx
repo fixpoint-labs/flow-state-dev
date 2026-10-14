@@ -35,8 +35,11 @@ import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
-/** Items that only say a state or resource changed: nothing in them is for the user to read. */
-const INVALIDATIONS = new Set<string>(["state_change", "resource_change"]);
+/**
+ * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
+ * `NON_RENDERABLE_TYPES` in `@flow-state-dev/react`'s `ItemRenderer.ts`.
+ */
+const UNDRAWN = new Set<string>(["state_change", "resource_change", "suspension_resume", "continuation"]);
 
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
@@ -129,15 +132,15 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line. A state or resource
-  // change only says something moved, and the Lab keeps one for every write (a standing-rules read
-  // writes one into the session before any line is sent), so the feed leaves them out.
+  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items it never draws
+  // are left out, so a session holding only those (a standing-rules read writes a state change into
+  // it before any line is sent) counts as empty.
   const shown = useMemo(
     () =>
       read === undefined
         ? []
         : buildItemRenderStream(
-            read.items.filter((item) => !INVALIDATIONS.has(item.type)),
+            read.items.filter((item) => !UNDRAWN.has(item.type)),
             shiftManagerRenderers,
             { groupToolCalls: true },
           ),
