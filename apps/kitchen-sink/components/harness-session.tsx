@@ -152,10 +152,6 @@ function SessionBody({ label, sessionId, models }: { label: string; sessionId: s
   );
 }
 
-/**
- * The model the session runs: its name and id. A session stored before models
- * could be picked has none, and runs on the mode's default, which this says.
- */
 function SessionModel({ model, models, label }: { model: string | undefined; models: ModelChoices; label: string }) {
   const named = model ?? models.fallbackId;
   const name = named === null ? null : (models.models.find((m) => m.id === named)?.label ?? null);

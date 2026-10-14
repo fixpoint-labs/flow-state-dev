@@ -160,12 +160,7 @@ const listCursorModels: CursorModelList = async (env) => {
   return items.map((item) => ({ id: item.id, label: item.displayName || item.id }));
 };
 
-/**
- * What Cursor mode's New session offers: Cursor's own list, with the mode's
- * default preselected (and put first when Cursor doesn't list it). When the
- * list can't be read, the default alone, with the reason. Under the scripted
- * Cursor, the default alone and no reason.
- */
+/** Cursor's list, the mode's default put first when Cursor omits it; the default alone when the list can't be read. */
 export async function cursorModelChoices(list: CursorModelList = listCursorModels): Promise<ModelChoices> {
   const fallback: HarnessModel = { id: CURSOR_DEFAULT_MODEL, label: CURSOR_DEFAULT_MODEL };
   const base = { defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL };

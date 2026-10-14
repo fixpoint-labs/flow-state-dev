@@ -49,12 +49,7 @@ const LISTS: Record<HarnessModeId, () => Promise<ModelChoices>> = {
 const MEMO = Symbol.for("kitchen-sink.harness-models");
 type Memo = typeof globalThis & { [MEMO]?: Map<HarnessModeId, ModelChoices> };
 
-/**
- * The models harness mode `id` offers. A list read in full is kept until the
- * server restarts; one with a reason is asked for again next time.
- *
- * @param lists Each mode's list. A seam for tests.
- */
+/** The models mode `id` offers. `lists` is a seam for tests. */
 export async function harnessModelChoices(
   id: HarnessModeId,
   lists: Record<HarnessModeId, () => Promise<ModelChoices>> = LISTS,

@@ -905,7 +905,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           ? ((await resolveResume(ctx)) ?? "")
           : "";
 
-      // Resolved once, beside the directory and the conversation it runs in.
       const runModel = (typeof model === "function" ? await model(ctx) : model) || undefined;
 
       const sandboxSettings =

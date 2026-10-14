@@ -149,16 +149,11 @@ export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
 export const SCRIPTED_CLAUDE_MODEL = "scripted-claude-code";
 
 /**
- * What Claude Code mode's New session offers: Claude Code's own list, over the
- * run's environment, each model under the id it resolves to, its default
- * preselected.
- *
- * When the list can't be read, nothing is offered and New session can't start
- * a session; the reason says why, and the next load asks again. There is no
- * fallback id: Kitchen Sink keeps no Claude model name of its own, which would
- * age as Claude Code's default moves, and a session must be born with a
- * concrete model (D1). Claude Code that can't list its models is unlikely to
- * run a turn either.
+ * Claude Code's own list. When it can't be read, nothing is offered and New
+ * session can't start: Kitchen Sink keeps no Claude model name of its own,
+ * which would age as Claude Code's default moves, and a session must be born
+ * with a concrete model (D1). The next load asks again. Claude Code that
+ * can't list its models is unlikely to run a turn either.
  */
 export async function claudeCodeModelChoices(
   list: (env: Record<string, string>) => Promise<ClaudeModelList> = (env) => listClaudeModels({ env }),

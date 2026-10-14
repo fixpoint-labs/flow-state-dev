@@ -1,16 +1,6 @@
 /**
- * Goal check: each coding harness in Kitchen Sink runs the model its session
- * picked, on every turn and resume, or fails in its own words.
- *
- * Real path: the real harnesses on a host signed in to all three, `next dev`,
- * one real browser. Out of CI. See goal.md for the contract.
- *
- * Legs, per mode (`claude-code`, `codex`, `cursor`):
- *
- *   <mode>.host   the mode is available here; otherwise the picker's reason, and its other legs are not graded.
- *   <mode>.m      after turns 1, 2, a reload and turn 3, the harness's own record grew and names only the picked id.
- *   <mode>.h      the session header names the picked id, before and after the reload.
- *   <mode>.x      a session born with an id the harness never had: the turn fails in words, and nothing ran on another model.
+ * Goal check for `goal.md` beside this file. Real harnesses, `next dev`, one
+ * real browser. Out of CI.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-harness/runs-the-picked-model/run.mts
  * Control:  GOAL_CONTROL=ignore-model (must FAIL at every <mode>.m and <mode>.x, and nothing else)
