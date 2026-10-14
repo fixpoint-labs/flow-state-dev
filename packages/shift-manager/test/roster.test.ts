@@ -20,7 +20,7 @@ describe("BR-13a, BR-13b: which group a worker sits in", () => {
     expect(toWorker({ id: "eng.coder", kind: "coder" })).toMatchObject({ id: "eng.coder", team: "eng", name: "coder" });
   });
 
-  it("a person reads a worker and its team by their display names; ids stay the wiring", () => {
+  it("a user reads a worker and its team by their display names; ids stay the wiring", () => {
     expect(toWorker({ id: "eng.em", kind: "em", name: "Engineering Manager", teamName: "Engineering" })).toMatchObject({
       id: "eng.em",
       team: "eng",

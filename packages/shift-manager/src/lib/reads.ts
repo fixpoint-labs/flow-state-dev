@@ -108,7 +108,7 @@ export type Worker = {
   teamName: string;
   /** Its id without the team: what a board may name it by. */
   name: string;
-  /** What a person reads it by: its display name, or its id when it has none. */
+  /** What a user reads it by: its display name, or its id when it has none. */
   displayName: string;
 };
 
@@ -371,7 +371,7 @@ function time(value: unknown): number | null {
 
 /**
  * The id of the group an org worker sits in: a worker whose address has no
- * team, such as a chief of staff or a researcher. A person reads it as
+ * team, such as a chief of staff or a researcher. A user reads it as
  * {@link GENERAL_TEAM_NAME}. The underscore keeps it outside Workforce's team
  * ids (lowercase letters, digits and hyphens), so a team folder named
  * `general` stays its own team.

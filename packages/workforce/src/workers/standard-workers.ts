@@ -16,7 +16,7 @@ import { STANDARD_WORKERS_PATTERN } from "./keys";
 
 /**
  * What a standard worker's projected row says: which flow it runs on, what it's
- * for, and the names a person reads it and its team by (its file's `name:` and
+ * for, and the names a user reads it and its team by (its file's `name:` and
  * its team's `TEAM.md` `name:`, each `null` when unset).
  */
 export const standardWorkerRowSchema = z.object({
