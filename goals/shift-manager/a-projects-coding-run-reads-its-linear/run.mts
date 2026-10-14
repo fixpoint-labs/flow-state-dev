@@ -67,8 +67,7 @@ const KEY = process.env.LINEAR_API_KEY ?? "";
 if (KEY === "") fail("LINEAR_API_KEY is not set: the check reads the held-out issue from Linear's API and sets it as the filer's key.");
 // No seed: the stored key is the one that must pass.
 delete process.env.LINEAR_MCP_API_KEY;
-// The Lab runs in this process, and a host's own children inherit its environment. A person's
-// server holds the key they set on Settings in its store, not in its environment, so neither does this one.
+// This process is the Lab, so a child inherits its environment. A person's server keeps the Settings key in the store.
 delete process.env.LINEAR_API_KEY;
 
 const CODER = "eng.coder";

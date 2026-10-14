@@ -1,43 +1,13 @@
 /**
- * Goal check: on a fresh open of `pnpm shift-manager:dev`, with no config
- * edited, a person picks an item on FSD and one on Shift Manager, and Claude
- * Code works each in a worktree of their checkout, with Linear in reach. See
- * goal.md for the contract.
- *
- * The command is started as a person types it, from the checkout's root, on
- * the store it ships with (moved aside first, and put back after, so the open
- * is fresh). Chromium drives the page as the Lab's owner:
- *
- *   key  Settings: the person sets their Linear key in the `linear` row.
- *   a    the chief of staff is asked, in its composer, to have the coder read
- *        a held-out Linear issue named by its identifier only, on FSD.
- *   b    while a's run works, the same composer asks for one file, stamped
- *        with this run's stamp, committed on Shift Manager.
- *
- * What happened is read from git and from the Lab's routes, never from the
- * page: two new worktrees of the checkout, under the profile's runs folder,
- * both present while both tasks are unsettled; each branch in the checkout;
- * both tasks `completed`; a's run holds a `mcp__linear__` tool call and its
- * answer carries the title Linear's API gives; b's branch commits the file
- * with the stamp. Neither branch carries the DevTeam demo brief's work
- * (`src/greeting.js`, its commit marker).
- *
- * Controls (`GOAL_CONTROL=list`), each must FAIL `a:title`:
- *   no-linear  FSD's MCP servers cleared through the projects flow before asking
- *   no-key     the Settings step skipped (and `LINEAR_MCP_API_KEY` is never set)
- * Today's `main` before the epic: `GOAL_CHECKOUT=<a checkout at that commit>`
- * runs the same legs against it; both legs must FAIL.
- *
- * Needs: LINEAR_API_KEY (the held-out issue, and the key the person pastes),
- * a Claude Code credential (sign-in or ANTHROPIC_API_KEY), the chief of
- * staff's and the EM's model keys, git, Chromium.
+ * Closure check for a fresh `pnpm shift-manager:dev`. The contract, controls,
+ * and verdict log are goal.md.
  *
  * Run: PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-fresh-open-works-fsd-and-shift-manager/run.mts
  */
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { goalTmpDir, intentFreeEnv, REPO_ROOT, RUN_STAMP, runGoal } from "../../lib/index.mts";
+import { goalTmpDir, intentFreeEnv, REPO_ROOT, RUN_STAMP, runGoal, stopProcessGroup } from "../../lib/index.mts";
 import { labRoutes, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -107,7 +77,6 @@ async function heldOutIssue(): Promise<{ identifier: string; title: string }> {
   throw new Error(`none of Linear's ${issues.nodes.length} most recently updated issues is held out from this checkout`);
 }
 
-/** The checkout's worktrees under the profile's runs folder: each one's path and branch. */
 function runWorktrees(): Array<{ path: string; branch?: string }> {
   return git("worktree", "list", "--porcelain")
     .split("\n\n")
@@ -115,7 +84,7 @@ function runWorktrees(): Array<{ path: string; branch?: string }> {
     .filter((w) => w.path.startsWith(`${RUNS}${sep}`));
 }
 
-/** Start the command as a person types it, in its own process group so a stop takes Vite with it. */
+/** `pnpm shift-manager:dev` as a person types it, detached so a stop takes Vite with it. */
 async function startCommand(env: Record<string, string>) {
   const child = spawn("pnpm", ["shift-manager:dev", "--port", "0", "--no-open"], { cwd: CHECKOUT, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
   let log = "";
@@ -124,17 +93,9 @@ async function startCommand(env: Record<string, string>) {
   let code: number | null | undefined;
   const exited = new Promise<void>((resolve) => child.on("exit", (c) => ((code = c), resolve())));
   const stop = async () => {
-    try {
-      process.kill(-child.pid!, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
+    stopProcessGroup(child);
     await Promise.race([exited, sleep(10_000)]);
-    try {
-      process.kill(-child.pid!, "SIGKILL");
-    } catch {
-      // Gone.
-    }
+    stopProcessGroup(child, "SIGKILL");
   };
   for (const until = Date.now() + 180_000; Date.now() < until; await sleep(250)) {
     const served = servedAddresses(log);
@@ -203,7 +164,6 @@ await runGoal(async (failures) => {
     }
 
     // ---- a, then b while a works: two asks in the chief of staff's composer ---
-    const asked: Array<{ leg: string; delivered: boolean }> = [];
     await page.goto(served.origin);
     for (const [leg, ask] of [
       ["a", askA],
@@ -214,7 +174,6 @@ await runGoal(async (failures) => {
         await input.fill(ask);
         await page.getByTestId("cos-composer-send").click();
         await page.waitForFunction(() => document.querySelector("[data-testid=cos-composer-status]")?.getAttribute("data-state") === "delivered", undefined, { timeout: 180_000 });
-        asked.push({ leg, delivered: true });
       } catch (error) {
         note(`${leg}:asked`, `the composer never read delivered: ${String(error).split("\n")[0]}`);
       }
@@ -223,7 +182,7 @@ await runGoal(async (failures) => {
     const conversation = (await http.sessions()).filter((s) => workerOf(s) === "chief-of-staff" && s.parentSessionId == null).sort((x, y) => y.createdAt - x.createdAt)[0];
 
     // ---- watch both tasks until they settle --------------------------------
-    /** Every row the conversation filed: on its own board, or on the boards of the EM sessions under it. */
+    // The conversation's board, then the boards of the EM sessions under it.
     const filed = async (): Promise<Array<Record<string, any>>> => {
       if (conversation === undefined) return [];
       const rows = ((await http.act("coordinator", conversation.id, "listTasks_tasks", {})).output?.tasks ?? []) as Array<Record<string, any>>;
@@ -291,7 +250,6 @@ await runGoal(async (failures) => {
       note("b:commits-the-file", `no new branch commits ${file}`);
     }
 
-    // a's run: a Linear tool call in its session, and the title in its answer.
     const runOf = rows.a?.run as { sessionId?: string; requestId?: string } | undefined;
     const items = runOf?.sessionId === undefined ? [] : await http.items(runOf.sessionId, "");
     const linearCalls = items.filter((i) => String(i.toolCall?.name ?? "").startsWith("mcp__linear__"));
