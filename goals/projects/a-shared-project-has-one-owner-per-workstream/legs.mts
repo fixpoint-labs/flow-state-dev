@@ -512,7 +512,7 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   for (const turn of workTurns) {
     c.notes.push(`work turn ${turn.status}: tools ${turn.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${turn.reply.slice(0, 300).replace(/\n/g, " ")}${turn.providerRetry === undefined ? "" : ` (after a provider error: ${turn.providerRetry})`}`);
   }
-  if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "dispatchTask"))) c.notes.push("the coordinator called dispatchTask on neither ask");
+  if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "dispatchTask"))) c.notes.push("the coordinator called dispatchTask on no work ask");
   const postIds = new Set(workTurns.map((t) => t.requestId).filter((id): id is string => id !== null));
   const aliceTarget = `shared/${S.id}/${d.aliceWs.id}`;
   const bobTarget = `shared/${S.id}/${d.bobWs.id}`;
