@@ -616,9 +616,9 @@ Adapters must implement all of these options:
 
 Every path that creates a session (the create route, an action to a session
 id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
-into a child session) creates it from an initial state: the create body's
-`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()`'s
-`{ key, state }` session names. The flow's session `stateSchema` parses it. A
+into a child session or into an absent `{ id, state }` target) creates it
+from an initial state: the create body's `state`, `fsdev run --seed-session`,
+or the `state` a dispatch's `{ key, state }` or `{ id, state }` session names. The flow's session `stateSchema` parses it. A
 flow that binds its sessions (a top-level `.readonly()` field or a
 `createCheck`) refuses a state the schema refuses; any other flow keeps it as
 sent, for its actions to validate when they run. `session.serverOwned`
