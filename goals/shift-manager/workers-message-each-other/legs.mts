@@ -531,7 +531,13 @@ export async function leg3(world: World): Promise<LegResult> {
   await quiet(alice, 120_000);
   const before = new Set((await logOf(alice)).map((m) => m.id));
   await talk(turns, "3", alice, RESEARCHER, world.conversation[RESEARCHER]!, `Start the ring: message ${HELPER_A} with "ring ${ring}".`);
-  const ringRows = async () => (await logOf(alice)).filter((m) => !before.has(m.id) && m.text.includes(ring));
+  // The ring's exchange: every message since in the chain its first message started, whether or
+  // not it repeats the ring's word (an answer relayed back down the ring counts against the 6 too).
+  const ringRows = async () => {
+    const fresh = (await logOf(alice)).filter((m) => !before.has(m.id));
+    const start = fresh.find((m) => m.from === RESEARCHER && m.to === HELPER_A && m.text.includes(ring));
+    return start?.chain === undefined ? fresh.filter((m) => m.text.includes(ring)) : fresh.filter((m) => m.chain === start.chain);
+  };
   // Wait until the ring is quiet, or stop it at 20.
   let rows = await ringRows();
   for (const end = Date.now() + 600_000; Date.now() < end && rows.length < 20; await sleep(5_000)) {
@@ -540,7 +546,7 @@ export async function leg3(world: World): Promise<LegResult> {
   }
   rows = await ringRows();
   const sent = rows.filter((m) => m.status !== "refused");
-  r.notes.push(`ring: ${rows.sort((a, b) => a.hop - b.hop).map((m) => `${m.from}>${m.to}@${m.hop}`).join(", ")}`);
+  r.notes.push(`ring: ${rows.sort((a, b) => a.hop - b.hop).map((m) => `${m.from}>${m.to}@${m.hop}${m.text.includes(ring) ? "" : " (no ring word)"}`).join(", ")}`);
   // The limit is the whole exchange's (D2): however the ring branches, 6 messages in all.
   if (sent.length !== 6) {
     r.failures.push(`3:ring-stops-at-6 — the ring passed ${sent.length} message(s), not 6${sent.length >= 20 ? " (the run stopped it at 20)" : ""}`);
