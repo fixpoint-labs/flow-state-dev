@@ -203,7 +203,7 @@ describe("sending", () => {
     await send("hello");
     await send("hello");
     const [first, second] = sendTurn.mock.calls.map((call) => (call[1] as { sessionId: string }).sessionId);
-    // The address another worker's message lands in, so the person and the workers share one conversation.
+    // The address another worker's message lands in, so the user and the workers share one conversation.
     expect(first).toBe(s1);
     expect(second).toBe(first);
     // Opened through Workforce, naming the worker, before the door's request runs in it.

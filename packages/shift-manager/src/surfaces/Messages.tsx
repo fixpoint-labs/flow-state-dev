@@ -2,7 +2,7 @@
  * Messages (FIX-1989): who talked to whom. Every message one of the user's
  * workers sent another, from the user's message log, beside Tasks.
  *
- * Newest first, grouped by thread (a first message and its answers), one line
+ * Newest first, grouped by exchange (a first message and its answers), one line
  * per message: from, to, when, and the text's first line. Each side is a
  * link that opens the session that holds it: the sender's, and the one the
  * message landed in. A message the recipient's host refused, or whose
@@ -14,7 +14,7 @@
 import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
 import type { Gaps } from "../gaps";
 import { workerLabel, type LoadedSnapshot } from "../lib/derive";
-import { firstLine, threadsOf, useMessages, type WorkerMessageRow } from "../lib/messages";
+import { firstLine, exchangesOf, useMessages, type WorkerMessageRow } from "../lib/messages";
 import { projectReaderOf } from "../lib/projects";
 import { navigate } from "../lib/routes";
 import { clockTime } from "../lib/shell";
@@ -78,7 +78,7 @@ function MessageLine({ row }: { row: WorkerMessageRow }) {
 export function Messages({ snapshot }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const reader = projectReaderOf(snapshot.sessions);
   const { rows, failure, reread } = useMessages(reader, snapshot.readAt);
-  const threads = rows === undefined ? [] : threadsOf(rows);
+  const exchanges = rows === undefined ? [] : exchangesOf(rows);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="messages">
@@ -99,16 +99,16 @@ export function Messages({ snapshot }: { snapshot: LoadedSnapshot; gaps: Gaps })
           <p className="text-sm text-muted-foreground" data-testid="messages-reading">
             Reading messages…
           </p>
-        ) : threads.length === 0 ? (
+        ) : exchanges.length === 0 ? (
           <EmptyState title="No messages yet" testId="messages-empty">
             When one of your workers messages another, it shows here.
           </EmptyState>
         ) : (
-          <ol className="flex flex-col gap-3" data-testid="message-threads">
-            {threads.map((thread) => (
-              <li key={thread.id} className="border-l-2 border-foreground/20 pl-3" data-testid="message-thread" data-thread-id={thread.id}>
+          <ol className="flex flex-col gap-3" data-testid="message-exchanges">
+            {exchanges.map((exchange) => (
+              <li key={exchange.id} className="border-l-2 border-foreground/20 pl-3" data-testid="message-exchange" data-exchange-id={exchange.id}>
                 <ol>
-                  {thread.messages.map((row) => (
+                  {exchange.messages.map((row) => (
                     <MessageLine key={row.id} row={row} />
                   ))}
                 </ol>

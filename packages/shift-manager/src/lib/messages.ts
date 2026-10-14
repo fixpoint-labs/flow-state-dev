@@ -20,8 +20,8 @@ export type { WorkerMessageRow };
 /** How often the view reads the log again while it is open. */
 export const MESSAGES_POLL_MS = 5_000;
 
-/** One thread: a first message and every answer to it, newest first. */
-export type MessageThread = {
+/** One exchange: a first message and every answer to it, newest first. */
+export type MessageExchange = {
   /** The first message's id. */
   id: string;
   /** Its messages, newest first. */
@@ -40,11 +40,11 @@ export function toMessageRows(items: readonly { clientData?: unknown }[]): Worke
   return rows;
 }
 
-/** The log as threads, the thread with the newest message first, and each thread's messages newest first. */
-export function threadsOf(rows: readonly WorkerMessageRow[]): MessageThread[] {
-  const byThread = new Map<string, WorkerMessageRow[]>();
-  for (const row of rows) byThread.set(row.thread, [...(byThread.get(row.thread) ?? []), row]);
-  return [...byThread.entries()]
+/** The log as exchanges, the exchange with the newest message first, and each exchange's messages newest first. */
+export function exchangesOf(rows: readonly WorkerMessageRow[]): MessageExchange[] {
+  const byExchange = new Map<string, WorkerMessageRow[]>();
+  for (const row of rows) byExchange.set(row.exchange, [...(byExchange.get(row.exchange) ?? []), row]);
+  return [...byExchange.entries()]
     .map(([id, messages]) => {
       const sorted = [...messages].sort((a, b) => b.at - a.at || b.id.localeCompare(a.id));
       return { id, messages: sorted, latest: sorted[0]!.at };

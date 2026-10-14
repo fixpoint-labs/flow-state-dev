@@ -2,7 +2,7 @@
 /**
  * Messages (FIX-1989): who talked to whom, read from the user's message log.
  * Jake asked to see it, so the view must show both sides of every message,
- * newest first and grouped by thread, with each side opening the session
+ * newest first and grouped by exchange, with each side opening the session
  * that holds it; and the sender's conversation must show a message it sent
  * as one, not as a buried tool call.
  */
@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolOutputItem } from "@flow-state-dev/core/items";
 import { GAPS } from "../src/gaps";
 import type { LoadedSnapshot } from "../src/lib/derive";
-import { firstLine, threadsOf, toMessageRows, type WorkerMessageRow } from "../src/lib/messages";
+import { firstLine, exchangesOf, toMessageRows, type WorkerMessageRow } from "../src/lib/messages";
 import { parseRoute, pathFor } from "../src/lib/routes";
 
 const readPages = vi.fn();
@@ -27,7 +27,7 @@ import { ToolLineGroup } from "../src/components/ToolLine";
 
 const row = (over: Partial<WorkerMessageRow> & Pick<WorkerMessageRow, "id" | "from" | "to" | "at">): WorkerMessageRow => ({
   text: "hello",
-  thread: over.id,
+  exchange: over.id,
   fromSession: `s_${over.from}`,
   fromFlow: "agent",
   toSession: `s_${over.to}`,
@@ -39,7 +39,7 @@ const row = (over: Partial<WorkerMessageRow> & Pick<WorkerMessageRow, "id" | "fr
 });
 
 const ask = row({ id: "msg_a", from: "researcher", to: "coordinator", at: 1_000, text: "What is the codename?\nThanks." });
-const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, thread: "msg_a", replyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
+const answer = row({ id: "msg_b", from: "coordinator", to: "researcher", at: 3_000, exchange: "msg_a", replyTo: "msg_a", text: "BLUE-HERON", hop: 2 });
 const other = row({ id: "msg_c", from: "helper-a", to: "helper-b", at: 2_000, status: "refused", reason: "dispatch-rejected: down" });
 
 const snapshot = { sessions: [{ id: "workforce-roster-own-u_1", flowKind: "workforce-roster", parentSessionId: null }], readAt: 1 } as unknown as LoadedSnapshot;
@@ -50,11 +50,11 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("the message log, as threads", () => {
-  it("puts the thread with the newest message first, each thread newest first", () => {
-    const threads = threadsOf([other, ask, answer]);
-    expect(threads.map((t) => t.id)).toEqual(["msg_a", "msg_c"]);
-    expect(threads[0]!.messages.map((m) => m.id)).toEqual(["msg_b", "msg_a"]);
+describe("the message log, as exchanges", () => {
+  it("puts the exchange with the newest message first, each exchange newest first", () => {
+    const exchanges = exchangesOf([other, ask, answer]);
+    expect(exchanges.map((t) => t.id)).toEqual(["msg_a", "msg_c"]);
+    expect(exchanges[0]!.messages.map((m) => m.id)).toEqual(["msg_b", "msg_a"]);
   });
 
   it("leaves out a row that isn't a message, rather than drawing half of one", () => {
