@@ -51,7 +51,6 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
           finishReason: "tool-calls",
         };
       }
-      // "post to <worker>: ..." hands the post to that delegate.
       const post = /^post to ([a-z.-]+):/i.exec(said);
       if (post !== null) {
         return {
@@ -70,12 +69,7 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
   } as GeneratorModel;
 }
 
-/**
- * An agent worker's model, with a bug planted in its turn: a post that says
- * `[post-bug]` makes it throw. Anything else goes to the real model.
- *
- * @param real The model the Lab resolved for the turn.
- */
+/** Throw when a message contains `[post-bug]`; every other turn is `real`. */
 export function plantedAgentModel(real: GeneratorModel): GeneratorModel {
   const tripped = (options: unknown) =>
     ((options as { messages?: Array<{ content: unknown }> }).messages ?? []).some((m) => textOf(m.content).includes("[post-bug]"));
