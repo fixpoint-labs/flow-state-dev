@@ -1311,9 +1311,7 @@ function defineAgentFlowAround(
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      // A reply: a task's notice to this session waits for it to end. In a
-      // task session whose task has finished, the reply reopens the task
-      // instead, and the task's next attempt answers (FIX-1764).
+      // A reply: its notice waits for it to end. A finished task session reopens the task instead (FIX-1764).
       run: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
         block: replyOrReopen(run),

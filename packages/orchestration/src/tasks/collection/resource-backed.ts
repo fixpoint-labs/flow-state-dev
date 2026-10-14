@@ -898,10 +898,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async reopen(id, options) {
-      // Fenced to the one edge it owns (FIX-1764): a finished row (`completed`,
-      // `errored` or `cancelled`) back to `pending`. Checked inside the atomic
-      // write, so a row that is not finished comes back `declined` naming the
-      // status it found. `ifAllowed` is forced, the way `unpark` forces it.
+      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
       return transitionRef(
         id,
         "pending",

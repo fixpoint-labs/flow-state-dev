@@ -48,6 +48,9 @@ async function finishedTaskOf(ctx: BlockContext): Promise<FinishedTask | undefin
   if (taskId === undefined || partition === undefined || filingFlow === undefined) return undefined;
   const ledger = await conversationLedgerAt(ctx, partition);
   if (ledger === undefined) return undefined;
+  // The common case, a message while the task runs, stops at its own row.
+  const root = ledger.get(taskId);
+  if (root === undefined || !isTerminalStatus(root.status)) return undefined;
   const rows = ledger.list().filter((task) => (task.followUpOf ?? task.id) === taskId) as Task[];
   if (rows.length === 0 || rows.some((task) => !isTerminalStatus(task.status))) return undefined;
   const row = rows.reduce((latest, task) => (task.createdAt > latest.createdAt ? task : latest));

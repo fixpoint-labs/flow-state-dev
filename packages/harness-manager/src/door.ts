@@ -20,17 +20,6 @@
  * | finished (`completed`, `errored` or `cancelled`) | keeps the turn for the next attempt, reopens the row and drains: the next attempt resumes the same coding session with the line (FIX-1764) |
  * | not started in this session, someone else's, or on a harness that named no session | refuses, by name |
  *
- * ## A finished task is reopened
- *
- * A person's message on a finished task picks it up again (FIX-1764): the
- * door keeps the turn for the attempt after the last one, puts the row back in
- * the queue (`reopen`, which only a finished row takes) and runs the board's
- * drain, so the task reads in progress again and its next attempt resumes the
- * coding session the last one confirmed. A finished row's claim was cleared
- * when it settled, so the board says where its drain runs
- * ({@link MessageDoorBoard.reopenIn}); a board that can't say refuses the
- * line, as does a run whose harness never confirmed a session.
- *
  * ## A run that is still starting
  *
  * Every attempt opens with no confirmed session: the run record clears it when
@@ -365,8 +354,8 @@ async function findRun(
 /** What the decide step hands the re-queue step. */
 type Decided = MessageDoorOutput & {
   requeue: boolean;
-  /** The decide step already put the row back in the queue: it was finished, and is reopened. */
-  reopened: boolean;
+  /** Set when the decide step already put a finished row back in the queue. */
+  reopened?: true;
   /** The session that claimed the row, where its drain runs. */
   resumeIn: string | null;
   /** The board the row is on, so the re-queue resolves the same one. */
@@ -379,7 +368,7 @@ type Decided = MessageDoorOutput & {
 
 const decidedSchema = messageDoorOutputSchema.extend({
   requeue: z.boolean(),
-  reopened: z.boolean(),
+  reopened: z.literal(true).optional(),
   resumeIn: z.string().nullable(),
   collectionId: z.string().nullable(),
   partition: z.string().nullable(),
@@ -389,17 +378,7 @@ const decidedSchema = messageDoorOutputSchema.extend({
 
 /** A decision that re-queues nothing. */
 function answered(outcome: MessageDoorOutput["outcome"], taskId: string): Decided {
-  return {
-    outcome,
-    taskId,
-    requeue: false,
-    reopened: false,
-    resumeIn: null,
-    collectionId: null,
-    partition: null,
-    drain: null,
-    flowKind: null,
-  };
+  return { outcome, taskId, requeue: false, resumeIn: null, collectionId: null, partition: null, drain: null, flowKind: null };
 }
 
 /** Decide what a person's line does to the run, and do it. */
@@ -567,7 +546,6 @@ async function continueRun(board: MessageDoorBoard, row: Task, ctx: BlockContext
     outcome: "continuing",
     taskId: row.id,
     requeue: true,
-    reopened: false,
     resumeIn: row.claimedBy?.sessionId ?? null,
     collectionId: tasks.collectionId,
     partition: tasks.partition ?? null,
@@ -620,11 +598,10 @@ async function continueRun(board: MessageDoorBoard, row: Task, ctx: BlockContext
 }
 
 /**
- * Re-queue a row parked for a turn without charging it (a reopened row is
- * queued already), and run its board's drain in the session that claimed it
- * (for a reopened row, the session its board names), so the next attempt starts now in the
- * run's own session. Any failure here answers `kept`: the turn is kept and the
- * attempt stopped, so the run gets the line from whatever runs the row next.
+ * Put a parked row back in the queue without charging it, then drain in the
+ * session that claimed it. A reopened row is queued already, and drains in
+ * the session its board names. Any failure answers `kept`: the turn stays,
+ * and whatever runs the row next gets the line.
  */
 async function requeue(deps: MessageDoorDeps, decided: Decided, ctx: BlockContext): Promise<MessageDoorOutput> {
   const { outcome, taskId } = decided;
