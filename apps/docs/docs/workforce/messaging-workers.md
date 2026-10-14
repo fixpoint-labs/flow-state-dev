@@ -78,17 +78,19 @@ To answer, the recipient calls `messageWorker` again, back to the sender, with t
 
 The answer goes back to the session the first message was sent from, as a `From chief-of-staff: …` line, and wakes the sender there. If the sender sent the message while working a task, or while answering a coordinator's post, the answer lands in the sender's own conversation with you instead, and wakes it there.
 
-What a recipient writes in its own conversation stays there. The sender only hears an answer sent with `messageWorker`. If the recipient decides the message needs no answer, it sends none, and nothing waits on one.
+If the recipient's turn ends without messaging the sender, the turn's final text goes to the sender as the answer, exactly as if it had been sent with `messageWorker` and `replyTo`. Final text over 8,000 characters is cut to fit. A turn that did message the sender sends nothing more, and a turn that ends with no text sends nothing at all. Nothing waits on an answer.
+
+A turn woken by an answer never sends its final text back, so an exchange ends after one answer unless a worker sends another message.
 
 There's no way to block on a reply. A worker that's told to "wait for the answer" sends the message and ends its turn. The answer starts a new turn when it comes.
 
 ## Limits
 
-**A chain stops after 6 messages with nobody in between.** Every message carries a count of how many worker messages it is from your last line. A message sent in a turn that a message woke counts one more than the message that woke it. The send that would be the 7th is refused, and the worker is told to stop passing messages on and say so. A line you send a worker starts that worker's count again at 0, so the next message it sends is the first of a new chain.
-
-The count follows the work. A task filed partway through a chain carries the chain's count, so a message sent from that task continues it.
+**A chain stops after 6 messages with nobody in between.** Everything that descends from one of your lines is one chain with one count: the messages, the turns they wake, the answers those turns send and the tasks filed along the way. Workers that fan out in parallel draw on the same 6. A ring where every woken worker both passes the message on and answers it stops at 6 messages in total. The send that would be the 7th is refused, and the worker is told to stop passing messages on and say so. Your next line to a worker starts a new chain with a count of its own.
 
 **A turn sends at most 3 messages.** The 4th send in the same turn is refused.
+
+An answer sent from a turn's final text counts toward both limits like any other message. When either limit would refuse it, nothing is sent.
 
 Both limits are set when you register the flows:
 
@@ -98,7 +100,7 @@ const flows = hireWorkforce(installation, { messages: { hopLimit: 10, perTurn: 5
 
 | Option | Default | What it limits |
 |--------|---------|----------------|
-| `messages.hopLimit` | `6` | Worker messages in one chain before a user's line. |
+| `messages.hopLimit` | `6` | Worker messages in one chain: everything descending from one user's line. |
 | `messages.perTurn` | `3` | Messages one turn sends. |
 
 Each must be a whole number of at least 1, or `hireWorkforce` throws.
@@ -133,7 +135,7 @@ A message is talk. [Delegating](./delegating-work.md) is handing over work. Pick
 | What it's for | A question, an FYI, a heads-up | Work that has to get done |
 | Who it can go to | Any worker on your roster that has a conversation | One of the worker's own delegates that takes tasks |
 | Where it runs | The recipient's own conversation with you | A new task session of its own |
-| What comes back | Nothing is owed. An answer, if the recipient sends one | The task's ending, always: completed, failed or cancelled |
+| What comes back | Nothing is owed. An answer, unless the recipient's turn ends with no text | The task's ending, always: completed, failed or cancelled |
 | On the board | Nothing | A row the filer can list, update and cancel |
 
 A task keeps the reporting line. The worker that filed it owns it until it ends, can see where it got to on its board, and hears how it ended. A message has none of that. If the sender needs a result it can count on, it should file a task. If it needs a fact, an opinion or to pass something on, a message is enough.
@@ -202,7 +204,8 @@ Each row has:
 | `exchange` | The id of the first message in the exchange. A message and its answers share one. |
 | `replyTo` | The message this one answers, when it answers one. |
 | `fromSession`, `toSession` | The session it was sent from, and the session it landed in. |
-| `hop` | Its place in the chain since the last user's line, from 1. |
+| `chain` | The id of the chain the message belongs to: everything descending from one user's line. Can be absent on older rows. |
+| `hop` | Its place in that chain, from 1. |
 | `status` | `delivered`, `refused`, or `unconfirmed`. |
 | `reason` | Why it was refused or is unconfirmed. |
 | `at` | When it was sent, in ms. |
