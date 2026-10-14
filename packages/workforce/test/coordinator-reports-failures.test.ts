@@ -1,10 +1,4 @@
-/**
- * A coordinator's failures reach the Error Reporter (FIX-1983). Neither path
- * ends in a failed request, so the engine's final event never covers them:
- * a delegate's post that fails ends its row errored inside a request that
- * completes, and best fit's judgment turn that crashes is rescued into
- * "Nobody took this post". Each hands its failure to the intake itself.
- */
+/** A coordinator failure that completes its request still reaches the Error Reporter. */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
@@ -12,7 +6,6 @@ import { z } from "zod";
 import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY } from "../src/error-reporter/keys";
 import { bootHost } from "./coordinator-harness";
 
-/** A stand-in for the reporter's intake: it keeps every occurrence it is sent. */
 function recordingIntake(taken: Array<Record<string, unknown>>): FlowInstance {
   const intake = handler({
     name: "recording-intake",

@@ -151,7 +151,6 @@ const CHIEF = "chief-of-staff";
  */
 const PROJECT_COORDINATOR = "project-coordinator";
 const CODER = "eng.coder";
-/** An agent worker that takes the chief of staff's posts in leg C. */
 const POST_TAKER = "researcher";
 const REPORTER = "error-reporter";
 const FSD = { visibility: "shared" as const, id: "fsd" };
@@ -236,7 +235,6 @@ interface Opened {
   tellProject(projectId: string, message: string): Promise<{ requestId: string; failed: boolean; error?: string }>;
   /** The chief of staff's tasks. */
   tasks(): Promise<Array<Record<string, any>>>;
-  /** Make `worker` one of the chief of staff's delegates. */
   addDelegate(worker: string): Promise<void>;
   chiefSession: string;
 }
@@ -655,14 +653,12 @@ await runGoal(async (failures) => {
       lab = undefined;
     }
 
-
     // ---- leg C: the chief of staff, in a fresh Lab ------------------------------
     if (runs("C")) {
       lab = await open({ store: "memory", tracker: undefined, harness: draftingStub });
       const inInbox = async (row: ReportRow | undefined) =>
         row !== undefined && (await lab!.reportAsks()).some((a) => a.sessionId === row.sessionId);
 
-      // The chief of staff's own turn crashes, and best fit answers it.
       const crashed = await lab.tellChief("What's the status of the Sandbox project?");
       say(`leg C: the chief of staff's turn ${crashed.failed ? "failed" : "completed"} (request ${crashed.requestId}${crashed.error === undefined ? "" : `: ${crashed.error}`})`);
       if (crashed.failed) fail("C", "the chief of staff answers its own crash: the request failed");
@@ -674,7 +670,6 @@ await runGoal(async (failures) => {
       if (!(await inInbox(own))) fail("C", "the chief of staff's own crash reaches Inbox: it did not");
       else evidence.push("leg C: the chief of staff's crash, answered with \"Nobody took this post\", reached Inbox as a report");
 
-      // The chief of staff hands a post to a delegate, whose turn fails on it.
       await lab.addDelegate(POST_TAKER);
       const posted = await lab.tellChief(`post to ${POST_TAKER}: Summarize the Sandbox notes [post-bug]`);
       if (posted.failed) fail("C", `the post was handed on: ${posted.error}`);
