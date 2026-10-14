@@ -2,7 +2,7 @@
 
 **Issue:** FIX-1820, the closure of epic FIX-1815. Its spec's goal: `specs/issues/FIX-1820/SPEC.md` → "The goal, and how we'll know it's met"; the epic's: `specs/epics/FIX-1815/SPEC.md`.
 
-**Outcome:** on one `main` commit, with every other child of FIX-1815 merged, a worker can ask a colleague and continue the same turn with its real answer, or assign a task whose own session parks on a question, carries on when answered, and still answers and takes a follow-up once finished. A server restart during either wait loses nothing, and the work runs once.
+**Outcome:** on one `main` commit, with every other child of FIX-1815 merged, a worker can ask a colleague and continue the same turn with its real answer, or assign a task whose own session parks on a question, carries on when answered, and once finished is picked up again by a question in its session and takes a follow-up. A server restart during either wait loses nothing, and the work runs once.
 
 **Input:** one clean checkout. The runner composes checks it does not own, each run unchanged as its own process, plus one journey of its own:
 
@@ -18,10 +18,10 @@
 - `j:completed` the task is `completed` within 90 s of the answer.
 - `j:same-session` it completed in the session that parked.
 - `j:names-ticket` · `j:names-region` its output names the ticket the store held at the kill, and the answered region.
-- `j:one-draw` · `j:one-completed` at the end of the run the store holds exactly one `drawTicket` output, and it is the same record (session, item and ticket) the store held at the kill; one `completed` notice.
+- `j:one-draw` · `j:one-completed` at the end of the run the store holds exactly one `drawTicket` output, and it is the same record (session, item and ticket) the store held at the kill; one `completed` notice for the answered attempt.
 - `j:second-answer` a second `answerTask_tasks` is declined (`ok: false`), and every task row is byte-for-byte as before it.
-- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked, and its `run` request ends `completed` and answers "Which ticket did you draw?" with the ticket.
-- `j:row-unchanged` after that, the row is still `completed` with the same output.
+- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked; "Which ticket did you draw?" through its `run` door ends `completed`, reopens the task (`{ reopened: <taskId> }`, FIX-1764), and the task's next output names the ticket.
+- `j:reopened` after that, the row is `completed` again, one attempt later, in the session that parked.
 
 The runner prints one verdict per check, each with the commit's SHA. It exits non-zero when a plain check fails, or when a control's red tags are not exactly its expected set (see **Controls**).
 
@@ -58,3 +58,5 @@ J4's own:
 | 2026-10-11 | 2e940454d (`main` 5613e8546, with FIX-1844 and FIX-1867 merged, + this goal) | openai/gpt-5.4-mini (vercel gateway); P1.c and P1.d on their own models | PASS | Every check on one clean commit, every control red on exactly its expected set. P1.a PASS on attempt 2 of 3 (attempt 1 red at `a:word`: the keeper declined to give the word; attempt 2 killed 4494 ms after the ask, while suspended; one turn, one row, one completed run); `no-run-once` exactly `one-row`, `b:once`; `no-waker` exactly `a:completed`, `a:word`. P1.b PASS (ca-central, TCK-715A65, completed 1005 ms after the answer in the session that parked); `new-session` exactly its six; `drop-answer` exactly `a:names-region` (answered ap-south, the task said me-central; one draw, completed). P1.c PASS, P1.d PASS (both). J4 PASS on attempt 1 of 3 (below) |
 | 2026-10-11 | 2e940454d | openai/gpt-5.4-mini (vercel gateway) | PASS (J4) | Killed 8589 ms after the filing: the row `parked` with one notice, and the store already held the one draw, `TCK-907850` (item `item_tool_output_1791734610526_99f1…`). After the restart the answer `{ ok: true }`, `completed` 5027 ms later in the session that parked: "Ticket TCK-907850, region eu-north."; the same draw record alone; one `completed` notice; the second answer `terminal_task_write_declined`, rows unchanged; the session's request `completed`, answering "TCK-907850"; the row still `completed` |
 | 2026-10-11 | 2e940454d | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `fresh-store`, expected) | Killed 2958 ms after the filing, the row `parked` and the draw `TCK-2C5D55` held (`kill:parked` green); restarted on a new file, `400 Bad Request` (`j:answered`); red exactly `j:answered` and the nine `j:*` after it |
+| 2026-10-14 | 7739ad25 + FIX-1981 | openai/gpt-5.4-mini (vercel gateway) | PASS (J4) | Killed 3184 ms after the filing, the row `parked` with one notice and the one draw held. After the restart the answer `{ ok: true }`, `completed` 5036 ms later in the session that parked: "Ticket TCK-D0BF93 will deploy to us-east.", attempts 2. The question reopened the task, which completed again there after 3 attempts: "TCK-D0BF93" |
+| 2026-10-14 | 7739ad25 + FIX-1981 | openai/gpt-5.4-mini (vercel gateway) | FAIL (control `fresh-store`, expected) | Restarted on a new file, the answer came back `400 Bad Request` (`j:answered`); every later `j:*` red with it, `kill:parked` green |
