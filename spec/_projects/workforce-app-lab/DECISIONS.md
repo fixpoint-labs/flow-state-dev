@@ -107,7 +107,10 @@ proposes `dispatchTask` in place of 16 to 18's surface; until it is decided, the
     session, more work a follow-up row (`followUpOf`) in that session, same worker; nothing
     reopens (FIX-1817
     [D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1817/DECISIONS.md)).
-    Offered to FIX-1765 as the joint answer its ER-14 asked for; it binds FIX-1765 once accepted.
+    *Amended by Jake, 2026-10-13, on FIX-1764:* FIX-1765 declined that answer. A person's message
+    on a finished task, completed, errored or canceled, resumes the task's session and puts the task
+    back in progress; no note-only reply and no follow-up row. FIX-1765 closed into FIX-1764 the
+    same day, and FIX-1981 moved the `task-session-stays-open` goal to match.
 20. **No new answer-once fence.** Tasks ride the board row's claim ticket, posts FIX-1791's
     delivery-ledger token. FIX-1818 was canceled into that rule.
 21. **Skill sub-agents are gone** (FIX-1814). A skill's private team is FIX-1819's question, in
@@ -115,6 +118,35 @@ proposes `dispatchTask` in place of 16 to 18's surface; until it is decided, the
 22. **A closure's control passes only on an exact red set**: it fails at the signal its plan
     names, and only that group; anything else is a finding (FIX-1820 QR-12). It binds FIX-1797
     and every later closure here.
+
+### Settled by FIX-1903, recorded at its wrap on 2026-10-14
+
+Each binds a sibling that changes the dev Lab, runs coding work, or gives a worker a tool from
+outside FSD. Sources: FIX-1903's retained
+[spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1903), amended
+by [#3179](https://github.com/fixpoint-labs/flow-state-dev/pull/3179), and its children's,
+FIX-1904, FIX-1905 and FIX-1906.
+
+23. **`pnpm shift-manager:dev` opens the `fsd` profile by default, and `fsd` is not DevTeam.** It
+    opens FSD and Shift Manager on this repository with its own store, its own documents (the
+    brief) and its own skills (the commit style); DevTeam keeps its demo projects, brief and skills
+    for the goal checks that read them, served with `--config`
+    (FIX-1903 [D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1903/DECISIONS.md#d2), FIX-1904
+    [D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1904/DECISIONS.md#d2), FIX-1971). An epic changes one profile's set
+    without editing the other's.
+24. **A coding run works in a worktree cut from the user's own checkout.** The project row keeps
+    naming a remote; the host config maps that remote to a checkout, bound to the shared projects
+    it names and never resolved from a row's remote alone
+    (FIX-1903 [D3](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1903/DECISIONS.md#d3), FIX-1906
+    [D1](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1906/DECISIONS.md#d1)). It binds FIX-1763's open children, a sandbox
+    (FIX-1767) and push and PR (FIX-1768), which add to this mapping and do not replace it.
+25. **FSD holds a project's MCP connection, and each user sets their own key.** The key is set on
+    the Settings page; there are no admins. A row names a host-approved server only. Claude Code
+    receives the tools through `mcpTools` and never the key
+    (FIX-1903 [D4](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/epics/FIX-1903/DECISIONS.md#d4) and its post-merge calls; FIX-1905
+    [D2](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1905/DECISIONS.md#d2) and [D4](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1905/DECISIONS.md#d4)).
+    Cursor and Codex get project servers later, on this path
+    ([D3](https://github.com/fixpoint-labs/flow-state-dev/blob/main/specs/issues/FIX-1905/DECISIONS.md#d3)).
 
 ## Open
 
