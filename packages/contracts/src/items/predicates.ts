@@ -124,7 +124,7 @@ export function isSuspensionResumeItem(item: OutputItem): item is SuspensionResu
 /**
  * True when `item` is a tool call waiting on an approval or a question, not a
  * failed one. A tool that calls `ctx.suspend()` is recorded as a failed
- * `tool_output` whose `error.code` is `"SUSPENSION"`, with the ask's message as
+ * `tool_output` whose `error.code` is `"SUSPENSION"`, with the suspension's message as
  * its error; its real result replaces it once the answer resumes the run.
  * Renderers use this to draw the wait as waiting rather than as an error.
  */

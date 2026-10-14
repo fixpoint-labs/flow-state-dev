@@ -120,16 +120,16 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       asks,
       workers,
     );
-    expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 1 on shift · 1 on call · 2 streams");
+    expect(tasksSummary(s)).toBe("2 in flight · 1 needs you · 2 on shift · 2 streams");
   });
 
-  it("the empty Inbox names the runs still going and who is on call (BR-19, I8)", () => {
+  it("the empty Inbox names the runs still going (BR-19, I8)", () => {
     const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
     expect(emptyInboxSentence(snapshot([row("A", "in_progress", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
-      "Nothing needs you. 2 sessions are still running and 0 workers are on call.",
+      "Nothing needs you. 2 sessions are still running.",
     );
     expect(emptyInboxSentence(snapshot([row("A", "parked", { assignee: "eng.coder" }), row("B", "in_progress")], [], workers))).toBe(
-      "Nothing needs you. 1 session is still running and 1 worker is on call.",
+      "Nothing needs you. 1 session is still running.",
     );
   });
 
@@ -137,10 +137,10 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     const workers = [{ id: "eng.coder", workerId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Worker[];
     const inOne = (id: string, attempt: number) => row(id, "in_progress", { run: { sessionId: "s_coder", requestId: `req_${id}`, attempt } });
     expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1)], [], workers))).toBe(
-      "Nothing needs you. 1 session is still running and 0 workers are on call.",
+      "Nothing needs you. 1 session is still running.",
     );
     expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1), row("C", "in_progress")], [], workers))).toBe(
-      "Nothing needs you. 2 sessions are still running and 0 workers are on call.",
+      "Nothing needs you. 2 sessions are still running.",
     );
   });
 });

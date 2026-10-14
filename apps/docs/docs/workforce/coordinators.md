@@ -493,11 +493,11 @@ await help.sendAction(
 )
 ```
 
-You can also just answer in chat: the coordinator passes your answer on with its `answerTask` tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
+You can also just answer in chat: the coordinator passes your answer on with its [`answerTask`](../orchestration/task-board.md#when-a-task-stops-on-a-question) tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
 
 An answer doesn't use up the task's retries, and the task can ask again. Until it picks up again, it can't be reassigned: `assignTask_tasks` answers `task_awaiting_answer`. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
 
-A task a coordinator dispatched and is waiting for (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
+A task a coordinator dispatched and is [waiting for](../orchestration/task-board.md#giving-another-worker-work) (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
 
 ### After a task finishes
 

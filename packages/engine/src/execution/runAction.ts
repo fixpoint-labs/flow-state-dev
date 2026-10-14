@@ -80,9 +80,9 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
-import { noteAskDeadline } from "../durability/ask-deadlines";
+import { noteWaitDeadline } from "../durability/wait-deadlines";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
-import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
+import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -1810,7 +1810,7 @@ async function runActionAttempt<
   //
   //   1. Resume only: revert the suspension `approved`/`rejected` → `pending` so
   //      the resume stays re-attemptable (its guard requires `pending`). A
-  //      `stopped` gate, or an answered (`submitted`) ask, is never reverted:
+  //      `stopped` gate, or an answered (`submitted`) wait, is never reverted:
   //      the sweep's re-drive finishes it from the recorded resolution.
   //   2. Both paths: release the continuation lease keyed on this request id —
   //      otherwise it lingers until its 60s TTL and the next resume/continue
@@ -1834,8 +1834,8 @@ async function runActionAttempt<
         // Two resolutions stay resolved, and the sweep's re-drive finishes
         // them (FIX-1816, BR-11a). A stop is terminal (BR-16): whoever stopped
         // the turn was told it stopped, and reopening it would let a later
-        // answer resume it. An ask's answer comes from its task settling, and
-        // nobody sends it again: reopened, it would be lost and the ask would
+        // answer resume it. A wait's answer comes from its task settling, and
+        // nobody sends it again: reopened, it would be lost and the wait would
         // time out. A person's approval is reopened, since they resubmit it.
         // An approval that expired stays expired too (FIX-1846): nobody
         // resubmits an expiry, and the sweep re-drives it. Only when this run
@@ -1846,7 +1846,7 @@ async function runActionAttempt<
           suspension !== null &&
           (suspension.status === "stopped" ||
             (isExpiredApproval(suspension) && resumeContextRaw.resolution === "expired") ||
-            (suspension.status === "submitted" && isAskGate(suspension)));
+            (suspension.status === "submitted" && isWaitGate(suspension)));
         if (suspension !== null && !keepsResolution) {
           await provider.suspend({
             ...suspension,
@@ -1999,7 +1999,7 @@ async function runActionAttempt<
       if (provider !== undefined) {
         const suspension = await provider.loadSuspension(requestId, resumeContext.suspensionId);
         // The gate's recorded status names the resolution when the action
-        // can't (a stopped ask continues with a `submit`, FIX-1816). Never a
+        // can't (a stopped wait continues with a `submit`, FIX-1816). Never a
         // raced `expired`: an approve stays recorded `approved`.
         if (
           resumeContext.resolution === undefined &&
@@ -2257,9 +2257,9 @@ async function runActionAttempt<
               : undefined
           };
           await provider.suspend(record);
-          // An ask's deadline can bring this host's sweep forward (FIX-1816).
-          if (isAskGate(record) && record.expiresAt !== undefined) {
-            noteAskDeadline(provider, record.expiresAt);
+          // A wait's deadline can bring this host's sweep forward (FIX-1816).
+          if (isWaitGate(record) && record.expiresAt !== undefined) {
+            noteWaitDeadline(provider, record.expiresAt);
           }
         }
 

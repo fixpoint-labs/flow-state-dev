@@ -1,7 +1,7 @@
 /**
  * A follow-up dispatched with `wait` keeps the follow-up's own id
- * (FIX-1817 BR-25 with FIX-1816's ask): the id a follow-up takes is what makes
- * "one unfinished task per session" one atomic write, so the ask path must
+ * (FIX-1817 BR-25 with FIX-1816's wait): the id a follow-up takes is what makes
+ * "one unfinished task per session" one atomic write, so the wait path must
  * not replace it with one of its own. Two follow-ups of one task filed at
  * once, waiting or not, land one; the other is refused naming it.
  */
@@ -17,9 +17,9 @@ import {
   ticketForClaim,
   type TaskCollectionRef
 } from "../../src";
-import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./ask-fixture";
+import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./wait-fixture";
 
-const BOARD = "asks";
+const BOARD = "waits";
 
 async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
   const collection = resolveResourceCollection(ctx, BOARD);
@@ -29,8 +29,8 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 
 /** A turn holding the task tools over a durable board, and a `seed` that files the finished root task. */
 function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
-  // The asks this flow files are its board's to resume, so it opts in.
-  const tools = createTaskToolsCapability(boardOf, undefined, { resumesAsks: true, dispatches: true });
+  // The waits this flow files are its board's to resume, so it opts in.
+  const tools = createTaskToolsCapability(boardOf, undefined, { resumesWaits: true, dispatches: true });
   const seed = handler({
     name: "seed",
     inputSchema: z.object({}).passthrough(),
@@ -49,10 +49,10 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
     name: "list",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => (await boardOf(ctx))!.list().map((t) => ({ id: t.id, followUpOf: t.followUpOf, ask: t.ask }))
+    execute: async (_input, ctx) => (await boardOf(ctx))!.list().map((t) => ({ id: t.id, followUpOf: t.followUpOf, wait: t.wait }))
   });
   return defineFlow({
-    kind: "ask-board",
+    kind: "wait-board",
     resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
     actions: {
       run: {
@@ -62,7 +62,7 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
       seed: { block: seed },
       list: { block: list }
     }
-  })({ id: "ask-board" });
+  })({ id: "wait-board" });
 }
 
 const followUp = (id: string, wait: boolean) => ({
@@ -75,10 +75,10 @@ const calls =
   () => ({ toolCalls: list, finishReason: "tool-calls" });
 const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
-type Row = { id: string; followUpOf?: string; ask?: unknown };
+type Row = { id: string; followUpOf?: string; wait?: unknown };
 
 describe("a waiting follow-up keeps its own id", () => {
-  it("files a waiting follow-up under the follow-up's id, asked", async () => {
+  it("files a waiting follow-up under the follow-up's id, waited on", async () => {
     const { model } = stepModel([calls(followUp("w1", true)), finalAnswer]);
     const flow = flowOf(model);
     const state = runtimeFor(flow);
@@ -88,7 +88,7 @@ describe("a waiting follow-up keeps its own id", () => {
       const rows = (await act(state, flow, "list")).output as Row[];
       const follow = rows.find((r) => r.followUpOf === "root");
       expect(follow).toMatchObject({ id: "root-f1" });
-      expect(follow!.ask).toBeDefined();
+      expect(follow!.wait).toBeDefined();
     } finally {
       await state.dispose();
     }

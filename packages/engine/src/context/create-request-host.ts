@@ -65,8 +65,8 @@ import type {
   FlowInstance,
   LivenessAnswers,
   RequestHost,
-  ResumeAskInput,
-  ResumeAskResult,
+  ResumeWaitInput,
+  ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult,
 } from "@flow-state-dev/core/types";
@@ -90,7 +90,7 @@ import {
 import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
-import type { AskResumeOperation } from "./ask-resume-operation";
+import type { WaitResumeOperation } from "./wait-resume-operation";
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -145,12 +145,12 @@ export type RequestHostInputs = {
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
   /**
-   * Resumes an ask gate in this request's session. Absent when the host has no
-   * durable execution, and then so is `resumeAsk`.
+   * Resumes a wait gate in this request's session. Absent when the host has no
+   * durable execution, and then so is `resumeWait`.
    */
-  askResume?: AskResumeOperation;
-  /** Whether a sweeper bounds asks in this process; see `RequestHost.hasAskSweeper`. */
-  askSweeper?: () => boolean;
+  waitResume?: WaitResumeOperation;
+  /** Whether a sweeper bounds waits in this process; see `RequestHost.hasWaitSweeper`. */
+  waitSweeper?: () => boolean;
   /**
    * The running request's trusted dispatch stamp, already read through
    * {@link readDispatchStamp}. A `{ from: true }` target delivers into
@@ -647,14 +647,14 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   const host: RequestHost = { parentTask, settleParentTask };
 
   // The fifth verb: present only where a host wired the resume, which it does
-  // only with durable execution — nothing can park on an ask without it. The
+  // only with durable execution — nothing can park on a wait without it. The
   // identity comes from here, never from the block that calls the verb.
-  const askResume = inputs.askResume;
-  if (askResume !== undefined) {
-    // Read once, as the request starts: whether an ask parked now is bounded.
-    if (inputs.askSweeper?.() === true) (host as { hasAskSweeper?: boolean }).hasAskSweeper = true;
-    host.resumeAsk = (input: ResumeAskInput): Promise<ResumeAskResult> =>
-      askResume({
+  const waitResume = inputs.waitResume;
+  if (waitResume !== undefined) {
+    // Read once, as the request starts: whether a wait parked now is bounded.
+    if (inputs.waitSweeper?.() === true) (host as { hasWaitSweeper?: boolean }).hasWaitSweeper = true;
+    host.resumeWait = (input: ResumeWaitInput): Promise<ResumeWaitResult> =>
+      waitResume({
         gateId: input.gateId,
         outcome: input.outcome,
         owner: {

@@ -7,8 +7,8 @@
  * through the gate's single pending state (the fence every resume shares), and
  * then:
  *
- * - **An ask gate** is resolved with a stop outcome and the turn continues, so
- *   the parked call, which holds the asked row, can cancel it. The engine
+ * - **A wait gate** is resolved with a stop outcome and the turn continues, so
+ *   the parked call, which holds the waited-on row, can cancel it. The engine
  *   cannot reach the board, so it never cancels the row itself. The call then
  *   ends its own turn `aborted` with no further model call.
  * - **Any other gate** (a person's approval) is resolved `stopped` and the turn
@@ -31,11 +31,11 @@
  * A stop of a turn parked behind one still ends it `aborted`: the stop is
  * recorded on the turn, which its first abort poll reads before anything runs.
  */
-import { isAskGate, isExpiredApproval } from "@flow-state-dev/core/types";
+import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
 import type { ResumeContext, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
-import { resumeAskGate } from "./resume-ask-gate";
+import { resumeWaitGate } from "./resume-wait-gate";
 import { continueUnderLease, latestGateIdOf, resumeUnderLease, type ResumeDeps } from "./resume-under-lease";
 
 /** What a stop of a parked turn needs from the host. */
@@ -114,15 +114,15 @@ export async function stopSuspendedRequest(
   const replayable = record.status === "suspended" || latestGateIdOf(record) === gate.suspensionId;
   if (!replayable) return (await continueWithStop(deps, record, undefined)) ? "stopped" : "already-resolved";
 
-  // An ask continues, so its call ends what it asked for.
-  if (isAskGate(gate)) {
-    const result = await resumeAskGate(deps, gate, { answered: false, stopped: true }, "stop");
+  // A wait continues, so its call ends the task it waits on.
+  if (isWaitGate(gate)) {
+    const result = await resumeWaitGate(deps, gate, { answered: false, stopped: true }, "stop");
     // A refusal is the race lost: an answer (or a timeout) resolved the gate
     // first, or holds the turn's lease to do so right now.
     return result.ok ? "stopped" : "already-resolved";
   }
 
-  const ended = await stopAtNonAskGate(deps, record, gate);
+  const ended = await stopAtNonWaitGate(deps, record, gate);
   return ended ? "stopped" : "already-resolved";
 }
 
@@ -157,11 +157,11 @@ async function recordStop(
 }
 
 /**
- * Resolve a non-ask gate `stopped`, through the gate's single pending state,
+ * Resolve a non-wait gate `stopped`, through the gate's single pending state,
  * and continue the turn with the stop recorded on it: it ends `aborted`
  * through its own lifecycle without running on. Under the request's lease.
  */
-async function stopAtNonAskGate(
+async function stopAtNonWaitGate(
   deps: SuspendedStopDeps,
   record: RequestRecord,
   gate: SuspensionRecord
@@ -209,8 +209,8 @@ export type RedriveRefusal = "not-parked" | "superseded";
 
 /**
  * Drive on a request left parked behind a gate that is already resolved: the
- * re-drive (BR-11a, BR-16c). Any ask outcome continues the turn with the
- * recorded outcome, never a new one; a non-ask gate resolved `stopped`
+ * re-drive (BR-11a, BR-16c). Any wait outcome continues the turn with the
+ * recorded outcome, never a new one; a non-wait gate resolved `stopped`
  * continues it with the stop recorded on it, so it ends `aborted` through its
  * own lifecycle; an approval that expired continues it with a rejection that
  * `runAction` marks expired from the gate (FIX-1846). Under the request's
@@ -223,7 +223,7 @@ export async function redriveResolvedGate(
   deps: SuspendedStopDeps,
   gate: SuspensionRecord
 ): Promise<"redriven" | "busy" | RedriveRefusal> {
-  if (!isAskGate(gate) && gate.status !== "stopped" && !isExpiredApproval(gate)) return "not-parked";
+  if (!isWaitGate(gate) && gate.status !== "stopped" && !isExpiredApproval(gate)) return "not-parked";
 
   const result = await continueUnderLease<RedriveRefusal>(deps, {
     requestId: gate.requestId,
@@ -246,7 +246,7 @@ export async function redriveResolvedGate(
           }
         };
       }
-      if (!isAskGate(current)) {
+      if (!isWaitGate(current)) {
         // A stopped approval: the stop recorded on the turn ends it.
         if (!(await recordStop(deps, record))) return { refusal: "not-parked" };
         return {

@@ -431,7 +431,8 @@ describe("a project view (V8: BR-12, BR-18)", () => {
       ].sort(),
     );
     // The view's reads: the row by its key, and the entries by the project's one prefix. No other entry read.
-    // Each read of the view is one of each, so they come in pairs; the Lab's own read (the sidebar's) never lists entries.
+    // Each read is one of each, so they come in pairs: the view's, and the sidebar's for the project on screen.
+    // The Lab's own read never lists entries.
     const workstreamReads = seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
     const rowReads = seen.filter((r) => /\/resources\/projects\/apollo\b/.test(r.path));
     expect(workstreamReads.length).toBeGreaterThan(0);
@@ -514,13 +515,20 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const conversation = await screen.findByTestId("project-stream-conversation", undefined, { timeout: 10_000 });
     expect(conversation.getAttribute("data-session-id")).toBe(await projectCoordinator(alice, setup));
     expect(conversation.getAttribute("data-worker-id")).toBe("project-coordinator");
-    // Stream draws no entry, so it never reads them; nor does Brief.
+    // Stream draws no entry, so it never reads them; nor does Brief. The only entry reads are the
+    // sidebar's, for the project on screen open beneath it, by its one prefix; closed, it reads none.
     const entryReads = () => seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
-    expect(entryReads()).toEqual([]);
-    const { act, fireEvent } = dom!;
+    const { act, fireEvent, within } = dom!;
+    const group = screen.getByTestId("nav-project-apollo").closest("[data-testid='project-group']") as HTMLElement;
+    await within(group).findAllByTestId("nav-workstream", undefined, { timeout: 10_000 });
+    expect(entryReads().map((r) => r.path.replace(/^.*\?/, "?"))).toEqual(entryReads().map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
+    act(() => fireEvent.click(within(group).getByTestId("nav-project-apollo-toggle")));
+    const closedAt = entryReads().length;
     act(() => fireEvent.click(screen.getByRole("tab", { name: /brief/i })));
     await screen.findByTestId(/^project-brief(-none)?$/);
-    expect(entryReads()).toEqual([]);
+    // Longer than a poll: a closed project's read would have come round again by now.
+    await new Promise((resolve) => setTimeout(resolve, 5_500));
+    expect(entryReads()).toHaveLength(closedAt);
     // Workstreams does, by the project's one prefix.
     act(() => fireEvent.click(screen.getByRole("tab", { name: /workstreams/i })));
     await screen.findAllByTestId("project-entry", undefined, { timeout: 10_000 });
@@ -589,6 +597,63 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(screen.queryByTestId("project-read-failure")).toBeNull();
     expect(screen.getAllByTestId("project-entry").map((li) => li.getAttribute("data-workstream-id"))).toEqual(["checkout"]);
+  });
+
+  it("nests a project's workstreams under it in the sidebar, read only once it is open, and each opens its own view", async () => {
+    // Finding a workstream should be one look at the sidebar, not a trip through the project's tabs.
+    // A closed project reads nothing, so a Lab of many projects isn't read whole (BR-18).
+    const { screen, act, fireEvent, within } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    const bob = await as(BOB);
+    await openAs(alice, setup, "checkout");
+    await openAs(bob, setup, "search");
+
+    const seen = recordRequests();
+    openApp(alice.clients, baseUrl, "/inbox");
+    const group = (await screen.findByTestId("nav-project-apollo", undefined, { timeout: 10_000 })).closest("[data-testid='project-group']") as HTMLElement;
+    await screen.findByTestId("inbox-empty", undefined, { timeout: 10_000 });
+    expect(group.getAttribute("data-open")).toBe("false");
+    expect(within(group).queryAllByTestId("nav-workstream")).toEqual([]);
+    expect(seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path))).toEqual([]);
+
+    act(() => fireEvent.click(within(group).getByTestId("nav-project-apollo-toggle")));
+    const nested = await within(group).findAllByTestId("nav-workstream", undefined, { timeout: 10_000 });
+    expect(nested.map((b) => [b.getAttribute("data-owner"), b.getAttribute("data-workstream-id")]).sort()).toEqual(
+      [
+        [ALICE.userId, "checkout"],
+        [BOB.userId, "search"],
+      ].sort(),
+    );
+    const entryReads = seen.filter((r) => /\/resources\/(workstreams|privateWorkstreams)\b/.test(r.path));
+    expect(entryReads.map((r) => r.path.replace(/^.*\?/, "?"))).toEqual(entryReads.map(() => "?limit=200&topicPrefix=workstreams/apollo/"));
+
+    // Bob's opens on his entry's view, and is the sidebar's current row.
+    act(() => fireEvent.click(nested.find((b) => b.getAttribute("data-owner") === BOB.userId)!));
+    const details = await screen.findByTestId("project-entry-details", undefined, { timeout: 10_000 });
+    expect(details.textContent).toContain("led by Engineering Manager");
+    const current = within(group).getAllByTestId("nav-workstream").find((b) => b.getAttribute("aria-current") === "page");
+    expect(current?.getAttribute("data-workstream-id")).toBe("search");
+
+    // Closed again, its workstreams leave the sidebar even while the project is on screen.
+    act(() => fireEvent.click(within(group).getByTestId("nav-project-apollo-toggle")));
+    expect(within(group).queryAllByTestId("nav-workstream")).toEqual([]);
+  });
+
+  it("shows a workstream opened elsewhere under its project in the sidebar, with no reload", async () => {
+    // The coordinator opens workstreams in its own turn; the user on the project's screen must see it land.
+    const { screen, within } = dom!;
+    const { baseUrl, setup, as } = await open();
+    const alice = await as(ALICE);
+    openApp(alice.clients, baseUrl, "/p/apollo/stream");
+    const group = (await screen.findByTestId("nav-project-apollo", undefined, { timeout: 10_000 })).closest("[data-testid='project-group']") as HTMLElement;
+    // The project on screen is open in the sidebar.
+    await within(group).findByTestId("nav-workstreams-none", undefined, { timeout: 10_000 });
+
+    await openAs(alice, setup, "research");
+    const nested = await within(group).findAllByTestId("nav-workstream", undefined, { timeout: 15_000 });
+    expect(nested.map((b) => b.getAttribute("data-workstream-id"))).toEqual(["research"]);
+    expect(nested[0]!.textContent).toContain("The research");
   });
 
   it("flags an entry gone quiet by the project's progress, one clock for the row and the count (BR-19)", async () => {

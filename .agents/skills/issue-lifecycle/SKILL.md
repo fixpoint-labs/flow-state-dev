@@ -117,9 +117,9 @@ generic approval request. Implementation PR merge remains the user's separate ga
 
 | Phase (derived) | Next bounded action | Then |
 |---|---|---|
-| **NEEDS_SPEC** — spec route, no spec yet | Dispatch `issue-spec`: author `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, conditional `EVOLUTION.md`, and owned artifacts under `specs/issues/<ISSUE-ID>/`; open ready for review. | Surface the direction ask and PR; record handles → AWAITING_SPEC_APPROVAL. |
+| **NEEDS_SPEC** — spec route, no spec yet | Dispatch `issue-spec`: author `SPEC.md`, `DECISIONS.md`, and owned artifacts under `specs/issues/<ISSUE-ID>/`; open ready for review. | Surface the direction ask and PR; record handles → AWAITING_SPEC_APPROVAL. |
 | **AWAITING_SPEC_APPROVAL** — spec PR not yet merged | On review events within the existing budget, dispatch Step 6.5 and preserve its reported counters. Human approval binds to the reviewed head. After approval, dispatch `issue-worker` **MERGE-ONLY** under the canonical merge contract with the PR and reviewed head. Observe merge; never infer it from approval or closure. If the owner merged the spec PR themselves, that merge is the approval: skip MERGE-ONLY and go straight to implementation. | If blocked, report the actual approval/check/merge wait, not another approval ask. Resume implementation on the next wake after observed merge; an authorized implement backstop may continue in the same wake. |
-| **NEEDS_IMPLEMENTATION** — spec confirmed merged, or direct-route bug | Dispatch `issue-implement` on a base containing the merged spec. Direct-route `specRequired` re-routes to NEEDS_SPEC. Multi-PR plans advance via `issue-multi-pr` only after the same spec merge gate. | Record implementation PRs; subscribe → PR_FEEDBACK. |
+| **NEEDS_IMPLEMENTATION** — spec confirmed merged, or direct-route bug | Dispatch `issue-implement` on a base containing the merged spec. Direct-route `specRequired` re-routes to NEEDS_SPEC. A PR plan (the implementer's, or an older spec's) seeds `subPrs` and advances via `issue-multi-pr`, behind the same spec merge gate. | Record implementation PRs; subscribe → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it): surface **"ready to merge"** and stop (merge is the user's) — **except a stacked PR whose GitHub `baseRefName` is not `main`**, which is not ready even if approved and green. Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
 
@@ -170,7 +170,7 @@ to make room for — the opposite of the point. Then:
 - **Rounds 1–2** — dispatch Step 6.5 on the event batch as normal.
 - **Round 2 returns** — the spec has **converged**. Surface it to the user for the approval
   gate, stating that it's converged and that remaining open threads are carried as
-  implementer notes in the plan. Then **stop dispatching review rounds**; further spec-PR review events
+  implementer notes in `DECISIONS.md → Notes from review`. Then **stop dispatching review rounds**; further spec-PR review events
   are logged in the cache and ignored until the gate resolves. The only event that still
   acts is a **human** one — a gate signal from
   [Gates](../../../docs/contributing/orchestration.md#gates-direction-approval-then-confirmed-merge)
@@ -319,10 +319,11 @@ assembled goal has passed** (a spec PR never counts). If these IDs ever stop res
 
 ## Multi-PR issues (PR plan)
 
-When the spec declares a **PR plan** (a DAG of sub-PRs — `issue-spec` Large
-issues, `PLAN.md → Sequence`), the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK` phases generalize
-from one PR to the plan. The single spec-approval up front covers the whole plan; you
-still stop before merge on each sub-PR.
+When the issue has a **PR plan** (a DAG of sub-PRs — written by `issue-implement` at
+implementation start when the change needs more than one PR, or carried by an older spec's
+`PLAN.md → Sequence`), seed `subPrs` from it; the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK`
+phases generalize from one PR to the plan. The single spec-approval up front covers every
+slice; you still stop before merge on each sub-PR.
 
 Each invocation advances the plan by one bounded step, and **the step is a workflow**:
 `issue-multi-pr` (`.agents/workflows/issue-multi-pr.js`). The DAG's mechanics are pure
@@ -336,7 +337,7 @@ Workflow tool:
   args: {
     issueId: "<ISSUE>",
     cap: <a few — one worktree per sub-PR>,
-    subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
+    subPrs: [ { id, deliverables, dependsOn: [], branch, pr, status, stackedOn } ],
     assembledGoal: <persist VERBATIM — see below>
   }
 ```
@@ -421,9 +422,10 @@ What the script decides, so you don't:
    out of DONE until that lands.
 
 `subPrs` comes from the handle cache and goes back to it: the `.orchestration/<ISSUE>.md` record
-adds one row per sub-PR — `id · dependsOn · branch · PR# · stackedOn · status (pending / open /
-merged)` — alongside the issue-level fields. (`issue-multi-pr` also accepts the `depends_on` spelling
-the spec's PR-plan table uses, so a row copied straight out of the spec still carries its edges; write
+adds one row per sub-PR — `id · deliverables · dependsOn · branch · PR# · stackedOn · status (pending /
+open / merged)` — alongside the issue-level fields. Carry `deliverables` verbatim from the PR plan: it is
+the only record of a slice's scope, and each slice worker is told it. (`issue-multi-pr` also accepts the `depends_on` spelling
+a PR-plan table uses, so a row copied straight out of the table still carries its edges; write
 `dependsOn` in new records. Getting this wrong used to read as *no dependencies*, which builds a
 dependent onto `origin/main` beside the prerequisite it declared.) There is deliberately no `building`: a wake is
 synchronous, so a sub-PR either has a PR (`open`) or doesn't (`pending`), and a status the script
@@ -564,7 +566,8 @@ cloud vs. local" for how to detect the environment and the full fallback design.
 - **Model tiering** (AGENTS.md): the orchestrator itself is thin — keep it on the
   default (Opus) for its routing judgment. Read-only status/handle fetches use the
   **`scout`** agent (Haiku); phase work runs through `issue-spec` /
-  `issue-implement`, which tier their own sub-agents (Sonnet for decided execution).
+  `issue-implement`, which tier their own sub-agents (`issue-implement` implements on Opus;
+  Sonnet only for the correctness and completeness review lenses).
 
 ## Boundaries
 

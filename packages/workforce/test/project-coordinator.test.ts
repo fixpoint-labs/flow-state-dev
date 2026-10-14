@@ -46,7 +46,7 @@ const standardWorkers: WorkerManifest[] = [
       flow: "coordinator",
       routing: "judgment",
       description: "Talks to you about one project.",
-      tools: ["readProject", "listLeads", "openWorkstream"]
+      tools: ["readProject", "listLeads", "openWorkstream", "editWorkstream"]
     },
     body: "Answer from the project's workstreams; hand work only to your own.",
     skills: []
@@ -55,8 +55,8 @@ const standardWorkers: WorkerManifest[] = [
 ];
 
 /**
- * The project coordinator's catalog: its project read, and the workstream
- * open and lead list an app gives whoever opens workstreams.
+ * The project coordinator's catalog: its project read, the workstream open
+ * and lead list an app gives whoever opens workstreams, and the owner's edit.
  */
 function openingTools(installation: Parameters<typeof defineWorkstreamBlocks>[0]["installation"], checksFit = false) {
   const workstreams = defineWorkstreamBlocks({
@@ -67,9 +67,19 @@ function openingTools(installation: Parameters<typeof defineWorkstreamBlocks>[0]
   return {
     ...projectCoordinatorTools,
     listLeads: workstreams.listLeadsTool,
-    openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream", description: "Open a workstream." })
+    openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream", description: "Open a workstream." }),
+    editWorkstream: workstreams.editWorkstreamTool
   };
 }
+
+/** A judgment turn that runs `calls`, one tool call each step, then answers `last`. */
+const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown> }>, last = "Done.") =>
+  mockGenerator({
+    script: [
+      ...calls.map((call, index) => ({ toolCalls: [{ toolCallId: `c${index}`, toolName: call.toolName, args: call.args }] })),
+      { text: last }
+    ]
+  });
 
 /** One delegated post a lead heard: who, what, and in which session. */
 type Heard = { worker: string; message: string; sessionId: string };
@@ -356,15 +366,6 @@ describe("its delegates (BR-21a, BR-21b)", () => {
 });
 
 describe("a post (BR-24 to BR-27, V5)", () => {
-  /** A judgment turn that runs `calls`, one tool call each step, then answers `last`. */
-  const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown> }>, last = "Done.") =>
-    mockGenerator({
-      script: [
-        ...calls.map((call, index) => ({ toolCalls: [{ toolCallId: `c${index}`, toolName: call.toolName, args: call.args }] })),
-        { text: last }
-      ]
-    });
-
   it("hands work to her own workstream's lead, delivered once into that workstream's session, and its answer comes back (BR-25)", async () => {
     const judgment = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }]);
     const h = await boot({ judgment });
@@ -442,14 +443,6 @@ describe("a post (BR-24 to BR-27, V5)", () => {
 });
 
 describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)", () => {
-  /** A judgment turn that runs `calls`, one tool call each step, then answers `last`. */
-  const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown> }>, last = "Done.") =>
-    mockGenerator({
-      script: [
-        ...calls.map((call, index) => ({ toolCalls: [{ toolCallId: `c${index}`, toolName: call.toolName, args: call.args }] })),
-        { text: last }
-      ]
-    });
   /** Hire `id` on `flow` onto `user`'s roster, listing `delegates`. */
   const hireOn = async (h: Awaited<ReturnType<typeof boot>>, user: string, id: string, flow: string, delegates: string[]) =>
     h.ok(user, ROSTER_FLOW, await h.openSession(user, ROSTER_FLOW), "hire", {
@@ -467,7 +460,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       .map((item) => (item.output as { leads: Array<{ id: string }> }).leads.map((lead) => lead.id));
   };
 
-  it("opens one led by a worker her hire put on her roster, and hands the ask in, in the same turn (BR-38)", async () => {
+  it("opens one led by a worker her hire put on her roster, and hands the request in, in the same turn (BR-38)", async () => {
     const judgment = scripted([
       { toolName: "listLeads", args: {} },
       // No project: the open lands in the project this conversation is linked to.
@@ -675,5 +668,93 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       expect(await h.open("alice", "research", "alice-lead")).toMatchObject({ opened: true });
       expect(leadFit.calls).toEqual([]);
     });
+  });
+});
+
+describe("changing her workstreams from the coordinator", () => {
+  /** What `editWorkstream` answered in a conversation's turns. */
+  const edits = async (h: Awaited<ReturnType<typeof boot>>, sessionId: string) =>
+    JSON.stringify(
+      (await h.runtime.stores.request.list({ sessionId, withItems: true }))
+        .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+        .filter((item) => item.type === "tool_output" && item.blockName === "editWorkstream")
+    );
+  /** Every entry in Apollo, as the app's read lists them. */
+  const entries = async (h: Awaited<ReturnType<typeof boot>>, user = "alice") =>
+    ((await h.ok(user, "lab", await h.lab(user), "readProject", { project: apollo })) as {
+      workstreams: Array<{ id: string; owner: string; title: string; status: string; due: string | null }>;
+    }).workstreams;
+
+  it("renames and dates her workstream, then closes it, and the close drops its record in that same turn", async () => {
+    const judgment = scripted([
+      // No project: the edit lands in the project this conversation is linked to.
+      { toolName: "editWorkstream", args: { id: "checkout", title: "Guest checkout", due: "2026-11-30" } },
+      { toolName: "editWorkstream", args: { id: "checkout", status: "done" } }
+    ]);
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    await h.open("alice", "search", "alice-lead");
+    const id = await h.coordinator("alice");
+    expect(await h.delegates("alice", id)).toHaveLength(2);
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Rename checkout to Guest checkout, due Nov 30, then close it." });
+    expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
+    await h.settled();
+    expect((await entries(h)).find((entry) => entry.id === "checkout")).toMatchObject({
+      owner: "alice",
+      title: "Guest checkout",
+      due: "2026-11-30",
+      status: "done"
+    });
+    // Its record went in the turn itself, not by a dispatch landing after it: a
+    // hand-off later in that turn must not find a closed workstream.
+    expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/search" }]);
+  });
+
+  it("reopening one gets its record back only through the checked entry: a lead fired since takes none", async () => {
+    const judgment = scripted([{ toolName: "editWorkstream", args: { id: "checkout", status: "on-track" } }]);
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    await h.mark("alice", "checkout", "done");
+    await h.eventually(async () => expect(await h.delegates("alice", id)).toEqual([]));
+    await h.ok("alice", ROSTER_FLOW, await h.openSession("alice", ROSTER_FLOW), "fire", { id: "alice-lead" });
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Reopen checkout." });
+    await h.settled();
+    expect((await entries(h)).find((entry) => entry.id === "checkout")).toMatchObject({ status: "on-track" });
+    // The record add ran the delegate check, which refuses a lead no longer on her roster.
+    expect(await h.delegates("alice", id)).toEqual([]);
+  });
+
+  it("reopening one whose lead is still hers brings its record back", async () => {
+    const judgment = scripted([{ toolName: "editWorkstream", args: { id: "checkout", status: "on-track" } }]);
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    await h.mark("alice", "checkout", "done");
+    await h.eventually(async () => expect(await h.delegates("alice", id)).toEqual([]));
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Reopen checkout." });
+    await h.settled();
+    await h.eventually(async () =>
+      expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/checkout" }])
+    );
+  });
+
+  it.each([
+    { refused: "no-such-workstream", what: "Bob's billing, by its id", args: { id: "billing", status: "done" } },
+    { refused: "other-project", what: "her drafts in another project", args: { project: notes, id: "drafts", status: "done" } }
+  ])("changes only her own, in its own project: $what is refused $refused, and nothing is written", async ({ refused, args }) => {
+    const h = await boot({ judgment: scripted([{ toolName: "editWorkstream", args }]) });
+    await h.open("bob", "billing", "bob-lead");
+    await h.open("alice", "drafts", "alice-lead", notes);
+    const bobsBefore = await entries(h, "bob");
+    const id = await h.coordinator("alice");
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Close it." });
+    await h.settled();
+    expect(await edits(h, id)).toContain(refused);
+    expect(await entries(h, "bob")).toEqual(bobsBefore);
+    const drafts = (await h.ok("alice", "lab", await h.lab("alice"), "readProject", { project: notes })) as {
+      workstreams: Array<{ id: string; status: string }>;
+    };
+    expect(drafts.workstreams).toEqual([expect.objectContaining({ id: "drafts", status: "on-track" })]);
   });
 });
