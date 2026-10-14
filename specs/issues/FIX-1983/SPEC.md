@@ -110,7 +110,8 @@ The engine only says a request ended failed. A task's ending comes from orchestr
 ending signal, where the Workforce board's recorder marks a report owed in the same write as the
 ending. Everything that knows about workers, previews and trackers is Workforce's, behind one
 intake. A failed request that belongs to a task waits for that task's ending, so a retry that
-passes reports nothing. A harness run that fails for good is its task ending errored.
+passes reports nothing. The engine's event names no task: the intake finds the task on the
+Workforce side, from the board row whose `run.requestId` is that request. A harness run that fails for good is its task ending errored.
 
 ## What stays as it is
 
@@ -166,4 +167,4 @@ Sentry adapters see an extra event, and two dedupe stores drift.
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 
-Feature · `engine` + `workforce` + `shift-manager` · large · no epic · lands after #3304 (FIX-1959) and #3325 (FIX-1876 P2, renames the ending vocabulary)
+Feature · `engine` + `workforce` + `shift-manager` · large · no epic · lands after #3304 (FIX-1959)

@@ -82,8 +82,10 @@ the stack's top frame too, at the cost of more duplicates.
 - **One intake is the convergence point for "one report per fingerprint"** (tenet 5). The
   engine's final event and the board's owed-report marks both go through it; it
   fingerprints, claims the report row, counts and applies the cap before anything runs. A failed
-  request that carries a dispatch task id is held until that task ends, and then joins the task's
-  report rather than making its own.
+  request that belongs to a task is held until that task ends, and then joins the task's
+  report rather than making its own. The engine's event carries no task field and gets none: the
+  intake finds the task itself, from the board row whose `run.requestId` (set when the run
+  starts) is the event's `requestId`.
 - **The intake binds after construction.** `createErrorReporter` returns the `errorCapture`
   handler and a `bind(state)`; the handler enqueues and returns, and each occurrence is written by
   a `runAction` into an internal intake action, since a collection has no door outside a flow. The
@@ -115,8 +117,8 @@ the stack's top frame too, at the cost of more duplicates.
   owed notices are, after the write and on the board's next touch, by dispatching to the
   intake's internal action, never through the coordinator. No post-commit callback, so a crash
   can't drop a report.
-- **Sequencing:** lands after #3304 (FIX-1959, display names) and #3325 (FIX-1876 P2, which
-  renames the board's ending vocabulary). If FIX-1872 P2's per-row ending handling lands first,
+- **Sequencing:** lands after #3304 (FIX-1959, display names); #3325 (FIX-1876 P2, which
+  renames the board's dispatch vocabulary) has merged. If FIX-1872 P2's per-row ending handling lands first,
   the recorder change builds on it.
 - **The engine carries no worker, preview or tracker word** (layer rule). Orchestration is not
   changed.
