@@ -16,10 +16,8 @@
  *   and a run on either project reads Linear with the key of the user it runs
  *   for, set on Settings. `LINEAR_MCP_API_KEY` stands in for the Lab's own
  *   user's key until that user stores one.
- * - **Its own coder brief and commit style**: the tree's feature brief and
- *   commit style are DevTeam's demo contract and its commit marker, so a coder
- *   here reads the profile's in their place ({@link FSD_DOCUMENTS},
- *   {@link FSD_SKILLS}): work in this repository, follow AGENTS.md.
+ * - **Its own coder brief and commit style** ({@link FSD_DOCUMENTS},
+ *   {@link FSD_SKILLS}), in place of the tree's.
  * - **Nothing else at open**: no ask waiting in Inbox and no workstream, so a
  *   user's first act is asking for work.
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab

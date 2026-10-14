@@ -23,12 +23,7 @@ export const FSD_MCP_SERVERS: ProjectMcpServers = {
 /** The ref of the brief every worker on the coder flow reads, in DevTeam's tree. */
 export const CODER_BRIEF = "teams/eng/feature-brief";
 
-/**
- * The documents this profile reads in place of the tree's. The tree's feature
- * brief is DevTeam's demo contract (a greeting module and a commit marker, for
- * a scratch repository); a coder here works in this repository, so it reads
- * this one instead, as does any coder a user hires onto that brief.
- */
+/** Passed as `openLab`'s `documents`: bodies that replace the tree's, by ref. */
 export const FSD_DOCUMENTS: Readonly<Record<string, string>> = {
   [CODER_BRIEF]: [
     "# Working in this repository",
@@ -41,11 +36,7 @@ export const FSD_DOCUMENTS: Readonly<Record<string, string>> = {
   ].join("\n"),
 };
 
-/**
- * The skills this profile's workers read in place of the tree's, by name. The
- * tree's commit style ends every commit with DevTeam's demo marker; here a
- * commit follows this repository's own conventions.
- */
+/** Passed as `openLab`'s `skills`: skill text that replaces the tree's, by name. */
 export const FSD_SKILLS: Readonly<Record<string, string>> = {
   "commit-style": [
     "---",

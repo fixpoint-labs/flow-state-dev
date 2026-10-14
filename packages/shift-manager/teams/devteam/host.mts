@@ -534,10 +534,8 @@ export interface OpenLabOptions {
   /** The tree to read. Defaults to the lab's own. */
   root?: string;
   /**
-   * Replace the body of a document the tree declares, by its ref. Every worker
-   * that names the ref, and every worker hired onto it, reads the body given
-   * here and never the file's. A ref the tree does not declare is refused, so
-   * a renamed document cannot leave its old body in place unnoticed.
+   * Replace a declared document's body, by ref, including for a worker hired
+   * onto it. An unknown ref is refused, so a rename cannot leave the old body.
    */
   documents?: Record<string, string>;
   /**
@@ -874,7 +872,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       throw new Error(`openLab: \`skills\` replaces "${name}", which no worker in the tree carries`);
     }
   }
-  // A profile's own skills (`skills`) replace the tree's the same way.
   const workers = roster.workers.map((tree) => {
     const worker =
       tree.skills === undefined
