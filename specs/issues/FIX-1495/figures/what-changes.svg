@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 352" role="img" aria-label="Four rows of model strings, today against after. Intent strings, intent/utility, are unchanged. Provider/model strings, openai/gpt-5.4, are unchanged and route as today: direct with a key, else through a gateway. Gateway routes change from vercel/anthropic/claude-sonnet-5 to vercel:anthropic/claude-sonnet-5; the old form still runs and warns once. The last row: today triage/native runs but reads as a Gateway id; after, triage:native or openai:gpt-5.4 names a provider or gateway the app set up, the way an AI SDK registry names one."
+<svg viewBox="0 0 940 352" role="img" aria-label="Four rows of model strings, today against after. Intent strings, intent/utility, are unchanged. Provider/model strings, openai/gpt-5.4, are unchanged and route as today: direct with a key, else through a gateway. Gateway routes change from vercel/anthropic/claude-sonnet-5 to vercel:anthropic/claude-sonnet-5; the old form is an error that names the new spelling. The last row: today triage/native runs but reads as a Gateway id; after, triage:native or openai:gpt-5.4 names a provider or gateway the app set up, the way an AI SDK registry names one."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -59,7 +59,7 @@
     <text class="t-s" x="32" y="233">131 strings to respell</text>
     <rect class="old" x="216" y="194" width="320" height="52" rx="5"/>
     <text class="t-co" x="232" y="218">vercel/anthropic/claude-sonnet-5</text>
-    <text class="t-s" x="232" y="235">still runs · warns once, names the new form</text>
+    <text class="t-s" x="232" y="235">after this release: an error naming the new form</text>
     <path class="arrow" d="M544 220 H568"/>
     <rect class="new" x="576" y="194" width="348" height="52" rx="5"/>
     <text class="t-cn" x="592" y="218">vercel:anthropic/claude-sonnet-5</text>
@@ -79,6 +79,6 @@
   </g>
 
   <g id="legend">
-    <text class="t-s" x="32" y="338">Solid blue: new spelling. Dashed red: still runs during the window, then removed.</text>
+    <text class="t-s" x="32" y="338">Solid blue: new spelling. Dashed red: an error from this release, with the fix in the message.</text>
   </g>
 </svg>
