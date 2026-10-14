@@ -51,9 +51,9 @@ import {
   type InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
-import { createAskResumeOperation, type AskResumeOperation } from "../context/ask-resume-operation";
+import { createWaitResumeOperation, type WaitResumeOperation } from "../context/wait-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
-import { installAskSweeperFact } from "../durability/ask-deadlines";
+import { installWaitSweeperFact } from "../durability/wait-deadlines";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1019,7 +1019,7 @@ class InternalFlowState<TSettings extends object>
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
-    this.#installAskResume(runtimeConfig, stores);
+    this.#installWaitResume(runtimeConfig, stores);
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
@@ -1078,30 +1078,30 @@ class InternalFlowState<TSettings extends object>
   }
 
   /**
-   * Install the ask resume (`RequestHost.resumeAsk`) on the shared config, on
+   * Install the wait resume (`RequestHost.resumeWait`) on the shared config, on
    * the same terms and for the same reason as the dispatch operation above.
-   * Only with durable execution: without it nothing can park on an ask, and
+   * Only with durable execution: without it nothing can park on a wait, and
    * the verb stays absent.
    */
-  #installAskResume(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
+  #installWaitResume(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
     const provider = runtimeConfig.durabilityProvider;
     if (requestHost === undefined || provider === undefined) return;
     // How a block's `ctx.session.stopRequest` stops a parked request: the same
     // host, the same terms.
-    // Whether an ask parked under this host is bounded: a durability sweeper
+    // Whether a wait parked under this host is bounded: a durability sweeper
     // listens on this provider in this process (the router builds it).
-    installAskSweeperFact(requestHost, provider);
+    installWaitSweeperFact(requestHost, provider);
     requestHost.parkedStop ??= createParkedStopDeps({
       provider,
       stores,
       continueRequest: (options) =>
         this.#hostForRequestHostOperations(runtimeConfig, stores).continueRequest(options)
     });
-    if (requestHost.askResume !== undefined) return;
+    if (requestHost.waitResume !== undefined) return;
 
-    let operation: AskResumeOperation | undefined;
-    requestHost.askResume = (input) => {
+    let operation: WaitResumeOperation | undefined;
+    requestHost.waitResume = (input) => {
       // Closed with admission when `dispose()` begins, as a dispatch is: the
       // gate stays pending, and the next touch after a restart resumes it.
       if (this.#disposed) {
@@ -1111,7 +1111,7 @@ class InternalFlowState<TSettings extends object>
           detail: "the runtime is shutting down and is no longer resuming work"
         });
       }
-      operation ??= createAskResumeOperation({
+      operation ??= createWaitResumeOperation({
         provider,
         stores,
         continueRequest: (options) =>

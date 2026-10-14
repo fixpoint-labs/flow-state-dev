@@ -1,6 +1,6 @@
 /**
- * The asking flow the FIX-1816 board tests share: a generator turn whose tool
- * asks through `dispatchAndWait`, and the requests that stand in for the
+ * The waiting flow the FIX-1816 board tests share: a generator turn whose tool
+ * waits through `dispatchAndWait`, and the requests that stand in for the
  * colleague and for a touch of the board.
  */
 import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -19,11 +19,11 @@ import {
   resolveResourceCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
-import { dispatchAndWait, resumeOwedAsks } from "../../src/tasks/helpers/wait-for-response";
+import { dispatchAndWait, resumeOwedWaits } from "../../src/tasks/helpers/wait-for-response";
 
 export const USER = "u_asker";
 export const SESSION = "s_conversation";
-export const BOARD = "asks";
+export const BOARD = "waits";
 
 export type StepFn = (options: GeneratorModelCallOptions) => GeneratorModelResult;
 
@@ -55,8 +55,8 @@ export function toolResults(messages: unknown[]): string {
   return out.join(" | ");
 }
 
-export const askCall = (id: string, question = "Is ACME's SOC 2 current?"): StepFn => () => ({
-  toolCalls: [{ toolCallId: id, toolName: "ask_colleague", args: { question } }],
+export const waitCall = (id: string, question = "Is ACME's SOC 2 current?"): StepFn => () => ({
+  toolCalls: [{ toolCallId: id, toolName: "wait_on_colleague", args: { question } }],
   finishReason: "tool-calls"
 });
 export const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
@@ -73,20 +73,20 @@ export type Settle =
   | { kind: "cancel"; reason?: string };
 
 /**
- * The asking flow. `run` is the asking turn; `settle` stands in for the
- * colleague (claims the asked row and ends it); `touch` is a touch of the
+ * The waiting flow. `run` is the waiting turn; `settle` stands in for the
+ * colleague (claims the waited-on row and ends it); `touch` is a touch of the
  * board; `list` reads the board.
  */
-export function askFlow(
+export function waitFlow(
   model: GeneratorModel,
   options: { maxAttempts?: number; endsOnFiling?: unknown; failCancelOnce?: boolean; failClearOnce?: boolean; endsBeforePark?: unknown } = {}
 ): FlowInstance {
   let cancelFailed = false;
   let clearFailed = false;
-  const askBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
+  const waitBoard = async (ctx: BlockContext): Promise<TaskCollectionRef> => {
     const board = await boardOf(ctx);
     if (options.endsBeforePark !== undefined) {
-      // The colleague finishes after the asking call checked the row and
+      // The colleague finishes after the waiting call checked the row and
       // before its gate is written: the check still read it open.
       let checked = false;
       return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
@@ -105,7 +105,7 @@ export function askFlow(
       }) as TaskCollectionRef;
     }
     if (options.failClearOnce === true) {
-      // The asking call's first clear of its row's marker fails, as a store blip would.
+      // The waiting call's first clear of its row's marker fails, as a store blip would.
       return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
         clearResumeOwed: async (id: string) => {
           if (!clearFailed) {
@@ -117,7 +117,7 @@ export function askFlow(
       }) as TaskCollectionRef;
     }
     if (options.failCancelOnce === true) {
-      // The asking call's first cancel of its row fails, as a store blip would.
+      // The waiting call's first cancel of its row fails, as a store blip would.
       return Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
         cancel: async (...args: Parameters<TaskCollectionRef["cancel"]>) => {
           if (!cancelFailed) {
@@ -139,12 +139,12 @@ export function askFlow(
       }
     }) as TaskCollectionRef;
   };
-  const ask = handler({
-    name: "ask_colleague",
+  const wait = handler({
+    name: "wait_on_colleague",
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.any(),
     execute: async (input, ctx) =>
-      dispatchAndWait(ctx, await askBoard(ctx), {
+      dispatchAndWait(ctx, await waitBoard(ctx), {
         goal: input.question,
         assignee: "researcher",
         ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {})
@@ -157,7 +157,7 @@ export function askFlow(
     execute: async (input, ctx) => {
       const board = await boardOf(ctx);
       const claimed = await board.claim("researcher-worker");
-      if (claimed === null) throw new Error("no asked row to claim");
+      if (claimed === null) throw new Error("no waited-on row to claim");
       const outcome = input.outcome as Settle;
       if (outcome.kind === "complete") await board.complete(claimed.id, outcome.output);
       else if (outcome.kind === "fail") await board.fail(claimed.id, outcome.error);
@@ -169,7 +169,7 @@ export function askFlow(
     name: "touch",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => resumeOwedAsks(ctx, await boardOf(ctx))
+    execute: async (_input, ctx) => resumeOwedWaits(ctx, await boardOf(ctx))
   });
   const list = handler({
     name: "list",
@@ -179,18 +179,18 @@ export function askFlow(
       (await boardOf(ctx)).list().map((t) => ({
         id: t.id,
         status: t.status,
-        ask: t.ask,
+        wait: t.wait,
         resumeOwed: t.resumeOwed ?? false,
         attempts: t.attempts
       }))
   });
   return defineFlow({
-    kind: "ask-board",
+    kind: "wait-board",
     resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(
-          generator({ name: "agent", model, prompt: "p", tools: [ask] })
+          generator({ name: "agent", model, prompt: "p", tools: [wait] })
         ),
         inputSchema: z.object({}).passthrough()
       },
@@ -198,7 +198,7 @@ export function askFlow(
       touch: { block: touch },
       list: { block: list }
     }
-  })({ id: "ask-board" });
+  })({ id: "wait-board" });
 }
 
 export function runtimeFor(
@@ -208,7 +208,7 @@ export function runtimeFor(
   sweepIntervalMs?: number
 ) {
   return createFlowState({
-    flows: { "ask-board": flow },
+    flows: { "wait-board": flow },
     stores: { default: { primary } },
     durable,
     ...(sweepIntervalMs !== undefined ? { durabilityRetention: { sweepIntervalMs } } : {})
@@ -222,7 +222,7 @@ export async function act(
   input: unknown = {},
   options: { sweeper?: boolean } = {}
 ) {
-  // The router builds the host's durability sweeper, which an ask needs: a
+  // The router builds the host's durability sweeper, which a wait needs: a
   // host with none can't bound one, and refuses it (BR-5).
   if (options.sweeper !== false) await state.getRouter();
   const runtime = await state.getRuntime();
@@ -258,7 +258,7 @@ export async function until(
   }
 }
 
-export type Row = { id: string; status: string; ask?: { gateId: string; deadline: number }; resumeOwed: boolean; attempts: number };
+export type Row = { id: string; status: string; wait?: { gateId: string; deadline: number }; resumeOwed: boolean; attempts: number };
 export async function rows(state: ReturnType<typeof runtimeFor>, flow: FlowInstance): Promise<Row[]> {
   return (await act(state, flow, "list")).output as Row[];
 }

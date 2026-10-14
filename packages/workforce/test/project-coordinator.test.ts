@@ -460,7 +460,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       .map((item) => (item.output as { leads: Array<{ id: string }> }).leads.map((lead) => lead.id));
   };
 
-  it("opens one led by a worker her hire put on her roster, and hands the ask in, in the same turn (BR-38)", async () => {
+  it("opens one led by a worker her hire put on her roster, and hands the request in, in the same turn (BR-38)", async () => {
     const judgment = scripted([
       { toolName: "listLeads", args: {} },
       // No project: the open lands in the project this conversation is linked to.

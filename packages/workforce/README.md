@@ -1485,7 +1485,7 @@ To let the coordinator open workstreams, add `listLeads: workstreams.listLeadsTo
 `openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream" })` to its catalog and name
 both in its `tools:`. Asked for work none of the user's workstreams covers, it lists the leads,
 opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
-coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
+coordinator's own project), and hands the request to it at `<project.visibility>/<project.id>/<id>`,
 built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
 take the hand-off as soon as `openWorkstream` returns.
 

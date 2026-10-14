@@ -39,10 +39,10 @@ export type TaskInit<TInput = unknown> = {
    */
   followUpOf?: string;
   /**
-   * Marks the row as an ask (see `Task.ask`). Set only by the ask path, which
+   * Marks the row as a wait (see `Task.wait`). Set only by the wait path, which
    * writes it in the same write that files the row; never from model input.
    */
-  ask?: { gateId: string; deadline: number };
+  wait?: { gateId: string; deadline: number };
   /**
    * File the row recorded, not dispatched (see `Task.undispatched`): a board
    * that starts work at once leaves it until `dispatch` readies it. Omitted,
@@ -71,9 +71,9 @@ export type TaskFilter = {
   hasLabel?: string;
   /** Match tasks that carry every label in this list. */
   hasAllLabels?: string[];
-  /** Match only tasks whose asking turn is owed its answer (`Task.resumeOwed`). */
+  /** Match only tasks whose waiting turn is owed its answer (`Task.resumeOwed`). */
   resumeOwed?: true;
-  /** Match only tasks whose ask is over and still owes its cancel (`Task.cancelOwed`). */
+  /** Match only tasks whose wait is over and still owes its cancel (`Task.cancelOwed`). */
   cancelOwed?: true;
   /**
    * Match only tasks whose `sealed` payload holds each of these keys at this

@@ -25,14 +25,14 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at five verbs**. The fifth, `resumeAsk`, was added by a
- * reviewed decision (an ask: a hand-off that waits for its answer), with one
- * fact beside it, `hasAskSweeper`, which says whether an ask can be bounded
+ * The seam is **closed at five verbs**. The fifth, `resumeWait`, was added by a
+ * reviewed decision (a wait: a dispatched task the caller waits on), with one
+ * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
  * here. Adding a sixth verb is a decision someone reviews, not a surface that
  * grows by transitivity.
  */
 
-import type { AskOutcome } from "./ask-gate";
+import type { WaitOutcome } from "./wait-gate";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -68,18 +68,18 @@ export type SettleParentTaskResult =
  */
 export type LivenessAnswers = Readonly<Record<string, boolean>>;
 
-/** Arguments to {@link RequestHost.resumeAsk}. */
-export type ResumeAskInput = {
-  /** The ask gate's id, as the asked row records it. */
+/** Arguments to {@link RequestHost.resumeWait}. */
+export type ResumeWaitInput = {
+  /** The wait gate's id, as the waited-on row records it. */
   readonly gateId: string;
-  /** The answer, or the error naming how the ask ended. */
-  readonly outcome: AskOutcome;
+  /** The answer, or the error naming how the wait ended. */
+  readonly outcome: WaitOutcome;
 };
 
 /**
  * Outcome of a resume. A refusal resumes nothing:
  *
- * - `gate-not-found` — no ask gate with that id is on record in this session.
+ * - `gate-not-found` — no wait gate with that id is on record in this session.
  *   A gate in another session, another principal's, and a gate that is not an
  *   ask (a person's approval) all answer this, so the verb is not an oracle.
  *   So does a gate whose turn has since finished: a finished turn's gates are
@@ -89,10 +89,10 @@ export type ResumeAskInput = {
  *   finished. The first answer stands.
  * - `busy` — another resume of the same turn holds its lease right now.
  * - `ambiguous` — more than one turn in this session is parked on a gate with
- *   that id. Neither is resumed: guessing would hand one ask's answer to the
- *   other. Gate ids must be unique within the session (see `parkOnAsk`).
+ *   that id. Neither is resumed: guessing would hand one wait's answer to the
+ *   other. Gate ids must be unique within the session (see `parkOnWait`).
  */
-export type ResumeAskResult =
+export type ResumeWaitResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
@@ -130,7 +130,7 @@ export interface RequestHost {
   settleParentTask(input: SettleParentTaskInput): Promise<SettleParentTaskResult>;
 
   /**
-   * Ask whether requests you dispatched are still running.
+   * Check whether requests you dispatched are still running.
    *
    * Takes a batch and answers per id. Identity filters *before* the answer is
    * built, and an id that does not pass comes back indistinguishable from an
@@ -155,7 +155,7 @@ export interface RequestHost {
   livenessOf?(requestIds: readonly string[]): Promise<LivenessAnswers>;
 
   /**
-   * Resume a turn parked on an ask gate **in this session**, with the answer or
+   * Resume a turn parked on a wait gate **in this session**, with the answer or
    * an error. The parked request continues under its own id, as a same-request
    * continuation; this returns once that continuation has started, not when it
    * finishes.
@@ -167,19 +167,19 @@ export interface RequestHost {
    * **Absent when the host has no durable execution**, because nothing can
    * park there in the first place.
    */
-  resumeAsk?(input: ResumeAskInput): Promise<ResumeAskResult>;
+  resumeWait?(input: ResumeWaitInput): Promise<ResumeWaitResult>;
 
   /**
-   * Whether an ask parked on this host is bounded: `true` when this process
-   * runs a durability sweeper that resumes a pending ask at its deadline with
-   * `wait_timed_out`. An ask is offered only where this is `true`, so no turn
+   * Whether a wait parked on this host is bounded: `true` when this process
+   * runs a durability sweeper that resumes a pending wait at its deadline with
+   * `wait_timed_out`. A wait is offered only where this is `true`, so no turn
    * waits forever. Absent or `false` otherwise: no durable execution, no
    * sweeper (a host that never built one, or one whose sweep is turned off).
    *
    * A fact read when the request starts, not a verb; the waker side
-   * (`resumeAsk`) does not depend on it.
+   * (`resumeWait`) does not depend on it.
    */
-  readonly hasAskSweeper?: boolean;
+  readonly hasWaitSweeper?: boolean;
 }
 
 /**
