@@ -201,6 +201,8 @@ describe("a new task's input is an object, never its JSON as a string", () => {
       };
       const base = { goal: "Create a file and commit it", assignee: "eng.coder" };
       expect(tool.inputSchema.safeParse({ ...base, input: JSON.stringify(project) }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: 1 }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: [project] }).success).toBe(false);
       expect(tool.inputSchema.safeParse({ ...base, input: project }).success).toBe(true);
     });
   }
