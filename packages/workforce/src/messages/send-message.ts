@@ -41,7 +41,7 @@ import {
   WORKERS_RESOURCE
 } from "../workers/keys";
 import { parseWorkerRow } from "../workers/worker-row";
-import { TURN_SENT_STATE, turnHopOf } from "./hop";
+import { TURN_MESSAGED_STATE, TURN_SENT_STATE, turnHopOf } from "./hop";
 import { WORKER_MESSAGE_ENTRY } from "./keys";
 import { messageLimitsOf } from "./message-limits";
 import {
@@ -195,7 +195,8 @@ export async function sendWorkerMessage(
     (current: Readonly<Record<string, unknown>>) => {
       const sent = typeof current[TURN_SENT_STATE] === "number" ? (current[TURN_SENT_STATE] as number) : 0;
       if (sent >= limits.perTurn) return { state: {}, result: false };
-      return { state: { [TURN_SENT_STATE]: sent + 1 }, result: true };
+      const messaged = Array.isArray(current[TURN_MESSAGED_STATE]) ? (current[TURN_MESSAGED_STATE] as string[]) : [];
+      return { state: { [TURN_SENT_STATE]: sent + 1, [TURN_MESSAGED_STATE]: [...messaged, input.to] }, result: true };
     }
   );
   if (reserved !== true) {

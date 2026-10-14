@@ -11,13 +11,23 @@
  * turn is woken to read it and decide whether it needs an answer. A worker in
  * the middle of a turn hears it after that turn, as a task's notice does: the
  * entry waits on the reply line.
+ *
+ * A woken turn that ends with text and never messaged the sender back has its
+ * text sent as the answer, through the same send a `messageWorker` reply takes
+ * (replyTo, hop, log row, wake). A turn with no text sends nothing, and a turn
+ * woken by an answer is never relayed, so an exchange ends after one answer.
+ * The relay is pending a product decision (DECISIONS.md D2, amended).
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
-import { messageTurnStateSchema, startTurnAtHop } from "./hop";
+import type { WorkerInstallation } from "../workers/installation";
+import { messageTurnStateSchema, startTurnAtHop, TURN_MESSAGED_STATE } from "./hop";
+import { MESSAGE_WORKER_TOOL } from "./keys";
+import { MAX_MESSAGE_CHARS } from "./log-row";
+import { sendWorkerMessage } from "./send-message";
 import { messageLogOf, workerMessagesResources } from "./message-log";
 
 /** What the entry takes: the message's id, and nothing a sender could shape. */
@@ -25,6 +35,14 @@ export const workerMessageInputSchema = z.object({ messageId: z.string().min(1) 
 
 /** Server-written session state: the message ids this session has acted on, newest last. */
 export const WORKER_MESSAGES_SEEN_STATE = "workerMessagesSeen";
+
+/** The request-state field naming the message that woke this turn, when its text may be relayed. */
+const RELAY_STATE = "workforceRelayTo";
+
+/** The request state the relay reads: the message to answer, and who sent it. */
+const relayStateSchema = messageTurnStateSchema.extend({
+  [RELAY_STATE]: z.object({ id: z.string(), from: z.string() }).optional()
+});
 
 /** The most message ids a session keeps for its dedupe. */
 const MAX_SEEN = 500;
@@ -60,7 +78,11 @@ function turnPrompt(row: { id: string; from: string; text: string; replyTo?: str
  *
  * @param options.turn The flow's turn for one message (`{ message }` in).
  */
-export function workerMessageEntry(options: { readonly turn: BlockDefinition<any, any> }) {
+export function workerMessageEntry(options: {
+  readonly turn: BlockDefinition<any, any>;
+  readonly installation: WorkerInstallation;
+  readonly flowKind: string;
+}) {
   const heard = handler({
     name: "worker-message-heard",
     inputSchema: workerMessageInputSchema,
@@ -81,7 +103,8 @@ export function workerMessageEntry(options: { readonly turn: BlockDefinition<any
         }
       );
       if (first !== true) return { act: "none" };
-      await startTurnAtHop(ctx as never, row.hop);
+      // An answer is not answered again: only a first message's turn may be relayed.
+      await startTurnAtHop(ctx as never, row.hop, row.replyTo === undefined ? { [RELAY_STATE]: { id: row.id, from: row.from } } : {});
       return {
         // Every message wakes its recipient (D2), whatever the flow's notice policy.
         act: "wake-turn",
@@ -103,13 +126,35 @@ export function workerMessageEntry(options: { readonly turn: BlockDefinition<any
     }
   });
 
+  /** The woken turn's text as its answer, when it ended with some and never messaged the sender back. */
+  const relay = handler({
+    name: "worker-message-relay",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({}),
+    requestStateSchema: relayStateSchema,
+    resources: { ...options.installation.resources, ...workerMessagesResources },
+    execute: async (reply: unknown, ctx) => {
+      const state = (ctx.request.state ?? {}) as Record<string, unknown>;
+      const woke = relayStateSchema.shape[RELAY_STATE].safeParse(state[RELAY_STATE]).data;
+      if (woke === undefined) return {};
+      const messaged = Array.isArray(state[TURN_MESSAGED_STATE]) ? (state[TURN_MESSAGED_STATE] as string[]) : [];
+      if (messaged.includes(woke.from)) return {};
+      const raw = typeof reply === "string" ? reply : (reply as { text?: unknown } | null)?.text;
+      const text = typeof raw === "string" ? raw.trim() : "";
+      if (text.length === 0) return {};
+      const body = text.length > MAX_MESSAGE_CHARS ? `${text.slice(0, MAX_MESSAGE_CHARS - 1)}…` : text;
+      await sendWorkerMessage(ctx as never, options.installation, options.flowKind, { to: woke.from, text: body, replyTo: woke.id }, MESSAGE_WORKER_TOOL);
+      return {};
+    }
+  });
+
   const block = sequencer({ name: "worker-message-arrived", inputSchema: workerMessageInputSchema })
     .step(heard)
     .tapIf((got: Heard) => got.act !== "none", line)
     .tapIf(
       (got: Heard) => got.act === "wake-turn",
       (got: Heard) => ({ message: got.prompt ?? "" }),
-      options.turn
+      sequencer({ name: "worker-message-turn", inputSchema: z.object({ message: z.string() }) }).step(options.turn).step(relay)
     );
 
   return { inputSchema: workerMessageInputSchema, block, concurrency: AFTER_REPLY_CONCURRENCY };

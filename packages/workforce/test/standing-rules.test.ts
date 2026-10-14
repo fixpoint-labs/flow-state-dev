@@ -159,7 +159,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(await marked({ [TASK_ID_STATE_KEY]: "t1" })).toEqual([]);
     expect(await marked({ [FILING_SESSION_STATE_KEY]: "s1" })).toEqual([]);
     // A user's turn also starts the worker-message hop count at 0 (FIX-1989).
-    expect(await marked({})).toEqual([{ [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceMessagesSent: 0 }]);
+    expect(await marked({})).toEqual([{ [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceMessagesSent: 0, workforceMessagedWorkers: [] }]);
   });
 
   it("offers none to a user's message inside a task's session: that is task input", async () => {

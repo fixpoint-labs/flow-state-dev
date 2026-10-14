@@ -25,6 +25,8 @@ export const MESSAGE_HOP_STATE = "workforceMessageHop";
 /** The request-state field a turn's hop count is copied to, and the per-turn send count beside it. */
 export const TURN_HOP_STATE = "workforceTurnHop";
 export const TURN_SENT_STATE = "workforceMessagesSent";
+/** The request-state field the workers this turn has messaged are kept in. */
+export const TURN_MESSAGED_STATE = "workforceMessagedWorkers";
 
 /** The session state a flow that takes messages declares. */
 export const messageHopStateShape = {
@@ -34,7 +36,8 @@ export const messageHopStateShape = {
 /** The request state the hop and the per-turn count are kept in. */
 export const messageTurnStateSchema = z.object({
   [TURN_HOP_STATE]: z.number().int().nonnegative().optional(),
-  [TURN_SENT_STATE]: z.number().int().nonnegative().optional()
+  [TURN_SENT_STATE]: z.number().int().nonnegative().optional(),
+  [TURN_MESSAGED_STATE]: z.array(z.string()).optional()
 });
 
 /** A session's current hop count: 0 for one that keeps none. */
@@ -63,5 +66,5 @@ export async function startTurnAtHop(ctx: BlockContext, hop: number, also: Recor
   if (sessionHopOf(ctx.session.state) !== hop) {
     await ctx.session.patchState({ [MESSAGE_HOP_STATE]: hop } as never);
   }
-  await ctx.request.patchState({ ...also, [TURN_HOP_STATE]: hop, [TURN_SENT_STATE]: 0 } as never);
+  await ctx.request.patchState({ ...also, [TURN_HOP_STATE]: hop, [TURN_SENT_STATE]: 0, [TURN_MESSAGED_STATE]: [] } as never);
 }
