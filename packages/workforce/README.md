@@ -1409,7 +1409,8 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   project, and one filed from a conversation with no project works in the project its task names
   as `input.project`, for that project's members only (`not-a-member`). A task filed from a
   workstream or a project's conversation that names a project in `input.project` is filed naming
-  that conversation's project instead. `no-project` when none applies. The block that asks it
+  that conversation's project instead, and a worker filing there is told that project in its
+  task tools' context, so it has no project to name. `no-project` when none applies. The block that asks it
   must hold `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
 
   ```ts
