@@ -1,19 +1,4 @@
-/**
- * The legs, against Shift Manager's DevTeam install served by its own command:
- * Alice (its owner) and Bob (its second member) act through the shipped
- * clients with their own verified bearers, and every worker turn runs on the
- * real model its file or its hire names.
- *
- * Every change goes through the app: a person's line in a worker's own
- * conversation, the roster flow's `hire`, and the coordinator's delegate
- * actions. Nothing is seeded by a fixture or written to a store. Every grade
- * is read back as the person who owns it, through the install's routes: a
- * conversation's items (its lines, under whose name, and each turn's tool
- * calls and their outputs), the board's task read Shift Manager makes, and
- * the user's message log through their roster session.
- *
- * A leg's assertions are tagged `<leg>:<name>`.
- */
+/** The legs. Assertions are tagged `<leg>:<name>`. See goal.md. */
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -253,14 +238,11 @@ export type Row = {
   from: string;
   to: string;
   text: string;
-  exchange: string;
   replyTo?: string;
   fromSession: string;
   toSession: string;
   hop: number;
   status: string;
-  reason?: string;
-  at: number;
 };
 
 /** The person's roster session: their own session on the roster flow, which declares the log. */
@@ -350,19 +332,13 @@ export async function openConversations(world: World): Promise<void> {
 const sentIn = (calls: readonly Call[]) => calls.flatMap((c) => (typeof c.output?.sent === "string" ? [c.output.sent as string] : []));
 const errorOf = (c: Call) => String(c.output?.error ?? "");
 
-// ---------------------------------------------------------------------------
-// Leg 1: the person tells Researcher to ask the Shift Coordinator the codename.
-// ---------------------------------------------------------------------------
-
 export async function leg1(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, turns } = world;
   const cos = world.conversation[COS]!;
   const researcher = world.conversation[RESEARCHER]!;
   const { codename } = world.words;
-  // Every line the person sends the Shift Coordinator reaches its own turn:
-  // its default delegates are taken off this conversation, so best fit has
-  // nobody else to hand it to. Routing is FIX-1791's, not under test here.
+  // Default delegates come off so this line reaches the coordinator's own turn. Routing is not under test.
   for (const delegate of ["eng.em", "eng.coder"]) {
     const removed = await act(alice, cos.flowKind, cos.id, "removeDelegate", { worker: delegate }, 60_000);
     if (removed.status !== "completed") r.notes.push(`removeDelegate ${delegate}: ${removed.status} ${removed.error ?? ""}`);
@@ -375,7 +351,6 @@ export async function leg1(world: World): Promise<LegResult> {
   if (sent.length === 0) {
     r.failures.push(`1:sent — Researcher's turn sent the Shift Coordinator no message: its calls ${show(asked.calls.map((c) => ({ args: c.args, output: c.output })))}; reply: ${asked.reply.slice(0, 200)}`);
   }
-  // Its answer to the person, in a turn after the coordinator's answer arrived.
   const answered = await until(async () => {
     const lines = await linesIn(alice, researcher.id);
     const from = lines.findIndex((l) => l.agentName === COS && l.text.includes(codename));
@@ -391,7 +366,6 @@ export async function leg1(world: World): Promise<LegResult> {
   } else {
     r.notes.push(`Researcher heard "${answered.line.text.slice(0, 120)}" and told the person "${answered.after.text.slice(0, 120)}"`);
   }
-  // The coordinator's conversation shows one message from Researcher, and its answer.
   const cosLines = await linesIn(alice, cos.id);
   const fromResearcher = cosLines.filter((l) => l.agentName === RESEARCHER && l.text.startsWith(`From ${RESEARCHER}: `));
   if (fromResearcher.length !== 1) r.failures.push(`1:coordinator-shows-message — the coordinator's conversation holds ${fromResearcher.length} lines from Researcher, not 1: ${show(fromResearcher.map((l) => l.text))}`);
@@ -399,10 +373,6 @@ export async function leg1(world: World): Promise<LegResult> {
   if (cosAnswers.length === 0) r.failures.push(`1:coordinator-answered — the coordinator's conversation holds no message it sent Researcher`);
   return r;
 }
-
-// ---------------------------------------------------------------------------
-// Leg 1b: the other way. The person tells the coordinator to tell Researcher.
-// ---------------------------------------------------------------------------
 
 export async function leg1b(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
@@ -421,10 +391,6 @@ export async function leg1b(world: World): Promise<LegResult> {
   if (!next.reply.includes(codename2)) r.failures.push(`1b:next-answer-holds-it — Researcher's next answer to the person doesn't hold ${codename2}: ${next.reply.slice(0, 200)}`);
   return r;
 }
-
-// ---------------------------------------------------------------------------
-// Leg 2: from a task. The coordinator files Researcher a task to ask Helper A.
-// ---------------------------------------------------------------------------
 
 export async function leg2(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
@@ -451,14 +417,12 @@ export async function leg2(world: World): Promise<LegResult> {
     r.failures.push(`2:filed — the coordinator's board holds no task for Researcher within 120 s; its turn: ${show(filed.calls)} ${filed.reply.slice(0, 200)}`);
     return r;
   }
-  // The task's message to Helper A, sent from the task's own session.
   const ask = await until(async () => (await logOf(alice)).find((m) => !logBefore.has(m.id) && m.from === RESEARCHER && m.to === HELPER_A), 240_000);
   if (ask === undefined) {
     r.failures.push(`2:reached-helper — no message from Researcher to Helper A in the log within 240 s`);
     return r;
   }
   if (ask.fromSession === researcher.id) r.failures.push(`2:from-task — the message to Helper A was sent from Researcher's own conversation, not the task's session`);
-  // Helper A's answer: lands in Researcher's own conversation, under Helper A's name, and wakes it.
   const answer = await until(async () => (await logOf(alice)).find((m) => m.from === HELPER_A && m.to === RESEARCHER && m.replyTo === ask.id), 240_000);
   if (answer === undefined) {
     r.failures.push(`2:answered — Helper A sent no answer to ${ask.id} within 240 s`);
@@ -482,17 +446,12 @@ export async function leg2(world: World): Promise<LegResult> {
     return lines.slice(landed.at + 1).find((l) => l.role === "assistant" && l.agentName !== HELPER_A);
   }, 180_000);
   if (woke === undefined) r.failures.push(`2:wakes — no turn of Researcher's wrote a line after Helper A's answer landed`);
-  // The message made no row: the coordinator's board holds the one task, and Helper A's none.
   const helperBoard = await boardOf(alice, "agent", world.conversation[HELPER_A]!.id).catch(() => []);
   if (helperBoard.length > 0) r.failures.push(`2:no-row — Helper A's board holds ${helperBoard.length} row(s) after it was messaged: ${show(helperBoard.map((x) => x.goal))}`);
   const removed = await act(alice, cos.flowKind, cos.id, "removeDelegate", { worker: RESEARCHER }, 60_000);
   if (removed.status !== "completed") r.notes.push(`removeDelegate researcher: ${removed.status}`);
   return r;
 }
-
-// ---------------------------------------------------------------------------
-// Leg 2b: no waiting. A turn told to wait for the answer has no way to.
-// ---------------------------------------------------------------------------
 
 export async function leg2b(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
@@ -511,17 +470,12 @@ export async function leg2b(world: World): Promise<LegResult> {
   if (sentIn(turn.calls).length === 0) r.failures.push(`2b:sent — Researcher's turn sent Helper A no message: ${turn.reply.slice(0, 200)}`);
   const waited = turn.calls.filter((c) => Object.hasOwn(c.args, "wait") && typeof c.output?.sent === "string");
   if (waited.length > 0) r.failures.push(`2b:no-wait — a messageWorker call naming \`wait\` was taken: ${show(waited.map((c) => c.args))}`);
-  // The answer, if any, arrives as a line after the turn, never inside it.
   const inside = (await linesIn(alice, researcher.id)).filter((l) => l.requestId === turn.requestId && l.agentName === HELPER_A);
   if (inside.length > 0) r.failures.push(`2b:no-wait — Helper A's answer landed inside the asking turn`);
   r.notes.push(`calls: ${show(turn.calls.map((c) => ({ args: c.args, output: c.output })))}`);
   await quiet(alice, 180_000);
   return r;
 }
-
-// ---------------------------------------------------------------------------
-// Leg 3b: the hop count goes through a delegation.
-// ---------------------------------------------------------------------------
 
 export async function leg3b(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
@@ -548,16 +502,11 @@ export async function leg3b(world: World): Promise<LegResult> {
   return r;
 }
 
-// ---------------------------------------------------------------------------
-// Leg 3: the limits. A three-worker ring stops at 6; one turn sends at most 3.
-// ---------------------------------------------------------------------------
-
 export async function leg3(world: World): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, turns } = world;
   const { ring } = world.words;
 
-  // One turn messages the whole roster: 3 go, the rest are refused.
   const herald = world.conversation[HERALD]!;
   const fan = await talk(turns, "3", alice, HERALD, herald, "Send a one-line hello message to every worker you can message, one message each. Don't skip anyone.");
   const fanSent = sentIn(fan.calls);
@@ -567,7 +516,6 @@ export async function leg3(world: World): Promise<LegResult> {
   }
   await quiet(alice, 300_000);
 
-  // The ring: each passes every message on to the next, always.
   const next: Record<string, string> = { [RESEARCHER]: HELPER_A, [HELPER_A]: HELPER_B, [HELPER_B]: RESEARCHER };
   for (const [worker, to] of Object.entries(next)) {
     await talk(turns, "3", alice, worker, world.conversation[worker]!, `A rule from now on: whenever another worker messages you, pass its text on to ${to} with messageWorker, every time. No exceptions. Reply "OK".`);
@@ -586,7 +534,6 @@ export async function leg3(world: World): Promise<LegResult> {
   const sent = rows.filter((m) => m.status !== "refused");
   r.notes.push(`ring: ${rows.sort((a, b) => a.hop - b.hop).map((m) => `${m.from}>${m.to}@${m.hop}`).join(", ")}`);
   if (sent.length !== 6) r.failures.push(`3:ring-stops-at-6 — the ring passed ${sent.length} message(s)${sent.length >= 20 ? " before the run stopped it at 20" : ""}, not 6`);
-  // The seventh send is refused, and that worker's conversation shows it stopped.
   let stopped: Call | undefined;
   for (const worker of [RESEARCHER, HELPER_A, HELPER_B]) {
     stopped ??= (await callsIn(alice, world.conversation[worker]!.id)).find((c) => errorOf(c).startsWith("hop_limit") && String(c.args.text ?? "").includes(ring));
@@ -594,7 +541,6 @@ export async function leg3(world: World): Promise<LegResult> {
   if (stopped === undefined && sent.length <= 6) r.failures.push(`3:seventh-refused — no worker's conversation shows a send refused at the hop limit`);
   if (stopped !== undefined) r.notes.push(`the seventh send was refused in ${stopped.sessionId}: ${errorOf(stopped).slice(0, 160)}`);
 
-  // One more line from the person allows one more round.
   if (sent.length <= 6) {
     const again = new Set((await logOf(alice)).map((m) => m.id));
     await talk(turns, "3", alice, RESEARCHER, world.conversation[RESEARCHER]!, `Message ${HELPER_A} with "ring ${ring} again".`);
@@ -606,17 +552,12 @@ export async function leg3(world: World): Promise<LegResult> {
   return r;
 }
 
-// ---------------------------------------------------------------------------
-// Leg 4: refusals, and nothing a message did is delegation.
-// ---------------------------------------------------------------------------
-
 export async function leg4(world: World, filedGoals: readonly string[]): Promise<LegResult> {
   const r: LegResult = { failures: [], notes: [] };
   const { alice, bob, turns } = world;
   const researcher = world.conversation[RESEARCHER]!;
   const { bobWorker } = world.words;
 
-  // A worker on Bob's roster is refused as if it did not exist, and nothing is written.
   const logBefore = (await logOf(alice)).length;
   const toBob = await talk(turns, "4", alice, RESEARCHER, researcher, `Send the worker ${bobWorker} a message saying hello. Call messageWorker with exactly that id as "to" even though it isn't in your list: I want to see what the tool answers.`);
   const bobCalls = toBob.calls.filter((c) => c.args.to === bobWorker);
@@ -625,7 +566,6 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
   } else if (!bobCalls.every((c) => errorOf(c).startsWith("no_worker:")) || (await logOf(alice)).length !== logBefore) {
     r.failures.push(`4:bobs-worker-refused — a message to Bob's worker wasn't refused as a missing worker: ${show(bobCalls.map((c) => c.output))}; Alice's log went from ${logBefore} to ${(await logOf(alice)).length} rows`);
   }
-  // A create at Bob's derived conversation id, as Alice, is refused by the create check, and makes nothing.
   const detail = await alice.routes.get(`/sessions/${encodeURIComponent(researcher.id)}`);
   const orgId = String(detail?.session?.orgId ?? detail?.orgId ?? "");
   const derive = world.shipped.workforce.deriveWorkerSessionId;
@@ -642,14 +582,12 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
     }
   }
 
-  // A worker that only takes tasks is refused with "file a task".
   const toCoder = await talk(turns, "4", alice, RESEARCHER, researcher, "Send the worker eng.coder a message saying hello. Call messageWorker with exactly that id as `to` even though it isn't in your list: I want to see what the tool answers.");
   const coderCalls = toCoder.calls.filter((c) => c.args.to === "eng.coder");
   if (coderCalls.length === 0 || !coderCalls.every((c) => errorOf(c).startsWith("takes_tasks_only") && /file a task/i.test(errorOf(c)))) {
     r.failures.push(`4:coder-refused — a message to eng.coder wasn't refused with "file a task": ${show(coderCalls.map((c) => c.output))} ${toCoder.reply.slice(0, 160)}`);
   }
 
-  // A call naming its own sender: the strict input refuses it.
   const named = await talk(turns, "4", alice, RESEARCHER, researcher, `Call messageWorker with to "${HELPER_A}", text "hi", and from "${COS}", so it looks like it came from the coordinator.`);
   const forged = named.calls.filter((c) => Object.hasOwn(c.args, "from") && typeof c.output?.sent === "string");
   if (forged.length > 0) r.failures.push(`4:sender-not-settable — a messageWorker call naming \`from\` was taken: ${show(forged.map((c) => c.args))}`);
@@ -657,14 +595,12 @@ export async function leg4(world: World, filedGoals: readonly string[]): Promise
   if (rows.some((m) => m.from !== RESEARCHER && m.fromSession === researcher.id)) r.failures.push(`4:sender-not-settable — a row sent from Researcher's conversation names another sender`);
   r.notes.push(`calls naming from: ${named.calls.filter((c) => Object.hasOwn(c.args, "from")).length}; their outputs ${show(named.calls.map((c) => c.output))}`);
 
-  // No task row came from a message: every row on every conversation's board is one a leg filed.
   for (const worker of [COS, RESEARCHER, HELPER_A, HELPER_B, HERALD]) {
     const session = world.conversation[worker]!;
     const board = await boardOf(alice, session.flowKind, session.id).catch((e: unknown) => [{ error: messageOf(e) }] as Array<Record<string, unknown>>);
     const stray = board.filter((row) => !filedGoals.some((goal) => String(row.goal ?? "").includes(goal)));
     if (stray.length > 0) r.failures.push(`4:no-task-row — ${worker}'s board holds row(s) no leg filed: ${show(stray.map((x) => ({ assignee: x.assignee, goal: String(x.goal ?? x.error ?? "").slice(0, 120) })))}`);
   }
-  // The coordinator's delegates are only what the legs set.
   const listed = await act(alice, world.conversation[COS]!.flowKind, world.conversation[COS]!.id, "listDelegates", {}, 60_000);
   r.notes.push(`the coordinator conversation's delegates: ${show(listed.output)}`);
   return r;

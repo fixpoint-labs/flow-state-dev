@@ -170,7 +170,7 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
     case "task":
       return <TaskFrame tab={route.tab} gaps={gaps} />;
     case "messages":
-      return <Messages snapshot={snapshot} gaps={gaps} />;
+      return <Messages snapshot={snapshot} />;
     case "session":
       return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
     case "resource":
