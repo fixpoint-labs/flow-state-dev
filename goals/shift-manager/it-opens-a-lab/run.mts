@@ -21,7 +21,7 @@
  *             Every row is on a conversation's own board, so the task level
  *             opens from here
  *   Inbox     Inbox equals the stored pending asks, or says nothing needs you
- *             with the runs still going and the workers on call
+ *             with the runs still going
  *   reach     every level, tab and panel opens, and each empty one is named
  *   entry     (DevTeam) a workstream the person opens in a project is listed
  *             on its Workstreams tab, and the project Board's lane for its
@@ -109,20 +109,16 @@ const PARKED = new Set(["parked", "awaiting_review"]);
 const QUEUED = (status: string) => !DONE.has(status) && status !== "in_progress" && status !== "errored" && !PARKED.has(status);
 
 /**
- * What an Inbox with nothing pending says: the sessions still running, and the
- * workers on call, each worked out from the store. A row is a seat's when its
- * assignee is the seat's address or its name (the trees' convention).
+ * What an Inbox with nothing pending says: the sessions still running, worked
+ * out from the store.
  */
 function emptyInbox(store: Store): string {
   const rows = Object.values(store.rows).flat();
   // Sessions, not rows: running rows linked to one run session count once, and an unlinked running row is its own.
   const live = rows.filter((r) => r.status === "in_progress");
   const running = new Set(live.flatMap((r) => (r.runSession === null ? [] : [r.runSession]))).size + live.filter((r) => r.runSession === null).length;
-  const holds = (seat: string, wanted: (status: string) => boolean) =>
-    rows.some((r) => wanted(r.status) && (r.assignee === seat || r.assignee === seat.slice(seat.indexOf(".") + 1)));
-  const onCall = store.seats.filter((seat) => !holds(seat, (s) => s === "in_progress") && holds(seat, (s) => PARKED.has(s))).length;
   const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-  return `Nothing needs you. ${n(running, "session is", "sessions are")} still running and ${n(onCall, "worker is", "workers are")} on call.`;
+  return `Nothing needs you. ${n(running, "session is", "sessions are")} still running.`;
 }
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);

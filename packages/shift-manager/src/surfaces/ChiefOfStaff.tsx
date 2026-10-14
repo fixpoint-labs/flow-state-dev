@@ -1,7 +1,7 @@
 /**
  * Chief of Staff (FIX-1722): where Shift Manager opens. The shift summary,
  * then the user's conversation with the Lab's chief-of-staff worker; the right
- * panel lists who is on call.
+ * panel lists its delegates and tasks.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are
@@ -18,7 +18,7 @@
  * **Drawn in design v2's form (v2:120-180).** A 720px feed under v2's header,
  * the summary as unboxed prose with its asks in one bordered list, each
  * tagged with the highlighter; the worker's messages labelled with the time;
- * and the composer pinned under the feed with suggestions above it. The
+ * and the composer pinned under the feed. The
  * registry's cards (the ask's Approve and Reject, the messages) are drawn as
  * the registry draws them.
  */
@@ -38,7 +38,6 @@ import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
 import { navigate } from "../lib/routes";
-import { chiefOfStaffSuggestions } from "../lib/shell";
 import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
@@ -218,7 +217,7 @@ function ChiefOfStaffConversation({ snapshot, gaps, lead }: { snapshot: LoadedSn
     );
   }
   return (
-    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions()} />
+    <Talk key={cos.worker.id} worker={cos.worker} sessions={snapshot.sessions} gaps={gaps} lead={lead} />
   );
 }
 
@@ -262,13 +261,11 @@ function Talk({
   sessions,
   gaps,
   lead,
-  suggestions,
 }: {
   worker: Worker;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
   lead: ReactNode;
-  suggestions: readonly string[];
 }) {
   const working = useChiefOfStaffWorking();
   // A line the palette handed over is sent by this screen's composer, and is dropped if it is never taken.
@@ -284,7 +281,6 @@ function Talk({
       lead={lead}
       working={working}
       startWork={startChiefOfStaffWork}
-      suggestions={suggestions}
       autoSend={handed}
       onAutoSend={clearHandedLine}
       renderItem={renderAsk}
@@ -294,49 +290,24 @@ function Talk({
   );
 }
 
-/** The right panel at Shift Coordinator: ON CALL, the workers Roster reads on call. */
-export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
-  const states = workerStates(snapshot);
-  const onCall = [...states.workers.values()].filter((state) => state.status === "on call");
-  // The delegates and tasks panels: only for a chief of staff that runs on the coordinator flow.
+/** The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow. */
+export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
   const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
-      <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
-        ON CALL
-        {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
-      </p>
-      {onCall.length === 0 ? (
-        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-on-call-none">
-          No worker is on call.
-        </p>
-      ) : (
-        <ul className="space-y-0.5">
-          {onCall.map(({ worker }) => (
-            <li key={worker.id}>
-              <button
-                type="button"
-                onClick={() => navigate({ level: "roster", team: worker.team })}
-                className="flex w-full items-center gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
-                data-testid="cos-on-call"
-                data-worker-id={worker.id}
-              >
-                <ShiftMark status="on call" />
-                <span className="truncate">{worker.id}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
       {cos !== undefined ? (
         <>
-          <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
+          <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
           <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
           <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
         </>
-      ) : null}
+      ) : (
+        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-panel-empty">
+          No delegates or tasks yet.
+        </p>
+      )}
     </div>
   );
 }

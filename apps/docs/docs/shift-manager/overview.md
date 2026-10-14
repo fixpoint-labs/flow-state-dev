@@ -88,7 +88,7 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 | **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [chief of staff](../workforce/chief-of-staff.md). When the chief of staff is a [coordinator](../workforce/coordinators.md), the DELEGATES panel lists who it hands this conversation's work to: add a worker from your roster, or remove one. A refused add shows why. Without a chief of staff, you get the summary and a line saying how to add one. |
 | **Inbox** | Every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker under it. |
 | **Tasks** | Every row on every board that isn't done, grouped by state, worker or workstream. Queued rows are behind a toggle. |
-| **Roster** | Every worker, grouped as on shift (running a task), on call (waiting on you), or off shift. |
+| **Roster** | Every worker, grouped as on shift (running a task, or waiting on you) or off shift. |
 | **A project** | Shared with your org, or private to you. Tabs: Stream (your own [project coordinator](../workforce/projects.md#talking-to-a-project)), Workstreams (every workstream's entry, with the progress worked out from them), Board (the tasks of your own workstreams) and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md). |
 | **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. |
 | **Settings** | Your own keys for the MCP servers the Lab offers its projects' coding runs. See [Settings](./settings.md). |
@@ -134,5 +134,4 @@ Several parts are drawn as named empty states or disabled controls:
 
 - On a task: Hand off, reassign and Open PR are disabled. Diff, Checks, acceptance criteria, reviewer, harness, tokens and cost are empty.
 - A workstream's Results tab, and the IN REVIEW column, are always empty.
-- On call means waiting on you. A worker that only waits on a webhook or a schedule reads off shift.
 - Roster matches a task to a worker by its assignee. A task whose assignee matches no single worker counts for no one.

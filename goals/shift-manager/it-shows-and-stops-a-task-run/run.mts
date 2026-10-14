@@ -499,15 +499,10 @@ async function checkGaps({ page, fail }: Ctx, running: boolean): Promise<void> {
   await owned("task-disabled-action", true);
   if ((await page.getByTestId("task-disabled-action").count()) !== 3) fail("gaps", "Hand off, reassign and Open PR are not all there");
   // Every worker flow has a door, so the composer takes a message on a running
-  // task, and says why not on a finished one.
-  if (running) {
-    if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", "the composer is disabled on a running task whose worker has a door");
-    if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", "the composer says it is blocked on a running task whose worker has a door");
-  } else {
-    if (!(await page.getByTestId("task-composer-input").isDisabled())) fail("gaps", "the composer is enabled on a finished task");
-    const blocked = (await page.getByTestId("task-composer-blocked").textContent().catch(() => null)) ?? "";
-    if (!blocked.includes("finished task takes no message")) fail("gaps", `the composer doesn't say a finished task takes no message: "${blocked}"`);
-  }
+  // task, and on a finished one, which the message picks up again (FIX-1764).
+  const state = running ? "running" : "finished";
+  if (await page.getByTestId("task-composer-input").isDisabled()) fail("gaps", `the composer is disabled on a ${state} task whose worker has a door`);
+  if ((await page.getByTestId("task-composer-blocked").count()) > 0) fail("gaps", `the composer says it is blocked on a ${state} task whose worker has a door`);
   await owned("task-also-post", true);
   await owned("inspector-harness-gap", false);
   await owned("inspector-acceptance-gap", false);

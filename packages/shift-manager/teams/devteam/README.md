@@ -56,11 +56,9 @@ workforce/
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
       workers/reviewer/WORKER.md                   flow: coder   — declared, never woken
       workers/triage/WORKER.md                     flow: coordinator — hands every post to eng.em
-    ops/
-      workers/oncall/WORKER.md                     flow: coordinator — hands every post to eng.em
 ```
 
-Nine Markdown files, and **none of them is named anywhere in this directory's
+Eight Markdown files, and **none of them is named anywhere in this directory's
 code** except the root of the tree. Everything else is walked.
 
 Nothing in either `WORKER.md` names Claude Code, Codex or Cursor. The harness is
