@@ -956,6 +956,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     goal: z.string(),
     title: z
       .string()
+      .min(1)
       .optional()
       .describe(
         "A short label for the task, a few words, shown where the task is listed. The goal is the " +

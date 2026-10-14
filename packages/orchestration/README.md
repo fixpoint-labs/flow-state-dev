@@ -753,6 +753,8 @@ actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
 `addTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
 tool's schema, so a model that would send the payload as a JSON string is told to send the object.
+A new task may also carry a `title`, a short non-empty label apart from its `goal`; `listTasks`
+answers it when a task has one, and a task filed without one is labelled by its goal.
 
 `dispatchTask` starts work now. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a

@@ -171,7 +171,7 @@ function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boa
             data-testid="cos-task-open"
             onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
           >
-            <span className="line-clamp-2">{task.title ?? task.goal}</span>
+            <span className="line-clamp-2">{task.title || task.goal}</span>
             <span className="block text-xs text-muted-foreground">
               {task.status} · {task.assignee ?? "unassigned"}
             </span>

@@ -5,10 +5,11 @@
  * Jump to went there, a row in the conversation did not.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { TaskBoardMeta } from "../src/components/TaskBoardMeta";
-import { TaskBoardRefProvider } from "../src/lib/task-board-ref";
+import { SessionItemsProvider } from "../src/components/flow-state/session-items-context";
+import { SessionScope } from "../src/lib/task-board-ref";
 
 afterEach(cleanup);
 
@@ -21,12 +22,6 @@ const meta = {
   data: { collectionId: "tasks", status: "active" },
 } as never;
 
-vi.mock("../src/components/flow-state/session-items-context", async (original) => ({
-  ...(await original<object>()),
-  useSessionItems: () => mocked.items,
-}));
-const mocked: { items: OutputItem[] } = { items: [] };
-
 const change = (status: string): OutputItem =>
   ({
     id: "i1",
@@ -38,21 +33,26 @@ const change = (status: string): OutputItem =>
   }) as unknown as OutputItem;
 
 describe("a task row in the feed", () => {
-  it("opens the task's session on the conversation's board, and doesn't toggle the row", async () => {
+  it("opens the task's session on the board of the conversation whose feed it is", async () => {
     window.history.pushState(null, "", "/");
-    mocked.items = [change("errored")];
     render(
-      <TaskBoardRefProvider value="s1.tasks">
+      <SessionScope sessionId="s1" items={[change("errored")]}>
         <TaskBoardMeta item={meta} />
-      </TaskBoardRefProvider>,
+      </SessionScope>,
     );
+    // Named by its task, since every row's control would otherwise read just "Open".
+    expect(screen.getByTestId("task-open").getAttribute("aria-label")).toBe("Open Audit the licenses");
     await act(async () => screen.getByTestId("task-open").click());
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
   });
 
   it("offers no link where the feed doesn't know its board", () => {
-    mocked.items = [change("in_progress")];
-    render(<TaskBoardMeta item={meta} />);
+    render(
+      <SessionItemsProvider value={[change("in_progress")]}>
+        <TaskBoardMeta item={meta} />
+      </SessionItemsProvider>,
+    );
+    expect(screen.getByText("Audit the licenses")).toBeTruthy();
     expect(screen.queryByTestId("task-open")).toBeNull();
   });
 });

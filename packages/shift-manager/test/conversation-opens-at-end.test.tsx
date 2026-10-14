@@ -6,7 +6,7 @@
  * Stream) still opens where it starts.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Conversation } from "../src/components/Conversation";
 import { toWorker } from "../src/lib/reads";
 
@@ -25,7 +25,20 @@ vi.mock("../src/lib/conversation", () => ({
   }),
 }));
 
-afterEach(cleanup);
+const SIZED = ["clientHeight", "scrollHeight", "scrollTop"] as const;
+const saved = new Map<string, PropertyDescriptor | undefined>();
+beforeEach(() => {
+  for (const name of SIZED) saved.set(name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name));
+});
+// The sizing lives on the shared prototype, so each test puts back what it found.
+afterEach(() => {
+  cleanup();
+  for (const name of SIZED) {
+    const was = saved.get(name);
+    if (was === undefined) delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+    else Object.defineProperty(HTMLElement.prototype, name, was);
+  }
+});
 
 const VIEW = 100;
 const CONTENT = 1_000;

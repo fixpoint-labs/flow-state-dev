@@ -23,15 +23,14 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { buildItemRenderStream, FlowProvider, ItemRenderer } from "@flow-state-dev/react";
 import type { Gaps } from "../gaps";
-import { SessionItemsProvider } from "./flow-state/session-items-context";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
-import { TaskBoardRefProvider } from "../lib/task-board-ref";
+import { SessionScope } from "../lib/task-board-ref";
 import { useLab } from "../lib/lab-data";
-import { conversationBoardRef, type Worker } from "../lib/reads";
+import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
@@ -117,11 +116,8 @@ export function Conversation({
   const conversation = useWorkerConversation(worker, sessions, session);
   // The feed opens where it starts, and follows once the user reaches the end or sends a line;
   // with `startAtEnd`, it opens on the latest turn, and again on each conversation it is shown.
-  const feed = useFollowLatest({ startAtEnd });
+  const feed = useFollowLatest({ startAtEnd, resetKey: conversation.sessionId });
   const { sessionId, opened, read, failure, reread } = conversation;
-  useEffect(() => {
-    if (startAtEnd) feed.follow();
-  }, [startAtEnd, sessionId, feed.follow]);
 
   // An ask in this conversation answered in Inbox or the summary: read the conversation back.
   const answeredHere = answered !== undefined && answered.sessionId === sessionId ? answered.count : undefined;
@@ -204,64 +200,62 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <TaskBoardRefProvider value={sessionId === null ? undefined : conversationBoardRef(sessionId)}>
-              <SessionItemsProvider value={read.items}>
-                {read.truncated ? (
-                  <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
-                    More than shown: this conversation holds more than one read returns.
-                  </p>
-                ) : null}
-                <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
-                  {shown.map((segment) => {
-                    if (segment.kind === "group") {
-                      const first = segment.items[0]!;
-                      return (
-                        <li
-                          key={`${first.requestId}/${first.id}`}
-                          data-testid={`${testId}-item`}
-                          data-item-id={first.id}
-                          data-request-id={first.requestId}
-                          data-item-type="tool_output"
-                          data-role=""
-                        >
-                          <ToolLineGroup items={segment.items} />
-                        </li>
-                      );
-                    }
-                    const item = segment.item;
-                    const role = (item as { role?: string }).role ?? "";
-                    const own = renderItem?.(item);
+            <SessionScope sessionId={sessionId} items={read.items}>
+              {read.truncated ? (
+                <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
+                  More than shown: this conversation holds more than one read returns.
+                </p>
+              ) : null}
+              <ol className="flex flex-col gap-2.5" data-testid={`${testId}-items`}>
+                {shown.map((segment) => {
+                  if (segment.kind === "group") {
+                    const first = segment.items[0]!;
                     return (
                       <li
-                        key={`${item.requestId}/${item.id}`}
+                        key={`${first.requestId}/${first.id}`}
                         data-testid={`${testId}-item`}
-                        data-item-id={item.id}
-                        data-request-id={item.requestId}
-                        data-item-type={item.type}
-                        data-role={role}
+                        data-item-id={first.id}
+                        data-request-id={first.requestId}
+                        data-item-type="tool_output"
+                        data-role=""
                       >
-                        {item.type === "message" && role === "assistant" ? (
-                          // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
-                          <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                            {(delegateOf(worker, item) ?? name).toUpperCase()}
-                            <span className="tracking-normal" data-look="message-time">
-                              {clockTime(item.ts)}
-                            </span>
-                          </p>
-                        ) : null}
-                        {own !== undefined ? (
-                          own
-                        ) : (
-                          <div data-look="registry-item">
-                            <ItemRenderer item={item} />
-                          </div>
-                        )}
+                        <ToolLineGroup items={segment.items} />
                       </li>
                     );
-                  })}
-                </ol>
-              </SessionItemsProvider>
-            </TaskBoardRefProvider>
+                  }
+                  const item = segment.item;
+                  const role = (item as { role?: string }).role ?? "";
+                  const own = renderItem?.(item);
+                  return (
+                    <li
+                      key={`${item.requestId}/${item.id}`}
+                      data-testid={`${testId}-item`}
+                      data-item-id={item.id}
+                      data-request-id={item.requestId}
+                      data-item-type={item.type}
+                      data-role={role}
+                    >
+                      {item.type === "message" && role === "assistant" ? (
+                        // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
+                        <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                          {(delegateOf(worker, item) ?? name).toUpperCase()}
+                          <span className="tracking-normal" data-look="message-time">
+                            {clockTime(item.ts)}
+                          </span>
+                        </p>
+                      ) : null}
+                      {own !== undefined ? (
+                        own
+                      ) : (
+                        <div data-look="registry-item">
+                          <ItemRenderer item={item} />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </SessionScope>
           </FlowProvider>
         )}
         {working ? (

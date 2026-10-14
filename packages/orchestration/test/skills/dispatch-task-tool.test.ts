@@ -228,6 +228,18 @@ describe("dispatchTask title", () => {
     expect(collection.get(result.taskId!)?.title).toBeUndefined();
   });
 
+  it("refuses an empty title at the schema, so no row carries a blank label", () => {
+    const tools = taskToolsForTurn(async () => {
+      throw new Error("unused");
+    }, () => team(["eng.coder"]).roster, { dispatches: true })({});
+    for (const name of ["dispatchTask", "addTask"]) {
+      const tool = tools.find((t) => (t as { name?: string }).name === name)!;
+      const base = { goal: "Audit licenses", assignee: "eng.coder" };
+      expect(tool.inputSchema.safeParse({ ...base, title: "" }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, title: "Audit" }).success).toBe(true);
+    }
+  });
+
   it("refuses a title beside taskId: it describes a new task, not one already recorded", async () => {
     const collection = await board();
     await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", undispatched: true });
