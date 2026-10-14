@@ -1,8 +1,3 @@
-/**
- * A task row filed with no title reads its goal as its title, so a Brief that
- * printed both said the same sentence twice. It shows a title only when the
- * row has one of its own.
- */
 import { describe, expect, it } from "vitest";
 import { toBoardRow } from "../src/lib/reads";
 import { distinctTitle } from "../src/lib/tasks";

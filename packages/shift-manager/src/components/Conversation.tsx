@@ -29,7 +29,7 @@ import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
 import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
 import { useFollowLatest } from "../lib/follow";
-import { TaskBoardRefProvider } from "../lib/task-board-ref";
+import { TaskBoardRefProvider } from "./TaskBoardMeta";
 import { useLab } from "../lib/lab-data";
 import { conversationBoardRef, type Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
@@ -107,18 +107,14 @@ export function Conversation({
   scale?: "default" | "cos";
   /** Prefix for every test id inside: `cos` gives `cos`, `cos-conversation`, `cos-item`. */
   testId?: string;
-  /**
-   * Open on the latest turn, and follow it, rather than at the top. A view
-   * with a `lead` above the feed leaves this off so it opens on the lead.
-   */
+  /** Open on the latest turn. Off when a lead sits above the feed. */
   startAtEnd?: boolean;
 }) {
   const { clients, refresh, answered } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
-  // The feed opens where it starts, and follows once the user reaches the end or sends a line;
-  // with `startAtEnd`, it opens on the latest turn, and again on each conversation it is shown.
   const feed = useFollowLatest({ startAtEnd });
   const { sessionId, opened, read, failure, reread } = conversation;
+  // The shown conversation changed: open on its latest turn again.
   useEffect(() => {
     if (startAtEnd) feed.follow();
   }, [startAtEnd, sessionId, feed.follow]);
@@ -204,7 +200,7 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <TaskBoardRefProvider value={sessionId === null ? undefined : conversationBoardRef(sessionId)}>
+            <TaskBoardRefProvider value={conversationBoardRef(sessionId)}>
               <SessionItemsProvider value={read.items}>
                 {read.truncated ? (
                   <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>

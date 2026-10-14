@@ -1,14 +1,9 @@
 // @vitest-environment happy-dom
-/**
- * A task row in the conversation's feed opens that task's session. The feed
- * was the one place a task showed with no way into it: the Tasks list and
- * Jump to went there, a row in the conversation did not.
- */
+/** The feed's task row opens the session the Tasks list and Jump to already opened. */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { TaskBoardMeta } from "../src/components/TaskBoardMeta";
-import { TaskBoardRefProvider } from "../src/lib/task-board-ref";
+import { TaskBoardMeta, TaskBoardRefProvider } from "../src/components/TaskBoardMeta";
 
 afterEach(cleanup);
 

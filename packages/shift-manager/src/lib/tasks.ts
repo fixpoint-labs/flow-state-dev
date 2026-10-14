@@ -25,11 +25,7 @@ export function elapsed(row: BoardRow, now: number): string | null {
   return minutes < 10 ? `${minutes}m ${String(seconds % 60).padStart(2, "0")}s` : `${minutes}m`;
 }
 
-/**
- * The row's own title, or `null` when it has none to show: a row filed with no
- * title reads its goal as its title (`toBoardRow`), and a Brief that prints
- * both says the same thing twice.
- */
+/** Null when the row is absent, or its title is the goal `toBoardRow` copied in. */
 export function distinctTitle(row: Pick<BoardRow, "title" | "goal"> | undefined): string | null {
   if (row === undefined || row.title === row.goal) return null;
   return row.title;

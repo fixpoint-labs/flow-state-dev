@@ -174,11 +174,7 @@ export type TaskPlanProps = {
    * Merges over the built-in canonical set.
    */
   statusConfig?: Record<string, StatusConfig>;
-  /**
-   * Draws an app's own control on a task's row, beside its badges: a link
-   * into the task's session, say. The row's summary toggles it open, so a
-   * clickable control stops its event from reaching the summary.
-   */
+  /** App control beside the badges. The row is a summary, so the control stops the click. */
   renderTaskAction?: (task: Task) => React.ReactNode;
   /**
    * Statuses to hide entirely. Defaults to `["cancelled"]` — most surfaces

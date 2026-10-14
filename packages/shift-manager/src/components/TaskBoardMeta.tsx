@@ -1,18 +1,16 @@
-/**
- * The feed's task board, with each task row linking to that task's session.
- *
- * `flow-state/task-plan.tsx` is the registry's copy and stays byte-equal to
- * it, and the registry knows no router. This mounts it with the one prop that
- * lets Shift Manager draw its own control on a row, and swaps it in for the
- * `task-board-meta` renderer in {@link shiftManagerRenderers}.
- */
+/** The feed's task board. Each row opens its session; the registry task plan stays router-free, so the link is a prop. */
+import { createContext, useContext } from "react";
 import type { ComponentItem } from "@flow-state-dev/core/items";
 import { TaskPlan } from "./flow-state/task-plan";
 import { navigate } from "../lib/routes";
-import { useTaskBoardRef } from "../lib/task-board-ref";
+
+/** The feed's board ref. Unset, a row draws no Open control. */
+const TaskBoardRefContext = createContext<string | undefined>(undefined);
+
+export const TaskBoardRefProvider = TaskBoardRefContext.Provider;
 
 export function TaskBoardMeta({ item }: { item: ComponentItem }) {
-  const boardRef = useTaskBoardRef();
+  const boardRef = useContext(TaskBoardRefContext);
   const collectionId = (item.data as { collectionId?: string } | undefined)?.collectionId;
   if (collectionId === undefined) return null;
   return (
@@ -27,7 +25,6 @@ export function TaskBoardMeta({ item }: { item: ComponentItem }) {
                 type="button"
                 className="shrink-0 text-[10px] text-muted-foreground underline hover:text-foreground"
                 data-testid="task-open"
-                // The row sits in a <summary>: a click here opens the task, it doesn't toggle the row.
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();

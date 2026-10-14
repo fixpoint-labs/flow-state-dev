@@ -204,8 +204,6 @@ describe("a new task's input is an object, never its JSON as a string", () => {
 });
 
 describe("dispatchTask title", () => {
-  // A row filed with no title is listed by its whole goal, so a coordinator
-  // that can name the task gives every list a short label.
   it("files the task under the title it names, apart from its goal", async () => {
     const collection = await board();
     const t = team(["eng.coder"]);

@@ -152,7 +152,6 @@ function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask
   );
 }
 
-/** Each task opens its session on the conversation's board. */
 function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boardRef: string }) {
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">

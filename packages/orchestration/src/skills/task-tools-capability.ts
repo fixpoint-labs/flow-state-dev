@@ -1573,7 +1573,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           z.object({
             id: z.string(),
             goal: z.string(),
-            /** The short label the task was filed under, when it has one. */
             title: z.string().optional(),
             status: z.string(),
             assignee: z.string().optional(),

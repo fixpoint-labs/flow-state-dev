@@ -1,10 +1,5 @@
 // @vitest-environment happy-dom
-/**
- * The Shift Coordinator opens on its latest turn. A feed that opened at the
- * top left the user scrolling down through the whole conversation every time
- * they came back to it. A view with its own lead above the feed (a project's
- * Stream) still opens where it starts.
- */
+/** The Shift Coordinator opens on its latest turn; a feed with a lead above it still opens at the top. */
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Conversation } from "../src/components/Conversation";
