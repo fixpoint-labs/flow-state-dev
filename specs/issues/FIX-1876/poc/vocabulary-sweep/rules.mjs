@@ -122,11 +122,6 @@ export const KEEP = [
     why: "the harness question inbox: a coding run asking a person"
   },
   {
-    path: /^packages\/engine\/src\/context\/request-principal\.ts$/,
-    rules: ["handoff-symbol"],
-    why: "a local variable for a request record passed to its holder; not a delivery of work"
-  },
-  {
     path: /^packages\//,
     line: /\babortHandoff\b/,
     rules: ["handoff-symbol", "handoff-prose"],

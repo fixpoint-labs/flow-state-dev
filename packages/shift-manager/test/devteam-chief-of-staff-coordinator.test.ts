@@ -3,8 +3,8 @@
  * Lab: its file names `flow: coordinator`, `routing: best-fit` with a floor,
  * and standard workers as default delegates; best fit's one evaluation sends
  * a plain ask straight to the EM, and anything else to its judgment, the
- * agent's own turn, with its hire and the delegate tools; and a post it hands
- * off is answered in its conversation under the delegate's name.
+ * agent's own turn, with its hire and the delegate tools; and a post it dispatches
+ * is answered in its conversation under the delegate's name.
  *
  * The models are scripted by block: best fit's evaluation answers the route
  * a test names (by default the chief of staff itself); the chief of staff's

@@ -3,8 +3,8 @@
  * (FIX-1234 §9).
  *
  * The exclusion itself is a few lines. This is where the complexity is: what a
- * board says when the rows it has left are a mixture — some parked, some handed
- * off, some genuinely failed — and the fact that a parked row usually has
+ * board says when the rows it has left are a mixture — some parked, some
+ * dispatched, some genuinely failed — and the fact that a parked row usually has
  * downstream tasks waiting on it, so the naive answer is "blocked by failures"
  * on a board where nothing failed.
  *

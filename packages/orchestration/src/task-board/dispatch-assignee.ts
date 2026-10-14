@@ -9,8 +9,8 @@
  * block; to run it elsewhere instead of inline, the assignee holds a dispatcher.
  * This module owns three things and nothing else:
  *
- * 1. reading a board's assignees — a bare block means inline, a dispatcher hands
- *    off, and the removed assignee shapes are refused by name;
+ * 1. reading a board's assignees — a bare block means inline, a dispatcher
+ *    dispatches, and the removed assignee shapes are refused by name;
  * 2. the board's "this row's work runs elsewhere" test for dispatcher assignees;
  * 3. the construction-time refusals — `assertDispatchBoardSupported` for the
  *    board, `assertDispatchEntrySupported` for the entry block the gate is

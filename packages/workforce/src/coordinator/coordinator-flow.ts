@@ -283,9 +283,21 @@ const postStateSchema = z.object({
   evaluationFailed: z.string().optional()
 });
 
-type PostState = z.infer<typeof postStateSchema>;
+export type PostState = z.infer<typeof postStateSchema>;
 
 const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() });
+
+/**
+ * A request opened while `dispatches` had its old name, and resumed since, reads it as
+ * `dispatches` (BP-030). Request state is not parsed on read, so this is the one reader.
+ *
+ * @internal Exported for its test.
+ */
+export function withDispatches(post: PostState): PostState {
+  const { handOffs: legacy, ...rest } = post as PostState & { handOffs?: PostState["dispatches"] }; // retired-name-refusal: BP-030
+  if (legacy === undefined) return post;
+  return { ...rest, dispatches: rest.dispatches ?? legacy };
+}
 
 /** One delivery to make. */
 const deliveryRequestSchema = z.object({
@@ -560,13 +572,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   // -------------------------------------------------------------------------
 
   /** The post being routed, from request state. Set by the door before anything routes. */
-  /** A request opened under this field's old name, and resumed since, reads it as `dispatches` (BP-030). */
-  const withDispatches = (post: PostState): PostState => {
-    const { handOffs: legacy, ...rest } = post as PostState & { handOffs?: RoutedDelegate[] }; // retired-name-refusal: BP-030
-    if (legacy === undefined) return post;
-    return { ...rest, dispatches: rest.dispatches ?? legacy };
-  };
-
   const postOf = (ctx: BlockContext): PostState => {
     const post = (ctx.request.state as Record<string, unknown>)[POST_STATE] as PostState | undefined;
     if (post === undefined) throw new Error("No post is being routed in this request.");

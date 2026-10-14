@@ -265,8 +265,8 @@ const immutableAssigneeLedgers = new WeakSet<DefinedTaskCollection>();
  * `parked`) in this ledger, for every ref that resolves it. Called by `taskBoard` when a board binding this collection declares
  * dispatcher assignees, whose child's routing key is derived from the assignee.
  *
- * Idempotent, and deliberately one-way: two boards on one ledger, one handing
- * off and one not, must not disagree about whether reassignment is allowed, and
+ * Idempotent, and deliberately one-way: two boards on one ledger, one dispatching
+ * and one not, must not disagree about whether reassignment is allowed, and
  * the dispatched board's invariant is the one that breaks silently.
  */
 export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
