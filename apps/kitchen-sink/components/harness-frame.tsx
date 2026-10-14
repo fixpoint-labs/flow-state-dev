@@ -43,6 +43,8 @@ export interface HarnessFrameProps {
   readonly label: string;
   /** The mode's session flow kind. The rail lists only its sessions. */
   readonly flowKind: string;
+  /** The available mode's note (a run without its sandbox), under the mode's name. */
+  readonly note?: string;
   /** The mode's session view for the picked session. Filled by the mode's own issue. */
   readonly stream?: (sessionId: string) => ReactNode;
   /** The flow list the navigator reads. Defaults to this app's server; stable. */
@@ -52,7 +54,7 @@ export interface HarnessFrameProps {
 }
 
 /** A harness mode's rail and stream slot. */
-export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSource }: HarnessFrameProps) {
+export function HarnessFrame({ label, flowKind, note, stream, flowSource, sessionSource }: HarnessFrameProps) {
   const flows = useMemo(
     () => flowSource ?? createClient({ flowKind, userId: KITCHEN_SINK_USER_ID, baseUrl: "" }),
     [flowSource, flowKind],
@@ -122,6 +124,11 @@ export function HarnessFrame({ label, flowKind, stream, flowSource, sessionSourc
         aria-label={`${label} sessions`}
       >
         <ModeRailHeader label={label} />
+        {note !== undefined && (
+          <p className="break-words border-b px-3 py-2 text-xs" data-testid="mode-note">
+            {note}
+          </p>
+        )}
         <div className="border-b p-2">
           <Button
             variant="outline"

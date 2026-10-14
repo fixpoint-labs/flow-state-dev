@@ -95,6 +95,17 @@ server's included, through `/proc`. Use a separate user or a container when that
 Leave it out and the runtime runs in your process, as before. Guide:
 [Choosing the environment the run starts with](https://flow-state.dev/docs/tools/cursor#choosing-the-environment-the-run-starts-with).
 
+`agent.local.sandboxOptions: { enabled: true }` asks Cursor to confine the run's writes to its
+`cwd`. Cursor fails a run whose sandbox can't start, rather than running without it. The sandbox
+needs a helper binary from Cursor's platform package (`@cursor/sdk-darwin-arm64` and the like).
+This package depends on the platform packages, so a run with `env` set finds the helper under any
+package manager. Without `env`, under pnpm, your app must depend on the platform package too.
+
+`probeCursorSandbox({ cwd, env })` asks the SDK whether the sandbox can start for a run in `cwd`,
+the way a run with that `env` would, without starting one. It returns `{ supported: true }` or
+`{ supported: false, reason }` with Cursor's own message. It takes about a second, so call it once,
+from a startup or health check.
+
 ## The handle
 
 The neutral harness handle (`source: "cursor/sdk"`, `status`, `sessionId`, `url`,

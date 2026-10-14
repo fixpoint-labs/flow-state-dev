@@ -60,6 +60,11 @@ function ModeCard({ mode, availability }: { mode: KitchenSinkMode; availability:
           {availability.reason}
         </span>
       )}
+      {availability.available && availability.note !== undefined && (
+        <span className="mt-2 block break-words text-sm" data-testid="mode-note">
+          {availability.note}
+        </span>
+      )}
     </>
   );
   return (

@@ -282,6 +282,14 @@ describe("where a session works (V6)", () => {
     expect(sandbox.filesystem?.denyWrite).toContain(join(run.cwd!, ".git"));
   });
 
+  it("runs with no sandbox only when KITCHEN_SINK_HARNESS_UNSANDBOXED=1 asks for it", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+    const stores = createInMemoryStores();
+    const recorder = recorded();
+    await turn(stores, recorder, "s-unfenced", "hello");
+    expect(recorder.runs[0]!.sandbox).toBeUndefined();
+  });
+
   it("the run is offered Claude Code's to-do tools, so a turn asked to plan can record one (BR-14)", async () => {
     const stores = createInMemoryStores();
     const recorder = recorded();

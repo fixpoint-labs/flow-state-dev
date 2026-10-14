@@ -34,9 +34,19 @@ describe("Claude Code mode's check (V9)", () => {
     expect(await check({ isRoot: () => true })).toMatchObject({ available: false, reason: expect.stringContaining("root") });
   });
 
-  it("is unavailable without the sandbox, with its reason", async () => {
+  it("is unavailable without the sandbox, with its reason and the opt-out", async () => {
     const reason = "Claude Code's sandbox is not available: install bwrap.";
-    expect(await check({ sandboxMissing: () => reason })).toEqual({ available: false, reason });
+    const result = await check({ sandboxMissing: () => reason });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining(reason) });
+    expect(result).toMatchObject({ reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
+  });
+
+  it("with KITCHEN_SINK_HARNESS_UNSANDBOXED=1, doesn't ask about the sandbox and says the run is unsandboxed", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+    const sandboxMissing = vi.fn(() => "no sandbox here");
+    const result = await check({ sandboxMissing });
+    expect(sandboxMissing).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ available: true, note: expect.stringContaining("not confined") });
   });
 
   it("is unavailable when the worktree folder can't be made", async () => {
