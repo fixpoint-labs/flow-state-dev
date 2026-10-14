@@ -666,7 +666,7 @@ apply. When it ends, the waiting turn continues with the answer, and the convers
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.
 
-**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`. Nothing is filed. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`.
+**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`. Nothing is filed. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`. {/* retired-name-refusal: migration note */}
 
 ## Concurrency and error handling
 
