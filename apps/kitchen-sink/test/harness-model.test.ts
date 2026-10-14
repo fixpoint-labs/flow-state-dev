@@ -23,7 +23,7 @@ import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
 import { claudeCodeModelChoices, claudeCodeSessionFlow } from "@/lib/claude-code-mode";
 import { CODEX_MODELS, CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
-import { CURSOR_DEFAULT_MODEL, cursorModelChoices, cursorSessionFlow } from "@/lib/cursor-mode";
+import { CURSOR_DEFAULT_MODEL, cursorCatalogModels, cursorModelChoices, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { MODEL_REQUIRED } from "@/lib/harness-session-flow";
 import type { HarnessSessionState } from "@/lib/harness-turn";
@@ -305,6 +305,23 @@ describe("what each mode offers to pick", () => {
     });
     expect(failed.models.map((m) => m.id)).toEqual([CURSOR_DEFAULT_MODEL]);
     expect(failed.reason).toMatch(/can't be read \(offline\), so only Cursor mode's default is offered/);
+  });
+
+  it("Cursor: an entry that needs parameters to run is not offered, since a session hands Cursor an id alone", () => {
+    // The shape `Cursor.models.list()` returns (`ModelListItem`, @cursor/sdk 1.0.31).
+    const offered = cursorCatalogModels([
+      { id: CURSOR_DEFAULT_MODEL, displayName: "Composer 2.5" },
+      {
+        id: "auto-smart",
+        displayName: "Auto",
+        parameters: [{ id: "optimize_for", values: [{ value: "speed" }, { value: "intelligence" }] }],
+      },
+      { id: "plain", displayName: "", parameters: [] },
+    ]);
+    expect(offered).toEqual([
+      { id: CURSOR_DEFAULT_MODEL, label: "Composer 2.5" },
+      { id: "plain", label: "plain" },
+    ]);
   });
 
   it("Cursor: a catalog call that never answers gives up in time and offers the default, so an existing session still opens", async () => {

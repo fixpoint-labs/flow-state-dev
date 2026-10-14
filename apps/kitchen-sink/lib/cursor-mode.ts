@@ -149,15 +149,33 @@ export function cursorSessionFlow(seams: CursorSeams = {}) {
 /** Cursor's own model list, read over the run's sign-in. A seam for tests. */
 export type CursorModelList = (env: Record<string, string>) => Promise<readonly HarnessModel[]>;
 
+/** One entry of Cursor's catalog, as far as the picker reads it (`ModelListItem` in `@cursor/sdk`). */
+export interface CursorCatalogEntry {
+  readonly id: string;
+  readonly displayName?: string;
+  /** The settings the model is chosen with (`optimize_for` on `auto-smart`, say). */
+  readonly parameters?: readonly unknown[];
+}
+
+/**
+ * The catalog entries a session can run by id alone. The model feed hands the
+ * block an id and nothing else, so an entry that declares parameters is left
+ * out rather than offered without them.
+ */
+export function cursorCatalogModels(items: readonly CursorCatalogEntry[]): HarnessModel[] {
+  return items
+    .filter((item) => (item.parameters?.length ?? 0) === 0)
+    .map((item) => ({ id: item.id, label: item.displayName || item.id }));
+}
+
 /** The SDK's catalog call: the models the signed-in account can run, by Cursor's ids and names. */
 const listCursorModels: CursorModelList = async (env) => {
   // Loaded only here, so a host without the SDK never loads it.
   const { Cursor } = (await import("@cursor/sdk")) as unknown as {
-    Cursor: { models: { list(options?: { apiKey?: string }): Promise<Array<{ id: string; displayName?: string }>> } };
+    Cursor: { models: { list(options?: { apiKey?: string }): Promise<CursorCatalogEntry[]> } };
   };
   const key = env.CURSOR_API_KEY ?? "";
-  const items = await Cursor.models.list(key === "" ? undefined : { apiKey: key });
-  return items.map((item) => ({ id: item.id, label: item.displayName || item.id }));
+  return cursorCatalogModels(await Cursor.models.list(key === "" ? undefined : { apiKey: key }));
 };
 
 /** How long the page waits for Cursor's catalog before offering the default alone. */

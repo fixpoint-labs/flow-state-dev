@@ -120,10 +120,17 @@ function withTurn(state: HarnessSessionState, requestId: string, change: (turn: 
 
 /**
  * The error a turn records when the harness returned a run it reports as
- * failed. Core's handle carries no failure text any harness can fill, so the
- * record says what is known and no more.
+ * failed and gave no words for it. Core's handle carries no failure text, so a
+ * harness's own words come from its handle's `failureMessage` when it has one
+ * (Codex and Cursor do); this is the fallback when it hasn't.
  */
-const FAILED_OUTCOME_ERROR = "The harness reported the run as failed.";
+export const FAILED_OUTCOME_ERROR = "The harness reported the run as failed.";
+
+/** The harness's own words for a failed run: its handle's `failureMessage`, when it has one. */
+function failureWordsOf(handle: HarnessRunHandle): string {
+  const words = (handle as { failureMessage?: unknown }).failureMessage;
+  return typeof words === "string" && words.trim() !== "" ? words : FAILED_OUTCOME_ERROR;
+}
 
 /** Change the session's state atomically. */
 async function changeState(
@@ -227,7 +234,7 @@ export function harnessSessionFlow(options: HarnessSessionFlowOptions) {
           ...record,
           failure: null,
           stopped: ctx.signal.aborted,
-          error: FAILED_OUTCOME_ERROR,
+          error: failureWordsOf(handle),
         })),
       );
     },

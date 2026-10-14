@@ -12,6 +12,7 @@
  *   - leave `env` unset in real mode: the options case finds no allowlist.
  *   - refuse with an error code other than the SDK's `agent_not_found`: the BR-3 case reads as an error.
  *   - record a failure only on a throw: the errored-run case reads "continued".
+ *   - record a failed run with a fixed line, not the handle's `failureMessage`: the errored-run case loses Cursor's words.
  * The notice's own red states (a cleared id, a notice from session-wide
  * fields) are FIX-1915's, on the same shared flow (`harness-session.test.ts`).
  */
@@ -179,7 +180,9 @@ describe("which agent a turn continues (V5)", () => {
     const errored = await turn(stores, recorder, "s-errored", "[errored] go on");
     const record = (await stateOf(stores, "s-errored")).turns?.[errored.requestId];
     expect(record).toMatchObject({ asked: bound, confirmed: bound, failure: null });
-    expect(record?.error).toEqual(expect.any(String));
+    // Cursor's own words for the failure, not a line Kitchen Sink makes up, so
+    // the person reads why the harness failed the run (a refused model, say).
+    expect(record?.error).toBe("scripted run Cursor reports as errored");
     expect(await noticeOf(stores, "s-errored", errored.requestId, errored.status as "completed" | "failed")).toMatchObject({
       kind: "error",
       conversation: bound,

@@ -18,6 +18,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { refuseIfAnswering, stopProcessGroup } from "../../lib/server.mts";
 import { locateSessionWorktree } from "../../../apps/kitchen-sink/lib/harness-worktree.ts";
 import { KITCHEN_SINK_USER_ID } from "../../../apps/kitchen-sink/lib/kitchen-sink-principal.ts";
+import { FAILED_OUTCOME_ERROR } from "../../../apps/kitchen-sink/lib/harness-session-flow.ts";
 
 const PORT = 3051;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -184,6 +185,17 @@ async function turn(page: Page, prompt: string): Promise<{ kind: string | null; 
   return { kind: await notice(page).getAttribute("data-kind"), text: ((await notice(page).textContent()) ?? "").trim() };
 }
 
+/**
+ * The harness's own words in an error notice (`This turn failed: <words> The
+ * session stays on…`), or `null` when there are none: no words at all, or only
+ * the line Kitchen Sink records when a harness reports a failed run without
+ * saying why. That line is Kitchen Sink's, so it never counts as the harness's.
+ */
+function harnessWords(text: string): string | null {
+  const words = /^This turn failed:\s*([\s\S]*?)\s*(?:The session stays on conversation [\s\S]*)?$/.exec(text)?.[1]?.trim() ?? "";
+  return words === "" || words === FAILED_OUTCOME_ERROR ? null : words;
+}
+
 async function openedSession(page: Page): Promise<string> {
   await page.waitForFunction(() => document.querySelector('[data-testid="stream"]')?.getAttribute("data-session-id"));
   return (await page.getByTestId("stream").getAttribute("data-session-id"))!;
@@ -266,7 +278,7 @@ await runGoal(async (failures) => {
       const record = await recordOf(mode, await boundId(page), refusedId);
       const others = [...new Set(record.models.filter((m) => m !== bogus))];
       if (refused.kind !== "error") fail(`${mode}.x`, `the turn on ${bogus} ended as ${JSON.stringify(refused.kind)} (want error): ${refused.text}`);
-      else if (!/:\s*\S/.test(refused.text)) fail(`${mode}.x`, `the turn failed with no words from the harness: ${refused.text}`);
+      else if (harnessWords(refused.text) === null) fail(`${mode}.x`, `the turn failed with no words from the harness: ${refused.text}`);
       if (others.length > 0) fail(`${mode}.x`, `a session born with ${bogus} ran ${others.join(", ")}`);
       // Codex names the requested slug, so an answer under it would be a model serving an id it never had.
       if (record.answered && others.length === 0) fail(`${mode}.x`, `the harness answered a turn on ${bogus}`);
