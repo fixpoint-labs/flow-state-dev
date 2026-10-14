@@ -130,6 +130,7 @@ import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
   coordinatorConfigProblems,
   coordinatorConfigSchema,
+  coordinatorRunsOwnTurn,
   type CoordinatorConfig,
   type CoordinatorRouting
 } from "./coordinator-config";
@@ -1590,7 +1591,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     turn.run,
     (ctx) => {
       const { routing } = workerConfigOf(ctx) as unknown as CoordinatorConfig;
-      return routing === "judgment" || routing === "best-fit" ? "judgment" : "fixed";
+      return coordinatorRunsOwnTurn(routing) ? "judgment" : "fixed";
     },
     onPostEnded
   );

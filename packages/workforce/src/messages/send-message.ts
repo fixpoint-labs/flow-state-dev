@@ -29,10 +29,11 @@
  */
 import { dispatchThroughSeam, type BlockContext, type DispatchOutcome } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
+import { coordinatorRunsOwnTurn } from "../coordinator/coordinator-config";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { filingProjectAddressOf } from "../conversation-board/filing-session";
 import { deriveWorkerSessionId, criteriaState, type WorkerSessionCriteria } from "../workers/derive-session-id";
-import type { WorkerInstallation } from "../workers/installation";
+import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
   FILING_SESSION_STATE_KEY,
   TASK_ID_STATE_KEY,
@@ -71,8 +72,8 @@ export function takesWorkerMessages(flow: unknown): boolean {
   return actions !== undefined && Object.hasOwn(actions, WORKER_MESSAGE_ENTRY);
 }
 
-/** A coordinator worker's routing, as its row or file declares it: `judgment` when it names none. */
-async function routingOf(ctx: BlockContext, installation: WorkerInstallation, workerId: string, standard: boolean): Promise<string> {
+/** A coordinator worker's routing, as its row or file declares it, or `undefined` when it names none. */
+async function routingOf(ctx: BlockContext, installation: WorkerInstallation, workerId: string, standard: boolean): Promise<unknown> {
   let declared: unknown;
   if (standard) {
     declared = installation.standardWorker(workerId)?.declared.routing;
@@ -81,11 +82,36 @@ async function routingOf(ctx: BlockContext, installation: WorkerInstallation, wo
     const parsed = parseWorkerRow((await collection?.getOptional(workerId))?.state);
     declared = "row" in parsed ? parsed.row.settings.routing : undefined;
   }
-  return typeof declared === "string" ? declared : "judgment";
+  return declared;
 }
 
-/** The routings under which a coordinator runs no turn of its own. */
-const TURNLESS_ROUTINGS = new Set(["round-robin", "everyone"]);
+/**
+ * Why `sender` can't message `recipient` (the roster's row for `to`, or
+ * `undefined` when there is none), or `undefined` when it can. The one rule:
+ * the send refuses with it, and the tool's description lists only the workers
+ * it lets through.
+ */
+export async function recipientRefusal(
+  ctx: BlockContext,
+  installation: WorkerInstallation,
+  sender: string,
+  to: string,
+  recipient: RosterWorker | undefined
+): Promise<string | undefined> {
+  if (to === sender) return "not_yourself: you can't message yourself.";
+  if (recipient === undefined) return `no_worker: no worker "${to}" on your roster.`;
+  if (recipient.problem !== undefined) return `worker_unavailable: worker "${to}" can't be messaged: ${recipient.problem}.`;
+  if (!takesWorkerMessages(installation.workerFlows()[recipient.flow]?.flow)) {
+    return `takes_tasks_only: "${to}" only takes tasks and can't be messaged. File a task for it instead.`;
+  }
+  if (recipient.flow === COORDINATOR_FLOW && !coordinatorRunsOwnTurn(await routingOf(ctx, installation, to, recipient.standard))) {
+    return (
+      `no_turn: "${to}" hands every line to its delegates and runs no turn of its own, so nobody would read a message. ` +
+      "Message one of its delegates, or file a task."
+    );
+  }
+  return undefined;
+}
 
 /**
  * A worker's own conversation with the running session's user: its derived
@@ -134,22 +160,11 @@ export async function sendWorkerMessage(
   if (input.text.length > MAX_MESSAGE_CHARS) {
     return refuse(`message_too_long: a message holds at most ${MAX_MESSAGE_CHARS} characters; this one has ${input.text.length}. Nothing was sent.`);
   }
-  if (input.to === sender) return refuse("not_yourself: you can't message yourself.");
 
   // ---- the recipient: on the roster, and with a conversation --------------
   const recipient = await installation.rosterWorker(ctx as never, input.to);
-  if (recipient === undefined) return refuse(`no_worker: no worker "${input.to}" on your roster.`);
-  if (recipient.problem !== undefined) return refuse(`worker_unavailable: worker "${input.to}" can't be messaged: ${recipient.problem}.`);
-  const recipientFlow = installation.workerFlows()[recipient.flow]?.flow;
-  if (!takesWorkerMessages(recipientFlow)) {
-    return refuse(`takes_tasks_only: "${input.to}" only takes tasks and can't be messaged. File a task for it instead.`);
-  }
-  if (recipient.flow === COORDINATOR_FLOW && TURNLESS_ROUTINGS.has(await routingOf(ctx, installation, input.to, recipient.standard))) {
-    return refuse(
-      `no_turn: "${input.to}" hands every line to its delegates and runs no turn of its own, so nobody would read a message. ` +
-        "Message one of its delegates, or file a task."
-    );
-  }
+  const refused = await recipientRefusal(ctx, installation, sender, input.to, recipient);
+  if (refused !== undefined || recipient === undefined) return refuse(refused ?? `no_worker: no worker "${input.to}" on your roster.`);
 
   // ---- where it goes ---------------------------------------------------------
   const log = messageLogOf(ctx);

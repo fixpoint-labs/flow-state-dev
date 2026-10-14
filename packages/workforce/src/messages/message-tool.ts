@@ -17,7 +17,7 @@ import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import { messageTurnStateSchema } from "./hop";
 import { MESSAGE_WORKER_TOOL } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
-import { sendWorkerMessage, takesWorkerMessages } from "./send-message";
+import { recipientRefusal, sendWorkerMessage } from "./send-message";
 
 export { MESSAGE_WORKER_TOOL };
 
@@ -29,7 +29,8 @@ const MAX_DESCRIPTION = 160;
 export const messageWorkerInputSchema = z
   .object({
     to: z.string().min(1).describe("The id of the worker to message, as the list below names it."),
-    text: z.string().min(1).max(MAX_MESSAGE_CHARS).describe("What to say."),
+    // Something other than blank space: the send refuses a blank message too.
+    text: z.string().max(MAX_MESSAGE_CHARS).regex(/\S/, "say something").describe("What to say."),
     replyTo: z
       .string()
       .min(1)
@@ -49,12 +50,12 @@ const BASE_DESCRIPTION =
   "answer. If it answers, the answer arrives later as a line from that worker and wakes you. To answer a message " +
   "you were sent, pass its id as replyTo.";
 
-/** Who the running worker can message, as the description's list. */
-async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation): Promise<string> {
-  const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
-  const flows = installation.workerFlows();
-  const listed = (await installation.roster(ctx as never))
-    .filter((worker) => worker.id !== self && worker.problem === undefined && takesWorkerMessages(flows[worker.flow]?.flow))
+/** Who the running worker can message, as the description's list: every roster worker the send would take. */
+async function recipientsLine(ctx: BlockContext, installation: WorkerInstallation, self: string): Promise<string> {
+  const roster = await installation.roster(ctx as never);
+  const refusals = await Promise.all(roster.map((worker) => recipientRefusal(ctx, installation, self, worker.id, worker)));
+  const listed = roster
+    .filter((_, i) => refusals[i] === undefined)
     .slice(0, MAX_LISTED)
     .map((worker) => {
       const description = (worker.description ?? "").replace(/\s+/g, " ").trim();
@@ -95,7 +96,7 @@ export function defineMessageWorkerCapability(installation: WorkerInstallation, 
         controlTools: async (ctx) => {
           const self = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
           if (typeof self !== "string") return [];
-          const description = BASE_DESCRIPTION + (await recipientsLine(ctx as never, installation));
+          const description = BASE_DESCRIPTION + (await recipientsLine(ctx as never, installation, self));
           let tool = built.get(description);
           if (tool === undefined) {
             if (built.size > 64) built.clear();

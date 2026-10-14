@@ -115,7 +115,7 @@ describe("a worker messages another worker", () => {
 });
 
 describe("what a worker knows of who it can message", () => {
-  it("is the tool's description: every roster worker with a conversation but itself, by id and description", async () => {
+  it("is the tool's description: every roster worker the send would take, by id and description", async () => {
     const descriptions: string[] = [];
     const h = bootBoardHost({
       standard: teamWorkers(),
@@ -137,6 +137,8 @@ describe("what a worker knows of who it can message", () => {
       expect(descriptions[0]).toContain("- helper-a: Knows colours.");
       expect(listed).not.toContain("otto");
       expect(listed).not.toContain("eng.tasker");
+      // A round-robin coordinator runs no turn, so the send would refuse it: the list never offers it.
+      expect(listed).not.toContain("rota");
     } finally {
       await h.dispose();
     }

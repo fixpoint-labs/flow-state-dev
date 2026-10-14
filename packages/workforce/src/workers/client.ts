@@ -195,15 +195,15 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   const derivable = (criteria: WorkerSessionCriteria): boolean =>
     criteria.taskId === undefined && criteria.filingSessionId === undefined && criteria.workstreamId === undefined;
 
-  /** The session at the criteria's derived address, or `undefined` while there is none. */
+  /**
+   * The session at the criteria's derived address, or `undefined` while there
+   * is none. Found in the listing by its id rather than read by it, so an
+   * absent conversation is an empty answer, not a 404 a page logs.
+   */
   const atDerived = async (criteria: WorkerSessionCriteria, flow: string, orgId: string): Promise<SessionSummary | undefined> => {
     const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
-    try {
-      return await sessions.getSession(sessionId);
-    } catch (error) {
-      if (error instanceof ClientHttpError && error.status === 404) return undefined;
-      throw error;
-    }
+    const rows = await sessions.listSessions({ flowKind: flow, userId, state: criteriaState(criteria) });
+    return rows.find((row) => row.id === sessionId);
   };
 
   const find = async (
