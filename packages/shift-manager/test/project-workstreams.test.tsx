@@ -640,7 +640,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
   });
 
   it("shows a workstream opened elsewhere under its project in the sidebar, with no reload", async () => {
-    // The coordinator opens workstreams in its own turn; the person on the project's screen must see it land.
+    // The coordinator opens workstreams in its own turn; the user on the project's screen must see it land.
     const { screen, within } = dom!;
     const { baseUrl, setup, as } = await open();
     const alice = await as(ALICE);

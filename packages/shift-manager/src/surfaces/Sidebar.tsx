@@ -313,6 +313,7 @@ function ProjectGroup({
   reader: string | null;
   readAt: number;
 }) {
+  // `null` follows the route; a toggle overrides it.
   const [toggled, setToggled] = useState<boolean | null>(null);
   const { id, title, visibility } = project;
   // A project's address is its visibility and its id: a private project and a shared one can share an id.
