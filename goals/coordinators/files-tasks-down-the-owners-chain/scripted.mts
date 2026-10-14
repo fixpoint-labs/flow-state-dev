@@ -184,8 +184,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const t2 = await act(alice, "coordinator", c2, "addTask_tasks", { goal: `[slow:${SLOW_MS}] Draft the ${words.t2} brief` });
     const t1 = await act(alice, "coordinator", c1, "dispatchTask_tasks", { goal: `Tidy the ${words.t1} list`, assignee: "desk.alpha" });
     await quiet();
-    // The first conversation names the second's task by its id: assigns it,
-    // then dispatches it, since an assign only records (FIX-1875).
+    // Assign, then dispatch: an assign only records (FIX-1875).
     const reach = await act(alice, "coordinator", c1, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.alpha" });
     const reachRun = await act(alice, "coordinator", c1, "dispatchTask_tasks", { taskId: taskIdOf(t2) ?? "none" });
     await quiet();
