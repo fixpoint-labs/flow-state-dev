@@ -1610,8 +1610,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         userMessage: (input: DoorInput) => input.message,
         concurrency: REPLY_CONCURRENCY
       },
-      // A page reads and edits the coordinator's standing rules for the
-      // signed-in person here (FIX-1945 S5).
       [STANDING_RULES_ACTION]: standingRulesAction
     },
     internal: {

@@ -16,7 +16,6 @@ import { STANDING_RULES_ACTION } from "./keys";
 import { numberedRules, type StandingRules } from "./rules-list";
 import { STANDING_RULES_RESOURCE, readStandingRules, standingRulesCollection, writeStandingRules } from "./rules-record";
 
-/** What the action takes: a read, or one write naming the version of the list it read. */
 export const standingRulesActionInputSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("read") }).strict(),
   z.object({ op: z.literal("add"), version: z.number().int().min(0), text: z.string() }).strict(),
@@ -36,7 +35,6 @@ export const standingRulesActionInputSchema = z.discriminatedUnion("op", [
 
 export type StandingRulesActionInput = z.infer<typeof standingRulesActionInputSchema>;
 
-/** What the action answers: the list as it stands after the call, and the line a write produced. */
 export const standingRulesActionOutputSchema = z.object({
   version: z.number(),
   rules: z.array(
@@ -53,7 +51,6 @@ const answer = (list: StandingRules, line?: string): StandingRulesActionOutput =
   ...(line === undefined ? {} : { line })
 });
 
-/** The action's block. */
 export const standingRulesActionBlock = handler({
   name: "standing-rules-action",
   inputSchema: standingRulesActionInputSchema,
@@ -71,5 +68,4 @@ export const standingRulesActionBlock = handler({
 
 export { STANDING_RULES_ACTION };
 
-/** The action, as a worker flow declares it. */
 export const standingRulesAction = { inputSchema: standingRulesActionInputSchema, block: standingRulesActionBlock };

@@ -1,8 +1,4 @@
-/**
- * Standing rules (FIX-1945): the notes a person asks a worker to keep, per
- * worker and per person, read on every turn and edited by the worker's rule
- * tools or the rules action.
- */
+/** Standing rules (FIX-1945): one list per worker, per person. */
 export {
   MAX_RULES,
   MAX_RULE_CHARS,

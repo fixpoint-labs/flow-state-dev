@@ -19,21 +19,15 @@ import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 /** The request-state field the mark is kept in. */
 export const PERSON_TURN_STATE = "workforcePersonTurn";
 
-/** The request state the mark is kept in. */
 export const personTurnStateSchema = z.object({ [PERSON_TURN_STATE]: z.boolean().optional() });
 
-/**
- * Mark this request as a person's turn, unless its session is a task's or a
- * conversation's delegate session: a message there is task input, not a
- * person speaking to the worker.
- */
+/** Skip a task session and a conversation's delegate session: that message is task input. */
 export async function markPersonTurn(ctx: BlockContext): Promise<void> {
   const state = (ctx.session.state ?? {}) as Record<string, unknown>;
   if (typeof state[TASK_ID_STATE_KEY] === "string" || typeof state[FILING_SESSION_STATE_KEY] === "string") return;
   await ctx.request.patchState({ [PERSON_TURN_STATE]: true } as never);
 }
 
-/** Whether this request is a turn a person's own message started. */
 export function isPersonTurn(ctx: BlockContext): boolean {
   return (ctx.request.state as Record<string, unknown> | undefined)?.[PERSON_TURN_STATE] === true;
 }

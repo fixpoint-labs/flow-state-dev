@@ -73,17 +73,7 @@ function textProblem(text: string): string | undefined {
 
 const quote = (text: string) => `"${text}"`;
 
-/**
- * Apply one edit to `list`, as the list read at `version`. The one validator:
- * a stale version, a rule that isn't one line of 1 to {@link MAX_RULE_CHARS}
- * characters, a 21st rule, and a number whose rule no longer reads as quoted
- * are each refused with the reason and the list unchanged.
- *
- * @param list The list as stored now.
- * @param version The version the writer read.
- * @param edit The write.
- * @param source Where an added rule came from, and the time.
- */
+/** The one validator. A refusal returns `list` unchanged. */
 export function applyRuleEdit(
   list: StandingRules,
   version: number,
@@ -144,11 +134,7 @@ export function numberedRules(list: StandingRules): Array<{ number: number; text
   return list.rules.map((rule, at) => ({ number: at + 1, ...rule }));
 }
 
-/**
- * The rules as a turn reads them, after the worker's own instructions, or
- * `undefined` when there are none, so a worker without rules gets no text at
- * all.
- */
+/** The prompt text, or `undefined` when the list is empty. */
 export function renderRules(list: StandingRules): string | undefined {
   if (list.rules.length === 0) return undefined;
   const lines = list.rules.map((rule, at) => `${at + 1}. ${rule.text}`);

@@ -34,7 +34,6 @@ export const STANDING_RULES_RESOURCE = "standing-rules";
  */
 const OWN_COPY_KEY = "worker";
 
-/** The record: browser reads of its state, and no browser writes. */
 export const standingRulesCollection = defineResourceCollection({
   pattern: `${STANDING_RULES_RESOURCE}/*`,
   scope: "user",
@@ -102,8 +101,6 @@ export async function writeStandingRules(
   const ref = await collection.getOrCreate(keyOf(ctx), EMPTY_RULES);
   let outcome: RuleEditOutcome | undefined;
   const now = Date.now();
-  // The updater re-runs against fresher state when another write lands first,
-  // so the outcome kept is the one from the attempt that committed.
   await ref.updateState((current) => {
     outcome = applyRuleEdit(parsed(current), version, edit, { sessionId, now });
     return outcome.ok ? (outcome.list as never) : current;

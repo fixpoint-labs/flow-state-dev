@@ -1,26 +1,8 @@
 /**
- * Standing rules on a worker's turn (FIX-1945 S3, S4): the list in context on
- * every turn, and the four rule tools on a turn a person's own message
- * started.
- *
- * One capability, composed onto the agent turn the `agent` and `coordinator`
- * flows share, so both carry it the same way:
- *
- * - **Context.** The worker's rules for the turn's person, numbered, after its
- *   own instructions, team instructions and packages. A task turn runs at the
- *   filing person's user scope, so it reads that person's list. No rules, no
- *   text. A read that fails is said once in the trace and the turn runs
- *   without rules; it never fails the turn.
- * - **Tools.** `rules/read`, `rules/add`, `rules/change`, `rules/remove`, as
- *   `controlTools`: a worker's `tools:` line doesn't fence them, and they are
- *   offered only while the request carries the person-turn mark
- *   (`./person-turn`). Each write also refuses on an unmarked turn, so a task
- *   turn can't edit even by naming a tool. Each write that lands posts a line
- *   the person sees, from the tool, not from the model's reply.
- *
- * Every write names the version of the list the model last saw (the list in
- * context, or a tool's answer since), so a write racing a page edit is
- * refused with the list as it stands rather than landing on one it never saw.
+ * Standing rules on a worker's turn (FIX-1945): the numbered list in context,
+ * and the rule tools as `controlTools` on a person turn, so a `tools:` line
+ * doesn't fence them. A task turn reads the filing person's list because it
+ * runs at that person's user scope.
  */
 import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -37,10 +19,6 @@ const saidReadFailed = new WeakSet<object>();
 
 const resources = { [STANDING_RULES_RESOURCE]: standingRulesCollection };
 
-/**
- * The rules as this turn reads them, or `undefined` for none or a failed read.
- * Records the version shown, so a write names the list the model saw.
- */
 async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   let list: StandingRules;
   try {
@@ -57,7 +35,6 @@ async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   return renderRules(list);
 }
 
-/** The list as a tool answers it. */
 const listOutput = (list: StandingRules) => ({ rules: numberedRules(list).map(({ number, text }) => ({ number, text })), max: MAX_RULES });
 
 const ruleSchema = z.object({ number: z.number(), text: z.string() });
@@ -67,8 +44,8 @@ const toolOutputSchema = z.union([
   listOutputSchema.extend({ refused: z.string() })
 ]);
 
-/** Apply `edit` from a tool, as the list the model last saw. */
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
+  // Withheld on an unmarked turn, and a caller that names the tool still can't write.
   if (!isPersonTurn(ctx)) {
     return {
       ...listOutput(await readStandingRules(ctx)),
@@ -92,6 +69,7 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   seen.set(session, outcome.list.version);
   if (!outcome.ok) {
     if (outcome.full === true) {
+      // The person sees the line. `history: false` keeps it out of the model's next turn.
       ctx.emit.message(`✎ Rule not added: ${outcome.reason}.`, {
         agentName: STANDING_RULES_LINE,
         itemVisibility: { client: true, history: false }
@@ -149,10 +127,8 @@ const removeTool = handler({
   execute: async (input, ctx) => toolWrite(ctx as never, { op: "remove", ...input })
 });
 
-/** The four rule tools. */
 export const ruleTools = [readTool, addTool, changeTool, removeTool];
 
-/** Standing rules on a worker's turn: the list in context, and the tools on a person's turn. */
 export const standingRulesCapability = defineCapability({
   name: "standingRules",
   resources,
