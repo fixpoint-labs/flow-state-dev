@@ -32,7 +32,7 @@ import {
 } from "@flow-state-dev/claude-code/sdk";
 
 import { goalControl } from "./goal-control";
-import { harnessUnsandboxed, unsandboxedNote } from "./harness-sandbox";
+import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import { flowKindOf, modeById } from "./modes";
@@ -206,7 +206,7 @@ export function claudeCodeModeCheck(checks: ClaudeCodeHostChecks = HOST_CHECKS):
     const unsandboxed = harnessUnsandboxed();
     const sandbox = unsandboxed ? null : checks.sandboxMissing(env);
     if (sandbox !== null) {
-      return { available: false, reason: `${sandbox} To run Claude Code without its sandbox, set KITCHEN_SINK_HARNESS_UNSANDBOXED=1 and restart.` };
+      return { available: false, reason: `${sandbox} ${unsandboxedHint("Claude Code")}` };
     }
     try {
       checks.makeRoot(repository);

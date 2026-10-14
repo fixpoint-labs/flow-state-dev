@@ -34,7 +34,7 @@ import {
 } from "@flow-state-dev/cursor";
 
 import { goalControl } from "./goal-control";
-import { harnessUnsandboxed, unsandboxedNote } from "./harness-sandbox";
+import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -240,7 +240,7 @@ export function cursorModeCheck(checks: CursorHostChecks = HOST_CHECKS): ModeChe
     if (!sandbox.supported) {
       return {
         available: false,
-        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason} To run Cursor without its sandbox, set KITCHEN_SINK_HARNESS_UNSANDBOXED=1 and restart.`,
+        reason: `Cursor's sandbox can't start on this host, and Cursor mode runs only inside it. Cursor says: ${sandbox.reason} ${unsandboxedHint("Cursor")}`,
       };
     }
     return { available: true };

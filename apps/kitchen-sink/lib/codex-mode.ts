@@ -41,7 +41,7 @@ import {
   type ResolveCodexClient,
 } from "@flow-state-dev/codex";
 
-import { harnessUnsandboxed, unsandboxedNote } from "./harness-sandbox";
+import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-sandbox";
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
@@ -290,7 +290,7 @@ export function codexModeCheck(checks: CodexHostChecks = HOST_CHECKS): ModeCheck
     if (sandbox !== null) {
       return {
         available: false,
-        reason: `Codex's sandbox can't run on this host: ${sandbox} To run Codex without its sandbox, set KITCHEN_SINK_HARNESS_UNSANDBOXED=1 and restart.`,
+        reason: `Codex's sandbox can't run on this host: ${sandbox} ${unsandboxedHint("Codex")}`,
       };
     }
     return { available: true };

@@ -21,6 +21,11 @@ export function harnessUnsandboxed(env: Record<string, string | undefined> = pro
   return env[HARNESS_UNSANDBOXED_VAR] === "1";
 }
 
+/** The way out a mode's reason names when its sandbox can't start here. */
+export function unsandboxedHint(harness: string): string {
+  return `To run ${harness} without its sandbox, set ${HARNESS_UNSANDBOXED_VAR}=1 and restart.`;
+}
+
 /** What an available harness mode's card says when it runs without its sandbox. */
 export function unsandboxedNote(harness: string): string {
   return `Runs without ${harness}'s sandbox (${HARNESS_UNSANDBOXED_VAR}=1): its writes are not confined to the session's worktree.`;
