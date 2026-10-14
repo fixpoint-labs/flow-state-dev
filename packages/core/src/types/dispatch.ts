@@ -39,7 +39,7 @@
  * named member, so that the set of blocks that dispatch is the set of blocks
  * carrying a {@link DispatchAddress}. That is what lets `defineFlow` walk the
  * block graph and refuse an address that resolves nothing, and what lets a
- * task board see statically which of its assignees hand off. A substrate package
+ * task board see statically which of its assignees dispatch. A substrate package
  * that must reach the seam directly (the task board's drain) marks its block
  * with `markDispatcher` so the walk stays complete.
  */
@@ -184,7 +184,7 @@ export type TaskStateTarget = (
  *
  * A `task` address also carries the dispatcher's session policy — declared
  * once on the dispatcher and read by the board that holds it, so the board can
- * list statically which of its assignees hand off and where their rows land.
+ * list statically which of its assignees dispatch and where their rows land.
  */
 export type DispatchAddress =
   | {
@@ -231,7 +231,7 @@ export type DispatchAddress =
 /**
  * What a `task` dispatch carries: the claim's identity and the worker's input.
  *
- * Every field is **server-derived at hand-off** — the board supplies them from
+ * Every field is **server-derived at dispatch** — the board supplies them from
  * the ticket it minted off the row it claimed. `attempt`, `createdAt` and
  * `incarnationId` say *which* claim this dispatch believes it is running;
  * `assignee` names the assignee the board routed the row to. The entry's
@@ -302,7 +302,7 @@ export function readFramed(
 
 /**
  * The child-session key a `task` dispatch runs under, for one envelope and one
- * policy. Shared by `dispatcher()` and the board's hand-off so both derive the
+ * policy. Shared by `dispatcher()` and the board's dispatch so both derive the
  * same child for the same row.
  *
  * @throws when a `key` policy returns something other than a non-empty string —
@@ -341,7 +341,7 @@ export function taskSessionKeyFor(
  * state, or what a `{ by }` policy answers for this row. A `{ key }` answer is
  * a child like any other and gets the address's state; an `{ id }` answer is an
  * existing session, which keeps its own, so the state is not looked up.
- * Shared by `dispatcher()` and the board's hand-off, so both send the same row
+ * Shared by `dispatcher()` and the board's dispatch, so both send the same row
  * to the same session.
  *
  * @throws when a `{ by }` policy answers anything but exactly one non-empty
@@ -571,7 +571,7 @@ export function describeAction(address: DispatchAddress): string {
  *
  * @throws {DispatchRefusedError} `no-entry` when the choice answers a name its
  *   `among` does not list. Decided before anything is dispatched, like every
- *   refusal, so a board's hand-off still holds the claim.
+ *   refusal, so a board's dispatch still holds the claim.
  */
 export async function resolveTaskAction(
   blockName: string,
@@ -649,7 +649,7 @@ export async function resolveTaskFlowKind(
  * Put a dispatch through the runtime's dispatch seam.
  *
  * Substrate-facing. Authored flows reach this through `dispatcher()`; a
- * substrate block that calls it directly (the task board's hand-off) must also
+ * substrate block that calls it directly (the task board's dispatch) must also
  * be marked with {@link markDispatcher}, or `defineFlow`'s walk cannot see the
  * address it dispatches to.
  */
@@ -664,7 +664,7 @@ export function dispatchThroughSeam(
 
 /**
  * Stamp a block with the address it dispatches to, so `defineFlow` can verify
- * the target resolves and a board can see the hand-off statically.
+ * the target resolves and a board can see the dispatch statically.
  *
  * Assigns in place: the caller owns the block it just built, and every rebuild
  * path (`connectInput`, `.rescue()`, `asTool`) forwards `definition.dispatch`.
@@ -695,12 +695,12 @@ export type InternalEntry = ActionCore;
  */
 export type TaskEntry = ActionCore & {
   /**
-   * Where this entry takes tasks from when no board in this flow hands off to
+   * Where this entry takes tasks from when no board in this flow dispatches to
    * it: a binding whose gate reads each task off the ledger its dispatch
    * names, so one entry serves tasks from many ledgers, including ones made
    * after the flow was defined. `defineFlow` applies this gate exactly as it
    * applies a board's, so the entry still never runs against a row nothing
-   * verified. An entry a board in this flow also hands off to is refused: one
+   * verified. An entry a board in this flow also dispatches to is refused: one
    * entry runs behind one gate.
    */
   readonly from?: TaskBinding;
@@ -715,7 +715,7 @@ export type TaskEntry = ActionCore & {
 };
 
 /**
- * What a task board binds onto the hand-off it installs at a `task`
+ * What a task board binds onto the dispatch it installs at a `task`
  * dispatcher: which board it is, and the claim gate every entry the dispatcher
  * addresses must run behind.
  *
@@ -735,7 +735,7 @@ export type TaskBinding = {
 /**
  * Bindings are keyed by the block's ADDRESS object, not the block. Every
  * rebuild path (`connectInput`, `.rescue()`, `asTool`) forwards
- * `definition.dispatch` by reference, so a hand-off the drain connects into
+ * `definition.dispatch` by reference, so a dispatch the drain connects into
  * its routing table — a rebuilt copy — still resolves the binding its board
  * put on the original. A block whose address is a different object is unbound.
  */
@@ -743,12 +743,12 @@ const taskBindings = new WeakMap<object, TaskBinding>();
 
 /**
  * Bind a board's claim gate to the block that dispatches its tasks. Substrate-
- * facing; called by `taskBoard()` on the hand-off it installs at each
+ * facing; called by `taskBoard()` on the dispatch it installs at each
  * `dispatcher({ type: "task" })`, after `markDispatcher` has stamped the
  * address the binding is keyed by.
  *
  * @throws when the block carries no `task` address, or is already bound to a
- *   different board — one hand-off serves one board, or the walk could not say
+ *   different board — one dispatch serves one board, or the walk could not say
  *   whose gate the entry gets.
  */
 export function bindTaskDispatcher(block: BlockDefinition<any, any>, binding: TaskBinding): void {

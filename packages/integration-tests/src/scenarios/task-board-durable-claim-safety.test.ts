@@ -109,8 +109,8 @@ function gate(): Gate {
  * A participant that throws — or whose claim unexpectedly returns `null` —
  * never opens the gate the other side is parked on, and a bare `await` then
  * blocks to vitest's suite timeout and reports "timed out" with nothing about
- * which participant failed or why. These scenarios are entirely built out of
- * cross-execution handoffs, so that is the most likely way one of them breaks.
+ * which participant failed or why. These scenarios are entirely built out of one
+ * execution waiting on another's gate, so that is the most likely way one of them breaks.
  * The budget is generous: it only has to be shorter than the suite ceiling,
  * never tight enough to make a loaded runner flaky.
  */

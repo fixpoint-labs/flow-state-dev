@@ -88,7 +88,7 @@ async function runWithMemory(
 
 const asRows = (todos: WireTodo[]) => todos.map((t) => ({ title: t.content, status: t.status }));
 
-describe("recordPlan — the hand-off to core's replacePlanList (V2)", () => {
+describe("recordPlan — what it passes to core's replacePlanList (V2)", () => {
   it("ends with the record equal to the last list Cursor confirmed", async () => {
     const later: WireTodo[] = [
       { content: "Read the failing test", status: "completed" },

@@ -10,7 +10,7 @@
  *
  * The board is a **ledger** these tools plan on — `addTask` records a row and
  * returns its id; nothing executes it by itself. Whatever drains that board
- * (a `taskBoard()` drain, a hand-off) runs the work.
+ * (a `taskBoard()` drain, a dispatch) runs the work.
  *
  * ## Dispatching (FIX-1875)
  *
@@ -681,7 +681,7 @@ export interface ParkOnQuestionOptions {
  *
  * - **Which row.** The one the turn holds, never a task id from input. Inside
  *   a board's own drain that is the claim its worker body stamped
- *   (`currentWorkerClaim`). On a handed-off turn it is the row whose run
+ *   (`currentWorkerClaim`). On a dispatched turn it is the row whose run
  *   link names this session and this request, on this attempt: the
  *   link the receiving gate wrote from the run's own context, fenced by the
  *   claim, before the turn began. The ticket is minted from that row, as the

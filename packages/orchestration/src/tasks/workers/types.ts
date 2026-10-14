@@ -72,7 +72,7 @@ export const taskWorkerInputSchema = z.object({
   answer: z.string().optional(),
   /**
    * The finished task this one follows up (`Task.followUpOf`), present only
-   * on a follow-up: a `per-task` hand-off runs it in that task's session.
+   * on a follow-up: a `per-task` dispatch runs it in that task's session.
    */
   followUpOf: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),

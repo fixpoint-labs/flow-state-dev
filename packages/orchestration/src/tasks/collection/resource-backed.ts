@@ -206,13 +206,13 @@ export interface ResourceBackedOptions {
    * FIX-1780 to `in_progress` and `parked`).
    *
    * Set by a task board with dispatcher assignees. The assignee is what a
-   * handed-off task's routing key derives from, so reassigning a task whose
+   * dispatched task's routing key derives from, so reassigning a task whose
    * dispatch is in flight silently strands it — see `TaskCollectionRef.setAssignee`.
    * A pending or blocked task is claimed afresh before it runs, so it can
    * change hands; a parked one can once `unpark` ends its attempt.
    *
    * Only the resource backing carries this, and that is deliberate rather than
-   * an omission: a handed-off board is refused at construction unless its backing
+   * an omission: a dispatched board is refused at construction unless its backing
    * is durable, so no other backing can host one.
    */
   immutableAssignee?: boolean;
@@ -545,7 +545,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * this helper-wide would break both.
    *
    * `patch` runs inside the same write, so it may decline too by throwing
-   * `WriteDeclined` (as `setAssignee`'s hand-off rule does).
+   * `WriteDeclined` (as `setAssignee`'s dispatch rule does).
    *
    * The decline throws `WriteDeclined` out of the updater rather than returning
    * `current`, for the reason documented on that class: on this backing
@@ -972,7 +972,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async setAssignee(id, assignee) {
       // The one guarded patch operation (FIX-976 / A1): reassigning a finished
-      // task is refused, because its work will never run again. On a handed-off
+      // task is refused, because its work will never run again. On a dispatched
       // board a task an attempt holds (`in_progress` or `parked`) is refused
       // too (FIX-982, narrowed by FIX-1780): its dispatch is keyed by the
       // assignee it was claimed with, and a parked attempt can still settle.

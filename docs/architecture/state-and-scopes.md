@@ -653,7 +653,7 @@ Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...
 Four channels, and none of them is shared session state:
 
 1. **User and org scope** — live and shared, but keyed to the *principal*, not to the parent session. Two unrelated conversations belonging to the same user read the same cell.
-2. **The payload at dispatch** — a one-shot value handed to the dispatched request, frozen at dispatch. For a task hand-off it is the worker input the drain packed at claim time, inside the `task` envelope.
+2. **The payload at dispatch** — a one-shot value handed to the dispatched request, frozen at dispatch. For a task dispatch it is the worker input the drain packed at claim time, inside the `task` envelope.
 3. **Provenance labels** — `topic` and `coordinate` on the child session record, and `metadata.dispatch` on the child's request record. Server-assembled, frozen, and display-only.
 4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at dispatch and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 

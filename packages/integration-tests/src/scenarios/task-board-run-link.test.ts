@@ -1,5 +1,5 @@
 /**
- * FIX-1668 — a handed-off row names the run working it, and only that run.
+ * FIX-1668 — a dispatched row names the run working it, and only that run.
  *
  * The board's claim gate writes `run` (session, request, attempt) from inside
  * the child run, before the worker's first step. This scenario drives the real
@@ -53,7 +53,7 @@ type RecordedDispatch = { sessionId: string; actionName: string; input: unknown 
 
 function buildFlow(options: {
   kind: string;
-  mode: "inline" | "hand-off";
+  mode: "inline" | "dispatch";
   session?: TaskSessionPolicy<TaskWorkerInput>;
   taskIds?: string[];
 }) {
@@ -79,9 +79,9 @@ function buildFlow(options: {
     collection: defineTaskCollection({ id: `${options.kind}-ledger`, scope: "user" }),
     workers: {
       background:
-        options.mode === "hand-off"
+        options.mode === "dispatch"
           ? dispatcher<TaskWorkerInput>({
-              name: `${options.kind}-hand-off`,
+              name: `${options.kind}-dispatch`,
               action: "background",
               session: options.session ?? "per-task",
             })
@@ -98,7 +98,7 @@ function buildFlow(options: {
   const flow = defineFlow({
     kind: options.kind,
     actions: { start: { block: board.drain } },
-    ...(options.mode === "hand-off" ? { task: { actions: { background: { block: worker } } } } : {}),
+    ...(options.mode === "dispatch" ? { task: { actions: { background: { block: worker } } } } : {}),
   })({ id: options.kind });
 
   return { flow, ran };
@@ -182,14 +182,14 @@ function replay(stores: StoreRegistry, flow: ReturnType<typeof buildFlow>["flow"
   });
 }
 
-describe("a handed-off row names the run working it", () => {
+describe("a dispatched row names the run working it", () => {
   it("per-task: the run's own session and request, published on its own stream only", async () => {
     const stores = createInMemoryStores();
     const kind = "run-link-per-task";
-    const { flow, ran } = buildFlow({ kind, mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind, mode: "dispatch" });
 
     const { parent, dispatched } = await drain(stores, flow);
-    // Between hand-off and the run's start the row names no run.
+    // Between dispatch and the run's start the row names no run.
     expect((await durableRow(stores, kind, "t1"))?.run).toBeUndefined();
 
     const child = await replay(stores, flow, dispatched[0]!);
@@ -223,7 +223,7 @@ describe("a handed-off row names the run working it", () => {
   it("per-worker: two rows in one session name that session and two different requests", async () => {
     const stores = createInMemoryStores();
     const kind = "run-link-per-worker";
-    const { flow, ran } = buildFlow({ kind, mode: "hand-off", session: "per-worker", taskIds: ["t1", "t2"] });
+    const { flow, ran } = buildFlow({ kind, mode: "dispatch", session: "per-worker", taskIds: ["t1", "t2"] });
 
     const { dispatched } = await drain(stores, flow);
     expect(dispatched).toHaveLength(2);
@@ -247,7 +247,7 @@ describe("a handed-off row names the run working it", () => {
     const kind = "run-link-key";
     const { flow, ran } = buildFlow({
       kind,
-      mode: "hand-off",
+      mode: "dispatch",
       session: { key: (task) => `issue:${task.taskId}` },
     });
 
@@ -264,7 +264,7 @@ describe("a handed-off row names the run working it", () => {
   it("a lapsed lease taken back at the gate is still linked, and still announced", async () => {
     const stores = createInMemoryStores();
     const kind = "run-link-lapsed";
-    const { flow, ran } = buildFlow({ kind, mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind, mode: "dispatch" });
 
     const { dispatched } = await drain(stores, flow);
     const claimed = (await durableRow(stores, kind, "t1"))!;
@@ -310,7 +310,7 @@ describe("a gate that refuses the dispatch writes no link", () => {
   it.each(arms)("%s", async (_label, tamper) => {
     const stores = createInMemoryStores();
     const kind = "run-link-refused";
-    const { flow, ran } = buildFlow({ kind, mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind, mode: "dispatch" });
 
     const { dispatched } = await drain(stores, flow);
     const claimed = (await durableRow(stores, kind, "t1"))!;
@@ -329,7 +329,7 @@ describe("a gate that refuses the dispatch writes no link", () => {
   it("no such row", async () => {
     const stores = createInMemoryStores();
     const kind = "run-link-deleted";
-    const { flow, ran } = buildFlow({ kind, mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind, mode: "dispatch" });
 
     const { dispatched } = await drain(stores, flow);
     await stores.resourceState.delete("user", USER_ID_CELL, `${kind}-ledger/t1`, "any");

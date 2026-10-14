@@ -1,8 +1,8 @@
 /**
- * The hand-off block's ordering, the spec it hands the dispatch seam, and the
+ * The dispatch block's ordering, the spec it hands the dispatch seam, and the
  * session key it derives (FIX-982).
  *
- * A worker body is `.step(handOff) .tap(recordSuccess) .rescue(recordError)`,
+ * A worker body is `.step(dispatchRow) .tap(recordSuccess) .rescue(recordError)`,
  * and both recorders decide what to do by reading `currentClaim` off the body
  * state: present means "this request owns the row and must settle it", absent
  * means "somebody else does, write nothing". So the state write that clears
@@ -17,7 +17,7 @@
  * The fix is ordering: release before the point of no return, hand the claim
  * back on a definitive refusal. These tests pin that ordering directly,
  * because it is the whole mechanism and it is invisible in every happy-path
- * assertion — a hand-off that clears afterwards looks identical when nothing
+ * assertion — a dispatch that clears afterwards looks identical when nothing
  * fails.
  *
  * The seam is a stub attached under `DISPATCH_SEAM` on a hand-built context —
@@ -34,7 +34,7 @@ import {
   type DispatchSpec,
 } from "@flow-state-dev/core/types";
 import type { TaskClaimTicket, TaskWorkerInput } from "../../src/tasks";
-import { createHandOff } from "../../src/task-board/blocks/hand-off";
+import { createRowDispatch } from "../../src/task-board/blocks/dispatch-row";
 import type { TaskDispatchInput } from "../../src/task-board/task-entry";
 
 const CLAIM: TaskClaimTicket = {
@@ -52,13 +52,13 @@ const PAYLOAD: TaskWorkerInput = {
   input: { note: "background" },
 };
 
-/** The binding a board puts on its hand-off; the gate is irrelevant to the seam. */
+/** The binding a board puts on its dispatch; the gate is irrelevant to the seam. */
 const BINDING = { boardId: "issue-work", gate: (entry: unknown) => entry as never };
 
-/** A hand-off at assignee `implement`, for the dispatcher address an assignee would carry. */
-function handOffWith(session: "per-task" | "per-worker" | { key: (task: TaskWorkerInput) => string }) {
-  return createHandOff({
-    name: "issue-work-hand-off-implement",
+/** A dispatch at assignee `implement`, for the dispatcher address an assignee would carry. */
+function dispatchWith(session: "per-task" | "per-worker" | { key: (task: TaskWorkerInput) => string }) {
+  return createRowDispatch({
+    name: "issue-work-dispatch-implement",
     boardId: "issue-work",
     assignee: "implement",
     address: { type: "task", action: "implement", session },
@@ -66,10 +66,10 @@ function handOffWith(session: "per-task" | "per-worker" | { key: (task: TaskWork
   });
 }
 
-const handOff = handOffWith("per-task");
+const dispatchRow = dispatchWith("per-task");
 
 /**
- * Drive a hand-off block against a fake worker-body state and a stubbed
+ * Drive a dispatch block against a fake worker-body state and a stubbed
  * dispatch seam, recording every state write and every dispatch onto ONE
  * ordered timeline.
  *
@@ -88,8 +88,8 @@ function drive(options: {
    * payload being validated and the dispatch being built.
    */
   duringRelease?: () => void;
-  /** Drive a hand-off other than the default per-task one above. */
-  block?: ReturnType<typeof createHandOff>;
+  /** Drive a dispatch other than the default per-task one above. */
+  block?: ReturnType<typeof createRowDispatch>;
 }) {
   const timeline: string[] = [];
   let state: { currentClaim?: TaskClaimTicket } = { currentClaim: CLAIM };
@@ -120,7 +120,7 @@ function drive(options: {
   } as unknown as BlockContext;
 
   const payload = options.payload ?? PAYLOAD;
-  const block = options.block ?? handOff;
+  const block = options.block ?? dispatchRow;
 
   return {
     timeline,
@@ -147,7 +147,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
   it("releases first, so nothing fallible is left after acceptance", async () => {
     const harness = drive({ seam: accepted });
 
-    await expect(harness.run()).resolves.toMatchObject({ handedOff: true, taskId: "t1" });
+    await expect(harness.run()).resolves.toMatchObject({ dispatched: true, taskId: "t1" });
 
     // The ordering IS the fix. Clearing after acceptance leaves a store write
     // between "the child session owns this row" and "the recorders know it".
@@ -163,7 +163,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
       type: "task",
       action: "implement",
       session: { key: "task|10:issue-work|2:t1" },
-      from: "issue-work-hand-off-implement",
+      from: "issue-work-dispatch-implement",
       provenance: { taskId: "t1" },
       payload: {
         boardId: "issue-work",
@@ -179,7 +179,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
 
   it("dispatches nothing when the release fails, so the row stays this request's to fail", async () => {
     // The release is a store write and can fail. When it does, the honest
-    // outcome is that no hand-off happened at all: `recordError` finds the
+    // outcome is that no dispatch happened at all: `recordError` finds the
     // claim exactly where it was and fails the row against it.
     const harness = drive({
       seam: accepted,
@@ -192,7 +192,7 @@ describe("the parent releases its claim before the dispatch it cannot take back"
     expect(harness.claimAfter()).toEqual(CLAIM);
   });
 
-  it("hands the claim back when the hand-off is refused, so the row is failed and not stranded", async () => {
+  it("hands the claim back when the dispatch is refused, so the row is failed and not stranded", async () => {
     // Every `ok: false` refusal is decided before anything is dispatched, so
     // the claim is still this request's. Without the restore the row would
     // sit `in_progress` with nobody holding it until its lease lapsed — a
@@ -275,7 +275,7 @@ describe("the dispatched payload is the same value whichever way it is delivered
     // compares two by identity, then behaves differently by deployment mode
     // with nothing announcing it.
     const harness = drive({ seam: accepted, payload: aliasedPayload() });
-    await expect(harness.run()).resolves.toMatchObject({ handedOff: true });
+    await expect(harness.run()).resolves.toMatchObject({ dispatched: true });
 
     const { inProcess, external } = delivered(harness.envelope()!);
 
@@ -304,7 +304,7 @@ describe("the dispatched payload is the same value whichever way it is delivered
       },
     });
 
-    await expect(harness.run()).resolves.toMatchObject({ handedOff: true });
+    await expect(harness.run()).resolves.toMatchObject({ dispatched: true });
 
     const sent = harness.envelope()!.payload as Record<string, unknown>;
     const sentInput = sent.input as Record<string, unknown>;
@@ -322,7 +322,7 @@ describe("the child session key", () => {
   });
 
   it("frames a per-worker key on the assignee, not the task", async () => {
-    const perWorker = handOffWith("per-worker");
+    const perWorker = dispatchWith("per-worker");
     const harness = drive({ seam: accepted, block: perWorker });
     await harness.run();
 
@@ -330,7 +330,7 @@ describe("the child session key", () => {
   });
 
   it("uses a custom key verbatim, computed from the packed worker input", async () => {
-    const custom = handOffWith({ key: (task) => `custom:${task.taskId}:${task.goal}` });
+    const custom = dispatchWith({ key: (task) => `custom:${task.taskId}:${task.goal}` });
     const harness = drive({ seam: accepted, block: custom });
     await harness.run();
 
@@ -338,11 +338,11 @@ describe("the child session key", () => {
   });
 
   it("throws on an empty custom key, naming the assignee and the task, before the claim is released", async () => {
-    const blank = handOffWith({ key: () => "" });
+    const blank = dispatchWith({ key: () => "" });
     const harness = drive({ seam: accepted, block: blank });
 
     await expect(harness.run()).rejects.toThrow(
-      /"issue-work-hand-off-implement" computed an empty session key for task "t1"/
+      /"issue-work-dispatch-implement" computed an empty session key for task "t1"/
     );
 
     // The key is computed before the release write — see the block's own
@@ -356,11 +356,11 @@ describe("the child session key", () => {
 describe("an assignee that names another flow", () => {
   it("forwards flowKind from the assignee address through the seam", async () => {
     // TaskAssigneeAddress allows flowKind (Jake required it legal on task). The
-    // author-facing dispatcher() already forwards it; the drain's hand-off
+    // author-facing dispatcher() already forwards it; the drain's dispatch
     // is the path a real board takes, and omitting it makes the seam resolve
     // on the sender — `no-entry` against the wrong flow.
-    const block = createHandOff({
-      name: "issue-work-hand-off-implement",
+    const block = createRowDispatch({
+      name: "issue-work-dispatch-implement",
       boardId: "issue-work",
       assignee: "implement",
       address: {

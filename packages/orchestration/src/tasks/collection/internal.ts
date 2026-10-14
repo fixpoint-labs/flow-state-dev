@@ -1026,7 +1026,7 @@ export function applyClaimToTask<TInput, TOutput>(
 ): Task<TInput, TOutput> {
   // A claim that takes back a lapsed row is a RECOVERY, and it is counted
   // (FIX-1005). Counting it here rather than at a separate seam is what keeps
-  // the count atomic with the hand-off: the same write that advances
+  // the count atomic with the dispatch: the same write that advances
   // `attempts` advances this, so there is no window in which a row has been
   // re-dispatched but not yet charged for it.
   const recovering = leaseLapsed(task as Task, now);

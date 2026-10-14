@@ -59,7 +59,7 @@ first: `fire` asks them for approval itself, and nothing is removed until they
 approve. If they deny it, say so and don't try again unless they ask.
 
 To hire a worker on `coder`, pass `settings: { "document": "teams/eng/feature-brief" }`.
-A worker on `agent` needs no settings, and is the one to hire for work you hand off.
+A worker on `agent` needs no settings, and is the one to hire for work you dispatch.
 
 You can't fire yourself or any worker declared in the organization's files.
 Those change when someone edits their folder.

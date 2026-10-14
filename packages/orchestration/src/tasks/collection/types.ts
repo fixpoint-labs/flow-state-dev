@@ -21,7 +21,7 @@ import type { TaskWriteToken } from "../write-provenance";
  * hold always reports the same one, and two callers cannot render two different
  * messages for the same refusal.
  *
- * - `immutable-assignee` — the board hands off work, and an attempt holds the
+ * - `immutable-assignee` — the board dispatches work, and an attempt holds the
  *   task (`in_progress` or `parked`): its dispatch is keyed by the assignee it
  *   was claimed with, and a parked attempt can still settle. A pending or
  *   blocked task can change hands, and a parked one once `unpark` has ended
@@ -532,7 +532,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * A ref over a partitioned ledger reaches only its partition's rows, for
    * every operation. Exposed so a claim made through the ref can name the
-   * partition it was made in: a board's hand-off puts it on the dispatch, and
+   * partition it was made in: a board's dispatch puts it on the dispatch, and
    * the receiving gate reads the row there.
    */
   readonly partition?: string;
@@ -729,7 +729,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Record which run is working this task — the run naming itself on the row
    * (FIX-1668). The board's claim gate calls it inside the run's own session,
-   * before the worker's first step, on every handed-off attempt.
+   * before the worker's first step, on every dispatched attempt.
    *
    * Writes exactly **one** field, `run`, on an `in_progress` row the caller
    * holds, and publishes one `task-change` of kind `run_linked` — on the
@@ -748,7 +748,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Throws — never declines — on a missing ticket.
    *
    * **If you implement this interface yourself, implement this verb too:** a
-   * board that hands off calls it on every attempt, and a declined or missing
+   * board that dispatches calls it on every attempt, and a declined or missing
    * verdict stops that attempt before the worker runs.
    */
   linkRun(
@@ -795,7 +795,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // one helper.
   //
   // Exactly ONE of them refuses anything: `setAssignee`, which declines on a
-  // terminal task and — on a board that hands off — on a task an attempt holds.
+  // terminal task and — on a board that dispatches — on a task an attempt holds.
   // The other four deliberately keep writing to terminal tasks — labelling,
   // re-prioritizing, or annotating a finished task is a real and used thing (a
   // post-drain failure audit, a cascade's `skipped` marker) — so they can only
@@ -808,9 +808,9 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Returns `unchanged` when the assignee already matches, `recorded` when it is
    * written.
    *
-   * **Declines on a running task on a board that hands off**
+   * **Declines on a running task on a board that dispatches**
    * (`immutable-assignee`, FIX-982, narrowed by FIX-1780). The assignee is what
-   * a handed-off task's routing key is derived from, and the child session that
+   * a dispatched task's routing key is derived from, and the child session that
    * key addresses is keyed the moment the work is dispatched. Changing it while
    * the attempt runs does not redirect anything: the work in flight keeps
    * running under the old coordinate, and the new one addresses a session

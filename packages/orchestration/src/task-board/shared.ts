@@ -58,7 +58,7 @@ export function resolveDispatcher(
  * A board with a `dispatcher({ type: "task" })` assignee hands its claimed rows
  * to a child session, which settles them from its own session. The launching
  * request must not wait on those — waiting on them is precisely the thing the
- * hand-off exists to stop.
+ * dispatch exists to stop.
  *
  * Supplied by the board, which derives it from its own dispatcher assignees, so a
  * board with none passes nothing and every count below is the
@@ -73,25 +73,25 @@ export function resolveDispatcher(
 export type RunsElsewhere = (task: Task) => boolean;
 
 /**
- * Is this row **handed off** — routed to a child session, and still held by one?
+ * Is this row **dispatched** — routed to a child session, and still held by one?
  *
  * The conjunction is the whole definition and neither half stands alone:
  * routing says the work belongs elsewhere, the live lease says somebody is
- * still on it. A row that is handed off by routing and abandoned in fact is not
- * handed off; it is recoverable, and every caller here has to treat it that way.
+ * still on it. A row that is dispatched by routing and abandoned in fact is not
+ * dispatched; it is recoverable, and every caller here has to treat it that way.
  *
  * Exported because two different questions read it and must not answer it
  * differently. {@link countWaitable} asks "is this row mine to wait on"; the
  * board's completion meta asks "did this board finish, or hand its remaining
  * work over" — and a board that answered those with two spellings would report
  * a drain it correctly exited as a failure, or a genuinely stuck board as a
- * clean hand-off. One predicate, one answer (FIX-1074).
+ * clean dispatch. One predicate, one answer (FIX-1074).
  *
  * `runsElsewhere` absent means the board has no dispatcher assignee, so nothing
- * is ever handed off and every caller keeps its pre-hand-off behaviour
+ * is ever dispatched and every caller keeps its pre-dispatch behaviour
  * bit-for-bit.
  */
-export function isHandedOff(
+export function isDispatched(
   task: Task,
   now: number,
   runsElsewhere: RunsElsewhere | undefined
@@ -108,7 +108,7 @@ export function isHandedOff(
  *
  * **Reads through `list` rather than `count` because `TaskFilter` has no
  * predicate slot** — it matches on status, assignee and labels only, and
- * "…and not running elsewhere" is expressible as none of the three. A handed-off
+ * "…and not running elsewhere" is expressible as none of the three. A dispatched
  * assignee is usually an assignee and would *almost* fit `filter.assignee`,
  * but the uniform and floor cases do not (a floor worker is defined by the
  * assignees it is NOT), so the predicate has to see the row. One pass either
@@ -117,7 +117,7 @@ export function isHandedOff(
  * **Only `in_progress` is subject to the exclusion**, and the other two
  * statuses are deliberate omissions rather than oversights:
  *
- * - a `pending` handed-off row is work this drain has yet to claim and dispatch,
+ * - a `pending` dispatched row is work this drain has yet to claim and dispatch,
  *   so excluding it would let the drain exit *before* spawning anything — the
  *   feature inverted into a board that silently runs nothing;
  * - a `parked` row is parked for an external actor whichever way it
@@ -152,7 +152,7 @@ export function isHandedOff(
  * anyone is on it, because it reads declarations and an assignee — facts that
  * are just as true of a row nobody is running. A claimant that dies between
  * `claim()` and the child's first breath leaves exactly that: `in_progress`,
- * handed-off assignee, no worker anywhere. So does a child that was accepted and
+ * dispatched assignee, no worker anywhere. So does a child that was accepted and
  * then died. Both become recoverable when the deadline passes, and excluding
  * them on routing alone hides them from the drain at the moment they become so.
  *
@@ -167,10 +167,10 @@ export function isHandedOff(
  * of the exit question have contradicted each other, which is the drift this
  * module was collapsed to prevent.
  *
- * **No persisted "the hand-off was accepted" mark distinguishes those states**,
+ * **No persisted "the dispatch was accepted" mark distinguishes those states**,
  * which is why this is a lease check and not a new field. Whichever side of the
  * spawn such a mark were written on, a crash lands in the gap: write it first
- * and it is present for a hand-off that never happened; write it after and a
+ * and it is present for a dispatch that never happened; write it after and a
  * crash between acceptance and the write leaves it absent for one that did. A
  * mark moves the window; it does not close it — and it says nothing at all
  * about a child that started and then died.
@@ -199,7 +199,7 @@ function countWaitable(
   let excusedParked = false;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
-    if (isHandedOff(row, now, runsElsewhere)) continue;
+    if (isDispatched(row, now, runsElsewhere)) continue;
     if (excuseParked && row.status === "parked") {
       excusedParked = true;
       continue;
@@ -262,7 +262,7 @@ export function inFlightCount(
  *
  * Split out of `boardQuiescence`'s inline `count` so it takes the same
  * `runsElsewhere` exclusion `inFlightCount` does. Without that the two arms
- * would disagree about the same handed-off row — one calling the board drained,
+ * would disagree about the same dispatched row — one calling the board drained,
  * the other still seeing an active worker — which is the drift the quiescence
  * module exists to prevent.
  *

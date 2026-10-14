@@ -1,7 +1,7 @@
 /**
  * Recursive JSON-value validation for a dispatched payload (FIX-982 P3a §7.5).
  *
- * A handed-off worker's input crosses a process boundary and a durable store, so
+ * A dispatched worker's input crosses a process boundary and a durable store, so
  * it has to be a JSON value. The obvious check is not one:
  * `JSON.parse(JSON.stringify(v))` throws on exactly two things — `BigInt` and a
  * cycle — and silently *mangles* the rest. A `Date` becomes a string, a `Map`,

@@ -6,7 +6,7 @@
  * it. Nothing here imports a coding agent, and neither does the package: if that
  * ever stops being true, the import sweep at the bottom of this file fails.
  *
- * The end-to-end behaviours — a real board, a real hand-off, a real claim gate —
+ * The end-to-end behaviours — a real board, a real dispatch, a real claim gate —
  * stay with `labs/conductor`, which is this package's first consumer and drives
  * the whole loop through its own flow. Duplicating that here would be a second
  * copy of a suite, not a second thing tested.

@@ -1215,7 +1215,7 @@ export function createInboundTransportHost(
         // time, so the stream route resolves a live record and tails events
         // immediately (FIX-828). The shared `createInitialRequestRecord` builder
         // constructs this stub the same way the worker would, so the worker
-        // adopts it as-is and skips its own write. Gating the dispatcher hand-off
+        // adopts it as-is and skips its own write. Gating the dispatcher call
         // on these writes means a store failure fails the dispatch rather than
         // enqueueing a job with no discoverable record (no orphan). Resume and the
         // Vercel adapter route through here too, so both inherit the fix.

@@ -244,7 +244,7 @@ export function evaluateAdoption(
   // parent's lineage by construction. A pre-created record does not: it was
   // minted with whatever lineage the session route gave it, and adopting it
   // would put every lineage-shared resource in the run on a different root
-  // than the parent's — the ledger a hand-off must settle against.
+  // than the parent's — the ledger a dispatch must settle against.
   if (expected.lineageId !== undefined && !sameOptional(record.lineageId, expected.lineageId)) {
     return { adoptable: false, mismatch: "lineageId" };
   }

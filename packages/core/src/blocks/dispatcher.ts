@@ -7,7 +7,7 @@
  * through the runtime's dispatch seam and returns the handle the seam gives
  * back — and it carries its `(type, action)` on the block definition, so
  * `defineFlow` can check the action resolves and a task board can read which
- * of its assignees hand off without running anything.
+ * of its assignees dispatch without running anything.
  *
  * **The address is static so it can be verified; the envelope is dynamic so it
  * can be useful.** `type` and `action` never vary — that pair is exactly what
@@ -71,8 +71,8 @@
  *   collection: issues,
  *   workers: {
  *     triage: triageWorker,                                   // inline
- *     implement: dispatcher({                                 // hands off
- *       name: "hand-off-implement",
+ *     implement: dispatcher({                                 // dispatches
+ *       name: "dispatch-implement",
  *       action: "implement",                                  // flow.task.actions.implement
  *       session: "per-task",
  *     }),
@@ -217,7 +217,7 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
    */
   action: string | TaskEntryChoice;
   /**
-   * The **other flow** this dispatcher hands off to. Omit for this flow's own
+   * The **other flow** this dispatcher dispatches to. Omit for this flow's own
    * task entry. Same skip as an `internal` cross-flow address: `defineFlow`
    * cannot see the other flow's map, so the seam resolves it.
    *

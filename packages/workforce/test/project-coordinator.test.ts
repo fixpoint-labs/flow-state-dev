@@ -494,7 +494,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       workerId: "alice-lead",
       workstreamId: "shared/apollo/checkout"
     });
-    // Its record is on her coordinator, and the hand-off in that same turn was delivered into the workstream's session.
+    // Its record is on her coordinator, and the dispatch in that same turn was delivered into the workstream's session.
     expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/checkout" }]);
     expect(h.heard).toEqual([{ worker: "alice-lead", message: expect.stringContaining("Please add guest checkout."), sessionId: entry.sessionId }]);
     const [record] = (await h.items(id)).records;
@@ -706,7 +706,7 @@ describe("changing her workstreams from the coordinator", () => {
       status: "done"
     });
     // Its record went in the turn itself, not by a dispatch landing after it: a
-    // hand-off later in that turn must not find a closed workstream.
+    // dispatch later in that turn must not find a closed workstream.
     expect(await h.delegates("alice", id)).toEqual([{ worker: "alice-lead", target: "shared/apollo/search" }]);
   });
 

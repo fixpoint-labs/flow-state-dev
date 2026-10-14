@@ -1,5 +1,5 @@
 /**
- * The task board accepts `claudeCodeAgent` as a handed-off worker once its
+ * The task board accepts `claudeCodeAgent` as a dispatched worker once its
  * conversation state is turned off (LAB-133). See `detached` in
  * `packages/claude-code/src/sdk/agent.ts` for what the option does and why.
  *
@@ -55,7 +55,7 @@ function flowHandingOffTo(kind: string, block: TaskWorker) {
     collection: codingTasks,
     workers: {
       implement: dispatcher({
-        name: `${kind}-hand-off`,
+        name: `${kind}-dispatch`,
         type: "task",
         action: "implement",
         session: "per-task",
@@ -69,12 +69,12 @@ function flowHandingOffTo(kind: string, block: TaskWorker) {
   });
 }
 
-describe("task board × claudeCodeAgent (hand-off)", () => {
-  it("accepts the agent as a handed-off entry block when detached is set", () => {
+describe("task board × claudeCodeAgent (dispatch)", () => {
+  it("accepts the agent as a dispatched entry block when detached is set", () => {
     expect(() => flowHandingOffTo("coding", codingRun({ detached: true }))).not.toThrow();
   });
 
-  it("still refuses the agent as a handed-off entry block with conversation state on", () => {
+  it("still refuses the agent as a dispatched entry block with conversation state on", () => {
     // The contrast that makes the assertion above able to fail. Without it the
     // acceptance test would keep passing if the refusal were removed entirely,
     // proving nothing about the opt-out.

@@ -3,7 +3,7 @@
  * outside.
  *
  * A hired worker is a flow instance registered with a pin, `{ orgId, userId? }`.
- * A board assignee that names that instance hands its rows off through the
+ * A board assignee that names that instance dispatches its rows through the
  * dispatch seam. The session running the drain is the principal the child
  * would run as, so a board in another organization, or a teammate's board
  * aimed at a private assignee, must be refused at the seam: the assignee's block never
@@ -13,7 +13,7 @@
  * Refused the way an address this process does not hold is refused, so the
  * board cannot tell an assignee it may not use from an assignee that does not exist.
  * The owner's drain through the same board and the same assignees runs, so an
- * empty worker log below is the refusal and not a hand-off that never starts.
+ * empty worker log below is the refusal and not a dispatch that never starts.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -58,7 +58,7 @@ function assigneeKind(ran: string[]) {
     boardId: BOARD_ID,
     collection: ledger(),
     workers: {
-      work: dispatcher<TaskWorkerInput>({ name: "assignee-hand-off", action: "work", session: "per-task" }),
+      work: dispatcher<TaskWorkerInput>({ name: "assignee-dispatch", action: "work", session: "per-task" }),
     },
   });
   return defineFlow({
@@ -69,7 +69,7 @@ function assigneeKind(ran: string[]) {
   });
 }
 
-/** The org board. Each row's assignee is an assignee that hands off to one hired instance. */
+/** The org board. Each row's assignee is an assignee that dispatches to one hired instance. */
 function boardFlow() {
   const assignee = (name: string, flowKind: string) =>
     dispatcher<TaskWorkerInput>({ name, flowKind, action: "work", session: "per-task" });
@@ -136,7 +136,7 @@ async function boot() {
   return { state, ran, row, drain, assigneeSessions };
 }
 
-/** A refused hand-off: nothing ran, nothing was minted, the row is not held. */
+/** A refused dispatch: nothing ran, nothing was minted, the row is not held. */
 async function expectRefused(h: Awaited<ReturnType<typeof boot>>, who: Who, taskId: string, assigneeId: string) {
   expect(h.ran.filter((line) => line.startsWith(`${assigneeId} `))).toEqual([]);
   expect(await h.assigneeSessions(who, assigneeId)).toEqual([]);
@@ -177,7 +177,7 @@ describe("a board drain onto a hired worker", () => {
       await h.drain(BOB);
       const research = await expectRefused(h, BOB, "t-research", RESEARCH);
       expect(research?.error).toContain(`no flow instance "${RESEARCH}" is registered`);
-      // Bob is inside the lead assignee's pin, so his board hands off to it.
+      // Bob is inside the lead assignee's pin, so his board dispatches to it.
       expect((await h.row(BOB, "t-lead"))?.status).toBe("completed");
       expect(h.ran).toEqual([`${LEAD} t-lead as bob@acme`]);
     } finally {

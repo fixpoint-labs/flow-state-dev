@@ -4,7 +4,7 @@
  *
  * `by` says how the delegates were found:
  *
- * - `judgment`: the coordinator's own turn decided, handing off with its tool
+ * - `judgment`: the coordinator's own turn decided, dispatching with its tool
  *   or answering itself.
  * - `held`: best fit, and the user's last post went to a delegate that
  *   hasn't answered since. No model call.

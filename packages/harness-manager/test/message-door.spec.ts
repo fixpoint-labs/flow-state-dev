@@ -2,7 +2,7 @@
  * Talking to a run — the manager's door (FIX-1690).
  *
  * Driven end to end, in process, like `dotted-board.spec.ts`: a real
- * `createFlowState`, a real board and its same-flow hand-off, real fenced
+ * `createFlowState`, a real board and its same-flow dispatch, real fenced
  * settlement and a real git checkout. Only the harness is a stub, and it
  * records what each attempt was handed: the prompt, and the session it was
  * told to resume.
@@ -231,7 +231,7 @@ function host(options: {
     onReview: "exit",
     dispatcher: runOwnerDispatcher(),
     workers: {
-      coder: dispatcher({ name: "door-board-hand-off", action: "work", session: "per-task" }),
+      coder: dispatcher({ name: "door-board-dispatch", action: "work", session: "per-task" }),
     },
   });
   const seed = handler({
@@ -1187,7 +1187,7 @@ describe("the claimed task, handed to the prompt builder", () => {
 
     const task = lab.builds[0]!.task as Record<string, unknown>;
     expect(task).toEqual({ ...seeded, title: "Night mode", context: "Users asked for it twice." });
-    // Absent, not present-and-undefined: the hand-off can cross a process boundary.
+    // Absent, not present-and-undefined: the dispatch can cross a process boundary.
     expect(Object.keys(task).sort()).toEqual(["context", "goal", "input", "title"]);
   }, 60_000);
 });

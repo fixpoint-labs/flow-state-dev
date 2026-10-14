@@ -226,7 +226,7 @@ describe(".step(block, { onSettled })", () => {
 
   it("reports WHICH exit it is reporting", async () => {
     // The three exits are not interchangeable to a caller releasing a resource.
-    // `returned` and `threw` both hand off to a downstream step that still has
+    // `returned` and `threw` both pass to a downstream step that still has
     // work to do — a recorder, a `.rescue()` handler — and this hook fires
     // before that step runs. Only `suspended` has nothing downstream at all.
     // A caller that cannot tell them apart must either release too early on two

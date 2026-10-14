@@ -266,7 +266,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
   // that spread is a fork — so anything stamped here lands on a copy nobody
   // else holds. The object `createFlowState` gives `worker.startWorker` never
-  // saw it, so a colocated queue worker running a board that hands off met
+  // saw it, so a colocated queue worker running a board that dispatches met
   // `no-dispatch-operation`; and because this operation carries no child tracking,
   // an HTTP-started child session was invisible to the shutdown drain.
   //
@@ -287,7 +287,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // deployment, which is every deployment you are likely to be reading this
   // from. Removing it silently drops detached work for anyone mounting this
   // router in their own server without a `FlowState` — a supported embedding —
-  // and `integration-tests`' `task-board-detached-handoff` scenario, which
+  // and `integration-tests`' `task-board-dispatch-detached` scenario, which
   // drives `createFlowApiRouter` directly, is the thing that will tell you.
   // The dispatch seam's operation, installed on the same last-resort terms and
   // over the same host, so a direct router caller can dispatch too.

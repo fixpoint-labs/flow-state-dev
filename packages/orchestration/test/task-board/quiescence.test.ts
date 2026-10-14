@@ -29,9 +29,9 @@ import {
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
 import { whenBoardClaimable } from "../../src/task-board/predicates";
 import {
-  handedOffTaskPredicate,
-  type HandOffAssignee,
-} from "../../src/task-board/hand-off";
+  dispatchedTaskPredicate,
+  type DispatchingAssignee,
+} from "../../src/task-board/dispatch-assignee";
 import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
@@ -241,7 +241,7 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  * point, silently undone by the exit question.
  *
  * Every case asserts BOTH consumers, for the reason this file exists: the exit
- * check and the wake test drifted apart once already, and a hand-off honoured
+ * check and the wake test drifted apart once already, and a dispatch honoured
  * by only one of them puts a worker to sleep on a board the other calls
  * drained.
  *
@@ -252,8 +252,8 @@ const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
  */
 describe("boardQuiescence - work handed to a child session", () => {
   const onIdles: OnIdle[] = ["complete", "complete-or-blocked"];
-  /** Stands in for a board whose only assignee hands off. */
-  const allHandedOff = () => true;
+  /** Stands in for a board whose only assignee dispatches. */
+  const allDispatched = () => true;
 
   it.each(onIdles)(
     "onIdle %s: an inline in-progress row still holds the drain open",
@@ -272,7 +272,7 @@ describe("boardQuiescence - work handed to a child session", () => {
     "onIdle %s: the same row drains once it is running elsewhere",
     async (onIdle) => {
       const collection = await boardWithRows([{ id: "a", drive: "claim" }]);
-      const options = { onIdle, runsElsewhere: allHandedOff };
+      const options = { onIdle, runsElsewhere: allDispatched };
 
       // The fix, stated against the control above: one declaration flips the
       // identical board state from "keep waiting" to "nothing left for me".
@@ -285,7 +285,7 @@ describe("boardQuiescence - work handed to a child session", () => {
   it.each(onIdles)(
     "onIdle %s: an inline sibling still holds a mixed board open",
     async (onIdle) => {
-      // A registry board where one assignee hands off and one does not. The
+      // A registry board where one assignee dispatches and one does not. The
       // exclusion has to be per-row, not per-board.
       const collection = await boardWithRows([
         { id: "bg", assignee: "background", drive: "claim" },
@@ -302,13 +302,13 @@ describe("boardQuiescence - work handed to a child session", () => {
   );
 
   it.each(onIdles)(
-    "onIdle %s: a pending handed-off row is still this drain's work to dispatch",
+    "onIdle %s: a pending dispatched row is still this drain's work to dispatch",
     async (onIdle) => {
       // The exclusion reaches `in_progress` only. A drain that dropped pending
-      // handed-off rows would exit before dispatching them — the feature inverted
+      // dispatched rows would exit before dispatching them — the feature inverted
       // into a board that silently runs nothing.
       const collection = await boardWithRows([{ id: "a" }]);
-      const options = { onIdle, runsElsewhere: allHandedOff };
+      const options = { onIdle, runsElsewhere: allDispatched };
 
       expect(boardQuiescence(collection, options)).toBe("continue");
       // ...and it is claimable, so a sleeping worker must be stirred to spawn it.
@@ -316,25 +316,25 @@ describe("boardQuiescence - work handed to a child session", () => {
     }
   );
 
-  it("keeps a parked handed-off row holding the drain, and says so on purpose", async () => {
+  it("keeps a parked dispatched row holding the drain, and says so on purpose", async () => {
     // A documented bound, not an oversight: `parked` waits on an
     // external actor whichever way the row was dispatched, so it is left alone.
     // Pinned here so removing the limit is a deliberate edit to this line
     // rather than a silent widening of the exclusion.
     const collection = await boardWithRows([{ id: "a", drive: "park" }]);
-    const options = { onIdle: "complete-or-blocked" as OnIdle, runsElsewhere: allHandedOff };
+    const options = { onIdle: "complete-or-blocked" as OnIdle, runsElsewhere: allDispatched };
 
     expect(boardQuiescence(collection, options)).toBe("continue");
   });
 
   it.each(onIdles)(
-    "onIdle %s: a handed-off row nobody is holding any more is this drain's work again",
+    "onIdle %s: a dispatched row nobody is holding any more is this drain's work again",
     async (onIdle) => {
       // The exclusion is "running elsewhere", and `runsElsewhere` alone cannot
       // say that: it reads the board's declarations and the row's assignee, and
       // both are just as true of a row NOBODY is running. A claimant that died
       // between `claim()` and the child's first breath leaves exactly this row
-      // — `in_progress`, handed-off assignee, no worker anywhere — and so does a
+      // — `in_progress`, dispatched assignee, no worker anywhere — and so does a
       // child that was accepted and then died.
       //
       // What it costs is the worker loop's exit: `claimTask` runs before
@@ -344,9 +344,9 @@ describe("boardQuiescence - work handed to a child session", () => {
       // circle back and reclaim it. The board reports `drained` holding a
       // claimed row nothing will settle.
       //
-      // No persisted "the hand-off was accepted" mark distinguishes those
+      // No persisted "the dispatch was accepted" mark distinguishes those
       // states, whichever side of the spawn it is written on: before, and it is
-      // present for a hand-off that never happened; after, and a crash between
+      // present for a dispatch that never happened; after, and a crash between
       // acceptance and the write leaves it absent for one that did — and it
       // says nothing at all about a child that started and then died. The lease
       // is the fact that EXPIRES, so it is the one that can answer.
@@ -354,7 +354,7 @@ describe("boardQuiescence - work handed to a child session", () => {
         [{ id: "a", drive: "claim" }],
         AFTER_EVERY_LEASE
       );
-      const options = { onIdle, runsElsewhere: allHandedOff };
+      const options = { onIdle, runsElsewhere: allDispatched };
 
       expect(boardQuiescence(collection, options)).toBe("continue");
       // ...and it is reclaimable, so the sleeper must be stirred to take it —
@@ -365,7 +365,7 @@ describe("boardQuiescence - work handed to a child session", () => {
     }
   );
 
-  it("does not report a handed-off board as blocked", async () => {
+  it("does not report a dispatched board as blocked", async () => {
     // `blocked` means "nothing is producing state changes and nothing can be
     // claimed". A board whose only remaining row is running in a child session is
     // drained from this drain's side, and `drained` dominates — reporting
@@ -375,7 +375,7 @@ describe("boardQuiescence - work handed to a child session", () => {
     expect(
       boardQuiescence(collection, {
         onIdle: "complete-or-blocked",
-        runsElsewhere: allHandedOff,
+        runsElsewhere: allDispatched,
       })
     ).toBe("drained");
   });
@@ -388,8 +388,8 @@ describe("boardQuiescence - work handed to a child session", () => {
  * the floor — or the drain and the child disagree about which assignee a row
  * belongs to.
  */
-describe("handedOffTaskPredicate", () => {
-  const assignee = (name: string): HandOffAssignee => ({
+describe("dispatchedTaskPredicate", () => {
+  const assignee = (name: string): DispatchingAssignee => ({
     name,
     kind: "named",
     label: `assignee:${name}`,
@@ -399,19 +399,19 @@ describe("handedOffTaskPredicate", () => {
   it("is absent for a board with no dispatcher assignee", () => {
     // Absence is what keeps every existing board on the `count()` path — the
     // classifier's answer for them is bit-for-bit unchanged.
-    expect(handedOffTaskPredicate([])).toBeUndefined();
+    expect(dispatchedTaskPredicate([])).toBeUndefined();
   });
 
-  it("separates a handed-off assignee from an inline one", () => {
-    const predicate = handedOffTaskPredicate([assignee("background")])!;
+  it("separates a dispatched assignee from an inline one", () => {
+    const predicate = dispatchedTaskPredicate([assignee("background")])!;
     expect(predicate({ assignee: "background" } as never)).toBe(true);
     expect(predicate({ assignee: "inline" } as never)).toBe(false);
   });
 
-  it("never hands an undeclared assignee off — only a named assignee can", () => {
-    // The floor and the uniform assignee cannot hand off (the board refuses a
+  it("never dispatches for an undeclared assignee — only a named assignee can", () => {
+    // The floor and the uniform assignee cannot dispatch (the board refuses a
     // dispatcher there), so an unrouted row is always this drain's.
-    const predicate = handedOffTaskPredicate([assignee("background")])!;
+    const predicate = dispatchedTaskPredicate([assignee("background")])!;
     expect(predicate({ assignee: "unknown" } as never)).toBe(false);
     expect(predicate({} as never)).toBe(false);
     expect(predicate({ assignee: "background" } as never)).toBe(true);
@@ -420,7 +420,7 @@ describe("handedOffTaskPredicate", () => {
   it("does not resolve an inherited Object.prototype member as an assignee", () => {
     // `assignee` reaches the board from a model-facing tool, so a bare index
     // would route `"constructor"` at a declared assignee that does not exist.
-    const predicate = handedOffTaskPredicate([assignee("background")])!;
+    const predicate = dispatchedTaskPredicate([assignee("background")])!;
     expect(predicate({ assignee: "constructor" } as never)).toBe(false);
   });
 });

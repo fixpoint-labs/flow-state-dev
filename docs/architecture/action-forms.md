@@ -145,7 +145,7 @@ A `task` dispatch carries the entry name as provenance only, and that name can
 collide with a public `flow.actions` key. The one-map rule is what keeps the
 collision harmless: nothing indexes a framework-stamped dispatch into
 `flow.actions`, for resolution or for concurrency — the arbiter resolves the
-entry's own policy through the same `(type, name)` lookup, so a hand-off never
+entry's own policy through the same `(type, name)` lookup, so a dispatch never
 inherits an unrelated action's `queue` / `reject` by name.
 
 **The sender is a `dispatcher()` handler.** It builds the typed envelope from

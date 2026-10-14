@@ -20,7 +20,7 @@
  *   delegate actions take no target, so nothing else writes a record with one.
  *   An open made in the coordinator's own turn, with its `openWorkstream`
  *   tool, writes the record in that turn instead
- *   ({@link changeWorkstreamRecordHere}), so the hand-off that follows finds it.
+ *   ({@link changeWorkstreamRecordHere}), so the dispatch that follows finds it.
  *
  * A post reads its delegates from the session's state only, never from the
  * entries. A delivery to a record goes into the workstream's own session: the

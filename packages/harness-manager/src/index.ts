@@ -2,7 +2,7 @@
  * `@flow-state-dev/harness-manager` — a task-board row becomes a supervised
  * coding run.
  *
- * One handed-off worker on a board:
+ * One dispatched worker on a board:
  *
  *   open the run row → build the prompt & take the checkout → run the harness
  *   → read the verdict → settle or fail

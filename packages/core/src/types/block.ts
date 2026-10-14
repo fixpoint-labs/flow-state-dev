@@ -554,7 +554,7 @@ export interface BlockContext<
   /**
    * @internal The runtime's dispatch operation, attached under a symbol key so
    * it is not a named member any handler body reaches. Read only by
-   * `dispatchThroughSeam`, which `dispatcher()` and the task board's hand-off
+   * `dispatchThroughSeam`, which `dispatcher()` and the task board's dispatch
    * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
    */
   [DISPATCH_SEAM]?: DispatchSeam;
@@ -1092,10 +1092,10 @@ export interface BlockDefinition<
   /**
    * The address this block dispatches to, when it is a dispatcher.
    *
-   * Stamped by `dispatcher()` (and by the task board on its hand-off block)
+   * Stamped by `dispatcher()` (and by the task board on its dispatch block)
    * and carried across every rebuild path, so `defineFlow` can walk the graph
    * and refuse an address that resolves no entry, and a board can read which
-   * of its assignees hand off without running anything. `undefined` on every block
+   * of its assignees dispatch without running anything. `undefined` on every block
    * that dispatches nothing, which is every block that computes.
    */
   dispatch?: DispatchAddress;

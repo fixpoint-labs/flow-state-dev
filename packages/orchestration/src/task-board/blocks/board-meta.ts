@@ -26,12 +26,12 @@
  * produce no novel output, just side-effect a component item via
  * `ctx.emit.component`. Wired with `.tap()` per BP-012.
  *
- * ## Why hand-off needs a reason of its own
+ * ## Why dispatch needs a reason of its own
  *
- * The structural test is `counts.completed === counts.total`, and a handed-off
+ * The structural test is `counts.completed === counts.total`, and a dispatched
  * board that did exactly what it was built to do fails it: the row it handed
  * over is still `in_progress`, owned by a child session. So every successful
- * hand-off drain announced itself as `"blocked-by-failures"` — permanently,
+ * dispatch drain announced itself as `"blocked-by-failures"` — permanently,
  * since no later drain re-emits this item once the child settles. The feature
  * whose entire point is that background work is *visible* was reporting its own
  * success as a terminal failure.
@@ -40,9 +40,9 @@
  * consumer reads it as "nothing left to do" and stops watching while a child is
  * still working. The honest answer is a third thing, so it is a third value.
  *
- * A board is `"handed-off"` only when **every** remaining non-`completed` row is
- * handed off. One errored row alongside them is a board that had failures, and
- * `"blocked-by-failures"` still says so. When the reason is `"handed-off"`,
+ * A board is `"dispatched"` only when **every** remaining non-`completed` row is
+ * dispatched. One errored row alongside them is a board that had failures, and
+ * `"blocked-by-failures"` still says so. When the reason is `"dispatched"`,
  * `counts.in_progress` is exactly the number of rows still running elsewhere —
  * there is no other kind of remaining row left for it to count.
  *
@@ -84,7 +84,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
-import { isHandedOff, type RunsElsewhere } from "../shared";
+import { isDispatched, type RunsElsewhere } from "../shared";
 import { leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
@@ -100,7 +100,7 @@ export interface BoardMetaCompletedOptions extends BoardMetaOptions {
   /**
    * Rows whose work is routed to a child session (FIX-982) — the same predicate
    * the board hands its exit question, and for the same reason it has to be the
-   * same one. See {@link isHandedOff}.
+   * same one. See {@link isDispatched}.
    *
    * Absent for every board with no dispatcher assignee, which is what keeps
    * the reason this block reports bit-for-bit what it was for those boards.
@@ -137,7 +137,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * every review would not satisfy (FIX-1234)?
  *
  * This is the question that keeps a review gate from masking an unrelated
- * stall. A parked row moves when a person acts; a handed-off row is moving
+ * stall. A parked row moves when a person acts; a dispatched row is moving
  * elsewhere right now; a `pending` row waiting on a task that will never
  * complete is moving nowhere at all, and that is the fact an operator needs
  * even when a review also happens to be outstanding.
@@ -175,13 +175,13 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * The tempting shape for rung 5 is a guard asking whether anything
  * *other than the park* contributed to the exit. It was considered and
  * rejected, and rung 4 exists because of what it got wrong: on a board
- * with a parked row **and** a handed-off row, the hand-off exclusion
+ * with a parked row **and** a dispatched row, the dispatch exclusion
  * also contributed, so under a sole-cause rule the reason falls
- * through to `handed-off` and the operator loses the one fact they
+ * through to `dispatched` and the operator loses the one fact they
  * need. Rung 4 asks a different question — is anything here going
- * nowhere? — and handed-off work is going somewhere, so it is not
+ * nowhere? — and dispatched work is going somewhere, so it is not
  * caught. That is the whole distinction: `parked-for-review` must keep
- * beating `handed-off`, and must not beat a row that will never run.
+ * beating `dispatched`, and must not beat a row that will never run.
  *
  * **Three routes to a park verdict standing beside a row this closure did not
  * flag, and they do not have the same answer.** The empty `deps` list is
@@ -193,7 +193,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  *    park verdict from being issued at all. `classifyBoard` carries
  *    `excusedParked: true` out of exactly two returns and a ready row defeats
  *    both: `"drained"` needs `inFlight.waiting === 0`, and `countWaitable`
- *    counts a `pending` row that is neither handed off nor parked; `"blocked"`
+ *    counts a `pending` row that is neither dispatched nor parked; `"blocked"`
  *    needs `!hasClaimableTask`, and `isClaimable` reduces to `depsSatisfied`
  *    for a `pending` row (there is deliberately no attempts arm), which is
  *    vacuously true here. The classifier answers `continue`, carrying
@@ -206,18 +206,18 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  *    The late row is not something this drain declined to run, and reporting
  *    `blocked-by-failures` would announce a failure on a board where nothing
  *    failed and the new row is perfectly runnable — the same defect class this
- *    rung exists to remove, since that is how hand-off used to report its own
+ *    rung exists to remove, since that is how dispatch used to report its own
  *    success as a terminal failure. "Another drain is required" is not evidence
  *    against the reason; it is what the reason means.
  * 3. **A row whose lease lapsed after that classification — real, and it is
- *    what the lease check in the seed handles.** A handed-off row with a live
+ *    what the lease check in the seed handles.** A dispatched row with a live
  *    lease is excused by `countWaitable`, so the drain can exit `drained` with
  *    a park verdict while that row is still in flight. If the lease then lapses
  *    before this block takes its own `collection.now()`, the row is abandoned
  *    rather than in flight, and answering the review does not recover it — a
  *    lease reclaim on a later drain does. Here `parked-for-review` genuinely
  *    would be wrong, and the ladder already agrees: with no review outstanding,
- *    `allRemainingHandedOff` re-reads the lease, finds it lapsed, and falls
+ *    `allRemainingDispatched` re-reads the lease, finds it lapsed, and falls
  *    through to `blocked-by-failures`. Seeding on the lease rather than on
  *    `in_progress` is what keeps the park rung from masking that.
  */
@@ -233,7 +233,7 @@ function hasRowGoingNowhere(
   // **The last of those is a lease question, not a status or routing one**, and
   // that is the whole correctness of this seed. `in_progress` alone would seed
   // an ABANDONED row — a worker died, the lease lapsed, and nothing is coming
-  // back for it until a later drain reclaims it. `isHandedOff` alone would miss
+  // back for it until a later drain reclaims it. `isDispatched` alone would miss
   // a row another drain's live worker is holding, because that predicate needs
   // `runsElsewhere` and an inline board declares none; the row would be called
   // stuck while it is being actively worked. The live lease answers for both,
@@ -340,7 +340,7 @@ function excusedParkedByPool(input: unknown): boolean {
  *   refused a retry (FIX-948). Read from a persisted denial marker, never
  *   inferred from `counts.retries === maxTotalRetries`, which does not
  *   establish that a refusal happened.
- * - `"handed-off"` — every remaining row is running in a child session (FIX-1074).
+ * - `"dispatched"` — every remaining row is running in a child session (FIX-1074).
  *   A success, not a stall; `counts.in_progress` is how many.
  * - `"parked-for-review"` — the board stopped because the work it has left is
  *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`
@@ -361,7 +361,7 @@ function excusedParkedByPool(input: unknown): boolean {
  *    from the rows as they stand now — but the reason names a state, so it is
  *    also checked against that state: a board with nothing in `parked`
  *    never reports it, whatever the pool carried.
- * 6. every remaining row is handed off → `handed-off`.
+ * 6. every remaining row is dispatched → `dispatched`.
  * 7. otherwise → `blocked-by-failures`.
  *
  * **On a board with no parked row the reason is exactly what it was before
@@ -410,13 +410,13 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
       // predating this field at runtime; `null` means no limit is in force.
       const maxTotalRetries = collection.maxTotalRetries ?? null;
       // Evaluated against the collection's own clock, because the lease the
-      // hand-off test reads was stamped against it by the claim write — the
+      // dispatch test reads was stamped against it by the claim write — the
       // same reason every other reader of that deadline takes it from here.
       const now = collection.now();
       const remaining = all.filter((task) => task.status !== "completed");
-      const allRemainingHandedOff =
+      const allRemainingDispatched =
         remaining.length > 0 &&
-        remaining.every((task) => isHandedOff(task, now, runsElsewhere));
+        remaining.every((task) => isDispatched(task, now, runsElsewhere));
       // Rung 3: a row that is stuck for a reason of its own. `blocked` joins the
       // two failure statuses here so an unrelated review gate cannot mask it.
       const anyRemainingStuck = remaining.some(
@@ -429,7 +429,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         | "all-completed"
         | "blocked-by-failures"
         | "retry-budget-exhausted"
-        | "handed-off"
+        | "dispatched"
         | "parked-for-review" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
         : remaining.length === 0
@@ -440,8 +440,8 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
               ? "blocked-by-failures"
               : excusedParkedByPool(input) && counts.parked > 0
                 ? "parked-for-review"
-                : allRemainingHandedOff
-                  ? "handed-off"
+                : allRemainingDispatched
+                  ? "dispatched"
                   : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,

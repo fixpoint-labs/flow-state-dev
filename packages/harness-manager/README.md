@@ -32,7 +32,7 @@ const manager = harnessManager({
 });
 ```
 
-Mount it as the block behind a board worker that hands off, and rows filed on that board become supervised runs.
+Mount it as the block behind a board worker that dispatches, and rows filed on that board become supervised runs.
 
 With `workspace: { root, sourceRepo, baseRef }`, every run gets a new branch of `sourceRepo`, cut from `baseRef`. The branch lives in `sourceRepo` itself and the run's checkout sits under `root`.
 

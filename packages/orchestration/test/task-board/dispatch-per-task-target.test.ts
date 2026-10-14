@@ -1,5 +1,5 @@
 /**
- * A board's fallback that hands rows off to a flow looked up per task.
+ * A board's fallback that dispatches rows to a flow looked up per task.
  *
  * The fallback (`defaultWorker`) holds a task dispatcher whose `flowKind` is a
  * function of the task: each row the board's own assignees do not name goes to

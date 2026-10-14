@@ -1091,7 +1091,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const runtime = await state.getRuntime();
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
-  // option, and a hand-off's child request is started from that resolved object
+  // option, and a dispatch's child request is started from that resolved object
   // rather than from anything a caller passes per action. Setting it here is
   // the one place that reaches both.
   if (options.logger !== undefined) {

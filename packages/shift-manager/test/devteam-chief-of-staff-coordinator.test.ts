@@ -18,7 +18,7 @@
  * coordinator flow, routing by best fit), FIX-1833 BR-6, BR-7, BR-17, BR-19
  * and BR-20 (a plain ask to the EM with no turn; its own job, a doubtful pick
  * or a failed call to its turn, recorded with why), BR-34's
- * mechanism (hire, add, hand off), BR-10 (its delegate read is the
+ * mechanism (hire, add, dispatch), BR-10 (its delegate read is the
  * conversation's list, with what each takes), BR-9's record of a default that
  * can't take a post (the coder, which takes only tasks), naming the delegate
  * that can, and the EM as a delegate that takes posts: its turn files the
@@ -213,7 +213,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
     const listed = await act(lab, id, "listDelegates", {});
     expect(listed.error).toBeUndefined();
     // What each one does (its WORKER.md description) and takes: the EM's flow takes posts, and
-    // the coder's takes a conversation's tasks (FIX-1866). What the chief of staff picks a hand-off
+    // the coder's takes a conversation's tasks (FIX-1866). What the chief of staff picks a dispatch
     // and a filing by.
     expect(listed.output.delegates).toEqual([
       { worker: "eng.em", description: EM_DESCRIPTION, takes: "posts" },

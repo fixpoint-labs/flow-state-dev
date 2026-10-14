@@ -35,7 +35,7 @@
  *
  * ## The drain runs where the row was claimed
  *
- * The door runs in the run's own session, and a board that hands a row off
+ * The door runs in the run's own session, and a board that dispatches a row
  * derives the run's session from the session that drains it. Draining here
  * would put the next attempt in a session beneath this one, and every message
  * would move the run one level deeper. So the door re-queues the row and

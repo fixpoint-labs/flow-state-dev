@@ -20,7 +20,7 @@
  *   settles the attempt as a gate failure. The row goes back for retry still
  *   naming this run, and the retry's claim clears it.
  *
- * The end-to-end hand-off (real drain, real child sessions, every assignee policy)
+ * The end-to-end dispatch (real drain, real child sessions, every assignee policy)
  * is `integration-tests/src/scenarios/task-board-run-link.test.ts`.
  */
 import { describe, expect, it } from "vitest";
@@ -65,7 +65,7 @@ async function harness(fault: Fault) {
       claimIdentity: { sessionId: "s_parent", requestId: "req_parent" },
     });
 
-  // The parent's side: one row, claimed, as a drain leaves it before hand-off.
+  // The parent's side: one row, claimed, as a drain leaves it before dispatch.
   const parent = await ledger();
   // Two attempts, so a gate failure the rescue settles goes back for retry
   // rather than ending the row.

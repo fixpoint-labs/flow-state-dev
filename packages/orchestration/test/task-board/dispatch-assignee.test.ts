@@ -1,11 +1,11 @@
 /**
- * The hand-off substitution on the drain, and its payload gate (FIX-982 P3a).
+ * The dispatch substitution on the drain, and its payload gate (FIX-982 P3a).
  *
  * Two properties are pinned here, and both are ones whose failure is silent.
  *
- * The first is that a handed-off assignee does not route to its worker. If it
+ * The first is that a dispatched assignee does not route to its worker. If it
  * ever does, the board keeps working — the worker runs, the task settles,
- * every existing test passes — and the hand-off simply never happens. That is
+ * every existing test passes — and the dispatch simply never happens. That is
  * the failure this whole issue exists to remove, so a behavioural assertion
  * that only checked "no error" would pass against exactly that bug (running
  * the worker inline looks like success). What makes the check decisive is
@@ -16,7 +16,7 @@
  * `.forEach`, whose per-item block is a runtime factory
  * (`(workerId) => makeWorker(workerId)`), never a statically-registered
  * child — so it never joins `childBlocks`, and nothing about the
- * substitution is visible to a definition-time walk. `board.handedOff` (a
+ * substitution is visible to a definition-time walk. `board.dispatchers` (a
  * plain value, not a walk) is what a definition-time check *can* see, and it
  * is enough to prove assignee-level keying is correct; only running the drain
  * proves the ROUTE itself dispatches instead of executing inline.
@@ -46,17 +46,17 @@ function worker(name: string) {
   });
 }
 
-/** A fresh durable ledger per test — hand-off requires a resource backing. */
+/** A fresh durable ledger per test — dispatch requires a resource backing. */
 function ledger() {
-  return defineTaskCollection({ id: "hand-off-tasks", scope: "user" });
+  return defineTaskCollection({ id: "dispatch-tasks", scope: "user" });
 }
 
-/** An assignee that hands off to the task entry `target`. */
+/** An assignee that dispatches to the task entry `target`. */
 function assignee(target: string) {
   return dispatcher({ name: `assignee-${target}`, type: "task", action: target, session: "per-task" }) as unknown as TaskWorker;
 }
 
-describe("a handed-off assignee routes to the dispatch seam, not to the worker", () => {
+describe("a dispatched assignee routes to the dispatch seam, not to the worker", () => {
   it("keeps the worker off the drain's routing table", async () => {
     const implementSpy = vi.fn(() => ({ done: true }));
     const implement = handler({
@@ -75,10 +75,10 @@ describe("a handed-off assignee routes to the dispatch seam, not to the worker",
 
     const dispatched: { target: string; sessionId: string; source: string }[] = [];
     const flow = defineFlow({
-      kind: "hand-off-routing-table",
+      kind: "dispatch-routing-table",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: implement } } },
-    })({ id: "hand-off-routing-table" });
+    })({ id: "dispatch-routing-table" });
 
     const result = await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -112,7 +112,7 @@ describe("a handed-off assignee routes to the dispatch seam, not to the worker",
 
   it("detaches only the assignee that holds the dispatcher, when the same block also runs inline", () => {
     // The same block may run inline at one assignee and be the entry another assignee
-    // hands off to. Keying the substitution by ASSIGNEE rather than by block
+    // dispatches to. Keying the substitution by ASSIGNEE rather than by block
     // identity is what keeps the inline assignee inline.
     const shared = worker("shared");
     const board = taskBoard({
@@ -125,18 +125,18 @@ describe("a handed-off assignee routes to the dispatch seam, not to the worker",
       },
     });
 
-    expect(board.handedOff).toHaveLength(1);
-    expect(board.handedOff[0]!.label).toBe("assignee:background");
-    expect(board.handedOff[0]!.dispatch?.action).toBe("shared-entry");
+    expect(board.dispatchers).toHaveLength(1);
+    expect(board.dispatchers[0]!.label).toBe("assignee:background");
+    expect(board.dispatchers[0]!.dispatch?.action).toBe("shared-entry");
   });
 
-  it("still installs a resource only the handed-off entry block declares", () => {
+  it("still installs a resource only the dispatched entry block declares", () => {
     // The block is off the drain's routing table (test above), so a resource
     // it declares is no longer reachable through `board.drain` — it bubbles
     // through the gated task entry instead, which is why the entry has to be
     // on the flow for it to show up at all.
     const auditLog = defineResource({
-      name: "hand-off-audit-log",
+      name: "dispatch-audit-log",
       scope: "user",
       load: () => ({ entries: [] }),
     });
@@ -164,7 +164,7 @@ describe("a handed-off assignee routes to the dispatch seam, not to the worker",
   });
 
   it("leaves an inline board's routing untouched", () => {
-    // The substitution must be invisible to every board that hands off
+    // The substitution must be invisible to every board that dispatches
     // nothing, or this change would alter every existing board in the
     // codebase.
     const summarize = worker("summarize");
@@ -173,11 +173,11 @@ describe("a handed-off assignee routes to the dispatch seam, not to the worker",
       workers: { summarize },
     });
 
-    expect(board.handedOff).toHaveLength(0);
+    expect(board.dispatchers).toHaveLength(0);
   });
 });
 
-describe("the hand-off payload gate rejects what a round-trip would mangle", () => {
+describe("the dispatch payload gate rejects what a round-trip would mangle", () => {
   const label = "payload";
 
   it("accepts an ordinary JSON payload", () => {

@@ -1,13 +1,13 @@
 /**
- * A hand-off board honours its configured `onError` (FIX-982).
+ * A dispatching board honours its configured `onError` (FIX-982).
  *
  * `onError: "fail"` is a board-level contract: a worker failure fails the run
- * that was executing it. Inline, that is the drain's own request. Handed off,
+ * that was executing it. Inline, that is the drain's own request. Dispatched,
  * the run executing the worker is the child session's — so `"fail"` has to
  * fail that.
  *
  * It did not. The runner hard-coded `"skip"` for its error recorder, so a
- * handed-off worker that threw recorded the row `errored` and its child
+ * dispatched worker that threw recorded the row `errored` and its child
  * session's request completed **successfully**. Everything that reads
  * background work by request status — the child-session listing route, the
  * DevTool panel, any consumer polling a run — saw a success for work that
@@ -38,7 +38,7 @@ const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) })
 
 type RecordedDispatch = { sessionId: string; actionName: string; input: unknown };
 
-/** A board whose handed-off worker always throws, under the given failure policy. */
+/** A board whose dispatched worker always throws, under the given failure policy. */
 function buildFlow(kind: string, onError: "skip" | "fail") {
   const alwaysThrows = handler({
     name: "always-throws",
@@ -55,7 +55,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
     onError,
     workers: {
       background: dispatcher({
-        name: `${kind}-hand-off`,
+        name: `${kind}-dispatch`,
         type: "task",
         action: "background",
         session: "per-task",
@@ -82,8 +82,8 @@ async function durableRow(
   return row?.state as Task | undefined;
 }
 
-/** Drain the parent, then run the child session the hand-off produced. */
-async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
+/** Drain the parent, then run the child session the dispatch produced. */
+async function dispatchAndRunChild(kind: string, onError: "skip" | "fail") {
   const stores = createInMemoryStores();
   const flow = buildFlow(kind, onError);
   const dispatched: RecordedDispatch[] = [];
@@ -132,9 +132,9 @@ async function handOffAndRunChild(kind: string, onError: "skip" | "fail") {
   return { child, stores };
 }
 
-describe("a hand-off board's configured onError decides the child session's outcome", () => {
+describe("a dispatching board's configured onError decides the child session's outcome", () => {
   it("fails the child session's request when the board declares onError: fail", async () => {
-    const { child, stores } = await handOffAndRunChild("hand-off-onerror-fail", "fail");
+    const { child, stores } = await dispatchAndRunChild("dispatch-onerror-fail", "fail");
 
     // THE ASSERTION THIS FILE EXISTS FOR. The worker threw and the board asked
     // for that to fail the run, so the run has to report failure — otherwise a
@@ -144,7 +144,7 @@ describe("a hand-off board's configured onError decides the child session's outc
 
     // The row is still settled either way: the recorder writes the failure
     // before the policy decides whether to rethrow.
-    expect(await durableRow(stores, "hand-off-onerror-fail", "t1")).toMatchObject({
+    expect(await durableRow(stores, "dispatch-onerror-fail", "t1")).toMatchObject({
       status: "errored",
     });
   });
@@ -153,10 +153,10 @@ describe("a hand-off board's configured onError decides the child session's outc
     // The control, and the reason this cannot be fixed by flipping a constant.
     // `skip` is the default and the common case: the task failed, the row says
     // so, and the run that carried it did its job.
-    const { child, stores } = await handOffAndRunChild("hand-off-onerror-skip", "skip");
+    const { child, stores } = await dispatchAndRunChild("dispatch-onerror-skip", "skip");
 
     expect(child.error).toBeUndefined();
-    expect(await durableRow(stores, "hand-off-onerror-skip", "t1")).toMatchObject({
+    expect(await durableRow(stores, "dispatch-onerror-skip", "t1")).toMatchObject({
       status: "errored",
     });
   });

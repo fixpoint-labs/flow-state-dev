@@ -2,13 +2,13 @@
  * A task-board assignee that names another flow must hand the row to that
  * flow's worker, not look the entry up on the sender.
  *
- * The drain's hand-off is the path a real board takes. Omitting `flowKind`
+ * The drain's dispatch is the path a real board takes. Omitting `flowKind`
  * from the seam spec makes the host resolve `task:"work"` on the sender —
  * `flow "task-sender" declares no task entry "work"` — and no child is
  * created. The originating row then errors on the wrong destination.
  *
  * The recipient cannot declare *only* the remotely addressed task entry:
- * `defineFlow` still requires a reachable board that hands off to it (the
+ * `defineFlow` still requires a reachable board that dispatches to it (the
  * orphan-task-entry / claim-gate guard). The legitimate setup is the same
  * logical board on both flows — same `boardId`, same user-scoped ledger —
  * so the recipient can gate the entry the way a same-flow board already
@@ -69,7 +69,7 @@ function recipientFlow(ran: string[]) {
     collection: sharedLedger(),
     workers: {
       work: dispatcher<TaskWorkerInput>({
-        name: `${RECIPIENT}-hand-off`,
+        name: `${RECIPIENT}-dispatch`,
         action: "work",
         session: "per-task",
       }),
@@ -90,7 +90,7 @@ function senderFlow() {
     collection: sharedLedger(),
     workers: {
       work: dispatcher<TaskWorkerInput>({
-        name: `${SENDER}-hand-off`,
+        name: `${SENDER}-dispatch`,
         flowKind: RECIPIENT,
         action: "work",
         session: "per-task",
@@ -125,7 +125,7 @@ async function until(predicate: () => boolean | Promise<boolean>, label: string)
   throw new Error(`timed out waiting for ${label}`);
 }
 
-describe("a cross-flow task-board hand-off", () => {
+describe("a cross-flow task-board dispatch", () => {
   it("still refuses a recipient that only declares the remotely addressed task entry", () => {
     expect(() =>
       defineFlow({
@@ -133,7 +133,7 @@ describe("a cross-flow task-board hand-off", () => {
         actions: {},
         task: { actions: { work: { block: workWorker([]) } } },
       })
-    ).toThrow(/declares task entry "work", but no task board reachable from the flow hands off to it/);
+    ).toThrow(/declares task entry "work", but no task board reachable from the flow dispatches to it/);
   });
 
   it("reaches the recipient worker and settles the originating row", async () => {
@@ -162,14 +162,14 @@ describe("a cross-flow task-board hand-off", () => {
       expect(parent.error).toBeUndefined();
 
       const afterParent = await durableRow(runtime.stores, "t1");
-      // A refused hand-off restores the claim and recordError fails the row.
+      // A refused dispatch restores the claim and recordError fails the row.
       // The wrong-destination miss looks like: flow "task-sender" declares
       // no task entry "work". In-process dispatch may finish the child
       // before this assertion, so "already completed" is success; errored
       // is the hole this test exists to close.
       if (afterParent?.status === "errored") {
         throw new Error(
-          `hand-off failed the originating row before a child ran: ${afterParent.error ?? "(no error)"}`
+          `dispatch failed the originating row before a child ran: ${afterParent.error ?? "(no error)"}`
         );
       }
 
@@ -260,7 +260,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     idlePollMs: 10,
     workers: {
       work: dispatcher<TaskWorkerInput>({
-        name: "conv-hand-off",
+        name: "conv-dispatch",
         ...(sameFlow ? {} : { flowKind: AGENT }),
         action: "work",
         session: "per-task",
@@ -345,13 +345,13 @@ function partitionAgent() {
   const worker = agentWorker();
 
   // The agent flow gates its entry with the same board over the same ledger.
-  // It never drains, and it never computes a partition: the hand-off names it.
+  // It never drains, and it never computes a partition: the dispatch names it.
   const board = taskBoard({
     name: "agent_board",
     boardId: PARTITION_BOARD,
     collection: partitionedLedger,
     workers: {
-      work: dispatcher<TaskWorkerInput>({ name: "agent-hand-off", action: "work", session: "per-task" }),
+      work: dispatcher<TaskWorkerInput>({ name: "agent-dispatch", action: "work", session: "per-task" }),
     },
   });
 
@@ -483,7 +483,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
     }
   });
 
-  it("U1 on one flow · a same-flow hand-off reads its row in the board's partition, not its own", async () => {
+  it("U1 on one flow · a same-flow dispatch reads its row in the board's partition, not its own", async () => {
     const h = await bootPartitioned(true);
     try {
       await h.act(ALICE, "conv_a", "file", { id: "a1" });
