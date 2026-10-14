@@ -58,19 +58,15 @@ const CONTROLS: Record<string, Control> = {
   unpartitioned: {
     name: "unpartitioned",
     legs: ["c"],
-    // c:lists-its-own too: a control that leaves each conversation's own list
-    // apart never merged the ledger, whatever else went red (FIX-1992).
     assertions: ["c:runs-its-own", "c:lists-its-own"],
     patches: [
-      // The partition the board's drain claims in (the ledger's `partitionBy`).
+      // partitionBy: the drain's claim.
       {
         module: "packages/workforce/src/conversation-board/ledger.ts",
         from: String.raw`return filingSessionIdOf\(\{`,
         to: 'return Promise.resolve("one-ledger"); return filingSessionIdOf({',
       },
-      // Every other read and write of the ledger, at whatever partition its
-      // caller names: the task tools, the board's after-run and post filing,
-      // a task session's own claim (FIX-1992: patching one caller missed the rest).
+      // conversationLedgerAt: every caller (FIX-1992).
       {
         module: "packages/workforce/src/conversation-board/ledger.ts",
         from: String.raw`collection,\s*partition,`,
