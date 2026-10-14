@@ -30,7 +30,7 @@
 // sentence only on a line naming `handOff` once, so a stale second mention
 // beside it stays live here too.
 import { execFileSync } from "node:child_process";
-import { KEEP } from "../../../../../goals/vocabulary/one-word-per-thing/rules.mjs";
+import { KEEP } from "../../vocabulary/one-word-per-thing/rules.mjs";
 
 const args = process.argv.slice(2);
 const at = args.includes("--at") ? args[args.indexOf("--at") + 1] : "HEAD";
