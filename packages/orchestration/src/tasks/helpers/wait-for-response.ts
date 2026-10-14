@@ -164,6 +164,13 @@ export interface DispatchAndWaitOptions {
    * unset. Outside the range the wait is refused before filing.
    */
   readonly timeoutMs?: number;
+  /**
+   * What a task turn ({@link isTaskTurn}) is told to do instead of waiting, in
+   * the refusal. For a layer whose task turns are woken when a task they
+   * dispatched ends; omitted, the refusal says to hand the task over without
+   * waiting.
+   */
+  readonly taskTurnInstead?: string;
 }
 
 /**
@@ -217,9 +224,9 @@ export async function dispatchAndWait(
       ok: false,
       error: "wait_unavailable",
       message:
-        "This turn is itself working a task, so it can't wait for another inside the turn. To wait for it, " +
-        "file it without `wait`, then end this turn: when that task ends, its ending wakes this task in a " +
-        "new turn, with the result. Nothing was filed."
+        "This turn is itself working a task, so it can't wait for another. " +
+        (options.taskTurnInstead ?? "Hand the task over without waiting instead.") +
+        " Nothing was filed."
     };
   }
   const call = toolCallOf(ctx);

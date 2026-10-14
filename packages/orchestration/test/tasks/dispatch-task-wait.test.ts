@@ -35,9 +35,13 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 const roster = { has: (name: string) => name === "researcher", describe: () => "researcher" };
 
 /** The waiting flow: `run` is a turn holding the task tools; `settle`, `touch` and `list` as in the wait fixture. */
-function toolFlow(model: ReturnType<typeof stepModel>["model"], resumesWaits = true): FlowInstance {
+function toolFlow(model: ReturnType<typeof stepModel>["model"], resumesWaits = true, taskTurnInstead?: string): FlowInstance {
   // This flow's `touch` action is its waker, so the board resumes waits.
-  const tools = createTaskToolsCapability(boardOf, roster, { resumesWaits, dispatches: true });
+  const tools = createTaskToolsCapability(boardOf, roster, {
+    resumesWaits,
+    dispatches: true,
+    ...(taskTurnInstead !== undefined ? { taskTurnInstead } : {})
+  });
   const settle = handler({
     name: "settle",
     inputSchema: z.object({ output: z.any() }),
@@ -265,13 +269,31 @@ describe("refused before anything is filed", () => {
       });
       expect(await statusOf(state as never, run.requestId!)).toBe("completed");
       expect(toolResults(seen[1]!.messages)).toContain('"error":"wait_unavailable');
-      // The refusal teaches the way to wait from a task turn, so the worker
-      // doesn't give up on the result: file without `wait`, end the turn, and
-      // the task's ending wakes this one.
+      // A plain board's task turn completes its task when it returns, so
+      // nothing wakes it: it is told only to hand the task over.
+      expect(toolResults(seen[1]!.messages)).toContain("Hand the task over without waiting instead.");
+      expect(await listRows(state, flow)).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("on a task turn, with the layer's own way to wait: the refusal and the description say it", async () => {
+    const instead = "File it without wait and end your turn; its ending wakes this task.";
+    const { model, seen } = stepModel([dispatchTaskCall("c1", { assignee: "researcher", wait: true }), finalAnswer]);
+    const flow = toolFlow(model, true, instead);
+    const state = await host(flow, { durable: true, router: true });
+    try {
+      await isolated(async () => {
+        stampCurrentClaim({ collectionId: "tasks", taskId: "task_worked", attempt: 1, createdAt: 1 });
+        return act(state as never, flow, "run");
+      });
       const refusal = toolResults(seen[1]!.messages);
-      expect(refusal).toContain("without `wait`");
-      expect(refusal).toMatch(/end this turn/);
-      expect(refusal).toMatch(/wakes this task/);
+      expect(refusal).toContain('"error":"wait_unavailable');
+      expect(refusal).toContain(instead);
+      expect(refusal).not.toContain("Hand the task over without waiting instead.");
+      const dispatch = (seen[0]!.tools as Array<{ name?: string; description?: string }> | undefined)?.find((tool) => tool.name === "dispatchTask");
+      expect(dispatch?.description).toContain(`so you can't wait: ${instead}`);
       expect(await listRows(state, flow)).toEqual([]);
     } finally {
       await state.dispose();

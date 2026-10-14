@@ -34,7 +34,7 @@ A worker whose delegates only take posts, like a coordinator that routes questio
 { "ok": false, "error": "no_delegation_board" }
 ```
 
-In a task session the rule is wider: a worker working a task can split it whatever its delegates. See [Splitting a task](#splitting-a-task).
+In a task session the rule is wider: a worker working a task can hand pieces to any worker on the roster that takes tasks, delegates or not. See [Splitting a task](#splitting-a-task).
 
 Add a delegate that takes tasks partway through a conversation and the tools are there on the next call; remove the last one and they're gone.
 

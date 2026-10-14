@@ -12,7 +12,8 @@
  *   holds pieces when its task comes back (a retry, or a takeover after a
  *   crash) runs no turn: it parks again on those pieces.
  * - **The settle.** A parked task is owed its settle once none of its pieces
- *   is open: that debt is the binding plus the pieces' own states, written by
+ *   is open and none still owes this session its ending's notice: that debt
+ *   is the binding plus the pieces' own states and notice markers, written by
  *   the writes that made them so, and nothing else. It is paid after the turn
  *   a piece's notice woke, in that notice's own request, and never inside a
  *   turn, so the turn can still file a piece again or cancel one. Every piece
@@ -45,6 +46,7 @@ import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
+  owedNotices,
   taskClaimTicketSchema,
   ticketForClaim,
   type Task,
@@ -55,7 +57,7 @@ import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_FLOW_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { CANCEL_PIECES_ENTRY, PIECE_OF, RETRY_OF, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY, SPLIT_MARKER } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
-import { conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
+import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
 import { heldTask } from "./held-task";
 import { sendOwedNotices } from "./notice-delivery";
 
@@ -154,22 +156,30 @@ function wokenAnswerOf(ctx: BlockContext): unknown {
 }
 
 /**
- * After the turn a notice woke: keep its answer on the request, in a task
- * session whose task waits on its pieces, for the settle that follows it.
- * Passes the answer through.
+ * A tap after the turn a notice woke: keep its answer on the request, in a
+ * task session whose task waits on its pieces, for the settle that follows
+ * it. State only; it returns nothing.
  */
 export const noteWokenAnswer = handler({
   name: "split-note-answer",
   inputSchema: z.unknown(),
-  outputSchema: z.unknown(),
   execute: async (answer, rawCtx) => {
     const ctx = rawCtx as unknown as BlockContext;
     if (answer !== undefined && parentBindingOf(ctx) !== undefined) {
       await ctx.request.patchState({ [WOKEN_ANSWER_STATE]: answer } as never);
     }
-    return answer;
   }
 });
+
+/**
+ * Whether a piece's ending still holds the settle: it is open, or its notice
+ * is still owed to this session (the marker its ending wrote, cleared when the
+ * notice is acted on, before the turn it wakes). So the settle waits for the
+ * turn every piece's ending wakes, and the answer is the last of them.
+ */
+function holdsSettle(row: Task): boolean {
+  return isOpen(row) || owedNotices(row, CONVERSATION_LEDGER_ID).length > 0;
+}
 
 /** The rows on `ref` that are pieces of `taskId`. */
 function piecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
@@ -244,12 +254,12 @@ export async function replaySplits(ctx: BlockContext, rows: readonly Task[]): Pr
   }
 }
 
-/** Whether the running session owes its parked task a settle now: it has a binding, and none of its pieces is open. */
+/** Whether the running session owes its parked task a settle now: it has a binding, and no piece is open or still owes its notice. */
 export async function settleOwed(ctx: BlockContext): Promise<boolean> {
   const binding = parentBindingOf(ctx);
   if (binding === undefined) return false;
   const own = await ownConversationLedger(ctx);
-  return own !== undefined && !piecesOf(own, binding.taskId).some(isOpen);
+  return own !== undefined && !piecesOf(own, binding.taskId).some(holdsSettle);
 }
 
 /** After a run of a task session's board: dispatch the settle into the session when it is owed. */
@@ -276,7 +286,7 @@ export async function settleParent(ctx: BlockContext): Promise<boolean> {
   const own = await ownConversationLedger(ctx);
   if (own === undefined) return false;
   const pieces = piecesOf(own, binding.taskId);
-  if (pieces.some(isOpen)) return false;
+  if (pieces.some(holdsSettle)) return false;
   const above = await conversationLedgerAt(ctx, binding.partition);
   if (above !== undefined && above.get(binding.taskId) !== undefined) {
     // A failure filed again no longer counts: its retry is judged in its place,

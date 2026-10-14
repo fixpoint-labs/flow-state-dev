@@ -302,7 +302,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   /**
    * Whether the running session files now (FIX-1802 D1): one of its
    * delegates takes a task, read from its list as it stands; in a task
-   * session, any worker on the roster that takes one.
+   * session, any worker on the roster that takes one. So a task session with
+   * no delegates still files when the roster has a task taker: deliberate.
    */
   const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).reachable.available.size > 0;
 
@@ -656,9 +657,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   // dispatches wake a run of it, so `dispatchTask` starts work now.
   // On a turn routing a post (FIX-1872), `dispatchTask` also takes its post
   // form; a session that files no task gets that one tool alone.
+  // A task session's turn can't wait, but its task can: a piece filed without
+  // `wait` parks the task when the turn ends, and the piece's ending wakes it
+  // (`./split`). The refusal and the description say so.
   const eight = taskToolsForTurn(resolver, roster, {
     resumesWaits: true,
     dispatches: true,
+    taskTurnInstead:
+      "To wait for it, file it without `wait`, then end this turn: when that task ends, its ending wakes this task in a new turn, with the result.",
     ...(options.posts === undefined ? {} : { posts: options.posts })
   });
   const posts = options.posts;

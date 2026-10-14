@@ -227,6 +227,11 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       await h.settled();
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
+      // No turn answered, so its output is its pieces' alone.
+      const piece = await one(h, "Book the venue");
+      expect(top.output).toEqual({
+        pieces: [{ taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }]
+      });
       expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
       expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
     } finally {
@@ -410,30 +415,39 @@ describe("a split task's result is its worker's answer", () => {
     });
   }
 
-  it("completes with the pieces' list alone when no turn answered: a settle replayed after the woken turn failed", async () => {
+  it("waits for every piece's notice before it settles, so the answer is the turn the last one woke, though both pieces ended first", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
-      h.controls.plans.s1 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
-      h.controls.failNoticeTurn.add("s1");
+      h.controls.plans.s1 = [
+        { goal: "Book the venue [slow:150]", assignee: "eng.tasker" },
+        { goal: "Print the flyers [slow:150]", assignee: "eng.writer" }
+      ];
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
+      expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "parked")).toBe(true);
+      // Both pieces end before either notice runs.
+      const lost = await h.loseDispatches("onTaskSettled");
       await h.settled();
-      expect((await one(h, "Plan the launch")).status).toBe("parked");
+      lost.restore();
+      expect((await one(h, "Book the venue [slow:150]")).status).toBe("completed");
+      expect((await one(h, "Print the flyers [slow:150]")).status).toBe("completed");
+      const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
 
-      h.controls.failNoticeTurn.clear();
-      await h.tool("alice", planner, "listTasks", {});
+      // The next touch sends both notices.
+      await h.tool("alice", t1, "listTasks", {});
       await h.settled();
-      const piece = await one(h, "Book the venue");
+      const woken = h.controls.turns.filter((turn) => turn.sessionId === t1 && turn.message.startsWith('Task "'));
+      expect(woken).toHaveLength(2);
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
-      expect(top.output).toEqual({
-        pieces: [{ taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }]
-      });
+      expect((top.output as { answer?: unknown }).answer).toBe(`s1 heard: ${woken[1]!.message}`);
+      expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
     } finally {
       await h.dispose();
     }
   });
+
 });
 
 describe("a task session's pieces reach any task-taking worker on the roster", () => {

@@ -1,44 +1,11 @@
 /**
  * Goal check: a worker on a task gets a result from any task-taking worker on
  * the roster by filing a piece, ending its turn, and finishing its task from
- * its own reading of that result, with nothing held open while it waits
- * (FIX-1997). See goal.md.
- *
- * One in-process host on the real engine and a SQLite store, acted on over its
- * HTTP router as one verified person (`httpActions`). The tree
- * (`fixtures/workforce/`):
- *
- * - `crew.desk`, on the goal-local `desk` flow: the person's conversation. Its
- *   turn runs no model; it records every message it is handed, so leg 4 reads
- *   what the desk heard. Its one delegate is `crew.reporter`.
- * - `crew.reporter` (worker A), on the built-in `agent` flow and a real model.
- *   Its one delegate is `crew.helper`.
- * - `crew.keeper` (worker B), `crew.broken` and `crew.helper`, on the
- *   goal-local `taker` flow, none of them A's delegate but `crew.helper`.
- *   `crew.keeper` answers with this round's codename, made fresh per leg and
- *   held nowhere else, after a short hold; `crew.broken` fails every attempt;
- *   `crew.helper` holds no codename.
- *
- * Legs:
- *   1  A, on a task, reports a codename only B holds: A files a piece to B and
- *      its turn ends; A's task is parked with no request running while B
- *      works; B completes; A's woken turn writes a report; A's task completes
- *      with that report as its answer, holding the codename.
- *   2  B fails for good: A's woken turn reads the failure, and A's task fails
- *      or files again.
- *   3  The host stops between B's ending and A's woken turn, and starts again
- *      over the same store: A's task settles once.
- *   4  Across legs 1 to 3, the desk is never handed a piece's ending: every
- *      ending it hears is a task the person filed.
- *
- * Controls (GOAL_CONTROL=...), each a scratch patch to Workforce applied as
- * this process loads it (`goals/lib/module-patch.mts`):
- *   delegates-only    a task session files for its delegates only. FAILS 1.
- *   pieces-output     the settle ignores the woken turn's answer. FAILS 1.
- *   wake-coordinator  a task session files its pieces on the board above, the
- *                     desk's, so each piece's ending is the desk's. FAILS 4.
+ * its own reading of that result (FIX-1997). The tree, the legs, the controls
+ * and what each must fail are in goal.md.
  *
  * Run: pnpm tsx goals/workforce/split-to-roster/run.mts
+ * Controls: GOAL_CONTROL=delegates-only | pieces-output | wake-coordinator
  * Legs: GOAL_LEGS=1,2,3,4 (default: all; leg 4 grades what 1 to 3 left)
  */
 import { spawnSync } from "node:child_process";
@@ -103,8 +70,8 @@ const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; asserti
     patches: [
       {
         module: "packages/workforce/src/conversation-board/board.ts",
-        from: String.raw`if \(typeof state\[TASK_ID_STATE_KEY\] !== "string"\) return delegates;`,
-        to: "return delegates;"
+        from: String.raw`if \(typeof state\[TASK_ID_STATE_KEY\] !== "string"\) return \{ reachable: delegates, delegates, taskSession: false \};`,
+        to: "return { reachable: delegates, delegates, taskSession: false };"
       }
     ]
   },
@@ -321,6 +288,9 @@ await runGoal(async (failures) => {
       filed.push(out.taskId);
       return out.taskId as string;
     };
+    /** The ask: a codename `holder` keeps, which isn't one of A's delegates. */
+    const ask = (what: string, holder: string) =>
+      `Find out this ${what}'s codename and write me a one-sentence report that states it. ${holder}, a worker on the team, keeps it; it isn't one of your delegates.`;
     /** A's task session for `taskId`: the session its row's run names. */
     const sessionOf = (row: Row | undefined): string | undefined => (row as { run?: { sessionId?: string } } | undefined)?.run?.sessionId;
 
@@ -328,9 +298,7 @@ await runGoal(async (failures) => {
     if (legs.has("1")) {
       seen.codename = codename();
       say(`leg 1: the codename is ${seen.codename}`);
-      const taskId = await fileForA(
-        `Find out this release's codename and write me a one-sentence report that states it. ${B}, a worker on the team, keeps it; it isn't one of your delegates.`
-      );
+      const taskId = await fileForA(ask("release", B));
       // While B works: A's task parked, and nothing running in A's task session.
       const store = await storeOf(host);
       let during: { status?: string; running?: number; at?: number } = {};
@@ -373,9 +341,7 @@ await runGoal(async (failures) => {
 
     // ---- leg 2 --------------------------------------------------------------------
     if (legs.has("2")) {
-      const taskId = await fileForA(
-        `Find out this launch's codename and write me a one-sentence report that states it. ${BROKEN}, a worker on the team, keeps it; it isn't one of your delegates.`
-      );
+      const taskId = await fileForA(ask("launch", BROKEN));
       await quiet(host);
       const store = await storeOf(host);
       const rows = await store.rows();
@@ -400,26 +366,42 @@ await runGoal(async (failures) => {
 
     // ---- leg 3 --------------------------------------------------------------------
     if (legs.has("3")) {
-      seen.codename = codename();
-      const taskId = await fileForA(
-        `Find out this patch's codename and write me a one-sentence report that states it. ${B}, a worker on the team, keeps it; it isn't one of your delegates.`
-      );
-      let store = await storeOf(host);
-      let atStop: { top?: string; piece?: string } = {};
-      for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(5)) {
-        const rows = await store.rows();
-        const piece = rows.find((r) => r.assignee === B && pieceOf(r) === taskId);
-        const top = rows.find((r) => r.id === taskId);
-        if (piece?.status === "completed" || (top !== undefined && ["completed", "errored", "cancelled"].includes(top.status))) {
-          atStop = { top: top?.status, piece: piece?.status };
-          break;
+      // The stop must land after B's piece ended and before A's task session
+      // acted on its notice: no notice request there has ended or started the
+      // turn it wakes. The notice request itself is filed with the piece's
+      // ending, so a poll never sees the piece ended without it. Polling can
+      // miss that window, so an attempt that stopped late is set aside and the
+      // leg is tried again.
+      let taskId = "";
+      let atStop: { top?: string; piece?: string; noticesEnded?: number; wokenTurns?: number } = {};
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        seen.codename = codename();
+        taskId = await fileForA(ask("patch", B));
+        const store = await storeOf(host);
+        atStop = {};
+        for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(5)) {
+          const rows = await store.rows();
+          const piece = rows.find((r) => r.assignee === B && pieceOf(r) === taskId);
+          const top = rows.find((r) => r.id === taskId);
+          if (piece?.status === "completed" || (top !== undefined && ["completed", "errored", "cancelled"].includes(top.status))) {
+            const own = sessionOf(top);
+            const notices = own === undefined ? undefined : (await store.requests(own)).filter((r) => r.actionName === "onTaskSettled");
+            const noticesEnded = notices === undefined ? -1 : notices.filter((r) => r.status !== "pending" && r.status !== "in_progress").length;
+            const wokenTurns = notices === undefined ? -1 : notices.flatMap((r) => (r.items ?? []) as any[]).filter((i) => i.type === "block_trace" && i.blockName === "conversation-woken-turn" && i.status !== "planned").length;
+            atStop = { top: top?.status, piece: piece?.status, noticesEnded, wokenTurns };
+            break;
+          }
         }
+        say(`leg 3 attempt ${attempt}: stopping the host at ${show(atStop)}`);
+        await host.dispose();
+        host = startHost(db);
+        http = httpActions((await host.getRouter()) as any, USER_ID);
+        if (atStop.top === "parked" && atStop.piece === "completed" && atStop.noticesEnded === 0 && atStop.wokenTurns === 0) break;
+        // Stopped late: let that task finish before the next attempt.
+        await http.act("desk", conv, "listTasks_tasks", {});
+        await quiet(host);
       }
-      say(`leg 3: stopping the host with A's task ${atStop.top} and ${B}'s piece ${atStop.piece}`);
-      await host.dispose();
-      host = startHost(db);
-      http = httpActions((await host.getRouter()) as any, USER_ID);
-      store = await storeOf(host);
+      const store = await storeOf(host);
       // The person looks at the board again; then everything it starts ends.
       await http.act("desk", conv, "listTasks_tasks", {});
       await quiet(host);
@@ -429,9 +411,9 @@ await runGoal(async (failures) => {
       const deskState = (await store.session(conv))?.state as { taskNotices?: string[] } | undefined;
       const heard = (deskState?.taskNotices ?? []).filter((k) => k.startsWith(`${taskId}:`) && k.endsWith(":completed"));
       const told = seen.deskTurns.filter((t) => t.message.includes(`(${taskId}) completed`));
-      if (atStop.top !== "parked" || top?.status !== "completed" || heard.length !== 1 || told.length !== 1) {
+      if (atStop.top !== "parked" || atStop.piece !== "completed" || atStop.noticesEnded !== 0 || atStop.wokenTurns !== 0 || top?.status !== "completed" || heard.length !== 1 || told.length !== 1) {
         failures.push(
-          `3:settles-once — wanted the host stopped while A's task was parked on a finished piece, and after the start the task completed and the desk heard it once; at the stop ${show(atStop)}, now ${top?.status ?? "missing"}, heard ${show(heard)}, desk turns on it ${told.length}`
+          `3:settles-once — wanted the host stopped after B's piece ended and before A's task session acted on its notice, and after the start the task completed and the desk heard it once; at the stop ${show(atStop)}, now ${top?.status ?? "missing"}, heard ${show(heard)}, desk turns on it ${told.length}`
         );
       }
       notes.push(`leg 3: at the stop ${show(atStop)}; now ${top?.status}; output ${show(top?.output)}; heard ${heard.length}`);

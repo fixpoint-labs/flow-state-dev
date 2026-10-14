@@ -22,7 +22,6 @@ import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verif
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { DELEGATE_TAKES, createDelegateCheck, flowTakes, postTakingFlows, type DelegateTakes } from "./delegate-check";
-import { takesConversationTasks } from "../worker-task-entry";
 import { ADD_DELEGATE, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
 import {
   changeDelegates,
@@ -301,9 +300,10 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     const available = new Map<string, string>();
     const unavailable = new Map<string, string>();
     for (const worker of await installation.roster(ctx as never)) {
-      if (worker.problem !== undefined) unavailable.set(worker.id, `Worker "${worker.id}" can't take a task: ${worker.problem}.`);
-      else if (takesConversationTasks(installation.workerFlows()[worker.flow]?.flow)) available.set(worker.id, worker.flow);
-      else unavailable.set(worker.id, `Worker "${worker.id}" runs on flow "${worker.flow}", which takes no task.`);
+      // The one check, so "takes a task" has one definition, and its refusal one wording.
+      const checked = await check(ctx as never, worker.id, "task");
+      if (checked.ok) available.set(worker.id, checked.worker.flow);
+      else unavailable.set(worker.id, checked.message);
     }
     return { available, unavailable };
   };

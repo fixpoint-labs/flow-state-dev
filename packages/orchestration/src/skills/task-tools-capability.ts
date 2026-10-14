@@ -839,10 +839,12 @@ interface BuildTaskToolsOptions {
    * Only the per-turn list sets it, on a turn the form says is routing one.
    */
   readonly posting?: DispatchPostForm;
+  /** What a task turn is told to do instead of waiting ({@link TaskToolsOptions.taskTurnInstead}). */
+  readonly taskTurnInstead?: string;
 }
 
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
-  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting } = options;
+  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting, taskTurnInstead } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
    * The ten names, optionally board-qualified.
@@ -1194,7 +1196,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "bounds the wait, from 30000 (30 seconds) to 3600000 (an hour), five minutes when " +
     "unset, and is only valid with wait. Errors: wait_timed_out (it didn't end in time; it " +
     "is cancelled), wait_task_failed, wait_task_cancelled, wait_already_pending, " +
-    "wait_unavailable (you are working a task yourself: file it without wait and end your turn, and its ending wakes you), " +
+    `wait_unavailable (you are working a task yourself, so you can't wait${taskTurnInstead === undefined ? "" : `: ${taskTurnInstead}`}), ` +
     "wait_timeout_out_of_range.";
   const dispatchFields = {
     ...addTaskFields,
@@ -1376,7 +1378,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             "Set wait: true, or drop timeoutMs. Nothing was filed.",
         };
       }
-      const timeout = typeof input.timeoutMs === "number" ? { timeoutMs: input.timeoutMs } : {};
+      const timeout = {
+        ...(typeof input.timeoutMs === "number" ? { timeoutMs: input.timeoutMs } : {}),
+        ...(taskTurnInstead !== undefined ? { taskTurnInstead } : {}),
+      };
 
       if (hasRef) {
         const taskId = input.taskId!;
@@ -1846,6 +1851,13 @@ export interface TaskToolsOptions {
    * Has no effect without `dispatches`.
    */
   readonly posts?: DispatchPostForm;
+  /**
+   * What a task turn that asks `dispatchTask` to wait is told to do instead,
+   * in the `wait_unavailable` refusal and the tool's description: for a layer
+   * that wakes a task turn's task when a task it dispatched ends. Omitted, it
+   * is told to hand the task over without waiting.
+   */
+  readonly taskTurnInstead?: string;
 }
 
 /**
@@ -1888,6 +1900,7 @@ export function taskToolsForTurn(
   const base: BuildTaskToolsOptions = {
     ...(roster !== undefined ? { roster } : {}),
     dispatches: options.dispatches === true,
+    ...(options.taskTurnInstead !== undefined ? { taskTurnInstead: options.taskTurnInstead } : {}),
   };
   const posts = options.dispatches === true ? options.posts : undefined;
   // Only `dispatchTask` waits, so a board without it has no waiting list.
