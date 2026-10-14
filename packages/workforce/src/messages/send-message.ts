@@ -154,14 +154,14 @@ export async function sendWorkerMessage(
   // ---- where it goes ---------------------------------------------------------
   const log = messageLogOf(ctx);
   let destination: MessageAddress;
-  let thread: string | undefined;
+  let exchange: string | undefined;
   if (input.replyTo !== undefined) {
     const answered = (await log.getOptional(input.replyTo))?.state;
     if (answered === undefined || answered.to !== sender || answered.from !== input.to) {
       return refuse(`no_such_message: replyTo "${input.replyTo}" names no message "${input.to}" sent you. Leave replyTo out to start a new one.`);
     }
     destination = answered.answerTo;
-    thread = answered.thread;
+    exchange = answered.exchange;
   } else {
     destination = await conversationAddress(ctx, installation, input.to, recipient.flow, state);
   }
@@ -171,8 +171,8 @@ export async function sendWorkerMessage(
   const hop = turnHopOf(ctx) + 1;
   if (hop > limits.hopLimit) {
     return refuse(
-      `hop_limit: this would be message ${hop} in a chain of worker messages with no person in between, and the limit is ${limits.hopLimit}. ` +
-        "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from a person lets the workers go on."
+      `hop_limit: this would be message ${hop} in a chain of worker messages with no user in between, and the limit is ${limits.hopLimit}. ` +
+        "Nothing was sent. Stop passing messages on, and say that you stopped; the next line from the user lets the workers go on."
     );
   }
   const reserved = await withOutcome(
@@ -202,7 +202,7 @@ export async function sendWorkerMessage(
     from: sender,
     to: input.to,
     text: input.text,
-    thread: thread ?? id,
+    exchange: exchange ?? id,
     ...(input.replyTo === undefined ? {} : { replyTo: input.replyTo }),
     fromSession: sessionId,
     fromFlow: flowKind,

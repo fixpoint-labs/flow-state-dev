@@ -1,12 +1,12 @@
 /**
  * The two limits on worker messages (FIX-1989 D2) an app sets through
  * `hireWorkforce`'s `messages`: how many messages a chain may pass with no
- * person in between (`hopLimit`), and how many one turn may send
+ * user in between (`hopLimit`), and how many one turn may send
  * (`perTurn`). A leaf module, so the session kit reads them without importing
  * the installation.
  */
 
-/** A chain of worker messages with no person in between stops after this many, when the app sets none. */
+/** A chain of worker messages with no user in between stops after this many, when the app sets none. */
 export const DEFAULT_MESSAGE_HOP_LIMIT = 6;
 
 /** One turn sends at most this many messages, when the app sets none. */
@@ -14,7 +14,7 @@ export const DEFAULT_MESSAGES_PER_TURN = 3;
 
 /** What `hireWorkforce`'s `messages` takes. */
 export interface MessageLimits {
-  /** The most worker messages in a chain with no person's turn between them. Omitted, 6. */
+  /** The most worker messages in a chain with no user's turn between them. Omitted, 6. */
   readonly hopLimit?: number;
   /** The most messages one turn sends. Omitted, 3. */
   readonly perTurn?: number;

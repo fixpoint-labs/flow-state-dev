@@ -1,13 +1,13 @@
 /**
  * The hop count (FIX-1989 D2): how many worker messages a turn is from the
- * last person's turn, so a ring of workers passing messages on stops however
+ * last user's turn, so a ring of workers passing messages on stops however
  * many workers it goes through.
  *
  * Written by the server only. A session keeps its current count in a
  * server-owned session-state field; a turn copies it into request state when
  * it starts from something that sets it:
  *
- * - a person's turn writes 0, at the person's-turn mark (`markUserTurn`);
+ * - a user's turn writes 0, at the user-turn mark (`markUserTurn`);
  * - a turn a message wakes is at that message's count (`onWorkerMessage`);
  * - a task session is born with its filer's current count, beside the task
  *   chain fields the hand-over sets;

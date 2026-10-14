@@ -44,8 +44,8 @@ export const workerMessageRowSchema = z.object({
   /** The recipient worker's id. */
   to: z.string().min(1),
   text: z.string(),
-  /** The first message's id in this exchange: a message's own id, or its `replyTo`'s thread. */
-  thread: z.string().min(1),
+  /** The first message's id in this exchange: a message's own id, or the exchange of the message it answers. */
+  exchange: z.string().min(1),
   /** The message this one answers. */
   replyTo: z.string().optional(),
   /** The session the sending turn ran in. */
@@ -57,7 +57,7 @@ export const workerMessageRowSchema = z.object({
   toFlow: z.string().min(1),
   /** Where an answer to this message goes: the sending session, or the sender's own conversation when that session was a task's. */
   answerTo: messageAddressSchema,
-  /** How many worker messages this one is from the last person's turn. */
+  /** How many worker messages this one is from the last user's turn. */
   hop: z.number().int().min(1),
   status: z.enum(MESSAGE_STATUSES),
   /** Why the host refused it, or why it is unconfirmed. */

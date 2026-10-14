@@ -196,7 +196,7 @@ describe("an answer", () => {
       const rows = await logRows(h, "alice");
       const question = rows.find((row) => row.from === "otto")!;
       const answer = rows.find((row) => row.from === "lead")!;
-      expect(answer).toMatchObject({ to: "otto", replyTo: question.id, thread: question.id, toSession: otto, status: "delivered", hop: 2 });
+      expect(answer).toMatchObject({ to: "otto", replyTo: question.id, exchange: question.id, toSession: otto, status: "delivered", hop: 2 });
     } finally {
       await h.dispose();
     }
@@ -254,7 +254,7 @@ describe("a message sent from a task's turn", () => {
 
 /**
  * A ring: otto → helper-a → helper-b → otto. Each turn a message wakes passes
- * it on to the next worker once; the person's line in otto's conversation
+ * it on to the next worker once; the user's line in otto's conversation
  * starts it.
  */
 function ringScript(): MockGeneratorScriptEntry[] {
@@ -268,8 +268,8 @@ function ringScript(): MockGeneratorScriptEntry[] {
         const all = [...text.matchAll(/Message (msg_\w+) from ([\w.-]+)/g)];
         const started = text.lastIndexOf("start the ring");
         const last = all.at(-1);
-        // Whichever came last: the person's line, or a message.
-        const key = last !== undefined && last.index! > started ? last[1]! : `person-${started}`;
+        // Whichever came last: the user's line, or a message.
+        const key = last !== undefined && last.index! > started ? last[1]! : `user-${started}`;
         if (handled.has(key) || (last === undefined && started < 0)) return false;
         handled.add(key);
         const me = last !== undefined && last.index! > started ? next[last[2]!]! : "otto";
@@ -284,7 +284,7 @@ function ringScript(): MockGeneratorScriptEntry[] {
 }
 
 describe("the hop limit", () => {
-  it("stops a ring through three workers at 6 messages with no person in between, and a person's line lets it go on", async () => {
+  it("stops a ring through three workers at 6 messages with no user in between, and a user's line lets it go on", async () => {
     const h = bootBoardHost({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: ringScript() }) });
     try {
       const otto = await h.client("alice").ensureWorkerSession({ worker: "otto" });
@@ -304,7 +304,7 @@ describe("the hop limit", () => {
       const refusals = (await toolOutputs(h, otto.id)).filter((output) => /hop_limit/.test(JSON.stringify(output)));
       expect(refusals).toHaveLength(1);
 
-      // One more line from the person: one more round.
+      // One more line from the user: one more round.
       await h.post("alice", otto.id, "run", { message: "Please start the ring again" }, "agent");
       await h.settled();
       rows = await logRows(h, "alice");

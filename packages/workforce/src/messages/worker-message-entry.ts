@@ -49,7 +49,7 @@ function turnPrompt(row: { id: string; from: string; text: string; replyTo?: str
   return (
     `Message ${row.id} from ${row.from}${row.replyTo === undefined ? "" : `, answering your message ${row.replyTo}`}:\n\n` +
     `${row.text}\n\n` +
-    `This is from another worker, not the person. If it needs an answer, call messageWorker with to "${row.from}" ` +
+    `This is from another worker, not the user. If it needs an answer, call messageWorker with to "${row.from}" ` +
     `and replyTo "${row.id}"; if it doesn't, don't send one.`
   );
 }
