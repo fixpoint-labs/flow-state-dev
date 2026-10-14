@@ -1,6 +1,6 @@
 /**
  * The Error Reporter (FIX-1983): a worker that turns a failure that stayed
- * failed, or a problem a person describes, into one reproducible bug report,
+ * failed, or a problem a user describes, into one reproducible bug report,
  * previewed to the operator in Inbox and filed through the project's tracker.
  */
 export {

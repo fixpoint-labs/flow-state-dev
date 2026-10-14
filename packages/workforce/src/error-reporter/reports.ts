@@ -14,12 +14,16 @@ import { encodeUserSegment } from "@flow-state-dev/core/types";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { fingerprintOf, type FingerprintParts } from "./fingerprint";
+import { redact } from "./redact";
 
 /** The accessor a flow declares the report rows under. */
 export const ERROR_REPORTS_RESOURCE = "errorReports";
 
 /** The newest occurrences a row keeps. */
 const KEPT_OCCURRENCES = 5;
+
+/** The newest occurrence keys a row remembers, so a redelivered occurrence counts once. */
+const KEPT_SEEN = 50;
 
 /** The ids one occurrence is known by: what a report links and a repeat's comment names. */
 const occurrenceIdsSchema = z.object({
@@ -75,7 +79,7 @@ export const occurrenceSchema = z.discriminatedUnion("kind", [
     requestId: z.string().optional(),
     sessionId: z.string().optional()
   }),
-  /** A problem a person reported in the reporter's conversation. */
+  /** A problem a user reported in the reporter's conversation. */
   z.object({
     kind: z.literal("manual"),
     at: z.number(),
@@ -84,7 +88,7 @@ export const occurrenceSchema = z.discriminatedUnion("kind", [
     orgId: z.string().optional(),
     /** The conversation it was reported in. */
     sessionId: z.string(),
-    /** What the person named: a session, a task, a project. Read for the dossier, checked against the person. */
+    /** What the user named: a session, a task, a project. Read for the dossier, checked against that user. */
     named: z
       .object({ sessionId: z.string().optional(), taskId: z.string().optional(), project: z.string().optional() })
       .optional()
@@ -92,8 +96,11 @@ export const occurrenceSchema = z.discriminatedUnion("kind", [
 ]);
 export type Occurrence = z.infer<typeof occurrenceSchema>;
 
-/** A row's lifecycle. `owed` and `drafting` are owed a run; the rest are not. */
-const REPORT_STATUSES = ["owed", "drafting", "previewing", "filed", "dismissed", "closed"] as const;
+/** A row's lifecycle. `owed`, `drafting` and `filing` (approved, not filed yet) are owed a run; the rest are not. */
+const REPORT_STATUSES = ["owed", "drafting", "previewing", "filing", "filed", "dismissed", "closed"] as const;
+
+/** How long a run's claim on a row holds before another run may take it over. */
+export const CLAIM_LEASE_MS = 30 * 60_000;
 
 const issueSchema = z.object({ url: z.string(), identifier: z.string().optional() });
 
@@ -112,7 +119,7 @@ const stormEntrySchema = z.object({
 const reportRowSchema = z.object({
   id: z.string(),
   kind: z.enum(["report", "storm"]),
-  /** What made it: a failed request, a task, a person's report, or a burst. */
+  /** What made it: a failed request, a task, a user's report, or a burst. */
   source: z.enum(["request", "task", "manual", "storm"]),
   fingerprint: z.string(),
   parts: z.object({
@@ -122,20 +129,30 @@ const reportRowSchema = z.object({
     code: z.string().optional(),
     message: z.string()
   }),
-  /** The error kind a Lab's `preview.autoFile` names: the error code, or the source. */
-  errorKind: z.string(),
+  /** What a Lab's `preview.autoFile` names: the error code, or the source. */
+  errorClass: z.string(),
   status: z.enum(REPORT_STATUSES),
   count: z.number(),
   firstSeenAt: z.number(),
   lastSeenAt: z.number(),
   /** Newest last. */
   occurrences: z.array(occurrenceIdsSchema),
-  /** What a person wrote, for a reported problem. */
+  /** What a user wrote, for a reported problem. */
   description: z.string().optional(),
-  /** What the person named with it: a session, a task, a project. */
-  named: z.object({ sessionId: z.string().optional(), taskId: z.string().optional(), project: z.string().optional() }).optional(),
+  /** What the user named with it (a session, a task, a project), and who named it. */
+  named: z
+    .object({ sessionId: z.string().optional(), taskId: z.string().optional(), project: z.string().optional(), by: z.string().optional() })
+    .optional(),
   /** The run's draft, redacted, once it is written: what the preview shows and what files. */
   draft: z.object({ title: z.string(), body: z.string(), questions: z.array(z.string()) }).optional(),
+  /** The run that holds the row while it drafts or files, until `until`. */
+  claim: z.object({ by: z.string(), until: z.number() }).optional(),
+  /** The operator's answer, kept from approval until the issue is filed. */
+  approved: z.object({ instructions: z.string().optional() }).optional(),
+  /** Keys of the occurrences already counted, newest last. */
+  seen: z.array(z.string()).optional(),
+  /** What the Context section names beside the ids: the failing session's project and the occurrence's links. */
+  context: z.object({ project: z.string().optional(), links: z.record(z.string()).optional() }).optional(),
   /** The task fields a task's report carries. */
   task: z
     .object({ assignee: z.string().optional(), title: z.string().optional(), goal: z.string().optional(), error: z.string() })
@@ -201,8 +218,8 @@ export type IntakeDecision =
   | { readonly decision: "new"; readonly reportId: string }
   /** Counted on an existing report; `commentOwed` when a filed issue is owed a comment. */
   | { readonly decision: "counted"; readonly reportId: string; readonly commentOwed: boolean }
-  /** Over the cap: listed on the window's storm report; `new` when that report was just made. */
-  | { readonly decision: "storm"; readonly reportId: string; readonly isNew: boolean }
+  /** Over the cap: listed on the window's storm report; `new` when that report was just made, `commentOwed` once it is filed. */
+  | { readonly decision: "storm"; readonly reportId: string; readonly isNew: boolean; readonly commentOwed: boolean }
   /** A failed request of a task, held for the task's ending. */
   | { readonly decision: "held"; readonly taskId: string }
   /** The reporter's own failure: never reported. */
@@ -288,19 +305,40 @@ function requestParts(o: { flowKind: string; actionName: string; blockPath?: str
 }
 
 /**
+ * The key one occurrence is counted under, so a redelivery of it counts once:
+ * a request by its id, a task's ending by its board, task and attempt. A
+ * user's report has none: each message is a report of its own.
+ */
+function occurrenceKey(occurrence: Occurrence): string | undefined {
+  switch (occurrence.kind) {
+    case "request":
+    case "held":
+      return `request:${occurrence.requestId}`;
+    case "task":
+      return `task:${occurrence.boardId}:${occurrence.partition ?? ""}:${occurrence.taskId}:${occurrence.attempt}`;
+    case "manual":
+      return undefined;
+  }
+}
+
+const withSeen = (seen: readonly string[] | undefined, key: string | undefined): string[] | undefined =>
+  key === undefined ? seen?.slice() : [...(seen ?? []), key].slice(-KEPT_SEEN);
+
+/**
  * Take one occurrence: hold it, count it, or make a report for it, under the
- * cap.
+ * cap. The occurrence is redacted before anything of it is written.
  *
  * @param reports The report rows, as the running flow holds them.
  * @param occurrence What went wrong.
- * @param options The reporter's own flow kind (never reported) and the limits.
+ * @param options The reporter's own flow (never reported), the limits, and the values no row may hold.
  */
 export async function intakeOccurrence(
   reports: ResourceCollectionRef,
-  occurrence: Occurrence,
-  options: { readonly reporterFlow: string; readonly limits?: Partial<ReportLimits> }
+  raw: Occurrence,
+  options: { readonly reporterFlow: string; readonly limits?: Partial<ReportLimits>; readonly secrets?: readonly string[] }
 ): Promise<IntakeDecision> {
   const limits = { ...DEFAULT_LIMITS, ...(options.limits ?? {}) };
+  const occurrence = redact(raw, options.secrets ?? []);
   const now = occurrence.at;
   if ((occurrence.kind === "request" || occurrence.kind === "held") && occurrence.flowKind === options.reporterFlow) {
     return { decision: "ignored", reason: "the Error Reporter never reports its own failures" };
@@ -317,7 +355,8 @@ export async function intakeOccurrence(
         result: undefined
       };
     });
-    // The task already ended and has its report: join this request to it.
+    // Written before the task's mapping is read, as the task's intake writes its mapping before reading
+    // these: whichever runs second sees the other, so the request joins the task's report either way.
     const taskRef = await reports.getOptional(taskKey(occurrence.taskId));
     const reportId = (taskRef?.state as { reportId?: unknown } | undefined)?.reportId;
     if (typeof reportId === "string") await joinHeld(reports, reportId, await heldOf(reports, occurrence.taskId));
@@ -327,7 +366,6 @@ export async function intakeOccurrence(
   // What this occurrence is fingerprinted by, and what its new report would carry.
   let parts: FingerprintParts;
   let source: ReportRow["source"];
-  let heldRequests: OccurrenceIds[] | undefined;
   let task: ReportRow["task"];
   let description: string | undefined;
   let named: ReportRow["named"];
@@ -336,95 +374,129 @@ export async function intakeOccurrence(
       parts = requestParts(occurrence);
       source = "request";
       break;
-    case "task": {
-      // A task is fingerprinted by its own ending (who held it, and the error
-      // it ended with), never by which of its failed requests arrived first,
-      // so two tasks that fail alike are one report whatever the timing. Its
-      // failed requests are joined to the report, here or as they arrive.
+    case "task":
+      // By the task's ending, never by which of its failed requests arrived first.
       parts = { flowKind: "task", actionName: occurrence.assignee ?? "unassigned", code: "task-errored", message: occurrence.error };
-      heldRequests = await heldOf(reports, occurrence.taskId);
       task = { assignee: occurrence.assignee, title: occurrence.title, goal: occurrence.goal, error: occurrence.error };
       source = "task";
       break;
-    }
     case "manual":
       parts = { flowKind: "manual", actionName: "reported", code: "reported", message: occurrence.description };
       source = "manual";
       description = occurrence.description;
-      named = occurrence.named;
+      named = occurrence.named === undefined ? undefined : { ...occurrence.named, by: occurrence.userId };
       break;
   }
   const fingerprint = await fingerprintOf(parts);
   const key = reportKey(fingerprint);
   const ids = idsOf(occurrence);
+  const seenKey = occurrenceKey(occurrence);
   const decided = await decide();
-  // A task's report is where its failed requests are joined, whenever they arrive.
+  // A task's report is where its failed requests are joined: the mapping first, then a fresh read of them.
   if (occurrence.kind === "task" && (decided.decision === "new" || decided.decision === "counted" || decided.decision === "storm")) {
     await reports.upsert(taskKey(occurrence.taskId), { reportId: decided.reportId } as never);
-    if (decided.decision !== "storm") await joinHeld(reports, decided.reportId, heldRequests ?? []);
+    if (decided.decision !== "storm") await joinHeld(reports, decided.reportId, await heldOf(reports, occurrence.taskId));
   }
   return decided;
 
   async function decide(): Promise<IntakeDecision> {
+    // A repeat of a live report only raises its count.
+    const counted = await countOn(reports, key, ids, seenKey, now, limits);
+    if (counted !== undefined) return counted;
 
-  // A repeat of a live report only raises its count.
-  const counted = await countOn(reports, key, ids, now, limits);
-  if (counted !== undefined) return counted;
-
-  // New: claim a place under the cap. Idempotent per fingerprint, so a race
-  // between two intakes of one fingerprint spends one place.
-  const windowStart = Math.floor(now / limits.windowMs) * limits.windowMs;
-  const capRef = await reports.getOrCreate(CAP_KEY, { windowStart, fingerprints: [] });
-  const claimed = await updateStateWith(capRef as never, (current: unknown) => {
-    const parsed = capSchema.safeParse(current);
-    const cap = parsed.success && parsed.data.windowStart === windowStart ? parsed.data : { windowStart, fingerprints: [] };
-    if (cap.fingerprints.includes(fingerprint)) return { state: cap as never, result: true };
-    if (cap.fingerprints.length >= limits.newPerWindow) return { state: cap as never, result: false };
-    return { state: { windowStart, fingerprints: [...cap.fingerprints, fingerprint] } as never, result: true };
-  });
-
-  if (claimed === true) {
-    const ref = await reports.getOrCreate(key, {});
-    const made = await updateStateWith(ref as never, (current: unknown) => {
-      const existing = parseRow(current);
-      // Another intake made it first: this is a repeat after all.
-      if (existing !== undefined && isLive(existing, now)) return { state: current as never, result: false };
-      const row: ReportRow = {
-        id: key,
-        kind: "report",
-        source,
-        fingerprint,
-        parts,
-        errorKind: parts.code ?? source,
-        status: "owed",
-        count: 1,
-        firstSeenAt: now,
-        lastSeenAt: now,
-        occurrences: [ids],
-        runs: 0,
-        ...(description === undefined ? {} : { description }),
-        ...(named === undefined ? {} : { named }),
-        ...(task === undefined ? {} : { task }),
-        // A failure back after its issue was closed links the old issue.
-        ...(existing?.status === "closed" && existing.issue !== undefined ? { previousIssue: existing.issue } : {})
-      };
-      return { state: row as never, result: true };
-    });
-    if (made === true) return { decision: "new", reportId: key };
-    return (await countOn(reports, key, ids, now, limits)) ?? { decision: "counted", reportId: key, commentOwed: false };
+    const slot = await claimCapSlot(reports, fingerprint, now, limits);
+    if (slot.claimed) {
+      const ref = await reports.getOrCreate(key, {});
+      const made = await updateStateWith(ref as never, (current: unknown) => {
+        const existing = parseRow(current);
+        // Another intake made it first: this is a repeat after all.
+        if (existing !== undefined && isLive(existing, now)) return { state: current as never, result: false };
+        const row: ReportRow = {
+          id: key,
+          kind: "report",
+          source,
+          fingerprint,
+          parts,
+          errorClass: parts.code ?? source,
+          status: "owed",
+          count: 1,
+          firstSeenAt: now,
+          lastSeenAt: now,
+          occurrences: [ids],
+          runs: 0,
+          ...(seenKey === undefined ? {} : { seen: [seenKey] }),
+          ...(description === undefined ? {} : { description }),
+          ...(named === undefined ? {} : { named }),
+          ...(task === undefined ? {} : { task }),
+          // A failure back after its issue was closed links the old issue.
+          ...(existing?.status === "closed" && existing.issue !== undefined ? { previousIssue: existing.issue } : {})
+        };
+        return { state: row as never, result: true };
+      });
+      if (made === true) return { decision: "new", reportId: key };
+      return (await countOn(reports, key, ids, seenKey, now, limits)) ?? { decision: "counted", reportId: key, commentOwed: false };
+    }
+    return listOnStorm(reports, slot.windowStart, { fingerprint, parts, ids, seenKey, now, limits });
   }
+}
 
-  // Over the cap: the window's storm report lists it.
+/**
+ * Claim a place under the cap for a new fingerprint. Idempotent per
+ * fingerprint, so two intakes of one fingerprint spend one place. The window
+ * never moves back: a late occurrence (an old task's ending) counts in the
+ * current window.
+ *
+ * @returns Whether it has a place, and the window it was counted in.
+ */
+async function claimCapSlot(
+  reports: ResourceCollectionRef,
+  fingerprint: string,
+  now: number,
+  limits: ReportLimits
+): Promise<{ claimed: boolean; windowStart: number }> {
+  const own = Math.floor(now / limits.windowMs) * limits.windowMs;
+  const capRef = await reports.getOrCreate(CAP_KEY, { windowStart: own, fingerprints: [] });
+  type Slot = { claimed: boolean; windowStart: number };
+  return updateStateWith(capRef as never, (current: unknown): { state: never; result: Slot } => {
+    const parsed = capSchema.safeParse(current);
+    const stored = parsed.success ? parsed.data : undefined;
+    const cap = stored !== undefined && stored.windowStart >= own ? stored : { windowStart: own, fingerprints: [] };
+    const windowStart = cap.windowStart;
+    if (cap.fingerprints.includes(fingerprint)) return { state: cap as never, result: { claimed: true, windowStart } };
+    if (cap.fingerprints.length >= limits.newPerWindow) return { state: cap as never, result: { claimed: false, windowStart } };
+    return { state: { windowStart, fingerprints: [...cap.fingerprints, fingerprint] } as never, result: { claimed: true, windowStart } };
+  }) as Promise<Slot>;
+}
+
+/**
+ * List an over-cap occurrence on its window's storm report. A storm report
+ * already filed owes a counted comment, as a repeat of a filed report does.
+ */
+async function listOnStorm(
+  reports: ResourceCollectionRef,
+  windowStart: number,
+  o: {
+    readonly fingerprint: string;
+    readonly parts: FingerprintParts;
+    readonly ids: OccurrenceIds;
+    readonly seenKey: string | undefined;
+    readonly now: number;
+    readonly limits: ReportLimits;
+  }
+): Promise<IntakeDecision> {
   const sKey = stormKey(windowStart);
   const stormRef = await reports.getOrCreate(sKey, {});
-  const isNew = await updateStateWith(stormRef as never, (current: unknown) => {
+  const result = await updateStateWith(stormRef as never, (current: unknown) => {
     const existing = parseRow(current);
+    if (existing !== undefined && o.seenKey !== undefined && existing.seen?.includes(o.seenKey)) {
+      return { state: current as never, result: { isNew: false, commentOwed: false } };
+    }
     const entries = existing?.storm?.entries ?? [];
-    const at = entries.findIndex((entry) => entry.fingerprint === fingerprint);
+    const at = entries.findIndex((entry) => entry.fingerprint === o.fingerprint);
     const entry =
       at >= 0
-        ? { ...entries[at]!, count: entries[at]!.count + 1, lastAt: now, occurrence: ids }
-        : { fingerprint, count: 1, flowKind: parts.flowKind, actionName: parts.actionName, message: parts.message, lastAt: now, occurrence: ids };
+        ? { ...entries[at]!, count: entries[at]!.count + 1, lastAt: o.now, occurrence: o.ids }
+        : { fingerprint: o.fingerprint, count: 1, flowKind: o.parts.flowKind, actionName: o.parts.actionName, message: o.parts.message, lastAt: o.now, occurrence: o.ids };
     const nextEntries = at >= 0 ? entries.map((e, i) => (i === at ? entry : e)) : [...entries, entry];
     const row: ReportRow = existing ?? {
       id: sKey,
@@ -432,21 +504,34 @@ export async function intakeOccurrence(
       source: "storm",
       fingerprint: `storm-${windowStart}`,
       parts: { flowKind: "storm", actionName: "storm", message: "More failures than the reporter files one by one in this window" },
-      errorKind: "storm",
+      errorClass: "storm",
       status: "owed",
       count: 0,
-      firstSeenAt: now,
-      lastSeenAt: now,
+      firstSeenAt: o.now,
+      lastSeenAt: o.now,
       occurrences: [],
       runs: 0
     };
-    return {
-      state: { ...row, count: row.count + 1, lastSeenAt: now, occurrences: keepNewest(row.occurrences, ids), storm: { windowStart, entries: nextEntries } } as never,
-      result: existing === undefined
+    const commentOwed = commentOwedOn(row, o.now, o.limits);
+    const next: ReportRow = {
+      ...row,
+      count: row.count + 1,
+      lastSeenAt: o.now,
+      occurrences: keepNewest(row.occurrences, o.ids),
+      storm: { windowStart, entries: nextEntries },
+      ...(o.seenKey === undefined ? {} : { seen: withSeen(row.seen, o.seenKey) }),
+      ...(commentOwed ? { commentOwed: true } : {})
     };
+    return { state: next as never, result: { isNew: existing === undefined, commentOwed } };
   });
-  return { decision: "storm", reportId: sKey, isNew: isNew === true };
-  }
+  const { isNew, commentOwed } = result as { isNew: boolean; commentOwed: boolean };
+  return { decision: "storm", reportId: sKey, isNew, commentOwed };
+}
+
+/** Whether a repeat now owes a filed report's issue a counted comment. */
+function commentOwedOn(row: ReportRow, now: number, limits: ReportLimits): boolean {
+  const since = row.lastCommentAt ?? row.filedAt ?? 0;
+  return row.status === "filed" && (row.commentOwed === true || now - since >= limits.commentEveryMs);
 }
 
 /** The failed requests held for a task, without their fingerprint parts. */
@@ -466,11 +551,15 @@ async function joinHeld(reports: ResourceCollectionRef, reportId: string, reques
   });
 }
 
-/** Count `ids` on the live report at `key`, or `undefined` when there is none. */
+/**
+ * Count `ids` on the live report at `key`, or `undefined` when there is none.
+ * An occurrence already counted there (a redelivery) is not counted again.
+ */
 async function countOn(
   reports: ResourceCollectionRef,
   key: string,
   ids: OccurrenceIds,
+  seenKey: string | undefined,
   now: number,
   limits: ReportLimits
 ): Promise<IntakeDecision | undefined> {
@@ -479,17 +568,18 @@ async function countOn(
   const result = await updateStateWith(ref as never, (current: unknown) => {
     const row = parseRow(current);
     if (row === undefined || !isLive(row, now)) return { state: current as never, result: undefined };
-    const since = row.lastCommentAt ?? row.filedAt ?? 0;
-    const commentOwed = row.status === "filed" && (row.commentOwed === true || now - since >= limits.commentEveryMs);
+    if (seenKey !== undefined && row.seen?.includes(seenKey)) return { state: current as never, result: { commentOwed: false } };
+    const commentOwed = commentOwedOn(row, now, limits);
     const next: ReportRow = {
       ...row,
       count: row.count + 1,
       lastSeenAt: now,
       occurrences: keepNewest(row.occurrences, ids),
+      ...(seenKey === undefined ? {} : { seen: withSeen(row.seen, seenKey) }),
       ...(commentOwed ? { commentOwed: true } : {})
     };
     return { state: next as never, result: { commentOwed } };
   });
   if (result === undefined) return undefined;
-  return { decision: "counted", reportId: key, commentOwed: result.commentOwed };
+  return { decision: "counted", reportId: key, commentOwed: (result as { commentOwed: boolean }).commentOwed };
 }

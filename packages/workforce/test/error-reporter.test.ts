@@ -6,7 +6,7 @@ import { ensureSessionRecord, runAction } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { callerMetadata } from "../src/conversation-board/ledger";
-import { markReportOwed, owedReports, REPORTER_FLOW, REPORTER_INTAKE_ENTRY, REPORTER_INTAKE_KEY } from "../src/conversation-board/report-owed";
+import { markReportOwed, owedReports } from "../src/conversation-board/report-owed";
 import {
   createErrorReporter,
   defineErrorReporterFlow,
@@ -27,21 +27,27 @@ const OPERATOR = "olive";
 const CONVERSATION = "s_error-reporter";
 const SECRET = "sk-live-abcdefghijklmnop1234";
 
-/** Every prompt the stand-in harness was handed, in order. */
-type Prompted = { kind: "draft" | "file" | "comment"; prompt: string };
+/** Every prompt the stand-in harness was handed, in order, and whether that harness held tracker tools. */
+type Prompted = { kind: "draft" | "file" | "comment"; prompt: string; trackerTools: boolean };
+
+/** How the stand-in answers beyond a clean run: a filing that fails `fileFails` times, a comment with no result. */
+type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean };
 
 /**
  * A harness that answers like one: a JSON draft, a filed issue, or a comment
  * verdict, by what its prompt asks for. Records what it was asked.
  */
-function standInHarness(prompts: Prompted[], options: { closed?: boolean; trailer?: boolean } = {}) {
-  return () =>
+function standInHarness(prompts: Prompted[], options: StandIn = {}) {
+  let fileFails = options.fileFails ?? 0;
+  return (feeds: { mcpTools?: unknown }) =>
     handler({
       name: "stand-in-harness",
       inputSchema: z.object({ prompt: z.string() }),
       execute: async (input, ctx) => {
         const kind = input.prompt.includes("draft ONE bug report") ? "draft" : input.prompt.includes("File this bug report") ? "file" : "comment";
-        prompts.push({ kind, prompt: input.prompt });
+        prompts.push({ kind, prompt: input.prompt, trackerTools: feeds.mcpTools !== undefined });
+        const failsNow = kind === "file" && fileFails > 0 ? (fileFails -= 1, true) : false;
+        const unreadable = failsNow || (kind === "comment" && options.commentUnreadable === true);
         const json =
           kind === "draft"
             ? { title: "Coordinator fails on a project with no repository", summary: "It throws.", stepsToReproduce: ["Send it work"], expected: "It works", actual: "It throws", suspectedCause: "No repo check", questions: ["Which team?"] }
@@ -51,7 +57,11 @@ function standInHarness(prompts: Prompted[], options: { closed?: boolean; traile
         const fenced = "```json\n" + JSON.stringify(json) + "\n```";
         // A harness that says something after its draft, as a checkout's own instructions can make it.
         if (options.trailer === true && kind === "draft") ctx.emit.message(fenced);
-        const said = options.trailer === true && kind === "draft" ? "I made no file changes; nothing to add." : fenced;
+        const said = unreadable
+          ? "The tracker refused the call."
+          : options.trailer === true && kind === "draft"
+            ? "I made no file changes; nothing to add."
+            : fenced;
         return {
           source: "stand-in",
           status: "completed",
@@ -96,6 +106,10 @@ type Lab = {
   breaks: (message: string, userId?: string) => Promise<void>;
   conversationLines: () => Promise<string[]>;
   open: (flowKind: string, sessionId: string, userId: string, state: Record<string, unknown>) => Promise<unknown>;
+  /** Hand the intake one occurrence, as a board or the reporter's capture does. */
+  intake: (occurrence: Record<string, unknown>) => Promise<unknown>;
+  /** Start a report's run again, as a restart does. */
+  rerun: (reportId: string) => Promise<void>;
 };
 
 let open: BoardHost | undefined;
@@ -104,10 +118,15 @@ afterEach(async () => {
   open = undefined;
 });
 
+/** Tracker tools as a Lab's project MCP servers hand them: none here, only whether a harness was given them. */
+const trackerTools = Object.assign(async () => ({}), { named: async () => [] }) as never;
+
 /** A Lab with the reporter on it, bound to the engine the way a Lab binds it. */
-async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: ReturnType<typeof mockGenerator>; closed?: boolean; trailer?: boolean } = {}): Promise<Lab> {
+async function openLab(
+  options: Partial<ErrorReporterOptions> & StandIn & { agentAnswer?: ReturnType<typeof mockGenerator>; hostRun?: (run: ErrorReporterHost["run"]) => ErrorReporterHost["run"] } = {}
+): Promise<Lab> {
   const prompts: Prompted[] = [];
-  const { agentAnswer, closed, trailer, ...reporterOptions } = options;
+  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, hostRun, ...reporterOptions } = options;
   const reporter = createErrorReporter({
     worker: "error-reporter",
     operator: { userId: OPERATOR, orgId: ORG },
@@ -125,7 +144,7 @@ async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: 
     ],
     flows: (installation) => ({
       breaker: breakerFlow(installation),
-      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed, trailer }) })
+      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable }), mcpTools: trackerTools })
     }),
     plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as any)({ id: ERROR_REPORTER_INTAKE_FLOW }) },
     generators: { "error-reporter-answer": agentAnswer ?? mockGenerator({ script: [] }) },
@@ -133,7 +152,7 @@ async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: 
   });
   open = host;
   const runtime = await host.state.getRuntime();
-  const flowOf = (kind: string) => host.instances[kind] as FlowInstance;
+  const flowOf = (flowKind: string) => host.instances[flowKind] as FlowInstance;
   const ensure = (flowKind: string, sessionId: string, userId: string, orgId: string, state: Record<string, unknown>) => {
     const now = Date.now();
     const flow = flowOf(flowKind);
@@ -173,6 +192,7 @@ async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: 
     },
     conversationSessionId: CONVERSATION
   };
+  if (hostRun !== undefined) bound.run = hostRun(bound.run.bind(bound));
   await reporter.bind(bound);
 
   const rows = async () => {
@@ -215,7 +235,20 @@ async function openLab(options: Partial<ErrorReporterOptions> & { agentAnswer?: 
     answer,
     breaks,
     conversationLines,
-    open: (flowKind, sessionId, userId, state) => ensure(flowKind, sessionId, userId, ORG, state)
+    open: (flowKind, sessionId, userId, state) => ensure(flowKind, sessionId, userId, ORG, state),
+    intake: async (occurrence) => {
+      const result = await bound.run({ flowKind: ERROR_REPORTER_INTAKE_FLOW, action: "intake", input: { occurrence }, userId: OPERATOR, orgId: ORG, sessionId: "error-report-intake", source: "internal" });
+      expect(result.error, result.error).toBeUndefined();
+      await host.settled();
+      await reporter.idle();
+      return result.output;
+    },
+    rerun: async (reportId) => {
+      const result = await bound.run({ flowKind: ERROR_REPORTER_FLOW, action: "report", input: {}, userId: OPERATOR, orgId: ORG, sessionId: `${REPORT_SESSION_PREFIX}${reportId}`, source: "http" });
+      expect(result.error, result.error).toBeUndefined();
+      await host.settled();
+      await reporter.idle();
+    }
   };
 }
 
@@ -308,6 +341,168 @@ describe("a request that settled failed", () => {
   });
 });
 
+/** A failed request as the capture hands it to the intake. */
+const requestOccurrence = (requestId: string, message: string, at = Date.now()) => ({
+  kind: "request",
+  at,
+  requestId,
+  userId: "alice",
+  sessionId: "breaker-alice",
+  flowKind: "breaker",
+  actionName: "run",
+  message
+});
+
+describe("what the intake keeps", () => {
+  it("counts a redelivered occurrence once", async () => {
+    const lab = await openLab();
+    await lab.intake(requestOccurrence("req_same", "the queue is full"));
+    await lab.intake(requestOccurrence("req_same", "the queue is full"));
+    await lab.intake(requestOccurrence("req_other", "the queue is full"));
+    const [row] = await lab.rows();
+    expect(row).toMatchObject({ count: 2 });
+  });
+
+  it("writes no secret into a row, a held request or a storm entry", async () => {
+    const lab = await openLab({ limits: { newPerWindow: 1 } });
+    await lab.intake(requestOccurrence("req_1", `first refused with ${SECRET}`));
+    await lab.intake(requestOccurrence("req_2", `second refused with ${SECRET}`));
+    await lab.intake({ ...requestOccurrence("req_3", `held refused with ${SECRET}`), kind: "held", taskId: "task_1" });
+    const runtime = await lab.host.state.getRuntime();
+    // Everything the Lab's org scope holds: report rows, the storm, and the held request.
+    const stored = JSON.stringify(await runtime.stores.resourceState.getByPrefix("org", ORG, ""));
+    expect(stored).toContain("held refused with");
+    expect(stored).toContain("[redacted]");
+    expect(stored).not.toContain(SECRET);
+  });
+
+  it("takes the operator's stored MCP key out of what it keeps", async () => {
+    const lab = await openLab();
+    const runtime = await lab.host.state.getRuntime();
+    const key = "operatorlinearkey0123456789";
+    await runtime.stores.resourceState.set("user", `${OPERATOR}:~org:${ORG}`, "mcp-credentials/linear", { value: key, setAt: "2026-10-13T00:00:00.000Z" }, "any");
+    await lab.intake(requestOccurrence("req_key", `refused with ${key}`));
+    const stored = JSON.stringify(await runtime.stores.resourceState.getByPrefix("org", ORG, ""));
+    expect(stored).toContain("refused with [redacted]");
+    expect(stored).not.toContain(key);
+  });
+
+  it("reads a named session against the user who named it, not the last user to report the same problem", async () => {
+    const lab = await openLab();
+    await lab.open("breaker", "breaker-alice", "alice", { workerId: "eng.breaker" });
+    const manual = (userId: string, sessionId: string, named?: { sessionId: string }) => ({
+      kind: "manual",
+      at: Date.now(),
+      description: "The board shows a task as done that never ran",
+      userId,
+      orgId: ORG,
+      sessionId,
+      ...(named === undefined ? {} : { named })
+    });
+    await lab.intake(manual("alice", "conv-alice", { sessionId: "breaker-alice" }));
+    await lab.intake(manual("bob", "conv-bob"));
+    const [row] = await lab.rows();
+    expect(row).toMatchObject({ count: 2, named: { sessionId: "breaker-alice", by: "alice" } });
+    const dossier = (await lab.reporter.dossierOf(row)) as { named?: { session?: unknown } };
+    expect(dossier.named?.session).toMatchObject({ id: "breaker-alice", userId: "alice" });
+  });
+
+  it("never moves the cap's window back for a late occurrence", async () => {
+    const lab = await openLab({ limits: { newPerWindow: 2 } });
+    const hourAgo = Date.now() - 61 * 60_000;
+    await lab.intake(requestOccurrence("req_a", "alpha broke"));
+    await lab.intake(requestOccurrence("req_b", "beta broke"));
+    // An old task's ending, delivered late, from the window before.
+    await lab.intake(requestOccurrence("req_old", "old broke", hourAgo));
+    await lab.intake(requestOccurrence("req_c", "gamma broke"));
+    const reports = (await lab.rows()).filter((r) => r.kind === "report");
+    expect(reports.map((r) => r.parts.message).sort()).toEqual(["alpha broke", "beta broke"]);
+  });
+
+  it("tries an intake again when the intake run fails, rather than dropping the failure", async () => {
+    let failures = 1;
+    const lab = await openLab({
+      hostRun: (run) => async (r) => {
+        if (r.action === "intake" && failures > 0) {
+          failures -= 1;
+          return { error: "the store was down" };
+        }
+        return run(r);
+      }
+    });
+    lab.reporter.capture({ final: true, error: { message: "flaky store" }, requestId: "req_retry", flowKind: "breaker", actionName: "run", userId: "alice" });
+    await lab.reporter.idle();
+    for (let i = 0; i < 30 && (await lab.rows()).length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+    await lab.reporter.idle();
+    expect((await lab.rows()).map((r) => r.parts.message)).toEqual(["flaky store"]);
+  });
+});
+
+describe("drafting, filing and commenting", () => {
+  it("drafts with no tracker tools; only the approved filing gets them", async () => {
+    const lab = await openLab();
+    await lab.breaks("drafts read, filings write");
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    expect(lab.prompts.map((p) => [p.kind, p.trackerTools])).toEqual([
+      ["draft", false],
+      ["file", true]
+    ]);
+  });
+
+  it("keeps an approved report owed when filing fails, and files it on the next run", async () => {
+    const lab = await openLab({ fileFails: 1 });
+    await lab.breaks("the tracker was down");
+    await lab.answer((await lab.asks())[0]!, { decision: "file", instructions: "Label it P2" });
+    const [failed] = await lab.rows();
+    expect(failed).toMatchObject({ status: "filing", approved: { instructions: "Label it P2" } });
+    expect(failed!.lastRunError).toContain("not filed");
+
+    await lab.rerun(failed!.id);
+    const [filed] = await lab.rows();
+    expect(filed).toMatchObject({ status: "filed", issue: { identifier: "FIX-9" } });
+    // Filed from the kept answer, with no second draft or preview.
+    expect(lab.prompts.map((p) => p.kind)).toEqual(["draft", "file", "file"]);
+    expect(lab.prompts[2]!.prompt).toContain("Label it P2");
+  });
+
+  it("runs a report once while another run holds it", async () => {
+    const lab = await openLab({ fileFails: 1 });
+    await lab.breaks("one run at a time");
+    await lab.answer((await lab.asks())[0]!, { decision: "file" });
+    const [row] = await lab.rows();
+    // Two starts at once, as two processes would make: one files, the other finds it claimed.
+    await Promise.all([lab.rerun(row!.id), lab.rerun(row!.id)]);
+    expect(lab.prompts.filter((p) => p.kind === "file")).toHaveLength(2);
+  });
+
+  it("keeps a counted comment owed when the tracker gives no result", async () => {
+    const lab = await openLab({ preview: { autoFile: ["request"] }, limits: { commentEveryMs: 0 }, commentUnreadable: true });
+    await lab.breaks("comment me");
+    await lab.breaks("comment me");
+    const [row] = await lab.rows();
+    expect(row).toMatchObject({ status: "filed", commentOwed: true });
+    expect(row!.lastRunError).toContain("not commented");
+    expect(await lab.conversationLines()).not.toContainEqual(expect.stringContaining("Commented on"));
+  });
+
+  it("files a storm with every failure listed by then, and owes a comment for later ones", async () => {
+    const lab = await openLab({ limits: { newPerWindow: 1, commentEveryMs: 0 } });
+    await lab.breaks("first broke");
+    await lab.breaks("second broke");
+    const storm = (await lab.asks()).find((a) => JSON.stringify(a).includes("storm"))!;
+    // Listed after the storm's draft was shown.
+    await lab.breaks("third broke");
+    await lab.answer(storm, { decision: "file" });
+    const filing = lab.prompts.filter((p) => p.kind === "file").at(-1)!;
+    expect(filing.prompt).toContain("third broke");
+
+    await lab.breaks("fourth broke");
+    const [filedStorm] = (await lab.rows()).filter((r) => r.kind === "storm");
+    expect(filedStorm!.storm!.entries.map((e) => e.message)).toContain("fourth broke");
+    expect(lab.prompts.at(-1)!.kind).toBe("comment");
+  });
+});
+
 describe("a task that ended errored", () => {
   /** A failed request in a task's session, as the engine's final event reports it. */
   const failedIn = (lab: Lab, sessionId: string, requestId: string) => {
@@ -376,7 +571,7 @@ describe("the reporter itself", () => {
   });
 });
 
-describe("a person reporting a problem", () => {
+describe("a user reporting a problem", () => {
   it("takes the same intake, preview and filing: one report in Inbox, nothing filed before the answer", async () => {
     const agentAnswer = mockGenerator({
       script: [
@@ -407,10 +602,6 @@ describe("the ledger's owed report", () => {
     expect(owedReports(markReportOwed(row, { kind: "errored", error: "x" }))).toEqual([{ key: "reportOwed:2", marker: { attempt: 2, error: "x" } }]);
     expect(owedReports(markReportOwed(row, { kind: "completed", output: 1 }))).toEqual([]);
     expect(owedReports(markReportOwed(row, { kind: "retried", error: "x" }))).toEqual([]);
-  });
-
-  it("is sent where the reporter's intake is", () => {
-    expect([REPORTER_FLOW, REPORTER_INTAKE_ENTRY, REPORTER_INTAKE_KEY]).toEqual([ERROR_REPORTER_INTAKE_FLOW, "intake", "error-report-intake"]);
   });
 
   it("can't be forged or cleared by a caller's metadata", () => {

@@ -204,6 +204,7 @@ Actions run as the user and organization your resolver returns; the client's `us
 - [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
 - [The Shift Coordinator](./shift-coordinator) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
+- [The Error Reporter](./error-reporter) — a worker that turns each failure that stayed failed, or a problem a user describes, into one bug report the operator previews before it is filed.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

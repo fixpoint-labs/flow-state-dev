@@ -15,20 +15,11 @@
  * ```
  */
 import { PROJECT_STATE_KEY, WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
-import {
-  COMMENT_ENTRY,
-  ERROR_REPORTER_FLOW,
-  ERROR_REPORTER_INTAKE_FLOW,
-  INTAKE_ENTRY,
-  LINE_ENTRY,
-  REPORT_ENTRY,
-  REPORTS_ENTRY,
-  REPORT_SESSION_PREFIX
-} from "./flow";
+import { COMMENT_ENTRY, LINE_ENTRY, REPORT_ENTRY, REPORTS_ENTRY, REPORT_SESSION_PREFIX } from "./flow";
+import { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "./keys";
 import type { IntakeDecision, Occurrence, OccurrenceIds, ReportLimits, ReportRow } from "./reports";
 
-/** The session the reporter's own intakes run in. */
-export const INTAKE_SESSION_ID = "error-report-intake";
+export { INTAKE_SESSION_ID };
 
 /**
  * A final failure, as the engine's `errorCapture` hands it: only the fields the
@@ -92,9 +83,14 @@ export interface ErrorReporterHost {
   }): Promise<void>;
   /** What one session holds, or `undefined` when it doesn't exist. */
   readSession(sessionId: string): Promise<ReporterSessionFacts | undefined>;
+  /**
+   * Only a session's state, or `undefined`: read for every final failure, to
+   * hold a task's failed request for its ending. Without it, `readSession` is used.
+   */
+  readSessionState?(sessionId: string): Promise<Readonly<Record<string, unknown>> | undefined>;
   /** What one request was: its input, status and error. */
   readRequest?(requestId: string): Promise<unknown>;
-  /** A user's newest sessions, for a problem a person reported without naming one. */
+  /** A user's newest sessions, for a problem a user reported without naming one. */
   recentSessions?(userId: string, limit: number): Promise<ReporterSessionFacts[]>;
   /** The reporter's conversation, where it says what it filed. */
   readonly conversationSessionId?: string;
@@ -115,7 +111,7 @@ export interface ErrorReporterOptions {
   };
   /** The preview. Every report waits for it unless named here. */
   readonly preview?: {
-    /** Error kinds (an error code, or `request` / `task` / `manual` / `storm`) that file without a preview. Default none. */
+    /** Error codes, or sources (`request` / `task` / `manual` / `storm`), that file without a preview. Default none. */
     readonly autoFile?: readonly string[];
     /** File as drafted when the preview goes unanswered this long. Default never. */
     readonly autoFileAfterMs?: number;
@@ -162,6 +158,12 @@ export interface ErrorReporter {
 const DOSSIER_REQUESTS = 3;
 const RECENT_SESSIONS = 3;
 
+/** How an intake that failed is tried again: the waits between tries. */
+const INTAKE_RETRY_MS = [1_000, 5_000, 30_000, 120_000];
+
+/** How long a report or comment that couldn't reach the tracker waits before it is tried again. */
+const RUN_RETRY_MS = 5 * 60_000;
+
 /**
  * Create the Error Reporter.
  *
@@ -180,8 +182,16 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
   // Reports started in this process: a report is never started twice at once.
   const started = new Set<string>();
 
-  const operatorRun = (sessionId: string, action: string, input: unknown, source: "http" | "internal", kind: string = flowKind) =>
-    host!.run({ flowKind: kind, action, input, userId: options.operator.userId, orgId: options.operator.orgId, sessionId, source });
+  const operatorRun = (sessionId: string, action: string, input: unknown, source: "http" | "internal", onFlow: string = flowKind) =>
+    host!.run({ flowKind: onFlow, action, input, userId: options.operator.userId, orgId: options.operator.orgId, sessionId, source });
+
+  /** Run `work` after `ms`, unless the reporter was disposed by then. Never keeps a process alive. */
+  const later = (ms: number, work: () => void) => {
+    const timer = setTimeout(() => {
+      if (!disposed) work();
+    }, ms);
+    (timer as { unref?: () => void }).unref?.();
+  };
 
   const intakeOf = async (event: FinalFailureEvent): Promise<Occurrence> => {
     const fields = {
@@ -199,19 +209,31 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
     };
     // A request in a task's session is held for the task's ending: the task
     // may retry and pass, and only the ending says it stayed failed.
-    const session = event.sessionId === undefined ? undefined : await host!.readSession(event.sessionId).catch(() => undefined);
-    const taskId = session?.state?.[TASK_ID_STATE_KEY];
+    const state =
+      event.sessionId === undefined
+        ? undefined
+        : host!.readSessionState !== undefined
+          ? await host!.readSessionState(event.sessionId).catch(() => undefined)
+          : (await host!.readSession(event.sessionId).catch(() => undefined))?.state;
+    const taskId = state?.[TASK_ID_STATE_KEY];
     return typeof taskId === "string" ? { kind: "held", taskId, ...fields } : { kind: "request", ...fields };
   };
 
-  const take = (event: FinalFailureEvent) => {
+  // A failed intake is tried again (the intake counts a redelivery once); after the last try it is logged.
+  const take = (event: FinalFailureEvent, tries = 0) => {
     intakes = intakes.then(async () => {
       if (disposed) return;
+      let failure: string | undefined;
       try {
-        await operatorRun(INTAKE_SESSION_ID, INTAKE_ENTRY, { occurrence: await intakeOf(event) }, "internal", ERROR_REPORTER_INTAKE_FLOW);
+        const result = await operatorRun(INTAKE_SESSION_ID, INTAKE_ENTRY, { occurrence: await intakeOf(event) }, "internal", ERROR_REPORTER_INTAKE_FLOW);
+        failure = result.error;
       } catch (error) {
-        log(`couldn't take request ${event.requestId}'s failure: ${String(error)}`);
+        failure = String(error);
       }
+      if (failure === undefined) return;
+      const wait = INTAKE_RETRY_MS[tries];
+      if (wait === undefined) log(`couldn't take request ${event.requestId}'s failure after ${tries + 1} tries: ${failure}`);
+      else later(wait, () => take(event, tries + 1));
     });
   };
 
@@ -237,6 +259,8 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
       state: { [WORKER_ID_STATE_KEY]: options.worker }
     });
 
+  // A run's row is claimed in the store, so two processes never run one report at once; this only
+  // spares a second start from this process.
   const startReport = (reportId: string) => {
     if (host === undefined || started.has(reportId)) return;
     started.add(reportId);
@@ -245,6 +269,8 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
         await openReportSession(reportId);
         const result = await operatorRun(reportSession(reportId), REPORT_ENTRY, {}, "http");
         if (result.error !== undefined) log(`report ${reportId}'s run failed: ${result.error}`);
+        // An approved report the tracker didn't take is owed a filing: tried again later, and at the next start.
+        if ((result.output as { retry?: unknown } | undefined)?.retry === true) later(RUN_RETRY_MS, () => startReport(reportId));
       } finally {
         started.delete(reportId);
       }
@@ -255,7 +281,10 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
     if (host === undefined) return;
     onChain(`comment on ${reportId}`, async () => {
       await openReportSession(reportId);
-      await operatorRun(reportSession(reportId), COMMENT_ENTRY, {}, "internal");
+      const result = await operatorRun(reportSession(reportId), COMMENT_ENTRY, {}, "internal");
+      if ((result.output as { commented?: unknown; closed?: unknown } | undefined)?.commented === false && (result.output as { closed?: unknown }).closed === false) {
+        later(RUN_RETRY_MS, () => startComment(reportId));
+      }
     });
   };
 
@@ -297,9 +326,13 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
       // The rows are the outbox: what a stopped process left owed runs again.
       const result = await operatorRun(INTAKE_SESSION_ID, REPORTS_ENTRY, { op: "all" }, "internal", ERROR_REPORTER_INTAKE_FLOW);
       const rows = ((result.output as { rows?: ReportRow[] } | undefined)?.rows ?? []) as ReportRow[];
+      const now = Date.now();
       for (const row of rows) {
-        if (row.status === "owed" || row.status === "drafting") startReport(row.id);
-        else if (row.status === "filed" && row.commentOwed === true) startComment(row.id);
+        if (row.status === "owed" || row.status === "drafting" || row.status === "filing") {
+          // Another run holds it: try once its claim has lapsed.
+          if (row.claim !== undefined && row.claim.until > now) later(row.claim.until - now + 1_000, () => startReport(row.id));
+          else startReport(row.id);
+        } else if (row.status === "filed" && row.commentOwed === true) startComment(row.id);
       }
     },
 
@@ -320,7 +353,7 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
 
     follow(decision) {
       if (decision.decision === "new" || (decision.decision === "storm" && decision.isNew)) startReport(decision.reportId);
-      else if (decision.decision === "counted" && decision.commentOwed) startComment(decision.reportId);
+      else if ((decision.decision === "counted" || decision.decision === "storm") && decision.commentOwed) startComment(decision.reportId);
     },
 
     async say(text) {
@@ -346,11 +379,12 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
           if (facts !== undefined) sessions.push(facts);
         }
       }
-      // A person's report: what they named, when it is theirs, else their newest sessions.
+      // A user's report: what they named, when it is theirs, else their newest sessions.
       let named: unknown;
       if (row.source === "manual" && host !== undefined && row.named !== undefined) {
-        const sender = latest?.userId;
-        const named0 = row.named;
+        // Checked against the user who named it, not whoever reported the same problem last.
+        const { by, ...named0 } = row.named;
+        const sender = by ?? latest?.userId;
         const session = named0.sessionId === undefined ? undefined : await sessionFacts(named0.sessionId);
         named = {
           ...named0,
@@ -358,7 +392,7 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
             ? {}
             : session.userId === sender
               ? { session }
-              : { session: "not readable: it is not the reporting person's session" })
+              : { session: "not readable: it is not the reporting user's session" })
         };
       } else if (row.source === "manual" && host?.recentSessions !== undefined && latest?.userId !== undefined) {
         const recent = await host.recentSessions(latest.userId, RECENT_SESSIONS + 1).catch((): ReporterSessionFacts[] => []);

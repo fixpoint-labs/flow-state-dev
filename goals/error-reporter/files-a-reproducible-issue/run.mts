@@ -55,7 +55,7 @@ const CONTROLS: Record<string, { legs: string[]; does: string; fails: string; pa
     does: "the issue holds the error alone: the draft's title and body are replaced by the error message",
     fails: "leg 1: the replay trips the same fingerprint",
     patches: [
-      { module: FLOW, from: "const body = redact\\(composeIssueBody\\(draft, row, await reporter\\.dossierOf\\(row\\)\\), secrets\\);", to: "const body = row.parts.message;" },
+      { module: FLOW, from: "const body = redact\\(composeIssueBody\\(draft, row\\), secrets\\);", to: "const body = row.parts.message;" },
       { module: FLOW, from: "return \\{ title: draft\\.title, body, questions: draft\\.questions \\?\\? \\[\\] \\};", to: "return { title: row.parts.message.slice(0, 120), body, questions: draft.questions ?? [] };" },
     ],
   },
@@ -532,8 +532,9 @@ await runGoal(async (failures) => {
         else {
           const ask = (await lab.reportAsks()).find((a) => a.sessionId === harnessRow[0]!.sessionId);
           const body = String((ask?.item as { data?: { body?: unknown } } | undefined)?.data?.body ?? "");
-          const link = /\((\/tasks\/[^)\s]+)\)|(\/tasks\/\S+)/.exec(body);
-          const route = link === null ? undefined : parseRoute((link[1] ?? link[2])!);
+          // A route, not a source path the draft quotes (".../src/tasks/collection/...").
+          const link = /(?<![\w.-])(\/tasks\/[^)\s]+)/.exec(body);
+          const route = link === null ? undefined : parseRoute(link[1]!);
           if (ask === undefined) fail("H", "its report is not in Inbox");
           if (route?.level !== "task" || route.taskId !== harnessTask?.id) fail("H", `its link doesn't open the task: ${link?.[0] ?? "no link"}`);
           else evidence.push(`leg H: one report in Inbox, its link opens task ${route.taskId}`);

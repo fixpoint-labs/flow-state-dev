@@ -6,25 +6,25 @@
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskCollectionRef, TaskEnding } from "@flow-state-dev/orchestration/tasks";
+import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "../error-reporter/keys";
 
 /** The marker each owed report is kept under, in the row's metadata. */
 const REPORT_OWED_PREFIX = "reportOwed:";
 
-/**
- * The flow and entry a board sends an owed report to. **Pinned**: they are the
- * Error Reporter's intake (`../error-reporter/flow`), named here so the board
- * does not import the reporter; a test pins the two to each other.
- */
-export const REPORTER_FLOW = "error-reporter-intake";
-export const REPORTER_INTAKE_ENTRY = "intake";
-
-/** The child session a board's intakes run in, one per sending session. */
-export const REPORTER_INTAKE_KEY = "error-report-intake";
+/** The metadata key a task's owed report for `attempt` is kept under. The intake clears it once it holds the report. */
+export function reportOwedKey(attempt: number): string {
+  return `${REPORT_OWED_PREFIX}${attempt}`;
+}
 
 interface ReportMarker {
   readonly attempt: number;
   readonly error: string;
+  /** When a send was last accepted: the intake has it, or will clear the mark once it holds it. */
+  readonly sentAt?: number;
 }
+
+/** How long an accepted send is waited on before the mark is sent again: the intake may have failed. */
+const RESEND_AFTER_MS = 5 * 60_000;
 
 /**
  * The row an ending writes, with an owed report marked when the task ended
@@ -34,7 +34,7 @@ interface ReportMarker {
 export function markReportOwed(row: Task, ending: TaskEnding): Task {
   if (ending.kind !== "errored") return row;
   const marker: ReportMarker = { attempt: row.attempts, error: ending.error };
-  return { ...row, metadata: { ...(row.metadata ?? {}), [`${REPORT_OWED_PREFIX}${row.attempts}`]: marker } };
+  return { ...row, metadata: { ...(row.metadata ?? {}), [reportOwedKey(row.attempts)]: marker } };
 }
 
 /** The reports a row still owes, by marker key. */
@@ -50,10 +50,12 @@ export function withoutReportMarkers(metadata: Record<string, unknown>): Record<
 }
 
 /**
- * Send each report the rows owe to the Error Reporter's intake, and clear its
- * mark once taken. A Lab with no reporter refuses `flow-not-found`, which
- * clears the mark too: nobody will ever take it. Any other refusal, or a
- * thrown send, leaves it for the next touch.
+ * Send each report the rows owe to the Error Reporter's intake. The intake
+ * clears the mark once the report holds it; an accepted send only notes when
+ * it went, and is sent again after {@link RESEND_AFTER_MS} if the mark is
+ * still there (the intake counts a redelivery once). A Lab with no reporter
+ * refuses `flow-not-found`, which clears the mark: nobody will ever take it.
+ * Any other refusal, or a thrown send, leaves it for the next touch.
  *
  * @param ref The ledger the rows are on, to clear a mark.
  * @param rows The rows to send from.
@@ -69,16 +71,19 @@ export async function sendOwedReports(
   from: string
 ): Promise<number> {
   let sent = 0;
+  const now = Date.now();
   for (const row of rows) {
     for (const { key, marker } of owedReports(row)) {
       const userId = ctx.session.identity.userId;
       if (userId === undefined) continue;
+      if (marker.sentAt !== undefined && now - marker.sentAt < RESEND_AFTER_MS) continue;
+      let outcome;
       try {
-        const outcome = await dispatchThroughSeam(ctx, {
+        outcome = await dispatchThroughSeam(ctx, {
           type: "internal",
-          action: REPORTER_INTAKE_ENTRY,
-          flowKind: REPORTER_FLOW,
-          session: { key: REPORTER_INTAKE_KEY },
+          action: INTAKE_ENTRY,
+          flowKind: ERROR_REPORTER_INTAKE_FLOW,
+          session: { key: INTAKE_SESSION_ID },
           payload: {
             occurrence: {
               kind: "task",
@@ -97,12 +102,15 @@ export async function sendOwedReports(
           },
           from
         });
-        if (outcome.ok) sent += 1;
-        if (!outcome.ok && outcome.refused !== "flow-not-found") continue;
       } catch {
         continue;
       }
-      await ref.patchMetadata(row.id, { [key]: null });
+      if (outcome.ok) {
+        sent += 1;
+        await ref.patchMetadata(row.id, { [key]: { ...marker, sentAt: now } });
+      } else if (outcome.refused === "flow-not-found") {
+        await ref.patchMetadata(row.id, { [key]: null });
+      }
     }
   }
   return sent;

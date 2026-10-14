@@ -171,4 +171,35 @@ describe("errorCapture final-failure event", () => {
     expect(finals[0]).toMatchObject({ final: true, scope: "request", requestId: "req_setup", flowKind: "setup-flow", userId: "u_setup" });
     expect((await stores.request.get("req_setup"))?.status).toBe("failed");
   });
+
+  it("still sends the final event when the failed status event can't be written", async () => {
+    const stores = createInMemoryStores();
+    const events: ErrorCaptureEvent[] = [];
+    // Once the record says failed, writing the stream's events throws: the status event is lost.
+    const flushEvents = stores.request.flushEvents.bind(stores.request);
+    stores.request.flushEvents = (async (requestId: string) => {
+      if ((await stores.request.get(requestId))?.status === "failed") throw new Error("event store down");
+      return flushEvents(requestId);
+    }) as typeof stores.request.flushEvents;
+    const flow = defineFlow({
+      kind: "status-lost-flow",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: handler({
+            name: "boom",
+            execute: () => {
+              throw new Error("failed while the event store was down");
+            }
+          })
+        }
+      }
+    });
+
+    await run(flow, stores, events).catch(() => undefined);
+
+    const finals = await finalOf(events);
+    expect(finals).toHaveLength(1);
+    expect(finals[0]!.error.message).toContain("failed while the event store was down");
+  });
 });

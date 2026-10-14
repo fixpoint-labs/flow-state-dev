@@ -2893,11 +2893,12 @@ async function runActionAttempt<
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
 
-      await response.emitRequestStatus("failed");
-
-      // FIX-1983: the request's one final-failure event, once the failed
-      // record is written. Only a request this run settled sends it.
+      // FIX-1983: the request's one final-failure event, as soon as the failed
+      // record is written, so a status event that throws can't lose it. Only a
+      // request this run settled sends it.
       if (terminalRecordIncarnation !== undefined) ctx._captureFinalError?.(error);
+
+      await response.emitRequestStatus("failed");
 
       await runObserverSafely(action.onErrored, {
         requestId,

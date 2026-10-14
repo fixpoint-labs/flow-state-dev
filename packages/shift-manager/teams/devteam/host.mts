@@ -1747,6 +1747,8 @@ function reporterHost(
         summary: await sessionSummary(runtime, sessionId),
       };
     },
+    readSessionState: async (sessionId) =>
+      ((await runtime.stores.session.get(sessionId)) as { state?: Record<string, unknown> } | undefined)?.state,
     readRequest: async (requestId) => {
       const record = await runtime.stores.request.get(requestId);
       if (record === undefined) return undefined;
