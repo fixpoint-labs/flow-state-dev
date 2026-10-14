@@ -245,9 +245,10 @@ function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
 
 /**
  * The shift summary's numbers (D1, BR-4): the asks waiting on the user, as
- * Inbox lists them; the tasks parked waiting on them, such as a worker's
- * proposal it wants approved, less those whose run holds one of those asks
- * (BR-17); and the runs going with how many workstreams they run in, from the
+ * Inbox lists them; the tasks parked on a question for them, such as a
+ * worker's proposal it wants approved, less those whose run holds one of
+ * those asks (BR-17), and never a park that waits on workers (a task waiting
+ * on its pieces); and the runs going with how many workstreams they run in, from the
  * rows Tasks reads. Each line fails on its own read (BR-8).
  */
 export function shiftSummary(snapshot: LoadedSnapshot): {
@@ -264,7 +265,9 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
       boardsFailed === undefined
         ? {
             ok: true,
-            value: allRows(snapshot).filter((row) => readStatus(row.status) === "parked" && asksOfTask(snapshot, row).length === 0),
+            value: allRows(snapshot).filter(
+              (row) => readStatus(row.status) === "parked" && row.question !== undefined && asksOfTask(snapshot, row).length === 0,
+            ),
           }
         : { ok: false, failure: boardsFailed },
     running:

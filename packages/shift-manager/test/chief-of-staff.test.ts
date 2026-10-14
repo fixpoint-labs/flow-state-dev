@@ -190,6 +190,13 @@ describe("the tasks waiting on the user, in the shift summary", () => {
     expect(toBoardRow("s.tasks", "s", "6", base)).not.toHaveProperty("question");
   });
 
+  it("leaves out a park that waits on workers, not on a question for the user", () => {
+    const pieces = parked("s_side", "8");
+    delete pieces.question;
+    const summary = shiftSummary(snapshotOf({ boards: { s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [pieces] } } } }));
+    expect(summary.parked).toEqual({ ok: true, value: [] });
+  });
+
   it("fails as its own line when a board didn't load", () => {
     const failure = { message: "store offline", httpStatus: 503 };
     const summary = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
