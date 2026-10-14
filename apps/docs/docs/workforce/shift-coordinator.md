@@ -273,7 +273,7 @@ has nothing on it, say you have no memory of it. Never make up a memory.
 
 ## Coaching it
 
-Tell the chief of staff how you want it to work, on Shift Manager's Shift Coordinator screen or in any conversation with it, and it keeps the note as a [standing rule](./standing-rules.md) for you. Your rules are yours: another user on the same Shift Manager has their own.
+Tell the Shift Coordinator how you want it to work, on Shift Manager's Shift Coordinator screen or in any conversation with it, and it keeps the note as a [standing rule](./standing-rules.md) for you. Your rules are yours: another user on the same Shift Manager has their own.
 
 ## The tools
 
@@ -284,7 +284,7 @@ Tell the chief of staff how you want it to work, on Shift Manager's Shift Coordi
 | `createProject` | Creates a project owned by the user asking, private or shared, with the project members they name | Never |
 | `openWorkstream` | Opens a workstream the user asking owns, led by a worker from their roster. On a shared project they must be a project member | Never |
 | `setRepository` | Sets the repository a project's code lives in, or clears it with `null`. The user asking must be a project member | Never |
-| `rules/read` | Lists the chief of staff's [standing rules](./standing-rules.md) for the user asking, numbered | Never |
+| `rules/read` | Lists the Shift Coordinator's [standing rules](./standing-rules.md) for the user asking, numbered | Never |
 | `rules/add` | Adds one standing rule for the user asking | Never |
 | `rules/change` | Rewrites one rule, named by its number and its current text | Never |
 | `rules/remove` | Drops one rule, named the same way | Never |
