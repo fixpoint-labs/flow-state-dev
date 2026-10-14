@@ -7,6 +7,7 @@
 **Anti-game:** A sweep that reads nothing passes everything, so `--control` plants `parkOnAsk` in a file the sweep reads, through the same path as a real file, and the goal fails unless the sweep reports it. The keep list is never widened to silence a hit: `KEEP` grows only with a reason a reviewer can check, and `RETIRED` is never narrowed. The totality check stops a new root or file type from slipping past unread.
 **Model:** n/a — model-free.
 **Run:** `pnpm tsx goals/vocabulary/one-word-per-thing/run.mts` (CI's Process guards run `node goals/vocabulary/one-word-per-thing/sweep.mjs` and the same with `--control`)
+**Output:** `run.mts` passes `--list`, so a local FAIL prints every open line; CI's step prints only the per-file summary. Both fail on the same lines.
 **Controls:** `--control` on `sweep.mjs`: the planted `parkOnAsk` must be reported.
 
 ## Verdict log

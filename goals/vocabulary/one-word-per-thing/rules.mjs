@@ -95,7 +95,8 @@ export const EXCLUDE = [
 export const KEEP = [
   {
     path: /^apps\/docs\/docs\/orchestration\/task-board\.md$/,
-    line: /Older logs report `"handed-off"` for the same thing\.$/,
+    // The sentence sits on a line of its own, so nothing else on the line is kept with it.
+    line: /^\s*Older logs report `"handed-off"` for the same thing\.$/,
     rules: ["handoff-symbol-in-docs", "handoff-prose"],
     why: "WR-14: the ending's old stored value, so a reader of an old log knows what it means"
   },
