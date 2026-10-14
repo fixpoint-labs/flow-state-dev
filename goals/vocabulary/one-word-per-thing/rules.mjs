@@ -24,9 +24,11 @@ export const RETIRED = [
   {
     id: "ask-symbol",
     files: CODE,
-    // Any identifier built on "ask" that isn't "task": parkOnAsk, AskEndedError, hasAskSweeper,
-    // ASK_GATE_REASON, askGateId. Shift Manager's and the harness's person asks are KEEP.
-    pattern: /\b(?!\w*[Tt]ask)(ask[A-Z]\w*|\w*Ask\w*|ASK_\w+|\w+_ASK\w*)\b/,
+    // Any identifier built on "ask": parkOnAsk, AskEndedError, hasAskSweeper, ASK_GATE_REASON,
+    // askGateId, parkTaskOnAsk, asked_task, gate_ask_1. Each alternative needs a capital A, a
+    // word start or an underscore before "ask", so "task" never matches. Shift Manager's and the
+    // harness's person asks are KEEP.
+    pattern: /\b(ask[A-Z]\w*|\w*Ask\w*|ASK_\w+|\w+_ASK\w*|asked?_\w+|\w+_ask(ed)?(_\w+)?)\b/,
     pathName: /(^|\/)(ask-|[^/]*-ask[-.])[^/]*$/
   },
   {
@@ -45,7 +47,7 @@ export const RETIRED = [
     id: "handoff-symbol",
     files: CODE,
     // Any identifier built on "hand off": createHandOff, handedOffTaskPredicate, abortHandoff.
-    pattern: /\b\w*(HandOff|Handoff|handOff|handoff|HandedOff|handedOff)\w*\b|["'`]handed-off["'`]/,
+    pattern: /\b\w*(HandOff|Handoff|handOff|handoff|HandedOff|handedOff|hand_off|handed_off|HAND_OFF|HANDED_OFF)\w*\b|["'`]handed-off["'`]/,
     pathName: /(^|\/)[^/]*hand-?off[^/]*$/
   },
   {
@@ -63,7 +65,7 @@ export const RETIRED = [
     id: "ask-prose",
     files: CODE_OR_PUBLISHED,
     // "ask" for delivering work. A question to a person is the only meaning kept (KEEP).
-    pattern: /\b(an|every|each) ask\b|\basks? (gate|resume|binding|marker|option)s?\b|\basked (task|row|worker|turn|colleague)s?\b|\basker\b|\bthe ask\b(?! (card|inbox))/i
+    pattern: /\b(an|every|each) ask\b|\basks? (gate|resume|binding|marker|option)s?\b|\basked (task|row|worker|turn|colleague)s?\b|\basker\b|\bthe ask\b(?! (card|inbox))|\b(task|work|row)s? (it|they|you|a turn|the turn) asked for\b/i
   },
   {
     id: "post-to-mailbox",
@@ -81,6 +83,7 @@ export const EXCLUDE = [
     over: true, why: "the FIX-1816 and FIX-1820 regression checks: ER-11 allows names only, and the closure renames them by map"
   },
   { path: /^goals\/coordinators\/(task-session-stays-open|hands-each-post-to-its-delegates|files-tasks-down-the-owners-chain)\//, over: true, why: "epic regression and coordinator checks: renamed only by the closure's map (ER-11)" },
+  { path: /^goals\/vocabulary\/one-word-per-thing\//, over: true, why: "this sweep: its rules name every retired word on purpose" },
   { path: /^goals\/workforce-mailboxes\/a-routed-post-gets-one-answer\//, over: true, why: "epic coordinator check: renamed only by the closure's map (ER-11)" },
   {
     path: /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|json|jsonl|ya?ml|lock|css|scss|html|txt|toml|sh|py|sql|snap|map|gitignore|npmignore|env|example|d\.ts\.map)$|(^|\/)\.[^/]+$|(^|\/)(LICENSE|Dockerfile)$/,
@@ -93,18 +96,39 @@ export const EXCLUDE = [
 /** Hits that keep their word, each with its reason (D3: ask = a question to a person; hand-off = mid-work). */
 export const KEEP = [
   {
+    path: /^packages\/engine\/src\/stores\/testing\/request-store-conformance\.ts$/,
+    line: /const requestId = "req_fence_(legacy_)?handed_off";$/,
+    rules: ["handoff-symbol"],
+    why: "a same-owner hand-off of a running request: work already under way changing hands"
+  },
+  {
+    path: /^apps\/docs\/docs\/orchestration\/task-board\.md$/,
+    // The sentence sits on a line of its own, so nothing else on the line is kept with it.
+    line: /^\s*Older logs report `"handed-off"` for the same thing\.$/,
+    rules: ["handoff-symbol-in-docs", "handoff-prose"],
+    why: "WR-14: the ending's old stored value, so a reader of an old log knows what it means"
+  },
+  {
+    path: /^goals\//,
+    line: /^\| \d{4}-\d{2}-\d{2} \||no longer posts its answer with a `post-to-mailbox` tool|`post-to-mailbox`, which went with mailboxes/,
+    rules: ["post-to-mailbox"],
+    why: "WR-7: a goal's dated verdict row, or a line saying the tool was removed: history"
+  },
+  {
     path: /^apps\/docs\/docs\/(shift-manager\/|glossary\.md$|glossary\/)/,
     line: /Shift Manager|AskCard|Inbox|approval|question|suspended|\bAsks?\b \|/i,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
     why: "Shift Manager's Ask: an approval or question to a person"
   },
   {
-    path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
+    path: /^apps\/docs\/docs\/workforce\/shift-coordinator\.md$/,
+    // The approval ask's own lines, and only those: any other ask word on the page stays open.
+    line: /^(?!.*\bparkOnAsk\b).*(as `askFire` does|wrap it with an ask|The ask outlives a restart|the ask above refuses)/,
     rules: ["ask-prose", "ask-symbol", "ask-symbol-in-docs", "ask-mark"],
-    why: "the chief of staff's approval ask: a question to a person"
+    why: "the Shift Coordinator's approval ask: a question to a person"
   },
   {
-    path: /^apps\/docs\/docs\/workforce\/chief-of-staff\.md$/,
+    path: /^apps\/docs\/docs\/workforce\/shift-coordinator\.md$/,
     // FIX-1872's exact sentence, and only on a line naming `handOff` once: a stale mention beside it stays open.
     line: /^(?!.*`handOff`.*`handOff`).*A file that still names `handOff` is refused\b/,
     rules: ["handoff-symbol-in-docs", "handoff-prose"],

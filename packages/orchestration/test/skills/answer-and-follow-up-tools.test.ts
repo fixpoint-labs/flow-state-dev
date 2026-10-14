@@ -348,7 +348,7 @@ describe("parkOnQuestion (S1)", () => {
     const b = await board([row("t", { assignee: "w", wait: { gateId: "g", deadline: 9e12 } })]);
     const turn = await claimAsGate(b.ref, "t", b.ctx);
     expect(await park.offered(turn as never)).toBe(false);
-    expect(await ask(turn)).toMatchObject({ ok: false, error: expect.stringMatching(/^asked_task/) });
+    expect(await ask(turn)).toMatchObject({ ok: false, error: expect.stringMatching(/^waited_on_task/) });
     expect(b.get("t")!.status).toBe("in_progress");
   });
 

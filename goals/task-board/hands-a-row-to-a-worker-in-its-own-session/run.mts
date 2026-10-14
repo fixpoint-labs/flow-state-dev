@@ -108,7 +108,7 @@ await runGoal(async (failures) => {
   })({ id: KIND });
 
   if (board.dispatchers.length !== 1) {
-    failures.push(`expected the board to report one handed-off seat, got ${board.dispatchers.length}`);
+    failures.push(`expected the board to report one dispatched worker, got ${board.dispatchers.length}`);
   }
 
   const { createFlowState, runAction, inMemoryStores } = await import("@flow-state-dev/engine");

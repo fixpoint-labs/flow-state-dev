@@ -36,7 +36,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 
 const USER = "u_asker";
 const SESSION = "s_conversation";
-const GATE_ID = "gate_ask_restart";
+const GATE_ID = "gate_wait_restart";
 
 type StepFn = (options: GeneratorModelCallOptions) => GeneratorModelResult;
 

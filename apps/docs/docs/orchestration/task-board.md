@@ -105,6 +105,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"dispatched"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
+  Older logs report `"handed-off"` for the same thing.
 - `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"dispatched"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
 Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
@@ -317,7 +318,7 @@ A registry assignee can also run its tasks somewhere other than the request that
 
 <a id="assignees-that-hand-off"></a>
 
-An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. An assignee can instead dispatch each claimed row to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. An assignee can instead **dispatch** each claimed row to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
 A dispatch run is an ordinary session — of this flow, or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
@@ -362,6 +363,8 @@ export default defineFlow({
 ```
 
 `implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the assignee is the only way in.
+
+The drain dispatches a row once it has claimed it. A board run by a drain has no `dispatchTask` tool, because the drain decides when each task runs. For a worker that needs another worker to start now, see [Giving another worker work](#giving-another-worker-work).
 
 ### Which session a task runs in
 
