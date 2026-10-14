@@ -94,6 +94,20 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
             —
           </span>
         </p>
+        {worker.rules ? (
+          <button
+            type="button"
+            onClick={() => navigate({ level: "rules", worker: worker.id })}
+            className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
+            data-testid="roster-worker-rules"
+          >
+            Rules
+          </button>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="roster-worker-no-rules">
+            This worker's flow doesn't keep standing rules.
+          </p>
+        )}
       </div>
       <div className="space-y-1 pt-0.5">
         <span className="flex gap-0.5">

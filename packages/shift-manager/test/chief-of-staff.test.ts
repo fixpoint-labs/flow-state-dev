@@ -68,6 +68,7 @@ describe("which worker is the chief of staff (V2, D2)", () => {
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
+      rules: false,
       team: STAFF_TEAM,
       name: "chief-of-staff",
     });

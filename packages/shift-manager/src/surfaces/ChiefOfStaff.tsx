@@ -27,6 +27,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
 import { Conversation, ConversationFrame } from "../components/Conversation";
 import { DelegatesPanel } from "../components/DelegatesPanel";
+import { StandingRules } from "../components/StandingRules";
 import { TasksPanel } from "../components/TasksPanel";
 import { conversationSession, COORDINATOR_FLOW } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
@@ -294,7 +295,8 @@ function Talk({
 }
 
 /** The right panel at Shift Coordinator: ON CALL, the workers Roster reads on call. */
-export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+/** @param devtoolUrl The DevTool a rule's conversation opens in, when one is served. */
+export function ChiefOfStaffPanel({ snapshot, gaps, devtoolUrl }: { snapshot: LoadedSnapshot; gaps: Gaps; devtoolUrl?: string }) {
   const states = workerStates(snapshot);
   const onCall = [...states.workers.values()].filter((state) => state.status === "on call");
   // The delegates and tasks panels: only for a chief of staff that runs on the coordinator flow.
@@ -334,6 +336,9 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
           <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
           <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
+          <div className="px-1 pt-4">
+            <StandingRules key={`rules-${cos.id}`} workerId={cos.id} name={NAME} devtoolUrl={devtoolUrl} compact />
+          </div>
         </>
       ) : null}
     </div>
