@@ -534,7 +534,6 @@ function EntryDetails({
 }: {
   address: ProjectAddress;
   entry: WorkstreamEntry;
-  /** The lead's display name, or its id when the roster doesn't name it. */
   leadName: string;
   readerSessionId: string;
   back: ReactNode;

@@ -68,8 +68,6 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
   const flow = worker.kind;
   const listed = new Set(read.list.delegates.map((d) => d.worker));
   const candidates = roster.filter((entry) => entry.id !== worker.id && !listed.has(entry.id));
-  /** What a person reads a worker by: its roster entry's display name, or its id. */
-  const nameOf = (id: string): string => roster.find((entry) => entry.id === id)?.name ?? id;
   const change = async (run: () => Promise<DelegateList>) => {
     setBusy(true);
     setRefusal(null);
@@ -94,7 +92,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           {read.list.delegates.map((delegate) => (
             <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="cos-delegate" data-worker={delegate.worker}>
               <span className="min-w-0 truncate" title={delegate.note}>
-                {nameOf(delegate.worker)}
+                {roster.find((entry) => entry.id === delegate.worker)?.name ?? delegate.worker}
               </span>
               <button
                 type="button"

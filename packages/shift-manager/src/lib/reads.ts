@@ -388,8 +388,6 @@ export const GENERAL_TEAM_NAME = "General";
  * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
  *   is everything before the first one;
  * - an id with no dot is an org worker, and sits in {@link GENERAL_TEAM}.
- *
- * A missing display name reads as the id, so nothing shows blank.
  */
 export function workerNames(
   id: string,
