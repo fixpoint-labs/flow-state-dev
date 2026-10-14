@@ -546,7 +546,7 @@ The spec PR draws automated review from the **same bots that review code PRs** �
 
 Read [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar and the convergence rule" first; it is canonical for the bar, the dispositions, and the budget. This step is how you execute it.
 
-**First resolve the PR state.** For an unmerged review PR, fetch and check out its actual head without resetting it to `main`. For a merged original, start a new amendment branch from fresh `main` and open a follow-up PR; never reopen or push that original branch. Read the current retained set and intervening amendments first: `SPEC.md` and `DECISIONS.md` (a set retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md` or `EVOLUTION.md`; read those too, keep its shape rather than re-drafting it into this one, and record its review notes in its `PLAN.md → Notes from review`).
+**First resolve the PR state.** For an unmerged review PR, fetch and check out its actual head without resetting it to `main`. For a merged original, start a new amendment branch from fresh `main` and open a follow-up PR; never reopen or push that original branch. Read the current retained set and intervening amendments first: `SPEC.md` and `DECISIONS.md` (a set retained in the older shape may also carry `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md` or `EVOLUTION.md`; read those too, and keep its shape rather than re-drafting it into this one). Review notes go in `DECISIONS.md → Notes from review`; only an older-shape set keeps them in its own `PLAN.md → Notes from review`.
 
 #### 6.5.1 Triage every comment — one disposition each
 
