@@ -1,10 +1,4 @@
-/**
- * A roster worker's Rules (`/roster/<workerId>/rules`, FIX-1945): the
- * standing rules that worker keeps for the user, opened from its Roster row.
- *
- * Only a worker on a flow Workforce says keeps rules has them (BR-20). A worker on any other flow gets a line saying its flow doesn't
- * keep them, rather than an empty list it could never fill (BR-21a).
- */
+/** `/roster/<workerId>/rules`. A flow that keeps none gets a line, not an empty list. */
 import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
 import { chiefOfStaffOf, type LoadedSnapshot } from "../lib/derive";

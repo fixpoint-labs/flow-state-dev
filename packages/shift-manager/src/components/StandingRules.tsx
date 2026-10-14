@@ -1,24 +1,10 @@
-/**
- * A worker's standing rules for the user (FIX-1945 S6): each rule with when
- * it was added and the conversation it came from, and add, edit and delete.
- * Drawn on a roster worker's Rules view and in the Shift Coordinator's panel.
- *
- * Every edit goes to the Lab, which checks it with the limits the worker's
- * own tools obey; what is drawn is the list the Lab answered with. A refused
- * edit shows the Lab's reason, and the list is read again.
- */
+/** A worker's standing rules. `compact` draws the list in a side panel. */
 import { useState } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { MAX_RULE_CHARS, MAX_RULES } from "@flow-state-dev/workforce/browser";
-import { useStandingRules, type StandingRule, type StandingRulesView } from "../lib/rules";
+import { useStandingRules, type StandingRule } from "../lib/rules";
 import { SectionFailure } from "./ui";
 
-/**
- * @param workerId The worker whose rules these are.
- * @param name What the page calls the worker.
- * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
- * @param compact Drawn in a side panel rather than as a screen.
- */
 export function StandingRules({ workerId, name, devtoolUrl, compact = false }: { workerId: string; name: string; devtoolUrl?: string; compact?: boolean }) {
   const rules = useStandingRules(workerId);
   const { read } = rules;
@@ -68,7 +54,6 @@ export function StandingRules({ workerId, name, devtoolUrl, compact = false }: {
   );
 }
 
-/** Where a rule came from: a link to its conversation, or *added here*. */
 function Origin({ rule, devtoolUrl }: { rule: StandingRule; devtoolUrl?: string }) {
   if (rule.sessionId === null) return <span data-testid="rule-origin" data-origin="here">added here</span>;
   if (devtoolUrl === undefined) {
@@ -87,7 +72,7 @@ function Origin({ rule, devtoolUrl }: { rule: StandingRule; devtoolUrl?: string 
   );
 }
 
-function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtoolUrl?: string; busy: boolean; edit: StandingRulesView["edit"] }) {
+function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtoolUrl?: string; busy: boolean; edit: ReturnType<typeof useStandingRules>["edit"] }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <li className="flex flex-col gap-1 px-3 py-2" data-testid="rule" data-number={rule.number}>

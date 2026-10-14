@@ -67,11 +67,12 @@ function ownWorkers(entries: readonly RosterEntry[], inventory: readonly Worker[
     .filter((entry) => !entry.standard && !inventory.some((worker) => worker.id === entry.id))
     .map((entry) => {
       const dot = entry.id.indexOf(".");
+      const flow = inventory.find((worker) => worker.kind === entry.flow);
       return {
         id: entry.id,
         kind: entry.flow,
-        door: inventory.find((worker) => worker.kind === entry.flow)?.door ?? null,
-        rules: inventory.find((worker) => worker.kind === entry.flow)?.rules ?? false,
+        door: flow?.door ?? null,
+        rules: flow?.rules ?? false,
         team: dot > 0 ? entry.id.slice(0, dot) : STAFF_TEAM,
         name: dot > 0 ? entry.id.slice(dot + 1) : entry.id,
       };

@@ -333,10 +333,7 @@ function Talk({
   );
 }
 
-/**
- * The right panel at Shift Coordinator: the delegates, tasks and standing rules of a chief of staff on the coordinator flow.
- * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
- */
+/** The right panel at Shift Coordinator: the delegates, tasks and standing rules of a chief of staff on the coordinator flow. */
 export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSnapshot; devtoolUrl?: string }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
   const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;

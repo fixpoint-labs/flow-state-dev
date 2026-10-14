@@ -1,20 +1,4 @@
-/**
- * Goal check: a person edits a worker's standing rules on Shift Manager's
- * Rules page, and the worker's next conversation follows the edit.
- *
- * DevTeam's install, served by Shift Manager's command over a store the run
- * owns, opened in Chromium as its owner. The page is driven the way a person
- * drives it: Roster, the researcher's Rules button, add, edit, delete. What
- * is graded is what the page draws, what it draws again after a reload, and
- * the replies of fresh conversations with the researcher, read back from the
- * session that stored them. The rules store is never an oracle.
- *
- * Control: `GOAL_CONTROL=page-does-not-save` builds the page with its writes
- * swapped for a local edit of the list drawn, so it shows each change and
- * saves none. It must fail `edit-is-followed` and `reload`.
- *
- * Run: PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/standing-rules/the-rules-page-edits-what-the-worker-follows/run.mts
- */
+/** See goal.md. `GOAL_CONTROL=page-does-not-save` must fail `reload` and `edit-is-followed`. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
@@ -48,7 +32,6 @@ const ASKS = [
   "In one sentence, what is the trade-off of a monorepo?",
 ];
 
-/** The control: every page write becomes a local edit of the list drawn, and nothing reaches the Lab. */
 const CONTROL_PATCHES: Patch[] = [
   {
     file: "src/lib/rules.ts",
@@ -70,7 +53,6 @@ function textOf(item: StoredItem): string {
   return "";
 }
 
-/** The rule texts the page draws, in order. */
 async function drawn(page: Page): Promise<string[]> {
   return page.getByTestId("rule-text").allTextContents();
 }
