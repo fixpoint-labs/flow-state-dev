@@ -155,7 +155,8 @@ await runGoal(async (failures) => {
   if (kept !== undefined) renameSync(STORE, kept);
   const before = new Set(runWorktrees().map((w) => w.path));
   const branchesBefore = new Set(git("branch", "--format=%(refname:short)").split("\n"));
-  const mainCommit = git("rev-parse", "main");
+  // The commit the checkout is on: a run's branch is cut from it, and a stale local `main` would count its commits as the run's.
+  const mainCommit = git("rev-parse", "HEAD");
 
   // The person's shell: their Claude credential and model keys, and no Linear seed.
   const env = intentFreeEnv(process.env, { GOAL_CONTROL: "" });
