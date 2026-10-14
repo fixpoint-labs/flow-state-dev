@@ -632,7 +632,7 @@ when its task ends and sits out its whole `timeoutMs`.
 
 | Input | |
 |---|---|
-| `goal`, `assignee`, `deps`, `priority`, `input`, `metadata`, `followUpOf` | A new task, exactly as for `addTask`, and refused the same way |
+| `goal`, `title`, `assignee`, `deps`, `priority`, `input`, `metadata`, `followUpOf` | A new task, exactly as for `addTask`, and refused the same way. `title` is a short, non-empty label shown where the task is listed; `listTasks` answers it when a task has one |
 | `taskId` | A task you recorded earlier on this board, instead of a new one. It must not have started |
 | `wait` | `true` to wait for the result |
 | `timeoutMs` | How long to wait: 30 000 to 3 600 000, five minutes by default. Only with `wait` |

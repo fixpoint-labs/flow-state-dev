@@ -427,7 +427,13 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-/** A board row, from what the board publishes. */
+/**
+ * A board row, from what the board publishes.
+ *
+ * `title` is never absent: a row filed with none reads its goal there. The
+ * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
+ * a title only when it differs from `goal`.
+ */
 export function toBoardRow(boardRef: string, holderSessionId: string, topic: string, data: unknown): BoardRow {
   return {
     boardRef,

@@ -16,19 +16,26 @@ const LINE = 40;
 function Feed({
   lines,
   startAtEnd,
+  resetKey,
+  elementKey,
   onFollow,
   onStay,
 }: {
   lines: number;
   startAtEnd?: boolean;
+  /** What the feed shows; a change is a different thing to open at the end of. */
+  resetKey?: string;
+  /** A new value replaces the scrolling element itself, with the same content. */
+  elementKey?: string;
   onFollow?: (follow: () => void) => void;
   onStay?: (stay: () => void) => void;
 }) {
-  const feed = useFollowLatest({ startAtEnd });
+  const feed = useFollowLatest({ startAtEnd, resetKey });
   onFollow?.(feed.follow);
   onStay?.(feed.stay);
   return (
     <div
+      key={elementKey}
       data-testid="feed"
       ref={(node) => {
         if (node !== null && !Object.getOwnPropertyDescriptor(node, "scrollHeight")) {
@@ -96,6 +103,35 @@ describe("following a conversation's latest turn", () => {
     rerender(<Feed lines={9} startAtEnd={false} onFollow={(f) => (follow = f)} />);
     await settle();
     expect(feed.scrollTop).toBe(9 * LINE - VIEW);
+  });
+
+  it("opens at the end again when what it shows changes, even from where the user had scrolled up to", async () => {
+    const { rerender } = render(<Feed lines={5} resetKey="a" />);
+    await settle();
+    scrollTo(0);
+    rerender(<Feed lines={5} resetKey="a" />);
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(0);
+    rerender(<Feed lines={7} resetKey="b" />);
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(7 * LINE - VIEW);
+  });
+
+  it("leaves a user who scrolled up where they are when only the scrolling element is replaced", async () => {
+    const { rerender } = render(<Feed lines={5} resetKey="a" elementKey="one" />);
+    await settle();
+    scrollTo(0);
+    rerender(<Feed lines={5} resetKey="a" elementKey="two" />);
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(0);
+  });
+
+  it("does not follow a changed key when it opens at the start", async () => {
+    const { rerender } = render(<Feed lines={5} startAtEnd={false} resetKey="a" />);
+    await settle();
+    rerender(<Feed lines={7} startAtEnd={false} resetKey="b" />);
+    await settle();
+    expect(screen.getByTestId("feed").scrollTop).toBe(0);
   });
 
   it("stays put when history is loaded above a feed that fit, rather than jumping past it", async () => {

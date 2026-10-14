@@ -285,6 +285,7 @@ function Talk({
       onAutoSend={clearHandedLine}
       renderItem={renderAsk}
       scale="cos"
+      startAtEnd
     />
   );
 }

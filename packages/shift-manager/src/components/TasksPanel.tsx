@@ -20,7 +20,8 @@ import { columnFor, isDone, readStatus } from "../lib/columns";
 import { workerLabel } from "../lib/derive";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Worker } from "../lib/reads";
+import { conversationBoardRef, describeFailure, type Worker } from "../lib/reads";
+import { navigate } from "../lib/routes";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 
 type Read = { tasks: ConversationTask[] } | { failure: string } | undefined;
@@ -115,7 +116,8 @@ export function TasksPanel({
       </p>
     );
   }
-  if (!activeOnly) return <TaskList tasks={read.tasks} />;
+  const boardRef = conversationBoardRef(sessionId);
+  if (!activeOnly) return <TaskList tasks={read.tasks} boardRef={boardRef} />;
   const done = read.tasks.filter((task) => isDone(task.status));
   const errored = read.tasks.filter(isErrored);
   const active = read.tasks.filter((task) => !isDone(task.status) && !isErrored(task));
@@ -126,15 +128,15 @@ export function TasksPanel({
           No task is active.
         </p>
       ) : (
-        <TaskList tasks={active} />
+        <TaskList tasks={active} boardRef={boardRef} />
       )}
-      <TaskGroup tasks={done} name="done" />
-      <TaskGroup tasks={errored} name="errored" />
+      <TaskGroup tasks={done} name="done" boardRef={boardRef} />
+      <TaskGroup tasks={errored} name="errored" boardRef={boardRef} />
     </div>
   );
 }
 
-function TaskGroup({ tasks, name }: { tasks: readonly ConversationTask[]; name: string }) {
+function TaskGroup({ tasks, name, boardRef }: { tasks: readonly ConversationTask[]; name: string; boardRef: string }) {
   if (tasks.length === 0) return null;
   return (
     <Collapsible className="group/tasks px-1" data-testid="cos-task-group" data-group={name}>
@@ -145,13 +147,14 @@ function TaskGroup({ tasks, name }: { tasks: readonly ConversationTask[]; name: 
         <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/tasks:rotate-90" />
       </CollapsibleTrigger>
       <CollapsibleContent className="outline-none">
-        <TaskList tasks={tasks} />
+        <TaskList tasks={tasks} boardRef={boardRef} />
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
-function TaskList({ tasks }: { tasks: readonly ConversationTask[] }) {
+/** Each task opens its session on the conversation's board. */
+function TaskList({ tasks, boardRef }: { tasks: readonly ConversationTask[]; boardRef: string }) {
   return (
     <ul className="space-y-0.5" data-testid="cos-tasks">
       {tasks.map((task) => (
@@ -163,12 +166,17 @@ function TaskList({ tasks }: { tasks: readonly ConversationTask[] }) {
           data-status={task.status}
         >
           <StateSquare state={STATE_OF_COLUMN[columnFor(task.status)]} className="mt-1.5" />
-          <span className="min-w-0">
-            <span className="line-clamp-2">{task.goal}</span>
+          <button
+            type="button"
+            className="min-w-0 text-left hover:underline"
+            data-testid="cos-task-open"
+            onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
+          >
+            <span className="line-clamp-2">{task.title || task.goal}</span>
             <span className="block text-xs text-muted-foreground">
               {task.status} · {task.assignee == null ? "unassigned" : workerLabel(task.assignee)}
             </span>
-          </span>
+          </button>
         </li>
       ))}
     </ul>

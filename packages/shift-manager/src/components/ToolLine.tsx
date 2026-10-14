@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
+import { TaskBoardMeta } from "./TaskBoardMeta";
 import { ToolInput, ToolOutput } from "./flow-state/tool";
 
 type CallState = "pending" | "running" | "waiting" | "completed" | "error" | "retried";
@@ -175,5 +176,6 @@ export const shiftManagerRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   tool_output: ToolLine,
   // A coordinator's routing record, drawn apart from the conversation's lines.
-  component: { ...chatAssistantRenderers.component, [COORDINATOR_ROUTE]: CoordinatorRoute },
+  // Its task board, with each row opening that task's session.
+  component: { ...chatAssistantRenderers.component, [COORDINATOR_ROUTE]: CoordinatorRoute, "task-board-meta": TaskBoardMeta },
 };
