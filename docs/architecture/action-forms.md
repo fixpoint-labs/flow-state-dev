@@ -185,7 +185,7 @@ tenant's is `session-not-found`, unless the target carries `state`: then an
 absent id is created there as a top-level session of the running principal,
 from that state, judged by the target flow's `createCheck` with
 `via: "dispatch"` (`create-refused` otherwise), and an existing one is
-delivered into as before; another flow's or a mismatched org is
+delivered into; another flow's or a mismatched org is
 `session-not-addressable` — and is refused under an external dispatcher whose
 adapter supplies no shared lease backend (`usesExternalDispatcher` without
 `arbitratesExternalDispatch`, refusal `external-dispatcher`), because the run

@@ -233,6 +233,7 @@ const sidebars: SidebarsConfig = {
         "workforce/standing-rules",
         "workforce/coordinators",
         "workforce/delegating-work",
+        "workforce/messaging-workers",
         "workforce/documents-on-disk",
         "workforce/code-on-disk",
         "workforce/capabilities-on-disk",

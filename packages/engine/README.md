@@ -616,9 +616,9 @@ Adapters must implement all of these options:
 
 Every path that creates a session (the create route, an action to a session
 id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
-into a child session or into an absent `{ id, state }` target) creates it
-from an initial state: the create body's `state`, `fsdev run --seed-session`,
-or the `state` a dispatch's `{ key, state }` or `{ id, state }` session names. The flow's session `stateSchema` parses it. A
+that creates its session) creates it from an initial state: the create body's
+`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()` session
+target names. The flow's session `stateSchema` parses it. A
 flow that binds its sessions (a top-level `.readonly()` field or a
 `createCheck`) refuses a state the schema refuses; any other flow keeps it as
 sent, for its actions to validate when they run. `session.serverOwned`
@@ -627,6 +627,14 @@ names fields a caller may not seed. Most flows need nothing more. The optional
 or on what exists in the store: it receives the verified caller and the parsed
 state, and accepts or refuses the create. A turn on an existing session never
 calls it.
+
+A dispatch creates a session through one of two targets. `{ key }` creates a
+child session of the dispatching one, from `state` when the target names one.
+`{ id, state }` creates a
+top-level session at that id when none exists, judged by the target flow's
+`createCheck` (`create-refused` when it refuses), and delivers into the
+session when it does exist. An `{ id }` target without `state` never creates:
+an unknown id is refused as `session-not-found`.
 
 A top-level `stateSchema` field declared `.readonly()` is set when the session
 is created and never changes: a run's write that changes it throws

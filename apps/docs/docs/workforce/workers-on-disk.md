@@ -753,8 +753,9 @@ const session = await workforce.ensureWorkerSession({ worker: "researcher" })
 ```
 
 `createWorkforceClient` takes the same options as `createSessionClient`. Its
-`ensureWorkerSession` returns the user's most recent session with that worker, and creates one
-if there isn't one. It looks up the worker's flow for you. Two calls at once get the same
+`ensureWorkerSession` returns the user's conversation with that worker, and creates it
+if there isn't one. Messages from [other workers](./messaging-workers.md) land in that
+conversation. It looks up the worker's flow for you. Two calls at once get the same
 session, not two. If you move a worker to another flow, the next call starts a new session
 there. When you only want to check, `findWorkerSession` takes the same argument and returns the
 session or nothing. Both throw `No worker "<id>" on your roster.` for a worker that isn't on
@@ -770,6 +771,9 @@ const sessions = createSessionClient({ baseUrl })
 const mine = await sessions.listSessions({ flowKind: "agent", userId, state: { workerId: "researcher" } })
 const fresh = await sessions.createSession({ flowKind: "agent", userId, state: { workerId: "researcher" } })
 ```
+
+A session you start this way is a conversation of its own. `ensureWorkerSession` and
+`findWorkerSession` never return it, and messages from other workers don't land in it.
 
 The server checks the worker when the session is created: it must be yours or a standard
 one, and it must run on this flow. A worker that isn't yours is refused with the same answer

@@ -13,6 +13,8 @@ There are two ways to hand something over. A [coordinator](./coordinators.md) pa
 
 A worker files tasks when one of its delegates can take a task. There's no switch to flip. Who the worker hands work to decides it.
 
+To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-or-delegate).
+
 ## Giving a worker the task tools
 
 List the delegates in the worker's `WORKER.md`:
@@ -63,7 +65,7 @@ export const emFlow = workerFlow((installation) => {
     name: "em-answer",
     model: "openai/gpt-5.4-mini",
     inputSchema: messageInput,
-    uses: [board.tools],
+    uses: [board.tools, board.messages],
     prompt: "You lead the feature. File the work for your delegates; never do it yourself.",
     user: (input) => input.message,
   });
@@ -93,11 +95,12 @@ What the kit gives you, and where each piece goes:
 | Field | Put it in |
 |-------|-----------|
 | `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
+| `messages` | The same `uses`. It carries `messageWorker`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
 | `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
-| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends. |
+| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. |
 | `files(ctx)` | Read it when you need to know whether the running session files now. |
 | `taskDelegates(ctx)` | The session's delegates as a task sees them: `available` (worker id to flow) and `unavailable` (worker id to why). |
 
@@ -176,5 +179,6 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 ## Related pages
 
 - [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.
+- [Messaging other workers](./messaging-workers.md): asking another worker something without filing a task.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.
 - [Task board](../orchestration/task-board.md): the board and the task tools underneath.

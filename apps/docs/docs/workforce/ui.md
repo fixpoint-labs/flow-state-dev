@@ -125,6 +125,10 @@ Each row shows the task's `title` (its `goal` if there is no title, its `id` if 
 
 Loading, an empty board and a failed read look different from each other. A failed read says what failed and offers a Retry button. The `empty` slot replaces the empty note. The `row` slot returns the body that goes inside the list's own `<li>`, which carries `data-task-id`.
 
+## Messages between workers
+
+No component draws the [messages your workers send each other](./messaging-workers.md). Read the user's message log as a collection, `WORKER_MESSAGES_RESOURCE`, through any of their worker sessions, and render the rows yourself; [Showing messages in your app](./messaging-workers.md#showing-messages-in-your-app) has the read and the row shape. In a conversation, a sent message is a call to the tool named `MESSAGE_WORKER_TOOL`, which you can match to draw it as a line of its own.
+
 ## Where each component reads from
 
 ![Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function](./ui-read-sources.svg)

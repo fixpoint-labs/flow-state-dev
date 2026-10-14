@@ -91,6 +91,7 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 | **Roster** | Every worker, grouped as on shift (running a task, or waiting on you) or off shift. A worker that keeps [standing rules](../workforce/standing-rules.md) has a **Rules** button: the notes it keeps for you, with when each was added and where it came from. Add, edit or delete them there; the next turn reads the change. A worker whose flow doesn't keep rules has no button, and its row says so. |
 | **A project** | Shared with your org, or private to you. Tabs: Stream (your own [project coordinator](../workforce/projects.md#talking-to-a-project)), Workstreams (every workstream's entry, with the progress worked out from them), Board (the tasks of your own workstreams) and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md). |
 | **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. |
+| **Messages** | Every [message](../workforce/messaging-workers.md) one of your workers sent another, newest first, with a message and its answers kept together. Each line shows when it was sent, who sent it, who got it and its first line of text. The sender and the recipient are links: each opens the conversation that holds the message on that side. A message that wasn't delivered, or whose delivery couldn't be confirmed, says so. Messages aren't tasks, so nothing here shows on Tasks. |
 | **Settings** | Your own keys for the MCP servers the Lab offers its projects' coding runs. See [Settings](./settings.md). |
 | **A task** | One worker's run, live, with Interrupt to stop it. *Open trace* opens the run's session in the DevTool (see [Opening a session from a link](../devtool/overview.md#opening-a-session-from-a-link)). |
 
@@ -101,6 +102,8 @@ The sidebar lists, under PROJECTS, the org's shared projects and your own privat
 In your own app, `openWorkstream` takes whichever lead you name. See [Projects](../workforce/projects.md#workstreams).
 
 Shift Coordinator, a workstream and a task also have a panel on the right. The sidebar and the right panel each collapse from their own toggle or from the keyboard: `[` for the sidebar, which shrinks to a column of icons, and `]` for the right panel, which shrinks to a strip. Each one's state is kept in the browser for the signed-in user. On a window narrower than 1180px, the right panel starts collapsed and opens over the center.
+
+In a conversation, a message the worker sent another worker shows as its own line, *To &lt;worker&gt;: &lt;text&gt;*, with a link to Messages. One that was refused says it wasn't sent, and why. A message a worker received shows as *From &lt;worker&gt;: &lt;text&gt;*, under the sender's name.
 
 A board has five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU and DONE. In a workstream's composer, a message that starts with `@` and a worker's name goes to that worker's task in the workstream.
 
