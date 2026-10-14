@@ -30,7 +30,12 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { claudeCodeAgent, probeClaudeAccount, type ClaudeAccountProbe } from "@flow-state-dev/claude-code/sdk";
 import { harnessEnv } from "@flow-state-dev/core";
-import { mcpCredentialsCapability, projectWorkspaceCapability, type ProjectMcpToolsResolver } from "@flow-state-dev/workforce";
+import {
+  mcpCredentialsCapability,
+  projectWorkspaceCapability,
+  type ErrorReporterHarnessFeeds,
+  type ProjectMcpToolsResolver,
+} from "@flow-state-dev/workforce";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
 import { harnessStub, type StubRun } from "./harness-stub.mts";
 import { commitAll, hasChanges } from "./scratch-repo.mts";
@@ -130,6 +135,29 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
       "You are a coding agent working in the directory you have been placed in. " +
       "Do what your instructions and your brief say, then commit your work with git. " +
       "Do nothing else.",
+  } as never) as unknown as HarnessBlock;
+}
+
+/**
+ * Claude Code as the Error Reporter's harness (FIX-1983): it reads the code
+ * and files through the tracker project's MCP servers, and changes nothing.
+ * Read and search only; writing, editing and the shell are kept out. `env`
+ * passes only {@link CLAUDE_CODE_PASS}, as the coder's does: the tracker's key
+ * reaches the run's tools through the Lab's connection, never the run.
+ */
+export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeeds): HarnessBlock {
+  return claudeCodeAgent({
+    cwd,
+    ...(mcpTools === undefined ? {} : { mcpTools, uses: [projectWorkspaceCapability, mcpCredentialsCapability] }),
+    env: claudeCodeEnv(),
+    detached: true,
+    allowedTools: ["Read", "Grep", "Glob"],
+    disallowedTools: ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
+    permissionMode: "default",
+    maxTurns: 40,
+    systemPrompt:
+      "You investigate failures in the code in your working directory and write bug reports about them. " +
+      "Read and search the code; never change a file. Do what the prompt asks, then answer as it says.",
   } as never) as unknown as HarnessBlock;
 }
 

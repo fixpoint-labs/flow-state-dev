@@ -107,6 +107,10 @@ the stack's top frame too, at the cost of more duplicates.
 - **The preview card** shows the draft issue and the reporter's questions. *File* (with optional
   instructions) folds the answer in and files; *Don't file* closes it, and repeats of that
   fingerprint are counted without a new card for 24 hours.
+- **A person can report a problem by messaging the Error Reporter** in its own conversation,
+  naming a session, task or project or none. It takes the same intake (the person's description
+  stands in for the error message in the fingerprint, under the same cap), the same Inbox
+  preview and the same filing. Jake asked for it on 2026-10-14.
 - **Harness is a slot on the reporter's flow**, like `coder`'s, Claude Code by default.
   `WORKER.md` gains no harness key.
 - **Instructions are the `WORKER.md` body plus the operator's standing rules**, edited by talking

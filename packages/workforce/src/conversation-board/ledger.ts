@@ -15,6 +15,8 @@
  *   ending written here goes through orchestration's `recordEnding` (its notice module), so the
  *   ending and the debt to tell the conversation land together or not at all.
  *   Only the notice's delivery clears it.
+ * - **A report** the Error Reporter is owed for a task that ended errored is a
+ *   marker beside it, written by the same recorder (`./report-owed`).
  * - **A start** is no marker at all: it is the row's own state. A row that is
  *   pending, assigned and claimable is owed a board run, so whatever wrote it
  *   that way (an add, an assign, a retry, an answered park) wrote the debt in
@@ -37,6 +39,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
 import { filingSessionIdOf } from "./filing-session";
+import { markReportOwed, withoutReportMarkers } from "./report-owed";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
@@ -98,7 +101,9 @@ export const conversationLedger = Object.assign(
     id: CONVERSATION_LEDGER_ID,
     scope: "user",
     partitionBy: conversationPartition,
-    recordEnding
+    // The notice the filer is owed, and, for an errored ending, the report the
+    // Error Reporter is owed (FIX-1983), in the ending's one write.
+    recordEnding: (row, ending) => markReportOwed(recordEnding(row, ending), ending)
   }),
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
@@ -133,15 +138,16 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
 
 /**
  * Metadata a caller hands in, without any marker this board keeps: a filing
- * or a patch can't forge an owed notice, or clear one, or make a row a piece
- * of a task or another piece's retry, or point a row at a session as its
- * split (FIX-1802 S4).
+ * or a patch can't forge an owed notice or an owed report, or clear one, or
+ * make a row a piece of a task or another piece's retry, or point a row at a
+ * session as its split (FIX-1802 S4).
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> | undefined {
-  const kept = withoutNoticeMarkers(metadata);
-  if (kept === undefined) return kept;
+  const unmarked = withoutNoticeMarkers(metadata);
+  if (unmarked === undefined) return unmarked;
+  const kept = withoutReportMarkers(unmarked);
   const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [RETRY_OF]: _retry, ...rest } = kept;
   return rest;
 }
