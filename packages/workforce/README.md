@@ -1931,10 +1931,11 @@ description lists the workers this one can message now.
 - **Answering.** The recipient answers with `messageWorker`, `to` the sender and `replyTo` the
   message's id. The answer lands in the session the message was sent from and wakes the sender
   there; a message sent from a task session is answered in the sender's own conversation instead.
-  A turn woken by a first message that ends without messaging the sender has its final text sent
-  to the sender as the answer, as if with `replyTo` (cut to 8,000 characters); a turn that ends
-  with no text sends nothing, and a turn woken by an answer never sends its text back. Nothing
-  waits on an answer.
+  A turn woken by a message (not an answer) that ends without messaging the sender has its final
+  text sent to the sender as the answer, as if with `replyTo` (cut to 8,000 characters). That
+  answer counts toward both limits; when one refuses it, nothing is sent or logged. A turn that
+  ends with no text sends nothing, and a turn woken by an answer never sends its text back.
+  Nothing waits on an answer.
 - **Limits.** Everything descending from one user's line is one chain: its messages, the turns
   they wake and the tasks filed along the way, parallel branches included. A chain stops after
   `hopLimit` (6) messages in total; a user's line starts a new chain. One turn sends at most
@@ -1944,11 +1945,11 @@ description lists the workers this one can message now.
   (`WORKER_MESSAGES_RESOURCE`, rows parsed by `workerMessageRowSchema`), readable from the browser
   through the user's roster session or any session on a flow that carries the session board:
   `id`, `from`, `to`, `text`, `exchange`, `replyTo`, `fromSession`, `toSession`, `chain` (the
-  chain's id; can be absent on older rows), `hop` (the message's place in the chain, from 1), `status`
+  chain's id; optional), `hop` (the message's place in the chain, from 1), `status`
   (`delivered`, `refused` or `unconfirmed`), `reason` and `at`. Another user's rows are never
   returned.
 
-A message is not a task: it files no row, owes no result, and doesn't count toward a task chain.
+A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
 On a flow of your own, add the kit's `messages` to the model block's `uses`, beside `tools`, to let
 its workers send; `entries(turn)` already lets them receive. See
 [Messaging other workers](https://flow-state.dev/docs/workforce/messaging-workers).

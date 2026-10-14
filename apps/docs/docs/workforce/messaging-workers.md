@@ -86,11 +86,11 @@ There's no way to block on a reply. A worker that's told to "wait for the answer
 
 ## Limits
 
-**A chain stops after 6 messages with nobody in between.** Everything that descends from one of your lines is one chain with one count: the messages, the turns they wake, the answers those turns send and the tasks filed along the way. Workers that fan out in parallel draw on the same 6. A ring where every woken worker both passes the message on and answers it stops at 6 messages in total. The send that would be the 7th is refused, and the worker is told to stop passing messages on and say so. Your next line to a worker starts a new chain with a count of its own.
+**A chain stops after 6 messages with nobody in between.** Everything that descends from one of your lines is one chain with one count: the messages, the turns they wake, the answers those turns send and the tasks filed along the way. Workers that fan out in parallel draw on the same 6. The send that would be the 7th is refused, and the worker is told to stop passing messages on and say so. Your next line to a worker starts a new chain with a count of its own.
 
 **A turn sends at most 3 messages.** The 4th send in the same turn is refused.
 
-An answer sent from a turn's final text counts toward both limits like any other message. When either limit would refuse it, nothing is sent.
+An answer sent from a turn's final text counts toward both limits like any other message. When either limit would refuse it, nothing is sent and the log gets no row.
 
 Both limits are set when you register the flows:
 
@@ -135,12 +135,12 @@ A message is talk. [Delegating](./delegating-work.md) is handing over work. Pick
 | What it's for | A question, an FYI, a heads-up | Work that has to get done |
 | Who it can go to | Any worker on your roster that has a conversation | One of the worker's own delegates that takes tasks |
 | Where it runs | The recipient's own conversation with you | A new task session of its own |
-| What comes back | Nothing is owed. An answer, unless the recipient's turn ends with no text | The task's ending, always: completed, failed or cancelled |
+| What comes back | Nothing is owed. Usually an answer, but none if the recipient's turn ends with no text or a limit refuses it | The task's ending, always: completed, failed or cancelled |
 | On the board | Nothing | A row the filer can list, update and cancel |
 
 A task keeps the reporting line. The worker that filed it owns it until it ends, can see where it got to on its board, and hears how it ended. A message has none of that. If the sender needs a result it can count on, it should file a task. If it needs a fact, an opinion or to pass something on, a message is enough.
 
-The two don't count against each other. Messages never add to a task chain's depth or its task limit, and filing a task doesn't count as a message.
+The two don't count against each other. Messages never add to a task's depth or count toward `taskChainLimit`, and filing a task doesn't count as a message.
 
 ## On your own worker flow
 
@@ -204,7 +204,7 @@ Each row has:
 | `exchange` | The id of the first message in the exchange. A message and its answers share one. |
 | `replyTo` | The message this one answers, when it answers one. |
 | `fromSession`, `toSession` | The session it was sent from, and the session it landed in. |
-| `chain` | The id of the chain the message belongs to: everything descending from one user's line. Can be absent on older rows. |
+| `chain` | The id of the chain the message belongs to: everything descending from one user's line. Optional. |
 | `hop` | Its place in that chain, from 1. |
 | `status` | `delivered`, `refused`, or `unconfirmed`. |
 | `reason` | Why it was refused or is unconfirmed. |
