@@ -140,8 +140,8 @@ that opens it through `openLab`; `fsdev dev --config` takes either file:
 
 - `fsd.fsdev.config.mts` is the `fsd` profile, what `pnpm shift-manager:dev` opens: the
   same tree with two projects on this repository, FSD and Shift Manager, and Claude Code as
-  its coder. Its coders read the profile's own brief (`fsd-projects.mts`) in place of
-  `feature-brief.md`, which is DevTeam's demo contract. A coding run on either works in a
+  its coder. Its coders read the profile's own brief and commit style (`fsd-projects.mts`)
+  in place of `feature-brief.md` and `commit-style`, DevTeam's demo contract and marker. A coding run on either works in a
   fresh worktree of the checkout this file sits in, on a branch cut from local `main`; a run
   on any other project is refused, and nothing is cloned.
 - `fsdev.config.mts` is the `devteam` profile, DevTeam's demo, which the checks run against.

@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
-import { FSD_DOCUMENTS } from "../teams/devteam/fsd-projects.mts";
+import { FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, type Lab, type OpenLabOptions } from "../teams/devteam/host.mts";
 import { createLabClients } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
@@ -133,7 +133,7 @@ describe("the fsd profile", () => {
     expect(Object.keys(await projectRows(devteam)).sort()).toEqual(["platform", "sandbox", "storefront"]);
   }, 120_000);
 
-  it("hands openLab its checkout mapping and its own coder brief, and allows no remote", async () => {
+  it("hands openLab its checkout mapping and its own coder brief and commit style, and allows no remote", async () => {
     // What the profile handed `openLab`, read by wrapping it: the mapping's
     // own shape and where its runs work is fsd-checkout.test.ts.
     let handed: OpenLabOptions | undefined;
@@ -148,8 +148,9 @@ describe("the fsd profile", () => {
     }
     const workspace = handed?.workspace as { remotes?: unknown; checkouts?: unknown } | undefined;
     expect({ remotes: workspace?.remotes, checkouts: workspace?.checkouts }).toEqual({ remotes: { allow: [] }, checkouts: CHECKOUTS });
-    // What a run on these documents is handed is fsd-checkout.test.ts.
+    // What a run on these documents and skills is handed is fsd-checkout.test.ts.
     expect(handed?.documents).toEqual(FSD_DOCUMENTS);
+    expect(handed?.skills).toEqual(FSD_SKILLS);
   }, 120_000);
 
   // The profile maps only its two shared projects to this checkout, and
