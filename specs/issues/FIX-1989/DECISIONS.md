@@ -81,8 +81,15 @@ could answer. Then FIX-1990 moves up.
   per-turn count. Both counts are written by the server from the sending turn's request state,
   never from tool input. The tool, and any later caller (FIX-1990's harness tool), go through it.
 - **A message is not delegation.** No task row, no delegate change, no task-chain count. A
-  woken recipient may delegate as it always could, to its own delegates, and that task starts a
-  fresh chain as any person-free filing does today.
+  woken recipient may delegate as it always could, to its own delegates; that task starts a
+  fresh *task* chain as any filing from a conversation does today, but it keeps the *hop* count.
+- **Where the hop count lives.** In a server-owned session-state field, never in the task-chain
+  collection, and copied to request state when a turn starts. A person's turn writes 0 (at the
+  person's-turn mark). `onWorkerMessage` writes the message's count before it wakes the turn.
+  A task session is born with its filer's current count in its starting state, beside the task
+  chain fields the board already sets at hand-over, which the create check already refuses from
+  any caller but a dispatch. A notice's or post's turn reads the session's current count. So A
+  messages B (1), B delegates to C, and C messaging A sends at 2.
 - **The message log** is one user-scoped collection, one row per message: from, to, text,
   thread (the first message's id), `replyTo`, the sending and receiving sessions, hop count,
   status (delivered, refused) and time. It is what the Messages view reads, what an answer is
@@ -107,16 +114,24 @@ could answer. Then FIX-1990 moves up.
   as the Shift Coordinator, runs its answer turn, as a task's notice already wakes it.
 - **The wait** is bounded by the same timeout `dispatchTask({ wait })` uses, and one wait per
   step, as there. Waiting is the sender's choice; a conversation turn does not need it, because the
-  answer wakes the conversation.
+  answer wakes the conversation. An answer that arrives after its waiter timed out is delivered
+  as any answer is: a line in the asking session that wakes it, or, when that session has ended,
+  in the sender's own conversation. It never resumes the timed-out call.
 - **Layer rule.** The engine and core gain one generic option, starting state on an `{ id }`
   dispatch target, which creates the session at that id when absent and is judged by the target
-  flow's create check, as a `{ key }` child already is. The create check on a derived id already
-  refuses a create that is not the user's own derivation. No worker word reaches the core or
-  engine; an `{ id }` with no state is still never created.
-- **Shift Manager's conversation address.** A first line opens a worker's conversation with
-  `ensureWorkerSession({ worker })` instead of a random id, and the view shows that session
-  when it exists, else the newest one as today, so an older conversation is still shown until the
-  derived one is opened.
+  flow's create check, as a `{ key }` child already is. The seam's create path already runs that
+  check: `birthSession` ([`session-birth.ts`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/engine/src/context/session-birth.ts),
+  called from `create-request-host.ts`) passes it the sending principal with `via: "dispatch"`,
+  and the worker flows' check ([`installation.ts`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/workforce/src/workers/installation.ts),
+  `createCheck`) recomputes a derived id for that principal and refuses one that is not theirs.
+  The new option must keep the `{ id }` create on that same path; leg 4 proves it with a derived
+  id for the second user's worker. No worker word reaches the core or engine; an `{ id }` with
+  no state is still never created.
+- **Shift Manager's conversation address.** A worker's conversation is always
+  `ensureWorkerSession({ worker })`. `newConversationId`, `openConversation` and the
+  newest-parentless-session rule are deleted, with no fallback: an older conversation opened at
+  a random id stays in the store, reachable from the session lists, but the worker's view opens
+  the derived one. Labs are pre-release, so nothing is migrated.
 
 ## Considered and dropped
 
@@ -143,7 +158,10 @@ could answer. Then FIX-1990 moves up.
   answer. The hop count now resets only on a person's turn, across every kind of turn, and the goal
   check gained a three-worker ring, a fan-out, the other direction and a failing recipient.
 
-- **Review, round 1** — a thrown dispatch is no longer marked refused, and the entry dedupes by
+- **Review, round 1** — the architect's pass: the derived-id refusal is now traced to the seam's
+  create path, the hop count's carrier through a delegation is named, the random conversation ids
+  and their fallback are deleted, and a late answer has a home. Legs 3 and 4 gained the shapes
+  that prove the first two. Also, a thrown dispatch is no longer marked refused, and the entry dedupes by
   message id, so a retry can't wake a recipient twice. Leg 3 now asks only the refused worker to
   show that it stopped.
 
