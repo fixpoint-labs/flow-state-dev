@@ -24,6 +24,7 @@ import {
   getOrCreateTaskCollection,
   resolveResourceCollection,
   type Task,
+  type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
@@ -178,6 +179,8 @@ function host(options: {
    * manager's own fixed-board door, which can't say.
    */
   reopenIn?: string;
+  /** Another line reopens the row just before this door's own reopen, which then declines. */
+  reopenedFirst?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-door-"));
   dirs.push(dir);
@@ -290,12 +293,15 @@ function host(options: {
               uses: [board.capability],
               boards: async (ctx) => [
                 {
-                  tasks: await getOrCreateTaskCollection({
-                    ctx,
-                    backing: "resource",
-                    collectionId: BOARD_ID,
-                    collection: resolveResourceCollection(ctx, BOARD_ID)!,
-                  }),
+                  tasks: raceReopen(
+                    await getOrCreateTaskCollection({
+                      ctx,
+                      backing: "resource",
+                      collectionId: BOARD_ID,
+                      collection: resolveResourceCollection(ctx, BOARD_ID)!,
+                    }),
+                    options.reopenedFirst === true,
+                  ),
                   orgScoped: true,
                   drain: { drain: "resume" },
                   reopenIn: options.reopenIn,
@@ -1099,6 +1105,17 @@ describe("a turn to a run that is not working right now", () => {
   }, 60_000);
 });
 
+/** The board's rows, with a reopen another line wins first when `raced`. */
+function raceReopen(tasks: TaskCollectionRef, raced: boolean): TaskCollectionRef {
+  if (!raced) return tasks;
+  return Object.assign(Object.create(tasks) as TaskCollectionRef, {
+    reopen: async (id: string, options?: Parameters<TaskCollectionRef["reopen"]>[1]) => {
+      await tasks.reopen(id, options);
+      return tasks.reopen(id, options);
+    },
+  });
+}
+
 describe("a person's message on a finished task (FIX-1764)", () => {
   it.each([
     ["completed", ["finished", "finished"] as Step[], 3],
@@ -1128,6 +1145,23 @@ describe("a person's message on a finished task (FIX-1764)", () => {
     },
     60_000,
   );
+
+  it("decides again when another line reopened the task first, and the line reaches the reopened attempt", async () => {
+    const lab = host({ script: ["finished", "finished"], maxAttempts: 3, reopenIn: `s_${ALICE}`, reopenedFirst: true });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed", "the run to finish");
+
+    const sent = await lab.send(ALICE, "one more thing: rename the flag");
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    // Decided again on the open row: not yet claimed, so the turn waits for its attempt.
+    expect(sent.output).toMatchObject({ outcome: "kept" });
+    // The winning line's drain.
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed" && t.attempts === 2, "the reopened attempt");
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("one more thing: rename the flag");
+  }, 60_000);
 
   it("refuses a finished run whose harness never named a coding session, and leaves it finished", async () => {
     const lab = host({ script: ["no-session"], maxAttempts: 1, reopenIn: `s_${ALICE}` });

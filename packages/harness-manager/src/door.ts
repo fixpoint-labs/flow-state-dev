@@ -312,7 +312,8 @@ function linkedRow(tasks: TaskCollectionRef, sessionId: string): Task | undefine
     .filter((task) => (task as Task).run?.sessionId === sessionId) as Task[];
   return (
     linked.find((task) => task.status === "in_progress") ??
-    linked.sort((a, b) => b.attempts - a.attempts)[0]
+    // The latest of a task and its follow-ups, which share the session and run one at a time.
+    linked.sort((a, b) => b.createdAt - a.createdAt || b.attempts - a.attempts)[0]
   );
 }
 
@@ -381,8 +382,17 @@ function answered(outcome: MessageDoorOutput["outcome"], taskId: string): Decide
   return { outcome, taskId, requeue: false, resumeIn: null, collectionId: null, partition: null, drain: null, flowKind: null };
 }
 
-/** Decide what a person's line does to the run, and do it. */
-async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockContext): Promise<Decided> {
+/** Another line reopened the finished row first; this one decides again on the row as it is now. */
+class ReopenedFirst extends Error {}
+
+/**
+ * Decide what a person's line does to the run, and do it.
+ *
+ * @param again Set on the second decision after another line reopened the row
+ *   first. That line's attempt may already have read its turns, so this one is
+ *   decided again on the open row, by the rules for a running attempt.
+ */
+async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockContext, again = false): Promise<Decided> {
   const found = await findRun(deps, ctx);
   // No run has worked in this session: the task never started here (BR-14).
   if (found === undefined) throw new TurnRefused("not-started");
@@ -442,6 +452,8 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
       ? await continueOnceStarted(board, row, topic, turnKey, ctx)
       : await continueRun(board, row, ctx);
   } catch (error) {
+    // The kept turn stands (keeping it again is the same write); the open row decides who takes it.
+    if (error instanceof ReopenedFirst) return again ? answered("kept", row.id) : deliverTurn(deps, message, ctx, true);
     // Anything unexpected leaves the kept turn for the next attempt.
     if (!(error instanceof TurnRefused)) throw error;
     if ((await withdrawTurn(ctx, turnKey)) === "delivered") return answered("continuing", row.id);
@@ -518,13 +530,13 @@ async function continueOnceStarted(
 /**
  * With the turn kept for the next attempt: put the finished row back in the
  * queue, for the requeue step to drain where the board says. A row that left
- * its finished status first (another line reopened it) keeps the turn for
- * whatever runs it next.
+ * its finished status first (another line reopened it) throws
+ * {@link ReopenedFirst}, and the line is decided again.
  */
 async function reopenRun(board: MessageDoorBoard, row: Task): Promise<Decided> {
   const { tasks } = board;
   const reopened = await tasks.reopen(row.id);
-  if (reopened.outcome !== "recorded") return answered("kept", row.id);
+  if (reopened.outcome !== "recorded") throw new ReopenedFirst();
   return {
     outcome: "continuing",
     taskId: row.id,
