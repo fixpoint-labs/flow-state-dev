@@ -10,7 +10,7 @@ build on each other:
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
 - **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
-  plus `taskTools`, the nine tools a model uses to plan on a task board.
+  plus `taskTools`, the ten tools a model uses to plan on a task board.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -387,7 +387,7 @@ failure retries the board may authorize across every task). The creation caps ta
 positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
 
-`taskToolActions(board)` returns the nine task tools over `board` as a flow `actions`
+`taskToolActions(board)` returns the ten task tools over `board` as a flow `actions`
 map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
 character outside `[a-zA-Z0-9_-]` into `_` (`cancelTask_todos`). Spread it into
 `defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
@@ -741,9 +741,9 @@ refused when it loads; give the work to workers on a task board instead.
 
 ### Task tools
 
-`taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
+`taskTools` are the ten tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-`listTasks`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
+`listTasks`, `readTask`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
 `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
@@ -769,6 +769,14 @@ Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, na
 working the task or the one that last did. A row has none until a run starts on it, and a new
 claim clears it until the next run starts.
 
+`readTask({ taskId })` returns one task whole, for a model that has to answer from what the
+task found rather than from its `listTasks` row:
+`{ ok: true, task: { id, goal, title?, status, assignee?, input?, output?, outputCut?, error?, question?, followUpOf?, run?, completedAt? } }`.
+`output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
+comes back as that text cut to 20,000 characters, with `outputCut: true`. `question` is set only
+on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
+board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
 > surface on its own. Wiring the
@@ -787,7 +795,7 @@ task's current status does not permit is a recoverable tool result too, not a
 throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
-the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+the ten tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
