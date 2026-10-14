@@ -66,7 +66,8 @@ const SCRATCH = goalTmpDir(SLUG);
 /** How long both items may take: Claude Code's ten-minute run, the turns before it, and margin. */
 const BUDGET_MS = 20 * 60_000;
 const SETTLED = new Set(["completed", "errored", "failed", "cancelled"]);
-const DEMO_MARKER = "FEATURE-BRIEF-E61B8";
+/** DevTeam's test markers: its demo feature brief's and its commit-style skill's. Neither belongs in this repository's commits. */
+const DEMO_MARKERS = ["FEATURE-BRIEF-E61B8", "COMMIT-STYLE-F70C4"];
 /** The worker the dev profile's coding rows are filed for. */
 const CODER = "eng.coder";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -272,8 +273,8 @@ await runGoal(async (failures) => {
       if (!branches.has(place.branch)) note(`${leg}:branch-in-checkout`, `${place.branch} is not in the checkout's branches`);
       const messages = git("log", "--format=%B", `${mainCommit}..${place.branch}`);
       console.log(`${leg}'s branch ${place.branch}:\n${git("log", "--format=%h %s", "--stat", "-5", `${place.branch}`, "--not", "main", "main@{upstream}")}`);
-      if (messages.includes(DEMO_MARKER) || commits(place.branch).some((f) => f.endsWith("greeting.js"))) {
-        note(`${leg}:no-demo-brief`, `${place.branch} carries DevTeam's demo feature brief (greeting.js or ${DEMO_MARKER})`);
+      if (DEMO_MARKERS.some((m) => messages.includes(m)) || commits(place.branch).some((f) => f.endsWith("greeting.js"))) {
+        note(`${leg}:no-demo-brief`, `${place.branch} carries DevTeam's test fixtures (greeting.js or one of ${DEMO_MARKERS.join(", ")})`);
       }
       evidence.push(`${leg}: ${place.path} on ${place.branch}`);
     }
