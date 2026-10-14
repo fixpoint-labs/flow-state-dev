@@ -43,6 +43,11 @@ const PROJECT_COORDINATOR = "project-coordinator";
 /** Orchestration's eight `taskTools` (b6), by the names a turn calls them. */
 export const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"] as const;
 
+/** An engineering ask on a research fork fits no delegate, so a4 is NOT RUN when the fork has none of these. */
+const feature = (w: string) => `Please get this feature filed for the engineering team (${w}): ${pick(["a gift-wrap option at checkout", "a recently-viewed strip on the product page", "a back-in-stock email signup on sold-out items", "a size guide link beside each size picker"])}.`;
+const research = (w: string) => `Please research this and write up the options with a recommendation, no code (${w}): ${pick(["should we offer free returns on sale items", "which payment methods should our EU checkout support first", "how do comparable stores price same-day delivery", "is a loyalty points program worth it for a store our size"])}?`;
+const ASK: Record<string, (w: string) => string> = { "eng.em": feature, researcher: research, "general-lead": research };
+
 export type LegControl = null | "unpartitioned" | "no-follow-up" | "no-delegate-check" | "no-roster-check" | "org-scoped-workers";
 
 export interface LegOptions {
@@ -201,7 +206,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   // ---- a2 · fork ----
   // The standard worker forked: one whose flow takes a delegated post, so a
   // coordinator can hand the fork a post (a4). On the shipped DevTeam that is
-  // the EM's flow; the coordinators' flow takes none.
+  // the EM, the researcher or the general lead; the coordinators' flow takes none.
   const forkable = standard.filter((e) => e.flow !== COORDINATOR && e.flow !== "coder");
   if (runs("a2")) {
     o.say("a2: Alice forks a standard worker under a held-out name");
@@ -303,42 +308,45 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     if (convId === undefined || facts.fork === undefined) r.notRun("a4", "needs a3's coordinator and a2's fork");
     else {
       const w = `${word()}-${hex()}`;
-      const feature = pick(["a gift-wrap option at checkout", "a recently-viewed strip on the product page", "a back-in-stock email signup on sold-out items", "a size guide link beside each size picker"]);
-      facts.ask = `Please get this feature filed for the engineering team (${w}): ${feature}.`;
-      const before = sessionIds(o.store);
-      const turn = await talk(r, "a4", alice, { id: convId, flowKind: COORDINATOR }, "run", facts.ask);
-      let mine: Delivery[] = [];
-      let answer: { session: string; text: string } | undefined;
-      const waited = Date.now();
-      for (const until = waited + 180_000; Date.now() < until; await sleep(1_500)) {
-        mine = conversationRecord(o.store, A.userId, convId).ledger.filter((d) => d.postId === turn.requestId);
-        const to = mine.find((d) => d.delegate.worker === facts.fork && d.status === "delivered" && d.sessionId !== undefined);
-        if (to !== undefined) {
-          const items = await alice.routes.items(to.sessionId!, "message").catch(() => []);
-          const said = items.filter((i) => i.role === "assistant").at(-1);
-          if (said !== undefined) {
-            answer = { session: to.sessionId!, text: textOf(said) };
-            break;
+      const ask = facts.standard === undefined ? undefined : ASK[facts.standard];
+      if (ask === undefined) r.notRun("a4", `setup: no held-out ask is written for a fork of \`${facts.standard}\`, so none is known to fit it`);
+      else {
+        facts.ask = ask(w);
+        const before = sessionIds(o.store);
+        const turn = await talk(r, "a4", alice, { id: convId, flowKind: COORDINATOR }, "run", facts.ask);
+        let mine: Delivery[] = [];
+        let answer: { session: string; text: string } | undefined;
+        const waited = Date.now();
+        for (const until = waited + 180_000; Date.now() < until; await sleep(1_500)) {
+          mine = conversationRecord(o.store, A.userId, convId).ledger.filter((d) => d.postId === turn.requestId);
+          const to = mine.find((d) => d.delegate.worker === facts.fork && d.status === "delivered" && d.sessionId !== undefined);
+          if (to !== undefined) {
+            const items = await alice.routes.items(to.sessionId!, "message").catch(() => []);
+            const said = items.filter((i) => i.role === "assistant").at(-1);
+            if (said !== undefined) {
+              answer = { session: to.sessionId!, text: textOf(said) };
+              break;
+            }
           }
+          if (mine.length === 0 && Date.now() - waited > 30_000) break;
         }
-        if (mine.length === 0 && Date.now() - waited > 30_000) break;
+        if (mine.length !== 1 || mine[0]!.delegate.worker !== facts.fork || mine[0]!.status !== "delivered") r.fail("a4", `wanted one delivery of the post, to the fork \`${facts.fork}\`; the ledger holds ${mine.length === 0 ? "none" : show(mine)}`);
+        else r.saw("a4", `one delivery, to \`${facts.fork}\`, into \`${mine[0]!.sessionId}\``);
+        const routed = await routingOf(alice, convId, turn.requestId);
+        const evaluated = routed.filter((x) => x.policy === "best-fit" && x.by === "evaluated" && (x.delegates ?? []).some((d: any) => d.worker === facts.fork && d.outcome === "delivered"));
+        if (evaluated.length !== 1) r.fail("a4", `wanted one best-fit record \`by: evaluated\` delivering to the fork; the records are ${show(routed)} (a judgment-turn delivery is a miss, QR-10)`);
+        else r.saw("a4", `one routing record: best-fit, by evaluated, delivered to \`${facts.fork}\``);
+        if (answer === undefined) r.fail("a4", "the fork's session holds no answer within 180 s");
+        else r.saw("a4", `the fork answered in \`${answer.session}\`: "${answer.text.replace(/\s+/g, " ").slice(0, 200)}"`);
+        await quiet(o.store, 240_000);
+        const created = newSessions(o.store, before);
+        gradeOwned(r, "a4", created, A.userId, [...standardIds, ...(await ownIds(alice))], "every session the post created");
+        const plain = await alice.workforce.ensureWorkerSession({ worker: facts.fork });
+        r.via("a4", "action");
+        if (created.some((s) => s.id === plain.id) || mine.some((d) => d.sessionId === plain.id)) r.fail("a4", `opening the fork from the roster lands in \`${plain.id}\`, a session the post created`);
+        else r.saw("a4", `opening the fork from the roster (\`ensureWorkerSession({ worker })\`, what the roster's client calls) lands in its plain session \`${plain.id}\`, not the delegate session`);
+        r.saw("a4", "the fork's answer is read from the store: Shift Manager draws no conversation with a person's own coordinator (an unpromised screen, D2)");
       }
-      if (mine.length !== 1 || mine[0]!.delegate.worker !== facts.fork || mine[0]!.status !== "delivered") r.fail("a4", `wanted one delivery of the post, to the fork \`${facts.fork}\`; the ledger holds ${mine.length === 0 ? "none" : show(mine)}`);
-      else r.saw("a4", `one delivery, to \`${facts.fork}\`, into \`${mine[0]!.sessionId}\``);
-      const routed = await routingOf(alice, convId, turn.requestId);
-      const evaluated = routed.filter((x) => x.policy === "best-fit" && x.by === "evaluated" && (x.delegates ?? []).some((d: any) => d.worker === facts.fork && d.outcome === "delivered"));
-      if (evaluated.length !== 1) r.fail("a4", `wanted one best-fit record \`by: evaluated\` delivering to the fork; the records are ${show(routed)} (a judgment-turn delivery is a miss, QR-10)`);
-      else r.saw("a4", `one routing record: best-fit, by evaluated, delivered to \`${facts.fork}\``);
-      if (answer === undefined) r.fail("a4", "the fork's session holds no answer within 180 s");
-      else r.saw("a4", `the fork answered in \`${answer.session}\`: "${answer.text.replace(/\s+/g, " ").slice(0, 200)}"`);
-      await quiet(o.store, 240_000);
-      const created = newSessions(o.store, before);
-      gradeOwned(r, "a4", created, A.userId, [...standardIds, ...(await ownIds(alice))], "every session the post created");
-      const plain = await alice.workforce.ensureWorkerSession({ worker: facts.fork });
-      r.via("a4", "action");
-      if (created.some((s) => s.id === plain.id) || mine.some((d) => d.sessionId === plain.id)) r.fail("a4", `opening the fork from the roster lands in \`${plain.id}\`, a session the post created`);
-      else r.saw("a4", `opening the fork from the roster (\`ensureWorkerSession({ worker })\`, what the roster's client calls) lands in its plain session \`${plain.id}\`, not the delegate session`);
-      r.saw("a4", "the fork's answer is read from the store: Shift Manager draws no conversation with a person's own coordinator (an unpromised screen, D2)");
     }
   }
 
