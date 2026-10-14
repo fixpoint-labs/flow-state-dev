@@ -26,11 +26,22 @@ screen no longer features them.**
 | **Smaller, and rejected** | "Delete the list from the panel." Meets *less prominent*, but leaves the coordinator's rules reachable only by going to Roster and finding its row, and leaves the per-worker page named after one feature |
 | **Not done if** | The panel lost RULES but the coordinator screen has no way to them · an old `/rules` link opens the Shift Coordinator instead of the worker's page · the chat line changed |
 
-**No goal check.** Nothing about what a flow does changes; this moves where a list is drawn.
-What proves the goal is Shift Manager's screen tests (`packages/shift-manager/test/`), with
-today's `main` as the control that must fail on two assertions: *the Shift Coordinator panel
-holds no `rules` section* and *`/roster/<id>/settings` draws the worker's settings page*. Plus
-one look in a browser at `/cos` and `/roster` before the PR is marked ready.
+**Goal check: carried forward.** The retained goal
+[`goals/standing-rules/the-rules-page-edits-what-the-worker-follows/`](../../../goals/standing-rules/the-rules-page-edits-what-the-worker-follows/goal.md)
+already proves this surface in Chromium against a real model, and its way-in and cos legs
+assert what this spec reverses. Adapt it, keep its real-path proof that a page edit changes the
+worker's next conversation (reload, edit-is-followed, delete), and rerun its control and
+normal case:
+
+- **way-in**: every Roster row, `eng.coder` included, has a **Settings** button; the
+  researcher's opens `/roster/researcher/settings`, and the old `/roster/researcher/rules`
+  lands there too. `eng.coder`'s settings page says its flow doesn't keep standing rules.
+- **cos**: `/cos` draws no RULES in its panel; the coordinator's gear opens
+  `/roster/chief-of-staff/settings` with its Rules section.
+
+The screen tests (`packages/shift-manager/test/`) stay, with today's `main` as the control that
+must fail on two assertions: *the Shift Coordinator panel holds no `rules` section* and
+*`/roster/<id>/settings` draws the worker's settings page*.
 
 ## What changes
 
