@@ -51,7 +51,7 @@ It comes down to seeing the nest at once: split by group, a task and its pieces 
 
 - **The link is written at filing, from server state only.** The piece's task and that task's board come from the task session's own state, never from a filing's input or a patch (BP-031). The one writer is the board's filing path, which every piece goes through, the turn's tools and the app's `addTask` alike: that is the convergence point.
 - **Workforce publishes it; orchestration's task row gains no field.** Only the split makes children. A framework-wide parent field is a promise nobody else needs yet. Metadata stays server-only (BP-015): one field is published, not the metadata.
-- **Pieces filed before this change still nest** (BP-030). Each already carries its task's id, and its board is the task session's, which the task's run names. The implementer reads those when `parent` is absent.
+- **Pieces filed before this change still nest** (BP-030). Each already carries its task's id, and its board is the task session's, which the task's run names. The implementer reads those when `parent` is absent, and the goal's `legacy` signal proves it on a piece stored in today's shape.
 - **The tree is built in the browser from the ledger read the Lab already makes.** No server reads another session's board; the rail's live read gains the rows under its tasks, with no second poll.
 - **Depth follows the chain.** A piece of a piece nests again, as deep as the split's depth limit allows.
 - **Finished pieces stay under a task that is still shown.** The issue asks for the nest "after rounds complete". A finished task drops off Tasks with its pieces, as finished rows do today; the rail's finished group keeps both.

@@ -19,25 +19,26 @@
 | **The real need** | *"Needed so review rounds (and other handoffs) are visible where the work lives… The person should see a child row nested under its parent on the same board"* (Jake, FIX-1808). FIX-1807 needs it before review rounds can be rows |
 | **Smaller, and rejected** | Label each piece "part of <task>" and leave it flat. The person still assembles the nest by eye, and finished rounds still vanish |
 | **Bigger, and not this issue's** | Review rounds as pieces, and who files them (FIX-1807, FIX-1809). A parent relation any filing can claim without waiting on it ([considered and dropped](DECISIONS.md#considered-and-dropped)) |
-| **Not done if** | The nest shows on Tasks but not in the rail · a piece shows twice, nested and flat · a finished piece leaves its task · it nests only after a reload · a piece of a piece lands flat · a retried piece loses its place · the nest is guessed from titles or run sessions, not read from a link the server wrote |
+| **Not done if** | The nest shows on Tasks but not in the rail · a piece shows twice, nested and flat · a finished piece leaves its task · it nests only after a reload · a piece of a piece lands flat · a retried piece loses its place · a piece filed before this change, which has no `parent` yet, lands flat · the nest is guessed from titles or run sessions, not read from a link the server wrote |
 
 ```mermaid
 flowchart LR
-  F["a task split into pieces · scripted Lab"] --> B["Shift Manager in a browser · rail and Tasks"]
+  F["a task split into pieces · scripted Lab"] --> B
+  O["a piece stored before the change · no parent"] --> B["Shift Manager in a browser · rail and Tasks"]
   B -->|"every piece inside its task's row, once, live, and after it finishes"| P["PASS"]
-  C["control · server publishes no link"] -.-> B
-  B -.->|"under the control"| X["must FAIL at nested"]
+  C["control · link only for new filings"] -.-> B
+  B -.->|"under the control"| X["must FAIL at legacy"]
 ```
 
-The check reads the page's structure against the store, never its words; with the link withheld it must fail.
+The check reads the page's structure against the store, never its words; with the link published only for new filings, the stored piece lands flat and the check must fail.
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/it-nests-a-tasks-pieces-under-it/` · no model (scripted workers) · real browser · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | `nested`: every row the store holds as a piece is drawn inside its task's row in the rail and on Tasks, and nowhere else. `live`: a piece filed or settled shows within one poll, no reload. `kept`: once every piece and the task have finished, the rail's finished group draws the task with its pieces under it. `deep`: a piece of a piece nests two levels down |
-| **Input** | The goal-local Lab of `goals/coordinators/files-tasks-down-the-owners-chain/`, extended: a conversation files a task whose worker splits it into two pieces, one of which splits again. A different split (more pieces, a failed-then-retried piece) must pass too. Once FIX-1997 lands, one piece goes to a roster worker that isn't a delegate |
-| **Anti-game** | No assertion on the page's text or on Shift Manager's state. The oracle is the store, read by the script; nesting is DOM containment. No fixture writes a row |
-| **Control that must fail** | `GOAL_CONTROL=unlinked`: the ledger publishes no `parent`. Must FAIL **`nested`**. Today's `main` FAILs `nested` too (pieces absent from the rail, flat on Tasks) |
+| **Signal** | `nested`: every row the store holds as a piece is drawn inside its task's row in the rail and on Tasks, and nowhere else. `live`: a piece filed or settled shows within one poll, no reload. `kept`: once every piece and the task have finished, the rail's finished group draws the task with its pieces under it. `deep`: a piece of a piece nests two levels down. `legacy`: a piece stored in the shape `main` writes today, with its task's id in its server-side metadata and no `parent`, is drawn inside its task's row in the rail and on Tasks |
+| **Input** | The goal-local Lab of `goals/coordinators/files-tasks-down-the-owners-chain/`, extended: a conversation files a task whose worker splits it into two pieces, one of which splits again. A different split (more pieces, a failed-then-retried piece) must pass too. Once FIX-1997 lands, one piece goes to a roster worker that isn't a delegate. For `legacy`, the store is seeded before boot with one split task and one piece in the shape `main` writes today: the piece carries only its task's id in metadata, never `parent` |
+| **Anti-game** | No assertion on the page's text or on Shift Manager's state. The oracle is the store, read by the script; nesting is DOM containment. No fixture writes a row, except the one old-shape piece `legacy` seeds before boot, written in exactly the shape `main`'s filing path stores, with no `parent` |
+| **Control that must fail** | `GOAL_CONTROL=unlinked`: the ledger publishes no `parent`. Must FAIL **`nested`**. `GOAL_CONTROL=filing-only`: `parent` is published only for pieces filed after the change, with no fallback for stored ones. Must FAIL **`legacy`** while `nested` passes. Today's `main` FAILs `nested` and `legacy` (pieces absent from the rail, flat on Tasks) |
 
 ## What changes
 
@@ -105,7 +106,7 @@ Designed on the intended end state of in-flight work in the same code, not on to
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every piece nested under its task, live and after it finishes, in the rail and on Tasks. If wrong: FIX-1807 builds review rounds on a board that still hides them.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every piece nested under its task, live and after it finishes, in the rail and on Tasks, pieces stored before the change included. If wrong: FIX-1807 builds review rounds on a board that still hides them.
 
 **[The debt](#whats-already-here-and-the-debt), net up slightly:** one public field and one tree. If wrong: a second "part of" field later, kept in step with this one.
 
