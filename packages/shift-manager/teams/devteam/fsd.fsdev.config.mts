@@ -16,9 +16,10 @@
  *   and a run on either project reads Linear with the key of the user it runs
  *   for, set on Settings. `LINEAR_MCP_API_KEY` stands in for the Lab's own
  *   user's key until that user stores one.
- * - **Its own coder brief**: the tree's feature brief is DevTeam's demo
- *   contract, so a coder here reads the profile's brief in its place
- *   ({@link FSD_DOCUMENTS}): work in this repository, follow AGENTS.md.
+ * - **Its own coder brief and commit style**: the tree's feature brief and
+ *   commit style are DevTeam's demo contract and its commit marker, so a coder
+ *   here reads the profile's in their place ({@link FSD_DOCUMENTS},
+ *   {@link FSD_SKILLS}): work in this repository, follow AGENTS.md.
  * - **Nothing else at open**: no ask waiting in Inbox and no workstream, so a
  *   user's first act is asking for work.
  * - **Claude Code as the coder by default** (`harness.mts`): at start the Lab
@@ -46,7 +47,7 @@ import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CHECKOUTS } from "./fsd-checkouts.mts";
-import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS } from "./fsd-projects.mts";
+import { FSD_DOCUMENTS, FSD_MCP_SERVERS, FSD_PROJECTS, FSD_SKILLS } from "./fsd-projects.mts";
 import { startHarness } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
@@ -82,6 +83,7 @@ export const lab = await openLab({
   projects: FSD_PROJECTS,
   mcpServers: FSD_MCP_SERVERS,
   documents: FSD_DOCUMENTS,
+  skills: FSD_SKILLS,
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
 });
 

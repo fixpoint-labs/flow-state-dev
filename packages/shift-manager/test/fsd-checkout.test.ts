@@ -31,7 +31,7 @@ import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { commitScriptedWork } from "../teams/devteam/harness.mts";
 import { harnessStub, type HarnessStub } from "../teams/devteam/harness-stub.mts";
 import { CHECKOUTS } from "../teams/devteam/fsd-checkouts.mts";
-import { CODER_BRIEF, FSD_DOCUMENTS } from "../teams/devteam/fsd-projects.mts";
+import { CODER_BRIEF, FSD_DOCUMENTS, FSD_SKILLS } from "../teams/devteam/fsd-projects.mts";
 import { LAB_ORG_ID, LAB_USER_ID, openLab, type Lab } from "../teams/devteam/host.mts";
 import { createScratchRepo } from "../teams/devteam/scratch-repo.mts";
 
@@ -101,16 +101,16 @@ function scripted(call: { toolName: string; args: Record<string, unknown> }): Mo
 }
 
 /**
- * The fsd profile's hosts, as `openLab` builds them from its mapping and its
- * documents, over `checkout` instead of this repository. `documents: null`
- * opens on the tree's own, as DevTeam does. `mine` is a shared project of the
+ * The fsd profile's hosts, as `openLab` builds them from its mapping, documents
+ * and skills, over `checkout` instead of this repository. `replaced: null`
+ * opens on the tree's own documents and skills, as DevTeam does. `mine` is a shared project of the
  * Lab's organization on the same remote that the mapping doesn't name.
  */
-async function openMapped(checkout: string, stub: HarnessStub, model?: ModelResolver, documents: Record<string, string> | null = FSD_DOCUMENTS) {
+async function openMapped(checkout: string, stub: HarnessStub, model?: ModelResolver, replaced: { documents?: Record<string, string>; skills?: Record<string, string> } | null = { documents: FSD_DOCUMENTS, skills: FSD_SKILLS }) {
   const root = mkdtempSync(join(tmpdir(), "sm-fsd-runs-"));
   const lab = await openLab({
     ...(model === undefined ? {} : { modelResolver: model }),
-    ...(documents === null ? {} : { documents }),
+    ...replaced,
     stores: inMemoryStores(),
     harness: stub.slot,
     runTimeoutMs: 30_000,
@@ -199,10 +199,11 @@ describe("a coding run on the fsd profile's projects", () => {
     expect(existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")) : []).toEqual([]);
   }, 120_000);
 
-  it("a run is handed the profile's brief, never DevTeam's demo feature brief", async () => {
+  it("a run is handed the profile's brief and commit style, never DevTeam's demo brief or commit marker", async () => {
     // The demo brief tells a coder to build greet() and put its marker in every
-    // commit; on this repository that landed in a real commit message.
-    const demo = /FEATURE-BRIEF-E61B8|greet\(/;
+    // commit, and the demo commit style ends every commit with another marker;
+    // on this repository the first landed in a real commit message.
+    const demo = /FEATURE-BRIEF-E61B8|greet\(|COMMIT-STYLE-F70C4/;
     const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork });
     const { lab } = await openMapped(user.repo, stub);
@@ -210,20 +211,26 @@ describe("a coding run on the fsd profile's projects", () => {
     const run = stub.runs.find((r) => r.prompt.includes("brief-fsd"));
     expect(run).toBeDefined();
     expect(run!.prompt).toContain(FSD_DOCUMENTS[CODER_BRIEF]!.split("\n")[0]);
+    expect(run!.prompt).toContain(FSD_SKILLS["commit-style"]);
     expect(run!.prompt).not.toMatch(demo);
 
-    // The same run on the tree's own documents, as DevTeam opens it, is handed
-    // the demo brief: the check above reaches the brief the coder reads.
+    // The same run on the tree's own documents and skills, as DevTeam opens it,
+    // is handed both markers: the check above reaches what the coder reads.
     const devteamStub = harnessStub({ duringRun: commitScriptedWork });
     const { lab: devteam } = await openMapped(userCheckout().repo, devteamStub, undefined, null);
     await fileOnBoard(devteam, "brief-devteam", "fsd");
-    expect(devteamStub.runs.find((r) => r.prompt.includes("brief-devteam"))?.prompt).toMatch(demo);
+    const devteamPrompt = devteamStub.runs.find((r) => r.prompt.includes("brief-devteam"))?.prompt;
+    expect(devteamPrompt).toContain("FEATURE-BRIEF-E61B8");
+    expect(devteamPrompt).toContain("COMMIT-STYLE-F70C4");
   }, 120_000);
 
-  it("refuses to replace a document the tree does not declare", async () => {
-    const stub = harnessStub();
-    await expect(openMapped(userCheckout().repo, stub, undefined, { "teams/eng/no-such-brief": "x" })).rejects.toThrow(
+  it("refuses to replace a document or skill the tree does not declare", async () => {
+    const repo = userCheckout().repo;
+    await expect(openMapped(repo, harnessStub(), undefined, { documents: { "teams/eng/no-such-brief": "x" } })).rejects.toThrow(
       /does not declare/,
+    );
+    await expect(openMapped(repo, harnessStub(), undefined, { skills: { "no-such-skill": "x" } })).rejects.toThrow(
+      /no worker in the tree carries/,
     );
   });
 

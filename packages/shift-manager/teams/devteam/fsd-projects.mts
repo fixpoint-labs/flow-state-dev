@@ -1,6 +1,7 @@
 /**
  * What the `fsd` profile (`fsd.fsdev.config.mts`) opens its Lab with: its two
- * projects, the MCP servers it offers them, and the brief its coders read. A
+ * projects, the MCP servers it offers them, and the brief and commit style its
+ * coders read. A
  * leaf, so a check can open a Lab the same way without serving the profile.
  */
 import type { CreateProjectInput, ProjectMcpServers } from "@flow-state-dev/workforce";
@@ -37,6 +38,23 @@ export const FSD_DOCUMENTS: Readonly<Record<string, string>> = {
     "",
     "Read AGENTS.md and CLAUDE.md at the repository root before you change",
     "anything, and follow them. Keep the change to what the task needs.",
+  ].join("\n"),
+};
+
+/**
+ * The skills this profile's workers read in place of the tree's, by name. The
+ * tree's commit style ends every commit with DevTeam's demo marker; here a
+ * commit follows this repository's own conventions.
+ */
+export const FSD_SKILLS: Readonly<Record<string, string>> = {
+  "commit-style": [
+    "---",
+    "name: commit-style",
+    "description: How a commit message is written in this repository.",
+    "---",
+    "",
+    "Write the commit message the way this repository's AGENTS.md and recent",
+    "history on main do. Name what changed and why; add no marker line.",
   ].join("\n"),
 };
 

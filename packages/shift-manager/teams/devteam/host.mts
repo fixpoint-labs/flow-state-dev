@@ -540,6 +540,11 @@ export interface OpenLabOptions {
    * a renamed document cannot leave its old body in place unnoticed.
    */
   documents?: Record<string, string>;
+  /**
+   * Replace a skill's `SKILL.md` by its name, on every worker the tree gives
+   * it. A name no worker carries is refused, as `documents` refuses a ref.
+   */
+  skills?: Record<string, string>;
   /** Silence the engine's own logging. */
   logger?: unknown;
   /**
@@ -863,7 +868,23 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // genuinely runs on what the control gave it rather than being graded as if
   // it did.
   const overrides = options.documentOverrides ?? {};
-  const workers = roster.workers.map((worker) => {
+  const replacedSkills = options.skills ?? {};
+  for (const name of Object.keys(replacedSkills)) {
+    if (!roster.workers.some((worker) => (worker.skills ?? []).some((skill) => skill.name === name))) {
+      throw new Error(`openLab: \`skills\` replaces "${name}", which no worker in the tree carries`);
+    }
+  }
+  // A profile's own skills (`skills`) replace the tree's the same way.
+  const workers = roster.workers.map((tree) => {
+    const worker =
+      tree.skills === undefined
+        ? tree
+        : {
+            ...tree,
+            skills: tree.skills.map((skill) =>
+              Object.hasOwn(replacedSkills, skill.name) ? { ...skill, skillMd: replacedSkills[skill.name]! } : skill,
+            ),
+          };
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
     if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
