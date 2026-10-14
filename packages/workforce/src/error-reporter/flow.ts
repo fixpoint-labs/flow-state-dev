@@ -571,6 +571,17 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
     .stepIf((v: unknown) => (v as { decision?: string }).decision === "file" && reporter.tracker === undefined, keepOnly)
     .stepIf((v: unknown) => (v as { decision?: string }).decision === "file" && reporter.tracker !== undefined, filing);
 
+  /** A report run that failed lets go of its row, so the next start (a restart included) runs it without waiting out the lease. */
+  const releaseClaim = handler({
+    name: "error-reporter-release",
+    inputSchema: z.unknown(),
+    resources: { ...errorReportsResources },
+    execute: async (_input, ctx) => {
+      const by = ctx.request.identity.id;
+      await updateReport(reportsOf(ctx as never), reportIdOf(ctx as never), (row) => (row.claim?.by === by ? { ...row, claim: undefined } : undefined));
+    }
+  });
+
   // ---- comment -------------------------------------------------------------
 
   const commentPrompt = handler({
@@ -703,7 +714,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       run: { inputSchema: turn.inputSchema.strict(), block: door, userMessage: (input: { message: string }) => input.message },
       // Public so its preview is answerable from Inbox (a dispatched run is never reopened from outside).
       // It takes no input, runs only in a report's own session, and only for the operator.
-      [REPORT_ENTRY]: { inputSchema: reportInputSchema, block: report },
+      [REPORT_ENTRY]: { inputSchema: reportInputSchema, block: report, onErrored: releaseClaim },
       [STANDING_RULES_ACTION]: standingRulesAction
     },
     internal: {

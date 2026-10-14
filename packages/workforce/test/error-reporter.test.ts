@@ -31,7 +31,7 @@ const SECRET = "sk-live-abcdefghijklmnop1234";
 type Prompted = { kind: "draft" | "file" | "comment"; prompt: string; trackerTools: boolean };
 
 /** How the stand-in answers beyond a clean run: a filing that fails `fileFails` times, a comment with no result. */
-type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean };
+type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commentUnreadable?: boolean; draftThrows?: number };
 
 /**
  * A harness that answers like one: a JSON draft, a filed issue, or a comment
@@ -39,6 +39,7 @@ type StandIn = { closed?: boolean; trailer?: boolean; fileFails?: number; commen
  */
 function standInHarness(prompts: Prompted[], options: StandIn = {}) {
   let fileFails = options.fileFails ?? 0;
+  let draftThrows = options.draftThrows ?? 0;
   return (feeds: { mcpTools?: unknown }) =>
     handler({
       name: "stand-in-harness",
@@ -46,6 +47,10 @@ function standInHarness(prompts: Prompted[], options: StandIn = {}) {
       execute: async (input, ctx) => {
         const kind = input.prompt.includes("draft ONE bug report") ? "draft" : input.prompt.includes("File this bug report") ? "file" : "comment";
         prompts.push({ kind, prompt: input.prompt, trackerTools: feeds.mcpTools !== undefined });
+        if (kind === "draft" && draftThrows > 0) {
+          draftThrows -= 1;
+          throw new Error("the harness could not start");
+        }
         const failsNow = kind === "file" && fileFails > 0 ? (fileFails -= 1, true) : false;
         const unreadable = failsNow || (kind === "comment" && options.commentUnreadable === true);
         const json =
@@ -126,7 +131,7 @@ async function openLab(
   options: Partial<ErrorReporterOptions> & StandIn & { agentAnswer?: ReturnType<typeof mockGenerator>; hostRun?: (run: ErrorReporterHost["run"]) => ErrorReporterHost["run"] } = {}
 ): Promise<Lab> {
   const prompts: Prompted[] = [];
-  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, hostRun, ...reporterOptions } = options;
+  const { agentAnswer, closed, trailer, fileFails, commentUnreadable, draftThrows, hostRun, ...reporterOptions } = options;
   const reporter = createErrorReporter({
     worker: "error-reporter",
     operator: { userId: OPERATOR, orgId: ORG },
@@ -144,7 +149,7 @@ async function openLab(
     ],
     flows: (installation) => ({
       breaker: breakerFlow(installation),
-      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable }), mcpTools: trackerTools })
+      [ERROR_REPORTER_FLOW]: defineErrorReporterFlow({ reporter, installation, harness: standInHarness(prompts, { closed, trailer, fileFails, commentUnreadable, draftThrows }), mcpTools: trackerTools })
     }),
     plainFlows: { [ERROR_REPORTER_INTAKE_FLOW]: (defineErrorReporterIntakeFlow({ reporter }) as any)({ id: ERROR_REPORTER_INTAKE_FLOW }) },
     generators: { "error-reporter-answer": agentAnswer ?? mockGenerator({ script: [] }) },
@@ -473,6 +478,17 @@ describe("drafting, filing and commenting", () => {
     // Two starts at once, as two processes would make: one files, the other finds it claimed.
     await Promise.all([lab.rerun(row!.id), lab.rerun(row!.id)]);
     expect(lab.prompts.filter((p) => p.kind === "file")).toHaveLength(2);
+  });
+
+  it("lets go of a report whose run failed, so the next start drafts it at once", async () => {
+    const lab = await openLab({ draftThrows: 1 });
+    await lab.breaks("harness down");
+    const [row] = await lab.rows();
+    expect(row).toMatchObject({ status: "drafting" });
+    expect(row!.claim).toBeUndefined();
+    await lab.rerun(row!.id);
+    expect(lab.prompts.filter((p) => p.kind === "draft")).toHaveLength(2);
+    expect(await lab.asks()).toHaveLength(1);
   });
 
   it("keeps a counted comment owed when the tracker gives no result", async () => {

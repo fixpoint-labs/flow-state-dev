@@ -532,9 +532,12 @@ await runGoal(async (failures) => {
         else {
           const ask = (await lab.reportAsks()).find((a) => a.sessionId === harnessRow[0]!.sessionId);
           const body = String((ask?.item as { data?: { body?: unknown } } | undefined)?.data?.body ?? "");
-          // A route, not a source path the draft quotes (".../src/tasks/collection/...").
-          const link = /(?<![\w.-])(\/tasks\/[^)\s]+)/.exec(body);
-          const route = link === null ? undefined : parseRoute(link[1]!);
+          // The task's link among whatever else the draft quotes (a source path, a route template).
+          const links = [...body.matchAll(/(?<![\w.-])(\/tasks\/[^)\s`]+)/g)].map((m) => m[1]!);
+          const routes = links.map((l) => ({ l, route: parseRoute(l) }));
+          const hit = routes.find((r) => r.route?.level === "task" && r.route.taskId === harnessTask?.id);
+          const link = hit === undefined ? (links.length === 0 ? null : [links.join(" ")]) : [hit.l];
+          const route = hit?.route;
           if (ask === undefined) fail("H", "its report is not in Inbox");
           if (route?.level !== "task" || route.taskId !== harnessTask?.id) fail("H", `its link doesn't open the task: ${link?.[0] ?? "no link"}`);
           else evidence.push(`leg H: one report in Inbox, its link opens task ${route.taskId}`);
