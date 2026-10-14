@@ -13,7 +13,8 @@ type Row = { id: string; goal: string; title?: string; status: string; assignee?
 let rows: Row[] = [];
 let failing = false;
 const calls: string[] = [];
-const lab = { clients: { userId: "alice" }, snapshot: { readAt: 1 } };
+let refreshes = 0;
+const lab = { clients: { userId: "alice" }, snapshot: { readAt: 1 }, refresh: async () => void refreshes++ };
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
 vi.mock("../src/lib/conversation-tasks", () => ({
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
@@ -26,6 +27,7 @@ vi.mock("../src/lib/conversation-tasks", () => ({
 beforeEach(() => {
   rows = [];
   failing = false;
+  refreshes = 0;
   calls.length = 0;
   lab.snapshot = { readAt: 1 };
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -96,6 +98,8 @@ describe("a delegated post's task in the feed", () => {
     rows = [{ ...rows[0]!, status: "parked" }];
     await tick(TASKS_POLL_MS);
     expect(cards()[0]).toMatchObject({ status: "parked", text: expect.stringContaining("needs you") });
+    // The task moved: the Lab is read again, so what it counts agrees with the card.
+    expect(refreshes).toBe(1);
     const read = calls.length;
     await tick(TASKS_POLL_MS * 20);
     expect(calls).toHaveLength(read);

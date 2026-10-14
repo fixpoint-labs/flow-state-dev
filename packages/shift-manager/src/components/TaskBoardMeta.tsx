@@ -60,16 +60,22 @@ function isConversationTaskChange(item: OutputItem): boolean {
   );
 }
 
-/** A failed read leaves the last one, or the feed's record, and is tried again while a task could be moving. */
+/**
+ * A failed read leaves the last one, or the feed's record, and is tried again while a task could be moving.
+ * A read that shows a task moved reloads the Lab, so what the snapshot counts agrees with the card.
+ */
 function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sessionId: string; boardRef: string; children: ReactNode }) {
-  const { clients, snapshot } = useLab();
+  const { clients, snapshot, refresh } = useLab();
   const readAt = snapshot !== undefined && "readAt" in snapshot ? snapshot.readAt : undefined;
   const [read, setRead] = useState<{ sessionId: string; tasks: ReadonlyMap<string, ConversationTask> } | undefined>(undefined);
   const [polls, setPolls] = useState(0);
   // Whether the last read left a task that can still move; before any read lands, assume one can.
   const moving = useRef(true);
+  // Each task and where it stood at the last read.
+  const standing = useRef<string | undefined>(undefined);
   useEffect(() => {
     moving.current = true;
+    standing.current = undefined;
   }, [flow, sessionId]);
 
   useEffect(() => {
@@ -79,6 +85,9 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
       .then((tasks) => {
         if (closed) return;
         setRead({ sessionId, tasks: new Map(tasks.map((task) => [task.id, task])) });
+        const now = tasks.map((task) => `${task.id}:${task.status}`).join(",");
+        if (standing.current !== undefined && standing.current !== now) void refresh();
+        standing.current = now;
         moving.current = tasks.some(isOpen);
         if (moving.current) next = setTimeout(() => setPolls((n) => n + 1), TASKS_POLL_MS);
       })
@@ -89,7 +98,7 @@ function LiveBoard({ flow, sessionId, boardRef, children }: { flow: string; sess
       closed = true;
       if (next !== undefined) clearTimeout(next);
     };
-  }, [clients, flow, sessionId, readAt, polls]);
+  }, [clients, refresh, flow, sessionId, readAt, polls]);
 
   const board = useMemo(() => ({ boardRef, read: read?.sessionId === sessionId ? read.tasks : undefined }), [boardRef, read, sessionId]);
   return <BoardContext.Provider value={board}>{children}</BoardContext.Provider>;
