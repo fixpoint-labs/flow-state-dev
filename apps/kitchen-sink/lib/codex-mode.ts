@@ -40,6 +40,7 @@ import { delimiter } from "node:path";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   assertTestedSdkVersion,
+  CodexAgentAbortedError,
   codexAgent,
   createDefaultResolveCodexClient,
   readInstalledCodexSdkVersion,
@@ -183,6 +184,8 @@ export function codexClientOptions(
  * The SDK's own client, built with {@link codexClientOptions} once Codex has
  * said which MCP servers its settings name. Asked once per server process, on
  * the first run: a server added to your settings later stays on until restart.
+ * A run stopped while the list is still coming stops then; the list goes on
+ * for the next run.
  */
 export function codexClient(
   listMcpServers: (env: Record<string, string>) => Promise<readonly string[]> = userMcpServers,
@@ -192,7 +195,19 @@ export function codexClient(
     resolver ??= listMcpServers(codexEnv()).then((names) =>
       createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
     );
-    return (await resolver)(ctx);
+    const stopped = ctx.signal;
+    if (stopped === undefined) return (await resolver)(ctx);
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(new CodexAgentAbortedError(null));
+      if (stopped.aborted) onAbort();
+      else stopped.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+      return (await Promise.race([resolver, aborted]))(ctx);
+    } finally {
+      stopped.removeEventListener("abort", onAbort!);
+    }
   };
 }
 
