@@ -21,7 +21,8 @@ import type {
   BlockValueInternal,
   MessageItem,
   OutputItem,
-  StructureShape
+  StructureShape,
+  ToolOutputItem
 } from "./types";
 
 /** Construct an inline BlockValue carrying novel content. */
@@ -65,6 +66,8 @@ export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undef
  *     - `block_trace` → recurse into its own BlockValue.
  *     - `message` → returns the joined `output_text` content cast to `T`
  *       (FIX-480: streaming-text generators emit refs to their own message).
+ *     - `tool_output` → returns its `output` (a block run as a tool, or an
+ *       `.asTool()` step, refs the tool result it recorded).
  *   Returns `undefined` if the target is missing (e.g., evicted).
  * - `structure` → deep-resolves each entry, reconstructing the container.
  * - `omitted` → `undefined`: the record left the value out.
@@ -117,6 +120,12 @@ function resolveInternal(
     if (target.type === "message") {
       // Terminal node — the joined text IS the resolved value. No recursion.
       return joinMessageText(target as MessageItem);
+    }
+    if (target.type === "tool_output") {
+      // Terminal node — a block run as a tool records its result once, on the
+      // `tool_output` item, and its `block_trace` refs that item (FIX-1847).
+      // A result left out of the record carries `outputOmitted` and no `output`.
+      return (target as ToolOutputItem).output;
     }
     // Unknown ref target type. Returning `undefined` is the safe choice —
     // callers already tolerate ref-misses (e.g. retention eviction), and a
