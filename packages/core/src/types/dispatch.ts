@@ -467,7 +467,7 @@ export type DispatchRefusal =
    * that was never deployed here, or one deployed behind a different host.
    */
   | "flow-not-found"
-  /** An `id` target names a session that does not exist. */
+  /** An `id` target with no starting state names a session that does not exist. */
   | "session-not-found"
   /** An `id` target names a session that is not this principal's, or not this flow's. */
   | "session-not-addressable"

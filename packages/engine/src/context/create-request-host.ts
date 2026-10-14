@@ -219,19 +219,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   /**
    * An `id` target: the session must exist and be reachable from this request
    * — same flow, same principal, same tenant, and not bound to a different org.
-   * Never created: an unknown id is a typo, a stale reference, or a hallucinated
-   * value, and creating a session for it would be work nobody is watching.
+   * Never created here: an unknown id is a typo, a stale reference, or a
+   * hallucinated value, and creating a session for it would be work nobody is
+   * watching. Only a target that carries starting state creates, and that goes
+   * through `resolveOrBirthSession` and the target flow's create check first.
    *
    * Absent, another owner, and another tenant answer the same refusal on
    * purpose: a distinct reason would confirm that a session exists across a
    * boundary the caller cannot see past, which is an existence oracle.
+   *
+   * @param read The record when the caller has just read it (a birth that
+   *   found one), so it is not read twice. Read here when absent.
    */
   const resolveExistingSession = async (
     sessionId: string,
-    targetFlow: FlowInstance
+    targetFlow: FlowInstance,
+    read?: SessionRecord
   ): Promise<ResolvedSession> => {
     const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
-    const record = await stores.session.get(storageKey);
+    const record = read ?? (await stores.session.get(storageKey));
     if (
       record === undefined ||
       record.userId !== identity.userId ||
@@ -474,7 +480,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       dispatchSeed(storageKey, targetFlow, ts)
     );
     if ("refused" in attempt) return attempt.refused;
-    if (!attempt.outcome.born) return resolveExistingSession(sessionId, targetFlow);
+    if (!attempt.outcome.born) return resolveExistingSession(sessionId, targetFlow, attempt.outcome.record);
     return {
       ok: true,
       sessionId,
