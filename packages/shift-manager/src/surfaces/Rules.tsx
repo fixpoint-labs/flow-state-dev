@@ -38,6 +38,10 @@ export function RulesView({ snapshot, workerId, devtoolUrl }: { snapshot: Loaded
             <p className="text-sm text-muted-foreground" data-testid="rules-worker-reading">
               Reading your roster…
             </p>
+          ) : "failure" in roster ? (
+            <p className="text-sm text-muted-foreground" data-testid="rules-roster-failure">
+              Your own workers didn't load: {roster.failure.message}
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground" data-testid="rules-no-worker">
               {workerId} isn't on your roster.

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import type { LabClients } from "../src/lib/connection";
 import { toWorker, type LabSnapshot } from "../src/lib/reads";
+import { MAX_RULE_CHARS } from "@flow-state-dev/workforce/browser";
 
 type Rule = { number: number; text: string; addedAt: number; sessionId: string | null };
 type Input =
@@ -23,21 +24,24 @@ type Input =
 let held: { version: number; rules: Array<Omit<Rule, "number">> };
 let calls: Array<{ worker: string; input: Input }>;
 
-/** The rules action, as a fake: the version check and the one-line, 300-character limit. */
+/** The rules action, as a fake: the version check and the character limit. */
 async function standingRules(worker: string, input: Input) {
   calls.push({ worker, input });
   const answer = () => ({ version: held.version, rules: held.rules.map((r, i) => ({ number: i + 1, ...r })) });
   if (input.op === "read") return answer();
   if (input.version !== held.version) throw new Error(`the rules changed since they were read (version ${input.version}, now ${held.version})`);
-  if ("text" in input && input.text.length > 300) throw new Error(`a rule is at most 300 characters, and this one is ${input.text.length}`);
+  if ("text" in input && input.text.length > MAX_RULE_CHARS) throw new Error(`a rule is at most ${MAX_RULE_CHARS} characters, and this one is ${input.text.length}`);
   if (input.op === "add") held = { version: held.version + 1, rules: [...held.rules, { text: input.text, addedAt: 1_000, sessionId: null }] };
   else if (input.op === "change") held = { version: held.version + 1, rules: held.rules.map((r, i) => (i === input.number - 1 ? { ...r, text: input.text } : r)) };
   else held = { version: held.version + 1, rules: held.rules.filter((_r, i) => i !== input.number - 1) };
   return answer();
 }
 
+/** The user's own roster read: empty, unless a test makes it fail. */
+let roster: () => Promise<unknown[]>;
+
 vi.mock("../src/lib/workforce", () => ({
-  useWorkforce: () => ({ roster: async () => [], standingRules }),
+  useWorkforce: () => ({ roster: () => roster(), standingRules }),
 }));
 
 let fixture: LabSnapshot;
@@ -71,6 +75,7 @@ beforeEach(() => {
   fixture = lab();
   held = { version: 0, rules: [] };
   calls = [];
+  roster = async () => [];
 });
 afterEach(() => cleanup());
 
@@ -86,6 +91,15 @@ describe("the Roster's way in (BR-20, BR-21a)", () => {
     fireEvent.click(within(row("researcher")).getByTestId("roster-worker-rules"));
     expect(window.location.pathname).toBe("/roster/researcher/rules");
     expect(await screen.findByTestId("rules")).toBeTruthy();
+  });
+
+  it("says the roster didn't load, not that the worker is missing, when the user's own roster read fails", async () => {
+    roster = async () => {
+      throw new Error("the roster store is down");
+    };
+    await open("/roster/hired.helper/rules");
+    expect((await screen.findByTestId("rules-roster-failure")).textContent).toMatch(/the roster store is down/);
+    expect(screen.queryByTestId("rules-no-worker")).toBeNull();
   });
 
   it("draws no list for a worker whose flow keeps none, even at its address, and never asks the Lab for one", async () => {

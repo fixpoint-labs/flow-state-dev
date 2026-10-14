@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { MAX_RULE_CHARS, MAX_RULES } from "@flow-state-dev/workforce/browser";
-import { useStandingRules, type StandingRule } from "../lib/rules";
+import { useStandingRules, type StandingRule, type StandingRulesView } from "../lib/rules";
 import { SectionFailure } from "./ui";
 
 /**
@@ -87,7 +87,7 @@ function Origin({ rule, devtoolUrl }: { rule: StandingRule; devtoolUrl?: string 
   );
 }
 
-function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtoolUrl?: string; busy: boolean; edit: ReturnType<typeof useStandingRules>["edit"] }) {
+function RuleRow({ rule, devtoolUrl, busy, edit }: { rule: StandingRule; devtoolUrl?: string; busy: boolean; edit: StandingRulesView["edit"] }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <li className="flex flex-col gap-1 px-3 py-2" data-testid="rule" data-number={rule.number}>
