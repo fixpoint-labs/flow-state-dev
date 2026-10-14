@@ -19,8 +19,6 @@ import { MESSAGE_WORKER_TOOL } from "./keys";
 import { MAX_MESSAGE_CHARS, workerMessagesResources } from "./message-log";
 import { recipientRefusal, sendWorkerMessage } from "./send-message";
 
-export { MESSAGE_WORKER_TOOL };
-
 /** The most workers the description lists, and the longest description it quotes for one. */
 const MAX_LISTED = 25;
 const MAX_DESCRIPTION = 160;

@@ -405,6 +405,38 @@ describe("the hop count through a delegation", () => {
       await h.dispose();
     }
   });
+
+  it("carries the count through a conversation that predates the hop field, so the chain does not restart at 0", async () => {
+    const h = bootBoardHost({
+      standard: teamWorkers(),
+      agentAnswer: mockGenerator({
+        script: [
+          ...callOnce("Tell otto the number", "messageWorker", { to: "otto", text: "The number is 7." }, "Told."),
+          ...callOnce("have helper-b tell otto", "dispatchTask", { goal: "Tell otto the number", assignee: "helper-b" }, "Filed."),
+          ...callOnce("Please ask helper-a", "messageWorker", { to: "helper-a", text: "Please have helper-b tell otto the number." }, "Asked."),
+          fallback
+        ]
+      })
+    });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      // helper-a's conversation was opened before sessions kept a hop count.
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      const sessions = (await h.state.getRuntime()).stores.session;
+      const stored = (await sessions.get(helperA.id))!;
+      const { workforceMessageHop: _dropped, ...legacy } = stored.state as Record<string, unknown>;
+      await sessions.set(helperA.id, { ...stored, state: legacy, version: stored.version + 1 }, stored.version);
+      expect((await sessions.get(helperA.id))!.state).not.toHaveProperty("workforceMessageHop");
+
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const rows = await logRows(h, "alice");
+      expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`).sort()).toEqual(["helper-b>otto@2", "otto>helper-a@1"]);
+    } finally {
+      await h.dispose();
+    }
+  });
 });
 
 describe("who can be messaged", () => {

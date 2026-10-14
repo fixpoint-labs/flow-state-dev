@@ -52,13 +52,15 @@ export function turnHopOf(ctx: Pick<BlockContext, "request" | "session">): numbe
 
 /**
  * Start this turn at `hop`: the session's current count, and this request's.
- * The session field is written only on a flow that keeps it.
+ * The session field is written only when it would read differently, so a
+ * session that keeps none (absent reads 0) is written the first time a
+ * message moves it off 0, and a user's turn on a flow without the field
+ * writes nothing.
  *
  * @param also More request state to write in the same patch.
  */
 export async function startTurnAtHop(ctx: BlockContext, hop: number, also: Record<string, unknown> = {}): Promise<void> {
-  const state = ctx.session.state as Record<string, unknown> | undefined;
-  if (typeof state?.[MESSAGE_HOP_STATE] === "number" && state[MESSAGE_HOP_STATE] !== hop) {
+  if (sessionHopOf(ctx.session.state) !== hop) {
     await ctx.session.patchState({ [MESSAGE_HOP_STATE]: hop } as never);
   }
   await ctx.request.patchState({ ...also, [TURN_HOP_STATE]: hop, [TURN_SENT_STATE]: 0 } as never);

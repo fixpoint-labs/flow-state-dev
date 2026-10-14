@@ -221,17 +221,10 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
       flowKind: flow,
       userId,
       state: filter,
-      // A coordinator's delivery opens its delegate's session as a dispatch run
-      // of the conversation, a workstream's open opens its lead's session as
-      // a dispatch run of the session that opened it, and a conversation's
-      // board opens a task's session as a dispatch run of the conversation, so
-      // a lookup for any of them includes those. A lookup that names none
-      // keeps to the sessions a user started.
-      ...(criteria.filingSessionId === undefined &&
-      criteria.workstreamId === undefined &&
-      criteria.taskId === undefined
-        ? {}
-        : { include: "dispatch-runs" as const })
+      // A coordinator's delegate session, a workstream's lead and a task's
+      // session are each a dispatch run of the session that opened it. A
+      // lookup naming none of those returned at the derived address above.
+      include: "dispatch-runs"
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
