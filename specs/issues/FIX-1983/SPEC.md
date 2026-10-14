@@ -74,7 +74,7 @@ nothing reaches the tracker until the operator has answered.
 +   worker: "error-reporter",
 +   operator: LAB_USER_ID,                    // whose key files, and who is asked
 +   tracker: { project: "fsd" },              // a project whose servers include Linear
-+   preview: { autoFile: [] },                // error kinds to file without asking: none
++   // preview: { autoFile: ["harness.timeout"], autoFileAfter: "1d" },  // both optional, both off by default
 + })
   const state = createFlowState({
 -   flows: [...workforceFlows],

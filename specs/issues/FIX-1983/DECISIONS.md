@@ -145,4 +145,17 @@ the stack's top frame too, at the cost of more duplicates.
   the board's recorder, instead of a new observer, because the architect's coherence check
   found `endingOf` already is that signal.
 
+## Notes from review
+
+- "D2 bundles a lot for one sign-off decision… Consider splitting product must-have (one card per fingerprint, counted repeats, storm when the provider is down) from nice-first-week (comment rate limit, regression linking)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878394))
+- "Suggest tagging legs P0 vs P1 in this table so direction stays intact but delivery can land intake + preview + D1 before storm/restart outbox." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878427))
+- "Automatic full harness run per new fingerprint (under the hourly cap) will dominate cost during incidents… code-built draft from a bounded dossier → Inbox ask → harness only when the operator asks to refine. If the goal check must keep 'real Claude Code' on leg 1, say that explicitly." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878418)). The goal check does name real Claude Code; the dossier's size bound is the implementer's.
+- "Could the spec require the same marker/claim/clear pattern as `task-notice.ts` (typed row: `task-settled` vs `error-report`) rather than 'beside' as a parallel design?" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878436)). The task path now rides the same recorder; the report row's own shape is the implementer's.
+- "Prefer a single `composeErrorCapture(sentry, reporter.capture)` helper in engine (mirror 'observer must not throw')." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878454))
+- "`capture` must enqueue and return immediately (engine awaits handlers today — see `safeCaptureError`)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3357#discussion_r4273878406)). Already under *Decided, not asked*.
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one. A note that turns out to reveal a design problem is a spec blind spot —
+surface it and fold it back, per the challenger discipline in `issue-implement`.
+
 **Open: none.**
