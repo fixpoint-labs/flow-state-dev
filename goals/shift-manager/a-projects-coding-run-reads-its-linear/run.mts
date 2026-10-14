@@ -20,7 +20,11 @@
  * 3. The chief of staff files a task for the coder on FSD naming the issue by
  *    its identifier only. Its prompt carries no title.
  * 4. While the run works, every process whose working directory is the run's
- *    is read from `/proc`: its command line and environment.
+ *    is read from `/proc`: its command line and environment. The ones the
+ *    Lab starts there itself (the harness manager's own `git` reads of the
+ *    run's commits) are the server's, not the run's, and carry the server's
+ *    environment; they are listed and not graded. Everything else, Claude
+ *    Code and whatever it starts, is the run's.
  *
  * PASS when all hold: the task's answer carries the title Linear's API gives;
  * the run's items hold at least one `mcp__linear__` tool call; at least one
@@ -28,9 +32,11 @@
  * command lines or environments, in no item, no request record, no session
  * and not in the task's row.
  *
- * Controls (`GOAL_CONTROL=list` prints them), each must FAIL on the title:
- *   no-linear  FSD's servers cleared on the project (`setMcpServers []`) before filing
- *   no-key     the filer's key cleared on the key route before filing
+ * Controls (`GOAL_CONTROL=list` prints them):
+ *   no-linear   FSD's servers cleared on the project (`setMcpServers []`) before filing; FAILS on the title
+ *   no-key      the filer's key cleared on the key route before filing; FAILS on the title
+ *   key-in-run  the key handed to the run's environment (on `NO_PROXY`, a name the
+ *               run is passed); FAILS on the key in a Claude Code process's environment
  *
  * Needs: LINEAR_API_KEY, a Claude Code Agent SDK that can run (signed in, or
  * ANTHROPIC_API_KEY), git. Spends Claude Code's model; the chief of staff's
@@ -41,9 +47,10 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { createModelResolver } from "@flow-state-dev/core";
 import { inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
-import { fail, goalTmpDir, REPO_ROOT, runGoal, silentLogger } from "../../lib/index.mts";
+import { fail, goalTmpDir, REPO_ROOT, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import { claudeCodeHarness, CLAUDE_CODE_RUN_TIMEOUT_MS } from "../../../packages/shift-manager/teams/devteam/harness.mts";
 import { CHECKOUTS } from "../../../packages/shift-manager/teams/devteam/fsd-checkouts.mts";
 import { FSD_MCP_SERVERS, FSD_PROJECTS } from "../../../packages/shift-manager/teams/devteam/fsd-projects.mts";
@@ -52,7 +59,7 @@ import { createScratchRepo } from "../../../packages/shift-manager/teams/devteam
 import { LIST_TASKS_ACTION } from "../../../packages/shift-manager/src/lib/conversation-tasks.ts";
 
 const SLUG = "a-projects-coding-run-reads-its-linear";
-const CONTROLS = ["no-linear", "no-key"] as const;
+const CONTROLS = ["no-linear", "no-key", "key-in-run"] as const;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
@@ -67,6 +74,10 @@ const KEY = process.env.LINEAR_API_KEY ?? "";
 if (KEY === "") fail("LINEAR_API_KEY is not set: the check reads the held-out issue from Linear's API and sets it as the filer's key.");
 // No seed: the stored key is the one that must pass.
 delete process.env.LINEAR_MCP_API_KEY;
+if (CONTROL === "key-in-run") {
+  // A host name nothing resolves, so the run's proxying is unchanged; read when the Lab builds the harness.
+  process.env.NO_PROXY = [process.env.NO_PROXY, KEY].filter((part) => part !== undefined && part !== "").join(",");
+}
 
 const CODER = "eng.coder";
 const FSD = { visibility: "shared", id: "fsd" } as const;
@@ -109,8 +120,15 @@ async function heldOutIssue(base: string): Promise<{ identifier: string; title: 
   throw new Error(`none of Linear's ${issues.nodes.length} most recently updated issues is held out from this repository`);
 }
 
-/** A model that has the chief of staff make `call` once, then stop. */
+/**
+ * A model that has the chief of staff make `call` once, then stop. The coder's
+ * judge resolves its evaluation model through the real resolver, as the
+ * profile's does.
+ */
 function scriptedChief(call: { toolName: string; args: Record<string, unknown> }): ModelResolver {
+  // A container's FSDEV_DEFAULT_MODEL / FSDEV_INTENT_* would swap the model under the resolver.
+  stripIntentOverrides();
+  const base = createModelResolver();
   let made = false;
   const model: GeneratorModel = {
     modelId: "goal/scripted-chief",
@@ -128,19 +146,42 @@ function scriptedChief(call: { toolName: string; args: Record<string, unknown> }
       if (block === "coordinator-route-ask") throw new Error("no route model in this check");
       return model;
     },
-    { resolveId: (id: string) => id },
+    {
+      resolveId: (id: string) => id,
+      resolveEvaluationModel: (id: string, block?: string) => base.resolveEvaluationModel!(id, block),
+    },
   ) as unknown as ModelResolver;
 }
 
-/** The processes whose working directory is under `root`: each one's command line and environment, read now. */
-function processesUnder(root: string): Map<number, { cmdline: string; environ: string }> {
-  const found = new Map<number, { cmdline: string; environ: string }>();
+/** A process read from `/proc`: its parent, command line and environment. */
+interface ReadProcess {
+  ppid: number;
+  cmdline: string;
+  environ: string;
+}
+
+/** Whether a read process is Claude Code itself: the Agent SDK's `claude` binary. */
+const isClaudeCode = (proc: ReadProcess): boolean => /\/claude(\s|$)/.test(proc.cmdline.split(" --")[0] ?? "");
+
+/**
+ * Whether a read process is the run's, rather than the Lab's own. The Lab
+ * (this process) starts Claude Code and, in the run's checkout, its own `git`
+ * reads; anything else in the run's places was started under Claude Code.
+ */
+const isTheRuns = (proc: ReadProcess): boolean => proc.ppid !== process.pid || isClaudeCode(proc);
+
+/** The processes whose working directory is under `root`: each one's parent, command line and environment, read now. */
+function processesUnder(root: string): Map<number, ReadProcess> {
+  const found = new Map<number, ReadProcess>();
   for (const entry of readdirSync("/proc")) {
     if (!/^\d+$/.test(entry)) continue;
     try {
       const cwd = readlinkSync(`/proc/${entry}/cwd`);
       if (!cwd.startsWith(root)) continue;
+      // `pid (comm) state ppid …`: comm may hold spaces or parens, so read after the last ")".
+      const stat = readFileSync(`/proc/${entry}/stat`, "utf8");
       found.set(Number(entry), {
+        ppid: Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]),
         cmdline: readFileSync(`/proc/${entry}/cmdline`, "utf8").replace(/\0/g, " "),
         environ: readFileSync(`/proc/${entry}/environ`, "utf8").replace(/\0/g, "\n"),
       });
@@ -208,7 +249,7 @@ await runGoal(async (failures) => {
     if (said.error !== undefined) throw new Error(`the chief of staff's turn failed: ${JSON.stringify(said.error)}`);
 
     // While the run works, read every process working in the runs' places.
-    const seen = new Map<number, { cmdline: string; environ: string }>();
+    const seen = new Map<number, ReadProcess>();
     let task: Record<string, any> | undefined;
     for (const deadline = Date.now() + CLAUDE_CODE_RUN_TIMEOUT_MS + 60_000; Date.now() < deadline; await sleep(250)) {
       for (const [pid, proc] of processesUnder(runsRoot)) if (!seen.has(pid)) seen.set(pid, proc);
@@ -216,7 +257,10 @@ await runGoal(async (failures) => {
       if (["completed", "errored", "cancelled", "failed"].includes(task?.status)) break;
     }
     console.log(`task ${task?.status ?? "never filed"}; ${seen.size} process(es) read in the run's places`);
-    for (const [pid, proc] of seen) console.log(`  ${pid}: ${proc.cmdline.split(KEY).join("<KEY>").slice(0, 160)}`);
+    for (const [pid, proc] of seen) {
+      console.log(`  ${pid} (${isTheRuns(proc) ? "the run's" : "the Lab's own, not graded"}): ${proc.cmdline.split(KEY).join("<KEY>").slice(0, 160)}`);
+    }
+    const runs = [...seen].filter(([, proc]) => isTheRuns(proc));
 
     // Grade.
     const requests = await runtime.stores.request.list({ withItems: true } as never);
@@ -232,8 +276,10 @@ await runGoal(async (failures) => {
       failures.push(`the title: the task's answer does not carry ${issue.identifier}'s title as Linear's API gives it`);
     }
     if (linearCalls.length === 0) failures.push("the run's items hold no mcp__linear__ tool call");
-    if (seen.size === 0) failures.push("no process was read in the run's places while it ran, so the key's absence from it is unchecked");
-    for (const [pid, proc] of seen) {
+    if (!runs.some(([, proc]) => isClaudeCode(proc))) {
+      failures.push("no Claude Code process was read in the run's places while it ran, so the key's absence from it is unchecked");
+    }
+    for (const [pid, proc] of runs) {
       if (proc.cmdline.includes(KEY)) failures.push(`the key is in process ${pid}'s command line`);
       if (proc.environ.includes(KEY)) failures.push(`the key is in process ${pid}'s environment`);
     }
@@ -245,7 +291,7 @@ await runGoal(async (failures) => {
       failures,
       evidence:
         `${issue.identifier}'s title is in the run's answer after ${linearCalls.length} mcp__linear__ call(s); ` +
-        `the key is in none of ${seen.size} process(es)' command line or environment, nor the items, requests, sessions or task`,
+        `the key is in none of the run's ${runs.length} process(es)' command line or environment, nor the items, requests, sessions or task`,
     };
   } finally {
     await lab?.dispose();
