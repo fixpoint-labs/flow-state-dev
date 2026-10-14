@@ -177,6 +177,9 @@ describe("the fsd profile's checkout mapping", () => {
 });
 
 describe("a coding run on the fsd profile's projects", () => {
+  /** DevTeam's brief: build greet() and put this marker in every commit. */
+  const DEMO_BRIEF = /FEATURE-BRIEF-E61B8|greet\(/;
+
   it("BR-13: from a board, a run on fsd and one on shift-manager each work in a fresh worktree of the checkout, cut from main", async () => {
     const user = userCheckout();
     const stub = harnessStub({ duringRun: commitScriptedWork });
@@ -187,6 +190,8 @@ describe("a coding run on the fsd profile's projects", () => {
       const row = await fileOnBoard(lab, `on-${project}`, project);
       const run = stub.runs.find((r) => r.prompt.includes(`on-${project}`));
       expect(run, `the ${project} row ended ${row?.status}: ${JSON.stringify(row?.error ?? null)}`).toBeDefined();
+      expect(run!.prompt).toContain(FSD_DOCUMENTS[CODER_BRIEF]!.split("\n")[0]);
+      expect(run!.prompt).not.toMatch(DEMO_BRIEF);
       const branch = expectWorktreeFromMain(user, run!.cwd);
       // The coder's commit is on the run's branch, in the user's checkout.
       expect(git(user.repo, "show", `${branch}:SCRIPTED-RUN.md`)).toContain("A scripted run");
@@ -199,25 +204,13 @@ describe("a coding run on the fsd profile's projects", () => {
     expect(existsSync(join(root, ".clones")) ? readdirSync(join(root, ".clones")) : []).toEqual([]);
   }, 120_000);
 
-  it("a run is handed the profile's brief, never DevTeam's demo feature brief", async () => {
-    // The demo brief tells a coder to build greet() and put its marker in every
-    // commit; on this repository that landed in a real commit message.
-    const demo = /FEATURE-BRIEF-E61B8|greet\(/;
-    const user = userCheckout();
+  it("on the tree's own documents, that run is handed DevTeam's demo brief", async () => {
+    // Red state of the brief check above: without `documents`, the prompt matches
+    // the demo.
     const stub = harnessStub({ duringRun: commitScriptedWork });
-    const { lab } = await openMapped(user.repo, stub);
-    await fileOnBoard(lab, "brief-fsd", "fsd");
-    const run = stub.runs.find((r) => r.prompt.includes("brief-fsd"));
-    expect(run).toBeDefined();
-    expect(run!.prompt).toContain(FSD_DOCUMENTS[CODER_BRIEF]!.split("\n")[0]);
-    expect(run!.prompt).not.toMatch(demo);
-
-    // The same run on the tree's own documents, as DevTeam opens it, is handed
-    // the demo brief: the check above reaches the brief the coder reads.
-    const devteamStub = harnessStub({ duringRun: commitScriptedWork });
-    const { lab: devteam } = await openMapped(userCheckout().repo, devteamStub, undefined, null);
-    await fileOnBoard(devteam, "brief-devteam", "fsd");
-    expect(devteamStub.runs.find((r) => r.prompt.includes("brief-devteam"))?.prompt).toMatch(demo);
+    const { lab } = await openMapped(userCheckout().repo, stub, undefined, null);
+    await fileOnBoard(lab, "brief-devteam", "fsd");
+    expect(stub.runs.find((r) => r.prompt.includes("brief-devteam"))?.prompt).toMatch(DEMO_BRIEF);
   }, 120_000);
 
   it("refuses to replace a document the tree does not declare", async () => {
