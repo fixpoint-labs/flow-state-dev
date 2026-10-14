@@ -417,8 +417,9 @@ async function tellCoordinator(ctx: BlockContext): Promise<number> {
   const row = ref?.get(taken.taskId);
   if (ref === undefined || row === undefined) return 0;
   // What an errored post owes the Error Reporter goes out on the ending itself, not on the board's next touch.
+  // Best effort: a send that throws leaves the mark for that touch, and the coordinator is still told.
   if (owedReports(row).length > 0) {
-    await sendOwedReports(ctx, ref, [row], { boardId: CONVERSATION_LEDGER_ID, partition: taken.partition }, "delegated-post-report");
+    await sendOwedReports(ctx, ref, [row], { boardId: CONVERSATION_LEDGER_ID, partition: taken.partition }, "delegated-post-report").catch(() => 0);
   }
   return sendOwedNotices(ctx, row, { session: { from: true }, flowKind: COORDINATOR_FLOW, from: "delegated-post-tell" });
 }
