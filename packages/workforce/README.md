@@ -1398,8 +1398,9 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   entries are an owner-writes collection, so a write to anyone else's entry throws
   `A row of an owner-writes collection is written only by the user it belongs to.`, whichever flow
   sends it. Nothing deletes an entry. **`updateWorkstreamTool`** is the same write as the lead's tool,
-  named `updateWorkstream`: it takes only the changes and writes the workstream its session leads
-  (`not-a-workstream-session` elsewhere).
+  named `updateWorkstream`: it takes only the changes, all but `title` (`updateOwnWorkstreamInputSchema`), and
+  writes the workstream its session leads (`not-a-workstream-session` elsewhere). A workstream's title is
+  its owner's to change, through `updateWorkstream` or the project coordinator's `editWorkstream`.
 - **`editWorkstreamTool`** is a tool named `editWorkstream` for the owner's project coordinator.
   It takes `{ project?, id, title?, status?, due?, objectives? }` (`editWorkstreamInputSchema`,
   strict) and returns `{ workstream }`. It always writes the caller's own entry, with no `owner`
