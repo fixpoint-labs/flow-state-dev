@@ -79,13 +79,10 @@ jobs:
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 
-      # The same lint the pre-push hook runs. `git push --no-verify` skips the
-      # hook, so this is the copy nobody can skip.
+      # `git push --no-verify` skips the pre-push hook.
       - name: Lint
         run: pnpm lint
 
-      # Fails if `pnpm lint` stops being able to fail: a stub lint script, a
-      # hook that no longer calls it, or a config that misses the planted defects.
       - name: The lint gate can fail
         run: node --test scripts/lint-gate.test.mjs
 
