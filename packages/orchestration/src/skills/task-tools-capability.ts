@@ -1,10 +1,11 @@
 /**
  * `taskTools` capability — the model's surface onto a task board.
  *
- * Nine handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
- * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`/`answerTask`)
- * let a model assign work, mark a task complete, answer a task's question, or
- * query the board. A task turn's own question park, `parkOnQuestion`, is
+ * Ten handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
+ * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`/`readTask`/
+ * `answerTask`) let a model assign work, mark a task complete, answer a task's
+ * question, or query the board. `readTask` returns one task whole, with what it
+ * came back with; `listTasks` lists without results. A task turn's own question park, `parkOnQuestion`, is
  * built apart from them (`createParkOnQuestion`): it acts on the row the
  * turn's claim holds, never on a board a resolver names.
  *
@@ -15,7 +16,7 @@
  * ## Dispatching (FIX-1875)
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
- * a conversation's board), a tenth tool, `dispatchTask`, starts work now: a
+ * a conversation's board), an eleventh tool, `dispatchTask`, starts work now: a
  * new row (`goal`, with `addTask`'s fields and checks, through the same code),
  * or a row recorded earlier (`taskId`), readied by the collection's one
  * conditional `dispatch` write. With `wait`, the turn parks on it until the
@@ -182,6 +183,20 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
 
 const noBoardError = { ok: false as const, error: "no_delegation_board" };
 const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_not_found", taskId: id });
+
+/**
+ * The longest input or result `readTask` returns, each in characters of its
+ * JSON. A tool's output is recorded on the turn (BP-042), so a value past this
+ * comes back as its JSON, cut, with `inputCut` or `outputCut` set.
+ */
+export const READ_OUTPUT_LIMIT = 20_000;
+
+/** A value as `readTask` returns it: whole, or its JSON cut to {@link READ_OUTPUT_LIMIT}. */
+function readable(value: unknown): { value: unknown; cut: boolean } {
+  const text = typeof value === "string" ? value : (JSON.stringify(value) ?? String(value));
+  if (text.length <= READ_OUTPUT_LIMIT) return { value, cut: false };
+  return { value: text.slice(0, READ_OUTPUT_LIMIT), cut: true };
+}
 
 // ---------------------------------------------------------------------------
 // Assignee validation (FIX-924)
@@ -830,9 +845,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
-   * The nine names, optionally board-qualified.
+   * The ten names, optionally board-qualified.
    *
-   * A generator asserts its tool names are unique, and these nine are fixed
+   * A generator asserts its tool names are unique, and these ten are fixed
    * strings, so composing two boards' capabilities into one block collides on
    * every one of them. A suffix is what makes a second board addressable at
    * all; without one the surface is single-board by construction.
@@ -1617,6 +1632,68 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
+  const readTask = defineTool({
+    name: named("readTask"),
+    description:
+      "Read one task on your delegation board in full: what it was asked to do (goal and " +
+      "input), how it stands, and what it came back with: its result when it completed, its " +
+      "error when it failed, the question it waits on when it is parked. Use it to answer from " +
+      "what a task found, rather than from a line about it.",
+    inputSchema: z.object({ taskId: z.string() }),
+    outputSchema: z.union([
+      z.object({
+        ok: z.literal(true),
+        task: z.object({
+          id: z.string(),
+          goal: z.string(),
+          title: z.string().optional(),
+          status: z.string(),
+          assignee: z.string().optional(),
+          input: z.unknown().optional(),
+          /** True when `input` was cut to {@link READ_OUTPUT_LIMIT} characters. */
+          inputCut: z.literal(true).optional(),
+          /** The task's result as its worker recorded it; a string, cut, when it was too long to return. */
+          output: z.unknown().optional(),
+          /** True when `output` was cut to {@link READ_OUTPUT_LIMIT} characters. */
+          outputCut: z.literal(true).optional(),
+          error: z.string().optional(),
+          /** The question the task is parked on, when it is parked on one. */
+          question: z.string().optional(),
+          followUpOf: z.string().optional(),
+          run: taskSchema.shape.run,
+          completedAt: z.number().optional(),
+        }),
+      }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
+    parentStateSchema,
+    execute: async (input, ctx) => {
+      const collection = await resolve(ctx);
+      if (!collection) return noBoardError;
+      const t = collection.get(input.taskId);
+      if (t === undefined) return taskNotFoundError(input.taskId);
+      const taskInput = t.input === undefined ? undefined : readable(t.input);
+      const output = t.output === undefined ? undefined : readable(t.output);
+      return {
+        ok: true as const,
+        task: {
+          id: t.id,
+          goal: t.goal,
+          ...(t.title !== undefined ? { title: t.title } : {}),
+          status: t.status,
+          ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+          ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
+          ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
+          ...(t.error !== undefined ? { error: t.error } : {}),
+          ...(t.parkedOnQuestion === true && t.feedback ? { question: t.feedback } : {}),
+          ...(t.followUpOf !== undefined ? { followUpOf: t.followUpOf } : {}),
+          ...(t.run != null ? { run: t.run } : {}),
+          ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
+        },
+      };
+    },
+  });
+
   const answerTask = defineTool({
     name: named("answerTask"),
     description:
@@ -1669,14 +1746,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
-  const tools = [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, answerTask];
-  // `dispatchTask` follows the nine, so a board that doesn't dispatch keeps
-  // exactly its nine, in their order.
+  const tools = [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, readTask, answerTask];
+  // `dispatchTask` follows the ten, so a board that doesn't dispatch keeps
+  // exactly its ten, in their order.
   return dispatches ? [...tools, dispatchTask] : tools;
 }
 
 /**
- * Build the nine `taskTools` handler tools directly (for pushing into a
+ * Build the ten `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
  *
@@ -1701,7 +1778,7 @@ export function buildTaskToolsList(
 // ---------------------------------------------------------------------------
 
 /**
- * Build the `taskTools` capability. Eight tools registered under one capability
+ * Build the `taskTools` capability. Ten tools registered under one capability
  * so consumers wire it via `uses: [taskTools]`.
  *
  * @param resolveCollection Optional board resolver. Defaults to the host
@@ -1794,7 +1871,7 @@ export interface DispatchPostForm {
 /**
  * The task tools as a turn gets them: a list of the same names per kind of
  * turn (waiting or not, routing a post or not), each built once, and the one
- * the turn can use. The nine, and `dispatchTask` on a board
+ * the turn can use. The ten, and `dispatchTask` on a board
  * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
  * `timeoutMs` only on a board that also resumes waits (`options.resumesWaits`)
  * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
@@ -1853,11 +1930,11 @@ export function taskToolsForTurn(
 export const taskTools = createTaskToolsCapability();
 
 // ---------------------------------------------------------------------------
-// The nine tools as flow actions
+// The ten tools as flow actions
 // ---------------------------------------------------------------------------
 
 /**
- * The qualifier that makes one board's nine task tools distinct from
+ * The qualifier that makes one board's ten task tools distinct from
  * another's: the board's collection id with every character a provider does
  * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
  * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
@@ -1882,7 +1959,7 @@ export interface TaskToolActionsBoard {
 }
 
 /**
- * A durable board's nine task tools as a flow `actions` map, named
+ * A durable board's ten task tools as a flow `actions` map, named
  * `<tool>_<suffix>` ({@link taskToolSuffix}). Spread it into `defineFlow`'s
  * `actions` to let a caller — a person in the DevTool, an app's own screen —
  * change a task from outside the run that works it.

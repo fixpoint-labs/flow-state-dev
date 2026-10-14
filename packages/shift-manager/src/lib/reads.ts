@@ -174,6 +174,11 @@ export type BoardRow = {
    */
   run: RunLink | null;
   error: string | null;
+  /**
+   * The question a row parked on a question waits on, or absent: not parked
+   * on one, or published before boards showed it.
+   */
+  question?: string;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -448,6 +453,9 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     deps: strings(field(data, "deps")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
+    ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
+      ? { question: text(field(data, "feedback")) as string }
+      : {}),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),

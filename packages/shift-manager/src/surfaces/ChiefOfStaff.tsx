@@ -118,7 +118,10 @@ function NeedsYouTag() {
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh } = useLab();
   const retry = () => void refresh();
-  const { asks, running } = shiftSummary(snapshot);
+  const { asks, parked, running } = shiftSummary(snapshot);
+  // Asks and parked tasks are both what needs the user; a list that didn't load counts nothing.
+  const waitingTasks = parked.ok ? parked.value : [];
+  const needsYou = (asks.ok ? asks.value.length : 0) + waitingTasks.length;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="cos-summary">
       <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
@@ -127,16 +130,19 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
       <div className="text-base leading-[1.55]" data-look="summary-prose">
         {asks.ok ? (
           <p data-testid="cos-summary-asks">
-            {asks.value.length === 0 ? (
+            {needsYou === 0 ? (
               "Nothing needs you."
             ) : (
               <>
-                <span data-testid="cos-needs-you">{asks.value.length}</span> {asks.value.length === 1 ? "thing needs" : "things need"} you.
+                <span data-testid="cos-needs-you">{needsYou}</span> {needsYou === 1 ? "thing needs" : "things need"} you.
               </>
             )}
           </p>
         ) : (
           <SectionFailure what="What needs you" failure={asks.failure} onRetry={retry} testId="cos-summary-asks-failure" />
+        )}
+        {parked.ok ? null : (
+          <SectionFailure what="The tasks waiting on you" failure={parked.failure} onRetry={retry} testId="cos-summary-parked-failure" />
         )}
         {running.ok ? (
           <p data-testid="cos-summary-running" data-runs={running.value.runs} data-workstreams={running.value.workstreams}>
@@ -146,6 +152,42 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
           <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="cos-summary-running-failure" />
         )}
       </div>
+      {waitingTasks.length > 0 ? (
+        <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-parked">
+          {waitingTasks.map((row, i) => (
+            <li
+              key={`${row.boardRef}/${row.id}`}
+              className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
+              data-testid="cos-parked-task"
+              data-task-id={row.id}
+            >
+              <div className="flex items-baseline gap-[9px]">
+                <NeedsYouTag />
+                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
+                  {row.assignee ?? "a worker"} waits on you · {row.id}
+                  {" · "}
+                  <button
+                    type="button"
+                    className="text-info hover:text-foreground"
+                    onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+                    data-testid="cos-parked-open"
+                  >
+                    open task
+                  </button>
+                </p>
+              </div>
+              <p className="text-sm" data-testid="cos-parked-title">
+                {row.title}
+              </p>
+              {row.question === undefined ? null : (
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground" data-testid="cos-parked-question">
+                  {row.question}
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {asks.ok && asks.value.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-asks">
           {asks.value.map((ask, i) => (

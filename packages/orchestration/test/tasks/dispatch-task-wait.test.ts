@@ -138,6 +138,7 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
           "dispatchTask",
           "failTask",
           "listTasks",
+          "readTask",
           "updateTask"
         ]);
         const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId", "title"];
