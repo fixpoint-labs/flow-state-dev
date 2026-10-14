@@ -102,6 +102,12 @@ export type Worker = {
    * written before doors were published.
    */
   door: string | null;
+  /**
+   * Whether the worker keeps standing rules: its worker flow declares the
+   * rules action, as the hire published it. `false` on a row written before
+   * the field.
+   */
+  rules: boolean;
   /** The team it sits under, or {@link STAFF_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
   name: string;
@@ -389,7 +395,7 @@ export function toWorker(row: unknown): Worker | undefined {
   const dot = id.indexOf(".");
   const team = dot > 0 ? id.slice(0, dot) : STAFF_TEAM;
   const name = dot > 0 ? id.slice(dot + 1) : id;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), rules: field(row, "rules") === true, team, name };
 }
 
 /**

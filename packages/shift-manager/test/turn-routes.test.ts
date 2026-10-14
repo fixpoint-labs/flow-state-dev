@@ -10,6 +10,7 @@ const worker = (id: string, door: string | null = "message", flow = "coder"): Wo
   id,
   kind: flow,
   door,
+  rules: false,
   team: id.split(".")[0]!,
   name: id.split(".")[1]!,
 });
