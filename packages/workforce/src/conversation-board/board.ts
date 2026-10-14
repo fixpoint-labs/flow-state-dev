@@ -644,8 +644,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         context: async (_input, ctx) => {
           const own = filingProjectAddressOf(ctx.session.state);
           if (own === undefined || !(await files(ctx as never))) return undefined;
+          // A project id is its creator's text and may hold quotes, so it goes
+          // in as a JSON string: it can't close the name and start a sentence.
           return (
-            `This conversation works in the ${own.visibility} project "${own.id}". ` +
+            `This conversation works in the ${own.visibility} project ${JSON.stringify(own.id)}. ` +
             "Every task you file here works in that project, so leave `project` out of a task's `input`."
           );
         }
