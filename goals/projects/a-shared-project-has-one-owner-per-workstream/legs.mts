@@ -504,8 +504,6 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
   if (bobsInRead?.status !== d.statusWord) c.failures.push(`c:read-holds-status — Alice's coordinator's readProject output (${reads.length} call(s)) holds Bob's workstream as ${show(bobsInRead)}, not with status "${d.statusWord}"`);
   if (!t1.reply.toLowerCase().includes(d.statusWord.toLowerCase())) c.failures.push(`c:names-status — Alice's coordinator's answer doesn't name Bob's status "${d.statusWord}": ${t1.reply.slice(0, 300)}`);
 
-  // A turn that dispatches nothing (the model lists its delegates and asks first) is asked once more,
-  // as a user answers that question, so both "only hers" and the control are graded on a dispatch.
   const workTurns: Turn[] = [await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.work, { word: d.workWord }))];
   if (!workTurns[0]!.tools.some((t) => calls(t.name, "dispatchTask"))) {
     workTurns.push(await talk(alice, coordinator.flowKind, coordinator.id, fill(d.asks.workAgain, { word: d.workWord })));
@@ -514,7 +512,6 @@ export async function runLegs(o: LegsOptions): Promise<Record<string, LegResult>
     c.notes.push(`work turn ${turn.status}: tools ${turn.tools.map((t) => `${t.name}(${t.args})`).join(", ") || "none"}; reply: ${turn.reply.slice(0, 300).replace(/\n/g, " ")}${turn.providerRetry === undefined ? "" : ` (after a provider error: ${turn.providerRetry})`}`);
   }
   if (!workTurns.at(-1)!.tools.some((t) => calls(t.name, "dispatchTask"))) c.notes.push("the coordinator called dispatchTask on neither ask");
-  // Every post the asks made is graded: one delivery to hers across them, none to Bob's in any.
   const postIds = new Set(workTurns.map((t) => t.requestId).filter((id): id is string => id !== null));
   const aliceTarget = `shared/${S.id}/${d.aliceWs.id}`;
   const bobTarget = `shared/${S.id}/${d.bobWs.id}`;
