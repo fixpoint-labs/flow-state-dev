@@ -40,6 +40,7 @@ import { join, sep } from "node:path";
 import { goalTmpDir, intentFreeEnv, REPO_ROOT, RUN_STAMP, runGoal } from "../../lib/index.mts";
 import { labRoutes, servedAddresses, workerOf } from "../../lib/shift-manager.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { stopProcessGroup } from "../../lib/server.mts";
 
 const SLUG = "a-fresh-open-works-fsd-and-shift-manager";
 const CONTROLS = ["no-linear", "no-key"] as const;
@@ -61,6 +62,8 @@ if (KEY === "") {
 /** The checkout the command runs in: this one, or the one `GOAL_CHECKOUT` names (today's-main control). */
 const CHECKOUT = realpathSync(process.env.GOAL_CHECKOUT ?? REPO_ROOT);
 const STORE = join(CHECKOUT, "packages", "shift-manager", ".fsdev", "fsd.sqlite");
+/** The store's files: the database and its WAL-mode sidecars, which move as one. */
+const SQLITE_FILES = ["", "-wal", "-shm"];
 const RUNS = join(CHECKOUT, "packages", "shift-manager", ".fsdev", "fsd-runs");
 const SCRATCH = goalTmpDir(SLUG);
 /** How long both items may take: Claude Code's ten-minute run, the turns before it, and margin. */
@@ -124,17 +127,9 @@ async function startCommand(env: Record<string, string>) {
   let code: number | null | undefined;
   const exited = new Promise<void>((resolve) => child.on("exit", (c) => ((code = c), resolve())));
   const stop = async () => {
-    try {
-      process.kill(-child.pid!, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
+    stopProcessGroup(child);
     await Promise.race([exited, sleep(10_000)]);
-    try {
-      process.kill(-child.pid!, "SIGKILL");
-    } catch {
-      // Gone.
-    }
+    stopProcessGroup(child, "SIGKILL");
   };
   for (const until = Date.now() + 180_000; Date.now() < until; await sleep(250)) {
     const served = servedAddresses(log);
@@ -150,29 +145,42 @@ await runGoal(async (failures) => {
   const evidence: string[] = [];
   mkdirSync(SCRATCH, { recursive: true });
 
-  // A fresh open: the shipped store moved aside, put back after.
-  const kept = existsSync(STORE) ? `${STORE}.goal-${process.pid}` : undefined;
-  if (kept !== undefined) renameSync(STORE, kept);
   const before = new Set(runWorktrees().map((w) => w.path));
   const branchesBefore = new Set(git("branch", "--format=%(refname:short)").split("\n"));
-  // The commit the checkout is on: a run's branch is cut from it, and a stale local `main` would count its commits as the run's.
-  const mainCommit = git("rev-parse", "HEAD");
+  // Every commit a run's branch could be cut from: the checkout's HEAD, `main` and its upstream (the profile's base is
+  // `main`, and the host takes the newer of it and its upstream). A run's own commits are the branch's, less all of these.
+  const bases = ["HEAD", "main", "main@{upstream}"].flatMap((ref) => {
+    try {
+      return [git("rev-parse", "--verify", "--quiet", `${ref}^{commit}`)];
+    } catch {
+      return [];
+    }
+  });
+  const own = (branch: string, ...format: string[]) => git("log", ...format, branch, "--not", ...bases);
 
-  // The person's shell: their Claude credential and model keys, and no Linear seed.
-  const env = intentFreeEnv(process.env, { GOAL_CONTROL: "" });
-  delete env.LINEAR_MCP_API_KEY;
-  delete env.FSD_STORE;
-
-  const issue = await heldOutIssue();
-  console.log(`held-out issue: ${issue.identifier}${CONTROL === "" ? "" : ` (control ${CONTROL})`}`);
-  const stamp = `shift-manager ${RUN_STAMP}`;
-  const file = `goal-scratch/${RUN_STAMP.replace(/[^A-Za-z0-9-]/g, "-")}-shift-manager.txt`;
-  const askA = `On FSD: have the coder read Linear issue ${issue.identifier} and answer with its title, exactly as Linear has it. Change no files.`;
-  const askB = `On Shift Manager: have the coder create the file ${file} containing exactly the line "${stamp}", and commit it on its branch. Nothing else.`;
-
-  const served = await startCommand(env);
-  const browser = await launchChromium();
+  // A fresh open: the shipped store (the database and its WAL sidecars) moved aside, put back after.
+  const kept = SQLITE_FILES.map((suffix) => `${STORE}${suffix}`).filter((path) => existsSync(path));
+  for (const path of kept) renameSync(path, `${path}.goal-${process.pid}`);
+  let started: Awaited<ReturnType<typeof startCommand>> | undefined;
+  let opened: Awaited<ReturnType<typeof launchChromium>> | undefined;
   try {
+    // The person's shell: their Claude credential and model keys, and no Linear key. They paste theirs on Settings.
+    const env = intentFreeEnv(process.env, { GOAL_CONTROL: "" });
+    delete env.LINEAR_MCP_API_KEY;
+    delete env.LINEAR_API_KEY;
+    delete env.FSD_STORE;
+
+    const issue = await heldOutIssue();
+    console.log(`held-out issue: ${issue.identifier}${CONTROL === "" ? "" : ` (control ${CONTROL})`}`);
+    const stamp = `shift-manager ${RUN_STAMP}`;
+    const file = `goal-scratch/${RUN_STAMP.replace(/[^A-Za-z0-9-]/g, "-")}-shift-manager.txt`;
+    const askA = `On FSD: have the coder read Linear issue ${issue.identifier} and answer with its title, exactly as Linear has it. Change no files.`;
+    const askB = `On Shift Manager: have the coder create the file ${file} containing exactly the line "${stamp}", and commit it on its branch. Nothing else.`;
+
+    const served = await startCommand(env);
+    started = served;
+    const browser = await launchChromium();
+    opened = browser;
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     page.setDefaultTimeout(30_000);
     const pageErrors: string[] = [];
@@ -202,8 +210,36 @@ await runGoal(async (failures) => {
       if (off.error !== undefined) throw new Error(`setup: clearing FSD's MCP servers failed: ${off.error}`);
     }
 
+    // ---- watch both tasks from before the first ask until they settle -------
+    // Watching starts before a is asked, so an overlap while b's turn is still running is seen.
+    let conversation: { id: string } | undefined;
+    /** Every row the conversation filed: on its own board, or on the boards of the EM sessions under it. */
+    const filed = async (): Promise<Array<Record<string, any>>> => {
+      conversation ??= (await http.sessions()).filter((s) => workerOf(s) === "chief-of-staff" && s.parentSessionId == null).sort((x, y) => y.createdAt - x.createdAt)[0];
+      if (conversation === undefined) return [];
+      const rows = ((await http.act("coordinator", conversation.id, "listTasks_tasks", {})).output?.tasks ?? []) as Array<Record<string, any>>;
+      for (const em of (await http.sessions()).filter((s) => s.flowId === "em" && s.parentSessionId === conversation!.id)) {
+        rows.push(...(((await http.act("em", em.id, "listTasks_tasks", {})).output?.tasks ?? []) as Array<Record<string, any>>));
+      }
+      return rows;
+    };
+    const legOf = (row: Record<string, any>) => {
+      const goal = String(row.goal ?? "");
+      return goal.includes(issue.identifier) ? "a" : goal.includes(RUN_STAMP) ? "b" : undefined;
+    };
+    let rows: Record<string, Record<string, any>> = {};
+    let together = false;
+    const watching = (async () => {
+      for (const until = Date.now() + BUDGET_MS; Date.now() < until; await sleep(5_000)) {
+        // The coder's row, not a post row handed to the EM on the way: a post settles before the coder commits.
+        rows = Object.fromEntries((await filed()).filter((r) => r.assignee === CODER).map((r) => [legOf(r), r]).filter(([leg]) => leg !== undefined));
+        const live = runWorktrees().filter((w) => !before.has(w.path));
+        if (rows.a !== undefined && rows.b !== undefined && !SETTLED.has(rows.a.status) && !SETTLED.has(rows.b.status) && live.length >= 2) together = true;
+        if (rows.a !== undefined && rows.b !== undefined && SETTLED.has(rows.a.status) && SETTLED.has(rows.b.status)) break;
+      }
+    })();
+
     // ---- a, then b while a works: two asks in the chief of staff's composer ---
-    const asked: Array<{ leg: string; delivered: boolean }> = [];
     await page.goto(served.origin);
     for (const [leg, ask] of [
       ["a", askA],
@@ -214,34 +250,12 @@ await runGoal(async (failures) => {
         await input.fill(ask);
         await page.getByTestId("cos-composer-send").click();
         await page.waitForFunction(() => document.querySelector("[data-testid=cos-composer-status]")?.getAttribute("data-state") === "delivered", undefined, { timeout: 180_000 });
-        asked.push({ leg, delivered: true });
       } catch (error) {
         note(`${leg}:asked`, `the composer never read delivered: ${String(error).split("\n")[0]}`);
       }
     }
     await page.screenshot({ path: join(SCRATCH, "asked.png") });
-    const conversation = (await http.sessions()).filter((s) => workerOf(s) === "chief-of-staff" && s.parentSessionId == null).sort((x, y) => y.createdAt - x.createdAt)[0];
-
-    // ---- watch both tasks until they settle --------------------------------
-    /** Every row the conversation filed: on its own board, or on the boards of the EM sessions under it. */
-    const filed = async (): Promise<Array<Record<string, any>>> => {
-      if (conversation === undefined) return [];
-      const rows = ((await http.act("coordinator", conversation.id, "listTasks_tasks", {})).output?.tasks ?? []) as Array<Record<string, any>>;
-      for (const em of (await http.sessions()).filter((s) => s.flowId === "em" && s.parentSessionId === conversation.id)) {
-        rows.push(...(((await http.act("em", em.id, "listTasks_tasks", {})).output?.tasks ?? []) as Array<Record<string, any>>));
-      }
-      return rows;
-    };
-    const legOf = (row: Record<string, any>) => (JSON.stringify(row).includes(issue.identifier) ? "a" : JSON.stringify(row).includes(RUN_STAMP) ? "b" : undefined);
-    let rows: Record<string, Record<string, any>> = {};
-    let together = false;
-    for (const until = Date.now() + BUDGET_MS; Date.now() < until; await sleep(5_000)) {
-      // The coder's row, not a post row handed to the EM on the way: a post settles before the coder commits.
-      rows = Object.fromEntries((await filed()).filter((r) => r.assignee === CODER).map((r) => [legOf(r), r]).filter(([leg]) => leg !== undefined));
-      const live = runWorktrees().filter((w) => !before.has(w.path));
-      if (rows.a !== undefined && rows.b !== undefined && !SETTLED.has(rows.a.status) && !SETTLED.has(rows.b.status) && live.length >= 2) together = true;
-      if (rows.a !== undefined && rows.b !== undefined && SETTLED.has(rows.a.status) && SETTLED.has(rows.b.status)) break;
-    }
+    await watching;
     await page.screenshot({ path: join(SCRATCH, "settled.png") });
 
     // ---- grade --------------------------------------------------------------
@@ -255,7 +269,7 @@ await runGoal(async (failures) => {
       if (row?.status !== "completed") note(`${leg}:completed`, row === undefined ? "no task was filed for it" : `the task is ${row.status}: ${JSON.stringify(row).slice(0, 500)}`);
     }
     const made = runWorktrees().filter((w) => !before.has(w.path));
-    const commits = (branch: string) => git("diff", "--name-only", `${mainCommit}...${branch}`).split("\n").filter(Boolean);
+    const commits = (branch: string) => own(branch, "--name-only", "--format=").split("\n").filter(Boolean);
     const placeB = made.find((w) => w.branch !== undefined && commits(w.branch).includes(file));
     const placeA = made.find((w) => w !== placeB);
     if (made.length !== 2 || made.some((w) => w.branch === undefined)) {
@@ -272,11 +286,12 @@ await runGoal(async (failures) => {
         continue;
       }
       if (!branches.has(place.branch)) note(`${leg}:branch-in-checkout`, `${place.branch} is not in the checkout's branches`);
-      const messages = git("log", "--format=%B", `${mainCommit}..${place.branch}`);
-      console.log(`${leg}'s branch ${place.branch}:\n${git("log", "--format=%h %s", "--stat", "-5", `${place.branch}`, "--not", "main", "main@{upstream}")}`);
+      const messages = own(place.branch, "--format=%B");
+      console.log(`${leg}'s branch ${place.branch}:\n${own(place.branch, "--format=%h %s", "--stat", "-5")}`);
       if (DEMO_MARKERS.some((m) => messages.includes(m)) || commits(place.branch).some((f) => f.endsWith("greeting.js"))) {
         note(`${leg}:no-demo-brief`, `${place.branch} carries DevTeam's test fixtures (greeting.js or one of ${DEMO_MARKERS.join(", ")})`);
       }
+      if (leg === "a" && own(place.branch, "--format=%h") !== "") note("a:changes-nothing", `${place.branch} carries commits, and a was asked to change no files`);
       evidence.push(`${leg}: ${place.path} on ${place.branch}`);
     }
     if (placeB?.branch !== undefined) {
@@ -286,7 +301,7 @@ await runGoal(async (failures) => {
       } catch {
         body = "";
       }
-      if (!body.includes(stamp)) note("b:commits-the-file", `${file} on ${placeB.branch} reads ${JSON.stringify(body.slice(0, 200))}`);
+      if (body !== stamp) note("b:commits-the-file", `${file} on ${placeB.branch} reads ${JSON.stringify(body.slice(0, 200))}`);
     } else {
       note("b:commits-the-file", `no new branch commits ${file}`);
     }
@@ -304,18 +319,19 @@ await runGoal(async (failures) => {
     if (pageErrors.length > 0) note("page", `the page threw: ${pageErrors.slice(0, 3).join(" | ")}`);
     evidence.push(`a: ${linearCalls.length} mcp__linear__ call(s); the answer carries ${issue.identifier}'s title`, "both tasks completed, unsettled together");
   } finally {
-    await browser.close();
-    await served.stop();
-    writeFileSync(join(SCRATCH, "server.log"), served.log());
-    console.error(`the command's output: ${join(SCRATCH, "server.log")}`);
+    await opened?.close();
+    if (started !== undefined) {
+      await started.stop();
+      writeFileSync(join(SCRATCH, "server.log"), started.log());
+      console.error(`the command's output: ${join(SCRATCH, "server.log")}`);
+    }
     // The run writes into the checkout: remove its worktrees and branches, pass or fail; put the store back.
     const made = runWorktrees().filter((w) => !before.has(w.path));
     for (const w of made) execFileSync("git", ["worktree", "remove", "--force", w.path], { cwd: CHECKOUT, stdio: "pipe" });
     git("worktree", "prune");
     for (const w of made) if (w.branch !== undefined && !branchesBefore.has(w.branch)) git("branch", "-D", w.branch);
-    rmSync(STORE, { force: true });
-    for (const suffix of ["-wal", "-shm"]) rmSync(`${STORE}${suffix}`, { force: true });
-    if (kept !== undefined) renameSync(kept, STORE);
+    for (const suffix of SQLITE_FILES) rmSync(`${STORE}${suffix}`, { force: true });
+    for (const path of kept) renameSync(`${path}.goal-${process.pid}`, path);
     if (made.length > 0) console.error(`removed ${made.length} worktree(s) and their branches from ${CHECKOUT}`);
   }
   return { failures, evidence: evidence.join(" · ") };
