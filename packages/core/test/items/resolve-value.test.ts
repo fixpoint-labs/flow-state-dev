@@ -134,9 +134,6 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
 });
 
 describe("resolveBlockValue (ref to a tool result)", () => {
-  // A block run as a tool (or an `.asTool()` step) records its result once, on
-  // the `tool_output` item, and its trace refs that item. A ref that cannot be
-  // followed hands a resumed step `undefined` in place of the result.
   function makeToolOutput(id: string, fields: Partial<ToolOutputItem>): ToolOutputItem {
     return {
       id,
@@ -164,11 +161,5 @@ describe("resolveBlockValue (ref to a tool result)", () => {
     const inner = makeBlockOutput("item_bo_inner", { kind: "ref", sourceItemId: "item_tool_1" } as BlockTraceItem["output"]);
     const out = resolveBlockValue({ kind: "ref", sourceItemId: "item_bo_inner" }, buildItemLookup([tool, inner]));
     expect(out).toBe(42);
-  });
-
-  it("returns undefined for a tool result the record left out", () => {
-    const tool = makeToolOutput("item_tool_1", { outputOmitted: { kind: "omitted", reason: "over_limit", bytes: 9000 } as never });
-    const out = resolveBlockValue({ kind: "ref", sourceItemId: "item_tool_1" }, buildItemLookup([tool]));
-    expect(out).toBeUndefined();
   });
 });

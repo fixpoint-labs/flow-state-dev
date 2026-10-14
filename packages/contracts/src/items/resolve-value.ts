@@ -122,9 +122,7 @@ function resolveInternal(
       return joinMessageText(target as MessageItem);
     }
     if (target.type === "tool_output") {
-      // Terminal node — a block run as a tool records its result once, on the
-      // `tool_output` item, and its `block_trace` refs that item (FIX-1847).
-      // A result left out of the record carries `outputOmitted` and no `output`.
+      // Terminal node — the recorded output IS the resolved value. No recursion.
       return (target as ToolOutputItem).output;
     }
     // Unknown ref target type. Returning `undefined` is the safe choice —
