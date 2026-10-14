@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TASKS_POLL_MS, TasksPanel } from "../src/components/TasksPanel";
 import { toWorker } from "../src/lib/reads";
 
-type Row = { id: string; goal: string; status: string; assignee?: string; attempts: number };
+type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
 let rows: Row[] = [];
 let refusal: string | null = null;
 const calls: string[] = [];
@@ -213,5 +213,20 @@ describe("opening a task from the panel", () => {
     act(() => screen.getByTestId("cos-task-group").querySelector("button")!.click());
     await act(async () => screen.getByTestId("cos-task-open").click());
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t3/session");
+  });
+});
+
+describe("a task's label in the panel", () => {
+  it("is its title when it has one, and its goal when it has none", async () => {
+    rows = [
+      { id: "t1", goal: "Take a quick look at the flow state code in the repository and report back", title: "Look at flow state", status: "in_progress", attempts: 1 },
+      { id: "t2", goal: "Write the release notes", status: "pending", attempts: 0 },
+    ];
+    render(<TasksPanel worker={cos} sessionId="s1" readAt={1} />);
+    await settle();
+    const text = shown().map((t) => t.text);
+    expect(text[0]).toContain("Look at flow state");
+    expect(text[0]).not.toContain("Take a quick look");
+    expect(text[1]).toContain("Write the release notes");
   });
 });

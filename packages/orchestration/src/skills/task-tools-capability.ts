@@ -973,6 +973,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "instead of addTask.";
   const addTaskFields = {
     goal: z.string(),
+    title: z
+      .string()
+      .optional()
+      .describe(
+        "A short label for the task, a few words, shown where the task is listed. The goal is the " +
+          "full brief; give a title that is not just the goal restated. Omit it and the goal is shown.",
+      ),
     assignee: z.string().optional(),
     deps: z.array(z.string()).optional(),
     priority: z.number().optional(),
@@ -1070,6 +1077,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     return {
       init: {
         goal: input.goal,
+        ...(input.title !== undefined ? { title: input.title } : {}),
         ...(assignee !== undefined ? { assignee } : {}),
         ...(followUp !== undefined ? { id: followUp.id, followUpOf: followUp.root } : {}),
         ...(input.deps !== undefined ? { deps: input.deps } : {}),
@@ -1231,7 +1239,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   /** The fields a post takes: everything else describes a task, which a post isn't. */
   const POST_FIELDS = new Set(["post", "assignee", "target"]);
   /** The fields only a new task takes, refused beside `taskId` (BR-13): change a recorded task with updateTask first. */
-  const NEW_TASK_ONLY = ["deps", "priority", "input", "metadata", "followUpOf"] as const;
+  const NEW_TASK_ONLY = ["title", "deps", "priority", "input", "metadata", "followUpOf"] as const;
 
   /**
    * The owner a dispatch starts the row with (BR-24): the one named, else the
@@ -1586,6 +1594,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           z.object({
             id: z.string(),
             goal: z.string(),
+            /** The short label the task was filed under, when it has one. */
+            title: z.string().optional(),
             status: z.string(),
             assignee: z.string().optional(),
             attempts: z.number(),
@@ -1613,6 +1623,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         tasks: tasks.map((t) => ({
           id: t.id,
           goal: t.goal,
+          ...(t.title !== undefined ? { title: t.title } : {}),
           status: t.status,
           ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
           attempts: t.attempts,
