@@ -196,6 +196,8 @@ describe("a new task's input is an object, never its JSON as a string", () => {
       const tool = tools.find((t) => (t as { name?: string }).name === name);
       if (tool === undefined) throw new Error(`${name} is not offered`);
       expect(tool.inputSchema.safeParse({ ...base, input: JSON.stringify(project) }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: 1 }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: [project] }).success).toBe(false);
       expect(tool.inputSchema.safeParse({ ...base, input: project }).success).toBe(true);
     });
   }
