@@ -35,9 +35,9 @@ The check reads the page's structure against the store, never its words; with th
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/it-nests-a-tasks-pieces-under-it/` · no model (scripted workers) · real browser · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | `nested`: every row the store holds as a piece is drawn inside its task's row in the rail and on Tasks, and nowhere else. `live`: a piece filed or settled shows within one poll, no reload. `kept`: once every piece and the task have finished, the rail's finished group draws the task with its pieces under it. `deep`: a piece of a piece nests two levels down. `legacy`: a piece stored in the shape `main` writes today, with its task's id in its server-side metadata and no `parent`, is drawn inside its task's row in the rail and on Tasks |
-| **Input** | The goal-local Lab of `goals/coordinators/files-tasks-down-the-owners-chain/`, extended: a conversation files a task whose worker splits it into two pieces, one of which splits again. A different split (more pieces, a failed-then-retried piece) must pass too. Once FIX-1997 lands, one piece goes to a roster worker that isn't a delegate. For `legacy`, the store is seeded before boot with one split task and one piece in the shape `main` writes today: the piece carries only its task's id in metadata, never `parent` |
-| **Anti-game** | No assertion on the page's text or on Shift Manager's state. The oracle is the store, read by the script; nesting is DOM containment. No fixture writes a row, except the one old-shape piece `legacy` seeds before boot, written in exactly the shape `main`'s filing path stores, with no `parent` |
+| **Signal** | `nested`: every row the store holds as a piece is drawn inside its task's row in the rail and on Tasks, and nowhere else. `live`: a piece filed or settled shows on the next refresh the board already makes, no reload. `kept`: once every piece and the task have finished, the rail's finished group draws the task with its pieces under it. `legacy`: a piece stored in the shape `main` writes today, with its task's id in its server-side metadata and no `parent`, is drawn inside its task's row in the rail and on Tasks |
+| **Input** | The goal-local Lab of `goals/coordinators/files-tasks-down-the-owners-chain/`, extended with one scripted split: a conversation files a task whose worker splits it into two pieces. A different split (three pieces) must pass too. Depth and a retried piece are the implementer's tests; a piece to a roster worker is FIX-1997's goal ([decided, not asked](DECISIONS.md#decided-not-asked)). For `legacy`, the store is seeded before boot with one split task and one piece in the shape `main` writes today: the piece carries only its task's id in metadata, never `parent` |
+| **Anti-game** | No assertion on the page's text or on Shift Manager's state. The oracle is the store, read by the script; nesting is DOM containment, read through stable hooks every task row carries (its task id, as `data-task-id`). No fixture writes a row, except the one old-shape piece `legacy` seeds before boot, written in exactly the shape `main`'s filing path stores, with no `parent` |
 | **Control that must fail** | `GOAL_CONTROL=unlinked`: the ledger publishes no `parent`. Must FAIL **`nested`**. `GOAL_CONTROL=filing-only`: `parent` is published only for pieces filed after the change, with no fallback for stored ones. Must FAIL **`legacy`** while `nested` passes. Today's `main` FAILs `nested` and `legacy` (pieces absent from the rail, flat on Tasks) |
 
 ## What changes
@@ -53,7 +53,9 @@ Same split, before and after. The indent is the whole change: the pieces already
 + parent: { board: "<the parent's board>", id: "t-coding" }
 ```
 
-**Docs:** update Workforce's *Delegating work* (the `parent` field under *Showing a user's boards in your app*; one line under *Splitting a task* on how pieces show) and the Shift Manager overview (the Tasks row and the board paragraph). No new page.
+One mapper, in the ledger's client projection, projects `parent` from the piece's server-side mark; it is the one place the old shape is read (BP-030). `parent.id` is the task id the mark already holds. `parent.board` is **not** derivable from the piece's own partition, which is its task session's board, one below the parent's; it is written beside the mark at filing. For a piece stored before that, the mapper publishes the id alone, and the board is the one whose task's run names the piece's session.
+
+**Docs:** update Workforce's *Delegating work* (the `parent` field under *Showing a user's boards in your app*; one line under *Splitting a task* on how pieces show) and the Shift Manager overview (the Tasks row, the project row's Board, and the board paragraph). No new page.
 
 ## How the nest reaches the board
 
@@ -66,7 +68,7 @@ flowchart LR
   N --> TS["Tasks"]
 ```
 
-The link is written where the piece is filed, from server state only, and read from the ledger read the Lab already makes; no session reads another's board.
+The rail, a project's Board and Tasks all take the same flat ledger rows, `parent` set on pieces, and one tree builder, memoized per read, arranges them. No per-task fetch, no rail-only enrichment, no new poll: pieces ride the refreshes the board makes today. No session reads another's board.
 
 ## What stays as it is
 
@@ -84,6 +86,7 @@ The link is written where the piece is filed, from server state only, and read f
 | Park on a task ([D1](../park-on-task/DECISIONS.md#d1), [D2](../park-on-task/DECISIONS.md#d2), built by FIX-1997) | **Builds on.** Pieces reach any task-taking worker, which is what lets a reviewer's step be a piece |
 | The ledger's browser fields ([FIX-1794](../FIX-1794/PLAN.md#surfaces)) | **Extends** by one field |
 | The conversation rail ([FIX-1794 S11](../FIX-1794/PLAN.md#surfaces)) and its live read, shared with the feed's cards by FIX-2006 (#3413) | **Extends.** The one read gains the pieces under each task |
+| A project's Board: one rail panel per workstream session | **Extends**, with the rail: the same panel, so the same tree, and the goal's rail leg covers it |
 | Tasks, the all-boards table | **Extends.** Rows with a parent draw under it |
 | Anything else that nests tasks | **Leaves alone.** Orchestration's `TaskPlan` nests a spawned task by emit time ([FIX-658](https://github.com/fixpoint-labs/flow-state-dev/pull/353)): a chat view, not a board. Searched `parent`, `pieceOf`, `child`, `subtask`, `nest` across `packages/`: no other board relation |
 
