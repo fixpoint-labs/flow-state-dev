@@ -41,13 +41,16 @@
     },
     "project-coordinator": {
       "kind": "coordinator"
+    },
+    "general-lead": {
+      "kind": "agent"
+    },
+    "researcher": {
+      "kind": "agent"
     }
   },
   "teamCoordinators": {
     "eng.triage": {
-      "kind": "coordinator"
-    },
-    "ops.oncall": {
       "kind": "coordinator"
     }
   },

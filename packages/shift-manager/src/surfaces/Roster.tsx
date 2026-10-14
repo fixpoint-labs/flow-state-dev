@@ -1,8 +1,7 @@
 /**
- * Roster: every worker the user has, grouped on shift, on call and off
- * shift, for all teams or one (`/roster[?team=]`). The workers are the
- * user's roster, read through Workforce's client: their own workers and the
- * standard ones, each on the flow it names. A standard worker's row is the
+ * Roster: every worker the user has, grouped on shift and off shift, for
+ * all teams or one (`/roster[?team=]`). The workers are the user's roster,
+ * read through Workforce's client: their own workers and the standard ones, each on the flow it names. A standard worker's row is the
  * worker inventory's. The roster is read again with every snapshot, so a worker
  * hired or fired on a turn shows on the next read.
  *
@@ -12,8 +11,8 @@
  * snapshot and says when it was read.
  *
  * In design v2's form (v2:693-725): a column header, each group's heading
- * with what its status means, and ON CALL FOR as boxed tags, a task or an ask
- * waiting on you tagged WAITING on the highlighter.
+ * with what its status means, and WAITING ON YOU as boxed tags, a task or an
+ * ask waiting on you tagged WAITING on the highlighter.
  */
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
@@ -32,13 +31,12 @@ const COLUMNS_GRID = "grid grid-cols-[minmax(0,1fr)_6rem_minmax(0,1.1fr)_minmax(
 
 /** What each group's status means (v2:1392). */
 const GROUP_SUB: Record<ShiftStatus, string> = {
-  "on shift": "holding live work",
-  "on call": "subscribed and waiting · wakes on a trigger",
-  "off shift": "nothing assigned, nothing subscribed",
+  "on shift": "holding live work, running or waiting on you",
+  "off shift": "nothing assigned",
 };
 
 /**
- * One ON CALL FOR entry (v2:716-718): a 66px tag, then what and when on two
+ * One WAITING ON YOU entry (v2:716-718): a 66px tag, then what and when on two
  * lines. Everything listed here waits on the user, so its tag is WAITING on
  * the highlighter.
  */
@@ -193,7 +191,7 @@ export function RosterView({
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             <span data-testid="roster-summary">
-              {counts["on shift"]} on shift · {counts["on call"]} on call · {counts["off shift"]} off shift · {counts.waiting} waiting on you
+              {counts["on shift"]} on shift · {counts["off shift"]} off shift · {counts.waiting} waiting on you
             </span>
             <span data-testid="roster-read-at"> · read {new Date(snapshot.readAt).toLocaleTimeString()}</span>
             {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
@@ -222,7 +220,7 @@ export function RosterView({
         <span>WORKER</span>
         <span>SLOTS</span>
         <span>HOLDING</span>
-        <span>ON CALL FOR</span>
+        <span>WAITING ON YOU</span>
       </div>
       <div className="flex-1 overflow-y-auto px-5 pb-6">
         {snapshot.inventory.ok ? null : (
@@ -269,7 +267,6 @@ export function RosterView({
           );
         })}
         <div className="mt-4 space-y-1 text-xs text-muted-foreground">
-          <p data-testid="roster-gap-watches">{gaps.roster.watches}</p>
           <p data-testid="roster-gap-worker-match">{gaps.roster.workerMatch}</p>
         </div>
       </div>

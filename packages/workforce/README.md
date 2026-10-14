@@ -1362,6 +1362,12 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   sends it. Nothing deletes an entry. **`updateWorkstreamTool`** is the same write as the lead's tool,
   named `updateWorkstream`: it takes only the changes and writes the workstream its session leads
   (`not-a-workstream-session` elsewhere).
+- **`editWorkstreamTool`** is a tool named `editWorkstream` for the owner's project coordinator.
+  It takes `{ project?, id, title?, status?, due?, objectives? }` (`editWorkstreamInputSchema`,
+  strict) and returns `{ workstream }`. It always writes the caller's own entry, with no `owner`
+  and no `report` (the report stays the lead's). `project` resolves as for `setBrief`
+  (`no-such-project`, `other-project`), and an id the caller has no workstream under is refused
+  `no-such-workstream`, including another worker's.
 - **`listLeadsTool`** is a tool named `listLeads` for whoever picks a lead. It takes no input and
   returns `{ leads: [{ id, description }] }` (`listLeadsOutputSchema`; `description` is a string or
   `null`): every worker on the caller's roster, their own and the standard ones, that can lead a
@@ -1401,9 +1407,10 @@ defineFlow({ kind: "projects", actions: { ...projects.actions, ...workstreams.ac
   session filed from one, works for that workstream, and is refused `not-the-owner` when the run's
   owner isn't the workstream's. A task session filed from a project's conversation works in that
   project, and one filed from a conversation with no project works in the project its task names
-  as `input.project`, for that project's members only (`not-a-member`). `no-project` when none
-  applies. The block that asks it must hold `projectWorkspaceCapability`; with harness-manager, pass
-  it on `uses`:
+  as `input.project`, for that project's members only (`not-a-member`). A task filed from a
+  workstream or a project's conversation that names a project in `input.project` is filed naming
+  that conversation's project instead. `no-project` when none applies. The block that asks it
+  must hold `projectWorkspaceCapability`; with harness-manager, pass it on `uses`:
 
   ```ts
   harnessManager({
@@ -1470,8 +1477,8 @@ can't read is refused. Its `readProject` tool (`projectCoordinatorTools`) reads 
 delegates are the user's open workstreams in the project, one per workstream: the lead, with the
 workstream's address as the target, so it hands work only to the user's own workstreams. They
 follow the workstreams: the session's delegate list starts with one per open workstream the first
-time it's read; `openWorkstream` adds one; `updateWorkstream` removes it when the status becomes
-`"done"` and adds it back when it leaves `"done"`; and a hand-off to one is delivered into the
+time it's read; `openWorkstream` adds one; `updateWorkstream` and `editWorkstream` remove it when the status becomes
+`"done"` and add it back when it leaves `"done"`; and a hand-off to one is delivered into the
 session the user's entry names, looked up at delivery, so the post lands in that workstream's
 session.
 
@@ -1479,9 +1486,14 @@ To let the coordinator open workstreams, add `listLeads: workstreams.listLeadsTo
 `openWorkstream: workstreams.openWorkstreamTool.as({ name: "openWorkstream" })` to its catalog and name
 both in its `tools:`. Asked for work none of the user's workstreams covers, it lists the leads,
 opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
-coordinator's own project), and hands the ask to it at `<project.visibility>/<project.id>/<id>`,
+coordinator's own project), and hands the request to it at `<project.visibility>/<project.id>/<id>`,
 built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
 take the hand-off as soon as `openWorkstream` returns.
+
+To let it change the user's workstreams (title, status, due date, objectives), add
+`editWorkstream: workstreams.editWorkstreamTool` to its catalog (the block is already named, so no
+`.as()`) and name `editWorkstream` in its `tools:`. When it runs in the owner's own coordinator turn, closing
+a workstream drops its delegate in that turn, so a later hand-off in the turn never targets it.
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
 with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
@@ -1835,8 +1847,13 @@ five boards deep and 100 tasks under one top task; a filing past either is answe
 A worker on a task turn has `parkOnQuestion`: it parks the task on its question, and the
 conversation hears it. `answerTask_tasks` (or the coordinator's `answerTask` tool) answers it, and
 the task picks up in its own session with the answer as its next message, without spending a
-retry. A task's session stays open after the task finishes: message its worker there, or file a
-follow-up with `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
+retry. A task's session stays open after the task finishes. A message to the built-in `agent`
+worker there (its `run` action) reopens the task, or the latest of its follow-ups, and answers
+`{ reopened: <that task's id> }`. The task goes back on the conversation's board under the same id,
+and its next attempt runs in that session without spending a retry. The worker answers there from
+everything the session holds, and the conversation that filed it hears the new ending. While the task or a
+follow-up of it is unfinished, a message there is an ordinary turn. To file new work on a finished
+task, use `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
 
 A browser reads its user's boards through the ordinary collection read: `tasks`, fetched through
 any of that user's sessions on a flow that carries the session board, answers every one of their
@@ -1931,7 +1948,7 @@ the root exports, and reaches no Node built-in.
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
-| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, listLeadsTool, actions }`. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
 | `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
@@ -1939,7 +1956,7 @@ the root exports, and reaches no Node built-in.
 | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |
 | `WORKER_TASK_ENTRY` | `"work"`, the task entry a worker flow takes tasks through. |
-| `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there, for a message door over the session's run. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |
+| `workerTaskEntry({ name, turn \| block })` / `WorkerTaskEntryOptions` / `WorkerTaskBlockInput` / `conversationLedgers` / `filingConversationBoard` | The `work` task entry for a worker flow of your own: `task: { actions: { work: workerTaskEntry({ name, turn }) } }`. Each task a coordinator files for one of its workers runs as one `turn` (`{ message }` in, the answer out), or, with `block` instead (one or the other, refused at build otherwise), as a block handed the task itself plus `claim` (`{ collectionId, partition, incarnationId }`, the board the task was claimed from, never read from the task), in a task session of its own, and the conversation that filed it is told when it ends. A flow whose `work` entry is built any other way takes no conversation task: `listDelegates` reports it as taking `nothing`, and a filing for it is refused. `conversationLedgers(ledgerId, ctx, partition)` finds the board of the conversation a task came from; pass it to a harness manager that takes tasks from conversations. `filingConversationBoard(ctx)` answers, in a task session, that conversation's board with the entry and flow that run it there (`{ tasks, runEntry, filingFlow, filingSession }`), for a message door over the session's run; pass `filingSession`, the conversation that filed the task, as the door board's `reopenIn` so a message on a finished task reopens it. A coding run's `projectWorkspace()` finds its project from the filing workstream, then the project of the conversation that filed it, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim. |
 | `defineWorkerInventoryCollection()` | The worker inventory: one org-scoped row per registered worker, at `inventory/workers/<workerId>`. Takes no options; install what it returns under a block's `resources`. |
 | `WorkerInventoryRow` | One row of the inventory. |
 | `workerInventoryRowSchema` | The Zod schema behind the row type. Closed: an undeclared key is dropped on the way in. |

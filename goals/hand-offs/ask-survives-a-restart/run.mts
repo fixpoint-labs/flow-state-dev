@@ -280,9 +280,9 @@ function grade(O: Observed, store: string, userId: string): Graded {
     .join("\n");
   if (!said.toLowerCase().includes(O.word.toLowerCase())) failures.push(`a:word — the asking request's own output doesn't carry "${O.word}": ${show(said)}`);
 
-  const rows = taskRows(store, userId, LAB_ORG).filter((t: StoredTask & { ask?: unknown }) => t.assignee === O.colleague);
+  const rows = taskRows(store, userId, LAB_ORG).filter((t: StoredTask & { wait?: unknown }) => t.assignee === O.colleague);
   if (rows.length !== 1) failures.push(`one-row — ${rows.length} rows were filed for ${O.colleague}, not one: ${show(rows.map((t) => [t.id, t.status, t.attempts]))}`);
-  const asked = rows.filter((t) => (t as { ask?: unknown }).ask != null);
+  const asked = rows.filter((t) => (t as { wait?: unknown }).wait != null);
   if (asked.length !== rows.length) failures.push(`one-row — a row for ${O.colleague} isn't marked asked`);
   const completedRuns = all.filter((r) => r.actionName === "work" && r.status === "completed" && rows.some((t) => t.run?.sessionId === r.sessionId));
   const completedRows = rows.filter((t) => t.status === "completed");

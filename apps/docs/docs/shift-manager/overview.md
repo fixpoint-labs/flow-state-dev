@@ -88,13 +88,13 @@ These are Shift Manager's own screens and words. Where one maps onto a Workforce
 | **Shift Coordinator** | Where Shift Manager opens. A summary of the asks waiting on you and the runs going, then your conversation with the Lab's [Shift Coordinator](../workforce/shift-coordinator.md). When the Shift Coordinator is a [coordinator](../workforce/coordinators.md), the DELEGATES panel lists who it hands this conversation's work to: add a worker from your roster, or remove one. A refused add shows why. Without a Shift Coordinator, you get the summary and a line saying how to add one. |
 | **Inbox** | Every approval and question a worker is waiting on you for, oldest first. Answer on the card, or reply to the worker under it. |
 | **Tasks** | Every row on every board that isn't done, grouped by state, worker or workstream. Queued rows are behind a toggle. |
-| **Roster** | Every worker, grouped as on shift (running a task), on call (waiting on you), or off shift. |
+| **Roster** | Every worker, grouped as on shift (running a task, or waiting on you) or off shift. |
 | **A project** | Shared with your org, or private to you. Tabs: Stream (your own [project coordinator](../workforce/projects.md#talking-to-a-project)), Workstreams (every workstream's entry, with the progress worked out from them), Board (the tasks of your own workstreams) and Brief, which also names the project's repository, or says its coding work runs on the project's files. See [Projects](../workforce/projects.md). |
 | **A workstream** | On a project, your own workstream opens on its lead's conversation. Someone else's opens on its details and latest report. |
 | **Settings** | Your own keys for the MCP servers the Lab offers its projects' coding runs. See [Settings](./settings.md). |
 | **A task** | One worker's run, live, with Interrupt to stop it. *Open trace* opens the run's session in the DevTool (see [Opening a session from a link](../devtool/overview.md#opening-a-session-from-a-link)). |
 
-The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
+The sidebar lists, under PROJECTS, the org's shared projects and your own private ones, marked private, then the teams under TEAMS. A project's workstreams sit beneath it: the project you're on shows them, and the arrow beside any project shows or hides them. Jump to (⌘K) finds workstreams, workers, tasks and the Lab's readable documents.
 
 **Opening a workstream.** Ask your project coordinator, in the project's Stream tab, for work none of your workstreams there covers. The coordinator opens a workstream for that work, led by the worker on your roster whose description fits, such as your engineering manager for a feature, and hands your ask to the new workstream. The ask stays in the workstream's conversation as its brief. One worker can lead several of your workstreams, with a separate conversation and board for each. When nobody on your roster does the work, the coordinator says so; ask your Shift Coordinator to hire someone.
 
@@ -134,5 +134,4 @@ Several parts are drawn as named empty states or disabled controls:
 
 - On a task: Hand off, reassign and Open PR are disabled. Diff, Checks, acceptance criteria, reviewer, harness, tokens and cost are empty.
 - A workstream's Results tab, and the IN REVIEW column, are always empty.
-- On call means waiting on you. A worker that only waits on a webhook or a schedule reads off shift.
 - Roster matches a task to a worker by its assignee. A task whose assignee matches no single worker counts for no one.

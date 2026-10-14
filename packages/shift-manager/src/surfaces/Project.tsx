@@ -28,7 +28,7 @@
  *
  * Above the tabs, the team strip from the worker inventory, as design v2 draws
  * it (v2:513-519): each team's name in spaced mono caps and how many of its
- * workers are on shift and on call.
+ * workers are on shift.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
@@ -40,8 +40,8 @@ import { useLab } from "../lib/lab-data";
 import {
   projectReaderOf,
   readEntryReport,
-  readProject,
   readProjectSetup,
+  useProjectRead,
   type ProjectAddress,
   type ProjectRead,
   type ProjectSetup,
@@ -127,7 +127,7 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
                 {team}
               </Meta>
               <Meta>
-                {counts["on shift"]} on shift · {counts["on call"]} on call
+                {counts["on shift"]} on shift
                 {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
               </Meta>
             </li>
@@ -145,51 +145,6 @@ export function ProjectView({ snapshot, route, gaps }: { snapshot: LoadedSnapsho
       </div>
     </div>
   );
-}
-
-/** How often a tab that draws entries reads the project again while it is on screen. */
-const PROJECT_POLL_MS = 5_000;
-
-/**
- * The project's own read, row and entries (BR-18), when the view opens, each
- * time the Lab is read again (`readAt`), and every {@link PROJECT_POLL_MS}
- * while a tab that draws entries is on screen: a workstream is opened by
- * someone else's turn (the chief of staff's, or a coordinator's in another
- * window), so the list shows it without a reload. `reread` reads it now, as
- * after an open. A read again keeps the last one on screen until it lands,
- * and keeps it if it fails.
- * No read while `readerSessionId` is `null`: the user holds no reader session
- * yet, or the tab on screen draws no entries.
- */
-function useProjectRead(address: ProjectAddress, readerSessionId: string | null, readAt: number) {
-  const { clients } = useLab();
-  const [read, setRead] = useState<Read<ProjectRead | null>>(undefined);
-  const [reads, setReads] = useState(0);
-  useEffect(() => {
-    if (readerSessionId === null) return;
-    let closed = false;
-    let next: ReturnType<typeof setTimeout> | undefined;
-    readProject(clients, readerSessionId, address)
-      .then((value) => !closed && setRead({ value }))
-      // A failed read again keeps the last good one on screen: one dropped
-      // poll shouldn't blank the list. Only a failed first read shows.
-      .catch(
-        (error: unknown) =>
-          !closed && setRead((prev) => (prev !== undefined && "value" in prev ? prev : { failure: describeFailure(error) })),
-      )
-      // After a failed read too: a dropped request recovers without Retry.
-      .finally(() => {
-        if (!closed) next = setTimeout(() => setReads((n) => n + 1), PROJECT_POLL_MS);
-      });
-    return () => {
-      closed = true;
-      if (next !== undefined) clearTimeout(next);
-    };
-    // The address is the view's key; its parts are what the read depends on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clients, readerSessionId, address.visibility, address.id, readAt, reads]);
-  const reread = useCallback(() => setReads((n) => n + 1), []);
-  return { read, reread };
 }
 
 /** The Lab's project setup, read once per connection; `retry` reads it again after a failure. */

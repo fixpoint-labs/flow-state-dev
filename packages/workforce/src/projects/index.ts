@@ -139,12 +139,14 @@ export { WORKSTREAM_OPENED_ENTRY, workstreamOpenedEntry } from "./workstream-lea
 
 export {
   defineWorkstreamBlocks,
+  editWorkstreamInputSchema,
   listLeadsOutputSchema,
   openWorkstreamInputSchema,
   openWorkstreamOutputSchema,
   updateOwnWorkstreamInputSchema,
   updateWorkstreamInputSchema,
   updateWorkstreamOutputSchema,
+  type EditWorkstreamInput,
   type ListLeadsOutput,
   type OpenWorkstreamInput,
   type OpenWorkstreamOutput,

@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
-import { columnFor, isDone, readStatus } from "../lib/columns";
+import { columnFor, readStatus } from "../lib/columns";
 import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
@@ -239,7 +239,8 @@ function Brief({ gaps }: { gaps: Gaps }) {
 /**
  * The composer (BR-18): sends into the session the task's run link names,
  * through the door of the flow that session records as its owner, never the
- * board's. Says why when it can't.
+ * board's. Says why when it can't. A finished task takes a message too; what
+ * it does is the door's call (FIX-1764).
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
   const task = useTask();
@@ -256,15 +257,13 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string | null }) {
       ? "This task isn't on its board yet."
       : row.run === null
         ? gaps.turn.notStarted
-        : isDone(row.status)
-          ? gaps.turn.finished
-          : task.run.kind === "failed"
-            ? task.run.failure.message
-            : flowId === undefined
-              ? "Reading the run…"
-              : door === null
-                ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
-                : null;
+        : task.run.kind === "failed"
+          ? task.run.failure.message
+          : flowId === undefined
+            ? "Reading the run…"
+            : door === null
+              ? `${worker ?? "This worker"} ${gaps.turn.noDoor}`
+              : null;
   return (
     <TurnComposer
       testId="task-composer"

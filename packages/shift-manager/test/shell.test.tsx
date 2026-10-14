@@ -185,8 +185,8 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
 describe("empty states (BR-14, BR-28)", () => {
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
-    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
+    // v2's sentence, with what is still going: nothing runs in this Lab.
+    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
   });
@@ -460,11 +460,11 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
   });
 
-  it("draws the workers on call in the rail (BR-19)", async () => {
+  it("draws no on-call list in the rail, even with a worker waiting on the user", async () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
-    // ops.asker's pending ask puts it on call, by the rule Roster uses.
-    expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-worker-id"))).toEqual(["ops.asker"]);
+    expect(screen.queryAllByTestId("cos-on-call")).toHaveLength(0);
+    expect(screen.getByTestId("cos-panel").textContent).not.toMatch(/on call/i);
   });
 
   it("names the missing worker in place of the conversation, with the summary still drawn (BR-11)", async () => {

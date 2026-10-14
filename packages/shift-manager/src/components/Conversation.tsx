@@ -10,8 +10,8 @@
  * the session it is (`session`, for one a view found itself: a project
  * coordinator's, a workstream's lead's; otherwise the user's latest with
  * the worker), the name over the worker's messages, the text for an empty conversation, what
- * sits above the feed (`lead`), a line to hand in (`autoSend`), suggestions,
- * the composer's `scale`, and `renderItem` to draw an item its own way (read
+ * sits above the feed (`lead`), a line to hand in (`autoSend`), the
+ * composer's `scale`, and `renderItem` to draw an item its own way (read
  * the session's other items with `useSessionItems()`).
  *
  * {@link ConversationFrame} is the scrolling column with the composer pinned
@@ -76,7 +76,6 @@ export function Conversation({
   emptyText,
   working = false,
   startWork,
-  suggestions,
   autoSend,
   onAutoSend,
   renderItem,
@@ -98,7 +97,6 @@ export function Conversation({
   working?: boolean;
   /** Called as a line goes out; returns the call that says it settled. */
   startWork?: () => () => void;
-  suggestions?: readonly string[];
   /** A line handed in from elsewhere (the palette): sent as if typed, once the composer isn't blocked. */
   autoSend?: string | null;
   onAutoSend?: () => void;
@@ -141,7 +139,6 @@ export function Conversation({
       label={`Message ${name}`}
       placeholder={`Message ${name}…`}
       blocked={blocked}
-      suggestions={suggestions}
       autoSend={autoSend}
       onAutoSend={onAutoSend}
       send={async (message, held) => {

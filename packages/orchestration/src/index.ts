@@ -34,10 +34,10 @@ export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
 // reads is an async-context stamp.
 export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-board/task-turn";
 
-// The board touch that resumes a turn waiting on an asked task (FIX-1816),
-// for a layer that runs its own board. The rest of the ask mechanism is on
+// The board touch that resumes a turn waiting on a task (FIX-1816),
+// for a layer that runs its own board. The rest of the wait mechanism is on
 // the `./task-board` subpath.
-export { resumeOwedAsks, type ResumeOwedReport } from "./tasks/helpers/wait-for-response";
+export { resumeOwedWaits, type ResumeOwedReport } from "./tasks/helpers/wait-for-response";
 
 // The lease-renewal async-context seam. Deliberately NOT on the `./tasks`
 // subpath: it needs `node:async_hooks`, and that subpath is published

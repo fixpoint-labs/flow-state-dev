@@ -43,7 +43,7 @@
  *   session, which settles it when its pieces are done (`./split`).
  */
 import {
-  resumeOwedAsks,
+  resumeOwedWaits,
   taskToolsForTurn,
   taskToolActions,
   type TaskCollectionResolver,
@@ -93,7 +93,8 @@ import {
   taskChainOf,
   taskChainResources
 } from "./chain";
-import { filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
+import type { ProjectAddressRef } from "../projects/workstream-ref";
+import { filingProjectAddressOf, filingProjectOf, filingSessionIdOf, filingWorkstreamOf } from "./filing-session";
 import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
@@ -143,6 +144,13 @@ export interface ConversationBoardOptions {
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
 function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+}
+
+/** Write the session's project over a named `project`, so a guess isn't refused `other-project`. */
+function ownProjectIn(input: unknown, own: ProjectAddressRef | undefined): unknown {
+  if (own === undefined || input === null || typeof input !== "object" || Array.isArray(input)) return input;
+  if ((input as { project?: unknown }).project == null) return input;
+  return { ...input, project: own };
 }
 
 /** A roster over the session's task-taking delegates, naming why each other one can't take a task. */
@@ -419,8 +427,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         owner === undefined
           ? given
           : { ...(given ?? {}), [PIECE_OF]: owner, ...(retrying !== undefined ? { [RETRY_OF]: retrying } : {}) };
+      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       const added = await ref.addTask({
         ...init,
+        ...(input !== undefined ? { input } : {}),
         id,
         maxAttempts: init.maxAttempts ?? TASK_ATTEMPTS,
         ...(assignee !== undefined ? { assignee } : {}),
@@ -472,7 +482,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       addTask,
       complete: runOnly(ending(ref.complete.bind(ref))) as TaskCollectionRef["complete"],
       fail: runOnly(ending(ref.fail.bind(ref))) as TaskCollectionRef["fail"],
-      // A cancelled post row owes no notice (only an asked row's turn hears a
+      // A cancelled post row owes no notice (only a waited-on row's turn hears a
       // cancel), so its ending is sent here: its round closes now, not at
       // its deadline. A send that fails leaves that to the deadline.
       cancel: (async (id: string, ...rest: any[]) => {
@@ -561,8 +571,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /**
    * After a run: send what the rows owe, including what this run's own
-   * refusals and settled dead runs owe; resume each turn an asked row's
-   * ending still owes (`resumeOwedAsks`): a run of the board is a touch, and
+   * refusals and settled dead runs owe; resume each turn a waited-on row's
+   * ending still owes (`resumeOwedWaits`): a run of the board is a touch, and
    * not a turn; run the board of each parked split row's session, down the
    * chain; mark each of this board's pieces added in its chain (a crash
    * between an add and its mark leaves it reserved, and the lease must never
@@ -583,7 +593,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // which is the fast path and keeps the notice owed until the resume
       // lands. Neither has to win: the gate admits one answer and refuses the
       // other `already-resolved`, and either outcome clears `resumeOwed`.
-      await resumeOwedAsks(ctx as never, ref);
+      await resumeOwedWaits(ctx as never, ref);
       const rows = ref.list();
       const replayed = await replayNotices(ctx, rows);
       await replaySplits(ctx, rows);
@@ -608,12 +618,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    */
   // Chosen per turn: a wait is offered only where the host can hold one
   // (FIX-1816). This board resumes waits: its notice entry and every run call
-  // `resumeOwedAsks`. And it dispatches (FIX-1875): its ref's filings and
+  // `resumeOwedWaits`. And it dispatches (FIX-1875): its ref's filings and
   // dispatches wake a run of it, so `dispatchTask` starts work now.
   // On a turn routing a post (FIX-1872), `dispatchTask` also takes its post
   // form; a session that files no task gets that one tool alone.
   const eight = taskToolsForTurn(resolver, roster, {
-    resumesAsks: true,
+    resumesWaits: true,
     dispatches: true,
     ...(options.posts === undefined ? {} : { posts: options.posts })
   });

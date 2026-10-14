@@ -52,7 +52,7 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   - `epic-agent` (worktree) — authors/maintains one epic-spec.
   - `poc-agent` (worktree, Sonnet) — settles one disputed factual claim with a throwaway POC.
   - `scout` (Haiku) — read-only status/handle fetches.
-  - `spec-implementer` (Sonnet) — implements one decided task.
+  - `spec-implementer` (Opus) — implements one slice of an approved spec, planning its own build.
   - `issue-manager` (Sonnet) — files discovered work into Linear.
 - **Workflow scripts** — the parts of a lifecycle that are pure mechanism, as deterministic
   control flow instead of prose a coordinator re-derives each wake. Both live in
@@ -204,8 +204,8 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 `relates-to` and flagged, never silently detached.
 
 **Contents and shape:** [`epic-spec-template.md`](epic-spec-template.md) applies the
-issue-spec document set at epic altitude, including the shared documentation narrative
-and conditional design lineage. The [retention policy](#spec-retention-and-authority)
+issue-spec's two documents at epic altitude, including the rules every child obeys and
+the set's debt. The [retention policy](#spec-retention-and-authority)
 defines storage and authority; the template defines what each reader is owed.
 
 **Conventions:**
@@ -246,7 +246,8 @@ standard of a release, and the epic cannot wrap while it is open.
   wake that first sees it. The coordinator writes that relation itself, the same one-call Linear
   write it uses for status. Otherwise the closure run could pass before that child lands.
 - **Its spec is the QA plan**, written early: blocked-by gates implementation only, so the plan
-  is reviewed while the children build. It carries, in order:
+  is reviewed while the children build. It is the closure spec's `SPEC.md` → *how we verify*,
+  and carries, in order:
   1. **The epic's goal check** (`SPEC.md` → *how we verify*) as **at least one end-to-end test run
      the way a user would**: a real app, the real path, the surface a user touches (browser,
      CLI, HTTP), asserted on what the user sees, never on a child's own output. Each test has a
@@ -255,7 +256,7 @@ standard of a release, and the epic cannot wrap while it is open.
      already walk.
   3. **Every child's own goal check**, re-run, skipping any that item 1 already walks. They
      catch a later merge breaking an earlier child, which item 1 may not reach.
-  4. **A gap sweep**: each seam in `PLAN.md`'s coordination seams exercised across both sides,
+  4. **A gap sweep**: each seam in the epic `DECISIONS.md`'s coordination seams exercised across both sides,
      the docs the set published followed as written, and every *not done if* state checked
      absent.
 
@@ -551,7 +552,7 @@ flowchart LR
 ```
 
 For a **single-PR** issue the goal is proven at implementation completion (before the PR opens),
-so `merge` is completion. For a **multi-PR** issue (a spec's PR plan), the diagram's single
+so `merge` is completion. For a **multi-PR** issue (the implementer's PR plan), the diagram's single
 `merge → done` expands: the per-sub-PR runs only prove their slices, so **after the last sub-PR
 merges the assembled end-to-end goal runs, and only its PASS marks the issue done** — the last
 merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for the exact step.
@@ -568,11 +569,11 @@ statement of the bar and how a spec-review round terminates; `issue-spec`,
 
 **Directional correctness, and nothing more.** An approved spec means: the problem is
 real, the approach will work, the decisions in `DECISIONS.md` are the ones we want, and the
-plan's shape and sequence are sound. It does **not** mean the design is finished, the
-names are final, or every question a reader could raise has been answered. `PLAN.md` is
-*directional by construction* (see `spec-template.md`) — the implementer settles
-signatures, local structure, and line-level choices in the code, under `tdd`/`diagnose`
-and the challenger.
+debt verdict in `SPEC.md` is honest. It does **not** mean the design is finished, the
+names are final, or every question a reader could raise has been answered. A spec carries
+no build plan *by construction* (see `spec-template.md`) — the implementer plans the build
+and settles signatures, local structure, and line-level choices in the code, under
+`tdd`/`diagnose` and the challenger.
 
 So a spec is done when it is **directionally correct**, not when it is unimpeachable.
 "Nothing left to nitpick" is not the bar and was never reachable — it's an infinite
@@ -586,9 +587,9 @@ altitude: *does acting on this change the approach?* Then pick exactly one dispo
 
 | Disposition | When | What happens |
 |---|---|---|
-| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision is wrong or missing · a missed case invalidates the design · scope is wrong · the spec contradicts itself | Re-draft the affected repository document and figures, reply on the thread; after merge use a follow-up amendment, not the original PR or a Linear prose mirror |
-| **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", a detail `PLAN.md` deliberately left open | Record **verbatim** under `PLAN.md → Notes from review`, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
-| **Drop, specifically for the solution sketch** | A spec may carry rough illustrative code showing the *shape* of the proposed solution (`PLAN.md`'s sketch). Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or wouldn't compile | Reply once: the sketch is illustrative and deliberately incomplete. **Never** fold, and don't even carry it as a review note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the sketch's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
+| **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a decision is wrong or missing · a missed case invalidates the design · the debt section misses an overlap or an added debt · scope is wrong · the spec contradicts itself | Re-draft the affected repository document and figures, reply on the thread; after merge use a follow-up amendment, not the original PR or a Linear prose mirror |
+| **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, build order, which helper, an edge case that doesn't change the approach, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*" | Record **verbatim** under `DECISIONS.md → Notes from review`, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
+| **Drop, specifically for POC code** | A spec may carry a throwaway POC under `poc/<experiment>/` showing the *shape* of the proposed solution. Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or isn't production quality | Reply once: the POC is evidence, deliberately incomplete. **Never** fold, and don't even carry it as a review note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the POC's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
 | **Drop** | Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase | Reply once with the pointer or the correction. No spec edit, no note. |
 
 **The default disposition is Note, and the burden of proof is on folding.** If you can't
@@ -702,7 +703,7 @@ So the discipline is ours, not theirs:
 ### How this shows up in the artifacts
 
 - **`spec-template.md`** — the reviewer contract and the *Reviewers · look here* block, and
-  `PLAN.md → Notes from review` as the home for below-the-bar feedback.
+  `DECISIONS.md → Notes from review` as the home for below-the-bar feedback.
 - **`pr-reviewer-guidance.md`** — the two audiences, the PR-description layout, the three PR
   altitudes, and what makes a *Parts worth reviewing closely* block useful rather than
   decorative. Its general half — the fold, the word budgets, the density rules — is
@@ -721,10 +722,12 @@ So the discipline is ours, not theirs:
 ## Spec retention and authority
 
 Issue specs live at `specs/issues/<ISSUE-ID>/`; epic specs live at
-`specs/epics/<EPIC-ISSUE-ID>/`. Each requires `SPEC.md`, `DECISIONS.md`,
-`BUSINESS-RULES.md`, `PLAN.md`, and `DOCS.md`. Add `EVOLUTION.md` when the design
-retains, amends or supersedes earlier designs. Authored `figures/`, `assets/`, and
-`poc/<experiment>/` belong inside that same owning directory.
+`specs/epics/<EPIC-ISSUE-ID>/`. Each requires `SPEC.md` and `DECISIONS.md`, and nothing
+else: no build plan, no rules list, no docs draft. The implementer plans the build against
+the code. Authored `figures/`, `assets/`, and `poc/<experiment>/` belong inside that same
+owning directory. Sets retained in the older five-document shape (`BUSINESS-RULES.md`,
+`PLAN.md`, `DOCS.md`, sometimes `EVOLUTION.md`) stay as they are; whoever reads one reads
+every document it carries, and an open review PR in that shape is not re-drafted.
 
 **Repository content is canonical.** Before merge, read the reviewed PR head; after
 merge, read the retained set on `main`, citing the original PR for its review history.
@@ -733,24 +736,26 @@ Retained specs are historical intent, not proof of shipped behavior.
 `docs/architecture/*` remains the authority for current system behavior; implementation
 updates architecture and user documentation to reflect what actually ships.
 
-**Research predecessors before choosing a direction.** Search retained designs and
-their evolution records, then compare them against current code and architecture docs.
-Carry relevant findings into review and implementation. `EVOLUTION.md` names precise
-prior decisions, rules or sections, what is retained/amended/superseded, why and with
-what evidence, the replacement decisions, and compatibility or migration consequences.
-It supports multiple predecessors; a dependency is not supersession, and changing one
-decision does not supersede an entire spec. Use real historic PR/Linear provenance when
-no repository artifact exists, never invented local paths. No lineage registry,
-mandatory backlink updates, archive rewrites or historical backfill.
+**Research predecessors before choosing a direction.** Search retained designs (and the
+evolution records older sets carry), then compare them against current code and
+architecture docs. `SPEC.md` → *What's already here* names each precise prior decision,
+rule or section the change keeps, amends or supersedes, what replaces it, and what changes
+for callers. Several predecessors is normal; a dependency is not supersession, and
+changing one decision does not supersede an entire spec. Use real historic PR/Linear
+provenance when no repository artifact exists, never invented local paths. No lineage
+registry, mandatory backlink updates, archive rewrites or historical backfill.
 
-**`DOCS.md` is a draft, not a task list.** Name destination files/sections and
-create/update/remove operations, with actual proposed reader-facing prose and examples,
-including applicable limits, failure behavior and migration. Do not duplicate unchanged
-pages. A justified no-doc-impact statement is valid. Epic drafts own the shared narrative
-and assign issue ownership; issue drafts provide the specifics. Implementation reconciles
-the draft against tested behavior and publishes it to the actual documentation.
-Worked examples live in the [issue](spec-template.md) and [epic](epic-spec-template.md)
-templates, not in another policy copy.
+**The debt is part of the direction.** The same section lists what already does the job,
+what the change removes, what it adds that a later reader would call debt (each with the
+filed issue that pays it, unless permanent by design), what it leaves, and the net. The net
+is a sign-off line, so approving a spec approves its debt.
+
+**Docs are named at spec time and written at implementation.** `SPEC.md` → *What changes*
+names the reader-facing destinations that change, or states why there is no
+documentation impact. Implementation writes the prose against tested behavior (`docs-writer`,
+then `docs-editor`). An epic's docs line names the shared story and the child that
+publishes it. Worked examples live in the [issue](spec-template.md) and
+[epic](epic-spec-template.md) templates, not in another policy copy.
 
 **Projects are the exception, unchanged.** Project specs remain four-document sets at
 `spec/_projects/<slug>/`, on never-merged `project/<slug>` PRs with their existing Linear
@@ -928,7 +933,7 @@ option the author already preferred and puts a human's approval on it.
 flowchart LR
   A[spec / epic authoring] -->|trigger fires| P[spec-poc<br/>inside owning spec directory]
   P --> S{what it showed}
-  S -->|premise held| R1["record in the plan's POC line<br/>no change"]
+  S -->|premise held| R1["record in DECISIONS → Settled<br/>no change"]
   S -->|premise false| R2[fold before the gate<br/>cheapest version of the discovery]
   S -->|variants| R3["human picks → a decision card"]
   R1 & R2 & R3 --> G([approval gate])
@@ -969,9 +974,9 @@ to be independent of both.)
 
 ### Where the record lives
 
-- **The spec** — `PLAN.md`'s POC line (what was built, what it showed), `DECISIONS.md →
-  Settled` for a premise it settled, and a *How it got here* entry **only if it moved the
-  design**. At epic altitude, `DECISIONS.md → What the end-state POC showed` instead.
+- **The spec** — `DECISIONS.md → Settled` (what was built, what it showed, the premise it
+  settled), and a *How it got here* entry **only if it moved the design**. At epic altitude,
+  `DECISIONS.md → What the end-state POC showed` instead.
 - **The PR description** — the POC block: one runnable command per artifact, the question it
   answers, and that it's throwaway.
 - **A POC that changed nothing still gets its line.** "The premise held" is a real result;

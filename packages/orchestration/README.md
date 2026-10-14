@@ -44,8 +44,9 @@ pending ─┬─→ in_progress ─┬─→ completed
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. A move to the status a task
-already holds is on the table, so a repeat write doesn't throw. Anything else
+`completed`, `errored`, and `cancelled` are terminal: every write treats them as
+final except `reopen`, which puts a finished task back in `pending` (see below).
+A move to the status a task already holds is on the table, so a repeat write doesn't throw. Anything else
 throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
 writes nothing.
 
@@ -57,7 +58,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `unpark`,
+the re-entries that do not spend the budget (`unblock`, `unpark`, `reopen`,
 `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
@@ -167,14 +168,23 @@ from the next resolution onward. A ref you are already holding keeps reporting s
 a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
-`unpark`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+`unpark`, `reopen`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
 and no other, and `unpark` on a `parked` task and no other. Like `cancel`, `unpark`
 declines without options: `disallowed` for a live task, `terminal` once settled, and a
-second answer to an already-queued task is refused. `in_progress → pending` sits in the status table too,
+second answer to an already-queued task is refused. `reopen` runs on a finished task
+(`completed`, `errored` or `cancelled`) and no other, and declines without options:
+`{ outcome: "declined", reason: "disallowed", status }` for any other status, nothing
+written. It is the only write that moves a task out of a finished status. The reopened
+task keeps its id, `attempts` and `output` (until the next attempt writes its own),
+clears its `error` and `completedAt`, and carries `reopened: true`, as does the worker
+input for the attempt it queues. That attempt is not charged against `maxAttempts`.
+`recordEnding` is not called for a reopen; the reopened attempt's own ending is a new
+one. The change event kind is `"reopened"`. Like `unpark`, it only re-queues: something
+must drain the board. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -740,13 +750,15 @@ an assignee it does not name. The roster can be a function of the running block'
 context, read on each call that checks an assignee, for a board whose team changes
 while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
-`{ ok: false, error: "no_delegation_board" }` rather than throwing.
+`{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
+`addTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
+tool's schema, so a model that would send the payload as a JSON string is told to send the object.
 
 `dispatchTask` starts work now. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
 ready row as soon as it's written, the way a Workforce conversation does. It takes `addTask`'s
 fields, or `taskId` for a recorded row, and with `wait` it parks the turn until the task ends
-([below](#asking-a-task-and-waiting-for-the-answer)). On such a board `addTask` and
+([below](#waiting-for-a-tasks-answer)). On such a board `addTask` and
 `assignTask` record rows that wait for a dispatch, and `addTask` answers
 `{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`, so the
 standalone `taskTools` and a custom resolver offer no `dispatchTask`, and their `addTask` files a
@@ -782,7 +794,7 @@ the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`. `dispatchTask`
 adds its own (`assignee_required`, `task_not_dispatchable`, `dispatch_target_required`,
 `dispatch_target_ambiguous`, `dispatch_ref_takes_no_task_fields`, and the `wait_*`
-codes when it [waits](#asking-a-task-and-waiting-for-the-answer)). A
+codes when it [waits](#waiting-for-a-tasks-answer)). A
 coordinator rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 `not_parked_on_question` through `task_awaiting_answer` come from [questions](#when-a-task-stops-on-a-question)
 and [follow-ups](#following-up-on-a-finished-task), below.
@@ -836,25 +848,25 @@ caller's history.
 See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface.
 
-#### Asking a task and waiting for the answer
+#### Waiting for a task's answer
 
 `dispatchTask` with `wait: true` starts a task and parks the calling turn until it ends, then
 returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
-minutes by default). `listTasks` marks a waited-on row `asked: true`. A wait is refused on a
+minutes by default). `listTasks` marks a waited-on row `waitedOn: true`. A wait is refused on a
 turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. `addTask`
 never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name,
 `add_task_does_not_wait`, and nothing is filed. See
 [Task board → Giving another worker work](https://flow-state.dev/docs/orchestration/task-board#giving-another-worker-work)
 for limits and errors.
 
-`wait` and `timeoutMs` are in the schema only on a board that dispatches, also resumes asks,
+`wait` and `timeoutMs` are in the schema only on a board that dispatches, also resumes waits,
 and runs on a host that can hold a wait: pass
-`createTaskToolsCapability(resolver, roster, { dispatches: true, resumesAsks: true })` only when
-whatever runs the board calls `resumeOwedAsks` as it touches the board outside a turn (a board
+`createTaskToolsCapability(resolver, roster, { dispatches: true, resumesWaits: true })` only when
+whatever runs the board calls `resumeOwedWaits` as it touches the board outside a turn (a board
 run, a task's notice), and the host has durable execution and a running durability sweeper
-(`canHoldWait`). `resumesAsks` defaults to `false`. A composing layer that builds its own
+(`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesAsks })`.
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
@@ -870,7 +882,7 @@ Two functions sit under the option, for a layer that builds its own board surfac
   `wait_stopped`: the person stopped the turn, the task is cancelled and the request is
   stopped. Through the task tools' `dispatchTask` the turn ends there, so the model never
   reads it.
-- `resumeOwedAsks(ctx, collection)`, from `@flow-state-dev/orchestration`, resumes each
+- `resumeOwedWaits(ctx, collection)`, from `@flow-state-dev/orchestration`, resumes each
   waiting turn whose task has ended. Call it whenever your layer touches the board outside a
   turn (a board run, a task's notice), so an answer whose resume was lost to a crash is still
   delivered. It returns at once when nothing is owed. It also cancels each task whose wait was

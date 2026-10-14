@@ -2,17 +2,17 @@
  * Stopping a parked turn, the re-drive of a resolved gate, and the
  * deadline-aware sweep (FIX-1816 P2c, engine half).
  *
- * The orchestration half (an asked row cancelled by the stopped call, and the
- * SQLite cold restarts) lives with the ask's own tests in orchestration.
+ * The orchestration half (a waited-on row cancelled by the stopped call, and the
+ * SQLite cold restarts) lives with the wait's own tests in orchestration.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildReplayLog, DEFAULT_ORG_ID, defineFlow, generator, handler, parkOnAsk, sequencer } from "@flow-state-dev/core";
-import type { AskOutcome, FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
+import { buildReplayLog, DEFAULT_ORG_ID, defineFlow, generator, handler, parkOnWait, sequencer } from "@flow-state-dev/core";
+import type { WaitOutcome, FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { createDurabilitySweeper, runTick } from "../src/durability/durability-sweeper";
-import { resumeAskGate } from "../src/durability/resume-ask-gate";
+import { resumeWaitGate } from "../src/durability/resume-wait-gate";
 import { resumeUnderLease } from "../src/durability/resume-under-lease";
 import { handleAbortRequest } from "../src/routes/abort-routes";
 import { handleResumeSuspension } from "../src/routes/resume-routes";
@@ -22,10 +22,10 @@ import type { ExecutionResult } from "../src/execution/types";
 const USER = "u1";
 const SESSION = "s1";
 
-/** A flow whose `approve` turn parks on a person's approval, and whose `ask` turn parks on an ask. */
+/** A flow whose `approve` turn parks on a person's approval, and whose `wait` turn parks on a wait gate. */
 function parkingFlow(
   seen: string[],
-  options: { askDeadline?: () => number; onFinished?: (info: { status: string }) => void } = {}
+  options: { waitDeadline?: () => number; onFinished?: (info: { status: string }) => void } = {}
 ): FlowInstance {
   const approve = handler({
     name: "approve-step",
@@ -37,16 +37,16 @@ function parkingFlow(
       return answer;
     }
   });
-  const ask = handler({
-    name: "ask-step",
+  const wait = handler({
+    name: "wait-step",
     inputSchema: z.any(),
     outputSchema: z.any(),
     execute: async (_i, ctx) => {
       try {
-        const answer = await parkOnAsk(ctx, {
-          gateId: "gate_ask",
+        const answer = await parkOnWait(ctx, {
+          gateId: "gate_wait",
           binding: { board: "b", taskId: "t1" },
-          ...(options.askDeadline !== undefined ? { deadline: options.askDeadline() } : {})
+          ...(options.waitDeadline !== undefined ? { deadline: options.waitDeadline() } : {})
         });
         seen.push(`answer:${String(answer)}`);
         return { answer };
@@ -76,7 +76,7 @@ function parkingFlow(
       : {}),
     actions: {
       approve: { block: sequencer({ name: "a" }).step(approve) },
-      ask: { block: sequencer({ name: "k" }).step(ask) }
+      wait: { block: sequencer({ name: "k" }).step(wait) }
     }
   })({ id: "parking" });
 }
@@ -276,18 +276,18 @@ describe("stop a parked turn", () => {
     expect(sideEffects).toBe(0);
   });
 
-  it("a turn parked on an ask continues with the stop, so the parked call ends it (BR-16)", async () => {
+  it("a turn parked on a wait continues with the stop, so the parked call ends it (BR-16)", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId } = await park(h, flow, "ask");
+    const { requestId } = await park(h, flow, "wait");
 
     expect((await stop(h, requestId)).status).toBe(204);
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
     // The parked call read a stop, not an answer and not a tool error.
-    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
-    // Ending the turn is the parked call's (the ask's own tests show it
+    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
+    // Ending the turn is the parked call's (the wait's own tests show it
     // aborted); this bare handler simply returns.
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
   });
@@ -296,7 +296,7 @@ describe("stop a parked turn", () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     // The answer resolved the gate; the turn has not moved on yet.
     await h.provider.suspend({ ...gate, status: "submitted", resumeData: { answered: true, answer: "yes" } });
 
@@ -311,7 +311,7 @@ describe("stop a parked turn", () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     // The continued run fails setup after the stop was reported.
     vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
 
@@ -323,7 +323,7 @@ describe("stop a parked turn", () => {
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(2);
     await h.finished[1];
-    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
   });
 
   it("a stop whose fenced abort finds another request under the id does not report it stopped", async () => {
@@ -345,7 +345,7 @@ describe("stop a parked turn", () => {
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 
-  it("a stop recorded while an ask turn is parking is carried onto the gate: the call ends it (BR-16)", async () => {
+  it("a stop recorded while a wait turn is parking is carried onto the gate: the call ends it (BR-16)", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
@@ -365,7 +365,7 @@ describe("stop a parked turn", () => {
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
-      actionName: "ask",
+      actionName: "wait",
       input: {},
       userId: USER,
       sessionId: SESSION,
@@ -375,7 +375,7 @@ describe("stop a parked turn", () => {
     expect(stopped).toBe(true);
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
     expect((await h.stores.request.get(result.requestId!))?.status).not.toBe("suspended");
     // The sweep sees the same recorded stop and finds it already carried.
     await runTick(tickArgs(h));
@@ -383,11 +383,11 @@ describe("stop a parked turn", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("a stopped ask's continuation records the stop, not a submission, on its audit item", async () => {
+  it("a stopped wait's continuation records the stop, not a submission, on its audit item", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId } = await park(h, flow, "ask");
+    const { requestId } = await park(h, flow, "wait");
     expect((await stop(h, requestId)).status).toBe(204);
     await h.finished[0];
     const resumed = ((await h.stores.request.get(requestId))?.items ?? []).find(
@@ -437,13 +437,13 @@ describe("stop a parked turn", () => {
 });
 
 describe("the sweep re-drives a request left parked behind a resolved gate (BR-11a)", () => {
-  it("an answered ask whose turn never continued is driven on with the answer, once", async () => {
+  it("an answered wait whose turn never continued is driven on with the answer, once", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     // The process died after the gate's write and before the turn continued.
-    const answer: AskOutcome = { answered: true, answer: "renewed" };
+    const answer: WaitOutcome = { answered: true, answer: "renewed" };
     await h.provider.suspend({ ...gate, status: "submitted", resolvedAt: Date.now(), resumeData: answer });
 
     await runTick(tickArgs(h));
@@ -457,7 +457,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(h.finished).toHaveLength(1);
   });
 
-  it("a stopped approval whose turn was never written aborted ends aborted (BR-16c, non-ask)", async () => {
+  it("a stopped approval whose turn was never written aborted ends aborted (BR-16c, non-wait)", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
@@ -474,8 +474,8 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { gate } = await park(h, flow, "ask");
-    // An ask the turn asked and had answered before it parked again.
+    const { gate } = await park(h, flow, "wait");
+    // A wait the turn filed and had answered before it parked again.
     await h.provider.suspend({
       ...gate,
       suspensionId: "susp_earlier",
@@ -495,14 +495,14 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
   });
 
   it("a stranded request older than a full batch of handled gates is still reached", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     await h.provider.suspend({
       ...gate,
       status: "submitted",
@@ -540,18 +540,18 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect(seen).toEqual(["answer:renewed"]);
   });
 
-  it("a re-drive of an answered ask whose run fails before it starts keeps the answer for the next sweep", async () => {
+  it("a re-drive of an answered wait whose run fails before it starts keeps the answer for the next sweep", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
-    const answer: AskOutcome = { answered: true, answer: "renewed" };
+    const { requestId, gate } = await park(h, flow, "wait");
+    const answer: WaitOutcome = { answered: true, answer: "renewed" };
     await h.provider.suspend({ ...gate, status: "submitted", resolvedAt: Date.now(), resumeData: answer });
     vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("checkpoint boom"));
 
     await runTick(tickArgs(h));
     await expect(h.finished[0]).rejects.toThrow("checkpoint boom");
-    // Nobody sends an ask's answer twice: rolled back to pending, it would be lost.
+    // Nobody sends a wait's answer twice: rolled back to pending, it would be lost.
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("submitted");
 
     await runTick(tickArgs(h));
@@ -565,7 +565,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     // Stored after the tied gates, so a store breaking the tie by insertion
     // order lists it past the first batch.
     await h.stores.suspensions.deleteForRequest(requestId);
@@ -659,18 +659,18 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });
 
-  it("a stop recorded before a crash left the turn interrupted at its gate is carried by the sweep: ask", async () => {
+  it("a stop recorded before a crash left the turn interrupted at its gate is carried by the sweep: wait", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", abortRequested: true }, ["suspended"], Date.now());
 
     await runTick(tickArgs(h));
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
     expect(h.finished).toHaveLength(1);
     await h.finished[0];
-    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
   });
 
   it("the re-drive of a stopped approval waits for a live stop holding the turn's lease", async () => {
@@ -687,11 +687,11 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 
-  it("an interrupted turn whose log never got its ask's gate takes no answer, and a stop parks it again to end it", async () => {
+  it("an interrupted turn whose log never got its wait's gate takes no answer, and a stop parks it again to end it", async () => {
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     // The process died after the gate was written and before its log item was:
     // recovery marked the turn interrupted.
     const record = (await h.stores.request.get(requestId))!;
@@ -707,7 +707,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
 
     // An answer can't be replayed onto a gate the log does not hold: refused
     // as retryable, so its sender keeps it for when the turn parks again.
-    const answered = await resumeAskGate(h.parked, gate, { answered: true, answer: "late" }, "ask:s1");
+    const answered = await resumeWaitGate(h.parked, gate, { answered: true, answer: "late" }, "ask:s1");
     expect(answered).toMatchObject({ ok: false, refused: "busy" });
     expect(h.finished).toHaveLength(0);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
@@ -717,18 +717,18 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["interrupted"], Date.now());
     await runTick(tickArgs(h));
     await drain(h);
-    expect(seen).toEqual(["ended:WaitStoppedError:The asking turn was stopped."]);
+    expect(seen).toEqual(["ended:WaitStoppedError:The waiting turn was stopped."]);
     expect((await h.stores.request.get(requestId))?.status).not.toBe("suspended");
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
   });
 
-  it("an overdue ask gate left pending on a finished turn is expired, not retried every tick", async () => {
+  it("an overdue wait gate left pending on a finished turn is expired, not retried every tick", async () => {
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() - 1_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() - 1_000 });
     const h = harness(flow);
-    const { requestId, gate } = await park(h, flow, "ask");
+    const { requestId, gate } = await park(h, flow, "wait");
     // The turn ended without its gate resolving (a stop that ended it before
-    // its replay reached the ask).
+    // its replay reached the wait).
     await h.stores.request.setFieldsIfStatus(requestId, { status: "aborted" }, ["suspended"], Date.now());
     // A deadline already past still gives the gate 1 ms to run, so a tick in
     // the same millisecond would find it not yet due.
@@ -744,7 +744,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const seen: string[] = [];
     const flow = parkingFlow(seen);
     const h = harness(flow);
-    const { requestId } = await park(h, flow, "ask");
+    const { requestId } = await park(h, flow, "wait");
     await runTick(tickArgs(h));
     expect(h.finished).toHaveLength(0);
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
@@ -1172,11 +1172,11 @@ describe("an approval past its deadline: the turn carries on as if it is no long
   });
 });
 
-describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", () => {
-  it("a 30 s ask parked just after a tick times out within a few seconds of 30 s on a ten-minute interval", async () => {
+describe("the sweep's next tick is the earliest pending wait deadline (BR-14)", () => {
+  it("a 30 s wait parked just after a tick times out within a few seconds of 30 s on a ten-minute interval", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 30_000 });
     const h = harness(flow);
     const sweeper = createDurabilitySweeper({
       provider: h.provider,
@@ -1185,7 +1185,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       continueRequest: h.cont
     });
     try {
-      const { requestId } = await park(h, flow, "ask");
+      const { requestId } = await park(h, flow, "wait");
       await vi.advanceTimersByTimeAsync(29_000);
       expect(h.finished).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(3_000);
@@ -1198,12 +1198,12 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
     }
   });
 
-  it("an ask parked while a tick runs keeps its deadline: the tick's re-arm does not push it back", async () => {
+  it("a wait parked while a tick runs keeps its deadline: the tick's re-arm does not push it back", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 30_000 });
     const h = harness(flow);
-    // The tick's pending listing is read before the ask parks, and returns late.
+    // The tick's pending listing is read before the wait parks, and returns late.
     let releaseListing!: () => void;
     const listed = new Promise<void>((resolve) => {
       releaseListing = resolve;
@@ -1220,7 +1220,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
     });
     try {
       await vi.advanceTimersByTimeAsync(600_000); // the tick starts, and waits on its listing
-      const { requestId } = await park(h, flow, "ask");
+      const { requestId } = await park(h, flow, "wait");
       releaseListing();
       await vi.advanceTimersByTimeAsync(29_000);
       expect(h.finished).toHaveLength(0);
@@ -1234,10 +1234,10 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
     }
   });
 
-  it("an overdue ask whose resume finds the turn busy is retried within seconds, not at the interval", async () => {
+  it("an overdue wait whose resume finds the turn busy is retried within seconds, not at the interval", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 30_000 });
     const h = harness(flow);
     const sweeper = createDurabilitySweeper({
       provider: h.provider,
@@ -1246,7 +1246,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       continueRequest: h.cont
     });
     try {
-      const { requestId } = await park(h, flow, "ask");
+      const { requestId } = await park(h, flow, "wait");
       // Another resume holds the turn's lease across the deadline.
       await h.provider.acquireLease(requestId, { holder: "other", durationMs: 40_000 });
       await vi.advanceTimersByTimeAsync(32_000);
@@ -1263,7 +1263,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
   it("a deadline tick that loses the sweep lease to another host retries soon, not at the interval", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 30_000 });
     const h = harness(flow);
     const sweeper = createDurabilitySweeper({
       provider: h.provider,
@@ -1272,9 +1272,9 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       continueRequest: h.cont
     });
     try {
-      // Another host holds the sweep until 35 s, and never times the ask out.
+      // Another host holds the sweep until 35 s, and never times the wait out.
       await h.provider.acquireLease("__durability_sweeper__", { holder: "other-host", durationMs: 35_000 });
-      const { requestId } = await park(h, flow, "ask");
+      const { requestId } = await park(h, flow, "wait");
       await vi.advanceTimersByTimeAsync(31_000);
       expect(h.finished).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(15_000);
@@ -1287,10 +1287,10 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
     }
   });
 
-  it("an overdue ask whose turn is still being written parked is retried soon, not at the interval", async () => {
+  it("an overdue wait whose turn is still being written parked is retried soon, not at the interval", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 30_000 });
     const h = harness(flow);
     const sweeper = createDurabilitySweeper({
       provider: h.provider,
@@ -1299,7 +1299,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       continueRequest: h.cont
     });
     try {
-      const { requestId } = await park(h, flow, "ask");
+      const { requestId } = await park(h, flow, "wait");
       // The gate is pending, but the turn still reads `in_progress` at the deadline.
       let publishing = true;
       const get = h.stores.request.get.bind(h.stores.request);
@@ -1322,9 +1322,9 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
   it("a tick that ran reads the pending gates once, and schedules the next tick from that read", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 900_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 900_000 });
     const h = harness(flow);
-    await park(h, flow, "ask");
+    await park(h, flow, "wait");
     const listSpy = vi.spyOn(h.provider, "listSuspended");
     const sweeper = createDurabilitySweeper({
       provider: h.provider,
@@ -1336,7 +1336,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
       await vi.advanceTimersByTimeAsync(601_000);
       const pendingReads = listSpy.mock.calls.filter(([filter]) => filter?.status === "pending");
       expect(pendingReads).toHaveLength(1);
-      // The ask, due at 900 s, is what the next tick is armed for.
+      // The wait, due at 900 s, is what the next tick is armed for.
       await vi.advanceTimersByTimeAsync(298_000);
       expect(h.finished).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(3_000);
@@ -1347,7 +1347,7 @@ describe("the sweep's next tick is the earliest pending ask deadline (BR-14)", (
     }
   });
 
-  it("with no pending ask the next tick stays at the interval", async () => {
+  it("with no pending wait the next tick stays at the interval", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const h = harness(parkingFlow([]));
     const listSpy = vi.spyOn(h.provider, "listSuspended");
@@ -1385,7 +1385,7 @@ describe("a durable host with no retention policy still keeps its gates (BR-11a,
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
-      actionName: "ask",
+      actionName: "wait",
       input: {},
       userId: USER,
       sessionId: SESSION,
@@ -1404,10 +1404,10 @@ describe("a durable host with no retention policy still keeps its gates (BR-11a,
     return (await runtime.stores.request.get(requestId))?.status;
   }
 
-  it("an overdue ask times out", async () => {
+  it("an overdue wait times out", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     const seen: string[] = [];
-    const flow = parkingFlow(seen, { askDeadline: () => Date.now() + 30_000 });
+    const flow = parkingFlow(seen, { waitDeadline: () => Date.now() + 30_000 });
     const state = durableHost(flow);
     try {
       await state.getRouter();

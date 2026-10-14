@@ -403,7 +403,9 @@ task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } 
 
 The in-process dispatcher applies that policy, and so do queue workers that share a lease backend. On a deployment that hands dispatches to an external queue without one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A task keeps its session for its whole life. If its worker [parks it on a question](#when-a-task-stops-on-a-question), the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open: you can send its worker a message there, or file a follow-up task with `followUpOf`, which runs in the same session. That holds for an assignee that hands off `per-task` and on a Workforce conversation's board; a `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by. The finished task itself never changes.
+A task keeps its session for its whole life. If its worker [parks it on a question](#when-a-task-stops-on-a-question), the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open. To pick the same task up again, [`reopen`](./task-substrate.md#putting-a-finished-task-back-in-the-queue) it: it goes back in the queue under its own id, and when the board next drains, its next attempt carries `reopened: true` and runs in the same session. On a Workforce conversation's board, a message to the task's worker in that session [does this for you](../workforce/coordinators.md#after-a-task-finishes).
+
+To file new work on a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee hands off `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by.
 
 ### Sending a task to a flow chosen per task
 
@@ -623,8 +625,8 @@ wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
 `createTaskToolsCapability` only when something starts a ready row as soon as it's written,
-the way a Workforce conversation does, and add `resumesAsks: true` only when that also calls
-`resumeOwedAsks(ctx, collection)` each time it touches the board outside a turn, for example
+the way a Workforce conversation does, and add `resumesWaits: true` only when that also calls
+`resumeOwedWaits(ctx, collection)` each time it touches the board outside a turn, for example
 when it runs the board or handles a task's notice. Without that call, a waiting turn isn't woken
 when its task ends and sits out its whole `timeoutMs`.
 
@@ -654,7 +656,7 @@ A refused call returns `{ ok: false, error, taskId? }`, with `taskId` when a tas
 `error.startsWith("wait_timed_out")`, not `===`.
 
 Stopping a conversation while its turn waits ends the turn and cancels the task. A task you
-wait on is an ordinary row: `listTasks` shows it, marked `asked: true`, and the board's limits
+wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's limits
 apply. When it ends, the waiting turn continues with the answer, and the conversation gets no
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.

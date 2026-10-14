@@ -315,7 +315,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for an ask's deadline: it times out overdue asks and finishes requests whose answer or stop was recorded but never acted on.
+Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for a wait's deadline: it times out overdue waits and finishes requests whose answer or stop was recorded but never acted on.
 
 What each tick does:
 

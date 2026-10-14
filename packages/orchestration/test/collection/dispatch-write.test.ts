@@ -87,10 +87,10 @@ describe.each(BACKINGS)("dispatching a recorded row (%s)", (_name, makeBacking) 
   it("marks the row waited-on in the same write when the dispatch waits", async () => {
     const tasks = await makeBacking();
     await tasks.addTask({ id: "t", goal: "g", assignee: "ops", undispatched: true });
-    await tasks.dispatch!("t", { call: "call-1", ask: { gateId: "ask:tasks:t#n", deadline: 5000 } });
+    await tasks.dispatch!("t", { call: "call-1", wait: { gateId: "ask:tasks:t#n", deadline: 5000 } });
     const row = tasks.get("t") as Task;
     expect(row.undispatched).toBeUndefined();
-    expect(row.ask).toEqual({ gateId: "ask:tasks:t#n", deadline: 5000 });
+    expect(row.wait).toEqual({ gateId: "ask:tasks:t#n", deadline: 5000 });
   });
 
   it("answers a replay of the same call unchanged, not with the already-dispatched refusal", async () => {

@@ -88,7 +88,7 @@ export type TaskWriteDeclineReason =
   | "parked"
   /**
    * An assignee change on a task an answer has re-queued and that hasn't run
-   * again yet (FIX-1817): it must run in the session that asked, which its
+   * again yet (FIX-1817): it must run in the session that filed it, which its
    * assignee keys. Lifts once the re-entry is claimed.
    */
   | "awaiting-answer"
@@ -155,8 +155,8 @@ export interface TaskDispatchOptions {
   call: string;
   /** The owner, set in the same write. Omitted, the row keeps its own. */
   assignee?: string;
-  /** Mark the row waited-on in the same write (see `Task.ask`). */
-  ask?: { gateId: string; deadline: number };
+  /** Mark the row waited-on in the same write (see `Task.wait`). */
+  wait?: { gateId: string; deadline: number };
 }
 
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
@@ -668,6 +668,25 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     options?: UnparkOptions
   ): Promise<TaskWriteOutcome>;
   /**
+   * Put a finished task back in the queue: a person picked it up again
+   * (FIX-1764).
+   *
+   * Fenced to the one edge it owns: `completed`, `errored` or `cancelled` →
+   * `pending`. The status table has no edge out of a finished status, and no
+   * other verb gains one, so only this write reopens a row. A task that is not
+   * finished is **refused as a value**: `declined`, `disallowed`, naming the
+   * status the write found. Advisory by construction, like `unpark`.
+   *
+   * The row keeps its id, attempts and result; its ending's error and time are
+   * cleared, and its next attempt is marked `reopened` and is not charged
+   * against `maxAttempts`. A debt its ending owes (a notice, a resume) is left
+   * for whoever pays it. The ending was already heard, so reopening it is not
+   * an ending; the reopened attempt's own ending is a new one.
+   *
+   * Re-queues only. Nothing runs the work until something drains the board.
+   */
+  reopen(id: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  /**
    * Cancel the task (terminal).
    *
    * Advisory by construction: cancelling an already-settled task writes
@@ -825,19 +844,19 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   removeLabel(id: string, label: string): Promise<TaskWriteOutcome>;
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<TaskWriteOutcome>;
   /**
-   * Clear the row's resume-owed marker (`Task.resumeOwed`) once its asking
+   * Clear the row's resume-owed marker (`Task.resumeOwed`) once its waiting
    * turn has its answer (FIX-1816). `unchanged` when no marker is set.
    *
    * Optional: both built-in backings implement it, together with writing the
-   * marker when an asked row ends. A hand-written ref that does neither cannot
-   * host an ask, and the ask path refuses on it.
+   * marker when a waited-on row ends. A hand-written ref that does neither cannot
+   * host a wait, and the wait path refuses on it.
    */
   clearResumeOwed?(id: string): Promise<TaskWriteOutcome>;
   /**
-   * Mark an open asked row as owing its cancel (`Task.cancelOwed`): its ask
-   * is over and the cancel the asking call wrote failed (FIX-1844). The
+   * Mark an open waited-on row as owing its cancel (`Task.cancelOwed`): its wait
+   * is over and the cancel the waiting call wrote failed (FIX-1844). The
    * row's next ending, the touch's cancel among them, clears it. `unchanged`
-   * on a row that has ended, isn't an ask, or is already marked.
+   * on a row that has ended, isn't waited on, or is already marked.
    *
    * Optional, like `clearResumeOwed`: both built-in backings implement it.
    * On a ref without it, a failed cancel leaves the row open, as before.
@@ -846,7 +865,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Ready a recorded row (FIX-1875): clear `Task.undispatched` in one
    * conditional write, recording the call that made it (`Task.dispatchCall`),
-   * and with `assignee` and `ask` set in the same write.
+   * and with `assignee` and `wait` set in the same write.
    *
    * Declines `terminal` on an ended row, `disallowed` on one that is not
    * `pending` (claimed, running, parked, blocked), `already-dispatched` on a

@@ -17,10 +17,9 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
-  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -59,6 +58,9 @@ import {
   dispatchWrite,
   parkPatch,
   unparkPatch,
+  reopenPatch,
+  assertEdgeAllowed,
+  type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -141,8 +143,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   /**
    * The read boundary for this backing — same job as the resource backing's
    * `readTaskState`. Atomic state is stored, not parsed, so a row written
-   * before the `parked` rename arrives carrying the legacy status and is
-   * mapped forward here, before any filter or the transition guard sees it.
+   * before the `parked` rename arrives carrying the legacy status, and one
+   * written before the wait rename its legacy wait mark; both are mapped
+   * forward here, before any filter or the transition guard sees it.
    *
    * The map is rebuilt only when a legacy row is actually present, so the
    * common path returns the stored object itself.
@@ -152,7 +155,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     const stored = slot as Record<string, Task<TInput, TOutput>>;
     let migrated: Record<string, Task<TInput, TOutput>> | undefined;
     for (const [id, task] of Object.entries(stored)) {
-      const next = withMigratedStatus(task);
+      const next = withMigratedWait(withMigratedStatus(task));
       if (next === task) continue;
       migrated ??= { ...stored };
       migrated[id] = next;
@@ -260,7 +263,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: TaskStatus
+    requireFrom?: EdgeSource
   ): Promise<TaskWriteOutcome> {
     return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
@@ -277,7 +280,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
     /** The one source status this verb may run from — see `assertTransitionFrom`. */
-    requireFrom?: TaskStatus;
+    requireFrom?: EdgeSource;
   }
 
   /**
@@ -347,7 +350,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           };
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertTransitionAllowed(task.status, targetStatus, id);
+        assertEdgeAllowed(task.status, targetStatus, id, requireFrom);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that
         // map and there is nothing to reset (FIX-989).
@@ -651,6 +654,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
                 answered: undefined,
+                reopened: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -739,6 +743,18 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         (task) => unparkPatch(task as Task, feedback, options?.answer === true) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
+      );
+    },
+
+    async reopen(id, options) {
+      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
+      return transitionTo(
+        id,
+        "pending",
+        "reopened",
+        (task) => reopenPatch(task as Task) as Partial<Task<TInput, TOutput>>,
+        { ...options, ifAllowed: true },
+        "finished"
       );
     },
 
@@ -863,7 +879,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
 
     async markCancelOwed(id) {
       return patchOne(id, "cancel_owed", (task) =>
-        task.ask != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
+        task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true
           ? { cancelOwed: true }
           : undefined
       );

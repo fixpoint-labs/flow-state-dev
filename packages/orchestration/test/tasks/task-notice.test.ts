@@ -1,7 +1,7 @@
 /**
  * The child-finished signal's module (FIX-1794 P2, S6 and S7, lifted into
  * orchestration by FIX-1816 S9): pure functions over a board row and the
- * notice it owes, and what that notice does, an asked row's included.
+ * notice it owes, and what that notice does, a waited-on row's included.
  *
  * Checked for what kept the lift a move rather than a rewrite: it imports
  * nothing but orchestration's own row and ending types, so no composing layer
@@ -184,11 +184,11 @@ describe("what an ending does: one decision", () => {
   });
 });
 
-describe("an asked row's ending resumes the turn waiting on it, and wakes none (FIX-1816 S9)", () => {
-  const asked = (patch: Partial<Task> = {}) => row({ ask: { gateId: "ask:tasks:t1", deadline: 9 }, ...patch } as Partial<Task>);
+describe("a waited-on row's ending resumes the turn waiting on it, and wakes none (FIX-1816 S9)", () => {
+  const waitedRow = (patch: Partial<Task> = {}) => row({ wait: { gateId: "ask:tasks:t1", deadline: 9 }, ...patch } as Partial<Task>);
 
   it("marks its notices asked, so the receiving entry can tell", () => {
-    const completed = recordEnding(asked({ output: "yes" }), { kind: "completed", output: "yes" });
+    const completed = recordEnding(waitedRow({ output: "yes" }), { kind: "completed", output: "yes" });
     expect(owedNotices(completed, "tasks")).toEqual([
       { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", asked: true }
     ]);
@@ -197,7 +197,7 @@ describe("an asked row's ending resumes the turn waiting on it, and wakes none (
   });
 
   it("owes a notice for a cancel too: its turn waits on every ending, where a filed row's cancel stays silent", () => {
-    const cancelled = recordEnding(asked({ status: "cancelled", error: "not needed" }), { kind: "cancelled", reason: "not needed" });
+    const cancelled = recordEnding(waitedRow({ status: "cancelled", error: "not needed" }), { kind: "cancelled", reason: "not needed" });
     expect(owedNotices(cancelled, "tasks").map((n) => [n.ending, n.asked])).toEqual([["cancelled", true]]);
     const filed = row({ status: "cancelled" });
     expect(recordEnding(filed, { kind: "cancelled" })).toBe(filed);
@@ -206,12 +206,12 @@ describe("an asked row's ending resumes the turn waiting on it, and wakes none (
   it("resumes, under either policy, instead of waking the judgment turn or landing a line", () => {
     for (const ending of ["completed", "errored", "cancelled"] as const) {
       const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending, asked: true };
-      expect(decideNotice(notice, "judgment")).toEqual({ act: "resume-ask" });
-      expect(decideNotice(notice, "fixed")).toEqual({ act: "resume-ask" });
+      expect(decideNotice(notice, "judgment")).toEqual({ act: "resume-wait" });
+      expect(decideNotice(notice, "fixed")).toEqual({ act: "resume-wait" });
     }
   });
 
-  it("still runs the board again for a retried attempt: the ask isn't over", () => {
+  it("still runs the board again for a retried attempt: the wait isn't over", () => {
     const notice: TaskNotice = { boardId: "tasks", taskId: "t1", attempt: 1, ending: "retried", asked: true };
     expect(decideNotice(notice, "judgment")).toEqual({ act: "run-board" });
   });

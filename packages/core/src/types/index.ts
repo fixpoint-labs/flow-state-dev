@@ -31,25 +31,25 @@ export type {
   LivenessAnswers,
   ParentTaskOutcome,
   RequestHost,
-  ResumeAskInput,
-  ResumeAskResult,
+  ResumeWaitInput,
+  ResumeWaitResult,
   SettleParentTaskInput,
   SettleParentTaskResult
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
-export type { AskEndingErrorCode, AskGateBinding, AskOutcome, ParkOnAskInput } from "./ask-gate";
+export type { WaitEndingErrorCode, WaitGateBinding, WaitOutcome, ParkOnWaitInput } from "./wait-gate";
 export {
-  ASK_GATE_REASON,
+  WAIT_GATE_REASON,
   WaitEndedError,
   WaitStoppedError,
-  isAskGate,
+  isWaitGate,
   isExpiredApproval,
-  parkOnAsk,
-  parseAskOutcome,
-  recordedAskOutcome
-} from "./ask-gate";
+  parkOnWait,
+  parseWaitOutcome,
+  recordedWaitOutcome
+} from "./wait-gate";
 
 export type {
   SessionCreateCheck,

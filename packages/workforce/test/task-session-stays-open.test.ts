@@ -5,7 +5,7 @@
  *   turn in that session is handed what it was asked; a turn re-entered by an
  *   answer is handed the answer as its message, labelled, never the task again.
  * - V2, V5 (S1, S7): a task turn on `agent` is offered `parkOnQuestion`, a
- *   user's turn and an asked row's turn are not, and a turn carries one set
+ *   user's turn and a waited-on row's turn are not, and a turn carries one set
  *   of task tools.
  * - V3 (S2, S3): the conversation answers with `answerTask_tasks`; the task
  *   re-enters the same session, unspent, and is heard once when it ends.
@@ -63,7 +63,7 @@ const file = async (h: BoardHost, conv: string, input: Record<string, unknown>) 
 };
 
 describe("V1 · the task session keeps its prompt (S5)", () => {
-  it("F1 · a user's later question into a finished task's session is handed the task as filed", async () => {
+  it("F1 · a user's later message reopens the finished task, whose turn is handed the task as filed (FIX-1764)", async () => {
     const h = host([
       {
         when: (input) => textOf(input).includes("GOAL-audit") && !textOf(input).includes("KESTREL-41"),
@@ -81,8 +81,9 @@ describe("V1 · the task session keeps its prompt (S5)", () => {
 
       const later = await h.act("alice", row.run!.sessionId, "run", { message: "Which licence was the problem?" }, "agent");
       expect(later.error, messageOf(later.error)).toBeUndefined();
+      await h.settled();
       const messages = sent(h.agentAnswer.calls.at(-1)!.input);
-      // The task as filed, the worker's answer, then the new question, in that order.
+      // The task as filed, the worker's answer, then the user's message, in that order.
       const ask = messages.findIndex((m) => m.role === "user" && m.text.includes("GOAL-audit"));
       const did = messages.findIndex((m) => m.role === "assistant" && m.text.includes("KESTREL-41"));
       const now = messages.findIndex((m) => m.role === "user" && m.text.includes("Which licence"));
@@ -271,7 +272,7 @@ describe("V3 · the conversation answers (S2, S3)", () => {
     }
   });
 
-  it("refuses to reassign an answered task before it runs again, so the answer runs in the session that asked", async () => {
+  it("refuses to reassign an answered task before it runs again, so the answer runs in the session that filed it", async () => {
     const h = plain();
     try {
       const conv = await h.conversation("alice", "pm");
@@ -327,7 +328,7 @@ describe("V3 · the conversation answers (S2, S3)", () => {
  * carries `marker`: the first on the task's own turn, each next one on the
  * turn an answer re-entered; after the last answer it finishes with `finish`.
  */
-function asker(marker: string, questions: string[], finish: string): MockGeneratorScriptEntry[] {
+function questioner(marker: string, questions: string[], finish: string): MockGeneratorScriptEntry[] {
   let asked = 0;
   const answersIn = (input: unknown) => (textOf(input).match(/Answer to your question/g) ?? []).length;
   return [
@@ -352,7 +353,7 @@ function asker(marker: string, questions: string[], finish: string): MockGenerat
 describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
   it("a task turn parks its row on its question, the turn's own answer isn't recorded, and the conversation hears it once (BR-1, BR-4)", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
-    const h = host(asker("DEPLOY-it", ["Which region?"], "Deployed."), {
+    const h = host(questioner("DEPLOY-it", ["Which region?"], "Deployed."), {
       observeTools: (block, names, input) => seen.push({ block, names, input: textOf(input) })
     });
     try {
@@ -377,7 +378,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
     }
   });
 
-  it("a user's message into the task session is not a task turn: no parkOnQuestion (BR-2)", async () => {
+  it("a user's message into an open task's session is not a task turn: no parkOnQuestion (BR-2)", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
     const h = host([{ when: () => true, then: { text: "OK." } }], {
       observeTools: (block, names, input) => seen.push({ block, names, input: textOf(input) })
@@ -387,7 +388,11 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       const filing = await h.filingOf("alice", conv);
       const filed = await file(h, conv, { goal: "Audit it", assignee: "otto" });
       await h.settled();
-      const sessionId = (await h.row("alice", filing, filed.taskId!))!.run!.sessionId;
+      const done = (await h.row("alice", filing, filed.taskId!))!;
+      const sessionId = done.run!.sessionId;
+      // Open again, waiting on its question: a message on a finished task
+      // reopens it instead (FIX-1764), and its next attempt is a task turn.
+      await h.writeRow("alice", filing, { ...done, status: "parked", parkedOnQuestion: true } as Task);
       seen.length = 0;
       await h.act("alice", sessionId, "run", { message: "USER-asks what you did" }, "agent");
       const turn = seen.filter((s) => s.input.includes("USER-asks"));
@@ -398,7 +403,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
     }
   });
 
-  it("an asked row's task turn has no parkOnQuestion; an assigned follow-up of a finished asked task has it (BR-1a)", async () => {
+  it("a waited-on row's task turn has no parkOnQuestion; an assigned follow-up of a finished waited-on task has it (BR-1a)", async () => {
     const seen: Array<{ block?: string; names: string[]; input: string }> = [];
     const h = host([{ when: () => true, then: { text: "Done." } }], {
       observeTools: (block, names, input) => seen.push({ block, names, input: textOf(input) })
@@ -408,16 +413,16 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       const filing = await h.filingOf("alice", conv);
       const now = Date.now();
       const base = { attempts: 0, maxAttempts: 2, assignee: "otto", createdBy: "alice", createdAt: now, updatedAt: now, incarnationId: `inc-${now}` };
-      // An asked row, as the ask path writes one, waiting to run.
-      await h.writeRow("alice", filing, { ...base, id: "asked-1", goal: "ASKED-row work", status: "pending", ask: { gateId: "g-1", deadline: now + 600_000 } } as Task);
+      // A waited-on row, as the wait path writes one, waiting to run.
+      await h.writeRow("alice", filing, { ...base, id: "waited-1", goal: "WAITED-row work", status: "pending", wait: { gateId: "g-1", deadline: now + 600_000 } } as Task);
       await h.act("alice", conv, "listTasks_tasks", {});
       await h.settled();
-      const askedTurn = seen.filter((s) => s.block?.startsWith("agent-answer") && s.input.includes("ASKED-row"));
-      expect(askedTurn.length).toBeGreaterThan(0);
-      for (const t of askedTurn) expect(t.names).not.toContain("parkOnQuestion");
-      expect((await h.row("alice", filing, "asked-1"))!.status).toBe("completed");
+      const waitedTurn = seen.filter((s) => s.block?.startsWith("agent-answer") && s.input.includes("WAITED-row"));
+      expect(waitedTurn.length).toBeGreaterThan(0);
+      for (const t of waitedTurn) expect(t.names).not.toContain("parkOnQuestion");
+      expect((await h.row("alice", filing, "waited-1"))!.status).toBe("completed");
 
-      const follow = await file(h, conv, { goal: "FOLLOW-up work", followUpOf: "asked-1" });
+      const follow = await file(h, conv, { goal: "FOLLOW-up work", followUpOf: "waited-1" });
       expect(follow).toMatchObject({ ok: true });
       await h.settled();
       const followTurn = seen.filter((s) => s.block?.startsWith("agent-answer") && s.input.includes("FOLLOW-up"));
@@ -452,7 +457,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
 
 describe("V1 R1, V3 · the answer is the next turn, in the same session (S5, S2, S3)", () => {
   it("the re-entered turn is handed the answer as its message, after the task, its work and its question; and it may ask again (BR-7, BR-14)", async () => {
-    const h = host(asker("SHIP-it", ["Which region?", "Which account?"], "Shipped KESTREL to the answered place."));
+    const h = host(questioner("SHIP-it", ["Which region?", "Which account?"], "Shipped KESTREL to the answered place."));
     try {
       const conv = await h.conversation("alice", "chief");
       const filing = await h.filingOf("alice", conv);

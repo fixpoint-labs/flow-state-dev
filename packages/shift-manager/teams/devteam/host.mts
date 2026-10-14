@@ -279,7 +279,7 @@ function projectSetup(installation: WorkerInstallation) {
 const LEAD_FLOWS = [AGENT_FLOW, EM_FLOW].map((flow) => ({ kind: flow, internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } }));
 
 /** The project tools, by the names the chief of staff's and the project coordinator's `tools:` lines spell. */
-const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "listProjects"];
+const PROJECT_TOOL_NAMES: readonly string[] = ["createProject", "setRepository", "setBrief", "openWorkstream", "editWorkstream", "listProjects"];
 
 /** The user's projects, with what a coder's task that names no project does next. */
 const listedForCodingSchema = listProjectsOutputSchema.extend({ forCoding: z.string() });
@@ -970,14 +970,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // The project tools and the roster writes a worker names in `tools:`.
     // The worker flow carries them, and only the chief of staff's line names
     // the roster writes; a project coordinator's line names `readProject`,
-    // `setBrief`, `setRepository`, `listLeads` and `openWorkstream`, and a
-    // workstream's lead's `updateWorkstream`.
+    // `setBrief`, `setRepository`, `listLeads`, `openWorkstream` and
+    // `editWorkstream`, and a workstream's lead's `updateWorkstream`.
     catalog: {
       ...(options.withoutProjectTools === true ? {} : projectTools),
       ...rosterTools,
       ...projectCoordinatorTools,
       listLeads: workstreamBlocks.listLeadsTool,
       updateWorkstream: workstreamBlocks.updateWorkstreamTool,
+      ...(options.withoutProjectTools === true ? {} : { editWorkstream: workstreamBlocks.editWorkstreamTool }),
     },
     uses: [
       // The worker inventory, which the discovery door reads.
