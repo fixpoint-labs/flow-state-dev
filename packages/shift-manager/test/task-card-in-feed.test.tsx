@@ -1,0 +1,152 @@
+// @vitest-environment happy-dom
+/**
+ * A post a coordinator hands to a delegate shows in the conversation's feed as
+ * one card for the task it filed: its title, its worker, where it stands, and
+ * Open. The whole list is the rail's job, so the feed doesn't repeat it.
+ *
+ * Where it stands comes from the conversation's board, not the feed. The
+ * delegate settles the task in its own session, so the feed only ever holds
+ * the task as it was filed: drawn from the feed alone, a task that failed
+ * spins as running forever. The card reads the board while the task can still
+ * move, and again each time the Lab is read.
+ */
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
+import { TASKS_POLL_MS } from "../src/components/TasksPanel";
+
+type Row = { id: string; goal: string; title?: string; status: string; assignee?: string; attempts: number };
+let rows: Row[] = [];
+const calls: string[] = [];
+const lab = { clients: { userId: "alice" }, snapshot: { readAt: 1 } };
+vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
+vi.mock("../src/lib/conversation-tasks", () => ({
+  readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
+    calls.push(`list ${flow} ${sessionId}`);
+    return rows.map((row) => ({ ...row }));
+  },
+}));
+
+beforeEach(() => {
+  rows = [];
+  calls.length = 0;
+  lab.snapshot = { readAt: 1 };
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
+const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
+const meta = (requestId: string) =>
+  ({ id: `m-${requestId}`, type: "component", component: "task-board-meta", requestId, status: "completed", data: { collectionId: "tasks", status: "active" } }) as never;
+
+/** The task as the coordinator's turn filed it: the only record of it the feed ever holds. */
+const filed = (requestId: string, id: string, title: string, assignee: string): OutputItem =>
+  ({
+    id: `c-${id}`,
+    type: "component",
+    component: "task-change",
+    requestId,
+    status: "completed",
+    data: { collectionId: "tasks", taskId: id, kind: "added", task: { id, goal: `${title}, in full`, title, status: "in_progress", assignee } },
+  }) as unknown as OutputItem;
+
+const cards = () =>
+  screen.queryAllByTestId("task-card").map((card) => ({
+    id: card.getAttribute("data-task-id"),
+    status: card.getAttribute("data-status"),
+    text: card.textContent,
+  }));
+
+describe("a delegated post's task in the feed", () => {
+  it("is one card for the task its turn filed, not the conversation's list", async () => {
+    const items = [filed("r1", "t1", "Post for eng.pm", "eng.pm"), filed("r2", "t2", "Post for eng.qa", "eng.qa")];
+    rows = [
+      { id: "t1", goal: "Post for eng.pm, in full", title: "Post for eng.pm", status: "completed", assignee: "eng.pm", attempts: 1 },
+      { id: "t2", goal: "Post for eng.qa, in full", title: "Post for eng.qa", status: "in_progress", assignee: "eng.qa", attempts: 1 },
+    ];
+    render(
+      <SessionScope sessionId="s1" flow="coordinator" items={items}>
+        <TaskBoardMeta item={meta("r2")} />
+      </SessionScope>,
+    );
+    await tick(0);
+    // Only r2's task: r1's is on the board, and the rail lists it, but r2 didn't file it.
+    expect(cards()).toEqual([{ id: "t2", status: "in_progress", text: expect.stringContaining("Post for eng.qa") }]);
+    expect(cards()[0]!.text).toContain("eng.qa");
+    expect(cards()[0]!.text).toContain("running");
+    expect(screen.queryByText("Post for eng.pm")).toBeNull();
+    expect(screen.getByTestId("task-open").getAttribute("aria-label")).toBe("Open Post for eng.qa");
+  });
+
+  it("shows a task that failed as failed, though the feed only holds it running", async () => {
+    rows = [{ id: "t1", goal: "Post for eng.pm, in full", title: "Post for eng.pm", status: "errored", assignee: "eng.pm", attempts: 1 }];
+    render(
+      <SessionScope sessionId="s1" flow="coordinator" items={[filed("r1", "t1", "Post for eng.pm", "eng.pm")]}>
+        <TaskBoardMeta item={meta("r1")} />
+      </SessionScope>,
+    );
+    await tick(0);
+    expect(cards()).toEqual([{ id: "t1", status: "errored", text: expect.stringContaining("errored") }]);
+    // What the user saw: a spinner that never stopped.
+    expect(document.querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("follows the task as it moves, with no reload, and reads nothing more once it has ended", async () => {
+    rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "in_progress", assignee: "eng.pm", attempts: 1 }];
+    render(
+      <SessionScope sessionId="s1" flow="coordinator" items={[filed("r1", "t1", "Post for eng.pm", "eng.pm")]}>
+        <TaskBoardMeta item={meta("r1")} />
+      </SessionScope>,
+    );
+    await tick(0);
+    expect(cards()[0]!.status).toBe("in_progress");
+    rows = [{ ...rows[0]!, status: "parked" }];
+    await tick(TASKS_POLL_MS);
+    expect(cards()[0]).toMatchObject({ status: "parked", text: expect.stringContaining("needs you") });
+    // Parked waits on a person, whose answer reads the Lab again (the next test): nothing moves it meanwhile.
+    const read = calls.length;
+    await tick(TASKS_POLL_MS * 20);
+    expect(calls).toHaveLength(read);
+  });
+
+  it("reads the board again when the Lab is read again, so a task that took a message shows running", async () => {
+    rows = [{ id: "t1", goal: "g", title: "Post for eng.pm", status: "completed", assignee: "eng.pm", attempts: 1 }];
+    const items = [filed("r1", "t1", "Post for eng.pm", "eng.pm")];
+    const { rerender } = render(
+      <SessionScope sessionId="s1" flow="coordinator" items={items}>
+        <TaskBoardMeta item={meta("r1")} />
+      </SessionScope>,
+    );
+    await tick(0);
+    expect(cards()[0]!.status).toBe("completed");
+    rows = [{ ...rows[0]!, status: "in_progress" }];
+    lab.snapshot = { readAt: 2 };
+    rerender(
+      <SessionScope sessionId="s1" flow="coordinator" items={items}>
+        <TaskBoardMeta item={meta("r1")} />
+      </SessionScope>,
+    );
+    await tick(0);
+    expect(cards()[0]!.status).toBe("in_progress");
+  });
+
+  it("reads one board for every card in the feed", async () => {
+    const items = [filed("r1", "t1", "Post for eng.pm", "eng.pm"), filed("r2", "t2", "Post for eng.qa", "eng.qa")];
+    rows = [
+      { id: "t1", goal: "g", title: "Post for eng.pm", status: "in_progress", assignee: "eng.pm", attempts: 1 },
+      { id: "t2", goal: "g", title: "Post for eng.qa", status: "in_progress", assignee: "eng.qa", attempts: 1 },
+    ];
+    render(
+      <SessionScope sessionId="s1" flow="coordinator" items={items}>
+        <TaskBoardMeta item={meta("r1")} />
+        <TaskBoardMeta item={meta("r2")} />
+      </SessionScope>,
+    );
+    await tick(0);
+    expect(calls).toEqual(["list coordinator s1"]);
+  });
+});

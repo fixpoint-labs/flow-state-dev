@@ -201,7 +201,7 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <SessionScope sessionId={sessionId} items={read.items}>
+            <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
               {read.truncated ? (
                 <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
                   More than shown: this conversation holds more than one read returns.
