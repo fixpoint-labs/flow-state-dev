@@ -129,14 +129,7 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
   // per worker for a value identical every time, and a test that only checked the
   // records came out right would pass anyway.
   const { teams, errors: teamErrors } = await readTeamsDirectory(root);
-  const instructionsByTeam = new Map<string, string>(
-    teams.flatMap((team) =>
-      team.instructions === undefined ? [] : [[team.id, team.instructions] as const],
-    ),
-  );
-  const nameByTeam = new Map<string, string>(
-    teams.flatMap((team) => (team.name === undefined ? [] : [[team.id, team.name] as const])),
-  );
+  const teamById = new Map(teams.map((team) => [team.id, team]));
 
   // Once, for the whole tree, like the team files: a library is one value per
   // level, and each worker's reach is a filter over the one read.
@@ -156,8 +149,9 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
     // no team skills, no `TEAM.md` instructions, no team library.
     const { team, name } = parseDeclaredWorkerId(worker.id)!;
     const read = await readWorkerSkills({ team, worker: name });
-    const teamInstructions = team === undefined ? undefined : instructionsByTeam.get(team);
-    const teamName = team === undefined ? undefined : nameByTeam.get(team);
+    const teamRecord = team === undefined ? undefined : teamById.get(team);
+    const teamInstructions = teamRecord?.instructions;
+    const teamName = teamRecord?.name;
     // The org's library, the worker's team's, then its own folder — in walk
     // order, which is that order. Another team's library and a sibling's own
     // folder are not in reach, so they never reach this record at all.

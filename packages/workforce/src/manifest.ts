@@ -72,11 +72,8 @@ export interface WorkerManifest {
    */
   teamInstructions?: string;
   /**
-   * Its team's display name, from the team's {@link TEAM_MD} `name:`.
-   *
-   * Filled by the joined loader (`readWorkforce`), and **absent** when the
-   * team's file names none, on an org worker, and on a hand-built record. A
-   * view reads it to show the team by name rather than by its id.
+   * Its team's display name, from the team's {@link TEAM_MD} `name:`. Absent
+   * when the file names none, on an org worker, and on a hand-built record.
    */
   teamName?: string;
   /**
@@ -117,10 +114,7 @@ export interface TeamManifest {
    * either reading it or not asking for it.
    */
   description: string;
-  /**
-   * The team's display name, its file's optional `name:` (e.g. "Engineering"
-   * for `eng`). Absent when the file names none: a view shows the id instead.
-   */
+  /** Display name from the file's optional `name:` (e.g. "Engineering" for `eng`). Absent when the file names none. */
   name?: string;
   /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
   declared: Record<string, unknown>;
