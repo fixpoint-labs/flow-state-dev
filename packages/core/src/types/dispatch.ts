@@ -424,11 +424,8 @@ export type SessionTarget =
   | {
       readonly id: string;
       /**
-       * The session's initial state, read only when no session exists at
-       * `id`: present, the session is created there from it (see above);
-       * absent, a missing session is refused `session-not-found`. A session
-       * that exists keeps its own. Computed by the dispatching block's own
-       * code, never taken from a caller's input.
+       * Initial state, read only when this id is created (see `id` above).
+       * From the dispatching block's code, never a caller's input.
        */
       readonly state?: Readonly<Record<string, unknown>>;
     }
