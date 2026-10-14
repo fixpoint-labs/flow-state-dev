@@ -628,12 +628,12 @@ or on what exists in the store: it receives the verified caller and the parsed
 state, and accepts or refuses the create. A turn on an existing session never
 calls it.
 
-A dispatch creates a session through one of two targets. `{ key }` creates a
-child session of the dispatching one, from `state` when the target names one.
-`{ id, state }` creates a
-top-level session at that id when none exists, judged by the target flow's
-`createCheck` (`create-refused` when it refuses), and delivers into the
-session when it does exist. An `{ id }` target without `state` never creates:
+A dispatch creates a session through one of two targets. `{ key }` derives a
+child session of the dispatching one from the key: it creates the child, from
+`state` when the target names one, or adopts the child already on that key.
+`{ id, state }` creates a top-level session at that id when none exists,
+judged by the target flow's `createCheck` (`create-refused` when it refuses),
+and delivers into the session when it does exist. An `{ id }` target without `state` never creates:
 an unknown id is refused as `session-not-found`.
 
 A top-level `stateSchema` field declared `.readonly()` is set when the session

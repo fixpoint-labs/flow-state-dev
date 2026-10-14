@@ -127,7 +127,7 @@ Loading, an empty board and a failed read look different from each other. A fail
 
 ## Messages between workers
 
-No component draws the [messages your workers send each other](./messaging-workers.md). Read the user's message log as a collection, `WORKER_MESSAGES_RESOURCE`, through any of their worker sessions, and render the rows yourself; [Showing messages in your app](./messaging-workers.md#showing-messages-in-your-app) has the read and the row shape. In a conversation, a sent message is a call to the tool named `MESSAGE_WORKER_TOOL`, which you can match to draw it as a line of its own.
+No component draws the [messages your workers send each other](./messaging-workers.md). Read the user's message log as a collection, `WORKER_MESSAGES_RESOURCE`, through any of their worker sessions, and render the rows yourself; [Showing messages in your app](./messaging-workers.md#showing-messages-in-your-app) has the read and the row shape. In a conversation, a sent message is a `tool_output` item for the tool named `MESSAGE_WORKER_TOOL` (`"messageWorker"`). Match on it to draw a sent message as a line of its own rather than a tool call.
 
 ## Where each component reads from
 

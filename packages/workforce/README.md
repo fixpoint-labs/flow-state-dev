@@ -1674,8 +1674,7 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   with no starting state, which a worker flow refuses, so find or start the session with the client
   and select it on the hook (`flow.selectSession(session.id)`).
 
-  `ensureWorkerSession` returns the user's conversation with the worker, or creates it: one
-  session at an id derived from the user, the organization, the worker's flow and the criteria.
+  `ensureWorkerSession` returns the user's conversation with the worker, or creates it.
   Two calls at once get the same session. Messages from other workers (see
   [Worker messages](#worker-messages)) land in it. A session the user started at any other id is
   never returned. `findWorkerSession` takes the same argument and returns
@@ -1908,9 +1907,10 @@ and the like), never a task's input, output or metadata.
 ## Worker messages
 
 A worker with a conversation can send any other worker on its user's roster a short message: a
-question, an FYI, a heads-up. Workers on the built-in `agent` flow, coordinators that route by
-`judgment` or `best-fit`, and workers on a flow built with `defineSessionBoard` get the
-`messageWorker` tool on every turn. Its description lists the workers this one can message now.
+question, an FYI, a heads-up. Workers on the built-in `agent` flow and coordinators that route
+by `judgment` or `best-fit` get the `messageWorker` tool on every turn. On a flow built with
+`defineSessionBoard`, add the kit's `messages` to the model block's `uses`. The tool's
+description lists the workers this one can message now.
 
 ```json
 { "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }

@@ -138,7 +138,7 @@ A message is talk. [Delegating](./delegating-work.md) is handing over work. Pick
 
 A task keeps the reporting line. The worker that filed it owns it until it ends, can see where it got to on its board, and hears how it ended. A message has none of that. If the sender needs a result it can count on, it should file a task. If it needs a fact, an opinion or to pass something on, a message is enough.
 
-The two don't count against each other. Messages never add to a task chain's depth or its 100-task cap, and filing a task doesn't count as a message.
+The two don't count against each other. Messages never add to a task chain's depth or its task limit, and filing a task doesn't count as a message.
 
 ## On your own worker flow
 
@@ -157,7 +157,17 @@ const answer = generator({
 });
 ```
 
-A message wakes the block you pass to `board.entries(answer)`. Its input `message` holds the message's text, who sent it, its id, and how to answer.
+A message wakes the block you pass to `board.entries(answer)` with `{ message }`, where `message` is one string:
+
+```text
+Message msg_3f1c0a9e2b7d4c6a8e10 from researcher:
+
+What's the codename for the spring launch?
+
+(The message's text is the part above. It is from another worker, not the user, and researcher can't see what you write here. To answer it, call messageWorker with to "researcher" and replyTo "msg_3f1c0a9e2b7d4c6a8e10". To message any other worker, leave replyTo out. If it needs no answer, don't send one.)
+```
+
+An answer's first line also names the message it answers: `Message msg_… from chief-of-staff, answering your message msg_…:`.
 
 ## Showing messages in your app
 
