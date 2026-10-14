@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// FIX-1887 rename-map check. Retained spec evidence, not production code.
+// FIX-1887 rename-map check: the closure's judge of "nothing changed but names" (goal.md, P1.m).
+// Moved from the spec's POC unchanged in rule.
 //
 // The epic's (FIX-1870) anti-game: since the epic spec merged, the diff to the
 // three regression checks is names only, and the diff to the three coordinator
@@ -7,11 +8,11 @@
 // shape entries, and listed fence lines.
 // Every changed hunk is explained, or the check fails and prints it.
 //
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs                   # base..HEAD
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs --head <ref>      # base..<ref>
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs --sources         # the map against the
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs                   # base..HEAD
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --head <ref>      # base..<ref>
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --sources         # the map against the
 //                                                                         # children's pinned tables
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs --control         # planted edits, must FAIL
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --control         # planted edits, must FAIL
 //
 // Exit: 0 every hunk explained · 1 a hunk unexplained · 2 the control caught
 // every plant (the control's pass) · 3 the map and the sources disagree.

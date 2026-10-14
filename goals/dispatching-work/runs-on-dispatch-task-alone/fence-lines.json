@@ -1,0 +1,92 @@
+[
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "ledger: (state?.deliveries ?? []) as Delivery[]",
+    "added": "ledger: postDeliveries(store, who.person.userId, sessionId)",
+    "why": "FIX-1872 (#3232): recordOf reads the conversation's post rows, not the ledger it removed (ER-6)"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts",
+    "removed": "type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; answered: boolean };",
+    "added": "type Delivery = PostDelivery;",
+    "why": "FIX-1872 (#3232): the read's result is a post row mapped to the ledger entry's shape (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": "ledger: (record?.state?.deliveries ?? [])",
+    "added": "ledger: record === undefined ? [] : toPostDeliveries(",
+    "why": "FIX-1872 (#3232): leg e's read() reads the board's post rows from the resource store, not the ledger (ER-6)"
+  },
+  {
+    "path": "goals/coordinators/hands-each-post-to-its-delegates/leg-e.mts",
+    "removed": "const stored = await (await state.getRuntime()).stores.session.get(session.id);",
+    "added": "const runtime = await state.getRuntime();",
+    "why": "FIX-1872 (#3232): the row read needs the runtime's resource store, so the runtime is held once"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "return (state?.deliveries ?? []) as Delivery[];",
+    "added": "return postDeliveries(store, who.person.userId, sessionId);",
+    "why": "FIX-1872 (#3232): ledgerOf reads the coordinator session's post rows, not the ledger (ER-6)"
+  },
+  {
+    "path": "goals/projects/a-shared-project-has-one-owner-per-workstream/legs.mts",
+    "removed": "type Delivery = { postId: string; round: number; delegate: { worker: string; target?: string }; status: string; sessionId?: string; reason?: string };",
+    "added": "type Delivery = PostDelivery;",
+    "why": "FIX-1872 (#3232): the read's result is a post row mapped to the ledger entry's shape (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/workforce-privacy/two-users-share-a-project-and-nothing-else/store.mts",
+    "removed": "ledger: (state?.deliveries ?? []) as Delivery[]",
+    "added": "ledger: postDeliveries(file, userId, sessionId)",
+    "why": "FIX-1872 (#3232): conversationRecord reads the conversation's post rows, not the ledger (ER-6)"
+  },
+  {
+    "path": "goals/workforce-privacy/two-users-share-a-project-and-nothing-else/store.mts",
+    "removed": "export type Delivery = { postId: string; delegate: { worker: string }; status: string; sessionId?: string; round?: number };",
+    "added": "export type Delivery = PostDelivery;",
+    "why": "FIX-1872 (#3232): the read's result is a post row mapped to the ledger entry's shape (goals/lib/post-rows.mts)"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": "function addTasks(store: string,",
+    "added": "function addTasks(tool: \"addTask\" | \"dispatchTask\", store: string,",
+    "why": "FIX-1875 P1 (#3168 fence table): addTasks takes the tool name, so each leg reads exactly the tool it proves; addTask stays live for unassigned records (FIX-1875 D1)"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": "/** The `addTask` calls a session's turns made,",
+    "added": "/** The `tool` calls a session's turns made,",
+    "why": "FIX-1875 P1 (#3168 fence table): addTasks's doc comment names the tool it reads"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": ".filter((i) => i.toolCall?.name === \"addTask\" && (requestId",
+    "added": ".filter((i) => i.toolCall?.name === tool && (requestId",
+    "why": "FIX-1875 P1 (#3168 fence table): addTasks filters on the tool it is handed, not either name"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": "addTasks(store, ",
+    "added": "addTasks(\"dispatchTask\", store, ",
+    "why": "FIX-1875 P1 (#3168 fence table): a call site in legs a, b or d-depth reads dispatchTask only"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": "addTasks(store, ",
+    "added": "addTasks(\"dispatchTask\", store, ",
+    "why": "FIX-1875 P1 (#3168 fence table): the second call site in one hunk (leg a's two reads of Bob's filings)"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": "addTasks(store, ",
+    "added": "addTasks(\"addTask\", store, ",
+    "why": "FIX-1875 P1 (#3168 fence table): a call site in legs c or d-fan reads addTask only, which records an unassigned task"
+  },
+  {
+    "path": "goals/workers/files-and-splits-down-the-chain/run.mts",
+    "removed": "addTasks(capStore, ",
+    "added": "addTasks(\"addTask\", capStore, ",
+    "why": "FIX-1875 P1 (#3168 fence table): leg d-app-cap's call site reads addTask only"
+  }
+]

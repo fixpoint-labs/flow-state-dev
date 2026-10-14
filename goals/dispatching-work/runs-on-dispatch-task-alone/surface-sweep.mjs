@@ -1,14 +1,15 @@
 #!/usr/bin/env node
-// FIX-1887 surface sweep. Retained spec evidence, not production code.
+// FIX-1887 surface sweep: the closure's check that the retired surface is gone (goal.md, P1.s).
+// Moved from the spec's POC unchanged in rule.
 //
 // The epic's (FIX-1870) sweep: the retired ways of giving another worker work
 // are gone from what a person reads or imports. It reads ONE commit, through
 // `git grep <commit>`, so the pass and its control run from the same checkout:
 //
-//   node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs                 # HEAD, report
-//   node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --at <commit>   # any commit
-//   node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --assert        # exit 1 on any live hit
-//   node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --control       # plant a hit in the
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs                 # HEAD, report
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --at <commit>   # any commit
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --assert        # exit 1 on any live hit
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --control       # plant a hit in the
 //                                                                          # line matcher, expect it caught
 //
 // The epic's control: `--assert --at <the main commit before FIX-1875's first
