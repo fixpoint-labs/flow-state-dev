@@ -77,7 +77,10 @@ describe("probeClaudeAccount, scripted", () => {
   });
 
   it("says none, with the reason, when neither source comes back", async () => {
-    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: null }));
+    // The shape the SDK returns with no credential: it still names a plan,
+    // `Claude API`, its label for "no plan". Reading that as a sign-in let a
+    // host start with nothing to run on.
+    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: "Claude API" }));
     const result = await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk });
     expect(result.status).toBe("none");
     expect(result.status === "none" && result.reason).toMatch(/no API key and no sign-in/);
