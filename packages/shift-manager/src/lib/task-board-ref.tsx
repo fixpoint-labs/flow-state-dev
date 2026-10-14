@@ -25,12 +25,12 @@ export function SessionScope({
   items,
   children,
 }: {
-  sessionId: string | null;
+  sessionId: string;
   items: OutputItem[];
   children: ReactNode;
 }) {
   return (
-    <TaskBoardRefContext.Provider value={sessionId === null ? undefined : conversationBoardRef(sessionId)}>
+    <TaskBoardRefContext.Provider value={conversationBoardRef(sessionId)}>
       <SessionItemsProvider value={items}>{children}</SessionItemsProvider>
     </TaskBoardRefContext.Provider>
   );

@@ -1371,7 +1371,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             ok: false as const,
             error:
               `dispatch_ref_takes_no_task_fields: ${extra.join(", ")} only describe a new task. ` +
-              `To change task "${taskId}", call updateTask first. Nothing was written.`,
+              // updateTask patches priority, metadata, assignee and labels: a title is set only as a task is filed.
+              (extra.length === 1 && extra[0] === "title"
+                ? `A title is set when a task is filed and not changed after, so omit it. Nothing was written.`
+                : `To change task "${taskId}", call updateTask first. Nothing was written.`),
           };
         }
         const collection = await resolve(ctx);

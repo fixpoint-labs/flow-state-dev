@@ -248,6 +248,16 @@ describe("dispatchTask title", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("dispatch_ref_takes_no_task_fields");
     expect(result.error).toContain("title");
+    // updateTask can't set a title, so it is not offered as the way to.
+    expect(result.error).not.toContain("updateTask");
+  });
+
+  it("still points to updateTask for fields it can change, when a title comes with them", async () => {
+    const collection = await board();
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", undispatched: true });
+    const t = team(["eng.coder"]);
+    const result = await run(dispatchTool(collection, t.roster), { taskId: "task_rec", title: "Audit", priority: 2 }, turnCtx(new Map()));
+    expect(result.error).toContain("updateTask");
   });
 });
 

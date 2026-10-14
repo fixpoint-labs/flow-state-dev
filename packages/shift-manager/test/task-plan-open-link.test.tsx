@@ -46,6 +46,22 @@ describe("a task row in the feed", () => {
     expect(window.location.pathname).toBe("/tasks/s1.tasks/t1/session");
   });
 
+  it("offers no link on a board that isn't the conversation's own ledger", () => {
+    // Another collection's task ids name nothing under <session>.tasks.
+    const other = { ...(meta as object), data: { collectionId: "plan", status: "active" } } as never;
+    const item = {
+      ...(change("in_progress") as object),
+      data: { collectionId: "plan", taskId: "t1", kind: "added", task: { id: "t1", goal: "Draft", status: "in_progress" } },
+    } as unknown as OutputItem;
+    render(
+      <SessionScope sessionId="s1" items={[item]}>
+        <TaskBoardMeta item={other} />
+      </SessionScope>,
+    );
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.queryByTestId("task-open")).toBeNull();
+  });
+
   it("offers no link where the feed doesn't know its board", () => {
     render(
       <SessionItemsProvider value={[change("in_progress")]}>

@@ -8,6 +8,7 @@
  */
 import type { ComponentItem } from "@flow-state-dev/core/items";
 import { TaskPlan } from "./flow-state/task-plan";
+import { CONVERSATION_BOARD_COLLECTION } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { useTaskBoardRef } from "../lib/task-board-ref";
 
@@ -25,7 +26,8 @@ export function TaskBoardMeta({ item }: { item: ComponentItem }) {
       collectionId={collectionId}
       requestId={item.requestId}
       renderTaskAction={
-        boardRef === undefined
+        // Only the conversation's own ledger is a board this route opens; another collection's task ids name nothing there.
+        boardRef === undefined || collectionId !== CONVERSATION_BOARD_COLLECTION
           ? undefined
           : (task) => (
               <button
