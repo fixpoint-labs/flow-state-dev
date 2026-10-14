@@ -29,7 +29,9 @@
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's, owned by the addressed instance — `session-not-found` /
- *    `session-not-addressable` otherwise, never created. `{ from: true }` is the
+ *    `session-not-addressable` otherwise, never created unless the target
+ *    carries starting state, which creates it at that id through the target
+ *    flow's create check (`create-refused` otherwise). `{ from: true }` is the
  *    same delivery as `id`, addressed at the trusted `dispatchStamp.from` —
  *    `no-sender` when this request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
@@ -439,6 +441,73 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   /**
+   * An `id` target that carries starting state: a session absent at that id
+   * is created there, a top-level session of the running principal on the
+   * addressed instance, through the one birth every session takes. The target
+   * flow's create check judges it with `via: "dispatch"`, as it judges a `key`
+   * child, so an id the principal may not hold (another user's derived
+   * address) is refused `create-refused` with nothing written. A session that
+   * exists, or that a racing creator wrote first, is then delivered into
+   * through every guard a plain `id` delivery meets: it keeps its own state.
+   */
+  const resolveOrBirthSession = async (
+    sessionId: string,
+    initialState: Readonly<Record<string, unknown>>,
+    targetFlow: FlowInstance
+  ): Promise<ResolvedSession> => {
+    const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
+    let outcome: Awaited<ReturnType<typeof birthSession>>;
+    try {
+      const ts = nowMs();
+      outcome = await birthSession(
+        stores,
+        storageKey,
+        {
+          flow: targetFlow,
+          sessionId,
+          principal: {
+            userId: identity.userId,
+            orgId: identity.orgId,
+            ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
+          },
+          state: { ...initialState },
+          // From the dispatching block's code, not a caller.
+          fromCaller: false,
+          via: "dispatch"
+        },
+        (): SessionRecordSeed => ({
+          id: storageKey,
+          version: 0,
+          createdAt: ts,
+          updatedAt: ts,
+          flowKind: targetFlow.kind,
+          flowId: targetFlow.id,
+          userId: identity.userId,
+          journal: [],
+          ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+          orgId: identity.orgId
+        })
+      );
+    } catch (error) {
+      if (error instanceof SessionCreateRefusedError) {
+        return refuse("create-refused", error.message);
+      }
+      throw error;
+    }
+    if (!outcome.born) return resolveExistingSession(sessionId, targetFlow);
+    return {
+      ok: true,
+      sessionId,
+      orgId: identity.orgId,
+      adopted: false,
+      // A session of its own, delivered into like any existing one, so its
+      // concurrency policy and incarnation guard apply to this request too.
+      delivery: "existing",
+      recipientLineageId: resolveLineageId({ id: storageKey, lineageId: outcome.record.lineageId })
+    };
+  };
+
+  /**
    * Spec → store. `{ from: true }` is delivery into the stamped sender — the
    * same path as `id`, with the id taken from the trusted `dispatchStamp`,
    * not from the spec. The author cannot name a reply-to; a missing stamp is
@@ -473,6 +542,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return sender;
     }
     if ("id" in spec.session) {
+      if (spec.session.state !== undefined) {
+        return resolveOrBirthSession(spec.session.id, spec.session.state, targetFlow);
+      }
       return resolveExistingSession(spec.session.id, targetFlow);
     }
     return resolveDispatchRunSession(spec.session.key, spec.session.state, spec, targetFlow);

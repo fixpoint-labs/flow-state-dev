@@ -398,7 +398,12 @@ async function chooseTaskSession(
  * - `id` — an **existing** session. Delivered into it when it exists and is
  *   this principal's on this flow; refused by name otherwise. Never created —
  *   an unknown id is a typo, a stale reference, or a hallucinated value, and
- *   auto-creating turns all three into work nobody is watching.
+ *   auto-creating turns all three into work nobody is watching. **Unless it
+ *   carries `state`**: then a session absent at that id is created there, as a
+ *   session of its own (no parent), from that state, judged by the target
+ *   flow's `session.createCheck` with `via: "dispatch"` exactly as a `key`
+ *   child is. The block computed the id and the state, so the create check is
+ *   what decides whether that id is this principal's to create.
  * - `from` — the **seam-stamped sender**. The runtime reads
  *   `metadata.dispatch.from.sessionId` through `readDispatchStamp` and delivers
  *   into that session as an `id` would. The author names no session. A request
@@ -416,7 +421,17 @@ export type SessionTarget =
        */
       readonly state?: Readonly<Record<string, unknown>>;
     }
-  | { readonly id: string }
+  | {
+      readonly id: string;
+      /**
+       * The session's initial state, read only when no session exists at
+       * `id`: present, the session is created there from it (see above);
+       * absent, a missing session is refused `session-not-found`. A session
+       * that exists keeps its own. Computed by the dispatching block's own
+       * code, never taken from a caller's input.
+       */
+      readonly state?: Readonly<Record<string, unknown>>;
+    }
   | { readonly from: true };
 
 /** What a dispatcher hands the seam. Every field is computed by the block that dispatches. */
@@ -461,7 +476,7 @@ export type DispatchRefusal =
   | "session-not-addressable"
   /** A `key` target derived a child id already held by a record that is not this request's child. */
   | "key-occupied"
-  /** The target flow's `session.createCheck` refused to create the child session. */
+  /** The target flow's `session.createCheck` refused to create the session: a `key` child, or an `id` target carrying starting state. */
   | "create-refused"
   /** This process executes requests but was not wired to dispatch one. */
   | "no-dispatch-operation"
