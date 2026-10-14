@@ -2,45 +2,40 @@
 
 [Spec](SPEC.md)
 
-D1–D5 below are written as the Architect leaned, which the product lead reported on 2026-10-14 as Jake's call. That report is a relay, not Jake's sign-off: Jake merging this spec is the approval, and until then each one is the recommendation.
-
-<a name="d0"></a>
-## D0 · No timer on a parked parent (settled)
-
-A parked parent holds no lease, request or timer. A stuck child is bounded by its own lease lapsing (`isClaimable`) and its retry endings; its final `errored` unparks the parent. **Because** a timer on the parent is the stacked-timeout problem FIX-1816 avoids. **Locks in:** the parent waits as long as the child's own retry budget.
-
 <a name="d1"></a>
-## D1 · The parent is cancelled while parked (lean: cancel the child)
+## D1 · Can a worker on a task hand a piece to any worker, or only its delegates?
 
-- **(a) The child keeps running**; its ending is recorded and dropped (the parent is no longer parked). Simple; may waste work.
-- **(b) The child is cancelled too**, recursively. No wasted work; a child shared by intent elsewhere is lost.
-- **Lean, reported as Jake's call: (b)** for a child filed by the park call (`parkedBy` set), since nothing else asked for it. The same rule covers the race where the parent is cancelled and the child then ends: the child is already cancelled, and its `cancelled` notice finds no parked parent, so the unpark write refuses and the notice is cleared.
+- **Plain terms.** Today a worker splitting its task can only hand pieces to the workers it delegates to. The ask is for a task to get a result from whoever has it.
+- **Trade-off.** Any task-taking worker on the user's roster matches who `messageWorker` already reaches (FIX-1989), and is what makes the goal reachable. The price is that a worker can now put work on a teammate it doesn't manage, so a busy worker can get pieces it didn't expect.
+- **Recommendation: any task-taking worker on the roster.** The chain limits (FIX-1802 S5) already bound how deep and wide this goes.
+- **What would change my mind.** Workers getting pieces they shouldn't. Then reach becomes opt-in per worker (a "takes pieces from teammates" flag), with nothing persisted changing shape.
+- **If wrong.** A narrowing later is one roster rule; no data migrates.
 
 <a name="d2"></a>
-## D2 · Fan-out to several children (lean: one child per park)
+## D2 · Whose answer does the filer get back from a split task?
 
-- **(a) v1: one child per park.** Smallest; a parent needing three results parks three times in sequence.
-- **(b) Park on all**, unpark when every child has ended (one attempt, all notices as input).
-- **(c) Park on any**, unpark on the first.
-- **Lean, reported as Jake's call: (a).** `parkedOn` is a single ref, not a list: (b) and (c) are the "waiting on several tasks at once" that the Orchestration Primitives project rules out, and if they are ever wanted, BP-030's dual-read lets a list arrive later without a migration now.
+- **Plain terms.** Today a split task completes with a list of its pieces' outputs. The worker reads them in the turn each ending wakes, but what it concludes there is dropped.
+- **Trade-off.** The worker's answer is what a filer asked for ("find out and tell me"), and it is what makes the goal's report possible. The price: a split task's output changes shape for anyone reading the pieces' list today. The list stays, under the answer.
+- **Recommendation: the worker's answer from the turn the last piece's ending woke, with the pieces listed under it**, and the pieces' list alone when no turn answered (a replay after a crash).
+- **What would change my mind.** A filer that depends on the bare list. None does on `main` today (checked by the implementer before the change).
+- **If wrong.** Reverting is one branch in the settle.
 
 <a name="d3"></a>
-## D3 · Does `deps` stay same-board? (lean: yes)
+## D3 · Does the coordinator hear a piece's ending?
 
-- **(a) Yes.** Cross-board waiting is park-on-task; `deps` keeps its cheap same-board lookup in `claim`.
-- **(b) `deps` takes `{ boardId, taskId }`** and the claim check reads other boards.
-- **Lean, reported as Jake's call: (a).** A cross-board lookup in every claim is costly, and park-on-task covers the need.
+- **Plain terms.** A piece's ending wakes the worker that filed it. The coordinator hears only when the whole task ends.
+- **Trade-off.** One owner per ending keeps the coordinator's conversation about the work it handed out, not every step under it. The price: the coordinator doesn't see a piece land until the task does.
+- **Recommendation: no, as the split does today.**
+- **Change from the first draft.** That draft leaned toward the coordinator getting a line for each ending (its D4), and the product lead reported that lean as Jake's call. It belonged to a mechanism this draft drops. Merging this spec settles it the other way, so it is named here rather than changed silently.
+- **If wrong.** Adding a line is one act in the notice handler.
 
-<a name="d4"></a>
-## D4 · Does the coordinator also hear a parked-on child's ending? (lean: as a line)
+## The first draft's decisions, under the split
 
-- **(a) No**: `unpark-parent` replaces `wake-turn`. One owner per ending.
-- **(b) Yes, as a `line`** (no turn), so its conversation still shows it.
-- **Lean, reported as Jake's call: (b).** `decideNotice` still returns one act per notice: `unpark-parent`, whose handler both unparks the parent and lands the line in the conversation the notice was delivered to. No second act, and never a `wake-turn`.
-
-<a name="d5"></a>
-## D5 · The child parks on a question (lean: unpark the parent)
-
-- **(a) It unparks the parent** with the question, and the parent answers it (`answerTask`).
-- **(b) It doesn't**; the question goes to the child's filer as today, and the parent stays parked.
-- **Lean, reported as Jake's call: (a)**: the parent filed the child, so it is the filer. P3 confirms `answerTask` reaches a child on another board before this ships, with a goal-check leg.
+| First draft | Under the split |
+|---|---|
+| **D0** no timer on a parked parent | Holds: the split's park has none |
+| **D1** cancelling a parked parent cancels the child | Holds: `cascadeIfSplit` cancels open pieces |
+| **D2** one child per park | Superseded: the split waits on every piece and wakes a turn for each ending, so one-at-a-time is the worker's choice, not a limit |
+| **D3** `deps` stays same-board | Holds, unchanged |
+| **D4** the coordinator hears a line | Changed: see [D3](#d3) above |
+| **D5** a child's question unparks the parent | Holds: a piece's question wakes the turn of the worker that filed it, which answers it |
