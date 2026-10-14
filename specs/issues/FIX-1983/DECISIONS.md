@@ -1,0 +1,135 @@
+# FIX-1983 · Decisions
+
+[Spec](SPEC.md) · **Decisions**
+
+What was considered, what was chosen, why, and what each choice locks in. Three decisions are the
+sign-off surface. Everything else here is context for them.
+
+## The tree
+
+```mermaid
+flowchart TD
+  I["FIX-1983"] --> D1["D1 · only failures that stay failed count<br/>browser exceptions wait"]
+  D1 -.->|"rejected"| X1["every errorCapture event<br/>reports runs that healed"]
+  I --> D2["D2 · one report per fingerprint<br/>five new an hour, the rest in a storm report"]
+  D2 -.->|"rejected"| X2["one issue per occurrence<br/>a burst floods the tracker"]
+  I --> D3["D3 · every report waits for the operator in Inbox<br/>auto-file is opt-in"]
+  D3 -.->|"rejected"| X3["file at once and show it after<br/>an unreviewed issue in Linear"]
+```
+
+Solid edges are what you're signing. Dashed edges lost, and the label says why.
+
+<a name="d3"></a>
+## D3 · Every report waits for the operator in Inbox before it files. A Lab can name error kinds that file without asking, or a timeout after which a report files; both are off by default
+
+| | |
+|---|---|
+| **Instead of** | Filing at once and showing the issue afterwards, or a preview with no way to switch it off |
+| **Because** | The product lead asked for it: the operator checks the findings, answers the reporter's questions and says how to handle it, and the issue is better for it. While Shift Manager is new, every failure is worth a look. The ask is an ordinary suspension in the reporter's own session, so it shows in Inbox with no coordinator involved. Later, when some error kinds are well understood, the Lab names them in `preview.autoFile`, or sets `preview.autoFileAfter`, and those skip the wait |
+| **Locks in** | By default nothing reaches the tracker unseen, and a report nobody answers never files; its count keeps growing in Inbox. At a high error rate the operator is the bottleneck until they turn on auto-file. Each answer is one more thing in the operator's day |
+
+![When a report is filed: after the operator answers in Inbox, chosen, beside filing at once. Decides it: whether a person checks the issue before it reaches Linear. Price: an unanswered report never files. Locks in nothing reaching the tracker unseen by default; flips if reports pile up unanswered](figures/d3-preview.svg)
+
+It comes down to a person checking it first: file-at-once puts unchecked issues in Linear.
+
+**What would change my mind:** reports piling up unanswered for days. Then the default becomes a
+timeout (say a day) after which the report files as drafted.
+
+<a name="d1"></a>
+## D1 · Only failures that stay failed count: a request that ends failed in any flow, a task that ends errored, a harness run that fails for good. Browser exceptions wait
+
+| | |
+|---|---|
+| **Instead of** | Every `errorCapture` event as it fires, which is one per failed attempt, rescued failures included |
+| **Because** | A report for a run that a retry fixed is noise, and noise trains people to ignore the reporter. The engine knows when a request settles failed and says so once, marked final. A task's attempts are separate requests, so a failed request that belongs to a task waits for the task's ending; a task that errors without a failed request (a refused dispatch, a worker that died too often) comes from orchestration's task-ending observer. A Lab can narrow the set with a filter; the default is all three |
+| **Locks in** | `errorCapture` sends one more event per failed request, marked final, and existing adapters see it too. Browser-page bugs are still filed by hand until [FIX-1984](https://linear.app/fixpoint-labs/issue/FIX-1984) |
+
+![What counts as an error to report: final failures only, chosen, beside every capture event. Decides it: a run that fails once then passes on retry. Price: browser exceptions wait for a follow-up. Locks in a final-failure event on the engine's error sink; flips if per-attempt failures turn out to be bugs worth filing](figures/d1-what-counts.svg)
+
+It comes down to a run that passes on retry: every-event reports a bug that already healed.
+
+**What would change my mind:** retried-then-passed runs turning out to hide real bugs. Then they
+are reported too, marked as recovered.
+
+<a name="d2"></a>
+## D2 · One report per fingerprint; repeats are counted; at most five new reports an hour per Lab, the rest in one storm report
+
+| | |
+|---|---|
+| **Instead of** | One issue per occurrence, or reopening a closed issue when its failure comes back |
+| **Because** | Twenty repeats of one bug are one bug. While a report waits in Inbox a repeat only raises its count; once filed, a repeat adds at most one comment an hour to the issue, with the count and the newest ids. A burst (the model provider down, say) would otherwise make a hundred reports for one cause; past five new ones in an hour, the rest go in one storm report for that hour, listing each fingerprint and its count. A failure that comes back after its issue was closed starts a new report that links the old issue, so a regression is visible and nobody's closed issue is reopened under them |
+| **Locks in** | The fingerprint decides what the same bug is. Two bugs that fail at the same block with the same code are merged until someone splits them. The limits are Lab settings, defaulting to five an hour and one comment an hour |
+
+![How repeats and bursts are filed: one report per fingerprint with a five-an-hour cap, chosen, beside one issue per occurrence. Decides it: a burst of a hundred failures from one cause. Price: two bugs failing at the same spot are merged. Locks in the fingerprint as the meaning of same bug; flips if merged bugs turn out to be common](figures/d2-repeats-and-storms.svg)
+
+It comes down to a burst from one cause: one-per-occurrence makes a hundred issues for it.
+
+**What would change my mind:** merged bugs turning out to be common. Then the fingerprint takes
+the stack's top frame too, at the cost of more duplicates.
+
+## Decided, not asked
+
+- **It runs on its own flow and never through the Shift Coordinator.** A requirement, not a
+  choice: the coordinator is the part most likely to have failed.
+- **It runs as the Lab's operator and files into one tracker project the Lab names.** The user
+  who hit the failure may have no Linear key and isn't the one asked. The intake makes the
+  operator the reporter's user, so [FIX-1905 D4](../FIX-1905/DECISIONS.md#d4) gives it the
+  operator's key; the operator must be a member of the tracker project, and its servers must
+  include Linear. The reporter's sessions are bound to that project, so its Inbox asks and its
+  Teams conversation are there too. A Lab that names no tracker keeps reports in Inbox only.
+- **The fingerprint** is flow kind, action, block path, error code, and the message with ids,
+  numbers and paths stripped.
+- **One intake is the convergence point for "one report per fingerprint"** (tenet 5). The
+  engine's final event and orchestration's task-ending observer both go through it; it
+  fingerprints, claims the report row, counts and applies the cap before anything runs. A failed
+  request that carries a dispatch task id is held until that task ends, and then joins the task's
+  report rather than making its own.
+- **The intake binds after construction.** `createErrorReporter` returns the `errorCapture`
+  handler and a `bind(state)`; the handler enqueues and returns, and each occurrence is written by
+  a `runAction` into an internal intake action, since a collection has no door outside a flow. The
+  final event bypasses the per-request dedupe set, which already holds the thrown value, and the
+  setup-failure path emits it only when its failed write landed.
+- **The report row is written before the reporter runs**, and is the outbox (FIX-1780's
+  pattern), in the Lab's store, so counts survive a restart. A run that fails leaves the row
+  unfiled, and the next start retries it.
+- **The reporter never reports itself.** Its own flow kind is excluded at the intake; its
+  failures go to the log and leave the row unfiled.
+- **The dossier is gathered by code before the harness starts:** the request record, its last
+  items and events, the session's workstream, project and held task, the task row and its board,
+  the worker and its harness, with links. Every value passes a redaction step; env values, MCP
+  keys and bearer tokens never reach it. The harness reads the code and writes the draft from
+  the dossier, so the ids are exact.
+- **The preview card** shows the draft issue and the reporter's questions. *File* (with optional
+  instructions) folds the answer in and files; *Don't file* closes it, and repeats of that
+  fingerprint are counted without a new card for 24 hours.
+- **Harness is a slot on the reporter's flow**, like `coder`'s, Claude Code by default.
+  `WORKER.md` gains no harness key.
+- **Instructions are the `WORKER.md` body plus the operator's standing rules**, edited by talking
+  to the reporter ([FIX-1945 D2](../FIX-1945/DECISIONS.md#d2)). A preview answer is handling for
+  that report; a rule that should stick is said in its conversation.
+- **Teams:** an org worker named *Error Reporter*, under *General* (FIX-1959). Its conversation
+  holds one line per issue filed or commented, with the link. It hires and routes nothing.
+- **The engine and orchestration carry no worker, preview or tracker word** (layer rule).
+
+## Considered and dropped
+
+| Alternative | Why not |
+|---|---|
+| A new engine hook beside `errorCapture` | Two sinks for one job. The architecture names `errorCapture` as the error-reporting seam |
+| Correlate request failures to tasks only, with no task-ending observer | Misses tasks that error without a failed request: a refused dispatch, a worker that died too often |
+| Use FIX-1780's task-ending notice | Its receiver runs in the filing conversation, often the coordinator's |
+| Use `onErrored` on each flow | Per flow, so a Lab wires every flow, and it misses setup failures after acceptance |
+| Preview through the coordinator's "needs you" list | Puts the coordinator back on the path |
+| Hand the harness a raw event and let it look everything up | It may lack read tools for sessions and boards, and hand-copied ids can be wrong |
+| Reopen the closed issue on a recurrence | Changes state on an issue someone closed, in a tracker we don't own |
+
+## How it got here
+
+- **Draft** — framed as a worker woken by final failures, outside the coordinator, on the
+  engine's existing `errorCapture` sink; Workforce owns intake, dedupe, storm cap and filing.
+- **Preview** — D3 became "every report waits for the operator in Inbox", because the product
+  lead asked that Jake review each report before it files. Running as the operator moved to
+  *Decided, not asked*. Validation added the task-ending observer, because a task's retry is a
+  new request.
+
+**Open: none.**
