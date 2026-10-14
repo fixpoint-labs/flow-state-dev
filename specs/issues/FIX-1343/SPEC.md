@@ -11,8 +11,9 @@
 | **adds a new package by copying a neighbour's config** | Copies `include: ["src/**/*"]` and silently opts the new package's tests out | Typecheck fails until the package's tests are wired, or the package is named on the deferral list with an issue ([D3](DECISIONS.md#d3)) |
 | **works in `packages/workforce`** | Same blind spot, with 132 errors already in its tests | Unchanged for now: deferred by name with an issue, because two open PRs (#3304, #3387) are rewriting its tests ([D1](DECISIONS.md#d1)) |
 | **writes `expectTypeOf` inside a `*.test.ts`** | The assertion is decorative: nothing compiles it (FIX-1239) | It compiles, so a wrong type fails typecheck. Proving each one *can* fail stays FIX-1239's |
+| **writes a render test in `packages/ui`** | `test/render/**` is excluded from ui's config, so its four tests are not compiled, though the rest of ui's tests are | Compiled like every other ui test: the test config maps the same `@/` stubs vitest already uses |
 
-Measured on `main` at `4f2e13ed`, the package count matches the issue and the error count is far past its seed. **28 of 31 packages** have tests their typecheck does not open (core opens 1 of its 159). Opened, they hold **1,507 type errors in 360 test files**. Workforce alone went from the issue's 2 errors to 132 since it was filed. The drift is not static; it grows every week the check is off.
+Measured on `main` at `4f2e13ed`, **29 of 31 packages** have tests that no program in their typecheck opens: 22 open none, and seven open only some, six through a `.test-d.ts` program (core 10 of 159, workforce 5 of 119, claude-code 2 of 16, memory 1 of 21, codex 1 of 9, cursor 1 of 13) and ui through an `exclude` (15 of 19). Only shift-manager and integration-tests are fully covered. Opened, the unchecked tests hold **1,508 type errors in 361 files**. That is about **1,376 to fix** in the 28 packages this change wires, plus **132 deferred** with workforce. Workforce alone went from the issue's 2 errors to 132 since it was filed. The drift is not static; it grows every week the check is off.
 
 ## The goal, and how we'll know it's met
 
@@ -21,13 +22,15 @@ Measured on `main` at `4f2e13ed`, the package count matches the issue and the er
 | Is it the right goal? | |
 |---|---|
 | **The real need** | *"A package's typecheck (and therefore CI) opens its test files and fails when a test's use of a type stops compiling — the same guarantee `src/` already has."* (the issue's desired outcome) |
-| **Smaller, and rejected** | Turn it on only where tests are already clean (bullmq, contracts, next) or only in `core`. Green CI would still mean nothing about types in 25 packages, and the issue's own case (workforce) stays blind |
+| **Smaller, and rejected** | Turn it on only where tests are already clean (bullmq, contracts, next) or only in `core`. Green CI would still mean nothing about types in 26 packages, and the issue's own case (workforce) stays blind |
 | **Bigger, and not this issue's** | Test files in `apps/`, `examples/`, `labs/` and `goals/` (FIX-945 owns `goals/`). A real linter (FIX-1417). Proving each `expectTypeOf` can fail (FIX-1239) |
-| **Not done if** | A package's errors are hidden rather than fixed: `@ts-nocheck`, a blanket `any`, or a test config that excludes the files that had errors · a package is skipped without being named on the deferral list · the wiring exists but CI's `pnpm typecheck` does not run it · workforce is deferred with no issue that brings it back |
+| **Not done if** | A package's errors are hidden rather than fixed: `@ts-nocheck`, a blanket `any`, or a test config that excludes the files that had errors · a package is skipped, **or only partly covered**, without being named on the deferral list · the wiring exists but CI's `pnpm typecheck` does not run it · workforce is deferred with no issue that brings it back |
+
+Once this lands, **any new type error in a test fails CI.** There is no error budget and no baseline file: the 1,376 fixes are a one-time cleanup, not a ratchet's starting point.
 
 ```mermaid
 flowchart LR
-  P["one type error planted in a test file · every wired package"] --> T["pnpm typecheck · the command CI runs"]
+  P["one type error planted · a representative package and ui's render tests"] --> T["pnpm typecheck · the command CI runs"]
   T -->|"fails and names the planted line"| OK["PASS · goal met"]
   M["control · same plant on today's main"] -.-> T
   T -.->|"under the control"| F["must FAIL the check · typecheck stays green"]
@@ -38,11 +41,13 @@ The check reads what `pnpm typecheck` reports for a planted error, not whether a
 
 | How we verify | |
 |---|---|
-| **Goal check** | No `goals/` harness: this changes repository tooling, not runtime behaviour. The proof is the planted-error run below plus the census, run by the implementer at completion, verdict in the implementation PR |
-| **Signal** | (1) The census reports **0 test-file errors** for every wired package. (2) A planted error in one test file per wired package makes `pnpm typecheck` exit non-zero and name that file. (3) The issue's own case: removing a field that only a test sets fails typecheck |
-| **Input** | `node specs/issues/FIX-1343/poc/test-typecheck-census/census.mjs` after `pnpm packages:build`. Any other test file, or any other field, must behave the same |
-| **Anti-game** | Don't count config files or `include` lines. Don't plant in a file that `src/` also covers. A package that passes only because its errors are suppressed fails the "not done if" row |
-| **Control that must fail** | Today's `main`: the same plant leaves `pnpm typecheck` green, failing signal (2). And deleting one package's test wiring must fail the guard ([D3](DECISIONS.md#d3)). The implementation PR shows both before the PASS |
+| **Goal check** | No `goals/` harness: this changes repository tooling, not runtime behaviour. The proof is the signals below, run by the implementer at completion, verdict in the implementation PR |
+| **Signal** | (1) `pnpm typecheck` is green with every package wired: that *is* 0 test errors, on the path CI runs. (2) The D3 guard passes: for every package, the files its programs resolve cover every test file, or the package is deferred by name. (3) One planted error in a test file of a representative package (engine), and one in `packages/ui/test/render/`, each make `pnpm typecheck` exit non-zero and name the file. (4) The issue's own case: removing a field that only a test sets fails typecheck |
+| **Input** | Any wired package and any test file must behave like the plants. Coverage is the guard's job, per package, so the plants need not repeat in every package: they prove `tsc` reports what the guard says is covered, on the common shape and on ui's divergent one (path aliases, a previous `exclude`) |
+| **Anti-game** | Don't count config files or `include` lines: the guard compares resolved file lists. Don't plant in a file that `src/` also covers. A package that passes only because its errors are suppressed fails the "not done if" row |
+| **Control that must fail** | Today's `main`: the same plants leave `pnpm typecheck` green, failing signal (3). Deleting one package's test wiring, **or re-adding ui's `test/render/**` exclude**, must fail the guard, signal (2). The implementation PR shows both before the PASS |
+
+The census under `poc/test-typecheck-census/` is frozen evidence, measured once on pinned `main`. It is not re-run by the implementer and never runs in CI. After this lands, `pnpm typecheck` is the ongoing check.
 
 ## What changes
 
@@ -62,10 +67,10 @@ flowchart LR
   TC["pnpm typecheck"] --> S["tsconfig.json · src · unchanged"]
   TC --> X["tsconfig.test.json · src and tests · no emit"]
   X --> T["test files · checked"]
-  TC --> G["guard · every package with tests is wired or named deferred"]
+  TC --> G["guard · each package's programs cover all its tests, or it is named deferred"]
 ```
 
-The build config each package emits from stays as it is. Typecheck runs a second, no-emit program over the same sources plus the tests, and a guard makes sure no package is left out without saying so.
+The build config each package emits from stays as it is. Typecheck runs a second, no-emit program over the same sources plus the tests. A guard makes sure no package, and no test inside a package, is left out without saying so.
 
 **What a package gains, as the implementer will type it** (this is the shape `ui` and `shift-manager` already prove; the exact options are the implementer's):
 
@@ -78,7 +83,7 @@ The build config each package emits from stays as it is. Typecheck runs a second
 + }
 ```
 
-`rootDir` widens because tests import packages that `src/` does not reference; with no emit it only gates containment. `scripts/typecheck.mjs`, which every package's `typecheck` already runs, runs this file after `tsconfig.json`.
+`rootDir` widens because tests import packages that `src/` does not reference; with no emit it only gates containment. `scripts/typecheck.mjs`, which every package's `typecheck` already runs, runs this file after `tsconfig.json`. Shapes diverge where a package already diverges: ui's test config drops the `test/render/**` exclude and maps `@/components/ui/*` and `@/lib/utils` to the `.storybook/shadcn` stubs its `vitest.config.ts` uses. With that mapping, ui's render tests hold 1 error.
 
 **Docs:** update `docs/contributing/development-setup.md` (what `pnpm typecheck` covers, and the deferral list) and the package skeleton in `.agents/skills/add-store-adapter/SKILL.md` so a new package starts wired. No `apps/docs` impact: this is contributor tooling with no user-facing surface.
 
@@ -86,39 +91,41 @@ The build config each package emits from stays as it is. Typecheck runs a second
 
 - Every package's `tsconfig.json`, its `build` script, its `dist` output, and every project reference other packages hold to it.
 - `vitest` and every `test` script. Tests still run the same way; they are now also compiled.
-- The six `tsconfig.test-d.json` files and their scripts (FIX-1223). The new program also opens `.test-d.ts` files; they hold 0 errors today.
-- `ui`, `shift-manager` and `integration-tests`, which already typecheck their tests through their own configs.
+- The six `tsconfig.test-d.json` files and their scripts (FIX-1223). The new program also opens `.test-d.ts` files; they hold 0 errors today. The guard counts these programs as coverage.
+- `shift-manager` and `integration-tests`, which already typecheck all their tests through their own configs.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
-| `ui` and `shift-manager` configs, which open `test/**/*` | **Builds on.** Proof the shape works against cross-package imports. `ui` puts tests in `tsconfig.json` because nothing references or builds it with `tsc`; most packages can't ([D2](DECISIONS.md#d2)) |
-| `tsconfig.test-d.json` in core, claude-code, codex, cursor, memory, workforce ([FIX-1223](https://linear.app/fixpoint-labs/issue/FIX-1223), done) | **Leaves alone.** Overlaps: the new program also opens `.test-d.ts`. Workforce's strict variant checks options this one doesn't |
+| `ui` and `shift-manager` configs, which open `test/**/*` | **Builds on, and extends ui.** Proof the shape works against cross-package imports. `ui` puts tests in `tsconfig.json` because nothing references or builds it with `tsc`; most packages can't ([D2](DECISIONS.md#d2)). ui's `exclude` of `test/render/**` is the one partial gap of that kind; this change closes it |
+| `tsconfig.test-d.json` in core, claude-code, codex, cursor, memory, workforce ([FIX-1223](https://linear.app/fixpoint-labs/issue/FIX-1223), done) | **Leaves alone, and counts as coverage.** They open 19 `.test-d.ts` files (core 9, workforce 5, claude-code 2, codex, cursor and memory 1 each). The new program also opens them. Workforce's strict variant checks options this one doesn't |
 | `scripts/typecheck.mjs`, the one place each package's typecheck runs | **Extends.** Runs the test config when present |
-| `scripts/validate-*.mjs` guards chained in root `pnpm typecheck` | **Builds on.** The deferral guard is one more of them |
-| Anything else that typechecks tests | **None for the 28.** Searched every `packages/*/package.json` script and every `tsconfig*.json`; `vitest` has no `typecheck` block in any config |
+| `scripts/validate-*.mjs` guards chained in root `pnpm typecheck`, and `validate-publish-set.mjs`'s `NEVER_PUBLISH` list with its test in `packages/core/test/` | **Builds on.** The deferral guard is one more guard. Its deferral is an inline `DEFERRED` entry with an issue link; if a second entry appears, it takes the `NEVER_PUBLISH` shape (exported helper plus a small test) |
+| Anything else that typechecks tests | **Only the `.test-d.ts` programs above.** Searched every `packages/*/package.json` script and every `tsconfig*.json`; `vitest` has no `typecheck` block in any config |
 | FIX-1239 (decorative `expectTypeOf` in `*.test.ts`) | **Absorbs the root cause.** Those files become compiled. FIX-1239 keeps proving each assertion can fail, and its guard. It stacks on this implementation branch, `fix/FIX-1343-typecheck-tests` |
 | Prior designs | **None.** No retained spec under `specs/` covers typecheck scope; FIX-1223 shipped without one |
 
 | The debt | |
 |---|---|
-| **Removes** | 1,375 type errors in the test files of 24 packages: drifted mocks and fixtures, each a test asserting a shape its type no longer allows |
-| **Adds** | A second config file per package, `tsconfig.test.json` (permanent by design, [D2](DECISIONS.md#d2)). A deferral list holding workforce, paid by a follow-up issue to be filed (FIX-XXX · typecheck workforce tests); the guard keeps the list from growing quietly ([D3](DECISIONS.md#d3)). About 300 s more serial `tsc` time in CI, spread across turbo's parallel tasks; engine's run peaks near 1 GB |
+| **Removes** | About 1,376 type errors in the test files of 25 packages: drifted mocks and fixtures, each a test asserting a shape its type no longer allows. ui's `test/render/**` exclude |
+| **Adds** | A second config file per package, `tsconfig.test.json` (permanent by design, [D2](DECISIONS.md#d2)). A one-entry deferral for workforce, paid by its follow-up issue, which is filed and linked here **before this spec merges** (see the sign-off); the guard keeps the deferral from growing quietly ([D3](DECISIONS.md#d3)). About 300 s more serial `tsc` time in CI, spread across turbo's parallel tasks; engine's run peaks near 1 GB. The guard itself runs no `tsc` |
 | **Leaves** | The overlap between `tsconfig.test-d.json` and the new program, in six packages. Test files outside `packages/` (FIX-945 for `goals/`). Editors still treat test files as outside any project, so CI can catch an error the editor did not show ([D2](DECISIONS.md#d2)) |
 
-**Net: down.** 1,375 hidden errors go, and the same class can't come back unnoticed; one config file per package and one short list are added.
+**Net: down.** About 1,376 hidden errors go, and the same class can't come back unnoticed; one config file per package and one deferral entry are added.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every package's tests compile against their types, or the package is named as deferred. If wrong: we ship a check that covers the easy packages and call the repo safe.
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** every package's tests compile against their types, all of them, or the package is named as deferred. If wrong: we ship a check that covers the easy packages and call the repo safe.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** 1,375 errors fixed; a test config per package and a one-entry deferral list added. If wrong: a list that collects packages nobody comes back to.
+**[The debt](#whats-already-here-and-the-debt), net down:** about 1,376 errors fixed; a test config per package and a one-entry deferral added. If wrong: a deferral nobody comes back to.
 
-1. **[D1](DECISIONS.md#d1) · One implementation PR wires the 27 remaining packages and fixes every error, except workforce, deferred by name.** If wrong: a large review lands at once, or workforce's blind spot outlives the PRs that justified it. **The one to weigh.**
+**Before merge, one item for the owner:** the workforce follow-up issue ("typecheck workforce tests", 132 errors in 42 files, after #3304 and #3387 land) is filed in Linear and linked from this spec. The deferral entry cites it. If wrong: workforce's blind spot has no owner once this merges.
+
+1. **[D1](DECISIONS.md#d1) · One implementation PR, one commit per package, wires the 28 remaining packages and fixes every error, except workforce, deferred by name.** If wrong: a large review lands at once, or workforce's blind spot outlives the PRs that justified it. **The one to weigh.**
 2. **[D2](DECISIONS.md#d2) · Tests are checked by a second, no-emit config per package, not by widening the build config.** If wrong: editors keep showing less than CI does.
-3. **[D3](DECISIONS.md#d3) · Root typecheck fails when a package has tests and no test check, unless it is on a named deferral list.** If wrong: one more guard script to keep current.
+3. **[D3](DECISIONS.md#d3) · Root typecheck fails when any test file of a package is outside every program its typecheck compiles, unless the package is deferred by name.** If wrong: one more guard script to keep current.
 
 **Open: none.** The full reasoning, what lost, and what each locks in is in [DECISIONS.md](DECISIONS.md).
 
-Improvement · repository tooling, every package under `packages/` · large by count (24 packages' tests edited, about 1,375 fixes), small by mechanism · related to epic FIX-1332, not under it
+Improvement · repository tooling, every package under `packages/` · large by count (25 packages' tests edited, about 1,376 fixes), small by mechanism · related to epic FIX-1332, not under it

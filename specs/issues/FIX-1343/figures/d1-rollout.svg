@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, how to switch the check on. Chosen: one PR with every error fixed and workforce deferred by name. Instead of: on everywhere now with broken files marked ts-nocheck. It comes down to the day it merges: the chosen option covers every wired test file, while suppression leaves 360 files blind behind a marker. The price is one large review. Workforce is deferred either way. Locks in: one big review and workforce unchecked until its follow-up. Flips if: the review is too large to read; then split by package on the same branch."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, how to switch the check on. Chosen: one PR with every error fixed and workforce deferred by name. Instead of: on everywhere now with broken files marked ts-nocheck. It comes down to the day it merges: the chosen option covers every wired test file, while suppression leaves about 320 files blind behind a marker. The price is one large review, read one commit per package. Workforce is deferred either way. Locks in: one big review and workforce unchecked until its follow-up. Flips if: even per commit the review is too large to read; then a short stack in package order."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">How does the test check switch on across 28 packages?</text>
+    <text class="t-q" x="32" y="52">How does the test check switch on across 29 packages?</text>
   </g>
 
   <g id="options">
@@ -58,7 +58,7 @@
     <text class="t-b" x="248" y="161">Every wired test file checked</text>
     <text class="t-s" x="248" y="179">green CI means the types hold</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">360 files still blind</text>
+    <text class="t-b" x="612" y="161">About 320 files still blind</text>
     <text class="t-s" x="612" y="179">behind a marker that reads like coverage</text>
   </g>
 
@@ -66,7 +66,7 @@
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
     <text class="t-lbl" x="32" y="222">REVIEW SIZE</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">About 1,375 fixes at once</text>
+    <text class="t-b" x="248" y="223">About 1,376 fixes, one commit per package</text>
     <text class="t-s" x="248" y="241">mostly casts and missing fields</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Small: config and markers</text>
@@ -94,7 +94,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">The review is too large to read</text>
-    <text class="t-s" x="494" y="387">then one commit per package, same branch</text>
+    <text class="t-b" x="494" y="369">Even per commit, too large to read</text>
+    <text class="t-s" x="494" y="387">then a short stack in package order</text>
   </g>
 </svg>

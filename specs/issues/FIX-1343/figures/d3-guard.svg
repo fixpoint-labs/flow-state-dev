@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 360" role="img" aria-label="D3, how to keep new packages wired. Chosen: a guard in root typecheck with a named deferral list. Instead of: convention and review. It comes down to a new package made by copying a config: the guard fails it until its tests are wired, while convention lets it drop out silently, which is how 28 packages got here. The price is one more script and a list to keep current. Locks in: a deferral list with an issue per entry. Flips if: package skeletons become generated rather than copied."
+<svg viewBox="0 0 940 360" role="img" aria-label="D3, how to keep every test file covered. Chosen: a guard in root typecheck that compares each package's test files with the files its typecheck programs resolve, with a named deferral. Instead of: convention and review. It comes down to a test left out by a copied config or one exclude line: the guard fails it, while convention lets it drop out silently, as 22 packages did whole and ui did in part. The price is one more script that reads configs, never running tsc, and a deferral entry to keep current. Locks in: a deferral entry with an issue each. Flips if: package skeletons become generated rather than copied."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,13 +36,13 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
-    <text class="t-q" x="32" y="52">What keeps a new package from dropping out of the check?</text>
+    <text class="t-q" x="32" y="52">What keeps a package, or one test directory, from dropping out of the check?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">A guard with a named deferral list</text>
+    <text class="t-h c-code" x="228" y="112">Guard on resolved files, named deferral</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Convention and review</text>
@@ -52,22 +52,22 @@
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
-    <text class="t-lbl" x="32" y="156">A PACKAGE MADE</text>
-    <text class="t-lbl" x="32" y="169">BY COPYING</text>
+    <text class="t-lbl" x="32" y="156">A TEST LEFT OUT</text>
+    <text class="t-lbl" x="32" y="169">BY A CONFIG</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Fails until its tests are wired</text>
-    <text class="t-s" x="248" y="179">or it is named on the list</text>
+    <text class="t-b" x="248" y="161">Fails, by file, until covered</text>
+    <text class="t-s" x="248" y="179">a whole package or one exclude line</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Drops out silently</text>
-    <text class="t-s" x="612" y="179">how 28 packages got here</text>
+    <text class="t-s" x="612" y="179">22 packages whole, ui in part</text>
   </g>
 
   <g id="row-1">
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
     <text class="t-lbl" x="32" y="222">UPKEEP</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">One more script, one list</text>
-    <text class="t-s" x="248" y="241">each entry names its issue</text>
+    <text class="t-b" x="248" y="223">One script, one deferral entry</text>
+    <text class="t-s" x="248" y="241">reads configs; never runs tsc</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Nothing to maintain</text>
     <text class="t-s" x="612" y="241">the skeleton carries the config</text>
@@ -76,7 +76,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="270" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="291">LOCKS IN</text>
-    <text class="t-b" x="32" y="311">A deferral list, an issue per entry</text>
+    <text class="t-b" x="32" y="311">A deferral entry, an issue each</text>
     <text class="t-s" x="32" y="329">adding to it is visible in review</text>
   </g>
 
