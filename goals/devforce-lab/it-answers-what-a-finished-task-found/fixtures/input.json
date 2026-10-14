@@ -1,0 +1,7 @@
+{
+  "scanGoal": "Scan the storefront repository for tech debt, pick the one item most worth fixing first, and propose a plan for it.",
+  "report": "Tech-debt scan of storefront. I read every module under src/ and the build scripts. Findings, in the order I met them: the checkout module logs whole request bodies at debug level, which is noisy but harmless; three components still import the old date helpers rather than the shared formatter; the cart tests stub the clock by hand in eleven places instead of using one fake; two feature flags (newHeader, legacySearch) have been on for every user for months and can go; the image loader retries forever on a 404; the Makefile and package.json both define a lint step and they disagree about which folders to check; and the README's setup section still says to run a script that no longer exists. Most of these are small. One is not: the price rounding in src/pricing/round.ts is copied into four places, and two of the copies round half-down, so the cart and the receipt can disagree by a cent. I picked the duplicated price rounding (src/pricing/round.ts). Proposed plan: 1) add one roundPrice function in src/pricing/round.ts with tests that pin half-up rounding; 2) replace the four copies with calls to it; 3) add a cart-versus-receipt test over the 300 prices in fixtures/prices.json. I have not started on it: the plan needs your approval first.",
+  "item": "round.ts",
+  "planWords": ["roundPrice", "half-up", "four copies", "fixtures/prices.json", "receipt"],
+  "ask": "what did we decide about the tech debt?"
+}

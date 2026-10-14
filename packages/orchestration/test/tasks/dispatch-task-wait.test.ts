@@ -138,9 +138,10 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
           "dispatchTask",
           "failTask",
           "listTasks",
+          "readTask",
           "updateTask"
         ]);
-        const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId"];
+        const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId", "title"];
         expect(dispatchTaskFields(seen)).toEqual(offered ? [...base, "timeoutMs", "wait"].sort() : base);
       } finally {
         await state.dispose();
@@ -154,7 +155,7 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
     const state = await host(flow, { durable: true, router: true });
     try {
       await act(state as never, flow, "run");
-      expect(dispatchTaskFields(seen)).toEqual(["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId"]);
+      expect(dispatchTaskFields(seen)).toEqual(["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId", "title"]);
     } finally {
       await state.dispose();
     }

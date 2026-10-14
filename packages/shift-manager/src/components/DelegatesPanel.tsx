@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import type { RosterEntry } from "@flow-state-dev/workforce/browser";
 import { addDelegate, readDelegates, removeDelegate, type DelegateList } from "../lib/delegates";
+import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Worker } from "../lib/reads";
 import { useWorkforce } from "../lib/workforce";
@@ -92,7 +93,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           {read.list.delegates.map((delegate) => (
             <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="cos-delegate" data-worker={delegate.worker}>
               <span className="min-w-0 truncate" title={delegate.note}>
-                {roster.find((entry) => entry.id === delegate.worker)?.name ?? delegate.worker}
+                {workerLabel(roster.find((entry) => entry.id === delegate.worker)?.name ?? delegate.worker)}
               </span>
               <button
                 type="button"
@@ -127,7 +128,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
               <option key={entry.id} value={entry.id}>
                 {/* Two workers may share a display name; the id tells them apart. */}
                 {entry.name == null
-                  ? entry.id
+                  ? workerLabel(entry.id)
                   : candidates.some((other) => other.id !== entry.id && other.name === entry.name)
                     ? `${entry.name} (${entry.id})`
                     : entry.name}

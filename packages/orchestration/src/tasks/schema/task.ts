@@ -146,6 +146,18 @@ export const taskSchema = z.object({
   answered: z.boolean().optional(),
 
   /**
+   * A person reopened this finished row (FIX-1764): set by `reopen`, so the
+   * next attempt is told it picks the task up again rather than starting it.
+   * Cleared, like `answered`, by every later write of `feedback`: a park, an
+   * `unpark`, a failure that re-pends. It survives the claim, so an attempt
+   * recovered after its worker died is still told.
+   *
+   * Top level and server-written for `abandonments`' reason (BP-031).
+   * **Absent reads as false** (BP-030).
+   */
+  reopened: z.boolean().optional(),
+
+  /**
    * The row is parked on its worker's question (FIX-1817): set by the park
    * `parkOnQuestion` writes (`awaitReview(..., { onQuestion: true })`),
    * cleared by every other park and by `unpark`. Only such a row takes an

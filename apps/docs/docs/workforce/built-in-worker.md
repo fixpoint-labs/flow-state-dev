@@ -46,6 +46,8 @@ A worker's own settings can still put a **control** on it. A control is a piece 
 - **The skill loader**, when the worker sets [`skills.activateTool`](#using-them). It lets the model pull a skill the worker holds into the turn as it runs.
 - **The controls a capability preset declares**, when the worker selects that preset in its [`capabilities:`](./capabilities-on-disk.md#a-preset-carrying-a-tool) key. A preset's `controlTools` reach the worker even with `tools: []`.
 
+The four [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, sit outside `tools:` too. Every worker on `agent` gets them on a turn a user's own message started, and no worker gets them on any other turn.
+
 A skill cannot widen the catalog. Declaring a tool under a skill's `allowed-tools` does not grant it. Holding a package gives a worker with no `tools:` line that package's blocks; they are not added to the catalog. See [Packages on disk](./packages-on-disk.md#its-tools).
 
 Checking `tools:` against a catalog is the built-in worker flow's rule, not a rule of `hireWorkforce`. A worker flow you write yourself declares its own settings, so what a `tools:` name is checked against is that flow's business. So is whether it declares `tools` at all.
@@ -101,6 +103,8 @@ A task goes only to a worker on the filing user's roster, one your files declare
 ## What a worker keeps
 
 A conversation keeps its recent turns, each worker keeps its own skills for each user, and long-term memory, once you add it, is kept per user and shared by that user's workers.
+
+Standing rules, the notes you've asked a worker to keep, are kept per worker and per user, and read on every turn. See [Standing rules](./standing-rules.md).
 
 ![A conversation holds recent turns, a worker's skills are kept per user, and memory is kept per user](./built-in-worker-memory.svg)
 
@@ -294,3 +298,4 @@ flows while sharing semantic facts with them. Per-tier isolation doesn't separat
 - [Skills](../skills/overview.md) — what a `SKILL.md` is and what goes in one.
 - [Activation paths](../skills/activation.md) — the ways a skill becomes active, and what each costs.
 - [Memory](../memory/overview.md) — the tiers, and everything `system()` takes.
+- [Standing rules](./standing-rules.md) — notes a worker keeps for you, and how to edit them.

@@ -87,6 +87,19 @@ describe("Codex mode's check (V4)", () => {
     expect(result).toMatchObject({ reason: expect.stringContaining("No permissions to create new namespace") });
   });
 
+  it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 skips the sandbox and says the run is unconfined", async () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+    const probed: string[] = [];
+    const result = await check({ sandboxFails: async (dir) => (probed.push(dir), "no sandbox here") });
+    expect(result).toMatchObject({ available: true, note: expect.stringContaining("not confined") });
+    expect(probed).toEqual([]);
+  });
+
+  it("names the opt-out when the sandbox can't run", async () => {
+    const result = await check({ sandboxFails: async () => "no sandbox here" });
+    expect(result).toMatchObject({ available: false, reason: expect.stringContaining("KITCHEN_SINK_HARNESS_UNSANDBOXED=1") });
+  });
+
   it("probes the sandbox in the worktree root, and the sign-in and the sandbox over the run's environment", async () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "x");
     vi.stubEnv("CODEX_HOME", "/codex-home");

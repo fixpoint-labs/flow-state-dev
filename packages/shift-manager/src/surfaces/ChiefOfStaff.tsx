@@ -27,13 +27,14 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
 import { Conversation, ConversationFrame } from "../components/Conversation";
 import { DelegatesPanel } from "../components/DelegatesPanel";
+import { StandingRules } from "../components/StandingRules";
 import { TasksPanel } from "../components/TasksPanel";
 import { conversationSession, COORDINATOR_FLOW } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { clearHandedLine, useHandedLine } from "../lib/outbox";
-import { chiefOfStaffOf, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
+import { chiefOfStaffOf, workerLabel, workerStates, shiftSummary, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { Worker } from "../lib/reads";
@@ -118,7 +119,10 @@ function NeedsYouTag() {
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh } = useLab();
   const retry = () => void refresh();
-  const { asks, running } = shiftSummary(snapshot);
+  const { asks, parked, running } = shiftSummary(snapshot);
+  // Asks and parked tasks are both what needs the user; a list that didn't load counts nothing.
+  const waitingTasks = parked.ok ? parked.value : [];
+  const needsYou = (asks.ok ? asks.value.length : 0) + waitingTasks.length;
   return (
     <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="cos-summary">
       <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
@@ -127,16 +131,19 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
       <div className="text-base leading-[1.55]" data-look="summary-prose">
         {asks.ok ? (
           <p data-testid="cos-summary-asks">
-            {asks.value.length === 0 ? (
+            {needsYou === 0 ? (
               "Nothing needs you."
             ) : (
               <>
-                <span data-testid="cos-needs-you">{asks.value.length}</span> {asks.value.length === 1 ? "thing needs" : "things need"} you.
+                <span data-testid="cos-needs-you">{needsYou}</span> {needsYou === 1 ? "thing needs" : "things need"} you.
               </>
             )}
           </p>
         ) : (
           <SectionFailure what="What needs you" failure={asks.failure} onRetry={retry} testId="cos-summary-asks-failure" />
+        )}
+        {parked.ok ? null : (
+          <SectionFailure what="The tasks waiting on you" failure={parked.failure} onRetry={retry} testId="cos-summary-parked-failure" />
         )}
         {running.ok ? (
           <p data-testid="cos-summary-running" data-runs={running.value.runs} data-workstreams={running.value.workstreams}>
@@ -146,6 +153,42 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
           <SectionFailure what="What is running" failure={running.failure} onRetry={retry} testId="cos-summary-running-failure" />
         )}
       </div>
+      {waitingTasks.length > 0 ? (
+        <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-parked">
+          {waitingTasks.map((row, i) => (
+            <li
+              key={`${row.boardRef}/${row.id}`}
+              className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
+              data-testid="cos-parked-task"
+              data-task-id={row.id}
+            >
+              <div className="flex items-baseline gap-[9px]">
+                <NeedsYouTag />
+                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
+                  {row.assignee ?? "a worker"} waits on you · {row.id}
+                  {" · "}
+                  <button
+                    type="button"
+                    className="text-info hover:text-foreground"
+                    onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
+                    data-testid="cos-parked-open"
+                  >
+                    open task
+                  </button>
+                </p>
+              </div>
+              <p className="text-sm" data-testid="cos-parked-title">
+                {row.title}
+              </p>
+              {row.question === undefined ? null : (
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground" data-testid="cos-parked-question">
+                  {row.question}
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {asks.ok && asks.value.length > 0 ? (
         <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-asks">
           {asks.value.map((ask, i) => (
@@ -158,7 +201,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
               <div className="flex items-baseline gap-[9px]">
                 <NeedsYouTag />
                 <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
-                  {ask.workerId ?? "unknown worker"} asks{" · "}
+                  {workerLabel(ask.workerId ?? "unknown worker")} asks{" · "}
                   <button
                     type="button"
                     className="text-info hover:text-foreground"
@@ -285,14 +328,20 @@ function Talk({
       onAutoSend={clearHandedLine}
       renderItem={renderAsk}
       scale="cos"
+      startAtEnd
     />
   );
 }
 
-/** The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow. */
-export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
+/**
+ * The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow,
+ * and the standing rules of one whose inventory row says it keeps them, on whichever flow.
+ * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
+ */
+export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSnapshot; devtoolUrl?: string }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
-  const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
+  const one = found?.kind === "one" ? found.worker : undefined;
+  const cos = one?.kind === COORDINATOR_FLOW ? one : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
       {cos !== undefined ? (
@@ -307,6 +356,11 @@ export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
           No delegates or tasks yet.
         </p>
       )}
+      {one?.rules ? (
+        <div className="px-1 pt-4">
+          <StandingRules key={`rules-${one.id}`} workerId={one.id} name={NAME} devtoolUrl={devtoolUrl} compact />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -12,7 +12,7 @@
  * go to leaves the palette open with the reason and the draft intact.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { allRows, chiefOfStaffOf, type LoadedSnapshot } from "../lib/derive";
+import { allRows, chiefOfStaffOf, workerLabel, type LoadedSnapshot } from "../lib/derive";
 import { handToChiefOfStaff } from "../lib/outbox";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
@@ -37,7 +37,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     const workers = snapshot.inventory.ok ? snapshot.inventory.value.workers : [];
     return [
       { group: "Views", label: "Shift Coordinator", hint: "where Shift Manager opens", to: { level: "cos" } },
-      ...workers.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "roster", team: null } })),
+      ...workers.map((s): Entry => ({ group: "Workers", label: workerLabel(s.id), hint: s.kind ?? "", to: { level: "roster", team: null } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
       ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
@@ -61,7 +61,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     if (!snapshot.inventory.ok) return setSendFailure("The Lab's workers didn't load, so there is no one to send this to.");
     const cos = chiefOfStaffOf(snapshot.inventory.value.workers);
     if (cos.kind !== "one") return setSendFailure("There isn't exactly one Shift Coordinator to send this to.");
-    if (cos.worker.door === null) return setSendFailure(`${cos.worker.id} ${gaps.turn.noDoor}`);
+    if (cos.worker.door === null) return setSendFailure(`${workerLabel(cos.worker.id)} ${gaps.turn.noDoor}`);
     handToChiefOfStaff(message);
     navigate({ level: "cos" });
     onClose();

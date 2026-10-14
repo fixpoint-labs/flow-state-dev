@@ -223,6 +223,13 @@ export function pickedTeam(workers: readonly Worker[], team: string | null): str
  */
 const CHIEF_OF_STAFF = "chief-of-staff";
 
+const isChiefOfStaff = (idOrName: string) => idOrName.slice(idOrName.indexOf(".") + 1) === CHIEF_OF_STAFF;
+
+/** How the screens name a worker: the chief of staff is the Shift Coordinator; its id stays `chief-of-staff`. */
+export function workerLabel(idOrName: string): string {
+  return isChiefOfStaff(idOrName) ? "Shift Coordinator" : idOrName;
+}
+
 /** Which worker Shift Manager talks to as the chief of staff, if exactly one is. */
 export type ChiefOfStaff = { kind: "one"; worker: Worker } | { kind: "none" } | { kind: "several"; workers: Worker[] };
 
@@ -233,7 +240,7 @@ export type ChiefOfStaff = { kind: "one"; worker: Worker } | { kind: "none" } | 
  * more are a state, never a guess.
  */
 export function chiefOfStaffOf(workers: readonly Worker[]): ChiefOfStaff {
-  const found = workers.filter((worker) => worker.id.slice(worker.id.indexOf(".") + 1) === CHIEF_OF_STAFF);
+  const found = workers.filter((worker) => isChiefOfStaff(worker.id));
   if (found.length === 0) return { kind: "none" };
   return found.length === 1 ? { kind: "one", worker: found[0]! } : { kind: "several", workers: found };
 }
@@ -249,17 +256,31 @@ function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
 
 /**
  * The shift summary's numbers (D1, BR-4): the asks waiting on the user, as
- * Inbox lists them, and the runs going with how many workstreams they run in,
- * from the rows Tasks reads. Each line fails on its own read (BR-8).
+ * Inbox lists them; the tasks parked on a question for them, such as a
+ * worker's proposal it wants approved, less those whose run holds one of
+ * those asks (BR-17), and never a park that waits on workers (a task waiting
+ * on its pieces); and the runs going with how many workstreams they run in, from the
+ * rows Tasks reads. Each line fails on its own read (BR-8).
  */
 export function shiftSummary(snapshot: LoadedSnapshot): {
   asks: Section<Ask[]>;
+  parked: Section<BoardRow[]>;
   running: Section<{ runs: number; workstreams: number }>;
 } {
-  const failed = snapshot.inventory.ok ? boardFailure(snapshot) : snapshot.inventory.failure;
+  const boardsFailed = boardFailure(snapshot);
+  const failed = snapshot.inventory.ok ? boardsFailed : snapshot.inventory.failure;
   const running = openRows(snapshot).filter(isRunning);
   return {
     asks: snapshot.asks,
+    parked:
+      boardsFailed === undefined
+        ? {
+            ok: true,
+            value: allRows(snapshot).filter(
+              (row) => readStatus(row.status) === "parked" && row.question !== undefined && asksOfTask(snapshot, row).length === 0,
+            ),
+          }
+        : { ok: false, failure: boardsFailed },
     running:
       failed === undefined
         ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.holderSessionId)).size } }

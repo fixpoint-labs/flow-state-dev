@@ -202,3 +202,75 @@ describe("a new task's input is an object, never its JSON as a string", () => {
     });
   }
 });
+
+describe("dispatchTask title", () => {
+  // A row filed with no title is listed by its whole goal, so a coordinator
+  // that can name the task gives every list a short label.
+  it("files the task under the title it names, apart from its goal", async () => {
+    const collection = await board();
+    const t = team(["eng.coder"]);
+    const goal = "Take a quick look at the flow state code in the project's repository and report back what you find";
+    const result = await run(
+      dispatchTool(collection, t.roster),
+      { goal, title: "Look at the flow state code", assignee: "eng.coder" },
+      turnCtx(new Map())
+    );
+    expect(result.ok).toBe(true);
+    const row = collection.get(result.taskId!);
+    expect(row?.title).toBe("Look at the flow state code");
+    expect(row?.goal).toBe(goal);
+  });
+
+  it("leaves the title unset when none is named, so a row's goal still labels it", async () => {
+    const collection = await board();
+    const t = team(["eng.coder"]);
+    const result = await run(dispatchTool(collection, t.roster), { goal: "Audit licenses", assignee: "eng.coder" }, turnCtx(new Map()));
+    expect(collection.get(result.taskId!)?.title).toBeUndefined();
+  });
+
+  it("refuses an empty title at the schema, so no row carries a blank label", () => {
+    const tools = taskToolsForTurn(async () => {
+      throw new Error("unused");
+    }, () => team(["eng.coder"]).roster, { dispatches: true })({});
+    for (const name of ["dispatchTask", "addTask"]) {
+      const tool = tools.find((t) => (t as { name?: string }).name === name)!;
+      const base = { goal: "Audit licenses", assignee: "eng.coder" };
+      expect(tool.inputSchema.safeParse({ ...base, title: "" }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, title: "Audit" }).success).toBe(true);
+    }
+  });
+
+  it("refuses a title beside taskId: it describes a new task, not one already recorded", async () => {
+    const collection = await board();
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", undispatched: true });
+    const t = team(["eng.coder"]);
+    const result = await run(dispatchTool(collection, t.roster), { taskId: "task_rec", title: "Audit" }, turnCtx(new Map()));
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("dispatch_ref_takes_no_task_fields");
+    expect(result.error).toContain("title");
+    // updateTask can't set a title, so it is not offered as the way to.
+    expect(result.error).not.toContain("updateTask");
+  });
+
+  it("still points to updateTask for fields it can change, when a title comes with them", async () => {
+    const collection = await board();
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", undispatched: true });
+    const t = team(["eng.coder"]);
+    const result = await run(dispatchTool(collection, t.roster), { taskId: "task_rec", title: "Audit", priority: 2 }, turnCtx(new Map()));
+    expect(result.error).toContain("updateTask");
+  });
+});
+
+describe("listTasks title", () => {
+  it("answers a task's title when it has one, and none when it has none", async () => {
+    const collection = await board();
+    await collection.addTask({ id: "t_titled", goal: "A long brief about the licenses", title: "Audit licenses", assignee: "eng.a" });
+    await collection.addTask({ id: "t_plain", goal: "Write the notes", assignee: "eng.a" });
+    const tools = taskToolsForTurn(async () => collection, () => team(["eng.a"]).roster, { dispatches: true })({});
+    const list = tools.find((t) => (t as { name?: string }).name === "listTasks")!;
+    const out = (await runForTest(list as never, {} as never, turnCtx(new Map()))) as { tasks: { id: string; title?: string }[] };
+    const byId = Object.fromEntries(out.tasks.map((t) => [t.id, t]));
+    expect(byId.t_titled!.title).toBe("Audit licenses");
+    expect("title" in byId.t_plain!).toBe(false);
+  });
+});

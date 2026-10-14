@@ -273,6 +273,13 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     expect(options.agent).toEqual({ model: { id: CURSOR_MODEL }, mode: "agent", local: { sandboxOptions: { enabled: true } } });
   });
 
+  it("KITCHEN_SINK_HARNESS_UNSANDBOXED=1 turns Cursor's sandbox off, and nothing else does", () => {
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "true");
+    expect(cursorBlockOptions(harnessFeeds(CURSOR_SESSION)).agent?.local).toEqual({ sandboxOptions: { enabled: true } });
+    vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
+    expect(cursorBlockOptions(harnessFeeds(CURSOR_SESSION)).agent?.local).toEqual({ sandboxOptions: { enabled: false } });
+  });
+
   it("test mode runs the scripted Cursor in this process, with no env", () => {
     vi.stubEnv("KITCHEN_SINK_TEST_MODE", "1");
     const options = cursorBlockOptions(harnessFeeds(CURSOR_SESSION));

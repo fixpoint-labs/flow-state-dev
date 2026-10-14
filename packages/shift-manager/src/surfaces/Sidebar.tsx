@@ -31,7 +31,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -282,7 +282,7 @@ function SidebarRail({
         <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} onClick={() => navigate({ level: "tasks", by: "state" })} testId="rail-tasks">
           <NavIcon name="tasks" />
         </RailItem>
-        <RailItem label="Roster" active={route.level === "roster"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
+        <RailItem label="Roster" active={route.level === "roster" || route.level === "rules"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
           <NavIcon name="roster" />
         </RailItem>
         <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
@@ -524,7 +524,7 @@ export function Sidebar({
                 icon={<NavIcon name="roster" />}
                 count={counts?.["on shift"]}
                 mark={partial}
-                active={route.level === "roster" && route.team === null}
+                active={(route.level === "roster" && route.team === null) || route.level === "rules"}
                 onClick={() => navigate({ level: "roster", team: null })}
                 testId="nav-roster"
               />
@@ -564,7 +564,7 @@ export function Sidebar({
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${worker.displayName} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.displayName)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );

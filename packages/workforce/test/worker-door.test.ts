@@ -120,11 +120,36 @@ describe("a worker's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         workers: [
-          { id: "eng.desk", kind: "desk", door: "ask", hired: false, incarnation: null, name: null, teamName: null },
-          { id: "eng.lead", kind: "agent", door: "run", hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.desk", kind: "desk", door: "ask", rules: false, hired: false, incarnation: null, name: null, teamName: null },
+          { id: "eng.lead", kind: "agent", door: "run", rules: true, hired: false, incarnation: null, name: null, teamName: null },
         ],
       },
     ]);
+  });
+
+  // Standing rules (FIX-1945): an app shows a rules screen off this flag, and
+  // an app's own `agent` may leave the rules action out. Reading the flag off
+  // the flow's kind would offer that worker a screen whose every call fails.
+  it("says a worker keeps standing rules from its flow's actions, not the flow's name", async () => {
+    const theirAgent = defineFlow({
+      kind: "agent",
+      cardinality: "collection",
+      configSchema: workerConfigSchema(),
+      actions: { ask: { inputSchema: message, block: echo, userMessage: (i: { message: string }) => i.message } },
+    });
+    const workers = mintWorkers([record("eng.lead")], { workerFlows: { agent: theirAgent } });
+    const sent: { workers: { rules: boolean }[] }[] = [];
+    await openInventory(
+      { workers },
+      {
+        run: async (request) => void sent.push(request.input as never),
+        userId: "u",
+        orgId: "org",
+        workerWriter: { flowKind: "inventory-writer" },
+      },
+    );
+    expect(workers[0]!.kind).toBe("agent");
+    expect(sent[0]!.workers[0]!.rules).toBe(false);
   });
 });
 

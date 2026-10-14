@@ -9,7 +9,7 @@ description: "A worker that hands each message to other workers on your roster, 
 
 Sometimes you want people to send work to one place and let it find the right worker. A **coordinator** is that place. It's a worker like any other on your roster, run by the `coordinator` flow, and the workers it hands work to are its **delegates**.
 
-Each message you send a coordinator is a **post**. The coordinator hands it to one or more delegates, or, when it routes by judgment, may answer it itself. Each delegate works the post in a session of its own, and its answer comes back into your conversation under its own name. An organization's [chief of staff](./chief-of-staff.md) can be one.
+Each message you send a coordinator is a **post**. The coordinator hands it to one or more delegates, or, when it routes by judgment, may answer it itself. Each delegate works the post in a session of its own, and its answer comes back into your conversation under its own name. An organization's [Shift Coordinator](./shift-coordinator.md) can be one.
 
 ## Setting one up
 
@@ -48,7 +48,7 @@ Because `help` has a description, best fit can also pick `help` itself, for a qu
 | `minConfidence` | Under `best-fit`, the lowest confidence at which a delegate pick is used, from `0` to `1`. Left out, any pick is used. See [Picking the coordinator, and a confidence floor](#picking-the-coordinator-and-a-confidence-floor). |
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
 
-The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
+The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
 
 Build the `coordinator` flow and register it beside the flows its delegates run on:
 
@@ -190,7 +190,7 @@ Nobody took this post: best fit couldn't place it, and the coordinator's own tur
 `round-robin` and `everyone` say the same when they find no delegate to reach: `Nobody took this post: no delegate in this conversation can be reached.`
 
 - **Only models that report confidence can pass the floor.** On a model that reports none, every delegate pick falls below the floor, and every post goes to the fallback or the coordinator's own turn. Leave `minConfidence:` out on those models.
-- **There's no default.** Without `minConfidence:`, best fit uses any delegate pick, however unsure. For a chief of staff, 0.7 sits between Jev's wrong picks, at 0.2 or lower, and its right ones, at 0.76 or higher. Check your own coordinator's requests before you copy the number.
+- **There's no default.** Without `minConfidence:`, best fit uses any delegate pick, however unsure. For a Shift Coordinator, 0.7 sits between Jev's wrong picks, at 0.2 or lower, and its right ones, at 0.76 or higher. Check your own coordinator's requests before you copy the number.
 - **A request that is still with a delegate skips all of this.** Your next post goes to the delegate working your last one, with no call, until it answers. A request meant for the coordinator, sent in that window, goes to that delegate too.
 
 ### Follow-ups and recent lines
@@ -501,15 +501,18 @@ A task a coordinator dispatched and is [waiting for](../orchestration/task-board
 
 ### After a task finishes
 
-A finished task's session stays open. To ask it about the work, send a message to its worker in that session:
+A finished task's session stays open. For a worker on the built-in `agent` flow, a message to its worker in that session picks the task up again:
 
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
 const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl, fetcher })
-await licenses.sendAction("run", { message: "Which licenses did you flag?" }, { sessionId: run.id })
+await licenses.sendAction("run", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
+// output: { reopened: <id of the task it reopened> }
 ```
 
-It answers from what it did. The task itself doesn't change: a finished task stays finished.
+The message reopens the task. It goes back on the conversation's board and reads in progress, under the same id, and its next attempt runs in the same session, where the worker answers from everything the session holds. The attempt doesn't use up the task's retries. When it ends, the conversation that filed the task hears the new ending, as it heard the first. If the task has follow-ups, the latest of them is the one reopened, and the output names it. A worker flow you build yourself handles the message however its `run` action does.
+
+While the task or one of its follow-ups is still unfinished, a message in that session is an ordinary turn and the worker answers it directly.
 
 To build on the work, dispatch a follow-up task that names it:
 
@@ -642,7 +645,7 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 
 ## Related pages
 
-- [The chief of staff](./chief-of-staff.md): an org-level worker that hires workers of your own and, as a coordinator, hands them work.
+- [The Shift Coordinator](./shift-coordinator.md): an org-level worker that hires workers of your own and, as a coordinator, hands them work.
 - [The built-in worker](./built-in-worker.md): the `agent` flow, whose turn a coordinator runs when it routes by judgment.
 - [Delegating work](./delegating-work.md): how any worker files tasks for its delegates, splits a task, and how far a chain goes.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.

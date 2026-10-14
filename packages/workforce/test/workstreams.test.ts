@@ -24,6 +24,7 @@ import {
   WORKSTREAM_RESOURCES,
   WORKSTREAMS_RESOURCE,
   workstreamEntryKey,
+  updateOwnWorkstreamInputSchema,
   workstreamOpenedEntry,
   workstreamRef
 } from "../src/index";
@@ -467,6 +468,35 @@ describe("who writes an entry", () => {
     expect(mine.workstream.objectives[1]).toMatchObject({ met: true, metBy: { userId: "alice" } });
     const [entry] = await entriesOf(h);
     expect(entry!.report).toBe("Payments sandbox is down.");
+  });
+
+  it("never lets a lead of two workstreams rename one from the other's ask: its tool takes no title", async () => {
+    // One worker leading two workstreams is the normal case: each is its own
+    // session on that worker. The coordinator hands each post over with the
+    // conversation's recent lines, which name the other workstream, so a lead
+    // whose tool took a title could write that one's name onto this one.
+    const h = await boot();
+    await h.hire("alice", "alice-lead", "lead");
+    const lab = await h.lab("alice");
+    await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "onboarding-docs", title: "Onboarding docs", lead: "alice-lead" });
+    const pricing = await h.ok("alice", "lab", lab, "openWorkstream", {
+      project: apollo,
+      id: "competitor-pricing",
+      title: "Competitor pricing research",
+      lead: "alice-lead"
+    });
+
+    // What the model is shown: no title to write.
+    expect(Object.keys(updateOwnWorkstreamInputSchema.shape)).not.toContain("title");
+
+    const renamed = await h.act("alice", "lead", pricing.workstream.sessionId, "updateOwn", { title: "Onboarding docs", status: "researching" });
+    expect(JSON.stringify(renamed.error)).toContain("Unrecognized key(s) in object: 'title'");
+    const titles = Object.fromEntries((await entriesOf(h)).map((e) => [e.path.split("/").at(-1), e.state.title]));
+    expect(titles).toEqual({ "onboarding-docs": "Onboarding docs", "competitor-pricing": "Competitor pricing research" });
+
+    // Its own status and report still land, on its own workstream only.
+    const updated = await h.ok("alice", "lead", pricing.workstream.sessionId, "updateOwn", { status: "researching", report: "Handed to the researcher." });
+    expect(updated.workstream).toMatchObject({ id: "competitor-pricing", title: "Competitor pricing research", status: "researching" });
   });
 
   it("refuses the lead's tool on a session that leads no workstream", async () => {
