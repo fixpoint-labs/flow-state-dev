@@ -21,6 +21,7 @@
  * deletes the row of the hired worker it removes, which it knows exactly.
  */
 
+import { STANDING_RULES_ACTION } from "../standing-rules/keys";
 import { workerDoorOf } from "../worker-door";
 import { INVENTORY_REGISTER_WORKERS } from "./worker-writer";
 
@@ -251,7 +252,7 @@ export async function openInventory(
     try {
       const ran = await options.run({
         action: INVENTORY_REGISTER_WORKERS,
-        // Id, kind, door, origin and incarnation only. A worker's row is the whole of what the
+        // Id, kind, door, rules, origin and incarnation only. A worker's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {
@@ -259,6 +260,7 @@ export async function openInventory(
             id: worker.id,
             kind: worker.kind,
             door: workerDoorOf(worker).door,
+            rules: Object.hasOwn(worker.actions, STANDING_RULES_ACTION),
             hired: false,
             incarnation: null,
           })),

@@ -137,9 +137,3 @@ export const TASK_CHAIN_STATE_KEY = "taskChain";
  * (FIX-1802 S4). Readonly, and set only by the hand-over.
  */
 export const TASK_FLOW_STATE_KEY = "taskFlow";
-
-/**
- * The worker flow name the hire step resolves a record to when it names none, and the
- * key an app registers its own flow under to replace the built-in one.
- */
-export const AGENT_FLOW = "agent";

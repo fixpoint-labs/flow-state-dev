@@ -68,7 +68,7 @@ The worker is told to ask you which rule to merge or drop.
 
 ## Editing them yourself
 
-An app reads and edits a user's rules through the workforce client's `standingRules(workerId, input)`, for a worker on `agent` or a coordinator:
+An app reads and edits a user's rules through the workforce client's `standingRules(workerId, input)`, for a worker on `agent` or a coordinator. The worker's [inventory row](./inventory.md#what-each-row-holds) says `rules: true` when its flow has the action:
 
 ```ts
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
