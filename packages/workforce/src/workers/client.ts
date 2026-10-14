@@ -90,7 +90,8 @@ export interface WorkforceClient {
    * user's session with the worker ({@link ensureWorkerSession}), so the
    * worker must run on the built-in `agent` flow or be a coordinator. A
    * refused write (a stale version, a full list, a rule that isn't one line
-   * of up to 300 characters) rejects with the reason, and nothing changes.
+   * of up to 300 characters, or a change or remove whose `current` isn't the
+   * rule's text) rejects with the reason, and nothing changes.
    */
   standingRules(worker: string, input: StandingRulesActionInput): Promise<StandingRulesActionOutput>;
 }

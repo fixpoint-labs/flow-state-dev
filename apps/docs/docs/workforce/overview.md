@@ -194,6 +194,7 @@ Actions run as the user and organization your resolver returns; the client's `us
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [The built-in worker](./built-in-worker) — the `agent` worker flow a record with no `flow:` runs on: its settings, tools, skills, and memory.
+- [Standing rules](./standing-rules) — notes a person asks a worker to keep, followed on every turn with that person.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flows, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
