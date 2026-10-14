@@ -1,7 +1,7 @@
 /**
- * A handed-off child under a concurrency key its parent already holds (FIX-982).
+ * A dispatched child under a concurrency key its parent already holds (FIX-982).
  *
- * A hand-off dispatch takes the **flow-level** policy, and the default key is
+ * A task dispatch takes the **flow-level** policy, and the default key is
  * the session — but a flow keyed on `user` (or any custom key both sides
  * resolve the same) puts the child under a key the launching request is holding
  * right now. That is not an exotic configuration, and each policy fails
@@ -15,7 +15,7 @@
  *
  * `debounce` and `restart` are reserved in the enum and refused by validation in
  * v1, so there is no runtime behaviour to pin — asserted here so that when the
- * fast-follow lands, this file fails and someone has to decide what a handed-off
+ * fast-follow lands, this file fails and someone has to decide what a dispatched
  * child does under them.
  *
  * The property under test is the same for all of them: **the row is never
@@ -55,7 +55,7 @@ function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
     collection: defineTaskCollection({ id: `${kind}-ledger`, scope: "user" }),
     workers: {
       background: dispatcher({
-        name: `${kind}-hand-off`,
+        name: `${kind}-dispatch`,
         type: "task",
         action: "background",
         session: "per-task",
@@ -68,7 +68,7 @@ function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
 
   return defineFlow({
     kind,
-    // Keyed on `user`, so the parent and its handed-off child resolve the SAME
+    // Keyed on `user`, so the parent and its dispatched child resolve the SAME
     // key — the parent is holding it when the child is dispatched.
     request: { concurrency: { policy: concurrency, key: "user" } },
     actions: { start: { block: board.drain } },
@@ -113,9 +113,9 @@ async function drain(kind: string, concurrency: "allow" | "queue" | "reject") {
   return { parent, stores, dispatched };
 }
 
-describe("a handed-off child under a key its parent already holds", () => {
+describe("a dispatched child under a key its parent already holds", () => {
   it("hands the row over under the default allow policy", async () => {
-    // The control. Without it, a guard that stranded every handed-off dispatch
+    // The control. Without it, a guard that stranded every task dispatch
     // would pass the two below.
     const { parent, stores, dispatched } = await drain("sharedkey-allow", "allow");
 
@@ -142,7 +142,7 @@ describe("a handed-off child under a key its parent already holds", () => {
   it("does not block the launching request under queue", async () => {
     // The parent holds the key, so a child queued behind it cannot start until
     // the parent returns. The launching request must therefore not wait on it —
-    // waiting is the deadlock, and returning is the whole point of the hand-off.
+    // waiting is the deadlock, and returning is the whole point of the dispatch.
     const { parent, dispatched } = await drain("sharedkey-queue", "queue");
 
     expect(parent.error).toBeUndefined();
@@ -152,7 +152,7 @@ describe("a handed-off child under a key its parent already holds", () => {
   it("has no behaviour to pin for the reserved policies", () => {
     // `debounce` and `restart` parse into the type so the fast-follow is purely
     // additive, and validation refuses them today. When that changes, this fails
-    // and someone has to decide what a handed-off child does under them rather
+    // and someone has to decide what a dispatched child does under them rather
     // than finding out from a review.
     expect(() =>
       validateConcurrencyConfig("test", { policy: "debounce", windowMs: 10 } as never)

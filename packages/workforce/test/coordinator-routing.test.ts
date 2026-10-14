@@ -14,12 +14,12 @@
  *   BR-16  with no fallback, best fit's miss goes to the judgment turn, recorded `by: judgment`;
  *   BR-16a when that turn fails too, the post is unplaced, recorded and said in the conversation;
  *   BR-9   a fired delegate is skipped on the next post, with why; its entry stays;
- *   BR-12  judgment: the coordinator's turn hands off with its tool, or answers itself;
+ *   BR-12  judgment: the coordinator's turn dispatches with its tool, or answers itself;
  *   BR-10  asked who its delegates are, the turn's delegate read equals the conversation's list;
  *   BR-20  an answer lands once, under the delegate's name, carrying its delivery's token;
  *   BR-20a each conversation gets its own session per delegate, linked at create; a later delivery reuses it;
  *          a conversation deleted and created again under the same id opens fresh delegate sessions;
- *   BR-21  an answer sent twice lands once; a second hand-off of one post to one delegate is skipped;
+ *   BR-21  an answer sent twice lands once; a second dispatch of one post to one delegate is skipped;
  *   BR-22  a token no delivery carries is refused, and nothing lands;
  *   BR-23  at `rounds: 0` an answer routes nowhere and wakes no judgment turn;
  *   BR-27  an answer can't name its own round, author or post;
@@ -496,7 +496,7 @@ describe("delivery and answers (V4)", () => {
 });
 
 describe("judgment (V7)", () => {
-  it("hands the post off with its tool, one delivery per hand-off, recorded once (BR-12, BR-21, BR-28)", async () => {
+  it("dispatches the post with its tool, one delivery per dispatch, recorded once (BR-12, BR-21, BR-28)", async () => {
     const judgment = mockGenerator({
       script: [
         {
@@ -533,7 +533,7 @@ describe("judgment (V7)", () => {
       script: [
         { text: "I can answer that myself." },
         { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }] },
-        { text: "Handed off." }
+        { text: "Dispatched." }
       ]
     });
     const host = bootHost({ judgment });
@@ -570,7 +570,7 @@ describe("judgment (V7)", () => {
     expect(prompt).not.toContain("eng.coder");
   });
 
-  it("refuses a hand-off to a delegate whose flow can't take a post", async () => {
+  it("refuses a dispatch to a delegate whose flow can't take a post", async () => {
     const judgment = mockGenerator({
       script: [{ toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "nobody" } }] }, { text: "ok" }]
     });
@@ -580,11 +580,11 @@ describe("judgment (V7)", () => {
     expect(host.heard).toEqual([]);
   });
 
-  it("tells the model why a hand-off was skipped, and who takes posts instead, each sentence ending once", async () => {
+  it("tells the model why a dispatch was skipped, and who takes posts instead, each sentence ending once", async () => {
     const judgment = mockGenerator({
       script: [{ toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "notes" } }] }, { text: "ok" }]
     });
-    // `notes` runs on `quiet`, which takes no post: a default the hand-off can't reach.
+    // `notes` runs on `quiet`, which takes no post: a default the dispatch can't reach.
     const host = bootHost({ judgment, standard: standardWorkers({ chief: { delegates: ["eng.em", "notes"] } }) });
     const id = await host.conversation("alice", "chief");
     await post(host, id, "take notes on the release");
@@ -595,9 +595,9 @@ describe("judgment (V7)", () => {
     );
   });
 
-  it("names the delegates here that take posts when it refuses a hand-off, in the tool's answer and the record", async () => {
+  it("names the delegates here that take posts when it refuses a dispatch, in the tool's answer and the record", async () => {
     // The turn tries the delegate that takes only tasks first. Its refusal
-    // names the ones a hand-off reaches, so the turn's next pick needn't be a hire.
+    // names the ones a dispatch reaches, so the turn's next pick needn't be a hire.
     const judgment = mockGenerator({
       script: [
         { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.builder" } }] },
@@ -624,7 +624,7 @@ describe("judgment (V7)", () => {
     ]);
   });
 
-  it("says so in a refused hand-off when no delegate here takes posts", async () => {
+  it("says so in a refused dispatch when no delegate here takes posts", async () => {
     const judgment = mockGenerator({
       script: [{ toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.builder" } }] }, { text: "ok" }]
     });
@@ -685,7 +685,7 @@ describe("judgment is the agent's own turn (S8)", () => {
             { toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }
           ]
         },
-        { text: "Handed off." }
+        { text: "Dispatched." }
       ]
     });
     const host = bootHost({ judgment, agent: { catalog: { ping } }, standard: standardWorkers({ chief: { tools: [] } }) });

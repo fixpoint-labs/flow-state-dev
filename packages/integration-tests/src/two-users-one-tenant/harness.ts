@@ -181,7 +181,7 @@ export type QueueDeploymentOptions = {
 /**
  * Start a BullMQ deployment hosting `flows`: a `dispatch-only` web runtime
  * served over HTTP, and two worker runtimes that each run two jobs at a
- * time. The workers are `colocated`, so work a run hands off inside a worker
+ * time. The workers are `colocated`, so work a run dispatches inside a worker
  * goes back through the queue too. Needs `REDIS_URL`.
  */
 export async function startQueueDeployment(

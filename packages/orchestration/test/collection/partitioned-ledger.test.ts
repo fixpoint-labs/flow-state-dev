@@ -4,7 +4,7 @@
  * which declarations and resolutions are refused.
  *
  * The end-to-end proof, two conversations and two users across two flows, is
- * `test/task-board/hand-off-cross-flow.test.ts`. These pin the layer under it.
+ * `test/task-board/dispatch-cross-flow.test.ts`. These pin the layer under it.
  */
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";

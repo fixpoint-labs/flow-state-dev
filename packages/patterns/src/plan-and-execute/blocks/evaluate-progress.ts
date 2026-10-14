@@ -214,7 +214,7 @@ export interface CreateEvaluateProgressOptions {
  *
  *   The preflight handler increments `iteration`, applies the
  *   iteration cap, and short-circuits with a synthesised `complete`
- *   verdict when the cap is reached. Otherwise it hands off to the
+ *   verdict when the cap is reached. Otherwise it passes to the
  *   LLM evaluator. The trailing `.tap()` patches `status: "replanning"`
  *   and emits the `task-board-meta` extension when the verdict is
  *   `"replan"`.

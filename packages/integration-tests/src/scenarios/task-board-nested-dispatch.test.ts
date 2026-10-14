@@ -1,8 +1,8 @@
 /**
- * A handed-off worker that runs its own handed-off board — "jobs can nest"
+ * A dispatched worker that runs its own dispatched board — "jobs can nest"
  * (FIX-982).
  *
- * The outer board substitutes a hand-off block for its handed-off worker, so
+ * The outer board substitutes a dispatch block for its dispatched worker, so
  * the real worker (and, inside it, the inner board's drain) is no longer a
  * child of any action root — it lives inside the outer drain's per-worker
  * pool, which `defineFlow`'s static walk cannot see (see `board-tasks.test.ts`
@@ -12,12 +12,12 @@
  * That is exactly why the flow declares each board's task entry itself:
  * nesting one board's drain inside another board's worker is ordinary
  * composition here, not a discovery problem. Both boards' assignees reach the
- * flow the same way any board's does — each hand-off names its entry, and the
+ * flow the same way any board's does — each dispatch names its entry, and the
  * flow declares both under `tasks` — regardless of how deep the inner board's
  * drain sits inside the outer worker. What this
  * scenario actually proves is that the composition RUNS correctly end to
- * end: the outer hand-off's child runs the real outer worker, which claims
- * and hands off the inner board's row from inside that same request, and the
+ * end: the outer dispatch's child runs the real outer worker, which claims
+ * and dispatches the inner board's row from inside that same request, and the
  * inner child settles it.
  */
 import { describe, expect, it } from "vitest";
@@ -34,7 +34,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 
-/** Terminal transport provenance for a hand-off dispatch. Internal to `engine`; a wire value. */
+/** Terminal transport provenance for a task dispatch. Internal to `engine`; a wire value. */
 const TASK_SOURCE = "task";
 const USER_ID = "u_nested";
 /** The user's cell in the default org, where every flow keeps their user data. */
@@ -42,13 +42,13 @@ const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
-/** What a hand-off dispatch was asked to do. Recorded, never executed. */
+/** What a task dispatch was asked to do. Recorded, never executed. */
 type RecordedDispatch = { sessionId: string; actionName: string; input: unknown };
 
 /**
- * Outer board whose handed-off worker drains an inner handed-off board.
+ * Outer board whose dispatched worker drains an inner dispatched board.
  *
- * Both ledgers are user-scoped: a handed-off board's rows must be addressable
+ * Both ledgers are user-scoped: a dispatched board's rows must be addressable
  * from the child session that settles them, and a session-scoped one is
  * refused at construction.
  */
@@ -70,14 +70,14 @@ function buildNestedFlow() {
     boardId: "inner-board",
     collection: defineTaskCollection({ id: "inner-ledger", scope: "user" }),
     workers: {
-      deep: dispatcher({ name: "inner-hand-off", type: "task", action: "deep", session: "per-task" }),
+      deep: dispatcher({ name: "inner-dispatch", type: "task", action: "deep", session: "per-task" }),
     },
     initialTasks: [
       { id: "i1", goal: "the nested unit of work", assignee: "deep", input: { note: "inner" } },
     ],
   });
 
-  // The OUTER board's handed-off worker. The outer assignee holds a dispatcher, so
+  // The OUTER board's dispatched worker. The outer assignee holds a dispatcher, so
   // this composition — and the inner board inside it — is reachable only
   // through the flow's `top` task entry, never through `outerBoard.drain`
   // itself.
@@ -101,7 +101,7 @@ function buildNestedFlow() {
     boardId: "outer-board",
     collection: defineTaskCollection({ id: "outer-ledger", scope: "user" }),
     workers: {
-      top: dispatcher({ name: "outer-hand-off", type: "task", action: "top", session: "per-task" }),
+      top: dispatcher({ name: "outer-dispatch", type: "task", action: "top", session: "per-task" }),
     },
     initialTasks: [
       { id: "o1", goal: "the outer unit of work", assignee: "top", input: { note: "outer" } },
@@ -109,15 +109,15 @@ function buildNestedFlow() {
   });
 
   const flow = defineFlow({
-    kind: "nested-hand-off",
+    kind: "nested-dispatch",
     actions: { start: { block: outerBoard.drain } },
     // Both boards' entries — neither is discovered through the other's
     // structure, so both must be declared explicitly. `defineFlow` gates each
     // behind its own board: the outer worker is reached through the outer
-    // assignee's hand-off, the inner worker through the inner assignee's, which sits
+    // assignee's dispatch, the inner worker through the inner assignee's, which sits
     // inside the outer worker's drain.
     task: { actions: { top: { block: outerWorker }, deep: { block: innerWorker } } },
-  })({ id: "nested-hand-off" });
+  })({ id: "nested-dispatch" });
 
   return { flow, ran };
 }
@@ -132,14 +132,14 @@ async function durableRow(
   return row?.state as Task | undefined;
 }
 
-describe("a handed-off worker can run its own handed-off board", () => {
-  it("hands off the outer row, runs the real worker inside the child, and hands off the inner row from there", async () => {
+describe("a dispatched worker can run its own dispatched board", () => {
+  it("dispatches the outer row, runs the real worker inside the child, and dispatches the inner row from there", async () => {
     const stores = createInMemoryStores();
     const { flow, ran } = buildNestedFlow();
 
     // THE DECLARATION HALF. Both entries resolve on this flow, each behind
     // its own board's gate. Asserted before any run, because a flow missing an
-    // entry cannot be rescued at dispatch time (the hand-off would throw
+    // entry cannot be rescued at dispatch time (the dispatch would throw
     // `no-entry`).
     expect(Object.keys(flow.task?.actions ?? {}).sort()).toEqual(["deep", "top"]);
 

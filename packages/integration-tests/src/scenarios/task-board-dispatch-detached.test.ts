@@ -1,15 +1,15 @@
 /**
- * FIX-982 — the launching request must return while its handed-off work runs.
+ * FIX-982 — the launching request must return while its dispatched work runs.
  *
  * A board whose assignee holds a `dispatcher({ type: "task", session: "per-task" })`
- * runs that assignee's rows in a child session instead of inline. Everything about that hand-off already
+ * runs that assignee's rows in a child session instead of inline. Everything about that dispatch already
  * worked: the drain claims the row, dispatches to the child, clears its own
  * claim, and the row stays `in_progress` for the child session to settle.
  * What did not work was the *exit question*. `boardQuiescence` counted that
  * `in_progress` row as work still in flight, so the drain looped back to
  * `claimTask`, found nothing claimable, and parked in `idleWait` until the
  * child settled — which is the launching request waiting on the background
- * work it just handed off, i.e. the entire feature undone.
+ * work it just dispatched, i.e. the entire feature undone.
  *
  * ## Why this scenario and not a unit test
  *
@@ -17,7 +17,7 @@
  * those tests fail without the fix. What they cannot show is the claim this
  * issue is actually about: that the **request completes**. That is a property
  * of full `runAction` composition — the drain's loop, its `idleWait`, the
- * hand-off's state clear, and the recorder that declines to settle a row it no
+ * dispatch's state clear, and the recorder that declines to settle a row it no
  * longer holds all have to line up for the request to return with the row
  * still open. Every unit test on this branch passed while the request hung.
  *
@@ -32,7 +32,7 @@
  * pass by the child happening to finish early.
  *
  * The second run then replays that captured envelope through the `task`
- * source, which is how the row gets settled — proving the hand-off left real,
+ * source, which is how the row gets settled — proving the dispatch left real,
  * runnable work behind rather than an orphaned row.
  */
 import { describe, expect, it } from "vitest";
@@ -63,7 +63,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 
 /**
- * The transport provenance a hand-off dispatch carries. The engine's entry
+ * The transport provenance a task dispatch carries. The engine's entry
  * resolution treats it as terminal — it resolves the flow's `task` entry for
  * the assignee and never falls through to `flow.actions` — which is what makes
  * the replay below enter the same path the real host would.
@@ -73,7 +73,7 @@ import { z } from "zod";
  */
 const TASK_SOURCE = "task";
 
-const USER_ID = "u_handoff";
+const USER_ID = "u_dispatch";
 /** The user's cell in the default org, where every flow keeps their user data. */
 const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
 
@@ -83,7 +83,7 @@ const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
  */
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
-/** What a hand-off dispatch was asked to do. Recorded, never executed. */
+/** What a task dispatch was asked to do. Recorded, never executed. */
 type RecordedDispatch = {
   sessionId: string;
   actionName: string;
@@ -95,11 +95,11 @@ type RecordedDispatch = {
  *
  * `mode` is the only difference between the subject and its control, so an
  * assertion that fires for one and not the other is attributable to the
- * hand-off and to nothing else about the board.
+ * dispatch and to nothing else about the board.
  */
 function buildFlow(options: {
   kind: string;
-  mode: "inline" | "hand-off";
+  mode: "inline" | "dispatch";
   /**
    * Topic for the seeded task, when the scenario needs the child session's
    * topic to be something OTHER than the task id.
@@ -110,7 +110,7 @@ function buildFlow(options: {
    */
   taskTopic?: string;
   /**
-   * Override the hand-off session policy. Defaults to `"per-task"`, which
+   * Override the dispatch session policy. Defaults to `"per-task"`, which
    * frames the raw task id and never reads `metadata.topic` — only the
    * provenance scenario below needs a policy that does.
    */
@@ -131,16 +131,16 @@ function buildFlow(options: {
   const board = taskBoard({
     name: `${options.kind}-board`,
     boardId: `${options.kind}-board`,
-    // Durable and user-scoped. A hand-off board must be durable (its rows
+    // Durable and user-scoped. A dispatching board must be durable (its rows
     // outlive the claiming request), and user scope is what makes the same
     // ledger reachable from inside the child session — a session-scoped one
     // is not, by construction.
     collection: defineTaskCollection({ id: `${options.kind}-ledger`, scope: "user" }),
     workers: {
       background:
-        options.mode === "hand-off"
+        options.mode === "dispatch"
           ? dispatcher<TaskWorkerInput>({
-              name: `${options.kind}-hand-off`,
+              name: `${options.kind}-dispatch`,
               type: "task",
               action: "background",
               session: options.session ?? "per-task",
@@ -152,11 +152,11 @@ function buildFlow(options: {
         id: "t1",
         goal: "do the background thing",
         assignee: "background",
-        // `input` is set deliberately, and a handed-off board currently
+        // `input` is set deliberately, and a dispatched board currently
         // REQUIRES it: `packWorkerInput` copies `input: task.input`
         // unconditionally (it spreads `title` and `context` conditionally, but
         // not this), so a task created without one packs `input: undefined`
-        // and the hand-off's JSON-safety gate rejects the payload by name.
+        // and the dispatch's JSON-safety gate rejects the payload by name.
         // Left as-is here so this scenario tests the drain's exit question
         // rather than that gate; the packing bug is tracked separately.
         input: { note: "background" },
@@ -170,9 +170,9 @@ function buildFlow(options: {
   const flow = defineFlow({
     kind: options.kind,
     actions: { start: { block: board.drain } },
-    // A task entry no board hands off to is refused at definition, so the
+    // A task entry no board dispatches to is refused at definition, so the
     // inline shape declares none.
-    ...(options.mode === "hand-off" ? { task: { actions: { background: { block: background } } } } : {}),
+    ...(options.mode === "dispatch" ? { task: { actions: { background: { block: background } } } } : {}),
   })({ id: options.kind });
 
   return { flow, ran };
@@ -294,10 +294,10 @@ function boardMeta(items: readonly RuntimeItem[]):
   return undefined;
 }
 
-describe("a hand-off board's launching request returns while the work is outstanding", () => {
+describe("a dispatching board's launching request returns while the work is outstanding", () => {
   it("completes the parent with the row still in progress, then settles it in the child session", async () => {
     const stores = createInMemoryStores();
-    const { flow, ran } = buildFlow({ kind: "handoff-hand-off", mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind: "dispatch-detached", mode: "dispatch" });
 
     const dispatched: RecordedDispatch[] = [];
 
@@ -334,14 +334,14 @@ describe("a hand-off board's launching request returns while the work is outstan
     // ...and it returned with the work genuinely outstanding, not finished.
     expect(dispatched).toHaveLength(1);
     expect(ran).toEqual([]);
-    const afterParent = await durableRow(stores, "handoff-hand-off", "t1");
+    const afterParent = await durableRow(stores, "dispatch-detached", "t1");
     expect(afterParent?.status).toBe("in_progress");
 
-    // Pins WHY the drain cannot recognise a hand-off from `claimedBy`, because
+    // Pins WHY the drain cannot recognise a dispatch from `claimedBy`, because
     // that is the reading the field's name invites and it does not work.
     // `claimedBy` is written only by `applyClaimToTask`, inside `claim()`, and
     // the child session never claims — its start gate re-mints a ticket from
-    // the row. So a handed-off row still carries the session of the parent
+    // the row. So a dispatched row still carries the session of the parent
     // that claimed it, and "differs from the drain's own session" is false by
     // construction. Anyone tempted to replace `runsElsewhere` with that
     // comparison should fail here first.
@@ -349,8 +349,8 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     // WHAT THE PARENT TOLD ITS CONSUMERS. The drain runs its completion meta
     // unconditionally after the fan-out, and that item's structural test is
-    // `completed === total` — which a successful hand-off fails, because the row
-    // it handed over is still `in_progress`. So every healthy handed-off board
+    // `completed === total` — which a successful dispatch fails, because the row
+    // it handed over is still `in_progress`. So every healthy dispatched board
     // announced itself as a terminal failure, permanently: nothing re-emits this
     // item when the child eventually settles.
     //
@@ -359,13 +359,13 @@ describe("a hand-off board's launching request returns while the work is outstan
     // drain did with its answer, and only a full drain produces that.
     const parentMeta = boardMeta(parent.items);
     expect(parentMeta?.status).toBe("completed");
-    expect(parentMeta?.terminationReason).toBe("handed-off");
+    expect(parentMeta?.terminationReason).toBe("dispatched");
     // Not `all-completed` either: a consumer reads that as "nothing left to do"
     // and stops watching while a child is still working.
     expect(parentMeta?.counts.in_progress).toBe(1);
     expect(parentMeta?.counts.completed).toBe(0);
 
-    // The hand-off left runnable work behind. Replaying the captured envelope
+    // The dispatch left runnable work behind. Replaying the captured envelope
     // through the `task` source is what the real host would have done.
     const child = await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -381,7 +381,7 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     expect(child.error).toBeUndefined();
     expect(ran).toEqual(["t1"]);
-    const afterChild = await durableRow(stores, "handoff-hand-off", "t1");
+    const afterChild = await durableRow(stores, "dispatch-detached", "t1");
     expect(afterChild?.status).toBe("completed");
   });
 
@@ -399,7 +399,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // moved. If the gate lets that through, a stale child runs its old payload
     // and settles a row that has nothing to do with it.
     const stores = createInMemoryStores();
-    const { flow, ran } = buildFlow({ kind: "handoff-aba", mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind: "dispatch-aba", mode: "dispatch" });
 
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
@@ -426,17 +426,17 @@ describe("a hand-off board's launching request returns while the work is outstan
     });
     expect(parent.error).toBeUndefined();
 
-    const addressed = await durableRow(stores, "handoff-aba", "t1");
+    const addressed = await durableRow(stores, "dispatch-aba", "t1");
     // The nonce has to be there for this to be a test of anything.
     expect(addressed?.incarnationId).toBeDefined();
 
     // The replacement: a different row wearing the same name, same attempt and
     // same creation stamp. Everything the gate's other two arms compare is
     // untouched, which is what makes this attributable to the nonce alone.
-    await rewriteRow(stores, "handoff-aba", "t1", {
+    await rewriteRow(stores, "dispatch-aba", "t1", {
       incarnationId: `${addressed!.incarnationId}-recreated`,
     });
-    const replacement = await durableRow(stores, "handoff-aba", "t1");
+    const replacement = await durableRow(stores, "dispatch-aba", "t1");
     expect(replacement?.attempts).toBe(addressed?.attempts);
     expect(replacement?.createdAt).toBe(addressed?.createdAt);
 
@@ -457,13 +457,13 @@ describe("a hand-off board's launching request returns while the work is outstan
     // superseded dispatch is a correct outcome, and the successor owns the row.
     expect(child.error).toBeUndefined();
     expect(ran).toEqual([]);
-    const afterChild = await durableRow(stores, "handoff-aba", "t1");
+    const afterChild = await durableRow(stores, "dispatch-aba", "t1");
     expect(afterChild?.status).toBe("in_progress");
     expect(afterChild?.output).toBeUndefined();
   });
 
   it("takes back a lapsed row whose claim identity is intact, and runs it", async () => {
-    // Nothing renews a handed-off row's lease between the parent handing it off
+    // Nothing renews a dispatched row's lease between the parent dispatching it
     // and the child actually starting, so a child that waits in the host's
     // queue longer than the lease starts on a row the substrate already
     // considers free. The other three gate arms all still pass — same attempt,
@@ -473,7 +473,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // Refusing on the lapse alone is more conservative than that evidence, and
     // it does not merely waste this run: the row goes back to the queue, the
     // next drain spends an attempt re-dispatching it into the same queue, and
-    // under a sustained backlog every hand-off lapses before it starts. So the
+    // under a sustained backlog every dispatch lapses before it starts. So the
     // gate asks the substrate rather than the clock — a lease renewal fenced on
     // the claim it was dispatched with — and runs when that write lands.
     //
@@ -483,7 +483,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // would produce. Same technique, and the same reason, as the reincarnation
     // above.
     const stores = createInMemoryStores();
-    const { flow, ran } = buildFlow({ kind: "handoff-lapsed", mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind: "dispatch-lapsed", mode: "dispatch" });
 
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
@@ -510,11 +510,11 @@ describe("a hand-off board's launching request returns while the work is outstan
     });
     expect(parent.error).toBeUndefined();
 
-    const claimed = await durableRow(stores, "handoff-lapsed", "t1");
+    const claimed = await durableRow(stores, "dispatch-lapsed", "t1");
     // The claim wrote a lease, or there is nothing here to lapse.
     expect(claimed?.leaseUntil).toBeDefined();
 
-    await lapseTheLease(stores, "handoff-lapsed", claimed!);
+    await lapseTheLease(stores, "dispatch-lapsed", claimed!);
 
     const child = await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -528,12 +528,12 @@ describe("a hand-off board's launching request returns while the work is outstan
       runtimeConfig: baseRuntimeConfig(),
     });
 
-    // THE ASSERTION THIS CASE EXISTS FOR: the work the parent handed off ran,
+    // THE ASSERTION THIS CASE EXISTS FOR: the work the parent dispatched ran,
     // in the child it was handed to.
     expect(child.error).toBeUndefined();
     expect(ran).toEqual(["t1"]);
 
-    const afterChild = await durableRow(stores, "handoff-lapsed", "t1");
+    const afterChild = await durableRow(stores, "dispatch-lapsed", "t1");
     // And it SETTLED, which is the half that proves the takeover rather than a
     // gate that merely stopped checking. Every write the child makes is fenced
     // on the lease, so a recorded completion is only reachable through a row
@@ -551,7 +551,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // A running row is not frozen: `setPriority`, the label verbs and
     // `patchMetadata` are supported on an `in_progress` task, and each moves
     // `updatedAt` while leaving `leaseUntil` alone. So a coordinator
-    // re-prioritizing a handed-off task leaves a row where the two stamps no
+    // re-prioritizing a dispatched task leaves a row where the two stamps no
     // longer subtract to the lease the claim committed — and once the patch
     // lands after the deadline, they subtract to a negative number.
     //
@@ -560,7 +560,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // failure this scenario's first case removes. The claim's duration is
     // stored on the row instead, and this is the case that says so.
     const stores = createInMemoryStores();
-    const { flow, ran } = buildFlow({ kind: "handoff-patched", mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind: "dispatch-patched", mode: "dispatch" });
 
     const dispatched: RecordedDispatch[] = [];
     const parent = await runAction({
@@ -587,19 +587,19 @@ describe("a hand-off board's launching request returns while the work is outstan
     });
     expect(parent.error).toBeUndefined();
 
-    const claimed = await durableRow(stores, "handoff-patched", "t1");
-    const lapsedAt = await lapseTheLease(stores, "handoff-patched", claimed!);
+    const claimed = await durableRow(stores, "dispatch-patched", "t1");
+    const lapsedAt = await lapseTheLease(stores, "dispatch-patched", claimed!);
     // The row a patch leaves behind: `updatedAt` past the deadline, everything
     // the claim's identity rests on untouched. Written directly for the same
     // reason the lapse is — a running board is the only thing that can call
     // `setPriority` on this ledger, and it has already returned. The mutators
     // are driven for real, against a live collection, in
     // `orchestration`'s `lease-fence.test.ts`.
-    await rewriteRow(stores, "handoff-patched", "t1", {
+    await rewriteRow(stores, "dispatch-patched", "t1", {
       priority: 7,
       updatedAt: lapsedAt + 1_000,
     });
-    const patched = await durableRow(stores, "handoff-patched", "t1");
+    const patched = await durableRow(stores, "dispatch-patched", "t1");
     expect(patched!.updatedAt).toBeGreaterThan(patched!.leaseUntil!);
     expect(committedLeaseSpan(patched!)).toBeGreaterThan(0);
 
@@ -617,7 +617,7 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     expect(child.error).toBeUndefined();
     expect(ran).toEqual(["t1"]);
-    const afterChild = await durableRow(stores, "handoff-patched", "t1");
+    const afterChild = await durableRow(stores, "dispatch-patched", "t1");
     expect(afterChild?.status).toBe("completed");
     expect(afterChild?.attempts).toBe(1);
   });
@@ -629,7 +629,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // here is a real second drain over the same durable ledger — the recovery
     // path the lapse exists to enable — rather than a hand-written row.
     const stores = createInMemoryStores();
-    const { flow, ran } = buildFlow({ kind: "handoff-reclaimed", mode: "hand-off" });
+    const { flow, ran } = buildFlow({ kind: "dispatch-reclaimed", mode: "dispatch" });
 
     const dispatched: RecordedDispatch[] = [];
     const recorder = {
@@ -659,8 +659,8 @@ describe("a hand-off board's launching request returns while the work is outstan
     });
     expect(first.error).toBeUndefined();
 
-    const claimed = await durableRow(stores, "handoff-reclaimed", "t1");
-    await lapseTheLease(stores, "handoff-reclaimed", claimed!);
+    const claimed = await durableRow(stores, "dispatch-reclaimed", "t1");
+    await lapseTheLease(stores, "dispatch-reclaimed", claimed!);
 
     const second = await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -675,7 +675,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     expect(second.error).toBeUndefined();
     // The row was handed out again, as a fresh attempt, to a second child.
     expect(dispatched).toHaveLength(2);
-    const reclaimed = await durableRow(stores, "handoff-reclaimed", "t1");
+    const reclaimed = await durableRow(stores, "dispatch-reclaimed", "t1");
     expect(reclaimed?.attempts).toBe(2);
 
     const stale = await runAction({
@@ -694,7 +694,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // successor's row alone — no run, no completion, and no failure either.
     expect(stale.error).toBeUndefined();
     expect(ran).toEqual([]);
-    const afterStale = await durableRow(stores, "handoff-reclaimed", "t1");
+    const afterStale = await durableRow(stores, "dispatch-reclaimed", "t1");
     expect(afterStale?.status).toBe("in_progress");
     expect(afterStale?.output).toBeUndefined();
     expect(afterStale?.attempts).toBe(2);
@@ -716,7 +716,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     });
     expect(successor.error).toBeUndefined();
     expect(ran).toEqual(["t1"]);
-    expect((await durableRow(stores, "handoff-reclaimed", "t1"))?.status).toBe("completed");
+    expect((await durableRow(stores, "dispatch-reclaimed", "t1"))?.status).toBe("completed");
   });
 
   it("still holds the request open for an inline worker on the same board shape", async () => {
@@ -725,7 +725,7 @@ describe("a hand-off board's launching request returns while the work is outstan
     // board must run its worker inside the launching request and return only
     // once the row is settled.
     const stores = createInMemoryStores();
-    const { flow, ran } = buildFlow({ kind: "handoff-inline", mode: "inline" });
+    const { flow, ran } = buildFlow({ kind: "dispatch-inline", mode: "inline" });
 
     const parent = await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -740,13 +740,13 @@ describe("a hand-off board's launching request returns while the work is outstan
 
     expect(parent.error).toBeUndefined();
     expect(ran).toEqual(["t1"]);
-    const row = await durableRow(stores, "handoff-inline", "t1");
+    const row = await durableRow(stores, "dispatch-inline", "t1");
     expect(row?.status).toBe("completed");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Provenance — what the handed-off REQUEST record says about the task it runs
+// Provenance — what the dispatched REQUEST record says about the task it runs
 // ---------------------------------------------------------------------------
 
 /**
@@ -788,8 +788,8 @@ async function waitFor<T>(
   }
 }
 
-describe("a hand-off request record names the task it was spawned for", () => {
-  const KIND = "handoff-provenance";
+describe("a dispatch request record names the task it was spawned for", () => {
+  const KIND = "dispatch-provenance";
   /**
    * Deliberately NOT the task id. The per-task session key falls back to the
    * task id when a task declares no topic, and then `topic` and `taskId` hold
@@ -814,7 +814,7 @@ describe("a hand-off request record names the task it was spawned for", () => {
     const stores = createInMemoryStores();
     const { flow } = buildFlow({
       kind: KIND,
-      mode: "hand-off",
+      mode: "dispatch",
       taskTopic: TASK_TOPIC,
       // The default per-task key frames the raw taskId and never reads
       // `metadata.topic` (see `buildFlow`) — a custom key is what makes the
@@ -866,7 +866,7 @@ describe("a hand-off request record names the task it was spawned for", () => {
       expect(child.topic).toBe(TASK_TOPIC);
 
       // Hop 2 — that child session's own runs.
-      const handedOff = await waitFor(async () => {
+      const dispatchedRecord = await waitFor(async () => {
         const requests: RequestRecord[] = await stores.request.list({
           sessionId: child.id,
         });
@@ -877,13 +877,13 @@ describe("a hand-off request record names the task it was spawned for", () => {
       // not settable by any caller, which is what makes the `dispatch` bag
       // below server truth rather than something an ordinary request could
       // carry under the same key.
-      expect(handedOff.source).toBe("task");
+      expect(dispatchedRecord.source).toBe("task");
 
       // THE ASSERTION THIS BLOCK EXISTS FOR. Whole-object equality rather than
       // a property probe, so a future writer that drops `key` or `from` to
       // make room for `taskId` fails here — the DevTool panel and the
       // kitchen-sink demo both read the dispatch address today.
-      expect(handedOff.metadata).toEqual({
+      expect(dispatchedRecord.metadata).toEqual({
         dispatch: {
           type: "task",
           action: "background",

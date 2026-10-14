@@ -581,7 +581,7 @@ Every arrival at a flow is a **dispatch** of one **type**, delivered to one **en
 
 `internal` and `task` are definition-only, like the transport maps: passing either to the instance call (`defineFlow({ ... })({ internal })`) throws. Each nests its entries under `actions`: `internal: { actions: { wake: { block } } }`. The flat `internal: { wake }` spelling is refused by name. Every entry of every type has the same core shape as an action, `{ block, inputSchema?, concurrency?, durable?, tokenBudget?, onCompleted?, onErrored?, userMessage? }`. Only `actions` adds the caller-facing `description` and `mcp` fields.
 
-A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board hands off to and no `from` serves, a task dispatcher no board holds, two boards handing off to one entry, and an entry with `from` that a board in the same flow also hands off to.
+A `task` entry is declared as a plain block, but a `task` dispatch does not run the entry's block as-is. Before the block runs, the row is re-read and the claim verified; a claim that is no longer current throws `StaleTaskClaimError`. The block then receives the worker input the row was claimed with. `defineFlow` throws, naming the block and the entry, for a task entry no reachable board dispatches to and no `from` serves, a task dispatcher no board holds, two boards dispatching to one entry, and an entry with `from` that a board in the same flow also dispatches to.
 
 A task entry may declare `from`, a `TaskBinding` that says where its tasks come from: `task: { actions: { work: { block, from } } }`. Its flow then needs no board, and each arriving task is checked against the ledger the dispatch names. `@flow-state-dev/orchestration`'s `taskLedgers({ name, resolve })` builds one.
 
@@ -666,8 +666,8 @@ const board = taskBoard({
   collection: issues,                          // a defineTaskCollection()
   workers: {
     triage: triageWorker,                        // runs inline, in the drain
-    implement: dispatcher({                      // hands off
-      name: "hand-off-implement",
+    implement: dispatcher({                      // dispatches
+      name: "dispatch-implement",
       action: "implement",                       // flow.task.actions.implement
       session: "per-task",
     }),
@@ -737,7 +737,7 @@ At run time a refused dispatch throws `DispatchRefusedError` (`code: "dispatch-r
 
 Every refusal is decided before anything is dispatched, so a `.rescue()` on the dispatcher can branch on `refused` knowing nothing started. A `key` or `id` function that returns an empty string throws a plain `Error` naming the block. On a context no runtime wired (a hand-built test context), the block throws `NoDispatchSeamError` (`code: "no-dispatch-seam"`); attach a `DispatchSeam` under the `DISPATCH_SEAM` symbol key to test one.
 
-**Substrate exports.** A package that builds its own dispatching block (a task board's hand-off) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. A task board also binds its claim gate onto that block with `bindTaskDispatcher(block, { boardId, gate })` (`TaskBinding`; read back with `taskBindingOf`), which is what `defineFlow` applies to the entry the block addresses, and derives the child-session key with `taskSessionKeyFor(blockName, policy, envelope, ctx)`, the same derivation `dispatcher()` uses. `resolveTaskState(blockName, address, task, ctx)` reads a task address's child-session `state` for one task, the same way. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, `DispatchSeam`, `TaskSessionPolicy`, and `TaskDispatchInput`.
+**Substrate exports.** A package that builds its own dispatching block (a task board's dispatch) calls `dispatchThroughSeam(ctx, spec)` and stamps the block with `markDispatcher(block, address)` so the definition-time walk sees it. A task board also binds its claim gate onto that block with `bindTaskDispatcher(block, { boardId, gate })` (`TaskBinding`; read back with `taskBindingOf`), which is what `defineFlow` applies to the entry the block addresses, and derives the child-session key with `taskSessionKeyFor(blockName, policy, envelope, ctx)`, the same derivation `dispatcher()` uses. `resolveTaskState(blockName, address, task, ctx)` reads a task address's child-session `state` for one task, the same way. The types are `DispatchAddress`, `SessionTarget`, `DispatchSpec`, `DispatchOutcome`, `DispatchRefusal`, `DispatchSeam`, `TaskSessionPolicy`, and `TaskDispatchInput`.
 
 ## Reaching the runtime from a capability (`ctx.requestHost`)
 

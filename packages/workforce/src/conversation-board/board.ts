@@ -182,7 +182,7 @@ function taskSessionKey(taskId: string, worker: string): string {
 }
 
 /**
- * The claim the board's hand-off holds while it addresses a task: on its
+ * The claim the board's dispatch holds while it addresses a task: on its
  * worker body's state, or in the claimed worker's async scope. Server-derived:
  * minted from the row the board just claimed.
  */
@@ -291,7 +291,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       by: (task) => (postOf(task) !== undefined ? DELEGATED_POST_ENTRY : WORKER_TASK_ENTRY)
     },
     session: {
-      // The board's hand-off computes it while the claim it took is still on
+      // The board's dispatch computes it while the claim it took is still on
       // its worker body's state: the assignee is the one the row was claimed
       // with, which the board freezes while an attempt holds it.
       by: (task, ctx) => {
@@ -359,13 +359,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       };
     }
   };
-  const handOffToDelegate = markDispatcher(
+  const dispatchToDelegate = markDispatcher(
     handler({
-      name: "conversation-board-hand-off",
+      name: "conversation-board-dispatch",
       inputSchema: z.unknown(),
       outputSchema: z.unknown(),
       execute: () => {
-        throw new Error("The conversation board's hand-off runs through the board, never on its own.");
+        throw new Error("The conversation board's dispatch runs through the board, never on its own.");
       }
     }),
     address
@@ -376,7 +376,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     boardId: CONVERSATION_LEDGER_ID,
     collection: conversationLedger,
     workers: {},
-    defaultWorker: handOffToDelegate as never,
+    defaultWorker: dispatchToDelegate as never,
     dispatcher: startableOnly,
     // Exit once nothing this run can start is waiting. An unassigned row
     // waits on the board for `assignTask`, so a run must not wait on it.

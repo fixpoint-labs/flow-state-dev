@@ -17,7 +17,7 @@
  * recorder runs: orchestration's own resume recorder first (a waited-on row's
  * `Task.resumeOwed`, FIX-1816), then the ledger's declared one. So every
  * producer of an ending reaches it: a worker settling the task it holds (a
- * board's recorders, a task entry's gate), a board refusing a hand-off, the
+ * board's recorders, a task entry's gate), a board refusing a dispatch, the
  * claim path settling a row whose worker died too often, and a cancel.
  *
  * The recorder runs inside the write and may run more than once (a version

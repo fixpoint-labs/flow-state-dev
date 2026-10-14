@@ -136,7 +136,7 @@ reasoning about data retention, or if you plan to resume a run by hand later.
 
 You have to pass it there. A worker that runs in a dispatch run may share that
 session with other rows, so two blocks declaring the same session-state key would
-overwrite each other. The task board refuses to build a hand-off whose block
+overwrite each other. The task board refuses to build a dispatch whose block
 declares session state.
 
 That refusal reads the worker block, the blocks composed inside it, and the

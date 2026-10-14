@@ -776,14 +776,14 @@ function validateEntryMaps(
 /**
  * Resolve every dispatcher reachable from this flow's declared blocks against
  * the entries the flow declares, and put each task entry behind the claim gate
- * of the board that hands off to it.
+ * of the board that dispatches to it.
  *
  * This is the definition-time half of the no-fallback rule. A dispatcher's
  * address is static — `(type, action)` on the block definition — so the check
  * is a lookup, not an inference: `internal:"wake"` must be
  * `flow.internal.actions.wake`; `task:"implement"` must be
  * `flow.task.actions.implement`. Caught here, the author sees the block and the
- * address; caught at run time, a claimed row would be handed off to nothing and
+ * address; caught at run time, a claimed row would be dispatched to nothing and
  * wait out its lease.
  *
  * The one address this walk cannot answer is a **cross-flow** one
@@ -797,7 +797,7 @@ function validateEntryMaps(
  * ever reach it through its board's gate — the row re-read, the claim verified,
  * the task scope marked, the ticket re-minted. The board cannot install that
  * gate itself, because the flow owns the entry, so it binds the gate onto the
- * hand-off it holds for the assignee (`bindTaskDispatcher`) and this walk applies
+ * dispatch it holds for the assignee (`bindTaskDispatcher`) and this walk applies
  * it: the returned map carries `gate(entry)` in place of each entry a board
  * addresses. A task dispatcher no board holds, an entry no board addresses, and
  * two boards addressing one entry are each refused by name — every one of them
@@ -806,7 +806,7 @@ function validateEntryMaps(
  * Reads the reachable closure {@link walkBlockGraph} builds, taking the tool
  * edge, because a dispatcher is reachable only through
  * composition, a rescue handler or a tool edge, and the seam is reachable only
- * from blocks that carry an address — `dispatcher()` and the board's hand-off
+ * from blocks that carry an address — `dispatcher()` and the board's dispatch
  * both stamp one, and nothing on `ctx` lets a handler body dispatch without it.
  */
 function resolveDispatchTargets(
@@ -820,7 +820,7 @@ function resolveDispatchTargets(
   // `taskBoard()` instances can spell the same `boardId` over different
   // ledgers, and only one of their gates can front the entry.
   const gatedBy = new Map<string, TaskBinding>();
-  // Entries some dispatcher hands off to under a policy that shares one child across
+  // Entries some dispatcher dispatches to under a policy that shares one child across
   // rows (`per-worker`, a `key`, or a per-row `by`). Two rows dispatched into one session
   // interleave their writes under the `allow` default, so these default to
   // `queue` unless the author chose a policy. A `per-task` dispatcher lands every row
@@ -855,15 +855,15 @@ function resolveDispatchTargets(
         const entry = tasks !== undefined && Object.hasOwn(tasks, action) ? tasks[action] : undefined;
         if (entry === undefined) {
           throw new Error(
-            `Flow "${kind}" reaches block "${block.name}", which hands off to task:"${action}", but the ` +
+            `Flow "${kind}" reaches block "${block.name}", which dispatches to task:"${action}", but the ` +
               `flow declares no such task entry. Add \`task: { actions: { ${action}: { block } } }\` ` +
-              `to the flow — the block that runs each row this dispatcher hands off.`
+              `to the flow — the block that runs each row this dispatcher dispatches.`
           );
         }
         const binding = taskBindingOf(block);
         if (binding === undefined) {
           throw new Error(
-            `Flow "${kind}" reaches block "${block.name}", which hands off to ${label}, but no ` +
+            `Flow "${kind}" reaches block "${block.name}", which dispatches to ${label}, but no ` +
               `task board holds it. A task dispatcher belongs to a board: put it under a board's ` +
               `\`workers\`, which is the only place a claim on a durable row is minted.`
           );
@@ -872,10 +872,10 @@ function resolveDispatchTargets(
         if (holder !== undefined && holder.gate !== binding.gate) {
           throw new Error(
             holder.boardId === binding.boardId
-              ? `Flow "${kind}" task entry "${action}" is handed off to by two boards ` +
+              ? `Flow "${kind}" task entry "${action}" is dispatched to by two boards ` +
                   `that both declare boardId "${binding.boardId}". A boardId names one board and ` +
                   `one ledger; give the second board its own boardId and its own entry.`
-              : `Flow "${kind}" task entry "${action}" is handed off to by two boards, ` +
+              : `Flow "${kind}" task entry "${action}" is dispatched to by two boards, ` +
                   `"${holder.boardId}" and "${binding.boardId}". One entry settles against one ` +
                   `ledger; declare a second entry for the second board.`
           );
@@ -883,7 +883,7 @@ function resolveDispatchTargets(
         if (entry.from !== undefined) {
           throw new Error(
             `Flow "${kind}" task entry "${action}" declares where it takes tasks from ` +
-              `(\`from\`), and board "${binding.boardId}" in the same flow also hands off to it. ` +
+              `(\`from\`), and board "${binding.boardId}" in the same flow also dispatches to it. ` +
               `One entry runs behind one gate; drop \`from\`, or declare a second entry for the board.`
           );
         }
@@ -924,7 +924,7 @@ function resolveDispatchTargets(
     }
     throw new Error(
       `Flow "${kind}" declares task entry "${name}", but no task board reachable from the ` +
-        `flow hands off to it. Only a board can dispatch a task — it mints the claim the entry ` +
+        `flow dispatches to it. Only a board can dispatch a task — it mints the claim the entry ` +
         `runs under — so an entry without one could never be reached. Add a ` +
         `\`dispatcher({ action: "${name}", session })\` to the \`workers\` of a board the flow ` +
         `reaches, declare where the entry takes tasks from (\`from\`), or remove the entry.`
@@ -1101,7 +1101,7 @@ function mergeFlowResourceMap(
         `sharedToLineage: ${flowShared}, but a block declared the same accessor with ` +
         `sharedToLineage: ${blockShared}. Letting the flow's declaration win would ` +
         `move the resource between the running session and the lineage without the ` +
-        `block knowing — a task board that hands off would claim rows in one place while its ` +
+        `block knowing — a task board that dispatches would claim rows in one place while its ` +
         `child session reads an empty ledger and loops. Make the two agree, or give one a ` +
         `distinct accessor name.`
     );
@@ -1340,7 +1340,7 @@ function normalizeFlowConfig(
   // authored: every dispatcher the flow can reach — through composition, a
   // rescue handler, or a tool edge — must name an entry the flow declares. It
   // also produces the task map the instance carries: each task entry rebuilt
-  // behind the claim gate of the board whose hand-off addresses it. The roots
+  // behind the claim gate of the board whose dispatch addresses it. The roots
   // below are then collected from THAT map, so the gate's own declarations
   // (the board's ledger) count.
   const reachable = walkBlockGraph(

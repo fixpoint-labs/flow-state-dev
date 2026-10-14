@@ -195,7 +195,7 @@ left exactly as it was rather than being overwritten with a dead one.
 sign-in error before Codex names a thread.
 
 Keeping no session state also means the block declares none, which is what lets a
-task board hand it off without any further option. The Claude Code harness needs
+task board dispatch it without any further option. The Claude Code harness needs
 `detached: true` for the same effect.
 
 ## Cancelling

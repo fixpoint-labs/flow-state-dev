@@ -4,7 +4,7 @@
  * dispatch's row is read off the ledger the dispatch names.
  *
  * Two sender boards, over two ledgers the recipient never builds a board for,
- * hand off to the same recipient entry. Both rows run and settle on their own
+ * dispatch to the same recipient entry. Both rows run and settle on their own
  * ledger. A dispatch naming a ledger the resolver does not answer for is
  * refused before any row is read, and a claim that went stale between
  * hand-over and arrival writes nothing, exactly as on a board's own gate.
@@ -82,12 +82,12 @@ function recipientFlow(ran: string[], reads: string[]) {
 function senderFlow(kind: string, list: ReturnType<typeof ledger>, taskId: string) {
   const board = taskBoard({
     name: `${kind}-board`,
-    // Handed off under the ledger's id: what the recipient resolves.
+    // Dispatched under the ledger's id: what the recipient resolves.
     boardId: list.id,
     collection: list,
     workers: {
       work: dispatcher<TaskWorkerInput>({
-        name: `${kind}-hand-off`,
+        name: `${kind}-dispatch`,
         flowKind: RECIPIENT,
         action: "work",
         session: "per-task",
@@ -141,7 +141,7 @@ describe("a task entry served by many ledgers", () => {
       name: "own-board",
       boardId: "own",
       collection: LEDGER_A,
-      workers: { work: dispatcher<TaskWorkerInput>({ name: "own-hand-off", action: "work", session: "per-task" }) },
+      workers: { work: dispatcher<TaskWorkerInput>({ name: "own-dispatch", action: "work", session: "per-task" }) },
     });
     expect(() =>
       defineFlow({
@@ -198,7 +198,7 @@ describe("a task entry served by many ledgers", () => {
       const runtime = await state.getRuntime();
       await drain(runtime, x, "s_x");
       // The child refuses in its gate; the row is never written by it, so it
-      // stays as the hand-off left it (in progress, lease lapsing) and nothing ran.
+      // stays as the dispatch left it (in progress, lease lapsing) and nothing ran.
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(ran).toEqual([]);
       const row = await durableRow(runtime.stores, "list-x", "tx");

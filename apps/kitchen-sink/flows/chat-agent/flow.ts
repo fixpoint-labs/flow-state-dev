@@ -41,7 +41,7 @@ const chatAgentFlow = defineFlow({
   requireUser: true,
 
   // The background-work board's task entries. The `background-work` thinking
-  // style hands each filed row off to a child session, and this is where the
+  // style dispatches each filed row to a child session, and this is where the
   // `task` dispatch it sends lands — the board's claim gate around the worker.
   task: { actions: backgroundWorkTasks },
 

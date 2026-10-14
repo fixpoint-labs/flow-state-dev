@@ -150,7 +150,7 @@ export type Projects = {
 
 /**
  * The run working a task, or the run that last worked it: the session a
- * handed-off attempt runs in, that attempt's request there, and the attempt
+ * dispatched attempt runs in, that attempt's request there, and the attempt
  * number. The board's claim gate writes it from inside the run; the next claim
  * clears it. It carries no flow: the run's flow is the one its session records
  * as its owner.

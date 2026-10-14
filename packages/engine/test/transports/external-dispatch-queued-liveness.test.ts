@@ -12,7 +12,7 @@
  *
  * The round-1 queued-heartbeat fix covers the IN-PROCESS deferred branch only
  * (the host holds that run, so it can keep the entry warm). It does not reach
- * this path and cannot: the enqueuing process hands off at `queue.add` and
+ * this path and cannot: the enqueuing process dispatches at `queue.add` and
  * returns 202, so nothing there has the lifetime or the standing to beat for a
  * job it is not running.
  *

@@ -63,7 +63,7 @@ claudeCodeAgent({ detached: true });
 
 Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
 run starts fresh. Use it when the agent runs as a task-board worker in a child
-session: rows may share that session, so the board refuses a hand-off whose block
+session: rows may share that session, so the board refuses a dispatch whose block
 declares session state. The run's own history is the child session's item stream
 instead.
 

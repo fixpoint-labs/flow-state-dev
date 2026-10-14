@@ -178,7 +178,7 @@ incomplete, with the error, so a reader never shows a half-written list as the p
 plan-mode document, the one `mode: "plan"` produces, is not recorded.
 
 `recordPlan` is off by default. Off, the block declares no session state, exactly as before,
-which is what lets a task board hand it off without any further option.
+which is what lets a task board dispatch it without any further option.
 
 ## Where the run works
 
@@ -287,7 +287,7 @@ reads `"unknown-conversation"`. Any other failure reads `null`, including one af
 Cursor has resumed the agent.
 
 Keeping no session state also means the block declares none, which is what lets a
-task board hand it off without any further option. `recordPlan` is the one option
+task board dispatch it without any further option. `recordPlan` is the one option
 that adds some, and it is off by default.
 
 ## How a run ends

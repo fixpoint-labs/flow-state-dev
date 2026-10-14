@@ -93,7 +93,7 @@ harness: ({ cwd, resume, onSession }) =>
 ```
 
 What the factory passes on differs, because that part belongs to the agent. Claude
-Code needs `detached: true`: it keeps session state by default, and a handed-off
+Code needs `detached: true`: it keeps session state by default, and a dispatched
 row refuses a block that does. Codex keeps none, so it needs no equivalent. Each
 spells its sandbox its own way. None of it reaches the manager.
 

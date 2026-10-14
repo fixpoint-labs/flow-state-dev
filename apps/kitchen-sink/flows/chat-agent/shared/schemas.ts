@@ -43,7 +43,7 @@ export const featuresSchema = z.object({
 // It used to be two sets: an input superset carrying `"auto"`, which ran a
 // keyword + LLM classifier to pick one of five in-request coordination
 // routes. Those routes and the classifier were removed (FIX-1478) — with one
-// answering style left besides the durable hand-off, `"auto"` could only ever
+// answering style left besides the durable dispatch, `"auto"` could only ever
 // resolve to `"default"`, after paying for a model call to get there.
 // ---------------------------------------------------------------------------
 

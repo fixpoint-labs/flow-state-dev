@@ -133,7 +133,7 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board worker
 
-A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the worker's position instead and the board hands each claimed row off to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
+A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the worker's position instead and the board dispatches each claimed row to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -148,7 +148,7 @@ const board = taskBoard({
   collection: diligenceTasks,
   workers: {
     investigate: dispatcher({
-      name: "hand-off-investigate",
+      name: "dispatch-investigate",
       action: "investigate",      // flow.task.actions.investigate
       session: "per-task",        // one session per row
     }),
@@ -171,11 +171,11 @@ The drain claims a row, sends it to the `investigate` entry, and moves on. The r
 
 Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
 
-A board with a worker that hands off needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
+A board with a worker that dispatches needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
 
-Read next: **[Workers that hand off](/docs/orchestration/task-board#assignees-that-hand-off)** for the `session` policies, what the board refuses at construction, and what the drain reports.
+Read next: **[Workers that dispatch](/docs/orchestration/task-board#assignees-that-dispatch)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
-Handing off comes with bounds:
+Dispatching comes with bounds:
 
 **The board has to be reachable from the run's session.** The run settles its own row, and resource scope resolves against whichever session is running, so a session-scoped board hydrates empty there and has nothing to settle. Give the collection `sharedToLineage: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 

@@ -203,7 +203,7 @@ One operation runs *from inside a block* through the same host, installed on
 `RuntimeConfig.requestHost` by `createFlowState` (and as a last resort by the
 HTTP handlers): `dispatchOperation`, which the dispatch seam uses for an
 `internal` or `task` dispatch — a `dispatcher()` block, or a task board's
-hand-off at a dispatcher in its `workers`. The seam (`engine/context/create-request-host.ts`)
+dispatch at a dispatcher in its `workers`. The seam (`engine/context/create-request-host.ts`)
 resolves the entry, derives or adopts the child session and writes its record,
 and assembles the envelope with the source and the server-assembled
 `metadata.dispatch`; `createDispatchOperation({ host })`
@@ -295,7 +295,7 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   a `defer`, whose worker claims the key with `take({ ifEmpty: true })` and
   requeues on `planDeferWait`'s schedule until it is free, lining up behind
   the key's places once its patience is spent. The same `planDeferWait` drives
-  the arbiter's in-process wait. The dispatching process counts a handed-off
+  the arbiter's in-process wait. The dispatching process counts a dispatched
   `defer` against its cap until the job's `finished` settles
   (`ConcurrencyAdmission.handOff(jobEnded)`).
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,

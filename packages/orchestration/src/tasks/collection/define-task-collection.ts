@@ -73,7 +73,7 @@ export interface DefineTaskCollectionOptions<
   scope: ResourceScope;
   /**
    * Give a `session`-scoped board ONE ledger across the session lineage
-   * (FIX-1068), so the child session a handed-off row runs in settles against the
+   * (FIX-1068), so the child session a dispatched row runs in settles against the
    * same rows the dispatching session holds. Without it a session-scoped board
    * hydrates empty inside a child session and the task cannot be settled.
    *
@@ -86,7 +86,7 @@ export interface DefineTaskCollectionOptions<
    * resolved in a running context reads and writes only the partition this
    * function names for it. Use it for a board kept per conversation whose rows
    * a task entry on another flow works: the user scope crosses the flow, and
-   * the partition keeps each conversation's board its own. A board's hand-off
+   * the partition keeps each conversation's board its own. A board's dispatch
    * carries the partition it claimed in, so the receiving entry reads the row
    * there and never calls this function itself. The rows sit in the user's
    * own cell, shared with every flow of theirs, even on a flow that isolates
@@ -215,7 +215,7 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
  * builds a fresh wrapper per resolution, so an `immutableAssignee` passed as one
  * wrapper's option guards only the caller that passed it — a second board, or any
  * other resolution of the same collection, gets an unguarded wrapper over the
- * same rows and can reassign a task the handed-off board routes by. Marking the
+ * same rows and can reassign a task the dispatched board routes by. Marking the
  * declaration instead means every resolution reads one answer.
  *
  * Keyed by object identity rather than collection id: ids are per-flow strings,
@@ -247,7 +247,7 @@ function assertPartitionable(options: DefineTaskCollectionOptions): void {
  *
  * The behaviour chosen in the meantime fails **closed**: an unnecessary decline
  * is visible immediately and recoverable by giving the second flow its own
- * declaration, where a missed freeze silently strands handed-off work.
+ * declaration, where a missed freeze silently strands dispatched work.
  *
  * A `WeakSet`, so a declaration that falls out of scope is collectable and tests
  * that build collections per-case do not accumulate policy.
@@ -265,9 +265,9 @@ const immutableAssigneeLedgers = new WeakSet<DefinedTaskCollection>();
  * `parked`) in this ledger, for every ref that resolves it. Called by `taskBoard` when a board binding this collection declares
  * dispatcher assignees, whose child's routing key is derived from the assignee.
  *
- * Idempotent, and deliberately one-way: two boards on one ledger, one handing
- * off and one not, must not disagree about whether reassignment is allowed, and
- * the handed-off board's invariant is the one that breaks silently.
+ * Idempotent, and deliberately one-way: two boards on one ledger, one dispatching
+ * and one not, must not disagree about whether reassignment is allowed, and
+ * the dispatched board's invariant is the one that breaks silently.
  */
 export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
   immutableAssigneeLedgers.add(collection);
@@ -276,7 +276,7 @@ export function freezeLedgerAssignee(collection: DefinedTaskCollection): void {
 /**
  * Is this ledger's assignee frozen? Read at resolution time, never captured at
  * construction time — boards are constructed in an arbitrary order and a board
- * built before the handed-off one would otherwise close over a stale `false`.
+ * built before the dispatched one would otherwise close over a stale `false`.
  */
 export function hasFrozenLedgerAssignee(collection: DefinedTaskCollection): boolean {
   return immutableAssigneeLedgers.has(collection);

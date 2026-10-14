@@ -10,7 +10,7 @@
  *
  * ## The dispatch seam
  *
- * A `dispatcher()` block (or the task board's hand-off) puts a `DispatchSpec`
+ * A `dispatcher()` block (or the task board's dispatch) puts a `DispatchSpec`
  * through the seam. The seam does four things, in order, and refuses by name
  * at each:
  *

@@ -215,7 +215,7 @@ export function claimHost(options: HostOptions) {
     resources: { [FIXED_BOARD]: fixedLedger, [CONVERSATIONS]: conversations },
   });
 
-  // File a row and claim it, as a board's drain would before handing it off.
+  // File a row and claim it, as a board's drain would before dispatching it.
   const seed = handler({
     name: "claim-host-seed",
     inputSchema: z.object({
@@ -368,7 +368,7 @@ export function claimHost(options: HostOptions) {
 
   /**
    * Claim the row and dispatch one attempt into the gated entry, as a
-   * board's hand-off would. `claimOnInput` is what the test's adapter puts on
+   * board's dispatch would. `claimOnInput` is what the test's adapter puts on
    * the manager's input: the gate's ledger and partition by default, on a
    * `claim` host; nothing on a `fixed` one.
    */

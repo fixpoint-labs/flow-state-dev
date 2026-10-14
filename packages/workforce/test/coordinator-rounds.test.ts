@@ -16,7 +16,7 @@
  *   BR-24  below the limit: best fit and round robin route each answer again, never to its author;
  *          everyone hands each delegate the others' answers when the round closes; judgment wakes
  *          the coordinator's turn once per closed round;
- *   BR-24a a judgment hand-off in a wake is the next round's, once per delegate;
+ *   BR-24a a judgment dispatch in a wake is the next round's, once per delegate;
  *   BR-24b a round closes without a delegate whose turn failed or whose run was cancelled, at once,
  *          and without a slow one at its deadline; the late answer lands once and goes no further;
  *          a round whose delegate says nothing closes on the conversation's next wake after its
@@ -24,7 +24,7 @@
  *   BR-25  at the limit an answer goes nowhere and wakes nothing;
  *   BR-21, BR-22  an ending sent twice goes back out once; a cancel reported under a claim the row
  *          doesn't hold changes nothing;
- *   BR-27  a post and a hand-off can't carry a round; no caller reaches the route-on entry;
+ *   BR-27  a post and a dispatch can't carry a round; no caller reaches the route-on entry;
  *   BR-28  every decision, in every round, is one `coordinator-route` record.
  */
 import { describe, expect, it } from "vitest";
@@ -387,7 +387,7 @@ describe("rounds (V5)", () => {
     ]);
   });
 
-  it("under judgment, wakes the coordinator's turn once per closed round; its hand-offs are the next round's, once per delegate (BR-24, BR-24a, BR-25)", async () => {
+  it("under judgment, wakes the coordinator's turn once per closed round; its dispatches are the next round's, once per delegate (BR-24, BR-24a, BR-25)", async () => {
     const judgment = mockGenerator({
       script: [
         {
@@ -518,7 +518,7 @@ describe("rounds (V5)", () => {
     expect((await host.items(id)).records).toHaveLength(2);
   });
 
-  it("never takes a round from a post or a hand-off, and no caller reaches the route-on entry (BR-27)", async () => {
+  it("never takes a round from a post or a dispatch, and no caller reaches the route-on entry (BR-27)", async () => {
     const judgment = mockGenerator({
       script: [
         { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em", round: 1 } }] },
@@ -529,9 +529,9 @@ describe("rounds (V5)", () => {
     const id = await host.conversation("alice", "chief");
     const forgedPost = await host.act("alice", id, "run", { message: "go", round: 2 });
     expect(messageOf(forgedPost.error)).toMatch(/round/);
-    // The hand-off's extra field is refused by the tool, so nothing is filed.
-    const forgedHandOff = await host.act("alice", id, "run", { message: "go" });
-    expect(forgedHandOff.error).toBeUndefined();
+    // The dispatch's extra field is refused by the tool, so nothing is filed.
+    const forgedDispatch = await host.act("alice", id, "run", { message: "go" });
+    expect(forgedDispatch.error).toBeUndefined();
     const refused = (await host.items(id)).all.filter((item: any) => item.type === "tool_output").map((item: any) => item.output);
     expect(refused).toEqual([{ ok: false, error: expect.stringMatching(/^post_takes_assignee_and_target: .*\(not round\)/) }]);
     expect(await host.postRows("alice")).toEqual([]);

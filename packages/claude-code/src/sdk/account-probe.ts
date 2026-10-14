@@ -73,10 +73,12 @@ export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Pr
   const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
   const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
   // A subscription sign-in names no key or token source: it comes back as who
-  // is signed in and on what plan.
+  // is signed in and on what plan. "Claude API" is the no-plan label, not a sign-in.
   const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
   const subscriptionType =
-    typeof info.subscriptionType === "string" && info.subscriptionType !== "" ? info.subscriptionType : undefined;
+    typeof info.subscriptionType === "string" && info.subscriptionType !== "" && info.subscriptionType !== "Claude API"
+      ? info.subscriptionType
+      : undefined;
   if (apiKeySource === undefined && tokenSource === undefined && email === undefined && subscriptionType === undefined) {
     return { status: "none", reason: "Claude Code found no API key and no sign-in" };
   }

@@ -7,7 +7,7 @@
  * keeps conversation state; this one keeps none — the agent to continue is the
  * host's, reached through the `resume` resolver and written back through
  * `onSession`. A session-state schema here would put state this package does
- * not own back into the flow through the one door a hand-off refusal cannot
+ * not own back into the flow through the one door a dispatch refusal cannot
  * check.
  */
 import { describe, it, expect } from "vitest";

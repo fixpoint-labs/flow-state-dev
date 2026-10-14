@@ -67,7 +67,7 @@ describe("defineTaskCollection", () => {
   });
 
   it("forwards sharedToLineage so a session-scoped board reaches its child session", () => {
-    // A handed-off worker settles its own task from inside a child session. A
+    // A dispatched worker settles its own task from inside a child session. A
     // session-scoped ledger only reaches it when the collection spans the
     // lineage, so the flag has to survive the wrapper rather than be dropped.
     const todos = defineTaskCollection({

@@ -1,15 +1,15 @@
 /**
- * FIX-1068: a hand-off board may be session-scoped once, and only once, its
+ * FIX-1068: a dispatching board may be session-scoped once, and only once, its
  * ledger resolves to the lineage root.
  *
- * The refusal this narrows exists because a handed-off worker runs in its own
+ * The refusal this narrows exists because a dispatched worker runs in its own
  * session: an ordinary session-scoped ledger resolves against the running
  * session, so the child addresses an empty collection, the start gate reads
  * the missing row as a stale claim, and the board reclaims and redispatches
  * until the abandonment cap errors it. `sharedToLineage` removes exactly
  * that: parent and child resolve one ledger, at the lineage address.
  *
- * Reachable is all it makes the ledger. The hand-off lease bound (FIX-1070)
+ * Reachable is all it makes the ledger. The dispatch lease bound (FIX-1070)
  * applies to a lineage-rooted board exactly as it does to a user- or org-scoped
  * one, and nothing here claims otherwise.
  */
@@ -23,7 +23,7 @@ import { defineTaskCollection } from "../../src/tasks";
 import { taskBoard } from "../../src/task-board";
 import type { TaskWorker } from "../../src/tasks";
 
-const BOARD_ID = "session-scoped-hand-off";
+const BOARD_ID = "session-scoped-dispatch";
 
 function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
   return taskBoard({
@@ -41,7 +41,7 @@ function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
   });
 }
 
-describe("FIX-1068: session-scoped hand-off boards", () => {
+describe("FIX-1068: session-scoped dispatching boards", () => {
   it("still refuses a session-scoped ledger that does not reach the child session", () => {
     // The loop is real for this one: the child would resolve its own empty
     // ledger and never find the row.
@@ -68,7 +68,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
   it("files a row a child session can actually resolve", async () => {
     // Construction not throwing proves nothing about reachability. What the
     // refusal is really about is whether the CHILD can find the row, so this
-    // reads the ledger from a second session — one stamped the way a hand-off
+    // reads the ledger from a second session — one stamped the way a dispatch
     // dispatch stamps a child session — and expects the parent's row.
     const shared = defineTaskCollection({
       id: "briefs",
@@ -92,7 +92,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
     });
 
     const flow = defineFlow({
-      kind: "session-hand-off-flow",
+      kind: "session-dispatch-flow",
       actions: {
         run: {
           inputSchema: z.object({ request: z.string() }),
@@ -117,7 +117,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
       journal: []
     };
     // Both records carry the SAME minted lineage — which is exactly the state
-    // a hand-off dispatch writes (it copies the parent's id onto the child,
+    // a task dispatch writes (it copies the parent's id onto the child,
     // pinned by request-host-lineage-root.test.ts). Seeding it here keeps this
     // test on its own subject: given a correctly stamped child session, does
     // the board's ledger actually resolve across the two sessions.
@@ -127,7 +127,7 @@ describe("FIX-1068: session-scoped hand-off boards", () => {
       { ...base, id: "s_parent", lineageId: LINEAGE } as SessionRecord,
       "any"
     );
-    // The child a hand-off dispatch would create: same flow kind, parented to
+    // The child a task dispatch would create: same flow kind, parented to
     // the conversation, and carrying its lineage root.
     await stores.session.set(
       "ws_child",

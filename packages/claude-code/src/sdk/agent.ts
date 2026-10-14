@@ -187,7 +187,7 @@ export interface ClaudeCodeAgentOptions {
     ctx: AgentCallbackContext,
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /**
-   * Run the agent as **handed-off background work** — the block a task board
+   * Run the agent as **dispatched background work** — the block a task board
    * worker's `dispatcher({ type: "task" })` targets, declared on the flow under
    * `task: { actions }` and run in a child session. Default `false`: an
    * in-session agent that keeps conversation state — the `sdkSessionId` resume
@@ -196,8 +196,8 @@ export interface ClaudeCodeAgentOptions {
    *
    * **This is the canonical explanation; everywhere else links here.**
    *
-   * `defineFlow` refuses a handed-off entry whose block authors a
-   * `sessionStateSchema` (`assertHandOffBlockSupported`), because the block
+   * `defineFlow` refuses a dispatched entry whose block authors a
+   * `sessionStateSchema` (`assertDispatchEntrySupported`), because the block
    * runs in a child session it may share with other rows, where two blocks
    * choosing the same key with different shapes corrupt each other silently.
    *
@@ -813,8 +813,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     inputSchema: harnessRunInputSchema,
     outputSchema: sdkAgentHandleSchema,
     // Decided HERE rather than at run time, and that is forced: `defineFlow`
-    // inspects this static definition (`assertHandOffBlockSupported`) and
-    // rejects the hand-off before any `execute` callback receives a context.
+    // inspects this static definition (`assertDispatchEntrySupported`) and
+    // rejects the dispatch before any `execute` callback receives a context.
     ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
     // Also static, and for a related reason: `defineFlow` collects declared
     // resources off block definitions at build time. A collection nobody

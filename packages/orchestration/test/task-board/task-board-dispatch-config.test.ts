@@ -1,15 +1,15 @@
 /**
- * The hand-off declaration surface and its construction-time refusals
+ * The dispatch declaration surface and its construction-time refusals
  * (FIX-982 P1).
  *
  * P1 ships **no execution** — nothing here dispatches out of the request. What
- * is asserted is the contract a board must satisfy *before* the hand-off
- * exists, because the refusals are what stop the first handed-off board being
+ * is asserted is the contract a board must satisfy *before* the dispatch
+ * exists, because the refusals are what stop the first dispatched board being
  * built on a backing that could never settle it.
  *
  * Two properties carry most of the weight:
  *
- * - **The off state.** A bare worker value and a board that hands nothing off
+ * - **The off state.** A bare worker value and a board that dispatches nothing
  *   behave exactly as they do today. This is the flag's second state (BP-035)
  *   and the BP-030 promise that no existing board needs editing — asserted,
  *   not assumed, because every refusal below is one bad predicate away from
@@ -44,7 +44,7 @@ function worker(name: string, extra?: Record<string, unknown>): TaskWorker {
 }
 
 let assigneeCount = 0;
-/** An assignee that hands off: the dispatcher a board reads its address from. */
+/** An assignee that dispatches: the dispatcher a board reads its address from. */
 function assignee(action = "implement"): TaskWorker {
   assigneeCount += 1;
   return dispatcher({
@@ -55,16 +55,16 @@ function assignee(action = "implement"): TaskWorker {
   }) as unknown as TaskWorker;
 }
 
-const durable = defineTaskCollection({ id: "hand-off-config-tasks", scope: "user" });
+const durable = defineTaskCollection({ id: "dispatch-config-tasks", scope: "user" });
 
-describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
-  it("leaves a bare-worker board untouched: no boardId, nothing handed off", () => {
+describe("task dispatch — the off state (BP-030 / BP-035)", () => {
+  it("leaves a bare-worker board untouched: no boardId, nothing dispatched", () => {
     const board = taskBoard({
       name: "inline-board",
       workers: { summarize: worker("summarize") },
     });
 
-    expect(board.handedOff).toEqual([]);
+    expect(board.dispatchers).toEqual([]);
     expect(board.boardId).toBeUndefined();
     expect(board.backing).toBe("request");
   });
@@ -105,10 +105,10 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
     ).toThrow(/assignee "summarize" is not a block/);
   });
 
-  it("reads a dispatcher assignee as handed off, with the address it carries", () => {
+  it("reads a dispatcher assignee as dispatched, with the address it carries", () => {
     // The drain must see blocks in every assignee. A dispatcher is one, so the
     // routing table is built from the same shape it always was; what the
-    // board adds is knowing which assignees hand off, and where to.
+    // board adds is knowing which assignees dispatch, and where to.
     const board = taskBoard({
       name: "unwrap-board",
       boardId: "unwrap-board",
@@ -119,8 +119,8 @@ describe("hand-off dispatch — the off state (BP-030 / BP-035)", () => {
       },
     });
 
-    expect(board.handedOff.map((slot) => slot.label)).toEqual(["assignee:implement"]);
-    expect(board.handedOff[0]?.dispatch).toEqual({
+    expect(board.dispatchers.map((slot) => slot.label)).toEqual(["assignee:implement"]);
+    expect(board.dispatchers[0]?.dispatch).toEqual({
       type: "task",
       action: "implement",
       session: "per-task",
@@ -144,8 +144,8 @@ describe("isTaskDispatcher", () => {
   });
 });
 
-describe("hand-off dispatch — construction-time refusals (decision 11)", () => {
-  it("refuses a handed-off board with no boardId, naming the worker", () => {
+describe("task dispatch — construction-time refusals (decision 11)", () => {
+  it("refuses a dispatched board with no boardId, naming the worker", () => {
     expect(() =>
       taskBoard({
         name: "no-id",
@@ -155,8 +155,8 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).toThrow(/no boardId.*assignee:implement|assignee:implement.*no boardId/s);
   });
 
-  it("refuses a handed-off board on the default request backing", () => {
-    // The default backing's lifetime IS the request, so handed-off work on it
+  it("refuses a dispatched board on the default request backing", () => {
+    // The default backing's lifetime IS the request, so dispatched work on it
     // would run with nothing able to settle or observe it — and the failure
     // would appear only after the first restart.
     expect(() =>
@@ -168,7 +168,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).toThrow(/request-backed collection|must be durable/);
   });
 
-  it("refuses a handed-off board on a sequencer backing", () => {
+  it("refuses a dispatched board on a sequencer backing", () => {
     expect(() =>
       taskBoard({
         name: "seq-backed",
@@ -179,7 +179,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).toThrow(/sequencer-backed collection|must be durable/);
   });
 
-  it("refuses a handed-off board on a caller-supplied factory backing", () => {
+  it("refuses a dispatched board on a caller-supplied factory backing", () => {
     // A factory is caller-opaque: the board cannot establish that what comes
     // back is durable, so it cannot honestly accept the declaration.
     expect(() =>
@@ -192,8 +192,8 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).toThrow(/factory-backed collection|must be durable/);
   });
 
-  it("refuses a handed-off entry block that declares sessionStateSchema, at defineFlow", () => {
-    // Every handed-off block in a flow may share its child session with other
+  it("refuses a dispatched entry block that declares sessionStateSchema, at defineFlow", () => {
+    // Every dispatched block in a flow may share its child session with other
     // rows, so two blocks picking the same key with different shapes corrupt
     // each other with no error anywhere. The refusal is the whole fix. It
     // fires when the flow is defined — the block lives on the flow, so the
@@ -217,7 +217,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).toThrow(/sessionStateSchema/);
   });
 
-  it("refuses a handed-off entry block whose capability declares sessionStateSchema", () => {
+  it("refuses a dispatched entry block whose capability declares sessionStateSchema", () => {
     // The schema arrives through `uses`, not the block's own config, and lands
     // in the same shared child session; the refusal reads the block's resolved
     // capabilities so the channel does not matter.
@@ -240,8 +240,8 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).toThrow(/via capability "memo"/);
   });
 
-  it("does NOT refuse sessionStateSchema on an INLINE worker of a hand-off board", () => {
-    // The collision is a property of running in the child session a handed-off
+  it("does NOT refuse sessionStateSchema on an INLINE worker of a dispatching board", () => {
+    // The collision is a property of running in the child session a dispatched
     // assignee may share with other rows, which an inline worker never joins.
     // Refusing it would be a guard firing on a condition it does not actually
     // test.
@@ -263,7 +263,7 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
     ).not.toThrow();
   });
 
-  it("accepts a durable handed-off board with a boardId", () => {
+  it("accepts a durable dispatched board with a boardId", () => {
     const board = taskBoard({
       name: "good-board",
       boardId: "good-board",
@@ -276,41 +276,41 @@ describe("hand-off dispatch — construction-time refusals (decision 11)", () =>
 
     expect(board.boardId).toBe("good-board");
     expect(board.backing).toBe("resource");
-    expect(board.handedOff).toHaveLength(1);
+    expect(board.dispatchers).toHaveLength(1);
   });
 });
 
-describe("hand-off dispatch — the uniform and floor assignees", () => {
-  it("refuses a task dispatcher as the uniform worker — a hand-off is addressed by the row's assignee", () => {
+describe("task dispatch — the uniform and floor assignees", () => {
+  it("refuses a task dispatcher as the uniform worker — a dispatch is addressed by the row's assignee", () => {
     // A uniform worker stands in for every row whatever it names, so there is
-    // no assignee to address the hand-off by.
+    // no assignee to address the dispatch by.
     expect(() =>
       taskBoard({
-        name: "uniform-hand-off",
-        boardId: "uniform-hand-off",
+        name: "uniform-dispatch",
+        boardId: "uniform-dispatch",
         collection: durable,
         workers: assignee("uniform-impl"),
       })
-    ).toThrow(/a uniform worker cannot hand off/);
+    ).toThrow(/a uniform worker cannot dispatch/);
   });
 
-  it("lets the fallback hand off, listing it as the floor", () => {
+  it("lets the fallback dispatch, listing it as the floor", () => {
     // The fallback hands each row over under the assignee the row names, so
     // the child's gate still has an assignee to check the row against.
     const board = taskBoard({
-      name: "floor-hand-off",
-      boardId: "floor-hand-off",
+      name: "floor-dispatch",
+      boardId: "floor-dispatch",
       collection: durable,
       workers: { summarize: worker("sum-floor") },
       defaultWorker: assignee("floor-impl"),
     });
-    expect(board.handedOff.map((s) => [s.kind, s.label])).toEqual([["floor", "floor"]]);
+    expect(board.dispatchers.map((s) => [s.kind, s.label])).toEqual([["floor", "floor"]]);
   });
 });
 
-describe("hand-off dispatch — a session-scoped ledger is refused at construction", () => {
+describe("task dispatch — a session-scoped ledger is refused at construction", () => {
   /**
-   * A handed-off worker runs in its own child session, and a session-scoped
+   * A dispatched worker runs in its own child session, and a session-scoped
    * collection resolves against the running session — so the child addresses
    * an empty ledger and never finds the row it was dispatched for.
    *
@@ -327,8 +327,8 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
   it("refuses, naming the board and pointing at the scopes that work", () => {
     expect(() =>
       taskBoard({
-        name: "session-hand-off",
-        boardId: "session-hand-off",
+        name: "session-dispatch",
+        boardId: "session-dispatch",
         collection: sessionScoped,
         workers: { implement: assignee("implement") },
       })
@@ -338,8 +338,8 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
   it("names the declared worker, so the message points at what would not run", () => {
     expect(() =>
       taskBoard({
-        name: "session-hand-off-named",
-        boardId: "session-hand-off-named",
+        name: "session-dispatch-named",
+        boardId: "session-dispatch-named",
         collection: sessionScoped,
         workers: { implement: assignee("implement") },
       })
@@ -349,16 +349,16 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
   it("points at sharedToLineage as the fix", () => {
     expect(() =>
       taskBoard({
-        name: "session-hand-off-fix",
-        boardId: "session-hand-off-fix",
+        name: "session-dispatch-fix",
+        boardId: "session-dispatch-fix",
         collection: sessionScoped,
         workers: { implement: assignee("implement") },
       })
     ).toThrow(/sharedToLineage/);
   });
 
-  it("leaves a session-scoped board with nothing handed off alone", () => {
-    // The refusal is about the hand-off, not about the scope. An inline board
+  it("leaves a session-scoped board with nothing dispatched alone", () => {
+    // The refusal is about the dispatch, not about the scope. An inline board
     // never leaves its request, so a session-scoped ledger is exactly right for
     // it — and refusing one would outlaw a shape that works today.
     expect(() =>
@@ -370,14 +370,14 @@ describe("hand-off dispatch — a session-scoped ledger is refused at constructi
     ).not.toThrow();
   });
 
-  it("accepts a handed-off board on a user-scoped ledger", () => {
+  it("accepts a dispatched board on a user-scoped ledger", () => {
     // The control: same declaration, reachable scope. Without this the refusal
     // above would pass just as well against a guard that refused every
-    // handed-off board.
+    // dispatched board.
     expect(() =>
       taskBoard({
-        name: "user-hand-off",
-        boardId: "user-hand-off",
+        name: "user-dispatch",
+        boardId: "user-dispatch",
         collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
         workers: { implement: assignee("implement") },
       })
@@ -402,7 +402,7 @@ describe("the session-schema refusal sees composed children", () => {
   }
 
   it("refuses a schema declared by a step inside the entry block", () => {
-    // A handed-off block is routinely a sequencer, and the block declaring the
+    // A dispatched block is routinely a sequencer, and the block declaring the
     // schema is usually a step inside it. It runs in the child session exactly
     // as the root would, and collides with a sibling route's key exactly as
     // the root would — so inspecting only the root accepted the flow and left
@@ -434,7 +434,7 @@ describe("the session-schema refusal sees composed children", () => {
 
   it("leaves a composed block that declares none alone", () => {
     // The control. A walk that flagged any sequencer would refuse most
-    // handed-off boards in the codebase.
+    // dispatched boards in the codebase.
     const plain = sequencer({ name: "outer-plain" }).tap(
       handler({ name: "inner-plain", execute: () => null })
     );
