@@ -38,9 +38,9 @@
  *   key-in-run  the key handed to the run's environment (on `NO_PROXY`, a name the
  *               run is passed); FAILS on the key in a Claude Code process's environment
  *
- * Needs: LINEAR_API_KEY, a Claude Code Agent SDK that can run (signed in, or
- * ANTHROPIC_API_KEY), git. Spends Claude Code's model; the chief of staff's
- * is scripted.
+ * Needs: LINEAR_API_KEY, AI_GATEWAY_API_KEY (the coder's judge, Jev), a
+ * Claude Code Agent SDK that can run (signed in, or ANTHROPIC_API_KEY), git.
+ * Spends Claude Code's model and Jev's; the chief of staff's is scripted.
  *
  * Run: pnpm tsx goals/shift-manager/a-projects-coding-run-reads-its-linear/run.mts
  */

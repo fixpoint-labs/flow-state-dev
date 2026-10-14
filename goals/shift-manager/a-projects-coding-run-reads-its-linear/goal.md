@@ -10,7 +10,7 @@
 
 **Anti-game:** No title in the prompt. No assertion on a resolver's output or a stub: the answer is Claude Code's, after a real call through FSD's connection to Linear. The server machine's own Claude Code MCP settings and its account's claude.ai connectors can't count: a run is handed exactly the project's servers (`strictMcpConfig`, connectors off), and the `no-linear` control is the run with FSD's servers cleared. Two departures from serving the profile, each because of the check, not the product: the runs' checkout is a scratch repository mapped as the profile maps this one (a check must not add worktrees to the checkout it runs in, as `fsd-checkout.test.ts` does), and the chief of staff's model is scripted to file the one task (its judgment is not under test). The coder's judge runs as the profile's does, on `typesafe-ai/jev` through the real resolver. The profile's start probe (`startHarness`) is skipped: a Claude Code login through the environment it runs in can work while the probe reports no account.
 
-**Model:** real — Claude Code's own, through the Agent SDK. The chief of staff's is scripted.
+**Model:** real — Claude Code's own, through the Agent SDK, and the coder's judge on `typesafe-ai/jev` through the AI Gateway. The chief of staff's is scripted.
 
 **Run:** `pnpm tsx goals/shift-manager/a-projects-coding-run-reads-its-linear/run.mts`
 
