@@ -1,6 +1,6 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
- * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
+ * Inbox, Tasks and Roster with their counts, Messages, Settings, PROJECTS, TEAMS, and a footer
  * (BR-6) with the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
@@ -90,6 +90,7 @@ const ICON_PATHS = {
   jump: "M6 1.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z M9.3 9.3l3.2 3.2",
   inbox: "M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2",
   tasks: "M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7",
+  messages: "M1.5 2.5h11v7h-6l-3 2.5v-2.5h-2z",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
   /** Settings: a key. */
   settings: "M4.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M7.5 7.5h5 M10.5 7.5v2 M12.5 7.5v1.5",
@@ -284,6 +285,9 @@ function SidebarRail({
         </RailItem>
         <RailItem label="Roster" active={route.level === "roster" || route.level === "rules"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
           <NavIcon name="roster" />
+        </RailItem>
+        <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} onClick={() => navigate({ level: "messages" })} testId="rail-messages">
+          <NavIcon name="messages" />
         </RailItem>
         <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
           <NavIcon name="settings" />
@@ -527,6 +531,13 @@ export function Sidebar({
                 active={(route.level === "roster" && route.team === null) || route.level === "rules"}
                 onClick={() => navigate({ level: "roster", team: null })}
                 testId="nav-roster"
+              />
+              <NavItem
+                label="Messages"
+                icon={<NavIcon name="messages" />}
+                active={route.level === "messages" || route.level === "session"}
+                onClick={() => navigate({ level: "messages" })}
+                testId="nav-messages"
               />
               <NavItem
                 label="Settings"

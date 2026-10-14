@@ -1,0 +1,122 @@
+/**
+ * Messages (FIX-1989): who talked to whom. Every message one of the user's
+ * workers sent another, from the user's message log, beside Tasks.
+ *
+ * Newest first, grouped by thread (a first message and its answers), one line
+ * per message: from, to, when, and the text's first line. Each side is a
+ * link that opens the session that holds it: the sender's, and the one the
+ * message landed in. A message the recipient's host refused, or whose
+ * delivery couldn't be confirmed, says so.
+ *
+ * Talk, not delegation: a message makes no task row, so nothing here is on
+ * Tasks, and nothing on Tasks is here.
+ */
+import { EmptyState, Meta, ScreenTitle, SectionFailure } from "../components/ui";
+import type { Gaps } from "../gaps";
+import { workerLabel, type LoadedSnapshot } from "../lib/derive";
+import { firstLine, threadsOf, useMessages, type WorkerMessageRow } from "../lib/messages";
+import { projectReaderOf } from "../lib/projects";
+import { navigate } from "../lib/routes";
+import { clockTime } from "../lib/shell";
+
+/** One side of a message: the worker, as a link to the session that holds the message on that side. */
+function Side({ worker, sessionId, testId }: { worker: string; sessionId: string; testId: string }) {
+  return (
+    <button
+      type="button"
+      className="font-mono text-[11.5px] font-medium underline-offset-2 hover:underline"
+      onClick={() => navigate({ level: "session", sessionId })}
+      data-testid={testId}
+      data-session-id={sessionId}
+      title={`Open ${workerLabel(worker)}'s session`}
+    >
+      {workerLabel(worker)}
+    </button>
+  );
+}
+
+/** What a message that didn't plainly arrive says beside it. */
+function statusNote(row: WorkerMessageRow): string | null {
+  if (row.status === "refused") return "not delivered";
+  if (row.status === "unconfirmed") return "delivery unconfirmed";
+  return null;
+}
+
+function MessageLine({ row }: { row: WorkerMessageRow }) {
+  const note = statusNote(row);
+  return (
+    <li
+      className="grid grid-cols-[max-content_max-content_1fr] items-baseline gap-x-3 py-1.5"
+      data-testid="message"
+      data-message-id={row.id}
+      data-from={row.from}
+      data-to={row.to}
+      data-status={row.status}
+    >
+      <Meta className="text-muted-foreground" testId="message-when">
+        {clockTime(row.at)}
+      </Meta>
+      <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+        <Side worker={row.from} sessionId={row.fromSession} testId="message-from" />
+        <span className="text-muted-foreground" aria-hidden>
+          →
+        </span>
+        <Side worker={row.to} sessionId={row.toSession} testId="message-to" />
+      </span>
+      <span className="min-w-0 truncate text-sm" data-testid="message-text" title={row.text}>
+        {firstLine(row.text)}
+        {note === null ? null : (
+          <Meta className="ml-2 text-destructive" testId="message-status">
+            {note}
+          </Meta>
+        )}
+      </span>
+    </li>
+  );
+}
+
+export function Messages({ snapshot }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+  const reader = projectReaderOf(snapshot.sessions);
+  const { rows, failure, reread } = useMessages(reader, snapshot.readAt);
+  const threads = rows === undefined ? [] : threadsOf(rows);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-testid="messages">
+      <header className="border-b border-foreground/20 px-[22px] py-3.5" data-testid="messages-header">
+        <ScreenTitle>Messages</ScreenTitle>
+        <Meta role="control" className="mt-1 block text-muted-foreground" testId="messages-summary">
+          {rows === undefined ? "Reading…" : `${rows.length} ${rows.length === 1 ? "message" : "messages"} between your workers, newest first`}
+        </Meta>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-[22px] py-3">
+        {failure !== undefined ? (
+          <SectionFailure what="Messages" failure={failure} onRetry={reread} testId="messages-failure" />
+        ) : reader === null ? (
+          <EmptyState title="No messages" testId="messages-empty">
+            This Lab keeps no roster for you, so your workers have no one to message.
+          </EmptyState>
+        ) : rows === undefined ? (
+          <p className="text-sm text-muted-foreground" data-testid="messages-reading">
+            Reading messages…
+          </p>
+        ) : threads.length === 0 ? (
+          <EmptyState title="No messages yet" testId="messages-empty">
+            When one of your workers messages another, it shows here.
+          </EmptyState>
+        ) : (
+          <ol className="flex flex-col gap-3" data-testid="message-threads">
+            {threads.map((thread) => (
+              <li key={thread.id} className="border-l-2 border-foreground/20 pl-3" data-testid="message-thread" data-thread-id={thread.id}>
+                <ol>
+                  {thread.messages.map((row) => (
+                    <MessageLine key={row.id} row={row} />
+                  ))}
+                </ol>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}

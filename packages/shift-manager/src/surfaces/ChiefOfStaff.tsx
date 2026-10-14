@@ -29,7 +29,7 @@ import { Conversation, ConversationFrame } from "../components/Conversation";
 import { DelegatesPanel } from "../components/DelegatesPanel";
 import { StandingRules } from "../components/StandingRules";
 import { TasksPanel } from "../components/TasksPanel";
-import { conversationSession, COORDINATOR_FLOW } from "../lib/conversation";
+import { COORDINATOR_FLOW, useConversationSession } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
@@ -342,14 +342,15 @@ export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSn
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
   const one = found?.kind === "one" ? found.worker : undefined;
   const cos = one?.kind === COORDINATOR_FLOW ? one : undefined;
+  const conversation = useConversationSession(cos, snapshot.sessions);
   return (
     <div className="p-3" data-testid="cos-panel">
       {cos !== undefined ? (
         <>
           <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
-          <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
+          <DelegatesPanel key={cos.id} worker={cos} sessionId={conversation} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
-          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
+          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversation} readAt={snapshot.readAt} activeOnly />
         </>
       ) : (
         <p className="px-1 text-xs text-muted-foreground" data-testid="cos-panel-empty">

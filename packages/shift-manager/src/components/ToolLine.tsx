@@ -12,6 +12,10 @@
  * tool in the run completed was an attempt, not an error: it reads "Tried
  * openWorkstream", and the run doesn't read as failed for it.
  *
+ * A `messageWorker` call is talk, not background: it is its own line, *To
+ * <recipient>: <text>*, with a link to Messages, and a refused one says it
+ * wasn't sent and why (FIX-1989).
+ *
  * This is Shift Manager's own presentation: `flow-state/tool.tsx` is the
  * registry's copy and stays byte-equal to it. {@link shiftManagerRenderers}
  * swaps this in for its `tool_output` renderer.
@@ -23,7 +27,8 @@ import type { RendererRegistry } from "@flow-state-dev/react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { COORDINATOR_ROUTE } from "@flow-state-dev/workforce/browser";
+import { COORDINATOR_ROUTE, MESSAGE_WORKER_TOOL } from "@flow-state-dev/workforce/browser";
+import { navigate } from "../lib/routes";
 import { chatAssistantRenderers } from "./flow-state/chat-assistant";
 import { CoordinatorRoute } from "./CoordinatorRoute";
 import { TaskBoardMeta } from "./TaskBoardMeta";
@@ -125,13 +130,60 @@ function QuietLine({ label, state, nested = false, children }: { label: string; 
   );
 }
 
+/** Whether a call is a worker message, drawn as its own line. */
+function isMessageCall(item: ToolOutputItem): boolean {
+  return item.toolCall?.name === MESSAGE_WORKER_TOOL;
+}
+
+/** A worker message the turn sent: *To <recipient>: <text>*, or why it wasn't sent. */
+function MessageCallLine({ item }: { item: ToolOutputItem }) {
+  const args = argsOf(item) as { to?: unknown; text?: unknown } | undefined;
+  const to = typeof args?.to === "string" ? args.to : "another worker";
+  const text = typeof args?.text === "string" ? args.text : "";
+  const state = stateOf(item);
+  const output = item.output as { ok?: unknown; error?: unknown } | undefined;
+  const refused = state === "error" || output?.ok === false;
+  const reason = typeof output?.error === "string" ? output.error : item.error?.message;
+  const label = refused ? `Not sent to ${to}` : state === "running" || state === "pending" ? `Sending to ${to}…` : `To ${to}`;
+  return (
+    <div className="not-prose text-sm" data-testid="message-call" data-to={to} data-state-kind={refused ? "error" : state}>
+      <p className="whitespace-pre-wrap">
+        <span className={cn("font-medium", refused && "text-destructive")}>{label}:</span> {text}
+      </p>
+      <p className="mt-0.5 flex gap-3 text-xs text-muted-foreground">
+        {refused && reason !== undefined ? <span data-testid="message-call-reason">{reason}</span> : null}
+        <button type="button" className="hover:text-foreground hover:underline" onClick={() => navigate({ level: "messages" })} data-testid="message-call-messages">
+          Messages ›
+        </button>
+      </p>
+    </div>
+  );
+}
+
 /**
  * A run of tool calls as one quiet line: the call's own name for one call, a
  * count for several. Opens to the call's details, or to one line per call that
- * opens to its own.
+ * opens to its own. A worker message in the run is its own line, in order.
  */
 export function ToolLineGroup({ items }: { items: readonly ToolOutputItem[] }) {
   if (items.length === 0) return null;
+  if (items.some(isMessageCall)) {
+    // Consecutive other calls stay one quiet line between the messages.
+    const parts: Array<{ message: ToolOutputItem } | { run: ToolOutputItem[] }> = [];
+    for (const item of items) {
+      const last = parts[parts.length - 1];
+      if (isMessageCall(item)) parts.push({ message: item });
+      else if (last !== undefined && "run" in last) last.run.push(item);
+      else parts.push({ run: [item] });
+    }
+    return (
+      <div className="flex flex-col gap-1.5">
+        {parts.map((part) =>
+          "message" in part ? <MessageCallLine key={part.message.id} item={part.message} /> : <ToolLineGroup key={part.run[0]!.id} items={part.run} />,
+        )}
+      </div>
+    );
+  }
   const states = statesInRun(items);
   const state = runState(states);
   if (items.length === 1) {

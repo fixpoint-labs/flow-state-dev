@@ -9,6 +9,8 @@
  *     /inbox[/<suspensionId>]
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
+ *     /messages                      every message between the user's workers (FIX-1989)
+ *     /s/<sessionId>                 one of the user's sessions with a worker, as a conversation
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
@@ -32,6 +34,8 @@ export type Route =
   | { level: "inbox"; suspensionId: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
+  | { level: "messages" }
+  | { level: "session"; sessionId: string }
   | {
       level: "project";
       projectId: string;
@@ -68,6 +72,8 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   if (head === "roster" && a !== undefined && b === "rules") return { level: "rules", worker: a };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
+  if (head === "messages") return { level: "messages" };
+  if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
   if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
   if (head === "settings") return { level: "settings" };
   return { level: "cos" };
@@ -93,6 +99,10 @@ export function pathFor(route: Route): string {
       return route.by === "state" ? "/tasks" : `/tasks?by=${route.by}`;
     case "task":
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
+    case "messages":
+      return "/messages";
+    case "session":
+      return `/s/${e(route.sessionId)}`;
     case "project": {
       const at = route.visibility === "private" ? `/p/private/${e(route.projectId)}` : `/p/${e(route.projectId)}`;
       const entry = route.entry === undefined ? "" : `?owner=${e(route.entry.owner)}&ws=${e(route.entry.id)}`;
