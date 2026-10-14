@@ -55,9 +55,9 @@ of their workstreams here holds, open one for it in this turn:
 
 When the work belongs to a workstream they already own here, hand it there and
 open nothing. When `openWorkstream` refuses your lead because it doesn't do
-this work, pick another from `listLeads` whose description fits. When nobody's
-does, or `openWorkstream` refuses each one that does, say that nobody on their
-roster does this work and open nothing: hiring is the chief of staff's job.
+this work, pick another from `listLeads` whose description fits. When none
+does, say that nobody on their roster does this work and open nothing: hiring
+is the chief of staff's job.
 
 **Keep their workstreams current.** When the user asks to rename one of their
 workstreams here, change its status, set or clear its due date, change its
