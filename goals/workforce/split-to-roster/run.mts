@@ -1,42 +1,7 @@
 /**
- * Goal check: a worker on a task gets a result from any task-taking worker on
- * the roster by filing a piece, ending its turn, and finishing its task from
- * its own reading of that result, with nothing held open while it waits
- * (FIX-1997). See goal.md.
- *
- * One in-process host on the real engine and a SQLite store, acted on over its
- * HTTP router as one verified person (`httpActions`). The tree
- * (`fixtures/workforce/`):
- *
- * - `crew.desk`, on the goal-local `desk` flow: the person's conversation. Its
- *   turn runs no model; it records every message it is handed, so leg 4 reads
- *   what the desk heard. Its one delegate is `crew.reporter`.
- * - `crew.reporter` (worker A), on the built-in `agent` flow and a real model.
- *   Its one delegate is `crew.helper`.
- * - `crew.keeper` (worker B), `crew.broken` and `crew.helper`, on the
- *   goal-local `taker` flow, none of them A's delegate but `crew.helper`.
- *   `crew.keeper` answers with this round's codename, made fresh per leg and
- *   held nowhere else, after a short hold; `crew.broken` fails every attempt;
- *   `crew.helper` holds no codename.
- *
- * Legs:
- *   1  A, on a task, reports a codename only B holds: A files a piece to B and
- *      its turn ends; A's task is parked with no request running while B
- *      works; B completes; A's woken turn writes a report; A's task completes
- *      with that report as its answer, holding the codename.
- *   2  B fails for good: A's woken turn reads the failure, and A's task fails
- *      or files again.
- *   3  The host stops between B's ending and A's woken turn, and starts again
- *      over the same store: A's task settles once.
- *   4  Across legs 1 to 3, the desk is never handed a piece's ending: every
- *      ending it hears is a task the person filed.
- *
- * Controls (GOAL_CONTROL=...), each a scratch patch to Workforce applied as
- * this process loads it (`goals/lib/module-patch.mts`):
- *   delegates-only    a task session files for its delegates only. FAILS 1.
- *   pieces-output     the settle ignores the woken turn's answer. FAILS 1.
- *   wake-coordinator  a task session files its pieces on the board above, the
- *                     desk's, so each piece's ending is the desk's. FAILS 4.
+ * Goal check: a task's pieces reach any task-taking roster worker, and the
+ * task completes with the woken turn's answer (FIX-1997). The legs, the
+ * controls, and the red state of each are in goal.md.
  *
  * Run: pnpm tsx goals/workforce/split-to-roster/run.mts
  * Legs: GOAL_LEGS=1,2,3,4 (default: all; leg 4 grades what 1 to 3 left)
@@ -321,6 +286,8 @@ await runGoal(async (failures) => {
       filed.push(out.taskId);
       return out.taskId as string;
     };
+    const reportAsk = (round: string, keeper: string) =>
+      `Find out this ${round}'s codename and write me a one-sentence report that states it. ${keeper}, a worker on the team, keeps it; it isn't one of your delegates.`;
     /** A's task session for `taskId`: the session its row's run names. */
     const sessionOf = (row: Row | undefined): string | undefined => (row as { run?: { sessionId?: string } } | undefined)?.run?.sessionId;
 
@@ -328,10 +295,7 @@ await runGoal(async (failures) => {
     if (legs.has("1")) {
       seen.codename = codename();
       say(`leg 1: the codename is ${seen.codename}`);
-      const taskId = await fileForA(
-        `Find out this release's codename and write me a one-sentence report that states it. ${B}, a worker on the team, keeps it; it isn't one of your delegates.`
-      );
-      // While B works: A's task parked, and nothing running in A's task session.
+      const taskId = await fileForA(reportAsk("release", B));
       const store = await storeOf(host);
       let during: { status?: string; running?: number; at?: number } = {};
       for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(100)) {
@@ -373,9 +337,7 @@ await runGoal(async (failures) => {
 
     // ---- leg 2 --------------------------------------------------------------------
     if (legs.has("2")) {
-      const taskId = await fileForA(
-        `Find out this launch's codename and write me a one-sentence report that states it. ${BROKEN}, a worker on the team, keeps it; it isn't one of your delegates.`
-      );
+      const taskId = await fileForA(reportAsk("launch", BROKEN));
       await quiet(host);
       const store = await storeOf(host);
       const rows = await store.rows();
@@ -383,7 +345,6 @@ await runGoal(async (failures) => {
       const pieces = rows.filter((r) => pieceOf(r) === taskId);
       const failed = pieces.filter((r) => r.assignee === BROKEN && r.status === "errored");
       const own = sessionOf(top);
-      // The turns a piece's failure for good woke in A's task session.
       const woken =
         own === undefined
           ? []
@@ -401,9 +362,7 @@ await runGoal(async (failures) => {
     // ---- leg 3 --------------------------------------------------------------------
     if (legs.has("3")) {
       seen.codename = codename();
-      const taskId = await fileForA(
-        `Find out this patch's codename and write me a one-sentence report that states it. ${B}, a worker on the team, keeps it; it isn't one of your delegates.`
-      );
+      const taskId = await fileForA(reportAsk("patch", B));
       let store = await storeOf(host);
       let atStop: { top?: string; piece?: string } = {};
       for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(5)) {
@@ -420,7 +379,6 @@ await runGoal(async (failures) => {
       host = startHost(db);
       http = httpActions((await host.getRouter()) as any, USER_ID);
       store = await storeOf(host);
-      // The person looks at the board again; then everything it starts ends.
       await http.act("desk", conv, "listTasks_tasks", {});
       await quiet(host);
       await http.act("desk", conv, "listTasks_tasks", {});

@@ -141,23 +141,13 @@ export function retryingPiece(ctx: BlockContext): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-/**
- * Request state: the answer of the turn a piece's notice woke in the running
- * request, which its settle completes the task with. Request-scoped, so a
- * settle in any other request (a replay) finds none.
- */
+/** The woken turn's answer, on this request only, so a replayed settle finds none. */
 const WOKEN_ANSWER_STATE = "splitAnswer";
 
-/** The answer of the turn a notice woke in the running request, when one answered. */
 function wokenAnswerOf(ctx: BlockContext): unknown {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[WOKEN_ANSWER_STATE];
 }
 
-/**
- * After the turn a notice woke: keep its answer on the request, in a task
- * session whose task waits on its pieces, for the settle that follows it.
- * Passes the answer through.
- */
 export const noteWokenAnswer = handler({
   name: "split-note-answer",
   inputSchema: z.unknown(),

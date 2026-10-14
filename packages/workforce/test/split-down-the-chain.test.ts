@@ -221,12 +221,17 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       expect((await one(h, "Book the venue")).status).toBe("completed");
       expect((await one(h, "Plan the launch")).status).toBe("parked");
 
-      // The user's next look at the board settles it.
+      // The user's next look at the board settles it. No woken turn ran in
+      // this request, so the output is the pieces alone.
       h.controls.failNoticeTurn.clear();
       expect((await h.tool("alice", planner, "listTasks", {})).ok).not.toBe(false);
       await h.settled();
+      const piece = await one(h, "Book the venue");
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
+      expect(top.output).toEqual({
+        pieces: [{ taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }]
+      });
       expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
       expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
     } finally {
@@ -347,18 +352,17 @@ describe("a split task's result is its worker's answer", () => {
       const piece = await one(h, "Book the venue");
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
-      // What the worker concluded from the piece is what the filer asked for.
       const t1 = await h.taskSessionOf("alice", top.id);
       const woken = h.controls.turns.filter((turn) => turn.sessionId === t1 && turn.message.startsWith('Task "'));
       expect(woken).toHaveLength(1);
       const output = top.output as { answer?: unknown; pieces?: Array<Record<string, unknown>> };
+      // The filer's conclusion, not the piece's own output.
       expect(output.answer).toBe(`s1 heard: ${woken[0]!.message}`);
-      // The pieces stay under it, as they were.
       expect(output.pieces).toEqual([
         { taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }
       ]);
-      // The filer hears the answer first.
       const line = (await linesAbout(h, planner, "Plan the launch"))[0]!;
+      // Answer is the first key, so the notice leads with it.
       expect(line).toContain("completed by s1: {\"answer\":\"s1 heard: Task");
     } finally {
       await h.dispose();
@@ -388,30 +392,6 @@ describe("a split task's result is its worker's answer", () => {
     }
   });
 
-  it("completes with the pieces' list alone when no turn answered: a settle replayed after the woken turn failed", async () => {
-    const h = bootSplitHost();
-    try {
-      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
-      h.controls.plans.s1 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
-      h.controls.failNoticeTurn.add("s1");
-      const planner = await h.open("alice", "planner");
-      await h.turn("alice", planner);
-      await h.settled();
-      expect((await one(h, "Plan the launch")).status).toBe("parked");
-
-      h.controls.failNoticeTurn.clear();
-      await h.tool("alice", planner, "listTasks", {});
-      await h.settled();
-      const piece = await one(h, "Book the venue");
-      const top = await one(h, "Plan the launch");
-      expect(top.status).toBe("completed");
-      expect(top.output).toEqual({
-        pieces: [{ taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }]
-      });
-    } finally {
-      await h.dispose();
-    }
-  });
 });
 
 describe("a task session's pieces reach any task-taking worker on the roster", () => {
@@ -431,7 +411,6 @@ describe("a task session's pieces reach any task-taking worker on the roster", (
       expect(piece.output).toBe("d1 heard: Ask d1 for the codename");
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
-      // The piece ran in a task session of d1's own, on its own flow.
       const pieceSession = await h.session(await h.taskSessionOf("alice", piece.id));
       expect(pieceSession.state).toMatchObject({ workerId: "d1", taskId: piece.id });
       // The coordinator above hears its own task's ending, never the piece's.
@@ -451,7 +430,6 @@ describe("a task session's pieces reach any task-taking worker on the roster", (
       expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "parked")).toBe(true);
       const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
 
-      // The same roster the model's dispatchTask reads.
       expect(await h.tool("alice", t1, "dispatchTask", { goal: "Ask d1", assignee: "d1" })).toMatchObject({ ok: true });
       const offRoster = await h.tool("alice", t1, "dispatchTask", { goal: "Ask nobody", assignee: "nobody" });
       expect(offRoster).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "nobody"/) });

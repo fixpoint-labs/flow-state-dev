@@ -291,18 +291,14 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     return { available, unavailable };
   };
 
-  /**
-   * Every worker on the session user's roster that takes a task now, with the
-   * flow it runs on: who a task session's pieces can go to. Read per call, as
-   * {@link taskDelegates} is. A worker whose row can't be read takes none.
-   */
-  const rosterTaskTakers = async (ctx: BlockContext): Promise<TaskDelegates> => {
+  /** Workers on the user's roster whose flow takes a task. A row that can't be read takes none. */
+  const rosterTaskTakers = async (ctx: BlockContext): Promise<ReadonlyMap<string, string>> => {
     const available = new Map<string, string>();
     for (const worker of await installation.roster(ctx as never)) {
       if (worker.problem !== undefined) continue;
       if (takesConversationTasks(installation.workerFlows()[worker.flow]?.flow)) available.set(worker.id, worker.flow);
     }
-    return { available, unavailable: new Map() };
+    return available;
   };
 
   return {
@@ -314,7 +310,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     postFlows,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates,
-    /** Every worker on the session user's roster that takes a task now. */
+    /** Workers on the user's roster whose flow takes a task. */
     rosterTaskTakers,
     /** The four delegate actions, for the flow's `actions`. */
     actions: {

@@ -123,12 +123,8 @@ export interface ConversationBoardOptions {
    * for the grant on every call.
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
-  /**
-   * Every worker on the session user's roster that takes a task now, read per
-   * call: who a task session's pieces can go to, beside its delegates. A
-   * session that works no task never reads it.
-   */
-  rosterTaskTakers: (ctx: BlockContext) => Promise<TaskDelegates>;
+  /** Who a task session's pieces can name, beside its delegates. Unread outside a task session. */
+  rosterTaskTakers: (ctx: BlockContext) => Promise<ReadonlyMap<string, string>>;
   /**
    * The worker flow the board's sessions run on: where each task it
    * hands over sends its notice back, as the task session's `filingFlow`.
@@ -275,17 +271,12 @@ export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): P
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
-  /**
-   * Who a filing in the running session can name, read now: its delegates
-   * that take a task, and in a task session (its pieces) every worker on the
-   * user's roster that takes one too. Server-side only: the session's task
-   * and its delegate list are server-written state, never input.
-   */
+  /** Delegates, plus roster task-takers while this session is working a task. Both lists are server-written state. */
   const reach = async (ctx: BlockContext): Promise<TaskDelegates> => {
     const delegates = await options.delegates(ctx);
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
     if (typeof state[TASK_ID_STATE_KEY] !== "string") return delegates;
-    const available = new Map([...delegates.available, ...(await options.rosterTaskTakers(ctx)).available]);
+    const available = new Map([...delegates.available, ...(await options.rosterTaskTakers(ctx))]);
     const unavailable = new Map([...delegates.unavailable].filter(([worker]) => !available.has(worker)));
     return { available, unavailable };
   };
