@@ -102,7 +102,7 @@ import {
   type BestFitPlacement
 } from "../best-fit";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
-import { markUserTurn } from "../standing-rules/user-turn";
+import { markUserTurn, userTurnStateSchema } from "../standing-rules/user-turn";
 import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
@@ -661,7 +661,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     inputSchema: doorInputSchema,
     outputSchema: z.object({ message: z.string(), policy: z.string() }),
     ...blockBase,
-    requestStateSchema,
+    // Declares the user-turn mark it sets, as the agent flow's marking step does.
+    requestStateSchema: requestStateSchema.merge(userTurnStateSchema),
     execute: async (input: DoorInput, ctx) => {
       const post = await postStateOf(ctx as never, {
         postId: ctx.request.identity.id,

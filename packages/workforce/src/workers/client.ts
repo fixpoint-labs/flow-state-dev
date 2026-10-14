@@ -105,9 +105,9 @@ function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: re
   return [...rows].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0];
 }
 
-/** How often a rules call checks whether its request ended, and how long it waits. */
-const RULES_POLL_MS = 100;
-const RULES_TIMEOUT_MS = 30_000;
+/** How often an action run through the client checks whether its request ended, and how long it waits. */
+const ACTION_POLL_MS = 100;
+const ACTION_TIMEOUT_MS = 30_000;
 
 /**
  * Build a workforce client.
@@ -230,11 +230,11 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     const actions = createClient({ flowKind: flow, userId, ...transport });
     const started = await actions.sendAction(action, input, { sessionId });
     const requestId = started.request.id;
-    const until = Date.now() + RULES_TIMEOUT_MS;
+    const until = Date.now() + ACTION_TIMEOUT_MS;
     let status: Awaited<ReturnType<typeof actions.getRequestStatus>>["status"] = started.status;
     while (status === "in_progress") {
       if (Date.now() > until) throw new Error(`${action} did not finish in time.`);
-      await new Promise((resolve) => setTimeout(resolve, RULES_POLL_MS));
+      await new Promise((resolve) => setTimeout(resolve, ACTION_POLL_MS));
       status = (await actions.getRequestStatus(requestId)).status;
     }
     const listed = await sessions.listSessionRequests(sessionId, { status, includeResultOutput: true, limit: 100 });

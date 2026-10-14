@@ -18,9 +18,11 @@
  *   turn can't edit even by naming a tool. Each write that lands posts a line
  *   the user sees, from the tool, not from the model's reply.
  *
- * Every write names the version of the list the model last saw (the list in
- * context, or a tool's answer since), so a write racing a page edit is
- * refused with the list as it stands rather than landing on one it never saw.
+ * Every write names the version of the list the model last saw. That is the
+ * request's own read of the record: the list in context came from it, and a
+ * write that lands or is refused refreshes it to the list the tool answered.
+ * So a write racing a page edit is refused with the list as it stands rather
+ * than landing on one the model never saw.
  */
 import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -30,17 +32,12 @@ import { isUserTurn } from "./user-turn";
 import { MAX_RULES, numberedRules, renderRules, type RuleEdit, type StandingRules } from "./rules-list";
 import { STANDING_RULES_RESOURCE, readStandingRules, standingRulesCollection, writeStandingRules } from "./rules-record";
 
-/** The version of the list the model last saw, by the request's session handle. */
-const seen = new WeakMap<object, number>();
 /** Requests whose failed rules read was already said in the trace. */
 const saidReadFailed = new WeakSet<object>();
 
 const resources = { [STANDING_RULES_RESOURCE]: standingRulesCollection };
 
-/**
- * The rules as this turn reads them, or `undefined` for none or a failed read.
- * Records the version shown, so a write names the list the model saw.
- */
+/** The rules as this turn reads them, or `undefined` for none or a failed read. */
 async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
   let list: StandingRules;
   try {
@@ -53,7 +50,6 @@ async function rulesContext(ctx: BlockContext): Promise<string | undefined> {
     }
     return undefined;
   }
-  seen.set(ctx.session as object, list.version);
   return renderRules(list);
 }
 
@@ -70,16 +66,13 @@ const toolOutputSchema = z.union([
 /** Apply `edit` from a tool, as the list the model last saw. */
 async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
   if (!isUserTurn(ctx)) {
-    return {
-      ...listOutput(await readStandingRules(ctx)),
-      refused: "Standing rules change only on a turn a user started; this one can't edit them."
-    };
+    const refused = "Standing rules change only on a turn a user started; this one can't edit them.";
+    const current = await readStandingRules(ctx).catch(() => undefined);
+    return current === undefined ? { rules: [], max: MAX_RULES, refused } : { ...listOutput(current), refused };
   }
-  const session = ctx.session as object;
-  let version = seen.get(session);
-  if (version === undefined) version = (await readStandingRules(ctx)).version;
   let outcome;
   try {
+    const { version } = await readStandingRules(ctx);
     outcome = await writeStandingRules(ctx, version, edit, ctx.session.identity.id);
   } catch (error) {
     const reason = `Not saved: ${error instanceof Error ? error.message : String(error)}`;
@@ -89,8 +82,6 @@ async function toolWrite(ctx: BlockContext, edit: RuleEdit) {
       ? { rules: [], max: MAX_RULES, refused: `${reason} The current rules couldn't be read either; this list is not them.` }
       : { ...listOutput(current), refused: reason };
   }
-  // The model sees this list now, refused or not, so the next write names it.
-  seen.set(session, outcome.list.version);
   if (!outcome.ok) {
     if (outcome.full === true) {
       ctx.emit.message(`✎ Rule not added: ${outcome.reason}.`, {
@@ -113,7 +104,6 @@ const readTool = handler({
   resources,
   execute: async (_input, ctx) => {
     const list = await readStandingRules(ctx as never);
-    seen.set(ctx.session as object, list.version);
     return listOutput(list);
   }
 });
