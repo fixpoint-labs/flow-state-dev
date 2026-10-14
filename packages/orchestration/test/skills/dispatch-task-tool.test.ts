@@ -183,3 +183,22 @@ describe("dispatchTask replayed after the team changed (BR-15)", () => {
     ).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: /) });
   });
 });
+
+describe("a new task's input is an object, never its JSON as a string", () => {
+  const project = { project: { visibility: "shared", id: "shift-manager" } };
+  const tools = taskToolsForTurn(async () => {
+    throw new Error("unused");
+  }, () => team(["eng.coder"]).roster, { dispatches: true })({});
+
+  for (const name of ["dispatchTask", "addTask"]) {
+    it(`${name} refuses the payload as a string, so the model is told to send the object`, () => {
+      const tool = tools.find((t) => (t as { name?: string }).name === name);
+      if (tool === undefined) throw new Error(`${name} is not offered`);
+      const base = { goal: "Create a file and commit it", assignee: "eng.coder" };
+      expect(tool.inputSchema.safeParse({ ...base, input: JSON.stringify(project) }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: 1 }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: [project] }).success).toBe(false);
+      expect(tool.inputSchema.safeParse({ ...base, input: project }).success).toBe(true);
+    });
+  }
+});

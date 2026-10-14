@@ -740,7 +740,9 @@ an assignee it does not name. The roster can be a function of the running block'
 context, read on each call that checks an assignee, for a board whose team changes
 while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
-`{ ok: false, error: "no_delegation_board" }` rather than throwing.
+`{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
+`addTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
+tool's schema, so a model that would send the payload as a JSON string is told to send the object.
 
 `dispatchTask` starts work now. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a

@@ -957,10 +957,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     assignee: z.string().optional(),
     deps: z.array(z.string()).optional(),
     priority: z.number().optional(),
+    // `unknown` has no type, so a model may send this payload as a JSON string.
     input: z
-      .unknown()
+      .record(z.string(), z.unknown())
       .optional()
-      .describe("Structured payload handed to the worker as the task's input."),
+      .describe("Structured payload handed to the worker as the task's input: a JSON object, not a string."),
     metadata: z.record(z.string(), z.unknown()).optional(),
     followUpOf: z
       .string()
