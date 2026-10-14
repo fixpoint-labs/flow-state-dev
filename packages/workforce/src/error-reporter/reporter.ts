@@ -1,6 +1,10 @@
 /**
  * The Error Reporter (FIX-1983): what a Lab creates once, hands the engine as
- * its `errorCapture` handler, and binds to its runtime.
+ * its `errorCapture` handler, and binds to its runtime. Workforce never
+ * imports the engine, so {@link ErrorReporter.bind} takes the runtime
+ * operations; one process binds one reporter. A final event and an errored
+ * task ending are what it takes; dedupe, the cap, the preview and filing are
+ * the flow's.
  *
  * ```ts
  * const reporter = createErrorReporter({ worker: "error-reporter", operator, tracker: { project: "shared/storefront" } });
@@ -9,18 +13,6 @@
  * const flowState = createFlowState({ flows: { ..., [flow.kind]: flow, [intake.kind]: intake }, errorCapture: reporter.capture });
  * await reporter.bind(host);
  * ```
- *
- * **It never decides what counts.** The engine sends one `final` event per
- * request that settled failed; a board's ending recorder marks a task that
- * ended errored. The reporter takes the `final` events, turns each into an
- * occurrence, and hands it to its flow's one intake. Everything after that
- * (dedupe, the cap, the preview, filing) is the flow's.
- *
- * **The host door.** Workforce never imports the engine, so the Lab hands
- * {@link ErrorReporter.bind} the few runtime operations the reporter needs: run
- * an action as the operator, open a session, and read what a request or a
- * session holds. Runs are in-process: a multi-process deployment binds one
- * reporter per process, and each process starts the runs its own intakes made.
  */
 import { PROJECT_STATE_KEY, WORKER_ID_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import {

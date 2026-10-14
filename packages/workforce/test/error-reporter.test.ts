@@ -1,13 +1,4 @@
-/**
- * The Error Reporter on the real engine (FIX-1983).
- *
- * What the operator relies on: a failure that stayed failed becomes exactly
- * one report, however often it repeats; nothing files before they answer the
- * preview; a burst can't flood them; a task's failed requests and its ending
- * are one report, not two; the reporter never reports itself; no secret
- * reaches a report; and a person can report a problem by telling the reporter,
- * which takes the same road. Each test fails if that promise breaks.
- */
+/** The Error Reporter on the real engine (FIX-1983). */
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";

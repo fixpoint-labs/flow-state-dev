@@ -1,18 +1,6 @@
 /**
  * The Error Reporter's report rows and its one intake (FIX-1983).
  *
- * **One intake is the convergence point for "one report per fingerprint".**
- * Every occurrence goes through {@link intakeOccurrence}: a request that
- * settled failed (the engine's final `errorCapture` event), a task that ended
- * errored (the board's owed-report mark), and a problem a person reported in
- * the reporter's conversation. It fingerprints the occurrence, counts it on
- * the report row, and applies the cap, before any run starts.
- *
- * **The row is the outbox** (FIX-1780's pattern). A new report is written with
- * status `owed` before the reporter runs; the run moves it on. A run that fails
- * leaves it `owed` (or `drafting`), and the next start retries it. The rows sit
- * in the Lab's store at org scope, so counts survive a restart.
- *
  * Keys, all under one collection:
  * - `fp-<fingerprint>`: one report per fingerprint;
  * - `storm-<window start>`: the window's storm report, listing what got no report of its own;

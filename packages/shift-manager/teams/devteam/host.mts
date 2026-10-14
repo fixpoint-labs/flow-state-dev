@@ -624,14 +624,8 @@ export interface OpenLabOptions {
   /** Where the start line naming the MCP servers goes; stderr by default. */
   log?: (line: string) => void;
   /**
-   * The Error Reporter (FIX-1983): the tree's worker on the `error-reporter`
-   * flow, told about every request that settled failed and every task that
-   * ended errored, which drafts a report with `harness`, asks the Lab's user
-   * in Inbox, and files through `tracker`'s project's MCP servers. Turns
-   * durable execution on, since every report waits for an answer.
-   *
-   * **Absent means absent**: the reporter's worker is left off the roster, no
-   * failure is reported, and nothing else changes.
+   * The Error Reporter (FIX-1983). Absent leaves its worker off the roster.
+   * Present turns durable execution on, since a report waits for an answer.
    */
   errorReporter?: LabErrorReporter;
 

@@ -139,11 +139,9 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
 }
 
 /**
- * Claude Code as the Error Reporter's harness (FIX-1983): it reads the code
- * and files through the tracker project's MCP servers, and changes nothing.
- * Read and search only; writing, editing and the shell are kept out. `env`
- * passes only {@link CLAUDE_CODE_PASS}, as the coder's does: the tracker's key
- * reaches the run's tools through the Lab's connection, never the run.
+ * Claude Code as the Error Reporter's harness (FIX-1983): read and search
+ * only. `env` passes only {@link CLAUDE_CODE_PASS}, as the coder's does: the
+ * tracker's key reaches the run through the Lab's connection, never the run.
  */
 export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeeds): HarnessBlock {
   return claudeCodeAgent({

@@ -1,24 +1,5 @@
 /**
- * The bugs this check plants in a real Lab, kept in a file of their own so the
- * Error Reporter's harness can find them by reading the code, the way it would
- * find a real bug.
- *
- * 1. **The Shift Coordinator.** {@link plantedCoordinatorModel} is the chief of
- *    staff's model in this Lab. Asked about a project by name, it looks up the
- *    project's repository host before checking the project has a repository,
- *    so a message naming a project with none (Sandbox) fails the
- *    coordinator's turn. Any other message is answered.
- * 2. **A worker's harness run.** {@link plantedCoderRun} is what the coder's
- *    scripted harness does in its checkout: it throws for a task whose goal
- *    carries `[harness-bug]`, throws on the first attempt only for `[flaky]`,
- *    and for `[gives-up]` does no work and reports its run errored
- *    ({@link plantedCoderStatus}), so the attempt fails without a thrown
- *    error.
- * 3. **A burst.** A message `burst: <word>` fails the coordinator's turn with
- *    an error naming the word, so thirty words are thirty different failures.
- *
- * A message `dispatch {json}` makes the chief of staff call `dispatchTask`
- * with that JSON, then stop: how this check files a task.
+ * The bugs this check plants, in a file the reporter's harness can read.
  */
 import type { GeneratorModel } from "@flow-state-dev/core/types";
 import { commitScriptedWork } from "../../../packages/shift-manager/teams/devteam/harness.mts";
