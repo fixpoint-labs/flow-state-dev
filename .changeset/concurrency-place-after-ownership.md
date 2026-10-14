@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/engine": patch
+"@flow-state-dev/engine": minor
 ---
 
-On the in-memory backend a `reject` or `queue` request now takes its concurrency place only after the caller's ownership of the session is checked, so another user can no longer briefly hold a session's key, and a `reject` refusal arrives through the dispatch handle's `accepted` rather than as a synchronous throw (FIX-1837).
+On the in-memory backend a `reject` refusal from `host.dispatch` now arrives as `ConcurrencyRejectedError` through the returned handle's `accepted` and `finished` instead of a synchronous throw, so await `accepted` (or `finished`) rather than wrapping `dispatch` in try/catch to observe it, and a caller who does not own the session no longer briefly holds its concurrency key (FIX-1837).
