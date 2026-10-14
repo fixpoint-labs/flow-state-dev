@@ -45,7 +45,7 @@ produced; under the control the colon strings must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/model-strings/registry-grammar/` · real Vercel AI Gateway and a direct OpenAI key, cheapest model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | For `vercel:openai/gpt-5.4-mini`, `openai:gpt-5.4-mini`, `openai/gpt-5.4-mini` and `vercel/openai/gpt-5.4-mini`: the generator returns text, and the run's model identity names the expected gateway (or none) and the id `openai/gpt-5.4-mini` or `gpt-5.4-mini`. The legacy string prints exactly one warning naming its colon form. `vercel:typesafe-ai/jev` returns an evaluator decision. The guard exits 0 on the repo and non-zero with one planted `"vercel/openai/x"` |
+| **Signal** | For `vercel:openai/gpt-5.4-mini`, `openai:gpt-5.4-mini`, `openai/gpt-5.4-mini` and `vercel/openai/gpt-5.4-mini`: the generator returns text, and the run's model identity names the expected gateway (or none) and the id `openai/gpt-5.4-mini` or `gpt-5.4-mini`. The legacy string prints exactly one warning naming its colon form. `vercel:typesafe-ai/jev` returns an evaluator decision through the gateway, and `triage:native`, on a provider the check registers under `providers`, returns one through the provider lookup with no gateway in its identity. The guard exits 0 on the repo and non-zero with one planted `"vercel/openai/x"` |
 | **Input** | `openai/gpt-5.4-mini` through the gateway. Any other gateway model must pass too, and so must a model id that carries its own `:` (`openrouter:openai/gpt-oss-20b:free`) |
 | **Anti-game** | Don't assert on the parser's output or on a stubbed provider. Both pass while the request never reaches the gateway with the right id |
 | **Control that must fail** | `GOAL_CONTROL=colon-off`: FAILS on *the colon strings return text*. Today's `main` FAILS the same way |
@@ -123,7 +123,7 @@ lane passes everything after the first colon to that provider untouched, slashes
 | The debt | |
 |---|---|
 | **Removes** | Nothing at once: the 131 slash multi-hop strings outside retained history, across Kitchen Sink, docs, goals and tests, are respelled, not removed (counted by `poc/model-string-census/`; 7 more sit in dated records and stay). After the window: the legacy branch, its warning, and Kitchen Sink's read of saved slash ids |
-| **Adds** | A second spelling for a gateway route during the window. Accepted so stored strings keep running (BP-030). Paid by a follow-up issue that removes it, filed with this spec's merge (`FIX-XXX · remove the slash multi-hop form`) |
+| **Adds** | A second spelling for a gateway route during the window. Accepted so stored strings keep running (BP-030). Paid by a follow-up issue that removes it, *remove the slash multi-hop form*, filed when the implementation PR opens and linked from it |
 | **Leaves** | The model layer's size ([FIX-852](https://linear.app/fixpoint-labs/issue/FIX-852)). A comment in the fallback model that already says `provider:model-id` for a slash string; fixed in the sweep |
 
 **Net: up slightly now, flat when the window closes.** One lane comes in for good; a second

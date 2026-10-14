@@ -98,6 +98,7 @@ if (process.argv.includes("--control")) {
     process.exit(1);
   }
   console.log(`control ok: planted legacy string counted (${before} -> ${after})`);
+  process.exit(0);
 }
 
 // Totality: every matched token lands in a named lane.

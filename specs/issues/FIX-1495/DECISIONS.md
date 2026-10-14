@@ -129,12 +129,10 @@ It comes down to the second spelling: one release removes it while small; until 
 - **The counts this spec rests on** — re-derived by `poc/model-string-census/census.mjs`, which
   scans the guard's own surface: 1,502 quoted strings whose first segment is a known gateway, provider or `intent`; 1,054 `provider/model`, 307
   `intent/…`, 138 slash multi-hop (131 to sweep, 7 in retained history), 3 bare gateway, none unclassified. Its control plants one
-  slash multi-hop string and must count it (138 → 139); it did.
+  slash multi-hop string and must count it (138 → 139); it did. It counts the slash-era grammar only; once the colon lane ships, the parser tests and the guard are what count colon strings.
 
 ## How it got here
 
 - **Draft** — framed as matching AI SDK's grammar without a second registry; kept the slash form
   that is already the Gateway's id format, gave the colon to strings that name a route, and built
   it on the resolver's existing provider and gateway maps.
-
-**Open: one.**
