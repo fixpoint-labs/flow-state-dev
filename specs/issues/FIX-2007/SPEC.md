@@ -59,9 +59,6 @@ flowchart LR
   end
 ```
 
-The list leaves the panel and lands on one settings page per worker, with two ways in and the
-old address kept.
-
 ```diff
   Roster row
 - [ Rules ]            (only when the worker keeps rules; otherwise a "doesn't keep" line)
@@ -93,9 +90,9 @@ says nothing about where Shift Manager draws them, so it stays.
 | Already here | What this does with it |
 |---|---|
 | `ChiefOfStaffPanel` draws the coordinator's `StandingRules … compact` | **Removes** that section. `compact` then has no caller; it goes too |
-| `RulesView` at `/roster/<id>/rules` (route level `rules`) | **Replaces** with a per-worker settings page at `/roster/<id>/settings` whose one section is Rules |
+| `RulesView` at `/roster/<id>/rules` (route level `rules`) | **Evolves in place** into the worker's settings page at `/roster/<id>/settings`, its one section Rules; no parallel page. The route level `rules` becomes one worker variant, `worker-settings` (distinct from the user's `level: "settings"`), with no separate rules branch |
 | Roster row's `roster-worker-rules` button, and the `roster-worker-no-rules` line | **Replaces** both with one Settings button on every row; the line moves into the page |
-| `parseRoute` sends any unknown path to the Shift Coordinator | **Builds on**: `/roster/<id>/rules` stays a parsed path, now to the settings page (BP-030) |
+| `parseRoute` sends any unknown path to the Shift Coordinator | **Builds on**: `/roster/<id>/rules` stays a parse-only alias for `worker-settings` (BP-030); `pathFor` emits `/roster/<id>/settings` for every link |
 | Anything else that shows a worker's settings | **None.** Searched `settings`, `Settings`, `rules` across `packages/shift-manager/src`: the only Settings is the user's own `/settings` |
 | [FIX-1945 BR-20](../FIX-1945/BUSINESS-RULES.md) — rules seen on a worker's view *or the Shift Coordinator view* | **Amended in part**: the coordinator's rules are one click from its view (the gear), not on it |
 | [FIX-1945 BR-21a](../FIX-1945/BUSINESS-RULES.md) — no Rules view for a flow that keeps none; its row says so | **Amended in part**: such a worker gets a Settings page, and the line moves there. Kept: no rules list, no Lab read, no new contract for custom flows |

@@ -37,9 +37,10 @@ conversation with the coordinator. Then a folded panel section earns its place b
   Rules section shows the existing *doesn't keep standing rules* line and makes no Lab read
   (BR-21a's no-read guarantee holds). On `main` today that line sits on the Roster row instead of
   a button; it moves.
-- **The old address is a parsed alias, not a redirect page.** `/roster/<id>/rules` parses to the
-  settings route, which writes `/roster/<id>/settings`. Without it, `parseRoute`'s fallback opens
-  the Shift Coordinator, silently.
+- **The old address is a parse-only alias, not a redirect.** `/roster/<id>/rules` parses to the
+  `worker-settings` route and the URL is left as typed (no rewrite); `pathFor` emits
+  `/roster/<id>/settings` for every new link. Without it, `parseRoute`'s fallback opens the Shift
+  Coordinator, silently.
 - **The page is named for the worker, then SETTINGS** (as Rules is today: name, then a tag), so it
   can't be read as the user's own `/settings`. The left sidebar keeps highlighting Roster on it.
 - **The gear shows whenever there is one Shift Coordinator**, on any flow, and opens its settings
