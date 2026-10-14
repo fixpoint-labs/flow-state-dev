@@ -281,19 +281,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * user's roster that takes one too. Server-side only: the session's task
    * and its delegate list are server-written state, never input.
    */
-  const reach = async (ctx: BlockContext): Promise<TaskDelegates> => {
+  const reach = async (ctx: BlockContext): Promise<{ reachable: TaskDelegates; delegates: TaskDelegates; taskSession: boolean }> => {
     const delegates = await options.delegates(ctx);
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-    if (typeof state[TASK_ID_STATE_KEY] !== "string") return delegates;
-    const available = new Map([...delegates.available, ...(await options.rosterTaskTakers(ctx)).available]);
-    const unavailable = new Map([...delegates.unavailable].filter(([worker]) => !available.has(worker)));
-    return { available, unavailable };
+    if (typeof state[TASK_ID_STATE_KEY] !== "string") return { reachable: delegates, delegates, taskSession: false };
+    // The session's own worker is on the roster too, so it can file a piece
+    // for itself. Deliberate: the chain limits (`./chain`) bound it.
+    const roster = await options.rosterTaskTakers(ctx);
+    const available = new Map([...delegates.available, ...roster.available]);
+    const unavailable = new Map([...delegates.unavailable, ...roster.unavailable].filter(([worker]) => !available.has(worker)));
+    return { reachable: { available, unavailable }, delegates, taskSession: true };
   };
 
   /** The roster the task tools and actions check an assignee against; its sole assignee is still the only delegate. */
   const roster: AssigneeRosterSource = async (ctx) => {
-    const delegates = await options.delegates(ctx);
-    return { ...rosterOf(await reach(ctx)), soleAssignee: rosterOf(delegates).soleAssignee };
+    const { reachable, delegates } = await reach(ctx);
+    return { ...rosterOf(reachable), soleAssignee: rosterOf(delegates).soleAssignee };
   };
 
   /**
@@ -301,7 +304,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * delegates takes a task, read from its list as it stands; in a task
    * session, any worker on the roster that takes one.
    */
-  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
+  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).reachable.available.size > 0;
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than
@@ -338,20 +341,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return { key: taskSessionKey(claim?.followUpOf ?? task.taskId, worker) };
       }
     },
-    // Re-run the delegate check at hand-over (a task session's pieces: the
-    // roster check): a delegate fired, removed or
-    // moved to a flow that takes no tasks since the filing is refused here,
-    // with the claim held, so the task fails and the conversation hears it.
+    // Re-run the check at hand-over: a delegate (or, for a task session's
+    // pieces, a roster worker) fired, removed or moved to a flow that takes
+    // no tasks since the filing is refused here, with the claim held, so the
+    // task fails and the conversation hears it.
     // A post row's delegate is checked for a post instead.
     flowKind: async (task, ctx) => {
       if (postOf(task) !== undefined) {
         if (options.postFlow === undefined) throw new Error(`Task "${task.taskId}" is a post, and this board hands over none.`);
         return options.postFlow(ctx, task.assignee);
       }
-      const delegates = await reach(ctx);
-      const flow = delegates.available.get(task.assignee);
+      const { reachable, taskSession } = await reach(ctx);
+      const flow = reachable.available.get(task.assignee);
       if (flow !== undefined) return flow;
-      const why = delegates.unavailable.get(task.assignee) ?? "it isn't one of this conversation's delegates";
+      const why =
+        reachable.unavailable.get(task.assignee) ??
+        (taskSession ? "it isn't a worker on this roster that takes tasks" : "it isn't one of this conversation's delegates");
       throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
     },
     // The task session is born naming its worker, the task, the session
@@ -370,7 +375,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (postOf(task) !== undefined) {
         return { [WORKER_ID_STATE_KEY]: task.assignee, [FILING_SESSION_STATE_KEY]: partition };
       }
-      const flow = (await reach(ctx)).available.get(task.assignee);
+      const flow = (await reach(ctx)).reachable.available.get(task.assignee);
       // The session's task: a follow-up's root, though the root's own
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;

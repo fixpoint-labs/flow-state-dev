@@ -388,6 +388,28 @@ describe("a split task's result is its worker's answer", () => {
     }
   });
 
+  for (const answer of ["", null]) {
+    it(`keeps a woken turn's answer that is ${JSON.stringify(answer)}: it answered, so the task completes with it`, async () => {
+      const h = bootSplitHost();
+      try {
+        h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+        h.controls.plans.s1 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
+        h.controls.noticeAnswer.s1 = answer;
+        const planner = await h.open("alice", "planner");
+        await h.turn("alice", planner);
+        await h.settled();
+        const top = await one(h, "Plan the launch");
+        expect(top.status).toBe("completed");
+        const output = top.output as Record<string, unknown>;
+        expect(Object.hasOwn(output, "answer")).toBe(true);
+        expect(output.answer).toBe(answer);
+        expect((output.pieces as unknown[]).length).toBe(1);
+      } finally {
+        await h.dispose();
+      }
+    });
+  }
+
   it("completes with the pieces' list alone when no turn answered: a settle replayed after the woken turn failed", async () => {
     const h = bootSplitHost();
     try {
@@ -457,6 +479,11 @@ describe("a task session's pieces reach any task-taking worker on the roster", (
       expect(offRoster).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "nobody"/) });
       const noTasks = await h.tool("alice", t1, "dispatchTask", { goal: "Ask the helper", assignee: "eng.helper" });
       expect(noTasks).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "eng\.helper"/) });
+      // Refused naming why, as a delegate that takes no task is.
+      expect(noTasks.error).toMatch(/eng\.helper: Worker "eng\.helper" runs on flow "helper", which takes no task/);
+      // Its own worker is on the roster too: a piece for itself is filed (bounded by the chain limits).
+      h.controls.plans.s1 = [];
+      expect(await h.tool("alice", t1, "dispatchTask", { goal: "Ask myself", assignee: "s1" })).toMatchObject({ ok: true });
       // A conversation that isn't working a task files for its delegates only, as before.
       const fromConversation = await h.tool("alice", planner, "dispatchTask", { goal: "Ask d1 directly", assignee: "d1" });
       expect(fromConversation).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "d1"/) });
@@ -466,7 +493,66 @@ describe("a task session's pieces reach any task-taking worker on the roster", (
       expect(await h.rowsNamed("alice", "Ask nobody")).toEqual([]);
       expect(await h.rowsNamed("alice", "Ask the helper")).toEqual([]);
       expect(await h.rowsNamed("alice", "Ask d1 directly")).toEqual([]);
+      expect((await one(h, "Ask myself")).status).toBe("completed");
       expect((await one(h, "Plan the launch")).status).toBe("completed");
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a follow-up a task session files for a roster worker", () => {
+  it("runs in the session of the piece it follows, though that worker is no delegate", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+      h.controls.plans.s1 = [{ goal: "Ask d1 for the codename", assignee: "d1" }];
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      await h.settled();
+      const piece = await one(h, "Ask d1 for the codename");
+      expect(piece.status).toBe("completed");
+      const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
+      const pieceSession = await h.taskSessionOf("alice", piece.id);
+
+      const followUp = await h.tool("alice", t1, "dispatchTask", { goal: "Ask d1 for the old codename", followUpOf: piece.id });
+      expect(followUp).toMatchObject({ ok: true });
+      await h.settled();
+      const row = await one(h, "Ask d1 for the old codename");
+      expect(row).toMatchObject({ status: "completed", assignee: "d1" });
+      expect(h.controls.turns.filter((turn) => turn.message === "Ask d1 for the old codename").map((turn) => turn.sessionId)).toEqual([pieceSession]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a task session's piece for a roster worker that stops taking tasks before its hand-over", () => {
+  it("fails at hand-over, saying the worker isn't on the roster taking tasks, and the task hears it", async () => {
+    const h = bootSplitHost();
+    try {
+      // my.tasker is alice's own hire, on the roster, and no delegate of s1's.
+      expect((await h.hire("alice", { id: "my.tasker", flow: "tasker", instructions: "Mine." })).error).toBeUndefined();
+      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+      h.controls.plans.s1 = [{ goal: "Book the venue [slow:300]", assignee: "eng.tasker" }];
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "parked")).toBe(true);
+      const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
+      const venue = await one(h, "Book the venue [slow:300]");
+      // Waits on the venue, so its hand-over comes after the fire.
+      const filed = await h.tool("alice", t1, "dispatchTask", { goal: "Print the flyers", assignee: "my.tasker", deps: [venue.id] });
+      expect(filed).toMatchObject({ ok: true });
+      expect((await h.fire("alice", "my.tasker")).error).toBeUndefined();
+      await h.settled();
+      await h.tool("alice", t1, "listTasks", {});
+      await h.settled();
+
+      const flyers = await one(h, "Print the flyers");
+      expect(flyers.status).toBe("errored");
+      expect(flyers.error).toContain('wasn\'t handed to "my.tasker": it isn\'t a worker on this roster that takes tasks');
+      expect(flyers.error).not.toContain("delegates");
+      expect((await one(h, "Plan the launch")).status).toBe("errored");
     } finally {
       await h.dispose();
     }
