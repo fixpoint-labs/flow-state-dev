@@ -208,24 +208,14 @@ async function continueWithStop(
   return result.ok;
 }
 
-/**
- * The resume action a person's recorded resolution of a non-wait gate replays:
- * the action whose status the gate was written with. `undefined` for a wait
- * gate (its outcome is replayed as a wait's), a pending gate, or a status no
- * person writes (a stop, an expiry, a timeout).
- */
+/** Inverse of {@link RESUME_ACTION_STATUS}; a wait stays on the wait path. */
 function personResolutionOf(gate: Pick<SuspensionRecord, "reason" | "status">): ResumeAction | undefined {
   if (isWaitGate(gate)) return undefined;
   const actions = Object.keys(RESUME_ACTION_STATUS) as ResumeAction[];
   return actions.find((action) => RESUME_ACTION_STATUS[action] === gate.status);
 }
 
-/**
- * Whether a resolved gate owes its parked turn a re-drive: a wait's outcome
- * (answer, failure, timeout or stop), any gate stopped, an approval that
- * expired, or a person's resolution of any other gate (FIX-1850). The one
- * predicate the sweep and {@link redriveResolvedGate} share.
- */
+/** Whether this gate owes a re-drive. The sweep and {@link redriveResolvedGate} both use it. */
 export function owesRedrive(gate: Pick<SuspensionRecord, "reason" | "status" | "allow">): boolean {
   return (
     gate.status === "stopped" ||
@@ -233,6 +223,18 @@ export function owesRedrive(gate: Pick<SuspensionRecord, "reason" | "status" | "
     isExpiredApproval(gate) ||
     personResolutionOf(gate) !== undefined
   );
+}
+
+/** A person's resolution and a wait's outcome. A stop and an expiry do not carry the recorded data. */
+function recordedResume(current: SuspensionRecord, action: ResumeAction) {
+  return {
+    resumeContext: {
+      suspensionId: current.suspensionId,
+      action,
+      data: current.resumeData,
+      resumedBy: current.resolvedBy
+    }
+  };
 }
 
 /** Why a re-drive left a request alone. */
@@ -279,17 +281,7 @@ export async function redriveResolvedGate(
         };
       }
       const personAction = personResolutionOf(current);
-      if (personAction !== undefined) {
-        // A person's resolution: replayed as they gave it, with their data.
-        return {
-          resumeContext: {
-            suspensionId: current.suspensionId,
-            action: personAction,
-            data: current.resumeData,
-            resumedBy: current.resolvedBy
-          }
-        };
-      }
+      if (personAction !== undefined) return recordedResume(current, personAction);
       if (!isWaitGate(current)) {
         // A stopped approval: the stop recorded on the turn ends it.
         if (current.status !== "stopped" || !(await recordStop(deps, record))) return { refusal: "not-parked" };
@@ -297,13 +289,7 @@ export async function redriveResolvedGate(
           resumeContext: { suspensionId: current.suspensionId, action: "reject", resumedBy: current.resolvedBy }
         };
       }
-      const resumeContext: ResumeContext = {
-        suspensionId: current.suspensionId,
-        action: "submit",
-        data: current.resumeData,
-        resumedBy: current.resolvedBy
-      };
-      return { resumeContext };
+      return recordedResume(current, "submit");
     }
   });
   if (result.ok) return "redriven";

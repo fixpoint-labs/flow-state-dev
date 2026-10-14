@@ -470,8 +470,6 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   const redriveOne = async (requestId: string, suspensionId: string): Promise<void> => {
     try {
       const gate = await provider.loadSuspension(requestId, suspensionId);
-      // Owed a re-drive: a wait's answer or ending, any gate stopped, an
-      // approval that expired, or a person's resolution of any other gate.
       if (gate === null || !owesRedrive(gate)) return;
       const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
       if (result === "redriven") {
