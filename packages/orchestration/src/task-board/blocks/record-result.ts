@@ -216,7 +216,7 @@ function messageOf(err: unknown): string {
  * How a settlement site reports a recorder failure (FIX-963).
  *
  * Both recorders are composed in two places — the inline drain, and the gate
- * around a task handed off to a child run — and the difference between them is
+ * around a task dispatched to a child run — and the difference between them is
  * entirely about *when* the run is allowed to fail.
  */
 export interface RecorderFailureWiring {

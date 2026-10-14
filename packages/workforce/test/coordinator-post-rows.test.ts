@@ -10,7 +10,7 @@
  *                alone isn't a post;
  *   BR-13        a conversation saved with the old delivery ledger reads as if it had none, and
  *                drops it at its next write;
- *   BR-18        a worker whose `tools:` line names `handOff` fails to load, pointing at
+ *   BR-18        a worker whose `tools:` line names `handOff` fails to load, pointing at (retired-name-refusal)
  *                `dispatchTask`;
  *   BR-21        a post row can't be reassigned, completed, failed or blocked from the board;
  *                a cancel ends that delegate's part, and its late answer lands nowhere.
@@ -224,22 +224,22 @@ describe("a conversation saved before posts were rows (V5, BR-13)", () => {
   });
 });
 
-describe("a worker naming handOff (V7, BR-18)", () => {
+describe("a worker naming handOff (V7, BR-18)", () => { // retired-name-refusal
   it("fails to load, and names dispatchTask in its place", () => {
     let flows: Record<string, unknown> = {};
     const installation = createWorkerInstallation({
-      standardWorkers: [{ id: "old.chief", declared: { flow: "agent", tools: ["handOff"] }, body: "Hands posts on." }],
+      standardWorkers: [{ id: "old.chief", declared: { flow: "agent", tools: ["handOff"] }, body: "Hands posts on." }], // retired-name-refusal
       workerFlows: () => flows as never
     });
     flows = { agent: defineAgentWorkerFlow({ installation }) };
     expect(() => hireWorkforce(installation)).toThrow(
-      /worker "old\.chief"[\s\S]*names tool "handOff", which no longer exists[\s\S]*`dispatchTask` and `post: true`/
+      /worker "old\.chief"[\s\S]*names tool "handOff", which no longer exists[\s\S]*`dispatchTask` and `post: true`/ // retired-name-refusal
     );
   });
 });
 
 describe("the standard coordinators' tools (V7, BR-18)", () => {
-  it("never carry handOff", () => {
-    for (const worker of standardWorkers()) expect(JSON.stringify(worker.declared)).not.toContain("handOff");
+  it("never carry handOff", () => { // retired-name-refusal
+    for (const worker of standardWorkers()) expect(JSON.stringify(worker.declared)).not.toContain("handOff"); // retired-name-refusal
   });
 });

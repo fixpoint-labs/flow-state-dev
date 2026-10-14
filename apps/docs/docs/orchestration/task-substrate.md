@@ -263,7 +263,7 @@ type TaskWriteOutcome =
 
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
-- `immutable-assignee` — the board hands work off to a dispatch run, and an attempt still holds the task (*in progress* or *parked*): the run was addressed by its assignee, and a parked attempt can still settle. A pending or blocked task can still be reassigned; `unpark` a parked one first.
+- `immutable-assignee` — the board dispatches work to a dispatch run, and an attempt still holds the task (*in progress* or *parked*): the run was addressed by its assignee, and a parked attempt can still settle. A pending or blocked task can still be reassigned; `unpark` a parked one first.
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
@@ -300,7 +300,7 @@ A `TaskCollectionRef` of your own has to do three things:
 
 1. Implement `renewLease`, fenced by the same claim ticket your other writes take.
 2. Make your own `claim()` consider tasks whose lease has run out, take them over as a new attempt, and settle one whose abandonment allowance is spent instead of running it again.
-3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it. The one exception is a renewal that passes `adoptLapsedLease` — let that one through while every other guard still holds, or a task board's handed-off work stalls behind a queue.
+3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it. The one exception is a renewal that passes `adoptLapsedLease` — let that one through while every other guard still holds, or a task board's dispatched work stalls behind a queue.
 
 A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule, and for `committedLeaseSpan(task)` when you need the length of the lease a claim was granted.
 
@@ -518,7 +518,7 @@ Every mutation that changes a field emits a `task-change` component item onto th
 }
 ```
 
-The `task` snapshot is the post-mutation row minus the fields the substrate keeps server-side. `claimedBy` is one of those, so it is absent from the item even while a task is claimed. `run`, the handed-off run working the task, is not: a UI can open that run from it. A `run_linked` item is published on the run's own session when the run records itself on its task. A view following another session sees `run` on its next read of the board; see [Which run is working a task](./task-board.md#which-run-is-working-a-task).
+The `task` snapshot is the post-mutation row minus the fields the substrate keeps server-side. `claimedBy` is one of those, so it is absent from the item even while a task is claimed. `run`, the dispatched run working the task, is not: a UI can open that run from it. A `run_linked` item is published on the run's own session when the run records itself on its task. A view following another session sees `run` on its next read of the board; see [Which run is working a task](./task-board.md#which-run-is-working-a-task).
 
 UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from them. You don't wire any of it up: every collection `getOrCreateTaskCollection` hands you emits these items itself.
 

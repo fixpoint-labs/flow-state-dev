@@ -28,10 +28,10 @@
  * `drained` used to mean "every task reached a terminal status", which was the
  * same sentence as the one above while every worker ran inside the claiming
  * request. A board with a `dispatcher({ type: "task" })` assignee breaks that
- * equivalence: the hand-off leaves the row `in_progress`, owned by a child session
+ * equivalence: the dispatch leaves the row `in_progress`, owned by a child session
  * that settles it from its own session, and the launching request has no more
  * work to do on it. Counting it kept that request parked in `idleWait` until
- * the child finished — the whole point of handing off, undone by the exit
+ * the child finished — the whole point of dispatching, undone by the exit
  * question.
  *
  * So the classifier now takes `runsElsewhere` and both of its counting arms
@@ -42,11 +42,11 @@
  * **The exclusion holds only while the row's lease does.** `runsElsewhere` says
  * where a row's work belongs; the lease says whether anyone is on it, and a
  * claimant that died before its child ever started leaves a row that is
- * handed off by routing and abandoned in fact. So `countWaitable` requires both,
- * and a lapsed handed-off row goes back to holding the drain open until it is
+ * dispatched by routing and abandoned in fact. So `countWaitable` requires both,
+ * and a lapsed dispatched row goes back to holding the drain open until it is
  * reclaimed. That also keeps this classifier agreeing with the wake test either
  * side of the lapse: `hasClaimableTask` reads the same lease, so before the
- * lapse a handed-off row is invisible to both, and after it the wake test stirs
+ * lapse a dispatched row is invisible to both, and after it the wake test stirs
  * a worker into an exit check that no longer calls the board drained.
  *
  * The exit check maps a non-`continue` verdict straight onto its `reason`. The

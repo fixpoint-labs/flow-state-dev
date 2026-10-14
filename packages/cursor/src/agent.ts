@@ -23,7 +23,7 @@
  * event that arrived.
  *
  * Two opt-in options change what the block touches, and both are off by
- * default so the block stays exactly what a task board hands off: `recordPlan`
+ * default so the block stays exactly what a task board dispatches: `recordPlan`
  * writes Cursor's confirmed to-do list into core's plan record, and `env` runs
  * Cursor's runtime in a child process with only that environment
  * (`./child-runtime`).
@@ -155,7 +155,7 @@ export interface CursorAgentOptions {
    * run's marker incomplete and the run carries on.
    *
    * Off, the block declares no session state and writes nothing, which is what
-   * lets a task board hand it off with no further option.
+   * lets a task board dispatch it with no further option.
    */
   recordPlan?: boolean;
   /**

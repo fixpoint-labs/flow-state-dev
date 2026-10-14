@@ -160,7 +160,7 @@ describe("a conversation's delegates (V2)", () => {
     expect(listed.output.max).toBe(25);
   });
 
-  it("says what each delegate does and takes, and a hand-off reaches exactly the ones it says take posts", async () => {
+  it("says what each delegate does and takes, and a dispatch reaches exactly the ones it says take posts", async () => {
     // The coordinator's turn picks whom to hand a post to from this read: what
     // each delegate does (its worker's description) and what it takes. So a
     // delegate it says takes posts must be one `dispatchTask` hands it to, and a

@@ -17,7 +17,7 @@
  * owner before this handler runs.
  *
  * What it returns is **every** session recorded against the one in the path,
- * not only handed-off ones. The store predicate selects on parentage, and
+ * not only dispatched ones. The store predicate selects on parentage, and
  * nothing on a session record marks it as task-board work. Today the dispatch
  * seam is the only writer of `parentSessionId`, but that is a fact about the
  * current writers, not a filter this route applies — a second writer would be

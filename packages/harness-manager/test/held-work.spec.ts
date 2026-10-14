@@ -3,7 +3,7 @@
  * another machine (FIX-1766).
  *
  * Driven end to end like `workspace-host.spec.ts`: a real flow, board and
- * hand-off, and real `localWorkspaceHost`s. Two host roots stand in for two
+ * dispatch, and real `localWorkspaceHost`s. Two host roots stand in for two
  * machines; they share one `file://` remote and one held-work folder, and the
  * manager's workspace is switched from one to the other between attempts.
  * Only the harness is a stub.
@@ -209,7 +209,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
     concurrency: 1,
     onReview: "exit",
     dispatcher: runOwnerDispatcher(),
-    workers: { coder: dispatcher({ name: "held-board-hand-off", action: "work", session: "per-task" }) },
+    workers: { coder: dispatcher({ name: "held-board-dispatch", action: "work", session: "per-task" }) },
   });
   const seed = handler({
     name: "held-seed",

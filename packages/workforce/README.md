@@ -1518,7 +1518,7 @@ delegates are the user's open workstreams in the project, one per workstream: th
 workstream's address as the target, so it hands work only to the user's own workstreams. They
 follow the workstreams: the session's delegate list starts with one per open workstream the first
 time it's read; `openWorkstream` adds one; `updateWorkstream` and `editWorkstream` remove it when the status becomes
-`"done"` and add it back when it leaves `"done"`; and a hand-off to one is delivered into the
+`"done"` and add it back when it leaves `"done"`; and a dispatch to one is delivered into the
 session the user's entry names, looked up at delivery, so the post lands in that workstream's
 session.
 
@@ -1528,12 +1528,12 @@ both in its `tools:`. Asked for work none of the user's workstreams covers, it l
 opens a workstream with the one whose description fits (leaving `project` out, so it opens in the
 coordinator's own project), and hands the request to it at `<project.visibility>/<project.id>/<id>`,
 built from the returned workstream. Inside the owner's own coordinator turn, the new workstream can
-take the hand-off as soon as `openWorkstream` returns.
+take the dispatch as soon as `openWorkstream` returns.
 
 To let it change the user's workstreams (title, status, due date, objectives), add
 `editWorkstream: workstreams.editWorkstreamTool` to its catalog (the block is already named, so no
 `.as()`) and name `editWorkstream` in its `tools:`. When it runs in the owner's own coordinator turn, closing
-a workstream drops its delegate in that turn, so a later hand-off in the turn never targets it.
+a workstream drops its delegate in that turn, so a later dispatch in the turn never targets it.
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
 with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
@@ -1720,7 +1720,7 @@ const coordinatorFlow = defineCoordinatorFlow({
 });
 ```
 
-Earlier versions declared the entry under `internal.actions` and named the hand-off tool `handOff`.
+Earlier versions declared the entry under `internal.actions` and named the dispatch tool `handOff`.
 A delegate flow that still declares it there makes `defineCoordinatorFlow` throw, and a worker
 whose `tools:` names `handOff` is refused at load; each message names the replacement.
 
@@ -1779,7 +1779,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers
   in one delivery. `judgment` waits for the round to close, then runs the coordinator's turn once
-  with the round's answers; its hand-offs in that turn go out in the next round. A round closes
+  with the round's answers; its dispatches in that turn go out in the next round. A round closes
   when each of its delegates has answered, failed or been cancelled, or when its deadline passes
   (`roundDeadlineMs`, five minutes by default). A delegate that answers after that has its answer
   land once, and the answer goes no further. Each delegate gets a post at most once per round, so

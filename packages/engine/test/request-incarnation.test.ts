@@ -183,9 +183,9 @@ describe("two same-owner contexts racing to create one absent id", () => {
     expect(loser.incarnation).not.toBe(winner.incarnation);
 
     await claimRequestRecord(stores, flow, winner);
-    const handedOff = await claimRequestRecord(stores, flow, loser);
+    const claimed = await claimRequestRecord(stores, flow, loser);
 
-    expect(handedOff.incarnation).toBe(winner.incarnation);
+    expect(claimed.incarnation).toBe(winner.incarnation);
     expect(await storedIncarnation(stores)).toBe(winner.incarnation);
   });
 
@@ -221,7 +221,7 @@ describe("two same-owner contexts racing to create one absent id", () => {
     await stores.request.set(REQUEST_ID, legacy, "absent");
     const before = resolveRequestIncarnation(legacy);
 
-    const handedOff = await claimRequestRecord(
+    const claimed = await claimRequestRecord(
       stores,
       flow,
       createInitialRequestRecord(
@@ -230,7 +230,7 @@ describe("two same-owner contexts racing to create one absent id", () => {
       )
     );
 
-    expect(resolveRequestIncarnation(handedOff)).toBe(before);
+    expect(resolveRequestIncarnation(claimed)).toBe(before);
     expect(resolveRequestIncarnation((await stores.request.get(REQUEST_ID))!)).toBe(before);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * A handed-off child that dies before taking ownership loses nothing (FIX-982).
+ * A dispatched child that dies before taking ownership loses nothing (FIX-982).
  *
  * This is the scenario the `started` milestone was built to protect, and the one
  * that shows it was never needed. The parent hands a row to a child session and
@@ -35,11 +35,11 @@ import { z } from "zod";
 const USER_ID = "u_death";
 /** The user's cell in the default org, where every flow keeps their user data. */
 const USER_ID_CELL = `${USER_ID}:~org:${DEFAULT_ORG_ID}`;
-const KIND = "hand-off-child-death";
-/** The provenance a hand-off dispatch carries; spelled literally because the constant is internal to `engine`. */
+const KIND = "dispatch-child-death";
+/** The provenance a task dispatch carries; spelled literally because the constant is internal to `engine`. */
 const TASK_SOURCE = "task";
 
-/** What a hand-off dispatch was asked to do. Recorded, replayed by hand. */
+/** What a task dispatch was asked to do. Recorded, replayed by hand. */
 type RecordedDispatch = { sessionId: string; action: string; input: unknown };
 const baseRuntimeConfig = () => ({ modelResolver: createMockModelResolver({}) });
 
@@ -60,7 +60,7 @@ function buildFlow() {
     collection: defineTaskCollection({ id: `${KIND}-ledger`, scope: "user" }),
     workers: {
       background: dispatcher({
-        name: `${KIND}-hand-off`,
+        name: `${KIND}-dispatch`,
         type: "task",
         action: "background",
         session: "per-task",
@@ -139,14 +139,14 @@ describe("a child that never takes ownership costs a lease, not the work", () =>
     expect(dispatched).toHaveLength(1);
     expect(ran).toEqual([]);
     // Handed over and outstanding: the parent released its claim and stopped
-    // renewing, exactly as it does on every successful hand-off.
+    // renewing, exactly as it does on every successful dispatch.
     expect(await durableRow(stores, "t1")).toMatchObject({ status: "in_progress" });
 
     // 2. Time passes and nobody renews, because nobody is on the row.
     await lapseLease(stores, "t1");
 
     // 3. THE ASSERTION THIS FILE EXISTS FOR. A later drain finds the row
-    //    claimable again and hands it off a second time, and THAT child runs
+    //    claimable again and dispatches it a second time, and THAT child runs
     //    the work to completion. Nothing was lost — the cost of the first
     //    child's death was one lease of latency.
     const recovery = await runAction({

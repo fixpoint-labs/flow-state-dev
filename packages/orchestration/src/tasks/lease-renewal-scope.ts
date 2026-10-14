@@ -116,7 +116,7 @@ export function currentLeaseRenewal(): LeaseRenewalDriver | undefined {
  * Every way of *leaving the work* is already covered: the step that dispatches
  * the worker carries `onSettled`, which runs whether the worker returned, threw
  * or suspended, and a cancelled request stops the driver through the ambient
- * signal. What none of those cover is the hand-off — the window between the
+ * signal. What none of those cover is the dispatch — the window between the
  * claim committing and that step being reached. The claiming block still has to
  * write its state and emit its status, and if either fails the work step never
  * runs, so no recorder and no `onSettled` ever fires. A failed request does not
@@ -127,7 +127,7 @@ export function currentLeaseRenewal(): LeaseRenewalDriver | undefined {
  * rebuilt out of a failed state write.
  *
  * The two seams that claim and work in *different* steps — the task board's
- * worker body and `routedSpecialists` — each hand-rolled that hand-off, and
+ * worker body and `routedSpecialists` — each hand-rolled that dispatch, and
  * only one of them happened to put the driver start last where nothing could
  * fail after it. Ordering is not a property a reader can check or a test can
  * pin, so it is not the thing to rely on: the `catch` here makes where the

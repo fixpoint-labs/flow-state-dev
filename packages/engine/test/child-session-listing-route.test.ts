@@ -1266,7 +1266,7 @@ describe("provenance", () => {
    */
   it("a server-stamped source and task id survive to the requests endpoint", async () => {
     const { router, stores } = await withChild();
-    // The shape the seam writes for a task hand-off: the trusted `task`
+    // The shape the seam writes for a task dispatch: the trusted `task`
     // source, and the board's task id beside the address under
     // `metadata.dispatch`.
     const stamp = {

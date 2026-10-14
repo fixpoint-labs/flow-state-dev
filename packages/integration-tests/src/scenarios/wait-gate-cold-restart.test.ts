@@ -8,8 +8,8 @@
  * `createFlowState` install wires. The turn ends `completed` with the answer as
  * its tool's result, under its own request id.
  *
- * Nothing here files a task; the board and the row come with the hand-off.
- * The real process kill is the goal check's, run against the whole hand-off.
+ * Nothing here files a task; the board and the row come with the dispatch.
+ * The real process kill is the goal check's, run against the whole dispatch.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

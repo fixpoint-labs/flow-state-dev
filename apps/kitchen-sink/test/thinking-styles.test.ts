@@ -3,7 +3,7 @@
  *
  * Five in-request coordination routes, the `auto` entry and the intent
  * classifier behind it were removed. What is left is the direct answer and
- * the durable hand-off — and the two doors an old value can arrive through,
+ * the durable dispatch — and the two doors an old value can arrive through,
  * which answer it differently on purpose:
  *
  * - **A caller-sent style is refused** (BP-031). An input is a live claim.
@@ -194,7 +194,7 @@ describe("a style stored on a session written before the shed", () => {
 // ---------------------------------------------------------------------------
 
 describe("the menu above the prompt", () => {
-  it("offers exactly the direct answer and the durable hand-off", () => {
+  it("offers exactly the direct answer and the durable dispatch", () => {
     expect(STYLE_OPTIONS.map((o) => o.value)).toEqual(["default", "background-work"]);
     // Red state: restore any removed entry and the list is longer.
   });
@@ -205,7 +205,7 @@ describe("the menu above the prompt", () => {
       expect(getStyleOption(style).label).toBe("Default");
     }
     // Red state: reorder STYLE_OPTIONS so `background-work` is first, and a
-    // person returning from a removed style opens on the hand-off — which
+    // person returning from a removed style opens on the dispatch — which
     // files their next message instead of answering it.
   });
 
@@ -270,7 +270,7 @@ describe("a message carrying the words that used to steer it", () => {
     expect(routed.selectedRoute).toBe("assistant-generator");
   });
 
-  it("still routes the durable hand-off, which is the one that stayed", async () => {
+  it("still routes the durable dispatch, which is the one that stayed", async () => {
     const routed = await testRouter(thinkingStyleRouter, {
       input: runInput("Write me a briefing on this", "background-work"),
       flow: testFlow,

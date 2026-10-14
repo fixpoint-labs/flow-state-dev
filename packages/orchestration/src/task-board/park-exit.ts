@@ -13,14 +13,14 @@
  * `unparkAndDrain` step is the return trip (FIX-1244): the fenced `unpark`
  * write, then this drain, in the answering request.
  *
- * **Off by default, and a handed-off board has to ask for it too.** Turning it on
+ * **Off by default, and a dispatched board has to ask for it too.** Turning it on
  * moves *when* an existing caller's request resolves, so it is never inferred
  * from anything the board already declares.
  *
  * ## What lives here
  *
  * The option type and the construction-time refusals — the same split
- * `./hand-off.ts` uses, and for the same reason: what a declaration *means* and
+ * `./dispatch-assignee.ts` uses, and for the same reason: what a declaration *means* and
  * which declarations cannot work are decided once, away from the drain that
  * composes them. The exclusion itself is a status test inside `shared.ts`'s
  * waitable count, where the board's one exit question already lives.
@@ -59,7 +59,7 @@ export type TaskBoardOnReview = "hold" | "exit";
  * The throws below carry their own diagnosis and their own fix; the comments do
  * not repeat them, and say only what the message cannot.
  *
- * Shape and register follow `assertHandOffBoardSupported`: name the board,
+ * Shape and register follow `assertDispatchBoardSupported`: name the board,
  * name what it declared, name what to change.
  */
 export function assertParkExitSupported(options: {

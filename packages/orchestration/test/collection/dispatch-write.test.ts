@@ -177,7 +177,7 @@ describe.each(BACKINGS)("dispatching a recorded row (%s)", (_name, makeBacking) 
 });
 
 // The mark gates every claimer of the collection, not only the board that
-// writes it: a plain drain, a hand-off or a row action claims through the
+// writes it: a plain drain, a dispatch or a row action claims through the
 // substrate's admission, and one that took a recorded row would start work
 // nobody dispatched.
 describe.each(BACKINGS)("a claimer with no start test of its own (%s)", (_name, makeBacking) => {

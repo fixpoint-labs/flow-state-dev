@@ -11,7 +11,7 @@
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
  *
- * A task whose worker hands its rows off to a `task` entry is run by a dispatch run
+ * A task whose worker dispatches its rows to a `task` entry is run by a dispatch run
  * rather than by the request you are looking at, so its row carries a link into that
  * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.

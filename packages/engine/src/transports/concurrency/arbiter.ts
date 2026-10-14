@@ -701,7 +701,7 @@ export function createConcurrencyArbiter(
       // name for a `public` dispatch, the adapter's namespaced coordinate for
       // webhook / schedule, the entry name for task / internal. A forged
       // `metadata.webhook` on an HTTP dispatch therefore still resolves the
-      // named action's policy, and a task hand-off whose name collides with a
+      // named action's policy, and a task dispatch whose name collides with a
       // public action never inherits that action's `queue` / `reject` — each
       // reads only its own map.
       // A dynamic schedule has no static coordinate: its core is produced by

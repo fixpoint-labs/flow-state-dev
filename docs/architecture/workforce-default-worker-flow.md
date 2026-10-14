@@ -318,7 +318,7 @@ and nothing more, and `hireWorkforce` forwards only frontmatter settings — so 
 must reach *that worker's* collection as its `initialSkills`, so `ensureSeeded` writes that worker's
 skills and no one else's. Acceptance criterion 5 is written to fail without one.
 
-**Built by FIX-1362**, and the handoff it chose is the settings bag: the loader resolves each
+**Built by FIX-1362**, and the channel it chose is the settings bag: the loader resolves each
 worker's union onto its record as `WorkerManifest.skills`, the hire step imposes it as the
 `workerSkills` setting the way a body is imposed as `instructions`, and the library's
 `initialSkills` takes a resolver that reads it off `ctx.flow.config`. A worker's `skills:` folder

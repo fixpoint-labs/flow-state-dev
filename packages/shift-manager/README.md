@@ -43,7 +43,7 @@ If the Lab fails to start after a save, the error prints and Shift Manager waits
 
 In this repository, `pnpm shift-manager:dev` opens the `fsd` profile, at `teams/devteam/fsd.fsdev.config.mts`: a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. It raises no ask and opens no workstream, so Inbox is empty until a worker asks you something.
 
-Ask the Shift Coordinator for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own. Before cutting that branch, the Lab fetches the upstream your `main` tracks, usually `origin/main`, and starts from whichever is newer, that upstream or your local `main`. So you don't need to pull first, and commits you haven't pushed are kept. Your own `main`, its files and your index aren't touched.
+Ask the Shift Coordinator for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own, and works to this repository's `AGENTS.md` and `CLAUDE.md`. Before cutting that branch, the Lab fetches the upstream your `main` tracks, usually `origin/main`, and starts from whichever is newer, that upstream or your local `main`. So you don't need to pull first, and commits you haven't pushed are kept. Your own `main`, its files and your index aren't touched.
 
 If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run compares your `main` with the copy of its upstream you last fetched instead, and a warning prints where you started Shift Manager.
 
@@ -297,7 +297,7 @@ In your own app, Workforce's `openWorkstream` takes whichever lead you name.
 
 ## A task
 
-Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. If the worker keeps one session for several tasks, the tab shows only this task's steps and says the session is shared. A task handed off a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
+Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. If the worker keeps one session for several tasks, the tab shows only this task's steps and says the session is shared. A task dispatched a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
 
 **Interrupt** stops the run (Esc does the same while the Session has focus). The line above the composer names the worker and the run's state: *running*, then *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not Shift Manager.
 
@@ -333,7 +333,7 @@ Other Labs build their own prompts from the same task fields. See [`run.task`](.
 | A harness that records no plan | A line saying so | Attention and inspect |
 | A task's context and input, on Brief | A line saying so | Not planned yet. The board doesn't publish them to a browser |
 
-A board that hands work off keeps a running task on the worker it was given to, and moving a waiting one isn't wired into the view yet, which is why reassigning is off rather than refused.
+A board that dispatches work keeps a running task on the worker it was given to, and moving a waiting one isn't wired into the view yet, which is why reassigning is off rather than refused.
 
 ## Roster
 

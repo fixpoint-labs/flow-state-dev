@@ -381,7 +381,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
       // The nine task actions and the four delegate actions.
       ...kit.actions,
     },
-    // A coordinator's delegated post: the project coordinator's hand-off to
+    // A coordinator's delegated post: the project coordinator's dispatch to
     // the workstream this worker leads, or the chief of staff's. A post is a
     // row on the coordinator's board, so its entry is a task entry.
     task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } },

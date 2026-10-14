@@ -650,10 +650,10 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The hand-off — the window between claiming and working
+// The window between claiming and working
 // ---------------------------------------------------------------------------
 
-describe("withLeaseRenewalScope — the claim → work hand-off", () => {
+describe("withLeaseRenewalScope — from the claim to the work", () => {
   // Every way of leaving the WORK is already covered: the dispatch step's
   // `onSettled` runs whether the worker returned, threw or suspended, and a
   // cancelled request stops the driver through the ambient signal. What none of

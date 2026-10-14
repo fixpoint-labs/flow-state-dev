@@ -71,7 +71,7 @@ export interface TaskClaimTicket {
   readonly incarnationId?: string;
   /**
    * `task.assignee` as of the claim. Server-derived like the rest: a board
-   * whose fallback hands rows off addresses the hand-over by it, and the
+   * whose fallback dispatches rows addresses the hand-over by it, and the
    * receiving gate checks the row still names it. Not part of the write fence.
    */
   readonly assignee?: string;
@@ -83,7 +83,7 @@ export interface TaskClaimTicket {
   readonly createdBy?: string;
   /**
    * The partition the claim was taken in, on a ledger declared with
-   * `partitionBy`: the claiming ref's own. A board's hand-off puts it on the
+   * `partitionBy`: the claiming ref's own. A board's dispatch puts it on the
    * dispatch so the receiving gate reads the row where it was claimed. Not part
    * of the write fence: the ref a write goes through is already narrowed to it.
    */
