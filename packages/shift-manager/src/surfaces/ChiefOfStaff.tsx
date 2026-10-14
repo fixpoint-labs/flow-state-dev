@@ -27,6 +27,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
 import { Conversation, ConversationFrame } from "../components/Conversation";
 import { DelegatesPanel } from "../components/DelegatesPanel";
+import { StandingRules } from "../components/StandingRules";
 import { TasksPanel } from "../components/TasksPanel";
 import { conversationSession, COORDINATOR_FLOW } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
@@ -332,10 +333,15 @@ function Talk({
   );
 }
 
-/** The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow. */
-export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
+/**
+ * The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow,
+ * and the standing rules of one whose inventory row says it keeps them, on whichever flow.
+ * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
+ */
+export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSnapshot; devtoolUrl?: string }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
-  const cos = found?.kind === "one" && found.worker.kind === COORDINATOR_FLOW ? found.worker : undefined;
+  const one = found?.kind === "one" ? found.worker : undefined;
+  const cos = one?.kind === COORDINATOR_FLOW ? one : undefined;
   return (
     <div className="p-3" data-testid="cos-panel">
       {cos !== undefined ? (
@@ -350,6 +356,11 @@ export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
           No delegates or tasks yet.
         </p>
       )}
+      {one?.rules ? (
+        <div className="px-1 pt-4">
+          <StandingRules key={`rules-${one.id}`} workerId={one.id} name={NAME} devtoolUrl={devtoolUrl} compact />
+        </div>
+      ) : null}
     </div>
   );
 }
