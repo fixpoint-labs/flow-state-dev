@@ -23,7 +23,13 @@
 // A line that names a retired name on purpose (a refusal of the old name, a
 // legacy reader) carries `retired-name-refusal` and is not a live use; the
 // marker FIX-1875 and FIX-1876 also use.
+//
+// A published page's `handOff` migration sentence is kept instead by the
+// vocabulary sweep's own WR-25b entries, read from its rules: each admits the
+// sentence only on a line naming `handOff` once, so a stale second mention
+// beside it stays live here too.
 import { execFileSync } from "node:child_process";
+import { KEEP } from "../../../../../goals/vocabulary/one-word-per-thing/rules.mjs";
 
 const args = process.argv.slice(2);
 const at = args.includes("--at") ? args[args.indexOf("--at") + 1] : "HEAD";
@@ -83,6 +89,13 @@ const RULES = [
     re: String.raw`\b(delegateAnswer|delegateMissed|DELEGATE_ANSWER_ACTION|DELEGATE_MISSED_ACTION)\b`,
   },
 ];
+
+/** The vocabulary sweep's WR-25b entries: FIX-1872's `handOff` migration sentences on pages. */
+const PAGE_KEEP = KEEP.filter((k) => k.why.startsWith("WR-25b"));
+if (PAGE_KEEP.length === 0) throw new Error("no WR-25b entry in the vocabulary sweep's KEEP");
+
+/** A `handoff-tool` hit on a kept page sentence; any other rule, path or line stays live. */
+const isKept = (rule, h) => rule === "handoff-tool" && PAGE_KEEP.some((k) => k.path.test(h.path) && k.line.test(h.text));
 
 /** `git grep` exits 1 on no match; that is a clean rule, not an error. */
 function grep(re) {
@@ -152,7 +165,7 @@ function parse(hit) {
   const m = /^([^:]+):(\d+):(.*)$/.exec(rest);
   if (m === null) throw new Error(`unparsed git grep line: ${hit}`);
   const [, path, line, text] = m;
-  return text.includes(MARKER) ? undefined : { path, line: Number(line), text: text.trim().slice(0, 140) };
+  return text.includes(MARKER) ? undefined : { path, line: Number(line), text: text.trim() };
 }
 
 if (args.includes("--control")) {
@@ -190,6 +203,18 @@ if (args.includes("--control")) {
       if (!caught) bad++;
     }
   }
+  // The page keep: the WR-25b sentence on its page is kept, and the same line
+  // with a second `handOff` beside it, or on another page, is not.
+  const sentence = "Earlier versions declared the entry under `internal.actions` and named the dispatch tool `handOff`.";
+  for (const [path, text, want] of [
+    ["packages/workforce/README.md", sentence, true],
+    ["packages/workforce/README.md", `${sentence} Pass \`handOff\` in \`tools:\`.`, false],
+    ["apps/docs/docs/orchestration/task-board.md", sentence, false],
+  ]) {
+    const kept = isKept("handoff-tool", { path, text });
+    console.log(`${kept === want ? "ok  " : "MISS"} page keep ${want ? "keeps" : "leaves live"}: ${path}: ${text}`);
+    if (kept !== want) bad++;
+  }
   process.exit(bad === 0 ? 2 : 3); // 2 = every plant caught (the control FAILS the sweep, as it must)
 }
 
@@ -202,11 +227,13 @@ for (const r of RULES) {
     const seen = new Set(raw.map((h) => h.split(":").slice(1, 3).join(":")));
     for (const h of spanHits(r.span)) if (!seen.has(h.split(":").slice(1, 3).join(":"))) raw.push(h);
   }
-  const hits = raw.map(parse).filter(Boolean);
+  const parsed = raw.map(parse).filter(Boolean);
+  const hits = parsed.filter((h) => !isKept(r.id, h));
+  const kept = parsed.length - hits.length;
   live += hits.length;
   const files = [...new Set(hits.map((h) => h.path))];
-  console.log(`\n${hits.length === 0 ? "PASS" : "FAIL"} ${r.id} · ${r.what}: ${hits.length} line(s) in ${files.length} file(s)`);
-  for (const h of hits.slice(0, 12)) console.log(`  ${h.path}:${h.line}  ${h.text}`);
+  console.log(`\n${hits.length === 0 ? "PASS" : "FAIL"} ${r.id} · ${r.what}: ${hits.length} line(s) in ${files.length} file(s)${kept ? ` (${kept} kept by WR-25b)` : ""}`);
+  for (const h of hits.slice(0, 12)) console.log(`  ${h.path}:${h.line}  ${h.text.slice(0, 140)}`);
   if (hits.length > 12) console.log(`  … ${hits.length - 12} more`);
 }
 console.log(`\n${live === 0 ? "PASS" : "FAIL"} · ${live} live line(s) at ${sha.slice(0, 12)}`);

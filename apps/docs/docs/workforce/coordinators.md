@@ -588,7 +588,7 @@ const researchFlow = defineFlow({
 
 Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the user's id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
 
-If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form. Earlier versions also named the coordinator's dispatch tool `handOff`; a worker file whose `tools:` still names it is refused when the app loads, with a message pointing at `dispatchTask` and `post: true`. {/* retired-name-refusal: migration note */}
+If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form. Earlier versions also named the coordinator's dispatch tool `handOff`; a worker file whose `tools:` still names it is refused when the app loads, with a message pointing at `dispatchTask` and `post: true`.
 
 `delegatedPostOnFinished` ends a delegated run's task when the run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 

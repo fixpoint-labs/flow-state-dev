@@ -1720,9 +1720,9 @@ const coordinatorFlow = defineCoordinatorFlow({
 });
 ```
 
-Earlier versions declared the entry under `internal.actions` and named the dispatch tool `handOff`. <!-- retired-name-refusal: migration note -->
+Earlier versions declared the entry under `internal.actions` and named the dispatch tool `handOff`.
 A delegate flow that still declares it there makes `defineCoordinatorFlow` throw, and a worker
-whose `tools:` names `handOff` is refused at load; each message names the replacement. <!-- retired-name-refusal: migration note -->
+whose `tools:` names `handOff` is refused at load; each message names the replacement.
 
 The judgment turn is the built-in agent's own turn. A coordinator worker's `model`, `tools`,
 `skills` and `capabilities` read the way an `agent` worker's do, against the catalog and
