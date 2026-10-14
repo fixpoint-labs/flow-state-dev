@@ -112,6 +112,12 @@ the stack's top frame too, at the cost of more duplicates.
 - **Instructions are the `WORKER.md` body plus the operator's standing rules**, edited by talking
   to the reporter ([FIX-1945 D2](../FIX-1945/DECISIONS.md#d2)). A preview answer is handling for
   that report; a rule that should stick is said in its conversation.
+- **Shift Manager adds no UI of its own.** The reporter is a Workforce feature any app can use. Its
+  preview is an ordinary form suspension, so Shift Manager's Inbox draws it with the cards it
+  already uses for every ask, and its reply box reaches the reporter's session for follow-ups.
+  The *Error Reporter* worker shows in Teams from its `WORKER.md`, and the Linear key is the
+  operator's own on the Settings page (FIX-1905). Shift Manager's part is turning the reporter on
+  in its Lab config, and docs.
 - **Teams:** an org worker named *Error Reporter*, under *General* (FIX-1959). Its conversation
   holds one line per issue filed or commented, with the link. It hires and routes nothing.
 - **The report mark rides the ending signal, never a second path.** `endingOf` stays the one
