@@ -134,4 +134,4 @@ Rules are kept in a `standing-rules` resource in the user's own scope. A browser
 
 - [The built-in worker](./built-in-worker.md) — what a worker on `agent` keeps, and the tools it has.
 - [Coordinators](./coordinators.md) — workers that hand work to delegates, and keep rules the same way.
-- [The chief of staff](./chief-of-staff.md) — an org-level coordinator you can coach with rules.
+- [The Shift Coordinator](./shift-coordinator.md) — an org-level coordinator you can coach with rules.
