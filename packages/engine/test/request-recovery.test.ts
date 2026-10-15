@@ -341,7 +341,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0]?.[0].orgId).toBe("org-acme");
+    expect(runActionMock.mock.calls[0]![0].orgId).toBe("org-acme");
   });
 
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
@@ -375,7 +375,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig.voiceProvider).toBe(flowProvider);
+    expect(runActionMock.mock.calls[0]![0].runtimeConfig.voiceProvider).toBe(flowProvider);
   });
 
   it("falls back to the router-level voice provider when the flow declares none", async () => {
@@ -400,7 +400,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig.voiceProvider).toBe(routerProvider);
+    expect(runActionMock.mock.calls[0]![0].runtimeConfig.voiceProvider).toBe(routerProvider);
   });
 
   it("skips entries with recent heartbeats", async () => {

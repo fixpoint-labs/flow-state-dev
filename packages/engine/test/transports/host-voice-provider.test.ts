@@ -19,6 +19,12 @@ vi.mock("../../src/execution/runAction", () => ({
   runAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
+/** The options `runAction` was called with; fails unless it was called exactly once. */
+function onlyRunActionCall(): RunActionOptions {
+  expect(runActionMock).toHaveBeenCalledTimes(1);
+  return runActionMock.mock.calls[0]![0];
+}
+
 import {
   createFlowRegistry,
   createInMemoryStores,
@@ -82,8 +88,7 @@ describe("per-flow voice provider override", () => {
   it("flow.voice.provider wins over the router-level provider", async () => {
     const host = buildHost({ routerProvider: providerA, flowProvider: providerB });
     await dispatch(host).finished;
-    expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig).toMatchObject({
+    expect(onlyRunActionCall().runtimeConfig).toMatchObject({
       voiceProvider: providerB
     });
   });
@@ -91,7 +96,7 @@ describe("per-flow voice provider override", () => {
   it("falls back to the router-level provider when the flow has none", async () => {
     const host = buildHost({ routerProvider: providerA });
     await dispatch(host).finished;
-    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig).toMatchObject({
+    expect(onlyRunActionCall().runtimeConfig).toMatchObject({
       voiceProvider: providerA
     });
   });
@@ -99,7 +104,7 @@ describe("per-flow voice provider override", () => {
   it("passes undefined when neither is set", async () => {
     const host = buildHost({});
     await dispatch(host).finished;
-    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig.voiceProvider).toBeUndefined();
+    expect(onlyRunActionCall().runtimeConfig.voiceProvider).toBeUndefined();
   });
 
   it("host.resolvers.voice holds the router-level provider regardless of override", () => {
