@@ -20,6 +20,11 @@ pnpm test
 
 These commands should pass cleanly before starting any work.
 
+`pnpm install` also installs a pre-push git hook (husky, `.husky/pre-push`) that
+runs `pnpm lint` and blocks the push if it fails. The first run takes about a
+minute. Later runs still walk the whole repo, but ESLint's cache skips files
+that have not changed, so they take a few seconds.
+
 > Run `pnpm packages:build` once after cloning. Workspace packages resolve
 > their `types` condition to `./dist/*.d.ts`, so without it VS Code / `tsserver`
 > reports "Cannot find module '@flow-state-dev/…'" on workspace imports. The
@@ -53,7 +58,7 @@ docs/
 |---------|-------|---------|
 | `pnpm test` | All packages | Run all tests |
 | `pnpm typecheck` | All packages | TypeScript type checking |
-| `pnpm lint` | All packages | Lint (currently stubbed) |
+| `pnpm lint` | Whole repo | ESLint over every JS/TS file, tests and goals included (`eslint.config.mjs`). Also runs as the pre-push hook |
 | `pnpm test:watch` | All packages | Watch mode tests |
 | `pnpm --filter @flow-state-dev/core test` | Single package | Test one package |
 | `pnpm --filter @flow-state-dev/engine typecheck` | Single package | Typecheck one package |
