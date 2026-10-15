@@ -47,6 +47,13 @@ export const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", 
 const feature = (w: string) => `Please get this feature filed for the engineering team (${w}): ${pick(["a gift-wrap option at checkout", "a recently-viewed strip on the product page", "a back-in-stock email signup on sold-out items", "a size guide link beside each size picker"])}.`;
 const research = (w: string) => `Please research this and write up the options with a recommendation, no code (${w}): ${pick(["should we offer free returns on sale items", "which payment methods should our EU checkout support first", "how do comparable stores price same-day delivery", "is a loyalty points program worth it for a store our size"])}?`;
 const ASK: Record<string, (w: string) => string> = { "eng.em": feature, researcher: research, "general-lead": research };
+/**
+ * The standard workers a fork may come from: the ones ASK names, each on a flow
+ * that takes a delegated post (the EM, the researcher, the general lead). The
+ * Error Reporter's flow takes neither a post nor a task, so `addDelegate`
+ * refuses a fork of it.
+ */
+const forkableStandard = (standard: readonly RosterEntry[]): RosterEntry[] => standard.filter((e) => Object.hasOwn(ASK, e.id));
 
 export type LegControl = null | "unpartitioned" | "no-follow-up" | "no-delegate-check" | "no-roster-check" | "org-scoped-workers";
 
@@ -204,15 +211,14 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   }
 
   // ---- a2 · fork ----
-  // The standard worker forked: one whose flow takes a delegated post, so a
-  // coordinator can hand the fork a post (a4). On the shipped DevTeam that is
-  // the EM, the researcher or the general lead; the coordinators' flow takes none.
-  const forkable = standard.filter((e) => e.flow !== COORDINATOR && e.flow !== "coder");
+  // The standard worker forked: one a coordinator can hand a post (a4) and a4
+  // has a held-out ask for.
+  const forkable = forkableStandard(standard);
   if (runs("a2")) {
     o.say("a2: Alice forks a standard worker under a held-out name");
     r.via("a2", "action");
     const from = forkable.length > 0 ? pick(forkable) : undefined;
-    if (from === undefined) r.notRun("a2", `setup: no standard worker takes a delegated post (roster: ${standard.map((e) => `${e.id}@${e.flow}`).join(", ")})`);
+    if (from === undefined) r.notRun("a2", `setup: no standard worker has a held-out ask (roster: ${standard.map((e) => `${e.id}@${e.flow}`).join(", ")})`);
     else {
       facts.standard = from.id;
       const name = `${word()}-${hex()}`;
@@ -286,7 +292,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     if (facts.coordinator !== undefined) {
       const conv = await alice.workforce.ensureWorkerSession({ worker: facts.coordinator });
       r.via("a3", "action");
-      const second = standard.find((e) => e.id !== facts.standard && e.flow !== COORDINATOR && e.flow === "coder") ?? standard.find((e) => e.id !== facts.standard && e.flow !== COORDINATOR);
+      const second = standard.find((e) => e.id !== facts.standard && e.flow !== COORDINATOR && e.flow === "coder") ?? forkableStandard(standard).find((e) => e.id !== facts.standard);
       const want = [facts.fork, second?.id].filter((x): x is string => x !== undefined);
       r.saw("a3", `delegates added through the app's \`addDelegate\` on her conversation \`${conv.id}\`: ${want.join(", ")} (the delegates panel is drawn only for the chief of staff, FIX-1791 S10; for her own coordinator no screen exists, an observation, D2)`);
       for (const w of want) {
@@ -722,7 +728,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
 
   // Setup, through the app as Alice: a fork, her coordinator with it as a delegate, a word given to the fork, a shared and a private project, a workstream entry on the shared one.
   const standard = (await alice.workforce.roster()).filter((e) => e.standard);
-  const from = standard.find((e) => e.flow !== COORDINATOR && e.flow !== "coder");
+  const from = forkableStandard(standard)[0];
   const rosterSession = await sessionOn(alice, ROSTER);
   const fork = `${word()}-${hex()}`;
   const coord = `${word()}-desk-${hex()}`;
@@ -737,7 +743,7 @@ export async function legC(o: LegOptions): Promise<LegFacts> {
   let forkSession: SessionSummary | undefined;
   let entryId: string | undefined;
   try {
-    if (from === undefined) throw new Error("setup: no standard worker takes a delegated post");
+    if (from === undefined) throw new Error("setup: no standard worker has a held-out ask");
     ok(`fork \`${from.id}\` as \`${fork}\``, await act(alice, ROSTER, rosterSession, "fork", { from: from.id, id: fork }));
     facts.fork = fork;
     ok(`hire coordinator \`${coord}\` (best-fit)`, await act(alice, ROSTER, rosterSession, "hire", { id: coord, flow: COORDINATOR, description: "Alice's own desk.", settings: { routing: "best-fit", model: "openai/gpt-5.4-mini" } }));
