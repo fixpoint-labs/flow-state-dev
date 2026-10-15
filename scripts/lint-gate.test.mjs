@@ -57,8 +57,8 @@ describe("pre-push lint gate", { timeout: 600_000 }, () => {
     let probe;
     before(() => {
       probe = mkdtempSync(join(ROOT, "lint-gate-probe-"));
-      writeFileSync(join(probe, "dupe-key.test.ts"), "export const call = { orgId: 'a', seat: 's', orgId: 'b' };\n");
-      writeFileSync(join(probe, "stray-label.mts"), "export function call(seat: string) {\n  orgId: seat;\n  return seat;\n}\n");
+      writeFileSync(join(probe, "dupe-key.test.ts"), "export const call = { orgId: 'a', worker: 'w', orgId: 'b' };\n");
+      writeFileSync(join(probe, "stray-label.mts"), "export function call(worker: string) {\n  orgId: worker;\n  return worker;\n}\n");
     });
     after(() => rmSync(probe, { recursive: true, force: true }));
 
