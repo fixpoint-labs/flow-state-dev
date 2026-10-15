@@ -41,7 +41,6 @@ function matches(filter: Filter, ask: Ask): boolean {
   return filter === "All" || (filter === "Approvals") === (ask.kind === "approval");
 }
 
-/** What heads an ask: its short title, or its message when it gave none. */
 function askHeading(ask: Ask): string {
   return ask.item.title || ask.item.message || "(no message)";
 }

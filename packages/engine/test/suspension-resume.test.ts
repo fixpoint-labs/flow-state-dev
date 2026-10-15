@@ -125,8 +125,6 @@ describe("ctx.suspend() — initial suspension", () => {
   });
 
   it("keeps a suspension's short title apart from its body, on the item and the record", async () => {
-    // A surface heads a suspension with its title and draws the message as body, so
-    // the two must arrive separately rather than as one long message.
     const step = handler({
       name: "titledSuspension",
       inputSchema: z.any(),

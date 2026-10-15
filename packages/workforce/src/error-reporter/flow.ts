@@ -416,7 +416,6 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       if (ctx.suspend === undefined) {
         throw new Error("An error report waits for the operator's answer, and this Lab runs without durable execution.");
       }
-      // A short title heads the question in Inbox; the count and the drafter's questions are its markdown body.
       const seen = row?.count ?? 1;
       const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {
