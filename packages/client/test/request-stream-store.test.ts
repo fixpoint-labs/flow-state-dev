@@ -11,10 +11,7 @@ import {
   createRequestStreamStore
 } from "../src/stream-client/request-stream-store";
 
-/** `block_trace` sits outside `OutputItem`; a trace snapshot still carries those rows. */
-function makeItem(
-  overrides: Omit<Partial<OutputItem>, "type"> & { id: string; type?: OutputItem["type"] | "block_trace" }
-): OutputItem {
+function makeItem(overrides: Partial<OutputItem> & { id: string }): OutputItem {
   return {
     type: "message",
     status: "completed",
@@ -24,6 +21,11 @@ function makeItem(
     ts: 1000,
     ...overrides
   } as OutputItem;
+}
+
+/** A `block_trace` row. It sits outside `OutputItem`; a trace snapshot still carries those rows. */
+function traceItem(overrides: Partial<OutputItem> & { id: string }): OutputItem {
+  return { ...makeItem(overrides), type: "block_trace" } as unknown as OutputItem;
 }
 
 function makeStatusEvent(overrides: Partial<RequestStatusEvent> = {}): RequestStatusEvent {
@@ -662,9 +664,9 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
     const store = createRequestStreamStore();
     store.loadSnapshot([
-      makeItem({ id: "t1", type: "block_trace", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
+      traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
-      makeItem({ id: "t2", type: "block_trace", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
+      traceItem({ id: "t2", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
       makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
     ]);
 
@@ -680,7 +682,7 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
     const store = createRequestStreamStore();
     store.loadSnapshot([
-      makeItem({ id: "t1", type: "block_trace", status: "completed", itemIndex: 0, ts: 1000, provenance: prov }),
+      traceItem({ id: "t1", status: "completed", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov })
     ]);
     expect(store.getSorted().map((i) => i.id)).toEqual(["t1", "m1"]);
@@ -691,9 +693,9 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
     const store = createRequestStreamStore();
     store.loadSnapshot([
-      makeItem({ id: "t1", type: "block_trace", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
+      traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
-      makeItem({ id: "t2", type: "block_trace", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
+      traceItem({ id: "t2", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
       makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
     ]);
 
@@ -731,10 +733,10 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
 
     const store = createRequestStreamStore();
     store.loadSnapshot([
-      makeItem({ id: "t1", type: "block_trace", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
+      traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       toolOutput("s1c", 1, "s1", "completed"),
       toolOutput("g1f", 2, "g1", "failed"),
-      makeItem({ id: "t2", type: "block_trace", status: "completed", itemIndex: 3, ts: 1003, provenance: prov }),
+      traceItem({ id: "t2", status: "completed", itemIndex: 3, ts: 1003, provenance: prov }),
       toolOutput("g1c", 4, "g1", "completed")
     ]);
 

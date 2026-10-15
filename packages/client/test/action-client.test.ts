@@ -118,8 +118,10 @@ describe("createTypedClient", () => {
           inputSchema: z.object({
             value: z.string()
           }),
-          block: handler<z.ZodTypeAny, z.ZodTypeAny, { value: string }, { ok: boolean }>({
+          block: handler({
             name: "run-handler",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
             execute: (input) => ({
               ok: input.value.length > 0
             })
@@ -182,8 +184,10 @@ describe("createTypedClient", () => {
           inputSchema: z.object({
             value: z.string()
           }),
-          block: handler<z.ZodTypeAny, z.ZodTypeAny, { value: string }, { ok: boolean }>({
+          block: handler({
             name: "run-handler",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
             execute: (input) => ({
               ok: input.value.length > 0
             })
