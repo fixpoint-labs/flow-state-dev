@@ -24,7 +24,7 @@
  *   waits     each worker's waits-on entries are exactly its parked rows and asks
  *   summary   the counts at the top equal the store's, for the workers shown
  *   sidebar   the Roster entry's and the footer's counts equal the store's
- *   TEAMS     one row per team, General first, a square per seat with its status
+ *   TEAMS     one row per team, General first, a square per worker with its status
  *   filter    a TEAMS row opens Roster for exactly that team
  *
  * Controls rebuild Shift Manager with `src/lib/derive.ts` swapped for a module
