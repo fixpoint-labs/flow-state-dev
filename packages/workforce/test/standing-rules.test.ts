@@ -153,12 +153,25 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
   it("never marks a task's session or a conversation's delegate session, and marks any other", async () => {
     const marked = async (state: Record<string, unknown>) => {
       const patches: unknown[] = [];
-      await markUserTurn({ session: { state }, request: { patchState: async (p: unknown) => void patches.push(p) } } as never);
-      return patches;
+      const sessionPatches: unknown[] = [];
+      await markUserTurn({
+        session: { state, patchState: async (p: unknown) => void sessionPatches.push(p) },
+        request: { patchState: async (p: unknown) => void patches.push(p) }
+      } as never);
+      return { patches, sessionPatches };
     };
-    expect(await marked({ [TASK_ID_STATE_KEY]: "t1" })).toEqual([]);
-    expect(await marked({ [FILING_SESSION_STATE_KEY]: "s1" })).toEqual([]);
-    expect(await marked({})).toEqual([{ [USER_TURN_STATE]: true }]);
+    expect(await marked({ [TASK_ID_STATE_KEY]: "t1" })).toEqual({ patches: [], sessionPatches: [] });
+    expect(await marked({ [FILING_SESSION_STATE_KEY]: "s1" })).toEqual({ patches: [], sessionPatches: [] });
+    // A user's turn also starts the worker-message hop count at 0, in a new
+    // chain of its own, so the exchange it starts has a whole budget (FIX-1989).
+    const first = await marked({});
+    const chain = expect.stringMatching(/^chain_/);
+    expect(first.patches).toEqual([
+      { [USER_TURN_STATE]: true, workforceTurnHop: 0, workforceTurnChain: chain, workforceMessagesSent: 0, workforceMessagedWorkers: [] }
+    ]);
+    expect(first.sessionPatches).toEqual([{ workforceMessageHop: 0, workforceMessageChain: chain }]);
+    const second = await marked({});
+    expect((second.patches[0] as Record<string, unknown>).workforceTurnChain).not.toBe((first.patches[0] as Record<string, unknown>).workforceTurnChain);
   });
 
   it("offers none to a user's message inside a task's session: that is task input", async () => {
