@@ -684,8 +684,9 @@ export function createConcurrencyArbiter(
     if (key === undefined || policy === "allow") return UNARBITRATED;
     if (policy === "defer") return deferredAdmission(key, requestId);
     const input = { key, requestId, ...(policy === "reject" ? { ifEmpty: true } : {}) };
-    // In memory the take is synchronous, so two racing callers can't both win
-    // and a refusal is thrown before `dispatch` returns.
+    // In memory the take is synchronous, so two racing callers can't both win.
+    // The host calls this only after ownership has been checked, so the
+    // refusal thrown here reaches the caller through `accepted` / `finished`.
     if (inMemory !== undefined) return admitted(policy, key, requestId, inMemory.take(input));
     return backend.take(input).then((result) => admitted(policy, key, requestId, result));
   };
