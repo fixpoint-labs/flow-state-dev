@@ -436,7 +436,8 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     const read = requests
       .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
       .find((item) => item.type === "tool_output" && item.blockName === "readProject");
-    // Without the mark, Bob's coordinator read his own workstream as another member's and handed it nothing.
+    expect(read).toBeDefined();
+    // Without the mark, a coordinator read its own user's workstream as another member's and handed it nothing.
     const marks = Object.fromEntries((read.output.workstreams as Array<{ id: string; owner: string; yours: boolean }>).map((w) => [w.id, w.yours]));
     expect(marks).toEqual({ checkout: true, billing: false });
   });

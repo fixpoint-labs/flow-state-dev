@@ -270,11 +270,7 @@ const readLinkedProjectOutputSchema = readProjectOutputSchema.extend({
   workstreams: z.array(workstreamViewSchema.extend({ yours: z.boolean() }))
 });
 
-/**
- * A project coordinator's `readProject` tool: the project its session is
- * linked to, every workstream's entry, each marked `yours` or not, and the
- * progress worked out from them.
- */
+/** A project coordinator's `readProject` tool: the project its session is linked to, read with each workstream marked. */
 const readLinkedProject = handler({
   name: "readProject",
   description:
