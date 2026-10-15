@@ -74,7 +74,7 @@ function branches(): string[] {
 }
 
 /** Every `git` call the host made whose arguments start with `prefix`. */
-function gitCalls(...prefix: string[]): string[][] {
+function gitCalls(...prefix: string[]): (readonly string[])[] {
   return spawned.mock.calls
     .map(([, args]) => subcommand(args))
     .filter((args) => prefix.every((word, i) => args[i] === word));

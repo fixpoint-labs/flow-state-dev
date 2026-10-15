@@ -182,7 +182,7 @@ describe("a main and an upstream that have each moved", () => {
 
     await expect(attempt).rejects.toBeInstanceOf(WorkspaceRefusedError);
     await expect(attempt).rejects.toMatchObject({ reason: "base-diverged" });
-    const message = (await attempt.catch((error: Error) => error)).message;
+    const message = ((await attempt.catch((error: Error) => error)) as Error).message;
     expect(message).toContain(repo);
     expect(message).toContain(mine);
     expect(message).toContain(theirs);

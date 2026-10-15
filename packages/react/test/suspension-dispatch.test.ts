@@ -35,7 +35,7 @@ function suspension(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
 
 function renderItem(item: SuspensionItem, renderers?: RendererRegistry) {
   return render(
-    createElement(FlowProvider, { flowKind: "demo", renderers }, createElement(ItemRenderer, { item }))
+    createElement(FlowProvider, { flowKind: "demo", renderers, children: createElement(ItemRenderer, { item }) })
   );
 }
 
