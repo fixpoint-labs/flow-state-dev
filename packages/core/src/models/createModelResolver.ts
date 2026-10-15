@@ -3,10 +3,7 @@
  *
  * Builds a callable that maps model strings (`provider/model`,
  * `name:model`, or `intent/<name>`) into resolved
- * {@link GeneratorModel} instances. A `name:model` string names its route;
- * one route classifier ({@link classifyRoute}) decides from the app's
- * `providers` and `gateways` maps whether the name is a gateway or a
- * provider. Handles automatic provider/gateway
+ * {@link GeneratorModel} instances. Handles automatic provider/gateway
  * package loading, availability detection, intent fallback chains, and
  * per-call provider preference overrides. Also resolves model strings to
  * evaluation models for `evaluator` blocks (`resolveEvaluationModel`).
@@ -399,19 +396,9 @@ function intentDefaultsToFallbackDefaults(
 // Route classification (the colon lane)
 // ---------------------------------------------------------------------------
 
-/**
- * Where a `name:model` string goes. The parser sees only the string, so it
- * returns the name and the model id; this decides which map the name is in.
- */
+/** A colon string, classified. Gateway before provider; {@link validateRouteNames} keeps a name out of both maps. */
 type Route =
-  | {
-      kind: "gateway";
-      name: string;
-      /** Everything after the colon, handed to the gateway untouched. */
-      modelId: string;
-      /** The segment before the model id's first slash, when it has one. */
-      provider: string | undefined;
-    }
+  | { kind: "gateway"; name: string; modelId: string }
   | { kind: "provider"; name: string; modelId: string };
 
 /**
@@ -423,15 +410,7 @@ function hasRoute(map: object | undefined, name: string): boolean {
   return map != null && Object.hasOwn(map, name);
 }
 
-/**
- * The one route classifier. Every resolver path that branches on a colon
- * string goes through it: resolution, `resolveId`, intent and `defaultModel`
- * validation, the env-var overrides, and the evaluation path.
- *
- * A name is a gateway when it is a key of `gateways` or a built-in gateway
- * (`vercel`, `openrouter`); a provider when it is a key of `providers` or a
- * built-in provider. {@link validateRouteNames} guarantees no name is both.
- */
+/** The one route classifier: every path that branches on a colon string goes through it. */
 function classifyRoute(
   parsed: Extract<ParsedModelString, { type: "alias" }>,
   modelString: string,
@@ -440,8 +419,7 @@ function classifyRoute(
   const name = parsed.alias;
   const modelId = parsed.modelId;
   if ((hasRoute(options?.gateways, name) && options!.gateways![name] != null) || hasRoute(GATEWAY_PACKAGES, name)) {
-    const slash = modelId.indexOf("/");
-    return { kind: "gateway", name, modelId, provider: slash > 0 ? modelId.slice(0, slash) : undefined };
+    return { kind: "gateway", name, modelId };
   }
   if ((hasRoute(options?.providers, name) && options!.providers![name] !== undefined) || hasRoute(PROVIDER_PACKAGES, name)) {
     return { kind: "provider", name, modelId };
@@ -458,11 +436,7 @@ function classifyRoute(
   );
 }
 
-/**
- * One name, one map. With the colon, the number of slash segments no longer
- * keeps a gateway and a provider apart, so a name in both maps (or a
- * provider named like a built-in gateway) would shadow one entry silently.
- */
+/** One name, one map: a colon no longer keeps a gateway and a provider apart by slash count. */
 function validateRouteNames(options: CreateModelResolverOptions | undefined): void {
   const providerKeys = Object.keys(options?.providers ?? {});
   const gatewayKeys = new Set(Object.keys(options?.gateways ?? {}));
@@ -972,11 +946,7 @@ export function createModelResolver(
     });
   }
 
-  /**
-   * The gateway type and key behind a gateway route name: the app's own
-   * instance (seeded into the cache under its key), a `{ type, apiKey }`
-   * config, or a built-in gateway keyed from its env var.
-   */
+  /** The cache key, gateway type and key behind a gateway route name. */
   function namedGateway(name: string): { cacheKey: string; gwType: string; apiKey: string | undefined } {
     const entry = hasRoute(options?.gateways, name) ? options!.gateways![name] : undefined;
     if (entry != null && !isGatewayConfig(entry)) return { cacheKey: name, gwType: name, apiKey: undefined };
@@ -988,11 +958,6 @@ export function createModelResolver(
     return { cacheKey: name, gwType, apiKey };
   }
 
-  /**
-   * Why a pinned provider route cannot be served. A `name:model` string names
-   * its route, so it never falls through to a gateway; the message says what
-   * is missing and how to allow a gateway instead.
-   */
   function pinnedProviderError(name: string, modelId: string, modelString: string): Error {
     const envVar = hasRoute(PROVIDER_ENV_VARS, name) ? PROVIDER_ENV_VARS[name] : undefined;
     const keyed = availability.get(name)?.source === "key";
@@ -1008,7 +973,6 @@ export function createModelResolver(
     );
   }
 
-  /** Resolve a pinned provider route: the app's instance, else the installed, keyed package. */
   function resolvePinnedProvider(
     name: string,
     modelId: string,
@@ -1042,7 +1006,9 @@ export function createModelResolver(
       if (parsed.type === "intent") return "unknown";
       if (parsed.type === "direct") return parsed.provider;
       const route = classifyRoute(parsed, modelString, options);
-      return route.kind === "provider" ? route.name : (route.provider ?? "unknown");
+      if (route.kind === "provider") return route.name;
+      const slash = route.modelId.indexOf("/");
+      return slash > 0 ? route.modelId.slice(0, slash) : "unknown";
     } catch {
       return "unknown";
     }
@@ -1315,13 +1281,29 @@ export function createModelResolver(
     return (await loadGateway(cacheKey, gwType, apiKey)).gateway;
   }
 
-  /**
-   * The evaluation path for a named route. A gateway name reaches that
-   * gateway with everything after the colon; a provider name reaches that
-   * provider only, never a gateway. `typesafe-ai:jev-latest` reaches Jev's
-   * library here when the app registered it: the colon names that route,
-   * while `typesafe-ai/jev` keeps meaning the gateway's Jev.
-   */
+  /** The evaluation model from a registered or installed provider, or undefined when it has neither. */
+  async function evaluationFromProvider(
+    name: string,
+    modelId: string,
+    modelString: string
+  ): Promise<EvaluationModel | undefined> {
+    const explicit = hasRoute(options?.providers, name) ? options!.providers![name] : undefined;
+    if (explicit !== undefined) {
+      return evaluationModelFrom(explicit, modelId, `Provider "${name}"`, modelString);
+    }
+    if (isPackageProviderAvailable(name)) {
+      const provider = await loadPackageProvider(name);
+      return evaluationModelFrom(
+        provider,
+        modelId,
+        `Provider "${name}"`,
+        modelString,
+        PROVIDER_PACKAGES[name]?.pkg
+      );
+    }
+    return undefined;
+  }
+
   async function resolveNamedEvaluationModel(route: Route, modelString: string): Promise<EvaluationModel> {
     if (route.kind === "gateway") {
       const { cacheKey, gwType, apiKey } = namedGateway(route.name);
@@ -1337,20 +1319,8 @@ export function createModelResolver(
         gwType
       );
     }
-    const explicit = hasRoute(options?.providers, route.name) ? options!.providers![route.name] : undefined;
-    if (explicit !== undefined) {
-      return evaluationModelFrom(explicit, route.modelId, `Provider "${route.name}"`, modelString);
-    }
-    if (isPackageProviderAvailable(route.name)) {
-      const provider = await loadPackageProvider(route.name);
-      return evaluationModelFrom(
-        provider,
-        route.modelId,
-        `Provider "${route.name}"`,
-        modelString,
-        PROVIDER_PACKAGES[route.name]?.pkg
-      );
-    }
+    const fromProvider = await evaluationFromProvider(route.name, route.modelId, modelString);
+    if (fromProvider !== undefined) return fromProvider;
     throw pinnedProviderError(route.name, route.modelId, modelString);
   }
 
@@ -1374,21 +1344,9 @@ export function createModelResolver(
     // a different model. Direct Jev is an evaluation model instance the
     // author passes to the evaluator. This is the one place the evaluation
     // path's precedence departs from a generator string's.
-    const gatewayOnly = GATEWAY_ONLY_EVALUATION_PROVIDERS.has(providerName);
-
-    const explicit = gatewayOnly || !hasRoute(options?.providers, providerName) ? undefined : options!.providers![providerName];
-    if (explicit !== undefined) {
-      return evaluationModelFrom(explicit, modelId, `Provider "${providerName}"`, modelString);
-    }
-    if (!gatewayOnly && isPackageProviderAvailable(providerName)) {
-      const provider = await loadPackageProvider(providerName);
-      return evaluationModelFrom(
-        provider,
-        modelId,
-        `Provider "${providerName}"`,
-        modelString,
-        PROVIDER_PACKAGES[providerName]?.pkg
-      );
+    if (!GATEWAY_ONLY_EVALUATION_PROVIDERS.has(providerName)) {
+      const fromProvider = await evaluationFromProvider(providerName, modelId, modelString);
+      if (fromProvider !== undefined) return fromProvider;
     }
     const gw = findGatewayForProvider(providerName);
     if (gw === undefined) {

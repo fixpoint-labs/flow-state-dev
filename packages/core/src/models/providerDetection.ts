@@ -126,17 +126,7 @@ export function detectAvailableProviders(config: {
 // Model string parsing
 // ---------------------------------------------------------------------------
 
-/**
- * One model string, split by the lane it is in. The parser sees only the
- * string, so it decides the lane and nothing more:
- *
- * - `"direct"`: `provider/model`. Resolves however it can: the provider
- *   directly, else a configured gateway.
- * - `"intent"`: `intent/<name>`.
- * - `"alias"`: `<name>:<model id>`, a string that names its route. Whether
- *   the name is a gateway or a provider is decided by the resolver, which
- *   holds the app's `providers` and `gateways` maps.
- */
+/** A model string split into a lane. Whether an alias is a gateway or a provider is the resolver's call. */
 export type ParsedModelString =
   | {
       type: "direct";
@@ -173,18 +163,10 @@ export function canonicalizeIntentName(intentName: string): string {
 }
 
 /**
- * Parse a model string into its lane.
- *
- * Supported formats:
- * - `"provider/model"` → the provider-model lane (`"openai/gpt-5.4"`)
- * - `"intent/name"` → a named intent (configured via createModelResolver)
- * - `"name:model"` → a named route, split at the first colon, the way AI SDK's
- *   provider registry splits: `"vercel:anthropic/claude-sonnet-5"`,
- *   `"openai:gpt-5.4"`, `"triage:native"`. A string is in this lane when its
- *   first `:` comes before its first `/`, so `"openai/gpt-oss:free"` stays a
- *   slash id.
- *
- * The removed `gateway/provider/model` form throws, naming its colon spelling.
+ * Parse a model string into its lane: `provider/model`, `intent/name`, or
+ * `name:model` (first `:` before the first `/`, so `openai/gpt-oss:free` stays
+ * a slash id). The removed `gateway/provider/model` form throws, naming its
+ * colon spelling.
  */
 export function parseModelString(modelString: string): ParsedModelString {
   const trimmed = modelString.trim();
@@ -242,14 +224,11 @@ export function parseModelString(modelString: string): ParsedModelString {
 }
 
 /**
- * Best-guess provider name for a model string, without the app's config.
- * Direct strings return the provider segment; a named route returns the
- * segment before the model id's first slash (`anthropic` in
- * `vercel:anthropic/claude-sonnet-5`), else the name itself (`openai` in
- * `openai:gpt-5.4`). Returns `"unknown"` for malformed strings or intent
- * strings. Use it only where no resolver with `providerOf` is at hand: that
- * classifies a named route against the app's own maps, and the two agree on
- * every string whose route does not depend on those maps.
+ * Provider name with no app config. A named route uses the model id's first
+ * slash segment, else the name itself. `"unknown"` for an intent or a bad
+ * string. Use it only without a resolver: `ModelResolver.providerOf`
+ * classifies against the app's maps, and agrees with this on every string
+ * whose route does not depend on them.
  */
 export function extractProviderName(modelString: string): string {
   try {

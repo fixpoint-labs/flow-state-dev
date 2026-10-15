@@ -1,12 +1,6 @@
 /**
- * The colon lane of `createModelResolver`: a string that names its route
- * (`vercel:anthropic/…`, `openai:gpt-5.4`, `triage:native`), the route
- * classifier that decides gateway against provider from the app's own maps,
- * and the clean break from the slash multi-hop form (FIX-1495 D1–D3).
- *
- * Gateways and providers are hand-built instances that record what they are
- * asked for, so "reached the gateway with this id" is an observation, not a
- * parse result. Ambient keys are cleared so the host's own cannot leak in.
+ * Colon routes on hand-built instances that record the id they are asked for.
+ * Ambient keys are cleared so the host's own cannot leak in.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";

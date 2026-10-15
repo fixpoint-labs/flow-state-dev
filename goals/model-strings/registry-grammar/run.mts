@@ -1,20 +1,5 @@
 /**
- * Goal check: model strings use AI SDK's registry grammar, for generators and
- * evaluators, on real routes (FIX-1495).
- *
- * Real models, real path, out of CI. See goal.md for the contract.
- *
- * Leg (g): a flow whose action is one generator runs through the engine
- * (`runAction`) on the default model resolver, once per model string. The
- * check reads the block_trace row's model identity (which gateway served the
- * call, and the id that answered) and the run's output, never what the parser
- * returned.
- *
- * Leg (e): an evaluator runs `vercel:typesafe-ai/jev` through the gateway, and
- * `triage:native` through a provider the check registers under `providers`.
- *
- * Leg (r): the guard script exits 0 on the repo and non-zero with one planted
- * slash multi-hop string.
+ * Goal check for the registry grammar on real routes. Contract: goal.md.
  *
  * Run: pnpm tsx goals/model-strings/registry-grammar/run.mts
  * Control: GOAL_CONTROL=colon-off (must FAIL on g:colon-text and e:colon-decision)
@@ -181,7 +166,7 @@ await runGoal(async (failures) => {
     }
   }
 
-  // The removed form fails before any request, naming its colon spelling.
+  // Joined so this file does not quote the spelling the guard refuses.
   const legacy = ["vercel", "openai", "gpt-5.4-mini"].join("/");
   const { value: legacyRun, requests } = await countingFetch(() =>
     run(generator({ name: "ask", model: legacy, prompt: fx.question }), {}, resolver)
@@ -209,10 +194,7 @@ await runGoal(async (failures) => {
     evidence.push(`vercel:typesafe-ai/jev P(urgent)=${gwAnswer.probability} via ${gatewayEval.row?.model?.gateway}`);
   }
 
-  // A provider registered under `providers` as `triage`, serving a real
-  // evaluation model. Its model is Jev from the gateway, re-wrapped so it
-  // carries no gateway record of its own: the identity reports only what the
-  // resolver's provider lookup did.
+  // Jev, re-wrapped so it carries no gateway record. "No gateway" can only come from the provider lookup.
   const jev = await createModelResolver().resolveEvaluationModel!("vercel:typesafe-ai/jev");
   const triage = {
     languageModel: () => {

@@ -127,12 +127,8 @@ describe("direct Anthropic ids — hyphens direct, dots only behind a gateway", 
 });
 
 /**
- * The removed `gateway/provider/model` form (FIX-1495 D3). It throws on the
- * reader's first run, so any quoted spelling of it is an error, backticks
- * included: a template literal is executable, and the docs name the removed
- * form in a bare fence, never as a string. Retained history keeps its dated
- * spelling, and harness model ids are a different grammar the rule must not
- * touch.
+ * Quoted gateway/provider/model, backticks included (a template literal runs).
+ * specs/ and docs/internal/archive/ are exempt from this rule only.
  */
 describe("slash multi-hop model strings — removed, the colon names the route", () => {
   it("flags a quoted gateway/provider/model string", () => {

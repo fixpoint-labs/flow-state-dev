@@ -1,13 +1,6 @@
 /**
- * The removed `gateway/provider/model` form is an error that names its colon
- * spelling (FIX-1495 D3: a clean break, no rewrite, no warning).
- *
- * Config strings fail when the resolver is built; a block's string or stored
- * data fails the first time it is resolved. Every case asserts the message
- * carries the fix and that nothing reached a gateway.
- *
- * This file quotes the removed form on purpose, which is its whole job, so
- * `scripts/validate-model-strings.mjs` lists it among the files it excludes.
+ * The removed gateway/provider/model form throws, naming its colon spelling.
+ * This file quotes that form, so the guard excludes it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createModelResolver } from "../../src/models/createModelResolver";

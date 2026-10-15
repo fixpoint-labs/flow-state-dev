@@ -648,9 +648,7 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
     }
     const { createFallbackModel } = await import("../models/fallbackModel");
     const { extractProviderName } = await import("../models/providerDetection");
-    // The resolver holds the app's providers and gateways, so it names the
-    // provider of a `name:model` string; the config-free guess is for a
-    // resolver without `providerOf`.
+    // providerOf classifies against the app's maps; extractProviderName is the guess when the hook is absent.
     const providerOf = (modelStr: string) =>
       ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr);
     const entries = modelValue.map((modelStr) => ({

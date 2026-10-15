@@ -1,10 +1,4 @@
-/**
- * A generator's model-array fallback with `name:model` strings (FIX-1495 D2).
- *
- * The array path labels each entry with its provider. The generator holds no
- * config, so it takes the label from the resolver, which classifies a colon
- * string against the app's own `providers` and `gateways` maps.
- */
+/** Model-array labels come from the resolver's providerOf, which sees the app's maps. */
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { generator } from "../src";
