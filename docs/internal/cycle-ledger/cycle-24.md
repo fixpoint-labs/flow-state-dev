@@ -3,17 +3,7 @@
 Part of the [cycle ledger](../cycle-ledger.md), whose header defines the feedback classes and reading labels.
 
 **Every child merged green, and the closure still found three product blockers. Two of them had
-already shown up a day earlier, and each was fixed by editing a worker's prompt.** On 10-13,
-FIX-1904's real-model leg b failed twice: the EM filed the coder's task with no project, then with
-a slug for a goal, *"so Claude Code built the feature brief"*. #3205 fixed both in the EM's
-`WORKER.md`, and leg b passed. At closure, the chief of staff's direct path (FIX-1872's, merged in
-between) sent the project as a JSON string and every run was refused (FIX-1965, fixed in the
-schema: `input` became an object). The coder was still reading DevTeam's demo brief, and its marker
-landed in a real commit (FIX-1971, fixed by giving the profile its own brief). In both cases the
-prompt fix made that one path pass and left the cause where it was: a schema that accepted the
-wrong shape, and a document that described a different project. Cycle 22 recorded the same shape
-(#2768: *"prompting the chief of staff to list itself is a smell"*, the owner, over a thin
-`discover`), and nothing upstream changed.
+already shown up a day earlier, and each was fixed by editing a worker's prompt.**
 
 The classes, checked against the ledger:
 - **(a) A model's failure fixed in its prompt, with the cause in what it was handed.** Three
@@ -119,8 +109,8 @@ checked with `git merge-base --is-ancestor`. The whole sample carries it.
 
 | Cycle | Failure | First fix (a prompt) | What the model was actually handed | Came back as |
 |---|---|---|---|---|
-| 22 | the chief of staff left itself out of a member list | `WORKER.md`: *"list every member it gets back, itself included"* (#2768, two heads) | a thin `discover` that returned no members and no kinds | FIX-1785, hidden three days; the owner: *"a smell; this should be deterministic"* |
-| 24 | the EM filed the coder's task with no project | EM `WORKER.md`: name the project (#3205 `d63a1849`) | `addTask`/`dispatchTask` declare `input: z.unknown()`, so nothing refused a missing or malformed project | FIX-1965 at closure: the chief of staff, on FIX-1872's new path, sent it as a JSON string. Fixed in the schema (#3308) |
+| 22 | the chief of staff left itself out of a member list | `WORKER.md`: *"list every member it gets back, itself included"* (#2768, two heads) | a thin `discover` that returned no members and no kinds | FIX-1785, hidden three days; the owner: *"prompting the chief of staff to list itself is a smell; this should be deterministic"* |
+| 24 | the EM filed the coder's task with no project | EM `WORKER.md`: name the project (#3205 `d63a1849`) | `addTask`/`dispatchTask` declare `input: z.unknown()`, so nothing refused a missing or malformed project | FIX-1965 at closure: the chief of staff, on FIX-1872's new path, sent it as a JSON string and every run was refused. Fixed in the schema (`input` became an object, #3308) |
 | 24 | Claude Code *"built the feature brief"* instead of the item | EM `WORKER.md`: keep the ask's details in the coder's goal (#3205 `0f15e00d`) | DevTeam's demo brief (`greet()` and a commit marker), which the `fsd` profile inherited as *"your team's standing contract"* | FIX-1971 at closure, with the marker in a real commit. Fixed by giving the profile its own brief (#3317). FIX-1973, then FIX-2013, found more of the same |
 
 Each prompt fix was right on its own path: leg b passed. Each left the input that misled the model
