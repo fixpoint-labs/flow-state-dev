@@ -344,7 +344,6 @@ describe("createExecutionContext", () => {
     })();
 
     const stores = createInMemoryStores();
-    // Each request's context, reduced to its `notes` resource.
     const open = async (requestId: string) => {
       const ctx = await createExecutionContext({
         orgId: DEFAULT_ORG_ID,
