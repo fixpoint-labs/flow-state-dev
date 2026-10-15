@@ -1,5 +1,5 @@
 /**
- * Jump to (⌘K): find Chief of Staff, a worker, a task or a declared document by
+ * Jump to (⌘K; Shift+⌘K opens it in message mode): find Chief of Staff, a worker, a task or a declared document by
  * name, from the one snapshot, and go there (BR-10). A document opens
  * read-only. A Lab that serves no document to the browser gets a line saying
  * so, and a failed read of them says what the Lab answered. Up and Down move
@@ -25,8 +25,19 @@ const PER_GROUP = 8;
 /** Typing this first turns the palette into a message to the Shift Coordinator. */
 const MESSAGE_PREFIX = "> ";
 
-export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; gaps: Gaps; onClose: () => void }) {
-  const [query, setQuery] = useState("");
+export function JumpTo({
+  snapshot,
+  gaps,
+  initialQuery = "",
+  onClose,
+}: {
+  snapshot: LoadedSnapshot;
+  gaps: Gaps;
+  /** Seeds the query; `"> "` (Shift+⌘K) opens straight into message mode. */
+  initialQuery?: string;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const [sendFailure, setSendFailure] = useState<string | null>(null);
