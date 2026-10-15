@@ -89,7 +89,7 @@ import {
   stampLeaseRenewal,
   withLeaseRenewalScope,
 } from "../tasks/lease-renewal-scope";
-import { stampCurrentClaim } from "./flow-policy-wiring";
+import { openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
 import { createRecordError, createRecordSuccess } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
 import {
@@ -230,6 +230,18 @@ export interface TaskLedgersOptions {
    * state is the entry's own, the same shape for every task.
    */
   allowSessionState?: boolean;
+  /**
+   * Whether a turn this entry serves is a task turn (`isTaskTurn`). Default
+   * `true`. A task turn may not wait on another task, so waits never nest,
+   * and it is the turn offered the question park, whose question goes back to
+   * whoever filed the task.
+   *
+   * Set `false` for an entry whose turn answers a person directly rather than
+   * its filer, such as Workforce's delegated post: it can wait on work it
+   * hands off, and it has no filer to ask. The claim is still stamped, so
+   * task-tool writes from the turn stay fenced to the row it holds.
+   */
+  taskTurn?: boolean;
 }
 
 /**
@@ -256,6 +268,7 @@ export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
       ...(options.uses !== undefined ? { uses: options.uses } : {}),
       onError: options.onError ?? "skip",
       allowSessionState: options.allowSessionState === true,
+      taskTurn: options.taskTurn !== false,
       ledger: { kind: "by-id", resolve },
     }),
   };
@@ -282,6 +295,8 @@ function buildTaskGate(options: {
   uses?: readonly DefinedCapability[];
   onError: "skip" | "fail";
   allowSessionState?: boolean;
+  /** See {@link TaskLedgersOptions.taskTurn}; a board's own gate always serves task turns. */
+  taskTurn?: boolean;
 }): TaskBinding["gate"] {
   const { name, boardId, ledger, uses, onError } = options;
 
@@ -400,11 +415,13 @@ function buildTaskGate(options: {
       stateSchema: taskBoardWorkerBodyStateSchema,
       ...(uses !== undefined ? { uses } : {}),
     })
-      .tap(async (dispatch: TaskDispatchInput, ctx) =>
-        // FIRST STATEMENT, before any await: this publishes the slot the lease
-        // driver is installed into; past the first `await` it would land on a
-        // continuation scope that dies with this tap.
-        withLeaseRenewalScope(async () => {
+      .tap(async (dispatch: TaskDispatchInput, ctx) => {
+        // FIRST STATEMENTS, before any await: these publish the slots the claim
+        // ticket and the lease driver are installed into; past the first
+        // `await` they would land on a continuation scope that dies with this
+        // tap, and the worker would read no claim and run under no lease signal.
+        openWorkerClaimScope();
+        return withLeaseRenewalScope(async () => {
           const board = await ledgerFor(ctx, dispatch);
           const row = board.get(dispatch.taskId) as Task | undefined;
 
@@ -491,7 +508,7 @@ function buildTaskGate(options: {
           });
 
           ctx._markTaskScope?.(held.id);
-          stampCurrentClaim(ticket);
+          stampCurrentClaim(ticket, ctx, { taskTurn: options.taskTurn !== false });
           stampLeaseRenewal(
             startLeaseRenewal({
               collection: board,
@@ -500,8 +517,8 @@ function buildTaskGate(options: {
               signal: ctx.signal,
             })
           );
-        })
-      )
+        });
+      })
       // The worker receives the payload the parent packed at claim time, not a
       // re-pack: dependency outputs and flow-policy `priorWork` are selected
       // against the parent's live board, which does not exist here.

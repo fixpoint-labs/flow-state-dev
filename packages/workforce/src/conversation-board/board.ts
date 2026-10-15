@@ -200,7 +200,7 @@ function taskSessionKey(taskId: string, worker: string): string {
 function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } | undefined {
   const onState = (ctx.sequencer?.state as { currentClaim?: { assignee?: string; followUpOf?: string } } | undefined)
     ?.currentClaim;
-  return onState ?? currentWorkerClaim();
+  return onState ?? currentWorkerClaim(ctx);
 }
 
 /**

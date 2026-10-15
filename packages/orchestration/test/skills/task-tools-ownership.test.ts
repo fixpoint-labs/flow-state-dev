@@ -17,7 +17,11 @@ import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { taskTools, DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
-import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import {
+  openWorkerClaimScope,
+  stampCurrentClaim,
+  type WorkerClaimReader,
+} from "../../src/task-board/flow-policy-wiring";
 import { ticketForClaim, type Task } from "../../src/tasks";
 import { buildDelegationCtx } from "./delegation-ctx";
 
@@ -68,14 +72,15 @@ function boardWithTwoClaimedTasks() {
 }
 
 /** Stamp the worker scope as holding "mine" on the delegation board. */
-function holdMine() {
-  stampCurrentClaim(ticketForClaim(DELEGATION_BOARD_FIELD, inProgress("mine")));
+function holdMine(ctx: WorkerClaimReader) {
+  openWorkerClaimScope();
+  stampCurrentClaim(ticketForClaim(DELEGATION_BOARD_FIELD, inProgress("mine")), ctx);
 }
 
 describe("taskTools — a worker can only settle the task it holds", () => {
   it("refuses completeTask on a sibling's task and names the one the caller holds", async () => {
     const { ctx, selfState } = boardWithTwoClaimedTasks();
-    holdMine();
+    holdMine(ctx);
 
     const result = (await runForTest(
       findTool("completeTask"),
@@ -107,7 +112,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
       // a token at all, and `cancelTask` hard-coded its guards and dropped the
       // caller's.
       const { ctx, selfState } = boardWithTwoClaimedTasks();
-      holdMine();
+      holdMine(ctx);
 
       const result = (await runForTest(
         findTool(toolName),
@@ -126,7 +131,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     // The control. A fence that refused everything would satisfy every
     // assertion above while breaking every board that works today.
     const { ctx, selfState } = boardWithTwoClaimedTasks();
-    holdMine();
+    holdMine(ctx);
 
     const result = (await runForTest(
       findTool("completeTask"),
@@ -148,7 +153,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
       self: false,
       preTasks: { mine: { ...inProgress("mine"), attempts: 2 } as Task },
     });
-    holdMine(); // still holding attempt 1
+    holdMine(ctx); // still holding attempt 1
 
     const result = (await runForTest(
       findTool("completeTask"),
@@ -167,7 +172,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     // relabel tasks they never claimed (a failure-category audit, a cascade's
     // `skipped` marker). "Fixing" these would break them.
     const { ctx, selfState } = boardWithTwoClaimedTasks();
-    holdMine();
+    holdMine(ctx);
 
     expect(
       await runForTest(

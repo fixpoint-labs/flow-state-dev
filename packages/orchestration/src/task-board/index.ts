@@ -143,6 +143,7 @@ import {
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
   currentBoardRunId,
+  openWorkerClaimScope,
   stampCurrentClaim,
 } from "./flow-policy-wiring";
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
@@ -248,7 +249,7 @@ export {
   type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
-export { currentWorkerClaim } from "./flow-policy-wiring";
+export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring";
 // The wait under `dispatchTask({ wait })` (FIX-1816, FIX-1875): the call that
 // dispatches a task and waits for its answer, whether this turn's host can
 // hold one, and the bounds. Node-only, like the claim seam it reads.
@@ -1026,15 +1027,18 @@ export function taskBoard<
     // CAS path before this body runs.
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
-    .tap(async (task: Task, ctx) =>
-      // FIRST STATEMENT, before any await (FIX-1005). This publishes the slot
-      // the driver below is installed into; past the first `await` it would
-      // land on a continuation scope that dies with this tap, and every reader
-      // — the step's `abortSignal`, both recorders, `onSettled` — would see
-      // `undefined`. It also stops that driver if the setup below throws after
-      // the claim is committed, which is the one exit no recorder and no
-      // `onSettled` can see. See `withLeaseRenewalScope`.
-      withLeaseRenewalScope(async () => {
+    .tap(async (task: Task, ctx) => {
+      // FIRST STATEMENTS, before any await (FIX-1005). These publish the slots
+      // the claim ticket and the lease driver below are installed into; past
+      // the first `await` they would land on a continuation scope that dies
+      // with this tap, and every reader — `currentWorkerClaim()` in the task
+      // tools and cache, the step's `abortSignal`, both recorders, `onSettled`
+      // — would see `undefined`. The renewal scope also stops that driver if
+      // the setup below throws after the claim is committed, which is the one
+      // exit no recorder and no `onSettled` can see. See
+      // `openWorkerClaimScope` and `withLeaseRenewalScope`.
+      openWorkerClaimScope();
+      return withLeaseRenewalScope(async () => {
         // The ONE mint site for this board's claim tickets (FIX-981). `task` is
         // what `claim()` returned, so `attempts` is already incremented and this
         // is this worker's attempt, not the pre-claim one.
@@ -1070,7 +1074,7 @@ export function taskBoard<
         // to this task (later hits get `sourceTask`) — and, since FIX-981, so any
         // task tool the worker calls presents this ticket without the model ever
         // seeing it.
-        stampCurrentClaim(ticket);
+        stampCurrentClaim(ticket, ctx);
         // FIX-1005: start renewing this claim's lease, and stamp the driver onto
         // the same per-worker seam. Renewal is what makes a lapsed lease mean
         // "no live worker holds this" rather than "the worker is taking a while",
@@ -1088,8 +1092,8 @@ export function taskBoard<
             signal: ctx.signal,
           })
         );
-      })
-    )
+      });
+    })
     // The worker runs under the driver's lease-loss signal, composed with the
     // request's by the step dispatch (FIX-1005). Losing the claim stops the
     // worker paying for work it can no longer record; it is not what makes the
