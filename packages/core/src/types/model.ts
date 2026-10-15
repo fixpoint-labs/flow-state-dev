@@ -334,7 +334,9 @@ export type ModelResolver = ((
    * Returns the primary underlying model string for any model reference.
    * For intents, returns the first available provider/model string (applying
    * the resolver's provider preference and any call-site override).
-   * For direct model strings, returns the input as-is.
+   * For direct model strings, returns the input as-is. A `name:model` string
+   * is returned as-is when its route is registered, and throws the same
+   * "Unknown route" error resolving it would when it is not.
    *
    * @example
    * resolver.resolveId("intent/chat")

@@ -247,6 +247,20 @@ describe("createModelResolver — one route per string, whatever the caller", ()
     expect(gateway.evaluationModelIds).toEqual([]);
   });
 
+  // resolveId reports the string a block will run on, so it must refuse the
+  // route that generator and evaluator resolution refuse, not echo it back.
+  it("resolveId refuses an unregistered route the way resolving it does", () => {
+    const resolver = createModelResolver({
+      providers: { triage: recordingSource("triage").instance },
+      env: {},
+    });
+
+    expect(() => resolver("missing:model")).toThrow(/Unknown route "missing"/);
+    expect(() => resolver.resolveId("missing:model")).toThrow(/Unknown route "missing"/);
+    expect(resolver.resolveId("triage:native")).toBe("triage:native");
+    expect(resolver.resolveId("vercel:anthropic/claude-sonnet-5")).toBe("vercel:anthropic/claude-sonnet-5");
+  });
+
   // extractProviderName is the config-free guess a resolver without
   // providerOf falls back to. On every string whose route does not depend on
   // the app's maps, the two must agree.

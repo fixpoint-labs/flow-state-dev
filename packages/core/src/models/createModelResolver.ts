@@ -1387,6 +1387,7 @@ export function createModelResolver(
     callOptions?: { preferProvider?: ProviderPreference }
   ): string => {
     const parsed = parseModelString(modelId);
+    if (parsed.type === "alias") classifyRoute(parsed, modelId, options);
     if (parsed.type !== "intent") return modelId;
 
     const candidates = options?.intents?.[parsed.intentName];
