@@ -6,6 +6,7 @@
  * nothing going red. A package still waiting is named in `DEFERRED` with
  * the issue that wires it; a covered package left there fails too.
  * Reads configs with the typescript API and never runs `tsc`.
+ * Test files come from `git ls-files`, so an untracked test file is invisible to it.
  */
 
 import { execFileSync } from "node:child_process";
@@ -54,7 +55,7 @@ const TEST_DIR = /^(test|tests|__tests__)\//;
 const TEST_NAME = /\.(test|spec|test-d)\.(ts|tsx|mts)$/;
 const isTestFile = (rel) => TEST_DIR.test(rel) || TEST_NAME.test(rel);
 
-/** Configs a package's `typecheck` script compiles, in order. */
+/** Configs a package's `typecheck` script compiles, in order. Throws on a `tsc` form it cannot read. */
 export function typecheckPrograms(script, hasConfig) {
   if (!script) return [];
   const out = [];
@@ -63,10 +64,29 @@ export function typecheckPrograms(script, hasConfig) {
       out.push("tsconfig.json");
       if (hasConfig("tsconfig.test.json")) out.push("tsconfig.test.json");
     } else if (/\btsc\b/.test(segment)) {
-      out.push(/-p\s+(\S+)/.exec(segment)?.[1] ?? "tsconfig.json");
+      out.push(tscProgram(segment));
     }
   }
   return [...new Set(out)];
+}
+
+/** The config one `tsc` segment compiles: `-p X`, `--project X`, or `tsconfig.json`. */
+function tscProgram(segment) {
+  const unreadable = () => new Error(`unrecognised tsc form in a typecheck script: "${segment.trim()}"`);
+  const tokens = segment.trim().split(/\s+/);
+  const at = tokens.indexOf("tsc");
+  if (at === -1) throw unreadable();
+  let config = "tsconfig.json";
+  const args = tokens.slice(at + 1);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-p" || args[i] === "--project") {
+      config = args[++i];
+      if (config === undefined || config.startsWith("-")) throw unreadable();
+    } else if (!args[i].startsWith("--") || /^--(build|project)\b/.test(args[i])) {
+      throw unreadable();
+    }
+  }
+  return config;
 }
 
 /**
@@ -107,7 +127,12 @@ function programFiles(pkgDir, configName) {
 function readPackage(dir) {
   const pkgDir = join(ROOT, "packages", dir);
   const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
-  const programs = typecheckPrograms(manifest.scripts?.typecheck, (name) => existsSync(join(pkgDir, name)));
+  let programs;
+  try {
+    programs = typecheckPrograms(manifest.scripts?.typecheck, (name) => existsSync(join(pkgDir, name)));
+  } catch (error) {
+    throw new Error(`packages/${dir}: ${error.message}`);
+  }
   const covered = programs.flatMap((name) => programFiles(pkgDir, name));
   const tests = execFileSync("git", ["ls-files", "--", "*.ts", "*.tsx", "*.mts"], { cwd: pkgDir, encoding: "utf8" })
     .split("\n")
@@ -139,7 +164,7 @@ function main() {
     } else if (reason === "stale-deferral") {
       console.error(`    packages/${dir}  →  in DEFERRED, but its typecheck already covers every test file`);
     } else {
-      console.error(`    ${dir}  →  in DEFERRED, but no packages/${dir}/package.json exists`);
+      console.error(`    packages/${dir}  →  in DEFERRED, but no packages/${dir}/package.json exists`);
     }
   }
   console.error(

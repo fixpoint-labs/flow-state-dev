@@ -57,17 +57,17 @@ function installFakeTsc(root: string, status: number): void {
 }
 
 /**
- * Install a fake `tsc` that appends its `-p` config to `calls.log` and fails
- * with `status` only when that config is `tsconfig.test.json`.
+ * Install a fake `tsc` that appends its `-p` config to `calls.log`, exits with
+ * `status` for `tsconfig.test.json` and with `buildStatus` for `tsconfig.json`.
  */
-function installRecordingTsc(root: string, status: number): string {
+function installRecordingTsc(root: string, status: number, buildStatus = 0): string {
   const binDir = path.join(root, "node_modules", ".bin");
   fs.mkdirSync(binDir, { recursive: true });
   const log = path.join(root, "calls.log");
   const tscPath = path.join(binDir, "tsc");
   fs.writeFileSync(
     tscPath,
-    `#!/bin/sh\necho "$2" >> "${log}"\n[ "$2" = "tsconfig.test.json" ] && exit ${status}\nexit 0\n`
+    `#!/bin/sh\necho "$2" >> "${log}"\n[ "$2" = "tsconfig.test.json" ] && exit ${status}\nexit ${buildStatus}\n`
   );
   fs.chmodSync(tscPath, 0o755);
   return log;
@@ -141,6 +141,15 @@ describe("typecheck script — runs tsconfig.test.json after tsconfig.json", () 
     installRecordingTsc(root, 3);
 
     expect(run(root, packageDir).status).toBe(3);
+  });
+
+  it.skipIf(!onPosix)("runs the test config even when the build config fails, so neither hides the other", () => {
+    const { root, packageDir } = makeRoot();
+    fs.writeFileSync(path.join(packageDir, "tsconfig.test.json"), "{}");
+    const log = installRecordingTsc(root, 3, 2);
+
+    expect(run(root, packageDir).status).toBe(2);
+    expect(fs.readFileSync(log, "utf8").trim().split("\n")).toEqual(["tsconfig.json", "tsconfig.test.json"]);
   });
 
   it.skipIf(!onPosix)("runs only tsconfig.json when the package has no test config", () => {

@@ -50,6 +50,8 @@ if (!fs.existsSync(tscPath)) {
 const configs = ["tsconfig.json"];
 if (fs.existsSync(path.join(packageDir, "tsconfig.test.json"))) configs.push("tsconfig.test.json");
 
+// Run every config even after one fails, so one's errors never hide the other's.
+let failedStatus = 0;
 for (const config of configs) {
   const tscRun = spawnSync(tscPath, ["-p", config, "--noEmit"], {
     cwd: packageDir,
@@ -61,5 +63,7 @@ for (const config of configs) {
     process.exit(1);
   }
 
-  if (tscRun.status !== 0) process.exit(tscRun.status ?? 1);
+  if (tscRun.status !== 0 && failedStatus === 0) failedStatus = tscRun.status ?? 1;
 }
+
+process.exit(failedStatus);

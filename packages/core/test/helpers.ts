@@ -44,7 +44,7 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
   }) as unknown as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelId;
 
-  const baseContext: Omit<BlockContext, "session" | "settings" | "targets"> = {
+  const baseContext: BlockContext = {
     request: {
       identity: { type: "request", id: "req_1" },
       incarnation: "inc_1",
@@ -88,10 +88,12 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
     // frozen empty bag, so a block that reads `ctx.flow.config` here sees what
     // an unconfigured flow gives it rather than `undefined`.
     flow: { config: Object.freeze({}) },
+    // Unset here: a test that reads a session, settings or targets passes them.
+    session: undefined as unknown as BlockContext["session"],
+    settings: undefined as unknown as BlockContext["settings"],
+    targets: undefined as unknown as BlockContext["targets"],
   };
 
-  return {
-    ...baseContext,
-    ...overrides
-  } as BlockContext;
+  // Only the overrides are cast: their `resolveModel` and `response` may be partial.
+  return { ...baseContext, ...(overrides as Partial<BlockContext>) };
 }

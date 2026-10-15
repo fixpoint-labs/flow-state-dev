@@ -80,6 +80,17 @@ describe("the programs a typecheck script compiles", () => {
     expect(programs("tsc --noEmit")).toEqual(["tsconfig.json"]);
   });
 
+  it("reads --project like -p", () => {
+    expect(programs("tsc --project tsconfig.test-d.json", ["tsconfig.test-d.json"])).toEqual(["tsconfig.test-d.json"]);
+  });
+
+  it("throws on a tsc form it cannot read, rather than guessing the program", () => {
+    expect(() => programs("tsc -b")).toThrow(/unrecognised tsc form/);
+    expect(() => programs("node ../../scripts/typecheck.mjs && tsc --build tsconfig.json")).toThrow(/unrecognised tsc form/);
+    expect(() => programs("tsc-alias -p tsconfig.json")).toThrow(/unrecognised tsc form/);
+    expect(() => programs("tsc -p")).toThrow(/unrecognised tsc form/);
+  });
+
   it("finds no program for a package with no typecheck script", () => {
     expect(programs(undefined)).toEqual([]);
   });
