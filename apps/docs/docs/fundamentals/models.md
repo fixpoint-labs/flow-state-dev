@@ -28,13 +28,13 @@ A model string takes one of three forms. Each form is a lane, and the lane decid
 | `name:model` | `"vercel:openai/gpt-5.5"`, `"openai:gpt-5.5"`, `"triage:native"` | The gateway or provider registered under `name`, and nothing else |
 | `intent/<name>` | `"intent/chat"` | The first available model in the named intent |
 
-The colon form is the one AI SDK's provider registry uses, so an id copied from its docs works as written. Everything after the first colon is passed through untouched, slashes and later colons included: `openrouter:openai/gpt-oss-20b:free` asks OpenRouter for `openai/gpt-oss-20b:free`.
+Ids copied from the AI SDK provider-registry docs work as written. Everything after the first colon is passed through untouched, slashes and later colons included: `openrouter:openai/gpt-oss-20b:free` asks OpenRouter for `openai/gpt-oss-20b:free`.
 
 The name before the colon must be one the resolver knows: `vercel` or `openrouter` for the built-in gateways, `openai`, `anthropic` or `google` for the built-in providers, or a key you registered under `providers` or `gateways` in `createModelResolver`. A string that names its route never falls back to another one. `openai:gpt-5.5` with no `OPENAI_API_KEY` fails with an error naming the missing key, even when a gateway is configured. Write `openai/gpt-5.5` when any route will do.
 
 The model id reaches whoever serves the call exactly as you typed it, so spell it the way that service spells it. Anthropic writes its ids with hyphens: `anthropic/claude-sonnet-4-6`. The Vercel AI Gateway writes the same models with dots: `vercel:anthropic/claude-sonnet-4.6`. Copying one form into the other position gets you an unknown-model error from the far end.
 
-### Rename your strings
+### Migrating `gateway/provider/model` strings
 
 A model string with three slash-separated parts fails with an error that names its colon spelling. Rename each one by turning its first slash into a colon:
 
@@ -107,7 +107,7 @@ You can replace which model a declared intent (or `defaultModel`) resolves to pe
 
 **Variable naming.** `FSDEV_INTENT_<NAME>` overrides intent `<name>`'s candidate list. `<NAME>` is the intent name uppercased with hyphens replaced by underscores, so `chat` → `FSDEV_INTENT_CHAT` and `my-custom` → `FSDEV_INTENT_MY_CUSTOM`. If two declared intents normalize to the same env-var name (`my-custom` and `my_custom` both → `FSDEV_INTENT_MY_CUSTOM`), construction throws.
 
-**Value shape.** A single `provider/model` or `name:model` string. `intent/*` values, empty values, and malformed strings all throw at construction. Comma-separated multi-value lists are deliberately not supported in this phase.
+**Value shape.** A single `provider/model` or `name:model` string. `intent/*` values, empty values, and malformed strings all throw at construction. Comma-separated lists aren't supported.
 
 **`defaultModel` override.** `FSDEV_DEFAULT_MODEL` replaces `defaultModel`. This covers the fallback path for empty, unknown, or fully-unavailable intents.
 
@@ -388,17 +388,17 @@ Gateway strings work anywhere a model string works: directly on a generator, ins
 
 ### Naming your own providers and gateways
 
-Each key of `providers` and `gateways` is a name you can put before the colon. Register an AI SDK provider under `triage` and `triage:native` reaches it:
+Each key of `providers` and `gateways` is a name you can put before the colon. Register an AI SDK provider instance under `triage` and `triage:<model>` reaches it, for generators and evaluators alike:
 
 ```ts
-import { customProvider } from "ai";
+import { typeSafeAi } from "@ai-sdk/typesafe-ai";
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  providers: { triage: customProvider({ evaluationModels: { native: myEvaluationModel } }) },
+  providers: { triage: typeSafeAi },
 });
 
-evaluator({ name: "route", model: "triage:native", questions });
+evaluator({ name: "route", model: "triage:jev-latest", questions });
 ```
 
 A name can only mean one route. `createModelResolver` throws when a name is a key of both `providers` and `gateways`, or when a `providers` key is `vercel` or `openrouter`, and the error names the key and both places.
@@ -434,7 +434,7 @@ Bare `provider/model` strings (no gateway prefix) have a two-tier resolution:
 
 This is what makes `"openai/gpt-5.5"` keep working on Vercel even when `@ai-sdk/openai` isn't in the bundle, as long as `AI_GATEWAY_API_KEY` is set. The behavior is intentional, not a hidden quirk.
 
-**The fall-through hands the gateway the id you wrote, unchanged.** It does not respell it for the gateway's namespace. OpenAI is unaffected, because both namespaces spell OpenAI ids the same way — which is why the trace below resolves cleanly. Anthropic is not: direct Anthropic ids use hyphens, the Vercel gateway uses dots, so a bare `anthropic/claude-sonnet-4-6` that falls through arrives at the gateway in a spelling it doesn't serve. If you are relying on the fall-through for Anthropic, write the gateway string explicitly — `vercel:anthropic/claude-sonnet-4.6` — instead of a bare one.
+**The fall-through hands the gateway the id you wrote, unchanged.** It does not respell it for the gateway's namespace. OpenAI is unaffected, because both namespaces spell OpenAI ids the same way, so the trace below resolves cleanly. Anthropic is not: direct Anthropic ids use hyphens, the Vercel gateway uses dots, so a bare `anthropic/claude-sonnet-4-6` that falls through arrives at the gateway in a spelling it doesn't serve. If you are relying on the fall-through for Anthropic, write the gateway string explicitly, `vercel:anthropic/claude-sonnet-4.6`, instead of a bare one.
 
 A worked resolution trace:
 

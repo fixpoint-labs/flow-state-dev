@@ -415,6 +415,15 @@ type Route =
   | { kind: "provider"; name: string; modelId: string };
 
 /**
+ * Whether `name` is an own key of `map`. A route name comes from a caller's
+ * string, so a name every object inherits (`constructor`, `toString`) must
+ * never read as registered.
+ */
+function hasRoute(map: object | undefined, name: string): boolean {
+  return map != null && Object.hasOwn(map, name);
+}
+
+/**
  * The one route classifier. Every resolver path that branches on a colon
  * string goes through it: resolution, `resolveId`, intent and `defaultModel`
  * validation, the env-var overrides, and the evaluation path.
@@ -424,17 +433,17 @@ type Route =
  * built-in provider. {@link validateRouteNames} guarantees no name is both.
  */
 function classifyRoute(
-  parsed: ParsedModelString,
+  parsed: Extract<ParsedModelString, { type: "alias" }>,
   modelString: string,
   options: Pick<CreateModelResolverOptions, "providers" | "gateways"> | undefined
 ): Route {
-  const name = parsed.alias!;
-  const modelId = parsed.modelId!;
-  if (options?.gateways?.[name] != null || GATEWAY_PACKAGES[name] !== undefined) {
+  const name = parsed.alias;
+  const modelId = parsed.modelId;
+  if ((hasRoute(options?.gateways, name) && options!.gateways![name] != null) || hasRoute(GATEWAY_PACKAGES, name)) {
     const slash = modelId.indexOf("/");
     return { kind: "gateway", name, modelId, provider: slash > 0 ? modelId.slice(0, slash) : undefined };
   }
-  if (options?.providers?.[name] !== undefined || PROVIDER_PACKAGES[name] !== undefined) {
+  if ((hasRoute(options?.providers, name) && options!.providers![name] !== undefined) || hasRoute(PROVIDER_PACKAGES, name)) {
     return { kind: "provider", name, modelId };
   }
   const registered = [
@@ -464,7 +473,7 @@ function validateRouteNames(options: CreateModelResolverOptions | undefined): vo
           `would name two routes. Rename one of them.`
       );
     }
-    if (GATEWAY_PACKAGES[name] !== undefined) {
+    if (hasRoute(GATEWAY_PACKAGES, name)) {
       throw new Error(
         `createModelResolver: "${name}" is a providers key and the name of the built-in ${name} gateway, ` +
           `so "${name}:<model>" would name two routes. Rename the provider, or pass the instance under gateways.`
@@ -840,12 +849,17 @@ export function createModelResolver(
     }
   }
 
-  /** Single-flight lazy execution of a gateway package. */
+  /**
+   * Single-flight lazy execution of a gateway package, cached under the name
+   * the gateway is registered by (`cacheKey`). Two gateways of one type with
+   * different keys are two accounts, so `type` only picks the package.
+   */
   function loadGateway(
+    cacheKey: string,
     gatewayType: string,
     apiKey: string
   ): Promise<{ gateway: Record<string, unknown>; type: string }> {
-    let pending = gatewayLoadCache.get(gatewayType);
+    let pending = gatewayLoadCache.get(cacheKey);
     if (pending === undefined) {
       pending = instantiateFactory<Record<string, unknown>>(
         "gateway",
@@ -857,10 +871,10 @@ export function createModelResolver(
         // Populate the sync cache so later fall-through decisions
         // (findGatewayForProvider) see the loaded gateway, matching the
         // pre-migration behavior where loading happened at resolve time.
-        gatewayCache.set(gatewayType, entry);
+        gatewayCache.set(cacheKey, entry);
         return entry;
       });
-      gatewayLoadCache.set(gatewayType, pending);
+      gatewayLoadCache.set(cacheKey, pending);
     }
     return pending;
   }
@@ -875,15 +889,14 @@ export function createModelResolver(
    */
   function findGatewayForProvider(
     providerName: string
-  ): { gatewayType: string; apiKey?: string } | undefined {
+  ): { cacheKey: string; gatewayType: string; apiKey?: string } | undefined {
     const info = availability.get(providerName);
     if (info?.source === "gateway" && info.gatewayType) {
-      return { gatewayType: info.gatewayType, apiKey: info.apiKey };
-    }
-
-    if (gatewayCache.size > 0) {
-      const first = gatewayCache.keys().next().value as string | undefined;
-      if (first) return { gatewayType: first };
+      // A configured gateway is cached under its registered name; one
+      // detected from the environment, under its type.
+      const name = info.gatewayName;
+      const cacheKey = name === undefined || name.startsWith("auto-") ? info.gatewayType : name;
+      return { cacheKey, gatewayType: info.gatewayType, apiKey: info.apiKey };
     }
 
     if (options?.gateways) {
@@ -892,16 +905,16 @@ export function createModelResolver(
         if (isGatewayConfig(entry)) {
           const envVar = GATEWAY_ENV_VARS[entry.type];
           const apiKey = entry.apiKey ?? (envVar ? process.env[envVar] : undefined);
-          if (apiKey) return { gatewayType: entry.type, apiKey };
+          if (apiKey) return { cacheKey: name, gatewayType: entry.type, apiKey };
         } else {
-          return { gatewayType: name };
+          return { cacheKey: name, gatewayType: name };
         }
       }
     }
 
     for (const [gwType, envVar] of Object.entries(GATEWAY_ENV_VARS)) {
       const key = process.env[envVar];
-      if (key) return { gatewayType: gwType, apiKey: key };
+      if (key) return { cacheKey: gwType, gatewayType: gwType, apiKey: key };
     }
 
     return undefined;
@@ -927,6 +940,7 @@ export function createModelResolver(
    * keeps each call site's distinct missing-API-key error.
    */
   function resolveGatewayModel(
+    cacheKey: string,
     gwType: string,
     apiKey: string | undefined,
     gatewayModelId: string,
@@ -934,7 +948,7 @@ export function createModelResolver(
     identity: { requested: string; gateway: string },
     missingKeyMessage: string
   ): GeneratorModel {
-    const cachedGateway = gatewayCache.get(gwType);
+    const cachedGateway = gatewayCache.get(cacheKey);
     if (cachedGateway !== undefined) {
       return wrapAiSdkModel(
         gatewayLanguageModel(cachedGateway, gatewayModelId),
@@ -949,7 +963,7 @@ export function createModelResolver(
 
     ensureGatewayPackageAvailable(gwType);
     return createLazyGeneratorModel(modelString, async () => {
-      const entry = await loadGateway(gwType, apiKey);
+      const entry = await loadGateway(cacheKey, gwType, apiKey);
       return wrapAiSdkModel(
         gatewayLanguageModel(entry, gatewayModelId),
         modelString,
@@ -963,15 +977,15 @@ export function createModelResolver(
    * instance (seeded into the cache under its key), a `{ type, apiKey }`
    * config, or a built-in gateway keyed from its env var.
    */
-  function namedGateway(name: string): { gwType: string; apiKey: string | undefined } {
-    const entry = options?.gateways?.[name];
-    if (entry != null && !isGatewayConfig(entry)) return { gwType: name, apiKey: undefined };
+  function namedGateway(name: string): { cacheKey: string; gwType: string; apiKey: string | undefined } {
+    const entry = hasRoute(options?.gateways, name) ? options!.gateways![name] : undefined;
+    if (entry != null && !isGatewayConfig(entry)) return { cacheKey: name, gwType: name, apiKey: undefined };
     const gwType = isGatewayConfig(entry) ? entry.type : name;
     const apiKey =
       (isGatewayConfig(entry) ? entry.apiKey : undefined) ??
       process.env[GATEWAY_ENV_VARS[gwType] ?? ""] ??
       undefined;
-    return { gwType, apiKey };
+    return { cacheKey: name, gwType, apiKey };
   }
 
   /**
@@ -980,7 +994,7 @@ export function createModelResolver(
    * is missing and how to allow a gateway instead.
    */
   function pinnedProviderError(name: string, modelId: string, modelString: string): Error {
-    const envVar = PROVIDER_ENV_VARS[name];
+    const envVar = hasRoute(PROVIDER_ENV_VARS, name) ? PROVIDER_ENV_VARS[name] : undefined;
     const keyed = availability.get(name)?.source === "key";
     const missing =
       envVar === undefined
@@ -1005,7 +1019,7 @@ export function createModelResolver(
     if (explicit !== undefined) {
       return wrapAiSdkModel(explicit(modelId), modelString, identity);
     }
-    if (options?.providers?.[name] === undefined && isPackageProviderAvailable(name)) {
+    if (!(hasRoute(options?.providers, name) && options!.providers![name] !== undefined) && isPackageProviderAvailable(name)) {
       return createLazyGeneratorModel(modelString, async () => {
         const providerResolver = await loadPackageProvider(name);
         return wrapAiSdkModel(providerResolver(modelId), modelString, identity);
@@ -1015,17 +1029,18 @@ export function createModelResolver(
   }
 
   /**
-   * The provider a model string's call reaches, read from this resolver's
-   * maps: `anthropic` for `vercel:anthropic/…`, `triage` for `triage:native`,
-   * `openai` for `openai/gpt-5.4`. `"unknown"` for an intent, a gateway id
-   * with no provider segment, or a string that does not resolve. Drives
-   * provider preference and per-provider options.
+   * A best-effort label: the provider a model string's call reaches, read
+   * from this resolver's maps. It never throws; where resolving the string
+   * would throw, it returns `"unknown"`. `anthropic` for `vercel:anthropic/…`,
+   * `triage` for `triage:native`, `openai` for `openai/gpt-5.4`; `"unknown"`
+   * for an intent or a gateway id with no provider segment. Drives provider
+   * preference and per-provider options.
    */
   function providerOf(modelString: string): string {
     try {
       const parsed = parseModelString(modelString);
       if (parsed.type === "intent") return "unknown";
-      if (parsed.type === "direct") return parsed.provider!;
+      if (parsed.type === "direct") return parsed.provider;
       const route = classifyRoute(parsed, modelString, options);
       return route.kind === "provider" ? route.name : (route.provider ?? "unknown");
     } catch {
@@ -1066,8 +1081,9 @@ export function createModelResolver(
       const route = classifyRoute(parsed, modelString, options);
       const requested = identityOverrides?.requested ?? modelString;
       if (route.kind === "gateway") {
-        const { gwType, apiKey } = namedGateway(route.name);
+        const { cacheKey, gwType, apiKey } = namedGateway(route.name);
         model = resolveGatewayModel(
+          cacheKey,
           gwType,
           apiKey,
           route.modelId,
@@ -1081,8 +1097,8 @@ export function createModelResolver(
       }
     } else {
       // Direct: provider/model
-      const providerName = parsed.provider!;
-      const modelId = parsed.modelId!;
+      const providerName = parsed.provider;
+      const modelId = parsed.modelId;
       const identity = { requested: identityOverrides?.requested ?? modelString };
 
       const explicit = explicitProviders?.get(providerName);
@@ -1118,6 +1134,7 @@ export function createModelResolver(
         const gw = findGatewayForProvider(providerName);
         if (gw) {
           model = resolveGatewayModel(
+            gw.cacheKey,
             gw.gatewayType,
             gw.apiKey,
             `${providerName}/${modelId}`,
@@ -1275,23 +1292,27 @@ export function createModelResolver(
   }
 
   /** The package behind a gateway, unless the app passed its own gateway instance. */
-  function gatewayPackageName(gwType: string): string | undefined {
-    const entry = options?.gateways?.[gwType];
+  function gatewayPackageName(cacheKey: string, gwType: string): string | undefined {
+    const entry = hasRoute(options?.gateways, cacheKey) ? options!.gateways![cacheKey] : undefined;
     if (entry != null && !isGatewayConfig(entry)) return undefined;
     return GATEWAY_PACKAGES[gwType]?.pkg;
   }
 
-  /** The gateway instance for `gwType`: cached (explicit or already loaded), else loaded from its package. */
+  /**
+   * The gateway instance registered as `cacheKey`: cached (explicit or
+   * already loaded), else loaded from the package for `gwType`.
+   */
   async function gatewayInstance(
+    cacheKey: string,
     gwType: string,
     apiKey: string | undefined,
     missingKeyMessage: string
   ): Promise<Record<string, unknown>> {
-    const cached = gatewayCache.get(gwType);
+    const cached = gatewayCache.get(cacheKey);
     if (cached !== undefined) return cached.gateway;
     if (!apiKey) throw new Error(missingKeyMessage);
     ensureGatewayPackageAvailable(gwType);
-    return (await loadGateway(gwType, apiKey)).gateway;
+    return (await loadGateway(cacheKey, gwType, apiKey)).gateway;
   }
 
   /**
@@ -1303,19 +1324,20 @@ export function createModelResolver(
    */
   async function resolveNamedEvaluationModel(route: Route, modelString: string): Promise<EvaluationModel> {
     if (route.kind === "gateway") {
-      const { gwType, apiKey } = namedGateway(route.name);
+      const { cacheKey, gwType, apiKey } = namedGateway(route.name);
       const gateway = await gatewayInstance(
+        cacheKey,
         gwType,
         apiKey,
         `No API key found for gateway "${route.name}". ` +
           `Set ${GATEWAY_ENV_VARS[gwType] ?? `the ${route.name} gateway API key`} environment variable.`
       );
       return markEvaluationModelGateway(
-        evaluationModelFrom(gateway, route.modelId, `Gateway "${route.name}"`, modelString, gatewayPackageName(gwType)),
+        evaluationModelFrom(gateway, route.modelId, `Gateway "${route.name}"`, modelString, gatewayPackageName(cacheKey, gwType)),
         gwType
       );
     }
-    const explicit = options?.providers?.[route.name];
+    const explicit = hasRoute(options?.providers, route.name) ? options!.providers![route.name] : undefined;
     if (explicit !== undefined) {
       return evaluationModelFrom(explicit, route.modelId, `Provider "${route.name}"`, modelString);
     }
@@ -1342,8 +1364,8 @@ export function createModelResolver(
     if (parsed.type === "alias") {
       return resolveNamedEvaluationModel(classifyRoute(parsed, modelString, options), modelString);
     }
-    const providerName = parsed.provider!;
-    const modelId = parsed.modelId!;
+    const providerName = parsed.provider;
+    const modelId = parsed.modelId;
 
     // A `typesafe-ai/...` string always means the gateway (spec D2), even
     // when the app registered Jev's library under `providers["typesafe-ai"]`.
@@ -1354,7 +1376,7 @@ export function createModelResolver(
     // path's precedence departs from a generator string's.
     const gatewayOnly = GATEWAY_ONLY_EVALUATION_PROVIDERS.has(providerName);
 
-    const explicit = gatewayOnly ? undefined : options?.providers?.[providerName];
+    const explicit = gatewayOnly || !hasRoute(options?.providers, providerName) ? undefined : options!.providers![providerName];
     if (explicit !== undefined) {
       return evaluationModelFrom(explicit, modelId, `Provider "${providerName}"`, modelString);
     }
@@ -1373,6 +1395,7 @@ export function createModelResolver(
       throw noProviderError(providerName);
     }
     const gateway = await gatewayInstance(
+      gw.cacheKey,
       gw.gatewayType,
       gw.apiKey,
       `No API key found for gateway "${gw.gatewayType}" while falling back from direct "${providerName}".`
@@ -1383,7 +1406,7 @@ export function createModelResolver(
         `${providerName}/${modelId}`,
         `Gateway "${gw.gatewayType}"`,
         modelString,
-        gatewayPackageName(gw.gatewayType)
+        gatewayPackageName(gw.cacheKey, gw.gatewayType)
       ),
       gw.gatewayType
     );
@@ -1396,7 +1419,7 @@ export function createModelResolver(
   ): GeneratorModel => {
     const parsed = parseModelString(modelId);
     if (parsed.type === "intent") {
-      return resolveIntent(parsed.intentName!, callOptions);
+      return resolveIntent(parsed.intentName, callOptions);
     }
     return resolveSingleModel(modelId);
   }) as ModelResolver;
@@ -1408,7 +1431,7 @@ export function createModelResolver(
     const parsed = parseModelString(modelId);
     if (parsed.type !== "intent") return modelId;
 
-    const candidates = options?.intents?.[parsed.intentName!];
+    const candidates = options?.intents?.[parsed.intentName];
     if (!candidates || candidates.length === 0) {
       return options?.defaultModel ?? modelId;
     }

@@ -179,7 +179,7 @@ describe("slash multi-hop model strings — removed, the colon names the route",
   );
 
   it("does not exempt a path that merely contains a history folder name", () => {
-    expect(scan(`model: "vercel/openai/x"`, "apps/docs/docs/specs/models.md").map((h) => h.rule)).toEqual([
+    expect(scan(`model: "vercel/openai/x"`, "packages/fixture/specs/models.md").map((h) => h.rule)).toEqual([
       "slash-multi-hop",
     ]);
   });

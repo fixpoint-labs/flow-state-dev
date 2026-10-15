@@ -28,6 +28,7 @@ import {
   defineFlow,
   evaluator,
   generator,
+  parseModelString,
   DEFAULT_ORG_ID,
   type ModelResolver,
 } from "@flow-state-dev/core";
@@ -67,11 +68,13 @@ const HAS_OPENROUTER = (() => {
 })();
 const REPO = new URL("../../../", import.meta.url).pathname;
 
-/** True when `s` is in the colon lane: its first `:` comes before any `/`. */
+/** True when `s` is in the colon lane. A string the parser rejects is not. */
 const isColon = (s: string) => {
-  const c = s.indexOf(":");
-  const sl = s.indexOf("/");
-  return c !== -1 && (sl === -1 || c < sl);
+  try {
+    return parseModelString(s).type === "alias";
+  } catch {
+    return false;
+  }
 };
 
 /**

@@ -18,7 +18,7 @@ const chatGen = generator({
 });
 ```
 
-Model strings use slash format: `"provider/model"`. For gateway routing, use three segments: `"vercel:openai/gpt-5.4"`.
+Model strings look like `"openai/gpt-5.4"`. To name the gateway that serves a model, put it before a colon: `"vercel:openai/gpt-5.4"`.
 
 ## Zero-Config Resolver
 

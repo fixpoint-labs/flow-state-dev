@@ -137,20 +137,26 @@ export function detectAvailableProviders(config: {
  *   the name is a gateway or a provider is decided by the resolver, which
  *   holds the app's `providers` and `gateways` maps.
  */
-export interface ParsedModelString {
-  type: "direct" | "intent" | "alias";
-  /** Provider name (e.g., "openai"). Present for the direct type only. */
-  provider?: string;
-  /**
-   * Model ID. For direct, the part after the slash (`gpt-5.4`). For alias,
-   * everything after the first colon, untouched (`anthropic/claude-sonnet-5`).
-   */
-  modelId?: string;
-  /** The route name before the first colon (e.g., "vercel", "triage"). Alias type only. */
-  alias?: string;
-  /** Intent name (e.g., "utility"). Only present for intent type. */
-  intentName?: string;
-}
+export type ParsedModelString =
+  | {
+      type: "direct";
+      /** Provider name (e.g., "openai"). */
+      provider: string;
+      /** The part after the slash (`gpt-5.4`). */
+      modelId: string;
+    }
+  | {
+      type: "alias";
+      /** The route name before the first colon (e.g., "vercel", "triage"). */
+      alias: string;
+      /** Everything after the first colon, untouched (`anthropic/claude-sonnet-5`). */
+      modelId: string;
+    }
+  | {
+      type: "intent";
+      /** Intent name (e.g., "utility"). */
+      intentName: string;
+    };
 
 /** Allowed shape for intent names referenced via `intent/<name>`. */
 export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
@@ -241,18 +247,19 @@ export function parseModelString(modelString: string): ParsedModelString {
  * segment before the model id's first slash (`anthropic` in
  * `vercel:anthropic/claude-sonnet-5`), else the name itself (`openai` in
  * `openai:gpt-5.4`). Returns `"unknown"` for malformed strings or intent
- * strings. A resolver classifies a named route against its own maps
- * (`ModelResolver.providerOf`); this guess is for callers without one.
+ * strings. Use it only where no resolver with `providerOf` is at hand: that
+ * classifies a named route against the app's own maps, and the two agree on
+ * every string whose route does not depend on those maps.
  */
 export function extractProviderName(modelString: string): string {
   try {
     const parsed = parseModelString(modelString);
     if (parsed.type === "intent") return "unknown";
     if (parsed.type === "alias") {
-      const slash = parsed.modelId!.indexOf("/");
-      return slash > 0 ? parsed.modelId!.slice(0, slash) : parsed.alias!;
+      const slash = parsed.modelId.indexOf("/");
+      return slash > 0 ? parsed.modelId.slice(0, slash) : parsed.alias;
     }
-    return parsed.provider ?? "unknown";
+    return parsed.provider;
   } catch {
     return "unknown";
   }
