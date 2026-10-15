@@ -5,7 +5,7 @@
  * item patches, canonical collapse, and the status/sequence/status-event layer.
  */
 import { describe, expect, it } from "vitest";
-import type { OutputItem, RequestStatusEvent } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem, RequestStatusEvent } from "@flow-state-dev/core/items";
 import {
   compareItemOrder,
   createRequestStreamStore
@@ -23,9 +23,17 @@ function makeItem(overrides: Partial<OutputItem> & { id: string }): OutputItem {
   } as OutputItem;
 }
 
-/** A `block_trace` row. It sits outside `OutputItem`; a trace snapshot still carries those rows. */
-function traceItem(overrides: Partial<OutputItem> & { id: string }): OutputItem {
-  return { ...makeItem(overrides), type: "block_trace" } as unknown as OutputItem;
+/** A `block_trace` row, the fields the collapse reads. It sits outside `OutputItem`; a trace snapshot still carries those rows. */
+function traceItem(overrides: Partial<BlockTraceItem> & { id: string }): BlockTraceItem {
+  return {
+    status: "completed",
+    requestId: "req_1",
+    itemIndex: 0,
+    provenance: { blockName: "test", blockInstanceId: "test-1", phase: "main" as const },
+    ts: 1000,
+    ...overrides,
+    type: "block_trace"
+  } as BlockTraceItem;
 }
 
 function makeStatusEvent(overrides: Partial<RequestStatusEvent> = {}): RequestStatusEvent {
@@ -663,12 +671,14 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const gate = "req_1:root/step[0]:0";
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
     const store = createRequestStreamStore();
-    store.loadSnapshot([
+    const rows = [
       traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
       traceItem({ id: "t2", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
       makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
-    ]);
+    ];
+    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
+    store.loadSnapshot(rows);
 
     const ids = store.getSorted().map((i) => i.id);
     expect(ids).toContain("m2");
@@ -681,10 +691,12 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const gate = "req_1:root/step[0]:0";
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
     const store = createRequestStreamStore();
-    store.loadSnapshot([
+    const rows = [
       traceItem({ id: "t1", status: "completed", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov })
-    ]);
+    ];
+    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
+    store.loadSnapshot(rows);
     expect(store.getSorted().map((i) => i.id)).toEqual(["t1", "m1"]);
   });
 
@@ -692,12 +704,14 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const gate = "req_1:root/step[0]:0";
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
     const store = createRequestStreamStore();
-    store.loadSnapshot([
+    const rows = [
       traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
       traceItem({ id: "t2", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
       makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
-    ]);
+    ];
+    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
+    store.loadSnapshot(rows);
 
     expect(store.getSorted().map((i) => i.id)).toEqual(["t2", "m2"]);
     expect(store.getRaw().map((i) => i.id)).toEqual(["t1", "m1", "t2", "m2"]);
@@ -732,13 +746,15 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
       }) as OutputItem;
 
     const store = createRequestStreamStore();
-    store.loadSnapshot([
+    const rows = [
       traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       toolOutput("s1c", 1, "s1", "completed"),
       toolOutput("g1f", 2, "g1", "failed"),
       traceItem({ id: "t2", status: "completed", itemIndex: 3, ts: 1003, provenance: prov }),
       toolOutput("g1c", 4, "g1", "completed")
-    ]);
+    ];
+    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
+    store.loadSnapshot(rows);
 
     const toolIds = store.getSorted().filter((i) => i.type === "tool_output").map((i) => i.id);
     expect(toolIds).toEqual(["s1c", "g1c"]);
