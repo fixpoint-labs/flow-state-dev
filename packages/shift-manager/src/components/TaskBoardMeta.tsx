@@ -123,7 +123,7 @@ function FiledTasks({ requestId, boardRef, read }: { requestId: string; boardRef
   );
   if (entries.length === 0) return null;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col">
       {entries.map(({ task }) => (
         <TaskCard key={task.id} task={read?.get(task.id) ?? task} boardRef={boardRef} />
       ))}
@@ -137,23 +137,22 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
   const status = readStatus(task.status);
   const name = task.title || task.goal;
   return (
-    <div className="flex items-center gap-2.5 border px-3 py-2 text-sm" data-testid="task-card" data-task-id={task.id} data-status={status}>
+    // One quiet line per task, no box: the name, then who and where it stands, then a link that shows on hover.
+    <div className="group/task flex items-center gap-2 py-0.5 text-sm" data-testid="task-card" data-task-id={task.id} data-status={status}>
       <StateSquare state={STATE_OF_COLUMN[columnFor(status)]} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate">{name}</p>
-        <p className="text-xs text-muted-foreground">
-          {task.assignee == null ? "unassigned" : workerLabel(task.assignee)} ·{" "}
-          <span className={status === "errored" ? "text-destructive" : undefined}>{STATUS_WORD[status] ?? status}</span>
-        </p>
-      </div>
+      <span className="min-w-0 truncate">{name}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {task.assignee == null ? "unassigned" : workerLabel(task.assignee)} ·{" "}
+        <span className={status === "errored" ? "text-destructive" : undefined}>{STATUS_WORD[status] ?? status}</span>
+      </span>
       <button
         type="button"
-        className="shrink-0 text-xs text-muted-foreground underline hover:text-foreground"
+        className="shrink-0 text-xs text-muted-foreground opacity-60 hover:text-foreground hover:opacity-100 focus-visible:opacity-100 group-hover/task:opacity-100"
         data-testid="task-open"
         aria-label={`Open ${name}`}
         onClick={() => navigate({ level: "task", boardRef, taskId: task.id, tab: "session" })}
       >
-        Open
+        Open ›
       </button>
     </div>
   );
