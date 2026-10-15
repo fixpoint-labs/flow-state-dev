@@ -459,7 +459,7 @@ When `openWorkstream` runs in your own coordinator's turn, the new workstream is
 
 `listLeads` returns every worker that can lead, whether or not it suits the work. A coordinator with a single lead tends to pick it even when its description says it does something else. Set `leadFit` to have the open refuse that pick.
 
-With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
+With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The same call asks whether the title and objectives say what sort of work it is at all, and work they don't, such as a bare name, passes the check. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
 
 The check runs only once every other refusal has passed, so a bad id or a lead that can't lead is refused for that reason without a model call. Opening a workstream that is already open, with the same lead, isn't checked again.
 

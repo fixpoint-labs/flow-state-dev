@@ -572,8 +572,8 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
   });
 
   describe("checking its pick of lead against the work", () => {
-    /** The fit check's one call, answering `fits`. */
-    const fit = (fits: boolean) => mockGenerator({ script: [{ structuredOutput: { fits } }] });
+    /** The fit check's one call, answering `fits` for work that says (by default) what sort it is. */
+    const fit = (fits: boolean, says = true) => mockGenerator({ script: [{ structuredOutput: { says, fits } }] });
     const research = { id: "research", title: "Research: what to build next", lead: "alice-lead", objectives: ["Rank three ideas"] };
     /** What the open tool answered in a conversation's turns. */
     const opens = async (h: Awaited<ReturnType<typeof boot>>, sessionId: string) =>
@@ -616,6 +616,18 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       expect(await opens(h, id)).toContain('"leadFit":{"checked":true}');
     });
 
+    it("opens it when the work doesn't say what sort it is, whatever the judge makes of the lead: that is no clear misfit", async () => {
+      // The work names no sort, so no lead can be the wrong sort for it.
+      const unsaid = { id: "garnet", title: "garnet delta 6965", lead: "alice-lead", objectives: [] };
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: unsaid }]), leadFit: fit(false, false) });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream for garnet delta 6965." });
+      await h.settled();
+      expect(await opens(h, id)).not.toContain("lead-doesnt-fit");
+      expect(await workstreams(h)).toEqual(["garnet"]);
+    });
+
     it("opens it when the check can't answer, so a failed model call never stops an open, and says why", async () => {
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: mockGenerator({ script: [] }) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
@@ -642,7 +654,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
 
     it("doesn't check a workstream opened again: it was accepted once, and a second verdict can't refuse it", async () => {
       // The first open is judged a fit; asked again, the judge would say no, but it is never asked.
-      const leadFit = mockGenerator({ script: [{ structuredOutput: { fits: true } }, { structuredOutput: { fits: false } }] });
+      const leadFit = mockGenerator({ script: [{ structuredOutput: { says: true, fits: true } }, { structuredOutput: { says: true, fits: false } }] });
       const h = await boot({
         judgment: scripted([
           { toolName: "openWorkstream", args: research },

@@ -87,10 +87,10 @@ function scripted(): ModelResolver {
   const fit: GeneratorModel = {
     modelId: "test/fit",
     async generate(options: unknown) {
-      return { structuredOutput: { fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+      return { structuredOutput: { says: true, fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
     },
     async generateStep(options: unknown) {
-      return { structuredOutput: { fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+      return { structuredOutput: { says: true, fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
     },
   };
   return Object.assign(
