@@ -87,7 +87,7 @@ describe("createModelResolver — env override validation", () => {
         env: { FSDEV_INTENT_CHAT: "intent/foo" },
       })
     ).toThrow(
-      /FSDEV_INTENT_CHAT must be a 'provider\/model' or 'gateway\/provider\/model' string; received "intent\/foo"/
+      /FSDEV_INTENT_CHAT must be a 'provider\/model' or 'name:model' string; received "intent\/foo"/
     );
   });
 
@@ -129,7 +129,7 @@ describe("createModelResolver — env override validation", () => {
         env: { FSDEV_DEFAULT_MODEL: "intent/foo" },
       })
     ).toThrow(
-      /FSDEV_DEFAULT_MODEL must be a 'provider\/model' or 'gateway\/provider\/model' string/
+      /FSDEV_DEFAULT_MODEL must be a 'provider\/model' or 'name:model' string/
     );
   });
 

@@ -104,7 +104,7 @@ fsdev benchmark ./benchmark.ts --category reasoning --runs 1
 fsdev benchmark ./benchmark.ts --patterns supervisor,debate
 
 # a free-tier model for a zero-cost dry run
-fsdev benchmark ./benchmark.ts --model openrouter/meta-llama/llama-3.1-70b-instruct
+fsdev benchmark ./benchmark.ts --model openrouter:meta-llama/llama-3.1-70b-instruct
 ```
 
 ## 5. Read the scorecard

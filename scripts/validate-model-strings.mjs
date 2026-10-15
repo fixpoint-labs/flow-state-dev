@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Reject removed model-configuration syntax, and direct model ids spelled in a
- * form the provider does not serve, in prose and examples (FIX-1126).
+ * form the provider does not serve, in prose and examples (FIX-1126, FIX-1495).
  *
  * `preset/*` model strings and the `presets` resolver option were removed in
  * favour of intents. Neither deprecates, and neither falls back: a `preset/*`
@@ -53,12 +53,26 @@
  * The resolver hands a direct model id to the provider unchanged, and
  * Anthropic spells its ids with hyphens (`claude-haiku-4-5`). The Vercel
  * gateway spells the same model with a dot, so the dotted form is correct
- * behind `vercel/` and an unknown model behind a bare `anthropic/`. The rule
- * is textual rather than a catalog of valid ids on purpose: every id in
- * Anthropic's current catalog is hyphen-only, so "no dot in the version" holds
- * without a list that goes stale with each release. It matches only a quote
- * directly before `anthropic/`, so a `vercel/` or `openrouter/` prefix, where
- * the dot is right, never fires it.
+ * behind `vercel:` and an unknown model behind a bare `anthropic/` or a pinned
+ * `anthropic:`. The rule is textual rather than a catalog of valid ids on
+ * purpose: every id in Anthropic's current catalog is hyphen-only, so "no dot
+ * in the version" holds without a list that goes stale with each release. It
+ * matches only a quote directly before `anthropic`, so a `vercel:` or
+ * `openrouter:` prefix, where the dot is right, never fires it.
+ *
+ * A fourth rule rejects the removed `gateway/provider/model` form (FIX-1495).
+ * A named route is spelled with a colon now, the way AI SDK's provider
+ * registry spells it, and the old form throws on the reader's first run.
+ *
+ *   "vercel/openai/gpt-5.4"            write "vercel:openai/gpt-5.4"
+ *
+ * It fires only when the first segment is a gateway or provider name the
+ * resolver knows, so a path (`"/vercel/sandbox"`, `"@vercel/sdk/…"`) never
+ * does, and neither does a harness model id (`"gpt-5.6-sol"`), which is a
+ * different grammar that never reaches the resolver. Unlike the others it
+ * counts backticks as quotes, since a template literal is executable; the
+ * docs name the removed form in a bare fence instead. And it alone does not
+ * read retained history (see `isRetainedHistory`).
  *
  * **Quoted, deliberately.** Naming `preset/*` as a rejected value is true and
  * has to stay sayable: `fundamentals/models.md` carries the migration table
@@ -110,7 +124,28 @@ const REJECTION_IMPL_FILES = new Set([
   // guard works.
   "scripts/validate-model-strings.mjs",
   "packages/core/test/model-strings-check.test.ts",
+  // The tests that pin the slash multi-hop form's rejection: they quote the
+  // removed form because asserting that it throws is their whole job.
+  "packages/core/test/models/slash-multi-hop-rejection.test.ts",
 ]);
+
+/**
+ * Retained history: dated records the slash multi-hop rule does not read.
+ *
+ * This is a tree, which the header's rule otherwise forbids, so the argument
+ * goes here. `specs/` and `docs/internal/archive/` are reviewed design history
+ * and archived release notes (BP-037). A string there records what a spec
+ * decided or a release shipped on its date; rewriting it to the colon form
+ * would falsify the record, and nothing there is executed by an app. Only the
+ * slash multi-hop rule skips them: the older rules keep their surface.
+ */
+const RETAINED_HISTORY_PREFIXES = ["specs/", "docs/internal/archive/"];
+
+/** Whether a repo-relative path is retained history (see above). */
+export function isRetainedHistory(relPath) {
+  const norm = relPath.split("\\").join("/");
+  return RETAINED_HISTORY_PREFIXES.some((prefix) => norm.startsWith(prefix));
+}
 
 /**
  * Whether one repo-relative path is inside the scanned surface.
@@ -148,11 +183,19 @@ export function isScannedPath(relPath) {
 const QUOTED_PRESET = /["']preset\/[a-zA-Z0-9_-]+["']/;
 
 /**
- * A quoted direct `anthropic/claude-…` id with a dotted version (`4.5`). The
- * quote must sit directly before `anthropic/`, which is what keeps gateway
- * strings (`"vercel/anthropic/claude-haiku-4.5"`) out.
+ * A quoted direct `anthropic/claude-…` or pinned `anthropic:claude-…` id with
+ * a dotted version (`4.5`). The quote must sit directly before `anthropic`,
+ * which is what keeps gateway strings (`"vercel:anthropic/claude-haiku-4.5"`)
+ * out.
  */
-const QUOTED_DOTTED_ANTHROPIC = /["']anthropic\/claude-[a-z0-9-]*\d\.\d[a-z0-9.-]*["']/;
+const QUOTED_DOTTED_ANTHROPIC = /["']anthropic[/:]claude-[a-z0-9-]*\d\.\d[a-z0-9.-]*["']/;
+
+/**
+ * A quoted `gateway/provider/model` string: a known gateway or provider name,
+ * then two or more slash segments. Group 1 is the string without its quotes.
+ */
+const QUOTED_SLASH_MULTI_HOP =
+  /["'`]((?:vercel|openrouter|openai|anthropic|google|typesafe-ai)\/[A-Za-z0-9._:-]+\/[A-Za-z0-9._:/-]+)["'`]/g;
 
 /** The removed resolver option, recognised only near a resolver construction. */
 const RESOLVER_CALL = /createModelResolver\s*\(/;
@@ -201,7 +244,8 @@ function collectFiles() {
 }
 
 /**
- * Scan in-memory sources, returning `{ file, line, text, rule }` per violation.
+ * Scan in-memory sources, returning `{ file, line, text, rule }` per violation,
+ * plus `suggestion` (the colon spelling) for a slash multi-hop string.
  *
  * Pure and filesystem-free so the rules — especially the stateful
  * `RESOLVER_WINDOW`, which no regex export can pin — are testable from fixture
@@ -212,6 +256,7 @@ export function scanSources(sources) {
 
   for (const { path, text: body } of sources) {
     let resolverWindow = 0;
+    const history = isRetainedHistory(path);
 
     body.split("\n").forEach((text, index) => {
       if (QUOTED_PRESET.test(text)) {
@@ -220,6 +265,18 @@ export function scanSources(sources) {
 
       if (QUOTED_DOTTED_ANTHROPIC.test(text)) {
         hits.push({ file: path, line: index + 1, text: text.trim(), rule: "dotted-anthropic-id" });
+      }
+
+      if (!history) {
+        for (const match of text.matchAll(QUOTED_SLASH_MULTI_HOP)) {
+          hits.push({
+            file: path,
+            line: index + 1,
+            text: text.trim(),
+            rule: "slash-multi-hop",
+            suggestion: match[1].replace("/", ":"),
+          });
+        }
       }
 
       if (RESOLVER_CALL.test(text)) resolverWindow = RESOLVER_WINDOW;
@@ -266,7 +323,15 @@ const RULES = [
       `  A direct "anthropic/…" id reaches Anthropic as written, and Anthropic` +
       `\n  spells its ids with hyphens: "anthropic/claude-haiku-4-5", not` +
       `\n  "anthropic/claude-haiku-4.5". The dotted spelling belongs behind a` +
-      `\n  gateway prefix: "vercel/anthropic/claude-haiku-4.5".`,
+      `\n  gateway prefix: "vercel:anthropic/claude-haiku-4.5".`,
+  },
+  {
+    rule: "slash-multi-hop",
+    heading: (n) => `${n} model string(s) in the removed gateway/provider/model form`,
+    fix:
+      `  The slash multi-hop form was removed and throws. Name the route with a` +
+      `\n  colon, the way AI SDK's provider registry does: "vercel:openai/gpt-5.4",` +
+      `\n  not "vercel/openai/gpt-5.4". Each site above shows its new spelling.`,
   },
 ];
 
@@ -283,7 +348,10 @@ function main() {
     if (matched.length === 0) continue;
 
     console.error(`\n✗ ${heading(matched.length)}:\n`);
-    for (const hit of matched) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
+    for (const hit of matched) {
+      const fix = hit.suggestion === undefined ? "" : `   (write "${hit.suggestion}")`;
+      console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}${fix}`);
+    }
     console.error(`\n${fix}\n`);
   }
 

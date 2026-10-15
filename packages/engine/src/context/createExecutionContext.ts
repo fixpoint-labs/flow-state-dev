@@ -2488,6 +2488,10 @@ export async function createExecutionContext<
     return modelResolver(modelId, blockName);
   }) as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
+  const providerOf = modelResolver.providerOf;
+  if (providerOf !== undefined) {
+    resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
+  }
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is

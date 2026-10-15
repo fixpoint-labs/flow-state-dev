@@ -87,7 +87,7 @@ const INVENTORY_WRITER_FLOW = "inventory-writer";
  * The model the coordinator's best-fit call would run on. `desk` routes to
  * everyone and never makes that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 
 /** How often a held run narrates a step. */
 const STEP_MS = 1_000;

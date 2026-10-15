@@ -108,7 +108,7 @@ const chat = generator({
 });
 ```
 
-The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`). Match the provider to the key you set, and the generator will run.
+The format is `provider/model-id`, or `gateway:provider/model-id` to name the gateway that serves it (`"vercel:openai/gpt-5.4"`). Match the provider to the key you set, and the generator will run.
 
 This is the right call when a block genuinely needs one specific model — an eval pinned to a known baseline, or a block that depends on a quirk of a particular model. It pins that block to one provider, so it fails if that provider is unreachable, and it's a string you'll have to revisit when the model is superseded.
 

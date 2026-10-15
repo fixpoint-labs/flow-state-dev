@@ -56,7 +56,7 @@ export const flowstate = createFlowState({
   models: {
     default: "openai/gpt-5.4-mini",
     intents: {
-      chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
+      chat: ["vercel:anthropic/claude-sonnet-4.6", "vercel:openai/gpt-5.5"],
     },
   },
   voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },
