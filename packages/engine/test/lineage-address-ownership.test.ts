@@ -31,6 +31,7 @@ import { describe, expect, it } from "vitest";
 import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
 import { handleCreateSession, handleDeleteSession } from "../src/routes/session-routes";
 import type { StoreRegistry } from "../src/stores/types";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 import { spawnChild } from "./context/seam-harness";
 
 /** One session-scoped resource, shared down the lineage. */
@@ -58,8 +59,18 @@ const flow = defineFlow({
 
 const ROOT_ID = "sess_shared_root";
 
-function contextFor(stores: StoreRegistry, sessionId: string, userId: string, requestId: string) {
-  return createExecutionContext({
+/** The runtime context, with `flow`'s `notes` resource typed as declared. */
+type NotesContext = Awaited<ReturnType<typeof createExecutionContext>> & {
+  resources: { notes: ResourceRef<{ body: string }> };
+};
+
+async function contextFor(
+  stores: StoreRegistry,
+  sessionId: string,
+  userId: string,
+  requestId: string
+): Promise<NotesContext> {
+  return (await createExecutionContext({
     flow,
     actionName: "run",
     requestId,
@@ -67,7 +78,7 @@ function contextFor(stores: StoreRegistry, sessionId: string, userId: string, re
     userId,
     orgId: DEFAULT_ORG_ID,
     stores
-  });
+  })) as NotesContext;
 }
 
 /** Create a session through the public route — a caller-chosen id, as in production. */
@@ -122,7 +133,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
     //    whole point of a dispatch — and still points at the deleted id.
     const deleted = await handleDeleteSession(
       new Request(`http://x/sessions/${ROOT_ID}`, { method: "DELETE" }),
-      { kind: "delete_session", flowKind: flow.kind, sessionId: ROOT_ID },
+      { kind: "delete_session", sessionId: ROOT_ID },
       { registry, stores }
     );
     expect(deleted.status).toBe(204);
@@ -197,7 +208,7 @@ describe("FIX-1068: a recreated session id is a new lineage", () => {
     // The conversation is deleted; its background work keeps running.
     const deleted = await handleDeleteSession(
       new Request(`http://x/sessions/${ROOT_ID}`, { method: "DELETE" }),
-      { kind: "delete_session", flowKind: flow.kind, sessionId: ROOT_ID },
+      { kind: "delete_session", sessionId: ROOT_ID },
       { registry, stores }
     );
     expect(deleted.status).toBe(204);

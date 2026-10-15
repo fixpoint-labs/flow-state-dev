@@ -9,12 +9,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { defineFlow, handler, type VoiceProvider } from "@flow-state-dev/core";
 import { z } from "zod";
+import type { runAction } from "../../src/execution/runAction";
 
-const runActionMock = vi.fn(() =>
+type RunActionOptions = Parameters<typeof runAction>[0];
+const runActionMock = vi.fn((_options: RunActionOptions) =>
   Promise.resolve({ output: undefined, items: [], durationMs: 0 })
 );
 vi.mock("../../src/execution/runAction", () => ({
-  runAction: (opts: unknown) => runActionMock(opts as never)
+  runAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 import {
@@ -45,9 +47,9 @@ function buildHost(opts: { routerProvider?: VoiceProvider; flowProvider?: VoiceP
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "voice-run",
-            execute: () => ({ ok: true })
+            execute: (_input: { value: string }): { ok: true } => ({ ok: true })
           })
         }
       }
@@ -81,7 +83,7 @@ describe("per-flow voice provider override", () => {
     const host = buildHost({ routerProvider: providerA, flowProvider: providerB });
     await dispatch(host).finished;
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].runtimeConfig).toMatchObject({
+    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig).toMatchObject({
       voiceProvider: providerB
     });
   });
@@ -89,7 +91,7 @@ describe("per-flow voice provider override", () => {
   it("falls back to the router-level provider when the flow has none", async () => {
     const host = buildHost({ routerProvider: providerA });
     await dispatch(host).finished;
-    expect(runActionMock.mock.calls[0][0].runtimeConfig).toMatchObject({
+    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig).toMatchObject({
       voiceProvider: providerA
     });
   });
@@ -97,7 +99,7 @@ describe("per-flow voice provider override", () => {
   it("passes undefined when neither is set", async () => {
     const host = buildHost({});
     await dispatch(host).finished;
-    expect(runActionMock.mock.calls[0][0].runtimeConfig.voiceProvider).toBeUndefined();
+    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig.voiceProvider).toBeUndefined();
   });
 
   it("host.resolvers.voice holds the router-level provider regardless of override", () => {

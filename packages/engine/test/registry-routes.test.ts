@@ -17,9 +17,9 @@ function makeFlow(kind: string, id = kind): FlowInstance {
         inputSchema: z.object({
           value: z.string()
         }),
-        block: handler<{ value: string }, { ok: boolean; value: string }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: (input) => ({
+          execute: (input: { value: string }): { ok: boolean; value: string } => ({
             ok: true,
             value: input.value
           })
@@ -39,9 +39,9 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
         inputSchema: z.object({
           value: z.string()
         }),
-        block: handler<{ value: string }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
         })
       }
     },
@@ -79,9 +79,9 @@ function makeSlowFlow(kind: string, id = kind): FlowInstance {
         inputSchema: z.object({
           value: z.string()
         }),
-        block: handler<{ value: string }, { ok: boolean }>({
+        block: handler({
           name: `${kind}-run-slow`,
-          execute: async () => {
+          execute: async (_input: { value: string }): Promise<{ ok: boolean }> => {
             await new Promise((resolve) => setTimeout(resolve, 200));
             return { ok: true };
           }
@@ -172,9 +172,9 @@ describe("flow listing carries no instance config", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: boolean }>({
+          block: handler({
             name: "configured-run",
-            execute: () => ({ ok: true })
+            execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
           })
         }
       }
@@ -183,6 +183,7 @@ describe("flow listing carries no instance config", () => {
     // The value IS on the instance — this test is about the wire, not the mint.
     expect(configured.config).toEqual({ apiKey: "sk-do-not-publish", model: "opus" });
 
+    // @ts-expect-error registering takes a FlowInstance with no config schema, so a configured flow is refused (to be filed, found by FIX-1343)
     registry.register(configured);
     const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
     const response = await router.GET(new Request("http://localhost/api/flows"), {
@@ -950,9 +951,9 @@ describe("createFlowApiRouter", () => {
         actions: {
           run: {
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: "org-flow-run",
-              execute: () => ({ ok: true })
+              execute: (_input: { value: string }): { ok: true } => ({ ok: true })
             })
           }
         }
@@ -1021,9 +1022,9 @@ describe("createFlowApiRouter", () => {
         actions: {
           run: {
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: "wh-flow-run",
-              execute: () => ({ ok: true })
+              execute: (_input: { value: string }): { ok: true } => ({ ok: true })
             })
           }
         },
@@ -1031,9 +1032,9 @@ describe("createFlowApiRouter", () => {
           stripe: {
             on: {
               "invoice.paid": {
-                block: handler<{ id: string }, { ok: true }>({
+                block: handler({
                   name: "wh-flow-paid",
-                  execute: () => ({ ok: true })
+                  execute: (_input: { id: string }): { ok: true } => ({ ok: true })
                 }),
                 input: () => ({ id: "in_1" })
               }
@@ -1193,9 +1194,9 @@ describe("createFlowApiRouter", () => {
         actions: {
           run: {
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: `${kind}-run`,
-              execute: () => ({ ok: true })
+              execute: (_input: { value: string }): { ok: true } => ({ ok: true })
             })
           }
         }

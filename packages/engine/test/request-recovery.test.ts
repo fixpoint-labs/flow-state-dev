@@ -4,12 +4,14 @@ import type { VoiceProvider } from "@flow-state-dev/core/types";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestRecord, StoreRegistry } from "../src/stores/types";
 import { detectInterruptedRequests, retryRequest } from "../src/execution/request-recovery";
+import type { runAction } from "../src/execution/runAction";
 
 // retryRequest dispatches via runAction; mock it so the test asserts what
 // retry dispatches without executing a real flow.
-const runActionMock = vi.fn(() => Promise.resolve(undefined));
+type RunActionOptions = Parameters<typeof runAction>[0];
+const runActionMock = vi.fn((_options: RunActionOptions) => Promise.resolve(undefined));
 vi.mock("../src/execution/runAction", () => ({
-  runAction: (...args: unknown[]) => runActionMock(...args)
+  runAction: (options: RunActionOptions) => runActionMock(options)
 }));
 
 function makeVoiceProvider(id: string): VoiceProvider {
@@ -31,6 +33,7 @@ function makeRequestRecord(
     flowKind: "chat",
     actionName: "run",
     userId: "user_1",
+    source: "http",
     status: "in_progress",
     startedAtMs: ts,
     state: {},
@@ -59,6 +62,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_legacy",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -81,6 +85,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_attributed",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       orgId: DEFAULT_ORG_ID,
       startedAt: Date.now() - 60_000,
@@ -104,6 +109,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_stale",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -139,6 +145,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_race",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -181,6 +188,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_done",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now() - 60_000,
       lastHeartbeatAt: Date.now() - 60_000
@@ -219,6 +227,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_alice",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "alice",
       startedAt: longAgo,
       lastHeartbeatAt: longAgo
@@ -234,6 +243,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_bob",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "bob",
       startedAt: longAgo,
       lastHeartbeatAt: longAgo
@@ -331,7 +341,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].orgId).toBe("org-acme");
+    expect(runActionMock.mock.calls[0]?.[0].orgId).toBe("org-acme");
   });
 
   it("prefers the per-flow voice provider over the router-level one on retry", async () => {
@@ -365,7 +375,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].runtimeConfig.voiceProvider).toBe(flowProvider);
+    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig.voiceProvider).toBe(flowProvider);
   });
 
   it("falls back to the router-level voice provider when the flow declares none", async () => {
@@ -390,7 +400,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     expect(runActionMock).toHaveBeenCalledTimes(1);
-    expect(runActionMock.mock.calls[0][0].runtimeConfig.voiceProvider).toBe(routerProvider);
+    expect(runActionMock.mock.calls[0]?.[0].runtimeConfig.voiceProvider).toBe(routerProvider);
   });
 
   it("skips entries with recent heartbeats", async () => {
@@ -399,6 +409,7 @@ describe("detectInterruptedRequests", () => {
       requestId: "req_fresh",
       flowKind: "chat",
       actionName: "run",
+      source: "http",
       userId: "user_1",
       startedAt: Date.now(),
       lastHeartbeatAt: Date.now()

@@ -173,7 +173,7 @@ const runAction = (kind: string) => ({
 
 /** A flow with no resolver of its own: open unless the host authenticates. */
 function openFlow(kind: string) {
-  return defineFlow({ kind, actions: runAction(kind) });
+  return defineFlow({ kind, actions: runAction(kind) })();
 }
 
 /** A flow that authenticates its own callers, from a header only it reads. */
@@ -187,7 +187,7 @@ function secureFlow(kind: string) {
         return user == null ? null : { userId: user, orgId: "acme" };
       }
     }
-  });
+  })();
 }
 
 /**

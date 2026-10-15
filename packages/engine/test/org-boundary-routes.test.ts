@@ -46,7 +46,7 @@ function twoAxisFlow(kind = "secure") {
         };
       }
     }
-  });
+  })();
 }
 
 function openFlow(kind = "open") {
@@ -63,7 +63,7 @@ function openFlow(kind = "open") {
         })
       }
     }
-  });
+  })();
 }
 
 function buildRouter(flows: ReturnType<typeof twoAxisFlow>[]) {

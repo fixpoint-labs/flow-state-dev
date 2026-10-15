@@ -61,7 +61,7 @@ function secureFlow(kind = "secure") {
         return org === undefined ? { userId: user, orgId: "org_test" } : { userId: user, orgId: org };
       }
     }
-  });
+  })();
 }
 
 /** A flow with no `authentication` — falls through to the framework default resolver. */
@@ -79,7 +79,7 @@ function openFlow(kind = "open") {
         })
       }
     }
-  });
+  })();
 }
 
 function buildRouter(flows: ReturnType<typeof secureFlow>[]) {

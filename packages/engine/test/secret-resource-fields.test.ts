@@ -76,6 +76,8 @@ async function setup() {
     flowKind: "secret-flow",
     userId: "user_1",
     state: {},
+    journal: [],
+    version: 0,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };

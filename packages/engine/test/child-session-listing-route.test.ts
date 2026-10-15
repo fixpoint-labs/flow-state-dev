@@ -53,7 +53,7 @@ function openFlow(kind: string) {
         })
       }
     }
-  });
+  })();
 }
 
 /** A flow whose identity comes from a verified header — a real resolver stand-in. */
@@ -77,7 +77,7 @@ function secureFlow(kind: string) {
         return user === null || user === undefined ? null : { userId: user, orgId: "org_test" };
       }
     }
-  });
+  })();
 }
 
 function buildRouter(

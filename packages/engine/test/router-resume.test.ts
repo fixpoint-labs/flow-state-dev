@@ -146,6 +146,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
     // The decision anchor is durable in the suspended record's item log BEFORE
     // the branch suspension — the router awaited the router_decision write.
     const suspendedRecord = await stores.request.get(requestId);
+    // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
     const decisionItems = (suspendedRecord!.items ?? []).filter((i) => i.type === "router_decision") as any[];
     expect(decisionItems.length).toBe(1);
     expect(decisionItems[0].selectedRoute).toBe("branchA");
@@ -212,6 +213,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
     // router_decision anchor.
     const record = await stores.request.get(requestId);
     const items = record!.items ?? [];
+    // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
     const decisionIndex = items.findIndex((i) => i.type === "router_decision");
     const suspensionIndex = items.findIndex((i) => i.type === "suspension");
     expect(decisionIndex).toBeGreaterThanOrEqual(0);

@@ -24,6 +24,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { bindTaskDispatcher, defineFlow, handler, markDispatcher } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { resolveEntry } from "../../src/execution/resolve-entry";
 import {
   INTERNAL_SOURCE,
@@ -80,7 +81,7 @@ const otherBlock = handler({
  * the public action declares a `reject` concurrency policy, so an arbiter
  * that fell through would be caught inheriting it.
  */
-function flowWithCollidingNames() {
+function flowWithCollidingNames(): FlowInstance {
   return defineFlow({
     kind: "board",
     actions: {
@@ -109,7 +110,7 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
   });
 
   it("returns undefined when the type's own map lacks the name — even though it has OTHER entries and flow.actions has this one", () => {
-    const partial = defineFlow({
+    const partial: FlowInstance = defineFlow({
       kind: "partial-maps",
       actions: { drain: { block: publicBlock }, dispatch: { block: boundDispatch("other") } },
       internal: { actions: { other: { block: otherBlock } } },
@@ -121,7 +122,7 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
   });
 
   it("returns undefined when the type's map does not exist at all", () => {
-    const noMaps = defineFlow({
+    const noMaps: FlowInstance = defineFlow({
       kind: "no-maps",
       actions: { drain: { block: publicBlock } }
     })({ id: "no-maps" });
@@ -132,7 +133,7 @@ describe("resolveEntry — task and internal never fall through to flow.actions"
 });
 
 describe("resolveEntry — webhook/scheduled need their own coordinate, never a name fallback", () => {
-  const flow = defineFlow({
+  const flow: FlowInstance = defineFlow({
     kind: "coordinated",
     actions: { run: { block: publicBlock } },
     webhooks: { github: { on: { push: { block: taskBlock, input: () => ({}) } } } },

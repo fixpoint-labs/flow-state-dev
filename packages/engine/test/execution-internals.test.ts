@@ -57,7 +57,7 @@ async function createCtx(requestId: string) {
     requestId,
     sessionId: "sess_ctx",
     userId: "user_ctx",
-    modelResolver: (modelId) => ({
+    modelResolver: Object.assign((modelId: string) => ({
       modelId,
       async generate() {
         if (modelId === "model-fail") {
@@ -68,7 +68,7 @@ async function createCtx(requestId: string) {
           text: "ok"
         };
       }
-    }),
+    }), { resolveId: (id: string) => id }),
     stores,
     response
   });

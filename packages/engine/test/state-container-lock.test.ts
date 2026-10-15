@@ -391,9 +391,9 @@ describe("scope write-path wiring — createExecutionContext", () => {
   const N = 12;
 
   function fanOutBlock() {
-    return handler<{ value: string }, { ok: boolean }>({
+    return handler({
       name: "fanout-handler",
-      execute: () => ({ ok: true })
+      execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
     });
   }
 

@@ -104,7 +104,7 @@ function probeFlow(kind: string, seen: Seen) {
     kind,
     actions: { run: { inputSchema: z.object({}), block: probe } },
     request: { heartbeatIntervalMs: 10_000 }
-  });
+  })();
 }
 
 /** A row accepted into an external queue and never claimed. */

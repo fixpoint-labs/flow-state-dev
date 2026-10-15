@@ -53,7 +53,7 @@ describe("errorCapture final-failure event", () => {
           block: sequencer({ name: "root", inputSchema: z.any() }).step(handler({ name: "pass", execute: (i) => i })).step(leaf)
         }
       }
-    });
+    })();
 
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
@@ -110,7 +110,7 @@ describe("errorCapture final-failure event", () => {
           ])
         }
       }
-    });
+    })();
 
     const result = await run(flow, createInMemoryStores(), events);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -132,7 +132,7 @@ describe("errorCapture final-failure event", () => {
         return { ok: true };
       }
     });
-    const flow = defineFlow({ kind: "retry-flow", actions: { run: { inputSchema: z.any(), block: flaky } } });
+    const flow = defineFlow({ kind: "retry-flow", actions: { run: { inputSchema: z.any(), block: flaky } } })();
 
     const result = await run(flow, createInMemoryStores(), events);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -150,7 +150,7 @@ describe("errorCapture final-failure event", () => {
     const flow = defineFlow({
       kind: "setup-flow",
       actions: { run: { inputSchema: z.any(), block: handler({ name: "never", execute: () => ({}) }) } }
-    });
+    })();
 
     await expect(
       runAction({
@@ -194,7 +194,7 @@ describe("errorCapture final-failure event", () => {
           })
         }
       }
-    });
+    })();
 
     await run(flow, stores, events).catch(() => undefined);
 

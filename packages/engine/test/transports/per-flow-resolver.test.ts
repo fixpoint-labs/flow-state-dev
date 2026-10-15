@@ -33,9 +33,9 @@ function buildFlow(
     actions: {
       run: {
         inputSchema: z.object({ value: z.string() }),
-        block: handler<{ value: string }, { ok: true }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: { value: string }): { ok: true } => ({ ok: true })
         })
       }
     }

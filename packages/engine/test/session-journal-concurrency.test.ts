@@ -17,9 +17,9 @@ import type { SessionRecord } from "../src";
 type Ctx = Awaited<ReturnType<typeof createExecutionContext>>;
 
 function createFlow(session?: { cas: { maxRetries: number; baseDelayMs: number } }) {
-  const block = handler<{ value: string }, { ok: boolean }>({
+  const block = handler({
     name: "journal-handler",
-    execute: () => ({ ok: true })
+    execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
   });
   return defineFlow({
     kind: "journal-concurrency-flow",

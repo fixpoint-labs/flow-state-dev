@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 type Provenance = { blockName: string; blockInstanceId: string; attempt?: number };
 
 function blockOutputs(items: OutputItem[]): BlockTraceItem[] {
+  // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
   return items.filter((i): i is BlockTraceItem => i.type === "block_trace");
 }
 

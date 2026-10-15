@@ -108,7 +108,7 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
     actions: { run: { inputSchema: z.object({}), block: probe } },
     internal: { actions: { work: { block: work } } },
     request: { heartbeatIntervalMs: 10_000 }
-  });
+  })();
 }
 
 /**

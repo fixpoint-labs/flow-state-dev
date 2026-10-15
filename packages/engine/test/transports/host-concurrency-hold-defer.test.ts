@@ -42,9 +42,9 @@ function buildHost(
   const started: string[] = [];
 
   const block = (name: string) =>
-    handler<{ value: string }, { ok: true }>({
+    handler({
       name,
-      execute: async (input, ctx) => {
+      execute: async (input: { value: string }, ctx): Promise<{ ok: true }> => {
         const id = input.value;
         live.push(id);
         started.push(id);

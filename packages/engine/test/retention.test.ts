@@ -423,6 +423,7 @@ describe("applyRetentionPolicy", () => {
         requestId: "req_finishing",
         flowKind: "test-flow",
         actionName: "run",
+        source: "http",
         sessionId: SESSION_ID,
         userId: "user1",
         startedAt: 100,

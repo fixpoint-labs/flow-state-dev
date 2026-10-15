@@ -98,9 +98,10 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
     const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const app = createFlowState({
       flows: { echo: flow("echo") },
-      stores: { default: { primary: inMemoryStores() } },
-      logger
+      stores: { default: { primary: inMemoryStores() } }
     });
+    // Installed the way the CLI installs its logger: on the app's own runtime config.
+    (await app.getRuntime()).runtimeConfig.logger = logger;
     await expect(app.resolveInProcessPrincipal(question("echo", "alice"))).resolves.toEqual({
       userId: "alice",
       orgId: DEFAULT_ORG_ID,

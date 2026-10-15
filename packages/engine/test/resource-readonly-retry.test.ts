@@ -63,6 +63,7 @@ function makeWritableRegistry(options: {
   return createScopeResourceRegistry({
     scope: "session",
     scopeId: "sess_readonly_retry",
+    orgId: DEFAULT_ORG_ID,
     cellOf: () => "sess_readonly_retry",
     configs: options.configs,
     readResources: () => state,

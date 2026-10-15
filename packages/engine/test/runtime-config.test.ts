@@ -27,7 +27,7 @@ describe("createRuntimeConfig", () => {
   });
 
   it("preserves the fields present in a partial input", () => {
-    const modelResolver = () => ({}) as never;
+    const modelResolver = Object.assign(() => ({}) as never, { resolveId: (id: string) => id });
     const settings = { feature: true };
 
     const config = createRuntimeConfig({

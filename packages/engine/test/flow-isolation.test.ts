@@ -84,9 +84,9 @@ function makeFlowFactory(options: {
   resources?: Record<string, ResourceSpec>;
   rawResources?: Record<string, unknown>;
 }) {
-  const block = handler<{ value: string }, { ok: boolean }>({
+  const block = handler({
     name: "iso-handler",
-    execute: () => ({ ok: true }),
+    execute: (_input: { value: string }): { ok: boolean } => ({ ok: true }),
   });
 
   // FIX-435: per-scope `resources` field is gone — keep `user.stateSchema`

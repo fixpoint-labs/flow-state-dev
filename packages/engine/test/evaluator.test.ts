@@ -60,6 +60,7 @@ async function run(block: Parameters<typeof defineFlow>[0]["actions"][string]["b
     signal: options.signal,
     runtimeConfig: options.modelResolver ? { modelResolver: options.modelResolver } : {},
   });
+  // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
   const traces = response.getItems().filter((i) => i.type === "block_trace") as BlockTraceItem[];
   return { result, traces, stores };
 }
