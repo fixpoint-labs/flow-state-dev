@@ -1540,7 +1540,7 @@ with a single lead tends to pick it. To have the open refuse that pick, pass `de
 leadFlows, leadFit: { model: "openai/gpt-5.4-mini" } })`: `openWorkstreamTool` then makes one call
 to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
 the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
-is written. Work whose title and objectives don't say what sort of work it is, such as a bare name, is never refused. A refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open
+is written. The same call asks whether the title and objectives say what sort of work it is at all, and work they don't, such as a bare name, passes the check. A refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open
 nothing and say a worker for it has to be hired first. A failed call, or a lead with no description,
 lets the open through. The check runs after every other refusal, and an open of a workstream that is
 already open with the same lead isn't checked again. The tool's answer carries `leadFit`: `{ checked: true }`,

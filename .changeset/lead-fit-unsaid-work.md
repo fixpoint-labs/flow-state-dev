@@ -2,4 +2,4 @@
 "@flow-state-dev/workforce": patch
 ---
 
-`openWorkstreamTool`'s lead-fit check no longer refuses work whose title and objectives don't say what sort of work it is, such as a bare name: no lead can be the wrong sort for it.
+`openWorkstreamTool`'s lead-fit check also asks whether a workstream's title and objectives say what sort of work it is, and no longer refuses work they don't, such as a bare name.
