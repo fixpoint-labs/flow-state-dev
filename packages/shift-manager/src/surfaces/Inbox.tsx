@@ -184,8 +184,10 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
  * a list of questions is a list and code is code. Headings in it stay body
  * size; the ask's title is the only heading.
  */
+const bodyHeading = ({ children }: { children?: ReactNode }) => <p className="font-semibold">{children}</p>;
+const BODY_COMPONENTS = { h1: bodyHeading, h2: bodyHeading, h3: bodyHeading, h4: bodyHeading, h5: bodyHeading, h6: bodyHeading };
+
 function AskBody({ text }: { text: string }) {
-  const plain = ({ children }: { children?: ReactNode }) => <p className="font-semibold">{children}</p>;
   return (
     <div
       className={cn(
@@ -196,7 +198,7 @@ function AskBody({ text }: { text: string }) {
       )}
       data-testid="inbox-detail-body"
     >
-      <Markdown components={{ h1: plain, h2: plain, h3: plain, h4: plain, h5: plain, h6: plain }}>{text}</Markdown>
+      <Markdown components={BODY_COMPONENTS}>{text}</Markdown>
     </div>
   );
 }

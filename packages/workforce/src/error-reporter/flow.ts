@@ -422,6 +422,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       try {
         const answer = await ctx.suspend({
           reason: "human_input",
+          // The question's heading in Inbox; `data.title` is the issue title it files under.
           title: `Error report: ${draft.title}`,
           message: `Seen ${seen} time${seen === 1 ? "" : "s"}. File it?${questions}`,
           data: { reportId: id, title: draft.title, body: draft.body, questions: draft.questions, count: seen, decision: "file" },
