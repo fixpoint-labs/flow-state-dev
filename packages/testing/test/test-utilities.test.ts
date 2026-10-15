@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineResource, generator, handler, router } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import { defineFlow, defineResource, generator, handler, router } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import {
   mockGenerator,
@@ -18,9 +17,10 @@ const passthroughSchema = {
 
 describe("testing utilities", () => {
   it("testBlock executes block and records state changes", async () => {
-    const increment = handler<{ amount: number }, { ok: boolean }>({
+    const increment = handler({
       name: "increment",
-      execute: async (input, ctx) => {
+      sessionStateSchema: z.object({ count: z.number().default(0) }),
+      execute: async (input: { amount: number }, ctx) => {
         await ctx.session.incState({ count: input.amount });
         return { ok: true };
       }
@@ -50,10 +50,10 @@ describe("testing utilities", () => {
       writable: true
     });
 
-    const record = handler<{ note: string }, { ok: boolean }>({
+    const record = handler({
       name: "record",
       resources: { ledger },
-      execute: async (input, ctx) => {
+      execute: async (input: { note: string }, ctx) => {
         // Throws unless ctx.resources.ledger was registered from declaredResources.
         await ctx.resources.ledger.setState({ entries: [input.note] } as never);
         return { ok: true };
@@ -67,19 +67,19 @@ describe("testing utilities", () => {
   });
 
   it("testRouter reports selected route", async () => {
-    const left = handler<{ route: string }, string>({
+    const left = handler({
       name: "left",
-      execute: () => "left"
+      execute: (_input: { route: string }) => "left"
     });
-    const right = handler<{ route: string }, string>({
+    const right = handler({
       name: "right",
-      execute: () => "right"
+      execute: (_input: { route: string }) => "right"
     });
 
-    const routeBlock = router<{ route: string }, string>({
+    const routeBlock = router({
       name: "chooser",
       routes: [left, right],
-      execute: (input) => (input.route === "right" ? right : left)
+      execute: (input: { route: string }) => (input.route === "right" ? right : left)
     });
 
     const result = await testRouter(routeBlock, {
@@ -92,20 +92,19 @@ describe("testing utilities", () => {
   });
 
   it("testFlow executes one flow action end-to-end", async () => {
-    const flow: FlowInstance = {
-      id: "test",
+    const flow = defineFlow({
       kind: "test-flow",
       requireUser: true,
       actions: {
         run: {
           inputSchema: passthroughSchema as any,
-          block: handler<{ value: string }, { echoed: string }>({
+          block: handler({
             name: "echo",
-            execute: (input) => ({ echoed: input.value })
+            execute: (input: { value: string }) => ({ echoed: input.value })
           })
         }
       }
-    } as FlowInstance;
+    })();
 
     const result = await testFlow({
       flow,
@@ -119,34 +118,33 @@ describe("testing utilities", () => {
   });
 
   it("testFlow supports generator mocking by block-name and model-id", async () => {
-    const chat = generator<{ message: string }, { reply: string }>({
+    const chat = generator({
       name: "chat-generator",
       model: "openai/gpt-4o-mini",
       prompt: "Reply to the user",
       outputSchema: passthroughSchema as any
     });
-    const fallback = generator<{ message: string }, { reply: string }>({
+    const fallback = generator({
       name: "fallback-generator",
       model: "openai/gpt-4o-mini",
       prompt: "Fallback",
       outputSchema: passthroughSchema as any
     });
 
-    const flow: FlowInstance = {
-      id: "generator-flow",
+    const flow = defineFlow({
       kind: "generator-flow",
       requireUser: true,
       actions: {
         run: {
           inputSchema: passthroughSchema as any,
-          block: router<{ message: string }, { reply: string }>({
+          block: router({
             name: "generator-router",
             routes: [chat, fallback],
-            execute: (input) => (input.message === "primary" ? chat : fallback)
+            execute: (input: { message: string }) => (input.message === "primary" ? chat : fallback)
           })
         }
       }
-    } as FlowInstance;
+    })();
 
     const byName = mockGenerator({
       name: "chat-generator",
@@ -181,15 +179,14 @@ describe("testing utilities", () => {
   });
 
   it("testFlow falls back to unmockedDefault instead of throwing on a missing mock", async () => {
-    const chat = generator<{ message: string }, { reply: string }>({
+    const chat = generator({
       name: "chat-generator",
       model: "openai/gpt-5.4-mini",
       prompt: "Reply to the user",
       outputSchema: passthroughSchema as any
     });
 
-    const flow: FlowInstance = {
-      id: "default-flow",
+    const flow = defineFlow({
       kind: "default-flow",
       requireUser: true,
       actions: {
@@ -198,7 +195,7 @@ describe("testing utilities", () => {
           block: chat
         }
       }
-    } as FlowInstance;
+    })();
 
     const result = await testFlow({
       flow,
@@ -215,9 +212,9 @@ describe("testing utilities", () => {
   });
 
   it("testFlow shares state across runs when given the same stores", async () => {
-    const counter = handler<{ amount: number }, { total: number }>({
+    const counter = handler({
       name: "counter",
-      execute: async (input, ctx) => {
+      execute: async (input: { amount: number }, ctx) => {
         const current = (ctx.session.state as { count?: number }).count ?? 0;
         const total = current + input.amount;
         await ctx.session.patchState({ count: total });
@@ -225,8 +222,7 @@ describe("testing utilities", () => {
       }
     });
 
-    const flow: FlowInstance = {
-      id: "stateful",
+    const flow = defineFlow({
       kind: "stateful-flow",
       requireUser: true,
       actions: {
@@ -235,7 +231,7 @@ describe("testing utilities", () => {
           block: counter
         }
       }
-    } as FlowInstance;
+    })();
 
     const stores = createInMemoryStores();
     const sessionId = "test-resume-session";

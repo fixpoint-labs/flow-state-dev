@@ -3,9 +3,9 @@ import { handler } from "@flow-state-dev/core";
 import { evalBlock, exactMatch, custom, contains } from "../src/eval";
 
 describe("evalBlock", () => {
-  const echoBlock = handler<{ value: string }, { echoed: string }>({
+  const echoBlock = handler({
     name: "echo",
-    execute: (input) => ({ echoed: input.value }),
+    execute: (input: { value: string }) => ({ echoed: input.value }),
   });
 
   it("evaluates a dataset and produces a report", async () => {
@@ -67,9 +67,9 @@ describe("evalBlock", () => {
   });
 
   it("handles block errors gracefully", async () => {
-    const failBlock = handler<{ value: string }, { result: string }>({
+    const failBlock = handler({
       name: "fail",
-      execute: () => {
+      execute: (_input: { value: string }): { result: string } => {
         throw new Error("intentional failure");
       },
     });
@@ -89,9 +89,9 @@ describe("evalBlock", () => {
     let maxConcurrent = 0;
     let current = 0;
 
-    const slowBlock = handler<{ value: string }, { done: boolean }>({
+    const slowBlock = handler({
       name: "slow",
-      execute: async () => {
+      execute: async (_input: { value: string }) => {
         current++;
         if (current > maxConcurrent) maxConcurrent = current;
         await new Promise((r) => setTimeout(r, 10));
