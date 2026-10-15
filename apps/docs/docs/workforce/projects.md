@@ -741,13 +741,24 @@ Before the server cuts a new branch, it fetches that base's upstream, the remote
 A few cases go differently:
 
 - **Your branch and its upstream have each moved.** The run is refused with `base-diverged`, naming both commits, and nothing is made. Pull or rebase, or push, and the next run starts.
-- **The fetch fails**, because you're offline, a credential is refused, or it times out. The comparison uses the copy you last fetched, and the server logs a warning naming the checkout and git's error.
+- **The fetch fails**, because you're offline, a credential is refused, or it times out. The run starts from your local branch, and the server logs a warning naming the checkout and git's error. It doesn't use the copy you last fetched, because a run in your checkout can move that copy.
+- **The remote or upstream changed since the server first saw it.** See [Changing your remote](#changing-your-remote).
 - **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
 - **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
 
 Listing the checkout is what allows the fetch, so the upstream doesn't need to be in `remotes.allow`. That list still decides which remotes the host clones. The upstream's URL is checked before git sees it: one that uses a transport helper such as `ext::`, starts with `-`, or uses a scheme other than `https`, `ssh` or `file` isn't fetched, and the server logs why.
 
 Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
+
+#### Changing your remote
+
+Every worktree shares your checkout's `.git/config`, so a run could repoint `origin` and have the next fetch, with your credentials, go wherever it chose. To stop that, the server writes down each remote's URL and the upstream each branch tracks the first time it starts with your checkout listed. It keeps that record in its own root folder, not in your repository, and it survives restarts. A remote or branch that appears later is added the next time the server starts. A value already recorded doesn't change.
+
+If your config no longer matches the record, the server doesn't fetch from the new URL. It logs a warning that names the remote, both URLs and the record's file, and the run starts from your local branch. If you changed the remote yourself, say because the repository moved, accept the change by deleting the file the warning names and restarting the server. The record is written again from your config as it is then.
+
+#### What a run in your checkout can do
+
+A run in your checkout works with your trust, the way a coding agent you start in your own repository does. It can create and move branches, tags and remote-tracking refs, because git shares those between worktrees. The server keeps a run from steering its fetch or your credentials. It doesn't keep a run away from your refs. If you want a run kept apart from your branches, give its project a repository the host clones instead of a checkout.
 
 To review a run, open its worktree, or run `git log -p <branch> --not main main@{upstream}` from your checkout, with your base branch in place of `main`. For a base with no upstream, leave out `main@{upstream}`. That shows only the run's commits, whether it started from your base branch or from its upstream. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
 

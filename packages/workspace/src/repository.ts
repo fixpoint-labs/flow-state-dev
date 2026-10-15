@@ -1,7 +1,8 @@
 /**
  * What repository a directory belongs to, whether a ref names a commit in it,
  * and what a listed repository's upstream fetch may use — the synchronous git
- * questions a host asks at startup, before anything is claimed.
+ * questions a host asks at startup, before anything is claimed — and the pin
+ * file in the host's root that keeps those fetch settings across restarts.
  *
  * One definition of "the same repository" for every caller. The provisioning
  * path (`./worktree`) asks git asynchronously, inside its budget, and turns the
@@ -11,8 +12,9 @@
  * stop agreeing.
  */
 import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 
 /**
  * How long a startup git query may take. Short: these are metadata reads
@@ -137,4 +139,78 @@ export function readFetchPins(repo: string): FetchPins {
     }
   }
   return { remotes, credentialHelpers, upstreams };
+}
+
+/** Where a host keeps the fetch settings it pinned, in its root. Dot-prefixed, so no place is named over it. */
+const FETCH_PINS_DIR = ".fetch-pins";
+
+/** {@link FetchPins} as {@link pinFetchSettings} keeps them, and the file that holds them. */
+export interface KeptFetchPins extends FetchPins {
+  /** The pin file in the host's root. Deleting it, then restarting the host, pins the config afresh. */
+  file: string;
+}
+
+/**
+ * The fetch settings of `repo`, pinned across restarts in the host's `root`,
+ * which a run can't write. Each remote's URL and each branch's upstream is
+ * pinned the first time a host start sees it, and that value wins from then
+ * on: a run that rewrites the repository's shared config changes nothing the
+ * next host fetches with. Credential helpers live outside the repository and
+ * are read fresh. A pin file that can't be read pins nothing, with a warning,
+ * and is left as it is for the person to look at.
+ */
+export function pinFetchSettings(root: string, repo: string): KeptFetchPins {
+  const live = readFetchPins(repo);
+  const dir = path.join(root, FETCH_PINS_DIR);
+  const file = path.join(dir, `${createHash("sha256").update(repo).digest("hex").slice(0, 16)}.json`);
+  let kept: { remotes: Record<string, string>; upstreams: Record<string, PinnedUpstream> };
+  try {
+    kept = parsePins(readFileSync(file, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn(
+        `[workspace] ${repo}: the fetch settings pinned in ${file} could not be read (${(error as Error).message}), ` +
+          `so nothing is fetched for it. To pin its current config, delete ${file} and restart the host.`,
+      );
+      return { remotes: new Map(), upstreams: new Map(), credentialHelpers: live.credentialHelpers, file };
+    }
+    kept = { remotes: {}, upstreams: {} };
+  }
+  let added = false;
+  for (const [name, url] of live.remotes) {
+    if (Object.hasOwn(kept.remotes, name)) continue;
+    kept.remotes[name] = url;
+    added = true;
+  }
+  for (const [ref, upstream] of live.upstreams) {
+    if (Object.hasOwn(kept.upstreams, ref)) continue;
+    kept.upstreams[ref] = upstream;
+    added = true;
+  }
+  if (added || !existsSync(file)) {
+    mkdirSync(dir, { recursive: true });
+    // Written whole and renamed into place, so a host never reads half a file.
+    const temporary = `${file}.${randomUUID()}`;
+    writeFileSync(temporary, `${JSON.stringify({ repo, ...kept }, null, 2)}\n`);
+    renameSync(temporary, file);
+  }
+  return {
+    remotes: new Map(Object.entries(kept.remotes)),
+    upstreams: new Map(Object.entries(kept.upstreams)),
+    credentialHelpers: live.credentialHelpers,
+    file,
+  };
+}
+
+/** A pin file's remotes and upstreams, or a throw naming what is wrong with it. */
+function parsePins(text: string): { remotes: Record<string, string>; upstreams: Record<string, PinnedUpstream> } {
+  const parsed = JSON.parse(text) as { remotes?: unknown; upstreams?: unknown };
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+  const isUpstream = (value: unknown): value is PinnedUpstream =>
+    isRecord(value) && typeof value.ref === "string" && typeof value.remoteName === "string" && typeof value.remoteRef === "string";
+  if (!isRecord(parsed) || !isRecord(parsed.remotes) || !isRecord(parsed.upstreams)) throw new Error("not a pin file");
+  if (!Object.values(parsed.remotes).every((url) => typeof url === "string")) throw new Error("a remote's URL is not a string");
+  if (!Object.values(parsed.upstreams).every(isUpstream)) throw new Error("an upstream is malformed");
+  return { remotes: parsed.remotes as Record<string, string>, upstreams: parsed.upstreams as Record<string, PinnedUpstream> };
 }

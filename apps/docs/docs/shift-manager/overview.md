@@ -49,7 +49,11 @@ In this repository, `pnpm shift-manager:dev` opens the `fsd` profile: a Lab for 
 
 Ask the [Shift Coordinator](../workforce/shift-coordinator.md) for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own. Before cutting that branch, the Lab fetches the upstream your `main` tracks, usually `origin/main`, and starts from whichever is newer, that upstream or your local `main`. So you don't need to pull first, and commits you haven't pushed are kept. Your own `main`, its files and your index aren't touched.
 
-If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run compares your `main` with the copy of its upstream you last fetched instead, and a warning prints where you started Shift Manager.
+If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run starts from your local `main`, and a warning prints where you started Shift Manager.
+
+The Lab remembers the URL of each remote and the upstream your branches track from the first time it starts with your checkout, and fetches only from those. If you move your remote on purpose, the next run prints a warning naming a file: delete that file and restart Shift Manager to accept the new URL.
+
+A coding run works in your checkout with your trust, the way Claude Code does when you start it there. It can create and move branches and refs in your repository.
 
 Review the work in that worktree, or from your checkout with `git log -p <branch> --not main main@{upstream}`. That shows only the run's commits, whichever of the two it started from. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
 
