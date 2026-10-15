@@ -218,6 +218,62 @@ export function compareZodSchemasStructurally(
   return null;
 }
 
+/**
+ * Peel every `.default()` / `.optional()` / `.nullable()` / `.readonly()` /
+ * `.catch()` / effects / `.brand()` / `z.lazy()` layer off a schema.
+ */
+function peelZodWrappers(schema: ZodTypeAny): ZodTypeAny {
+  let current = schema;
+  const seen = new Set<unknown>();
+  while (!seen.has(current)) {
+    seen.add(current);
+    const typeName = getZodTypeName(current);
+    const def = (current as any)._def;
+    const inner =
+      typeName === "ZodBranded" ? (def.type as ZodTypeAny)
+      : typeName === "ZodLazy" ? (def.getter() as ZodTypeAny)
+      : getZodInnerType(current);
+    if (inner === undefined) break;
+    current = inner;
+  }
+  return current;
+}
+
+/** True for the two Zod kinds that accept any value. */
+function isOpenZodKind(kind: string | undefined): boolean {
+  return kind === "ZodAny" || kind === "ZodUnknown";
+}
+
+/**
+ * Compare one state field as a sequencer declares it with the same field as a
+ * block requires it (through `sequencerStateSchema`). Returns the reason they
+ * disagree, or `null` when they are compatible.
+ *
+ * Compares the kind under the wrappers, so `z.number().default(0)` satisfies
+ * `z.number()`, and the element kind of an array. `z.any()` / `z.unknown()` on
+ * either side is compatible with anything. Like
+ * {@link compareZodSchemasStructurally}, it is one level deep: nested object
+ * shapes, refinements and union variants are not compared.
+ */
+export function compareStateFieldKinds(declared: ZodTypeAny, required: ZodTypeAny): string | null {
+  const declaredInner = peelZodWrappers(declared);
+  const requiredInner = peelZodWrappers(required);
+  const declaredKind = getZodTypeName(declaredInner);
+  const requiredKind = getZodTypeName(requiredInner);
+  if (isOpenZodKind(declaredKind) || isOpenZodKind(requiredKind)) return null;
+  if (declaredKind !== requiredKind) {
+    return `declared ${declaredKind} but a block requires ${requiredKind}`;
+  }
+  if (declaredKind === "ZodArray") {
+    const declaredElement = getZodTypeName(peelZodWrappers(getZodArrayElement(declaredInner)!));
+    const requiredElement = getZodTypeName(peelZodWrappers(getZodArrayElement(requiredInner)!));
+    if (!isOpenZodKind(declaredElement) && !isOpenZodKind(requiredElement) && declaredElement !== requiredElement) {
+      return `declared an array of ${declaredElement} but a block requires an array of ${requiredElement}`;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // State-key introspection (original export — kept as-is)
 // ---------------------------------------------------------------------------

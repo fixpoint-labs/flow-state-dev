@@ -21,6 +21,7 @@ import type {
 import { buildBlock, mergeDeclaredResources, stampInformationalOutputSchema } from "./internal/build-block";
 import { SequencerOutputSchemaError, SequencerSchemaMismatchError } from "../errors/sequencer-output-schema-error";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { absorbSequencerStateRequirement, foldSequencerStateRequirements } from "./internal/sequencer-state";
 import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import { stashEvaluatorModelResult } from "./internal/evaluator-model-result";
@@ -924,9 +925,13 @@ function runSequencerOperations(
           stateSchema
         );
 
-        // In resume mode, restore sequencer state from the checkpoint.
+        // In resume mode, restore sequencer state from the checkpoint, over
+        // the fresh container's schema defaults: a checkpoint written before a
+        // field joined the schema (a new bubbled requirement, say) or without
+        // a transient slot keeps every saved value and gets the defaults for
+        // the rest (BP-030).
         if (resumeState !== undefined && resumeState.state !== undefined && ctx.sequencer !== undefined) {
-          ctx.sequencer.setState(resumeState.state as any);
+          ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state } as any);
         }
 
         for (let index = 0; index < operations.length; index += 1) {
@@ -1162,6 +1167,17 @@ function createSequencer<
   // semantics is cheap (constant storage per sequencer); explicit `false` is
   // the opt-out for tests and ephemeral fanouts.
   const durable = config.durable ?? true;
+
+  // Sequencer state bubbling (see `internal/sequencer-state.ts`): the children's
+  // `sequencerStateSchema` requirements land on this sequencer's `stateSchema`
+  // when it has one, and otherwise pass up as its own `sequencerStateSchema`.
+  // Recomputed from the unchanged `config` on every rebuild, and throws here,
+  // while the chain is composed, on a conflicting field.
+  const stateChildren = [...childBlocks, ...rescueHandlers.map((handler) => handler.block)];
+  const foldedState = foldSequencerStateRequirements(config.stateSchema, stateChildren, config.name);
+  const stateSchema = config.stateSchema === undefined ? undefined : foldedState;
+  const sequencerStateSchema = config.stateSchema === undefined ? foldedState : undefined;
+
   const baseBlock = buildBlock({
     kind: "sequencer",
     config: {
@@ -1170,7 +1186,8 @@ function createSequencer<
       transient: config.transient,
       inputSchema: resolvedInputSchema ?? config.inputSchema,
       outputSchema: undefined,
-      stateSchema: config.stateSchema,
+      stateSchema,
+      ...(sequencerStateSchema !== undefined ? { sequencerStateSchema } : {}),
       container: config.container,
       activeStatusMessage: config.activeStatusMessage,
       // Carried through like every other declared slot. Unlike the three leaf
@@ -1182,7 +1199,7 @@ function createSequencer<
       flowConfigSchema: config.flowConfigSchema
     },
     execute: wrapWithOutputValidation(
-      runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema),
+      runSequencerOperations(operations, rescueHandlers, durable, stateSchema),
       config.outputSchema
     ),
     declaredResources: accumulatedResources,
@@ -2500,13 +2517,24 @@ export function sequencer<
 >(
   config: SequencerConfig<TInputSchema, TInput, TStateSchema, TFlowConfigSchema>
 ): SequencerDefinition<TInput, TInput, TStateSchema, TFlowConfigSchema> {
-  const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "sequencer");
+  const { declaredResources, resolvedCapabilities, stateSchema: ownStateSchema, mergedSurface } =
+    resolveCapabilities(config, "sequencer");
 
   // FIX-914 PR2: `resolveCapabilities` already merged any capability-
   // contributed own state (`ctx.self`) with the sequencer's own `stateSchema`
-  // declaration. Runtime-only — sequencer capabilities aren't statically typed
-  // (see `SequencerCtx`'s hardcoded `TCapabilities = {}`), so this doesn't
-  // affect the `TStateSchema` generic.
+  // declaration. A capability's `sequencerStateSchema` is state it needs from
+  // the sequencer that uses it, so it lands on this sequencer's state too —
+  // checked against the declared fields like a child's requirement. Runtime-
+  // only — sequencer capabilities aren't statically typed (see `SequencerCtx`'s
+  // hardcoded `TCapabilities = {}`), so this doesn't affect the `TStateSchema`
+  // generic.
+  const capabilityRequirement = mergedSurface?.sequencerStateSchema;
+  const stateSchema =
+    capabilityRequirement === undefined
+      ? ownStateSchema
+      : ownStateSchema === undefined
+        ? capabilityRequirement
+        : absorbSequencerStateRequirement(ownStateSchema, capabilityRequirement, config.name, "its capabilities");
   const effectiveConfig = { ...config, stateSchema };
 
   // A sequencer has no direct `resources` config field — its OWN declarations

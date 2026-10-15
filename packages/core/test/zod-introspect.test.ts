@@ -13,6 +13,7 @@ import {
   getZodUnionOptions,
   getZodRecordValueType,
   compareZodSchemasStructurally,
+  compareStateFieldKinds,
 } from "../src/helpers/zod-introspect";
 import { execSync } from "child_process";
 import { existsSync } from "fs";
@@ -280,6 +281,32 @@ describe("compareZodSchemasStructurally", () => {
 // ---------------------------------------------------------------------------
 // Grep guard — no raw `_def` access outside zod-introspect.ts
 // ---------------------------------------------------------------------------
+
+describe("compareStateFieldKinds", () => {
+  it("accepts a sequencer field whose wrappers differ from the block's (a default, a brand, a lazy)", () => {
+    expect(compareStateFieldKinds(z.number().default(0), z.number())).toBeNull();
+    expect(compareStateFieldKinds(z.string().brand("id"), z.string())).toBeNull();
+    expect(compareStateFieldKinds(z.lazy(() => z.number()), z.number().optional())).toBeNull();
+  });
+
+  it("refuses a different kind under the wrappers", () => {
+    expect(compareStateFieldKinds(z.string().nullable().default(null), z.number())).toMatch(
+      /declared ZodString but a block requires ZodNumber/
+    );
+  });
+
+  it("compares an array's element kind", () => {
+    expect(compareStateFieldKinds(z.array(z.string()).default([]), z.array(z.number()))).toMatch(
+      /array of ZodString/
+    );
+    expect(compareStateFieldKinds(z.array(z.string()), z.array(z.string().optional()))).toBeNull();
+  });
+
+  it("treats any and unknown as compatible with everything", () => {
+    expect(compareStateFieldKinds(z.unknown(), z.number())).toBeNull();
+    expect(compareStateFieldKinds(z.array(z.any()), z.array(z.number()))).toBeNull();
+  });
+});
 
 describe("_def access guard", () => {
   it("no raw _def access outside zod-introspect.ts (with documented exceptions)", () => {
