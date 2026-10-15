@@ -226,7 +226,7 @@ describe("createModelResolver — intent resolution", () => {
     // Repros the deployed-kitchen-sink failure: OPENAI_API_KEY is set (for
     // voice STT/TTS), but @ai-sdk/openai is not loadable in the bundled
     // runtime. A configured gateway must still serve a bare `openai/...`
-    // string — without the author having to rewrite it as `vercel/openai/...`.
+    // string — without the author having to rewrite it as `vercel:openai/...`.
     // Here we simulate the unloadable direct path by passing an explicit
     // provider factory that throws when invoked.
     const throwingProvider = () => {

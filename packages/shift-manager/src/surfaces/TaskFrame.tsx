@@ -13,11 +13,12 @@
 import { useEffect, useState } from "react";
 import { EmptyState, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
 import { columnFor, readStatus } from "../lib/columns";
-import { asksOfTask, doorOf, rosterOf, workerFor, waited } from "../lib/derive";
+import { asksOfTask, doorOf, rosterOf, workerFor, workerLabel, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
 import { useTask } from "../lib/task";
+import { distinctTitle } from "../lib/tasks";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -43,7 +44,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to no worker at all.
   const found = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : workerFor(rosterOf(snapshot), row);
-  const worker = row?.assignee == null ? null : (found?.id ?? row.assignee);
+  const worker = row?.assignee == null ? null : workerLabel(found?.id ?? row.assignee);
 
   return (
     // Esc interrupts from anywhere in the frame, on every tab and from the
@@ -208,12 +209,15 @@ function Actions({ gaps }: { gaps: Gaps }) {
 /** Brief (BR-24): the row's fields as stored. */
 function Brief({ gaps }: { gaps: Gaps }) {
   const { row } = useTask();
+  const title = distinctTitle(row);
   return (
     <dl className="mx-auto w-full max-w-3xl space-y-3 px-4 py-4 text-sm" data-testid="task-brief">
-      <div>
-        <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
-        <dd data-testid="brief-title">{row?.title ?? "—"}</dd>
-      </div>
+      {title === null ? null : (
+        <div>
+          <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">TITLE</dt>
+          <dd data-testid="brief-title">{title}</dd>
+        </div>
+      )}
       <div>
         <dt className="text-[11px] font-semibold tracking-wider text-muted-foreground">GOAL</dt>
         <dd className="whitespace-pre-wrap" data-testid="brief-goal">

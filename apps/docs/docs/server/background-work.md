@@ -18,7 +18,7 @@ one, or ask a conversation which runs it started.
 
 Starting one is server-side only. There is no endpoint for it. A job begins
 inside a running request, either from a `dispatcher()` block or from a task
-board handing a claimed row off, which starts one. See [Work that outlives the
+board dispatching a claimed row, which starts one. See [Work that outlives the
 turn](/guides/background-work#dispatch-work-in-its-own-session) for how the two
 relate to the other kinds of background work.
 
@@ -140,7 +140,7 @@ block.
 A task board worker can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and that run lands in the same listings. See [Task board →
-Workers that hand off](../orchestration/task-board.md#assignees-that-hand-off).
+Assignees that dispatch](../orchestration/task-board.md#assignees-that-dispatch).
 
 ### Starting a job on another flow
 
@@ -296,7 +296,7 @@ absent on a row that records no owner.
 
 `topic` and `coordinate` are display labels. `coordinate` is the entry the run
 was dispatched to, `<type>:<target>`: `internal:summarize` for an internal entry,
-`task:implement` for a task-board worker that hands off. `topic` is the key the
+`task:implement` for a task-board worker that dispatches. `topic` is the key the
 run's session was derived from — what a `dispatcher()`'s `session: { key }`
 function returned, or the composed key a task worker's `session` policy produced.
 
@@ -419,7 +419,7 @@ error, if any, and the action's return value when you ask for that too
 for the shape.
 
 A run a `dispatcher()` started reads `source: "internal"`, or `source: "task"`
-when a task-board worker handed the work off, and carries a `metadata.dispatch`
+when a task-board worker dispatched the work, and carries a `metadata.dispatch`
 bag:
 
 ```json
@@ -430,7 +430,7 @@ bag:
     "dispatch": {
       "type": "task",
       "action": "implement",
-      "from": { "block": "hand-off-implement", "sessionId": "sess_abc" },
+      "from": { "block": "dispatch-implement", "sessionId": "sess_abc" },
       "key": "task|10:issue-work|3:t42",
       "taskId": "t42"
     }
@@ -440,7 +440,7 @@ bag:
 
 `type` and `action` are the entry the run executes, `from` names the block that
 sent it and the session it was running in, `key` is the session key the run
-was derived from, and `taskId` the board row on a task hand-off. `key` is absent
+was derived from, and `taskId` the board row on a dispatched task. `key` is absent
 when the dispatcher delivered into an existing session by `id`, and `taskId` is
 absent on an internal dispatch.
 

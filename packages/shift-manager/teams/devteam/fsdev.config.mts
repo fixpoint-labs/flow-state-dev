@@ -36,6 +36,11 @@
  *   files in `project/` beside the checkout; Sandbox names none, so a run there
  *   works on the project's files alone. No folder is named for any of it.
  *
+ * - **The Error Reporter.** A request that stays failed, or a task that ends
+ *   errored, becomes one report in Inbox, drafted by Claude Code from this
+ *   checkout's code. This team names no tracker, so reports are kept, not
+ *   filed; a draft needs a Claude Code account, and waits for one otherwise.
+ *
  * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
  *   `packages/shift-manager/.fsdev/devteam.sqlite` by default. Workers the chief of
  *   staff hired are read back and serve again at the next start, a fire it
@@ -52,7 +57,8 @@ import { fileURLToPath } from "node:url";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
-import { startHarness } from "./harness.mts";
+import { errorReporterHarness, startHarness } from "./harness.mts";
+import { CHECKOUT } from "./fsd-checkouts.mts";
 import { LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "./host.mts";
 import { createBareRemote } from "./scratch-repo.mts";
 import { CODER_FLOW } from "./workforce/flows/workers/coder.mts";
@@ -149,6 +155,9 @@ const lab = await openLab({
   workstreams: DEFAULT_WORKSTREAMS,
   // The shift coordinator records each conversation into its memory only when asked.
   memoryCapture: process.env.DEVTEAM_MEMORY_CAPTURE === "1",
+  // The Error Reporter reads this checkout's code with Claude Code and keeps
+  // its reports in Inbox: this team names no tracker, so nothing is filed.
+  errorReporter: { harness: errorReporterHarness, cwd: CHECKOUT },
 });
 
 export default lab.state;

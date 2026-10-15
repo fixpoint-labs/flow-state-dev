@@ -102,6 +102,12 @@ export type Worker = {
    * written before doors were published.
    */
   door: string | null;
+  /**
+   * Whether the worker keeps standing rules: its worker flow declares the
+   * rules action, as the hire published it. `false` on a row written before
+   * the field.
+   */
+  rules: boolean;
   /** The team it sits under, or {@link STAFF_TEAM} for an org worker (see {@link toWorker}). */
   team: string;
   name: string;
@@ -144,7 +150,7 @@ export type Projects = {
 
 /**
  * The run working a task, or the run that last worked it: the session a
- * handed-off attempt runs in, that attempt's request there, and the attempt
+ * dispatched attempt runs in, that attempt's request there, and the attempt
  * number. The board's claim gate writes it from inside the run; the next claim
  * clears it. It carries no flow: the run's flow is the one its session records
  * as its owner.
@@ -174,6 +180,11 @@ export type BoardRow = {
    */
   run: RunLink | null;
   error: string | null;
+  /**
+   * The question a row parked on a question waits on, or absent: not parked
+   * on one, or published before boards showed it.
+   */
+  question?: string;
   createdAt: number | null;
   updatedAt: number | null;
   startedAt: number | null;
@@ -384,7 +395,7 @@ export function toWorker(row: unknown): Worker | undefined {
   const dot = id.indexOf(".");
   const team = dot > 0 ? id.slice(0, dot) : STAFF_TEAM;
   const name = dot > 0 ? id.slice(dot + 1) : id;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), rules: field(row, "rules") === true, team, name };
 }
 
 /**
@@ -427,7 +438,13 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-/** A board row, from what the board publishes. */
+/**
+ * A board row, from what the board publishes.
+ *
+ * `title` is never absent: a row filed with none reads its goal there. The
+ * Brief's `distinctTitle` (`lib/tasks.ts`) is written against that, and shows
+ * a title only when it differs from `goal`.
+ */
 export function toBoardRow(boardRef: string, holderSessionId: string, topic: string, data: unknown): BoardRow {
   return {
     boardRef,
@@ -442,6 +459,9 @@ export function toBoardRow(boardRef: string, holderSessionId: string, topic: str
     deps: strings(field(data, "deps")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
+    ...(field(data, "parkedOnQuestion") === true && text(field(data, "feedback")) !== null
+      ? { question: text(field(data, "feedback")) as string }
+      : {}),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),
     startedAt: time(field(data, "startedAt")),

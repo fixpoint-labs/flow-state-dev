@@ -46,6 +46,13 @@ export type ExecutionContext<
    * action block; nested block failures are captured via `_runtimeHooks.onBlockError`.
    */
   _captureError?: (error: unknown, block?: ErrorCaptureBlockInfo) => void;
+  /**
+   * @internal Send the request's one final-failure event (FIX-1983), once its
+   * failed record is written. Not deduped against the block captures: it is a
+   * second, request-scope event naming the leaf that threw `error` when a
+   * block capture saw it. Undefined when no `errorCapture` handler is configured.
+   */
+  _captureFinalError?: (error: unknown) => void;
 };
 
 export type CreateExecutionContextOptions<

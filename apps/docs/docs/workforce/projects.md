@@ -166,12 +166,12 @@ const agent = defineAgentWorkerFlow({
 });
 ```
 
-[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a user's approval first, keep a sequencer that asks before the step, as the [chief of staff](./chief-of-staff.md) does for `fire`.
+[Workstreams](#workstreams) covers `defineWorkstreamBlocks`. `.as()` only renames. If a write should wait for a user's approval first, keep a sequencer that asks before the step, as the [Shift Coordinator](./shift-coordinator.md) does for `fire`.
 
 A worker calls them only when its own `tools:` names them. The owner is the user whose session the worker is answering in, so a project or workstream a worker creates belongs to whoever asked for it.
 
 
-[The chief of staff](./chief-of-staff.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
+[The Shift Coordinator](./shift-coordinator.md#starting-projects) is a worker set up this way. On the `coordinator` flow, its own turn reads the catalog you pass `defineCoordinatorFlow` as `agent`, so the entries go there.
 
 ## Workstreams
 
@@ -296,7 +296,7 @@ It returns `{ workstream }`, the entry as written.
 
 The entries are an [owner-writes collection](../resources/collections.md#owner-writes-collections), so a write to someone else's entry throws "A row of an owner-writes collection is written only by the user it belongs to." and changes nothing, whichever flow sends it. A workstream you don't have is refused with `no-such-workstream`. A workstream is never deleted: mark it `done` and it stays listed.
 
-**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
+**The lead keeps it current.** `updateWorkstreamTool` is the same write as a tool, named `updateWorkstream`, for the lead's flow. It takes only the changes, and writes the workstream whose session it runs in, as that session's owner. The title is not one of those changes: the owner sets it through `updateWorkstream`, and their project coordinator through `editWorkstream`. Put it in the lead flow's catalog and list `updateWorkstream` in the lead's `tools:`:
 
 ```ts
 const agent = defineAgentWorkerFlow({
@@ -354,7 +354,7 @@ const installation = createWorkerInstallation({
 });
 ```
 
-Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
+Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to and marks each workstream `yours: true` when the user owns it. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
 
 ```ts
 import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/workforce";
@@ -403,7 +403,7 @@ You never add or remove a project coordinator's workstream delegates yourself. T
 - **When you start your coordinator**, its delegates are the workstreams you have open in the project.
 - **When you open a workstream**, `openWorkstream` adds its delegate: the lead, with the workstream's address as the target. If you haven't started your coordinator yet, nothing changes now; it picks the workstream up when it starts.
 - **When you mark a workstream `done`**, `updateWorkstream` removes its delegate. Change the status from `done` to anything else and the delegate comes back. The lead's own `updateWorkstream` tool does the same, and so does the coordinator's `editWorkstream`.
-- **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the hand-off fails with that reason.
+- **When the coordinator hands work to a delegate**, the post goes into that workstream's session, and the lead answers there. If the workstream can't take work then, because it's done or its session isn't started yet, the dispatch fails with that reason.
 
 A coordinator holds at most 25 delegates, which is why `openWorkstream` refuses a 26th open workstream with `too-many-workstreams`.
 
@@ -459,7 +459,7 @@ When `openWorkstream` runs in your own coordinator's turn, the new workstream is
 
 `listLeads` returns every worker that can lead, whether or not it suits the work. A coordinator with a single lead tends to pick it even when its description says it does something else. Set `leadFit` to have the open refuse that pick.
 
-With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
+With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The same call asks whether the title and objectives say what sort of work it is at all, and work they don't, such as a bare name, passes the check. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
 
 The check runs only once every other refusal has passed, so a bad id or a lead that can't lead is refused for that reason without a model call. Opening a workstream that is already open, with the same lead, isn't checked again.
 
@@ -517,7 +517,7 @@ Left out, `project` is the coordinator's own project. A refused change writes no
 | `other-project` | The conversation belongs to one project and you named another |
 | `no-such-project` | You left `project` out in a conversation that belongs to no project |
 
-Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate is removed in that same turn, so a hand-off later in the turn never reaches a workstream it just closed.
+Setting `status` to `"done"` removes the workstream's delegate, as `updateWorkstream` does. When `editWorkstream` runs in your own coordinator's turn, the delegate is removed in that same turn, so a dispatch later in the turn never reaches a workstream it just closed.
 
 ### Managing the project from the coordinator
 
@@ -559,7 +559,7 @@ brief and no `project`. When they name the project's repository, call
 
 Left out, `project` is the coordinator's own project, and naming any other one is refused with `other-project`. Called from a conversation that belongs to no project, such as a user's own coordinator, a write without `project` is refused with `no-such-project`. Either way, only the project's members can change it.
 
-If a user should approve the repository before it's written, give the catalog a `setRepository` that asks first: a sequencer, a block that runs steps in order, with a step that waits for the user's approval before the write, as the [chief of staff](./chief-of-staff.md) does for `fire`. When the input leaves `project` out, that step can name the project with `linkedProjectOf(ctx.session.state)` from `@flow-state-dev/workforce`. It returns the session's `{ visibility, id }`, or `undefined` for a session that belongs to no project:
+If a user should approve the repository before it's written, give the catalog a `setRepository` that asks first: a sequencer, a block that runs steps in order, with a step that waits for the user's approval before the write, as the [Shift Coordinator](./shift-coordinator.md) does for `fire`. When the input leaves `project` out, that step can name the project with `linkedProjectOf(ctx.session.state)` from `@flow-state-dev/workforce`. It returns the session's `{ visibility, id }`, or `undefined` for a session that belongs to no project:
 
 ```ts
 setRepository: sequencer({
@@ -633,7 +633,7 @@ harnessManager({
 2. The project the task came from, when it was filed from a project's conversation.
 3. The project the task names in `input.project`, by its visibility and id, when it came from a conversation that belongs to no project, such as the user's own coordinator.
 
-A task filed from a workstream or a project's conversation is stored naming that project, whatever the filer put in `input.project`.
+A task filed from a workstream or a project's conversation is stored naming that project, whatever the filer put in `input.project`. A worker filing from one is told which project it works in, so it doesn't have to name one.
 
 The run is refused, before any file is read, when:
 

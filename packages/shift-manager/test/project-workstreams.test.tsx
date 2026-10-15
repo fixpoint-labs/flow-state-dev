@@ -87,10 +87,10 @@ function scripted(): ModelResolver {
   const fit: GeneratorModel = {
     modelId: "test/fit",
     async generate(options: unknown) {
-      return { structuredOutput: { fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+      return { structuredOutput: { says: true, fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
     },
     async generateStep(options: unknown) {
-      return { structuredOutput: { fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
+      return { structuredOutput: { says: true, fits: leadFits(JSON.stringify(options)) }, finishReason: "stop" };
     },
   };
   return Object.assign(
@@ -257,7 +257,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     const session = await alice.clients.sessions.getSession(entry.sessionId!);
     expect(session.state?.[WORKER_ID_STATE_KEY]).toBe(EM);
 
-    // Her project coordinator holds one record for it, and the hand-off in that turn reached the workstream session.
+    // Her project coordinator holds one record for it, and the dispatch in that turn reached the workstream session.
     const records = await delegatesOf(alice, pc);
     expect(records.map(({ worker, target }) => ({ worker, target }))).toEqual([{ worker: EM, target: "shared/apollo/checkout" }]);
     await eventually(async () => ((await holds(alice, entry.sessionId!, "PERIWINKLE-7319")) ? true : undefined), "the ask in the workstream session");

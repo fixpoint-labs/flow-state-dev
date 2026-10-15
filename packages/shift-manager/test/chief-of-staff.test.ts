@@ -7,9 +7,9 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
-import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
+import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { STAFF_TEAM, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -68,6 +68,7 @@ describe("which worker is the chief of staff (V2, D2)", () => {
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
+      rules: false,
       team: STAFF_TEAM,
       name: "chief-of-staff",
     });
@@ -152,63 +153,71 @@ describe("the shift summary (V3; D1, BR-4, BR-7, BR-8)", () => {
   });
 });
 
-describe("the user's conversation with the chief of staff (V4, BR-14)", () => {
-  const cos = worker("desk.chief-of-staff");
-  const session = (id: string, workerId: string | undefined, createdAt: number, parentSessionId?: string, flowKind = "agent"): SessionSummary =>
-    ({ id, flowKind, flowId: flowKind, ...(workerId === undefined ? {} : { state: { workerId } }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
-
-  it("is the newest session on the worker's flow, naming its worker, that no other run started", () => {
-    const sessions = [
-      session("old", "desk.chief-of-staff", 1),
-      session("newest", "desk.chief-of-staff", 3),
-      session("heard", "desk.chief-of-staff", 9, "desk.front"),
-      session("other", "desk.asker", 10),
-      session("mid", "desk.chief-of-staff", 2),
-      // The worker's id on another flow, and a session on its flow that names no worker.
-      session("elsewhere", "desk.chief-of-staff", 11, undefined, "em"),
-      session("nobody", undefined, 12),
-    ];
-    expect(conversationSession(sessions, cos)).toBe("newest");
+// A worker's proposal waiting on approval is a task parked on its question: it
+// needs the user as much as a suspension does, so the summary lists it rather
+// than letting it vanish from "what needs you" (FIX-1972).
+describe("the tasks waiting on the user, in the shift summary", () => {
+  const parked = (holder: string, id: string, extra: Partial<BoardRow> = {}): BoardRow => ({
+    ...row(holder, id, "parked"),
+    assignee: "eng.coder",
+    question: "Approve the plan to merge the rounding copies?",
+    ...extra,
   });
 
-  it("is never a session another run started, and none when there is no direct one", () => {
-    expect(conversationSession([session("heard", "desk.chief-of-staff", 9, "desk.front")], cos)).toBeNull();
-    // A store that nulls absent keys hands back `null` for a direct session's parent.
-    expect(conversationSession([{ ...session("direct", "desk.chief-of-staff", 1), parentSessionId: null } as unknown as SessionSummary], cos)).toBe(
-      "direct",
+  it("lists every parked row, with its question, beside the asks", () => {
+    const waiting = parked("s_side", "6");
+    const summary = shiftSummary(
+      snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [waiting, row("s_side", "7", "completed")] } } } }),
     );
-    expect(conversationSession([], cos)).toBeNull();
+    expect(summary.parked).toEqual({ ok: true, value: [waiting] });
+    expect(summary.asks).toEqual(snapshotOf().asks);
+  });
+
+  it("leaves out a parked row whose run holds one of the asks, which already counts it", () => {
+    const pendingAsk = { ...ask("eng.coder", "q"), sessionId: "s_run", item: { suspensionId: "q", taskId: "6" } as Ask["item"] };
+    const held = parked("s_side", "6", { run: { sessionId: "s_run", requestId: "r", attempt: 1 } });
+    const summary = shiftSummary(
+      snapshotOf({
+        asks: { ok: true, value: [pendingAsk] },
+        boards: { s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [held] } } },
+      }),
+    );
+    expect(summary.parked).toEqual({ ok: true, value: [] });
+  });
+
+  it("reads a row's question only when it is parked on one", () => {
+    const base = { id: "6", title: "plan", status: "parked", feedback: "Approve the plan?" };
+    expect(toBoardRow("s.tasks", "s", "6", { ...base, parkedOnQuestion: true }).question).toBe("Approve the plan?");
+    expect(toBoardRow("s.tasks", "s", "6", base)).not.toHaveProperty("question");
+  });
+
+  it("leaves out a park that waits on workers, not on a question for the user", () => {
+    const pieces = parked("s_side", "8");
+    delete pieces.question;
+    const summary = shiftSummary(snapshotOf({ boards: { s_side: { ok: true, value: { refs: ["s_side.tasks"], rows: [pieces] } } } }));
+    expect(summary.parked).toEqual({ ok: true, value: [] });
+  });
+
+  it("fails as its own line when a board didn't load", () => {
+    const failure = { message: "store offline", httpStatus: 503 };
+    const summary = shiftSummary(snapshotOf({ boards: { ...snapshotOf().boards, s_side: { ok: false, failure } } }));
+    expect(summary.parked).toEqual({ ok: false, failure });
+    expect(summary.asks.ok).toBe(true);
   });
 });
 
-describe("which conversation the view is on, once a line opened one (V4, BR-14)", () => {
-  const cos = worker("desk.chief-of-staff");
-  const session = (id: string, createdAt: number): SessionSummary =>
-    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt }) as SessionSummary;
+describe("the user's conversation with a worker (V4, BR-14, FIX-1989)", () => {
+  const session = (id: string, createdAt: number, parentSessionId?: string): SessionSummary =>
+    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
-  it("keeps the session a first line opened until the listing holds it", () => {
-    expect(currentConversation([], cos, "cos_new")).toBe("cos_new");
-    expect(currentConversation([session("older", 1)], cos, "cos_new")).toBe("cos_new");
+  it("is the session at the worker's derived address once the listing holds it, never a newer one at another id", () => {
+    // A message opens the derived conversation, so the view must be on it, whatever else the user opened.
+    expect(conversationAt([session("wks_derived", 1), session("conv_random", 9)], "wks_derived", null)).toBe("wks_derived");
+    expect(conversationAt([session("conv_random", 9)], "wks_derived", null)).toBeNull();
+    expect(conversationAt([session("conv_random", 9)], null, null)).toBeNull();
   });
 
-  it("follows the newest direct session once the listing has caught up, even one started elsewhere", () => {
-    expect(currentConversation([session("cos_new", 2)], cos, "cos_new")).toBe("cos_new");
-    expect(currentConversation([session("cos_new", 2), session("from_another_tab", 3)], cos, "cos_new")).toBe("from_another_tab");
-    expect(currentConversation([session("listed", 1)], cos, null)).toBe("listed");
-  });
-});
-
-describe("a new conversation's id", () => {
-  it("is minted without crypto.randomUUID, which a page on plain HTTP doesn't have", () => {
-    const real = globalThis.crypto.randomUUID;
-    Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true, writable: true });
-    try {
-      const a = newConversationId();
-      const b = newConversationId();
-      expect(a).toMatch(/^conv_[0-9a-f]{32}$/);
-      expect(a).not.toBe(b);
-    } finally {
-      Object.defineProperty(globalThis.crypto, "randomUUID", { value: real, configurable: true, writable: true });
-    }
+  it("is the session a first line opened, before the listing holds it", () => {
+    expect(conversationAt([], "wks_derived", "wks_derived")).toBe("wks_derived");
   });
 });

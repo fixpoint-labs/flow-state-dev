@@ -120,6 +120,9 @@ export * from "./projects";
 export * from "./workers";
 export * from "./coordinator";
 export * from "./delegates";
+export * from "./standing-rules";
+export * from "./messages";
+export * from "./error-reporter";
 export {
   defineSessionBoard,
   type SessionBoard,

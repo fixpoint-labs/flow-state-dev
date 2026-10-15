@@ -51,7 +51,7 @@ import { replayNotices } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
-import { noteFailedPiece, PARENT_BINDING_STATE, settleSplitBlock, splitStateShape } from "./split";
+import { noteFailedPiece, noteWokenAnswer, PARENT_BINDING_STATE, settleSplitBlock, splitStateShape } from "./split";
 
 /** A notice, as the entry takes it. */
 export const taskNoticeSchema = z
@@ -315,13 +315,18 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
     }
   });
 
+  /** The turn a notice wakes, its answer kept for a split task's settle below. */
+  const wokenTurn = sequencer({ name: "conversation-woken-turn", inputSchema: z.object({ message: z.string() }) })
+    .step(options.turn)
+    .tap(noteWokenAnswer);
+
   const block = sequencer({ name: "conversation-on-task-settled", inputSchema: taskNoticeSchema })
     .step(settle)
     .tapIf((settled: Settled) => settled.act === "line" || settled.act === "wake-turn", line)
     .tapIf(
       (settled: Settled) => settled.act === "wake-turn",
       (settled: Settled) => ({ message: settled.text ?? "" }),
-      options.turn
+      wokenTurn
     )
     .tapIf((settled: Settled) => settled.act === "run-board", options.runBoard);
   const withPosts = (
@@ -337,7 +342,8 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
   )
     // In a task session whose task waits on its pieces: settle it once none
     // is open, after any turn this notice woke, never inside it (FIX-1802
-    // S4). A turn that failed leaves it for the next touch.
+    // S4), with that turn's answer. A turn that failed leaves it for the next
+    // touch.
     .tap(settleSplitBlock);
 
   return { inputSchema: taskNoticeSchema, block: withPosts, concurrency: AFTER_REPLY_CONCURRENCY };
@@ -345,8 +351,8 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
 
 /**
  * Build the `onPostSettled` internal entry: {@link taskSettledEntry}'s
- * dedupe and hand-off for a post row's ending, acknowledged once the
- * hand-off has run, and queued on the session rather than deferred on the
+ * dedupe and dispatch for a post row's ending, acknowledged once the
+ * dispatch has run, and queued on the session rather than deferred on the
  * reply line, so a delegate's answer lands while a reply runs.
  */
 export function postSettledEntry(options: TaskSettledOptions & { readonly onPost: BlockDefinition<any, any> }) {

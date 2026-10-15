@@ -77,9 +77,11 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Task collection** | orchestration | Where tasks are kept, with one API (add, claim, complete, fail, park) whichever store backs it. | State, or a resource collection |
 | **Task board** | orchestration | `taskBoard()`: drains a task collection with a pool of workers, holding back tasks whose dependencies aren't done. See [Task board](./orchestration/task-board.md). | Sequencer, task collection, capability |
 | **Board worker** | orchestration | A block that runs one claimed task. | Block |
-| **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or hands it off to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
-| **Hand-off** | orchestration | Work leaves the current request for another session, and exactly one answer comes back later. A task whose assignee hands it off is one: the board tracks it until it's done. In Workforce, a hand-off to one of your workers is a delegation. | Dispatch, task |
+| **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or dispatches it to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
 | **Dispatcher** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass in a classifier or event dispatcher. | Task collection |
+| **Dispatch a task** | orchestration | Start a task on another worker now. How a recorded task starts depends on the board. On a conversation's board, a worker dispatches with `dispatchTask`, and a task recorded without it doesn't start until it is dispatched. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
+| **Wait** | orchestration | What a caller does on a task it dispatched when its next step needs the result: its turn pauses until the task ends, then carries on with the task's output. A wait has a time limit, and nothing holds a request open while it lasts. A board's `onIdle: "wait"` is a different setting: the board stays alive when it has nothing to do. | Dispatch a task |
+| **Hand-off** | orchestration | A session that was doing the work passes it to another session, mid-work. Giving another worker new work isn't a hand-off; it's dispatching a task. | Dispatch a task |
 | **Goal-seek loop** | orchestration | Drains a board, asks a judge whether the goal is met, replans, and drains again. See [Goal-seek loop](./orchestration/goal-seek-loop.md). | Task board, sequencer |
 | **Flow policy** | orchestration | Which earlier tasks' results a worker sees. See [Flow policy](./orchestration/flow-policy.md). | Capability |
 | **Skill** | orchestration | A `SKILL.md` folder, stored as a resource and loaded into a generator when needed. See [Skills](./skills/overview.md). | Resource collection, capability, tools |
@@ -113,18 +115,18 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Fire** | workforce | Removes one of a user's own workers from their roster. A standard worker leaves when its folder is deleted. | Worker |
 | **Coordinator** | workforce | A worker that hands each post to other workers on the same roster, its delegates. It picks by its own judgment, by best fit, in turn, or sends to everyone. See [Coordinators](./workforce/coordinators.md). | Worker, the coordinator flow |
 | **Delegate** | workforce | A worker a conversation may delegate to. A worker's file lists its delegates under `delegates:`, and each conversation starts from that list. Always on the same user's roster; each works in its own session. | Worker |
-| **Delegation** | workforce | Handing work to one of your delegates: a hand-off to a worker on your roster, checked against your roster. A coordinator delegates a question as a post; any worker with a delegate that takes tasks delegates a task. See [Delegating work](./workforce/delegating-work.md). | Hand-off, roster |
+| **Delegation** | workforce | Handing work to one of your delegates: giving work to a worker on your roster, checked against your roster. A coordinator delegates a question as a post; any worker with a delegate that takes tasks delegates a task. See [Delegating work](./workforce/delegating-work.md). | Dispatch a task, roster |
 | **Door** | workforce | The one public action that takes a message to a worker. | Action |
 | **Inventory** | workforce | Org-wide records of every standard worker registered in an organization. See [Inventory](./workforce/inventory.md). | An org resource collection |
 | **Project** | workforce | A body of work, private to you or shared with your org. See [Projects](./workforce/projects.md). | One row, in user or org scope |
 | **Workstream** | workforce | One area of a shared project, with one owner. Its entry is read by the org and written only by its owner; its lead works it in a workstream session. | A resource row, a session |
 | **Project coordinator** | workforce | Your coordinator for one project: one session per user per project. It reads every workstream's entry and hands work only to your own. | Coordinator, session |
-| **Chief of staff** | workforce | The standard coordinator a user asks who works here, and asks to hire or fire. See [The chief of staff](./workforce/chief-of-staff.md). | Standard worker, coordinator |
+| **Shift Coordinator** | workforce | The standard coordinator a user asks who works here, and asks to hire or fire. See [The Shift Coordinator](./workforce/shift-coordinator.md). | Standard worker, coordinator |
 | **Package** | workforce | A `PACKAGE.md` folder of instructions and tools a worker can hold. See [Packages on disk](./workforce/packages-on-disk.md). | Tools, instructions |
 
 ## Shift Manager: screens over a Workforce
 
-![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a user's session with the Lab's chief of staff. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
+![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator screen is a user's session with the Lab's Shift Coordinator worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
 
 [Shift Manager](./shift-manager/overview.md) is a browser app, published as `@flow-state-dev/shift-manager`. It stores nothing of its own: every screen is a read of the Lab it serves.
 
@@ -132,7 +134,7 @@ These sit beside Orchestration on Core and don't use a task board.
 |---|---|---|---|
 | **Lab** | Shift Manager | The server one `fsdev.config.mts` default-exports, which Shift Manager serves and reads. | FlowState |
 | **Team profile** | Shift Manager | A Lab config kept beside Shift Manager in this repository, which its `start` and `dev` scripts open. `devteam` is the one there. It isn't in the published package. | Lab |
-| **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with your chief of staff. | Chief of staff, session |
+| **Shift Coordinator** | Shift Manager | The home screen: a summary of what is waiting and running, then your conversation with your Shift Coordinator worker. | Shift Coordinator worker, session |
 | **Ask** | Shift Manager | An approval or a question a worker's run is suspended on, waiting for a user. | Suspension |
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |

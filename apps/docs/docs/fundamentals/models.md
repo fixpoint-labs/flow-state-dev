@@ -20,15 +20,30 @@ const chat = generator({
 });
 ```
 
-Supported formats:
+A model string takes one of three forms. Each form is a lane, and the lane decides how the call gets routed:
 
-| Format | Example | What it does |
-|--------|---------|-------------|
-| `provider/model` | `"anthropic/claude-sonnet-4-6"` | Direct provider call |
-| `intent/<name>` | `"intent/chat"` | Resolves to the first available model in the named intent |
-| `gateway/provider/model` | `"vercel/openai/gpt-5.5"` | Routes through a gateway |
+| Lane | Example | How it routes |
+|------|---------|---------------|
+| `provider/model` | `"anthropic/claude-sonnet-4-6"` | The provider directly when its key is set, otherwise a configured gateway |
+| `name:model` | `"vercel:openai/gpt-5.5"`, `"openai:gpt-5.5"`, `"triage:native"` | The gateway or provider registered under `name`, and nothing else |
+| `intent/<name>` | `"intent/chat"` | The first available model in the named intent |
 
-The model id reaches whoever serves the call exactly as you typed it, so spell it the way that service spells it. Anthropic writes its ids with hyphens — `anthropic/claude-sonnet-4-6`. The Vercel AI Gateway writes the same models with dots — `vercel/anthropic/claude-sonnet-4.6`. Copying one form into the other position gets you an unknown-model error from the far end.
+Ids copied from the AI SDK provider-registry docs work as written. Everything after the first colon is passed through untouched, slashes and later colons included: `openrouter:openai/gpt-oss-20b:free` asks OpenRouter for `openai/gpt-oss-20b:free`.
+
+The name before the colon must be one the resolver knows: `vercel` or `openrouter` for the built-in gateways, `openai`, `anthropic` or `google` for the built-in providers, or a key you registered under `providers` or `gateways` in `createModelResolver`. A string that names its route never falls back to another one. `openai:gpt-5.5` with no `OPENAI_API_KEY` fails with an error naming the missing key, even when a gateway is configured. Write `openai/gpt-5.5` when any route will do.
+
+The model id reaches whoever serves the call exactly as you typed it, so spell it the way that service spells it. Anthropic writes its ids with hyphens: `anthropic/claude-sonnet-4-6`. The Vercel AI Gateway writes the same models with dots: `vercel:anthropic/claude-sonnet-4.6`. Copying one form into the other position gets you an unknown-model error from the far end.
+
+### Migrating `gateway/provider/model` strings
+
+A model string with three slash-separated parts fails with an error that names its colon spelling. Rename each one by turning its first slash into a colon:
+
+```text
+vercel/anthropic/claude-sonnet-5      ->  vercel:anthropic/claude-sonnet-5
+openrouter/openai/gpt-5.4-mini        ->  openrouter:openai/gpt-5.4-mini
+```
+
+Where the string lives decides when you find out. In `defaultModel`, an intent list, or an `FSDEV_INTENT_*` or `FSDEV_DEFAULT_MODEL` variable, it fails when the resolver is built, so the app won't start. On a generator or evaluator, or in data your app has stored, it fails the first time that string is resolved, which can be during a live request. Search stored model ids before you upgrade.
 
 ## Intents
 
@@ -82,7 +97,7 @@ export const flowstate = createFlowState({
 
 `models.default` and `models.intents` are forwarded to the model resolver the runtime builds for you. If you construct a resolver yourself, the same two options are named `defaultModel` and `intents` on `createModelResolver`.
 
-`defaultModel` is required when `intents` is non-empty. It must be a `provider/model` or `gateway/provider/model` string, never another `intent/*`. Both rules are enforced at construction: missing `defaultModel` throws `createModelResolver: defaultModel is required when intents are configured`, and an `intent/*` default throws `createModelResolver: defaultModel must not be an intent/* string`. If a generator references an intent name that isn't configured, the resolver logs a dev warning (`[flow-state-dev] Unknown or empty intent "<name>"; falling back to defaultModel.`) and uses `defaultModel`.
+`defaultModel` is required when `intents` is non-empty. It must be a `provider/model` or `name:model` string, never another `intent/*`. Both rules are enforced at construction: missing `defaultModel` throws `createModelResolver: defaultModel is required when intents are configured`, and an `intent/*` default throws `createModelResolver: defaultModel must not be an intent/* string`. If a generator references an intent name that isn't configured, the resolver logs a dev warning (`[flow-state-dev] Unknown or empty intent "<name>"; falling back to defaultModel.`) and uses `defaultModel`.
 
 See [Custom Model Resolver](/docs/advanced/custom-model-resolver) for the full options reference.
 
@@ -92,7 +107,7 @@ You can replace which model a declared intent (or `defaultModel`) resolves to pe
 
 **Variable naming.** `FSDEV_INTENT_<NAME>` overrides intent `<name>`'s candidate list. `<NAME>` is the intent name uppercased with hyphens replaced by underscores, so `chat` → `FSDEV_INTENT_CHAT` and `my-custom` → `FSDEV_INTENT_MY_CUSTOM`. If two declared intents normalize to the same env-var name (`my-custom` and `my_custom` both → `FSDEV_INTENT_MY_CUSTOM`), construction throws.
 
-**Value shape.** A single `provider/model` or `gateway/provider/model` string. `intent/*` values, empty values, and malformed strings all throw at construction. Comma-separated multi-value lists are deliberately not supported in this phase.
+**Value shape.** A single `provider/model` or `name:model` string. `intent/*` values, empty values, and malformed strings all throw at construction. Comma-separated lists aren't supported.
 
 **`defaultModel` override.** `FSDEV_DEFAULT_MODEL` replaces `defaultModel`. This covers the fallback path for empty, unknown, or fully-unavailable intents.
 
@@ -347,16 +362,16 @@ user: {
 
 ## Gateways and fallback
 
-Gateways let you route provider calls through a single proxy. The resolver supports gateway-prefixed model strings explicitly, and also falls back to a configured gateway when a bare `provider/model` can't be loaded directly. This section covers both, plus the env-var detection rules that drive provider availability.
+Gateways let you route provider calls through a single proxy. You can name a gateway in the model string, and the resolver also falls back to a configured gateway when a bare `provider/model` can't be loaded directly. This section covers both, plus the env-var detection rules that drive provider availability.
 
 ### Gateway model strings
 
-A `gateway/provider/model` string routes the call through the named gateway:
+A `gateway:provider/model` string routes the call through the named gateway, with the gateway's own id after the colon:
 
 ```ts
 const chat = generator({
   name: "chat",
-  model: "vercel/openai/gpt-5.5",
+  model: "vercel:openai/gpt-5.5",
   prompt: "You are a helpful assistant.",
 });
 ```
@@ -364,12 +379,29 @@ const chat = generator({
 ```ts
 const chat = generator({
   name: "chat",
-  model: "openrouter/anthropic/claude-sonnet-4.6",
+  model: "openrouter:anthropic/claude-sonnet-4.6",
   prompt: "You are a helpful assistant.",
 });
 ```
 
 Gateway strings work anywhere a model string works: directly on a generator, inside `selectModel`, and inside intent candidate lists.
+
+### Naming your own providers and gateways
+
+Each key of `providers` and `gateways` is a name you can put before the colon. Register an AI SDK provider instance under `triage` and `triage:<model>` reaches it, for generators and evaluators alike:
+
+```ts
+import { typeSafeAi } from "@ai-sdk/typesafe-ai";
+import { createModelResolver } from "@flow-state-dev/core/models";
+
+const resolver = createModelResolver({
+  providers: { triage: typeSafeAi },
+});
+
+evaluator({ name: "route", model: "triage:jev-latest", questions });
+```
+
+A name can only mean one route. `createModelResolver` throws when a name is a key of both `providers` and `gateways`, or when a `providers` key is `vercel` or `openrouter`, and the error names the key and both places.
 
 ### Provider detection
 
@@ -402,7 +434,7 @@ Bare `provider/model` strings (no gateway prefix) have a two-tier resolution:
 
 This is what makes `"openai/gpt-5.5"` keep working on Vercel even when `@ai-sdk/openai` isn't in the bundle, as long as `AI_GATEWAY_API_KEY` is set. The behavior is intentional, not a hidden quirk.
 
-**The fall-through hands the gateway the id you wrote, unchanged.** It does not respell it for the gateway's namespace. OpenAI is unaffected, because both namespaces spell OpenAI ids the same way — which is why the trace below resolves cleanly. Anthropic is not: direct Anthropic ids use hyphens, the Vercel gateway uses dots, so a bare `anthropic/claude-sonnet-4-6` that falls through arrives at the gateway in a spelling it doesn't serve. If you are relying on the fall-through for Anthropic, write the gateway string explicitly — `vercel/anthropic/claude-sonnet-4.6` — instead of a bare one.
+**The fall-through hands the gateway the id you wrote, unchanged.** It does not respell it for the gateway's namespace. OpenAI is unaffected, because both namespaces spell OpenAI ids the same way, so the trace below resolves cleanly. Anthropic is not: direct Anthropic ids use hyphens, the Vercel gateway uses dots, so a bare `anthropic/claude-sonnet-4-6` that falls through arrives at the gateway in a spelling it doesn't serve. If you are relying on the fall-through for Anthropic, write the gateway string explicitly, `vercel:anthropic/claude-sonnet-4.6`, instead of a bare one.
 
 A worked resolution trace:
 
@@ -417,10 +449,10 @@ const resolver = createModelResolver({
   // direct Anthropic key, and the fall-through would hand the gateway the
   // hyphenated direct spelling it doesn't serve. OpenAI ids can stay bare —
   // both namespaces spell them the same way.
-  defaultModel: "vercel/anthropic/claude-sonnet-4.6",
+  defaultModel: "vercel:anthropic/claude-sonnet-4.6",
   intents: {
-    utility: ["openai/gpt-5.4-nano", "vercel/anthropic/claude-haiku-4.5"],
-    chat: ["openai/gpt-5.5", "vercel/anthropic/claude-sonnet-4.6"],
+    utility: ["openai/gpt-5.4-nano", "vercel:anthropic/claude-haiku-4.5"],
+    chat: ["openai/gpt-5.5", "vercel:anthropic/claude-sonnet-4.6"],
   },
 });
 
@@ -428,7 +460,7 @@ const resolver = createModelResolver({
 generator({ name: "chat", model: "intent/chat", prompt: "..." });
 
 // Resolution trace:
-// 1. "intent/chat" → candidates: ["openai/gpt-5.5", "vercel/anthropic/claude-sonnet-4.6"]
+// 1. "intent/chat" → candidates: ["openai/gpt-5.5", "vercel:anthropic/claude-sonnet-4.6"]
 // 2. Try "openai/gpt-5.5":
 //      - Direct openai package: load fails (not in bundle)
 //      - Gateway fallback: vercel gateway covers openai → use it
@@ -445,6 +477,7 @@ Model strings resolve the way generator strings do. With the provider's package 
 
 ```ts
 evaluator({ name: "triage", model: "typesafe-ai/jev", questions });          // Jev, through Vercel's AI Gateway
+evaluator({ name: "triage", model: "vercel:typesafe-ai/jev", questions });   // the same, with the gateway named
 evaluator({ name: "triage", model: "openai/gpt-5.4-mini", questions });      // OpenAI direct: needs @ai-sdk/openai and OPENAI_API_KEY
 evaluator({ name: "triage", model: openai.evaluationModel("gpt-5.4-mini"), questions });
 ```
@@ -468,6 +501,14 @@ evaluator({ name: "triage", model: typeSafeAi.evaluationModel("jev-latest"), que
 ```
 
 flow-state.dev never installs that library, and the string `typesafe-ai/jev` always goes through the gateway, even when the library is installed. The gateway and the library name the model differently, so a string that switched paths would switch models.
+
+To reach the library by string, register it under `providers` and name it with a colon:
+
+```ts
+const resolver = createModelResolver({ providers: { "typesafe-ai": typeSafeAi } });
+
+evaluator({ name: "triage", model: "typesafe-ai:jev-latest", questions });
+```
 
 Passing a text model, like `openai("gpt-5.4-mini")`, is refused when the block is built:
 

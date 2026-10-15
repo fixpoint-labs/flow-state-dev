@@ -77,11 +77,19 @@ describe("probeClaudeAccount, scripted", () => {
   });
 
   it("says none, with the reason, when neither source comes back", async () => {
-    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: null }));
+    // The shape the SDK returns with no credential: subscriptionType "Claude API", its no-plan label.
+    const sdk = scriptedSdk(async () => ({ apiProvider: "firstParty", subscriptionType: "Claude API" }));
     const result = await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk });
     expect(result.status).toBe("none");
     expect(result.status === "none" && result.reason).toMatch(/no API key and no sign-in/);
     expect(sdk.seen.closed).toBe(true);
+  });
+
+  it("says none when the plan is null or absent", async () => {
+    for (const info of [{ apiProvider: "firstParty", subscriptionType: null }, { apiProvider: "firstParty" }]) {
+      const sdk = scriptedSdk(async () => info);
+      expect((await probeClaudeAccount({ env: {}, importSdk: sdk.importSdk })).status).toBe("none");
+    }
   });
 
   it("says none when Claude Code does not answer within timeoutMs", async () => {

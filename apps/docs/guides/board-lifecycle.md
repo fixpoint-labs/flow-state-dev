@@ -236,7 +236,7 @@ that created it, dispatch a fresh flow run (see [Background jobs](./background-j
 that builds and drains its own board.
 
 [Work that outlives the turn](./background-work) lays out the options side by
-side, including what a board's handed-off rows reach and what they don't.
+side, including what a board's dispatched rows reach and what they don't.
 
 ## Related
 

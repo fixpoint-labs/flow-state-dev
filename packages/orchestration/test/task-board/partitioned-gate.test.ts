@@ -4,7 +4,7 @@
  *
  * Run as an action root over one in-memory partitioned ledger holding the same
  * task id, claimed, in two partitions, so an envelope can name either. The
- * happy path across two real flows is `hand-off-cross-flow.test.ts`.
+ * happy path across two real flows is `dispatch-cross-flow.test.ts`.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";

@@ -19,7 +19,7 @@ import {
   DEFAULT_KITCHEN_SINK_MODEL,
 } from "../lib/models";
 
-const STALE_MODEL_ID = "vercel/removed/legacy-model";
+const STALE_MODEL_ID = "vercel:removed/legacy-model";
 
 const emptyWorkingMemory = { entries: [], currentTurn: 0 };
 const emptyMemorySystem = {

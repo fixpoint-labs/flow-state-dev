@@ -20,6 +20,11 @@ pnpm test
 
 These commands should pass cleanly before starting any work.
 
+`pnpm install` also installs a pre-push git hook (husky, `.husky/pre-push`) that
+runs `pnpm lint` and blocks the push if it fails. The first run takes about a
+minute. Later runs still walk the whole repo, but ESLint's cache skips files
+that have not changed, so they take a few seconds.
+
 > Run `pnpm packages:build` once after cloning. Workspace packages resolve
 > their `types` condition to `./dist/*.d.ts`, so without it VS Code / `tsserver`
 > reports "Cannot find module '@flow-state-dev/…'" on workspace imports. The
@@ -53,7 +58,7 @@ docs/
 |---------|-------|---------|
 | `pnpm test` | All packages | Run all tests |
 | `pnpm typecheck` | All packages | TypeScript type checking |
-| `pnpm lint` | All packages | Lint (currently stubbed) |
+| `pnpm lint` | Whole repo | ESLint over every JS/TS file, tests and goals included (`eslint.config.mjs`). Also runs as the pre-push hook |
 | `pnpm test:watch` | All packages | Watch mode tests |
 | `pnpm --filter @flow-state-dev/core test` | Single package | Test one package |
 | `pnpm --filter @flow-state-dev/engine typecheck` | Single package | Typecheck one package |
@@ -248,6 +253,9 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 - `tsconfig.base.json` at the repo root defines base settings and path mappings
 - Each package has its own `tsconfig.json` extending the base
 - `scripts/typecheck.mjs` runs `tsc --noEmit` for one package; it requires the root TypeScript install, and fails with a message naming `pnpm install` when that is missing
+- Test files are typechecked too. A package's `tsconfig.json` is its build config and covers `src` only; its `tsconfig.test.json` extends it with `composite: false`, `rootDir: "../.."` and `noEmit: true`, and includes `src` and `test`. `scripts/typecheck.mjs` runs `tsconfig.test.json` after `tsconfig.json` when the file exists. Copy `packages/core/tsconfig.test.json` for a new package
+- `scripts/validate-test-typecheck.mjs`, chained into root `pnpm typecheck`, fails when a tracked test file is outside every program that package's typecheck compiles. Name a package still waiting in its `DEFERRED` list with the issue that wires it, and remove the entry once the package is covered
+- In a test, say a deliberate partial mock with `as unknown as T` or a typed helper, and mark deliberately invalid input with `// @ts-expect-error` and the reason. Don't clear errors with `@ts-nocheck` or `@ts-ignore`
 
 ## Key Files to Know
 

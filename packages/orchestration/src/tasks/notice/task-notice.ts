@@ -21,7 +21,7 @@
  *
  * Every producer of an ending reaches it the same way, because they all write
  * through the ledger: the task session's gate settling the attempt it ran, the
- * board refusing a hand-off, and the board settling a row whose worker died
+ * board refusing a dispatch, and the board settling a row whose worker died
  * too often. A cancel owes no notice, and neither does a park that asks nobody
  * anything (a park the board makes for its own reasons, or one for a person's
  * turn): {@link recordEnding} returns those rows unchanged. A waited-on row is

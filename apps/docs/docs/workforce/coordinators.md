@@ -9,7 +9,7 @@ description: "A worker that hands each message to other workers on your roster, 
 
 Sometimes you want people to send work to one place and let it find the right worker. A **coordinator** is that place. It's a worker like any other on your roster, run by the `coordinator` flow, and the workers it hands work to are its **delegates**.
 
-Each message you send a coordinator is a **post**. The coordinator hands it to one or more delegates, or, when it routes by judgment, may answer it itself. Each delegate works the post in a session of its own, and its answer comes back into your conversation under its own name. An organization's [chief of staff](./chief-of-staff.md) can be one.
+Each message you send a coordinator is a **post**. The coordinator hands it to one or more delegates, or, when it routes by judgment, may answer it itself. Each delegate works the post in a session of its own, and its answer comes back into your conversation under its own name. An organization's [Shift Coordinator](./shift-coordinator.md) can be one.
 
 ## Setting one up
 
@@ -48,7 +48,7 @@ Because `help` has a description, best fit can also pick `help` itself, for a qu
 | `minConfidence` | Under `best-fit`, the lowest confidence at which a delegate pick is used, from `0` to `1`. Left out, any pick is used. See [Picking the coordinator, and a confidence floor](#picking-the-coordinator-and-a-confidence-floor). |
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
 
-The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
+The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
 
 Build the `coordinator` flow and register it beside the flows its delegates run on:
 
@@ -106,7 +106,7 @@ const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
-`ensureWorkerSession` returns your most recent session with the coordinator, or starts one if you have none.
+`ensureWorkerSession` returns your conversation with the coordinator, or starts it if you have none. Other workers' [messages](./messaging-workers.md) to the coordinator land in that same conversation.
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
@@ -190,7 +190,7 @@ Nobody took this post: best fit couldn't place it, and the coordinator's own tur
 `round-robin` and `everyone` say the same when they find no delegate to reach: `Nobody took this post: no delegate in this conversation can be reached.`
 
 - **Only models that report confidence can pass the floor.** On a model that reports none, every delegate pick falls below the floor, and every post goes to the fallback or the coordinator's own turn. Leave `minConfidence:` out on those models.
-- **There's no default.** Without `minConfidence:`, best fit uses any delegate pick, however unsure. For a chief of staff, 0.7 sits between Jev's wrong picks, at 0.2 or lower, and its right ones, at 0.76 or higher. Check your own coordinator's requests before you copy the number.
+- **There's no default.** Without `minConfidence:`, best fit uses any delegate pick, however unsure. For a Shift Coordinator, 0.7 sits between Jev's wrong picks, at 0.2 or lower, and its right ones, at 0.76 or higher. Check your own coordinator's requests before you copy the number.
 - **A request that is still with a delegate skips all of this.** Your next post goes to the delegate working your last one, with no call, until it answers. A request meant for the coordinator, sent in that window, goes to that delegate too.
 
 ### Follow-ups and recent lines
@@ -306,7 +306,7 @@ With `rounds: 0`, the default, a delegate's answer lands in the conversation and
 
 - `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
 - `everyone` waits for the round to close, then hands each delegate the other delegates' answers from it in one delivery. A delegate with no other answer to get is skipped.
-- `judgment` waits for the round to close, then runs the coordinator's turn once with the round's answers. Its hand-offs in that turn go out in the next round.
+- `judgment` waits for the round to close, then runs the coordinator's turn once with the round's answers. Its dispatches in that turn go out in the next round.
 
 A round closes when every delegate in it has answered or failed, or at its deadline: five minutes, unless you set `roundDeadlineMs`. A delegate whose turn fails ends its [task](#how-a-post-is-tracked) at once, so the round doesn't wait on it. One whose run is cancelled does the same when its flow sets [`delegatedPostOnFinished`](#making-your-own-flow-a-delegate), as the built-in `agent` flow does. One still working at the deadline keeps working; the round closes without it, and its answer lands once when it comes, going no further. A delegate that never reports at all, because its process stopped, holds its round until the conversation's next activity after the deadline: a post, an answer, or another delegate's report.
 
@@ -588,7 +588,7 @@ const researchFlow = defineFlow({
 
 Then add it to `delegateFlows`. The door is handed `{ message }`, where the message reads `<from>, through <coordinator>: <post>`: who wrote it (the user's id, or the delegates whose answers it passes on), and the coordinator's worker id. Whatever the door returns, a string or `{ text }`, is the answer. An empty reply fails the turn, and nothing is answered.
 
-If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form. Earlier versions also named the coordinator's hand-off tool `handOff`; a worker file whose `tools:` still names it is refused when the app loads, with a message pointing at `dispatchTask` and `post: true`.
+If your flow declares the entry under `internal.actions`, as earlier versions did, `defineCoordinatorFlow` throws, with a message naming the `task` form. Earlier versions also named the coordinator's dispatch tool `handOff`; a worker file whose `tools:` still names it is refused when the app loads, with a message pointing at `dispatchTask` and `post: true`.
 
 `delegatedPostOnFinished` ends a delegated run's task when the run is cancelled, so its round doesn't wait for the deadline. Without it, a failed turn is reported at once, but a cancelled one holds its round until the deadline.
 
@@ -645,7 +645,7 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 
 ## Related pages
 
-- [The chief of staff](./chief-of-staff.md): an org-level worker that hires workers of your own and, as a coordinator, hands them work.
+- [The Shift Coordinator](./shift-coordinator.md): an org-level worker that hires workers of your own and, as a coordinator, hands them work.
 - [The built-in worker](./built-in-worker.md): the `agent` flow, whose turn a coordinator runs when it routes by judgment.
 - [Delegating work](./delegating-work.md): how any worker files tasks for its delegates, splits a task, and how far a chain goes.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.

@@ -78,10 +78,10 @@ const turnCtx = (base: object, requestId: string) => ({
 });
 
 describe("answerTask (S2)", () => {
-  it("is one of the task tools, beside the eight", () => {
+  it("is one of the task tools, beside the other nine", () => {
     const names = buildTaskToolsList(defaultOwnStateResolver).map((t) => (t as any).config.name);
     expect(names.filter((n: string) => n === "answerTask")).toHaveLength(1);
-    expect(names).toHaveLength(9);
+    expect(names).toHaveLength(10);
   });
 
   it("re-queues a task parked on a question with the answer, counted as a re-entry (BR-6, BR-8)", async () => {
@@ -348,7 +348,7 @@ describe("parkOnQuestion (S1)", () => {
     const b = await board([row("t", { assignee: "w", wait: { gateId: "g", deadline: 9e12 } })]);
     const turn = await claimAsGate(b.ref, "t", b.ctx);
     expect(await park.offered(turn as never)).toBe(false);
-    expect(await ask(turn)).toMatchObject({ ok: false, error: expect.stringMatching(/^asked_task/) });
+    expect(await ask(turn)).toMatchObject({ ok: false, error: expect.stringMatching(/^waited_on_task/) });
     expect(b.get("t")!.status).toBe("in_progress");
   });
 

@@ -79,6 +79,13 @@ jobs:
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 
+      # `git push --no-verify` skips the pre-push hook.
+      - name: Lint
+        run: pnpm lint
+
+      - name: The lint gate can fail
+        run: node --test scripts/lint-gate.test.mjs
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.
@@ -298,6 +305,17 @@ jobs:
       # could pass because it stopped seeing a term.
       - name: The retired-term guard refuses its plants
         run: node scripts/check-retired-terms.mjs --control
+
+      # One word per thing (FIX-1876): dispatch, wait, ask and hand-off each
+      # name one mechanism. The goal's rules own the words, the keep list and
+      # the exclusions; goals/vocabulary/one-word-per-thing/goal.md says why.
+      - name: One word per thing
+        run: node goals/vocabulary/one-word-per-thing/sweep.mjs
+
+      # The planted parkOnAsk must still be reported, or the sweep above could
+      # pass because it stopped reading a file.
+      - name: The vocabulary sweep reports its plant
+        run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 
   fallow:
     name: Fallow (broken imports & new dead code)

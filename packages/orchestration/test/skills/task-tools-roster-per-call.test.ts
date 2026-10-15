@@ -169,10 +169,10 @@ describe("taskToolActions with a roster (T1)", () => {
     }
   });
 
-  it("names the same nine actions either way", async () => {
+  it("names the same ten actions either way", async () => {
     const h = await host(new Set());
     try {
-      expect(Object.keys(h.handleForm)).toHaveLength(9);
+      expect(Object.keys(h.handleForm)).toHaveLength(10);
     } finally {
       await h.dispose();
     }

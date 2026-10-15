@@ -1,6 +1,6 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
- * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
+ * Inbox, Tasks and Roster with their counts, Messages, Settings, PROJECTS, TEAMS, and a footer
  * (BR-6) with the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
@@ -31,7 +31,7 @@ import { themeLabel, type ThemeLook } from "../lib/theme";
 import { navigate, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { useRoster, withRoster } from "../lib/roster";
-import { openRows, projectsOf, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, workerLabel, workerStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { projectReaderOf, useProjectRead, type WorkstreamEntry } from "../lib/projects";
 import type { Project } from "../lib/reads";
 import { initialsOf } from "../lib/shell";
@@ -90,6 +90,7 @@ const ICON_PATHS = {
   jump: "M6 1.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z M9.3 9.3l3.2 3.2",
   inbox: "M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2",
   tasks: "M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7",
+  messages: "M1.5 2.5h11v7h-6l-3 2.5v-2.5h-2z",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
   /** Settings: a key. */
   settings: "M4.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M7.5 7.5h5 M10.5 7.5v2 M12.5 7.5v1.5",
@@ -282,8 +283,11 @@ function SidebarRail({
         <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} onClick={() => navigate({ level: "tasks", by: "state" })} testId="rail-tasks">
           <NavIcon name="tasks" />
         </RailItem>
-        <RailItem label="Roster" active={route.level === "roster"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
+        <RailItem label="Roster" active={route.level === "roster" || route.level === "worker-settings"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
           <NavIcon name="roster" />
+        </RailItem>
+        <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} onClick={() => navigate({ level: "messages" })} testId="rail-messages">
+          <NavIcon name="messages" />
         </RailItem>
         <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
           <NavIcon name="settings" />
@@ -340,7 +344,7 @@ function ProjectGroup({
           data-testid={`${testId}-toggle`}
           className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         >
-          <Meta className={`text-[10px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
+          <Meta className={`inline-flex size-3 items-center justify-center text-[11px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
         </button>
         <div className="min-w-0 flex-1">
           <NavItem
@@ -524,9 +528,16 @@ export function Sidebar({
                 icon={<NavIcon name="roster" />}
                 count={counts?.["on shift"]}
                 mark={partial}
-                active={route.level === "roster" && route.team === null}
+                active={(route.level === "roster" && route.team === null) || route.level === "worker-settings"}
                 onClick={() => navigate({ level: "roster", team: null })}
                 testId="nav-roster"
+              />
+              <NavItem
+                label="Messages"
+                icon={<NavIcon name="messages" />}
+                active={route.level === "messages" || route.level === "session"}
+                onClick={() => navigate({ level: "messages" })}
+                testId="nav-messages"
               />
               <NavItem
                 label="Settings"
@@ -564,7 +575,7 @@ export function Sidebar({
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${worker.name} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.name)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );

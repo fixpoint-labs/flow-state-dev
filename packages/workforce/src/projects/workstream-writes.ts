@@ -30,7 +30,7 @@
  * when it is (`project-coordinator.ts`). An open made in the owner's
  * coordinator's own turn, with its `openWorkstream` tool, writes the record
  * in that turn instead, since a dispatch into the session it runs in would
- * land after the turn, and the hand-off that follows would find no record
+ * land after the turn, and the dispatch that follows would find no record
  * (BR-38). The coordinator holds at most
  * `MAX_DELEGATES` records, so an owner with that many open workstreams in a
  * project is refused another before anything is written (BR-21b).
@@ -49,7 +49,8 @@
  * its input names, the caller's own unless it names another owner, which the
  * store then refuses. The lead's tool writes the workstream its session
  * leads, read from the session's readonly `workstreamId`, so it only ever
- * reaches its own owner's entry. The owner's project coordinator's tool,
+ * reaches its own owner's entry. It takes no title: naming a workstream is
+ * its owner's. The owner's project coordinator's tool,
  * `editWorkstream`, writes one of its user's workstreams by id, in the project
  * its conversation is linked to and no other. Each write is a compare-and-swap that
  * recomputes on retry, stamps `writtenBy` from the session and sets
@@ -195,8 +196,17 @@ export const updateWorkstreamInputSchema = z
 /** @see updateWorkstreamInputSchema */
 export type UpdateWorkstreamInput = z.infer<typeof updateWorkstreamInputSchema>;
 
-/** What the lead's tool takes: the changes. Its workstream is the one its session leads. */
-export const updateOwnWorkstreamInputSchema = z.object(changesShape).strict();
+/**
+ * What the lead's tool takes: the changes, but never a title. Its workstream is
+ * the one its session leads. A workstream's name is its owner's, set at the
+ * open and changed by the owner or their project coordinator: a lead of
+ * several workstreams is handed each post with the coordinator conversation's
+ * recent lines, which name the others, and with a title to write it could put
+ * one's name on another.
+ */
+export const updateOwnWorkstreamInputSchema = z
+  .object({ status: changesShape.status, due: changesShape.due, objectives: changesShape.objectives, report: changesShape.report })
+  .strict();
 
 /** @see updateOwnWorkstreamInputSchema */
 export type UpdateOwnWorkstreamInput = z.infer<typeof updateOwnWorkstreamInputSchema>;
@@ -250,7 +260,8 @@ export type WorkstreamBlocks = {
   /**
    * `openWorkstream` for a worker to call: with `leadFit` set, it first checks
    * the lead's description says it does the work, and refuses `lead-doesnt-fit`
-   * when it doesn't. Without `leadFit`, it is `openWorkstream`.
+   * when it doesn't. Work that doesn't say what sort it is is never refused.
+   * Without `leadFit`, it is `openWorkstream`.
    */
   openWorkstreamTool: BlockDefinition<
     typeof openWorkstreamInputSchema,
@@ -573,7 +584,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     });
     const record = { change: change as RecordChange["change"], worker: workstream.lead, target: workstreamRef({ project: workstream.project, id: workstream.id }) };
     // Written from the owner's coordinator's own turn: the record lands in this
-    // turn, so the hand-off after it finds it (BR-38). Only an open, whose lead
+    // turn, so the dispatch after it finds it (BR-38). Only an open, whose lead
     // was just checked, or a removal, which needs no check: re-adding a
     // reopened workstream's record goes through the checked entry, since its
     // lead may have left the roster since.

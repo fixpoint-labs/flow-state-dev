@@ -62,9 +62,9 @@ const GUARD_TEST = "packages/core/test/retired-terms-check.test.ts";
 /** First match wins. `scope: true` is swept; `false` keeps its words by design. */
 export const AREAS = [
   { id: "history", scope: false, re: /^specs\/|^spec\/|^spec-poc|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^apps\/docs\/blog\/|^docs\/atlas\/|^docs\/superpowers\/|^pnpm-lock\.yaml$/, why: "dated records: no rewriting history" },
-  { id: "process", scope: false, re: new RegExp(`^\\.agents\\/|^\\.omp\\/|^\\.github\\/|^\\.claude\\/|^\\.cursor\\/|^plugins\\/|^scripts\\/|^docs\\/contributing\\/|^docs\\/(philosophy|objectives|PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CLAUDE|AGENTS|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`), why: "process tooling and contributor instructions" },
+  { id: "process", scope: false, re: new RegExp(`^\\.agents\\/|^\\.husky\\/|^\\.omp\\/|^\\.github\\/|^\\.claude\\/|^\\.cursor\\/|^plugins\\/|^scripts\\/|^docs\\/contributing\\/|^docs\\/(philosophy|objectives|PROMPT_CACHING)\\.md$|^docs\\/assets\\/|^(CLAUDE|AGENTS|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|compound-engineering\\.local)\\.md$|^${GUARD_TEST.replace(/[./]/g, "\\$&")}$`), why: "process tooling and contributor instructions" },
   { id: "goals", scope: false, re: /^goals\//, why: "tests of behaviour: renamed identifiers reach them through typecheck, their words stay" },
-  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
+  { id: "config", scope: false, re: /^[^/]+\.(json|ya?ml)$|^eslint\.config\.mjs$|^LICENSE$|^\.gitignore$|^\.ignore$/, why: "root configuration" },
   { id: "package-src", scope: true, re: /^packages\/[^/]+\/src\// },
   { id: "package-tests", scope: true, re: /^packages\/[^/]+\/(test|tests|e2e)\// },
   { id: "package-other", scope: true, re: /^packages\// },
@@ -316,7 +316,7 @@ export const GLOSSARY_TERMS = [
   "Project",
   "Workstream",
   "Project coordinator",
-  "Chief of staff",
+  "Shift Coordinator",
 ];
 
 /**

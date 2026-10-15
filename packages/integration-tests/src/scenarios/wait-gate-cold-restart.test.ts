@@ -8,8 +8,8 @@
  * `createFlowState` install wires. The turn ends `completed` with the answer as
  * its tool's result, under its own request id.
  *
- * Nothing here files a task; the board and the row come with the hand-off.
- * The real process kill is the goal check's, run against the whole hand-off.
+ * Nothing here files a task; the board and the row come with the dispatch.
+ * The real process kill is the goal check's, run against the whole dispatch.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -36,7 +36,7 @@ import { sqliteStores } from "@flow-state-dev/store-sqlite";
 
 const USER = "u_asker";
 const SESSION = "s_conversation";
-const GATE_ID = "gate_ask_restart";
+const GATE_ID = "gate_wait_restart";
 
 type StepFn = (options: GeneratorModelCallOptions) => GeneratorModelResult;
 

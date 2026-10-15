@@ -10,7 +10,7 @@ build on each other:
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
 - **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
-  plus `taskTools`, the nine tools a model uses to plan on a task board.
+  plus `taskTools`, the ten tools a model uses to plan on a task board.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -91,7 +91,7 @@ const work = defineTaskCollection({
 A board over it resolved in one session reads, claims, waits on and settles only the
 partition that session's context names, and so do its task tools. That is how each
 conversation keeps a board of its own whose rows a task entry on another flow still
-works: the user scope crosses the flow, and a board's hand-off puts the partition on
+works: the user scope crosses the flow, and a board's dispatch puts the partition on
 the dispatch, so the receiving gate reads the row there (a `taskLedgers` resolver gets
 it as its third argument; pass it to `getOrCreateTaskCollection({ partition })`).
 Return a value no caller can set, and one minted per owner: a session id alone is
@@ -136,14 +136,14 @@ wire a backing's `onChange` to a client transport yourself, apply `toEmittedTask
 `event.task` before you publish it — a field that is server-only on one boundary is
 server-only on every one.
 
-**The run link.** A handed-off task carries `run: { sessionId, requestId, attempt }`,
+**The run link.** A dispatched task carries `run: { sessionId, requestId, attempt }`,
 written by the board's claim gate inside the run's own session, before the worker
 starts, through a claim-fenced write (`linkRun`) that emits `task-change` of kind
 `run_linked` on the run's own session. The run's flow is its session's `flowId`, which
 may not be the board's. The next claim clears it; a settled task keeps it. It is
 client-visible, unlike `claimedBy`, and no write surface a caller reaches can set it.
 If you implement `TaskCollectionRef` yourself, implement `linkRun` too: a board that
-hands off calls it on every attempt.
+dispatches calls it on every attempt.
 
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
@@ -214,7 +214,7 @@ emitted), `unchanged` (the task already held the state asked for, nothing writte
 or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
 `disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
 `status` the task was in when the write was refused. `immutable-assignee` means the
-board hands rows off to a child session and an attempt holds the task (`in_progress` or `parked`), where the assignee is fixed; `not-my-task`
+board dispatches rows to a child session and an attempt holds the task (`in_progress` or `parked`), where the assignee is fixed; `not-my-task`
 means the ticket names a different task, a different collection, or an id since
 reused; `parked` means the caller passed `refuseWhenParked` and the task is in
 `parked` — nobody took it, so unlike `lost-claim` the answer is not to
@@ -225,8 +225,8 @@ advisory whether or not options are passed: cancelling a settled task declines
 with reason `terminal`.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a
-terminal task, and on a durable collection any hand-off board draws from it declines
-every reassignment whatever the task's status (see "Handing tasks off through a
+terminal task, and on a durable collection any dispatching board draws from it declines
+every reassignment whatever the task's status (see "Dispatching tasks through a
 dispatcher assignee" below).
 `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
 a terminal task, so a post-drain failure audit can label what went wrong; those four
@@ -361,7 +361,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, boardId, handedOff, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
@@ -387,7 +387,7 @@ failure retries the board may authorize across every task). The creation caps ta
 positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
 
-`taskToolActions(board)` returns the nine task tools over `board` as a flow `actions`
+`taskToolActions(board)` returns the ten task tools over `board` as a flow `actions`
 map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
 character outside `[a-zA-Z0-9_-]` into `_` (`cancelTask_todos`). Spread it into
 `defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
@@ -415,7 +415,7 @@ report one that landed — or that they cannot account for — on a persisted
 recorder: "complete" | "fail", verdict: "committed" | "undetermined", error, runId? }`.
 The drain then **fails the run**, after every other task has finished, with a
 `TaskBoardRecorderFailureError` (`code: "task-board-recorder-failure"`) naming every
-affected task; on a handed-off row, which has no batch to drain, the failure fails that
+affected task; on a dispatched row, which has no batch to drain, the failure fails that
 child run instead. `onError` is not consulted on this path — it is a policy about a task
 going wrong, not about the board's bookkeeping. A write that demonstrably committed
 nothing is unchanged and still takes the ordinary error path. `verdict: "undetermined"`
@@ -430,10 +430,10 @@ The recorders themselves (`createRecordSuccess` / `createRecordError`) **raise**
 failure by default; only a composition that supplies a tail able to read the report — which
 `taskBoard()`'s drain does — passes `recorderFailure: { onRecorderFailure: "defer" }`.
 
-#### Handing tasks off through a dispatcher assignee
+#### Dispatching tasks through a dispatcher assignee
 
 An assignee under `workers` is a block. Put a `dispatcher({ action, session })`
-in that position and the assignee hands its tasks off: the drain claims a row, sends a
+in that position and the assignee dispatches its tasks: the drain claims a row, sends a
 `task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
 entry's block runs in a **child session** of the session that drained — on a request
 of its own — and settles the row itself. Any other block in that position runs
@@ -456,12 +456,12 @@ const issueLedger = defineTaskCollection({
 
 const board = taskBoard({
   name: "issue-work",
-  boardId: "issue-work",               // required once any assignee hands off
+  boardId: "issue-work",               // required once any assignee dispatches
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
     triage: triageBlock,               // runs inline
-    implement: dispatcher({            // hands off to flow.task.actions.implement
-      name: "hand-off-implement",
+    implement: dispatcher({            // dispatches to flow.task.actions.implement
+      name: "dispatch-implement",
       action: "implement",
       session: "per-task",
     }),
@@ -488,7 +488,7 @@ The presets include the board id in the key, so two boards' `per-task` children 
 apart even when their task ids coincide. A custom `key` is used as returned, so two
 assignees (or two boards) that return the same key share one child. A child that runs
 several rows runs them under its entry's concurrency policy. An entry a `per-worker`,
-`key` or `by` assignee hands off to defaults to `queue`, so the rows run one at a time; a
+`key` or `by` assignee dispatches to defaults to `queue`, so the rows run one at a time; a
 `per-task` assignee's entry keeps the ordinary default (the flow's `request.concurrency`,
 else `allow`). An explicit `concurrency` on the entry wins:
 
@@ -500,7 +500,7 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 a lease backend. On a deployment that hands dispatches to an external queue without
 one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
-A named assignee and `defaultWorker` can hand off. A uniform `workers` block can't: it has
+A named assignee and `defaultWorker` can dispatch. A uniform `workers` block can't: it has
 no assignee to route by. A `defaultWorker` dispatcher hands each task the registry
 doesn't name over under the task's own assignee, and refuses a task with none
 (`flow-not-found`), which fails through the board's error path.
@@ -514,7 +514,7 @@ to a flow looked up at that moment:
 
 ```ts
 defaultWorker: dispatcher({
-  name: "hand-off-by-assignee",
+  name: "dispatch-by-assignee",
   action: "work",
   session: "per-task",
   flowKind: (task, ctx) => findFlowFor(task.assignee, ctx),
@@ -535,7 +535,7 @@ assignee can then send replies into a running session and other work to children
 ```ts
 // filed(task): the fields your code wrote on the row when it filed it.
 assistant: dispatcher({
-  name: "hand-off-assistant",
+  name: "dispatch-assistant",
   action: { among: ["work", "reply"], by: (task) => (filed(task).reply ? "reply" : "work") },
   session: {
     by: (task) => (filed(task).sessionId ? { id: filed(task).sessionId! } : { key: `work|${task.taskId}` }),
@@ -543,10 +543,10 @@ assistant: dispatcher({
 }),
 ```
 
-`defineFlow` refuses a hand-off whose entry the flow forgot to declare, a task
-entry no board hands off to and no `from` serves, a task dispatcher no board holds,
-two boards handing off to one entry, and an entry with `from` that a board in the
-same flow also hands off to. `board.handedOff` lists the assignees that hand off, in
+`defineFlow` refuses a dispatch whose entry the flow forgot to declare, a task
+entry no board dispatches to and no `from` serves, a task dispatcher no board holds,
+two boards dispatching to one entry, and an entry with `from` that a board in the
+same flow also dispatches to. `board.dispatchers` lists the assignees that dispatch, in
 declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, label `floor`).
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
@@ -554,7 +554,7 @@ Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for 
 allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
 The entry then needs no board in its flow, and takes tasks from any board whose
 ledger `resolve(ledgerId, ctx, partition)` returns (`Promise<TaskCollectionRef | undefined>`).
-The ledger id is the `boardId` the sending board hands off under, so a board over a
+The ledger id is the `boardId` the sending board dispatches under, so a board over a
 shared ledger sets `boardId` to the ledger's id. `partition` is the partition the
 dispatch names when the sender's ledger keeps one per partition (`partitionBy`), and
 `undefined` otherwise. Pass it through to `getOrCreateTaskCollection({ partition })`:
@@ -604,7 +604,7 @@ left exactly as it was. If the row is still `in_progress`, whether a newer attem
 another assignee, or a row recreated under the same id holds it, that claim runs until its
 lease runs out and the next drain reclaims it; a row that was deleted, or is already
 settled or parked, has no outstanding claim, so there is nothing to reclaim. On the drain
-side the hand-off block returns `{ handedOff: true, taskId, sessionId, requestId,
+side the dispatch block returns `{ dispatched: true, taskId, sessionId, requestId,
 adopted }`, and a refused dispatch fails the row through the board's ordinary
 error path, throwing the same `DispatchRefusedError` (with its `refused` code)
 that a `dispatcher()` block throws. The child settles its own row, and the board's `onError` reaches it:
@@ -613,13 +613,13 @@ that request. The one thing `onError` does not govern is the board failing to re
 what it saved — see the recorder-failure note under
 [taskBoard()](#taskboard) — which fails the child run under either setting.
 
-`taskBoard()` refuses a board that hands off unless all of these hold, naming the
+`taskBoard()` refuses a board that dispatches unless all of these hold, naming the
 board and the fix:
 
 - **`boardId`** is declared. Every `task` dispatch names it, so renaming it orphans
   children already in flight.
 - **The collection is durable** — a `defineTaskCollection()` resource backing. The
-  request, sequencer, and factory backings are refused: a handed-off row outlives the
+  request, sequencer, and factory backings are refused: a dispatched row outlives the
   request that claimed it.
 - **A session-scoped collection declares `sharedToLineage: true`**, or the child
   would resolve an empty ledger and never find its row. `user` and `org` scope need
@@ -627,11 +627,11 @@ board and the fix:
   rows to another flow and still keep a board per session, use a partitioned
   `user`-scoped collection (`partitionBy`, above).
 
-`defineFlow` adds one more: **no handed-off entry block declares
+`defineFlow` adds one more: **no dispatched entry block declares
 `sessionStateSchema`**, at its root or in a composed child. Keep the block's
 state on the task.
 
-A board that hands anything off fixes a task's assignee while an attempt holds it:
+A board that dispatches anything fixes a task's assignee while an attempt holds it:
 the worker name is what a running row is routed by, so `setAssignee` on an
 `in_progress` or `parked` task declines with reason `immutable-assignee`. A pending
 or blocked task can still change hands, and a parked one can once `unpark` has
@@ -639,7 +639,7 @@ ended its attempt. The rule belongs to the collection rather than
 the board, so a second board over the same `defineTaskCollection` value declines too.
 
 A claim carries a lease (two minutes by default), and nothing renews it between the
-hand-off and the child's first step. A child that starts after the lease has lapsed
+dispatch and the child's first step. A child that starts after the lease has lapsed
 takes the row back before it runs: it renews the lease against the claim it was
 dispatched with, on the same attempt, and proceeds when that write lands. It refuses
 only when the renewal is declined, which is the case another drain reclaimed the row
@@ -741,9 +741,9 @@ refused when it loads; give the work to workers on a task board instead.
 
 ### Task tools
 
-`taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
+`taskTools` are the ten tools a model uses to plan on a task board: `addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
-`listTasks`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
+`listTasks`, `readTask`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
 `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
@@ -753,6 +753,8 @@ actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
 `addTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
 tool's schema, so a model that would send the payload as a JSON string is told to send the object.
+A new task may also carry a `title`, a short non-empty label apart from its `goal`; `listTasks`
+answers it when a task has one, and a task filed without one is labelled by its goal.
 
 `dispatchTask` starts work now. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
@@ -768,6 +770,15 @@ the `dispatchTask_<board>` action, which never waits.
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
 claim clears it until the next run starts.
+
+`readTask({ taskId })` returns one task whole, for a model that has to answer from what the
+task found rather than from its `listTasks` row:
+`{ ok: true, task: { id, goal, title?, status, assignee?, input?, inputCut?, output?, outputCut?, error?, question?, followUpOf?, run?, completedAt? } }`.
+`output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
+comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` that long is
+cut the same way, with `inputCut: true`. `question` is set only
+on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
+board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
@@ -787,7 +798,7 @@ task's current status does not permit is a recoverable tool result too, not a
 throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
-the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+the ten tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
@@ -854,7 +865,7 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
 minutes by default). `listTasks` marks a waited-on row `waitedOn: true`. A wait is refused on a
 turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. `addTask`
-never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name,
+never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name, <!-- retired-name-refusal: the refusal of the old fields -->
 `add_task_does_not_wait`, and nothing is filed. See
 [Task board → Giving another worker work](https://flow-state.dev/docs/orchestration/task-board#giving-another-worker-work)
 for limits and errors.
@@ -866,11 +877,14 @@ whatever runs the board calls `resumeOwedWaits` as it touches the board outside 
 run, a task's notice), and the host has durable execution and a running durability sweeper
 (`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`. On a task turn a wait is
+refused with `wait_unavailable`; a layer that has its own way for a task to wait on another
+passes it as `taskTurnInstead` (a sentence), and the refusal and the `dispatchTask` description
+say it in place of the generic advice.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
+- `dispatchAndWait(ctx, collection, init, { timeoutMs?, taskTurnInstead? })`, from
   `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from inside
   a generator's tool call. Call it from your own tool when you don't use the task tools'
   `dispatchTask`. Before filing it refuses a host that can't bound the wait (`canHoldWait(ctx)`,

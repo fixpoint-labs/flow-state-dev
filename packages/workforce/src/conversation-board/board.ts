@@ -15,7 +15,9 @@
  * - **The grant** (FIX-1802 D1). A session files when its delegate list holds
  *   one that takes a task now: the same list the roster reads, read on every
  *   call, server-side. A task session files too: its pieces, which its task
- *   then waits on (`./split`).
+ *   then waits on (`./split`), for any worker on the user's roster that takes
+ *   a task (`rosterTaskTakers`), its delegates or not. Delegates stay the
+ *   reporting line: an unassigned row goes to the only one.
  * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
  *   breadth is refused in the ref the resolver returns (`./chain`), as the
  *   task substrate refuses a full board: `total_task_cap_exceeded`.
@@ -25,7 +27,8 @@
  *   files, read per call. The resolver is the running session's own board,
  *   and none while it doesn't file, so an action answers
  *   `no_delegation_board`. The roster is the session's delegates that take a
- *   task, read on every call.
+ *   task, and in a task session every worker on the user's roster that takes
+ *   one, read on every call.
  * - **The start.** A filing or an assign dispatches a run of the board into
  *   the conversation as a request of its own, and returns without waiting for
  *   it. The start it owes is the row's own state, pending and assigned
@@ -66,6 +69,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
+import { carriedHopState } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress, TaskTargetQuery } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -103,6 +107,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { POST_SETTLED_ENTRY, sendOwedNotices } from "./notice-delivery";
+import { sendOwedReports } from "./report-owed";
 import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
 
 /**
@@ -120,6 +125,12 @@ export interface ConversationBoardOptions {
    * for the grant on every call.
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
+  /**
+   * Every worker on the session user's roster that takes a task now, read per
+   * call: who a task session's pieces can go to, beside its delegates. A
+   * session that works no task never reads it.
+   */
+  rosterTaskTakers: (ctx: BlockContext) => Promise<TaskDelegates>;
   /**
    * The worker flow the board's sessions run on: where each task it
    * hands over sends its notice back, as the task session's `filingFlow`.
@@ -182,7 +193,7 @@ function taskSessionKey(taskId: string, worker: string): string {
 }
 
 /**
- * The claim the board's hand-off holds while it addresses a task: on its
+ * The claim the board's dispatch holds while it addresses a task: on its
  * worker body's state, or in the claimed worker's async scope. Server-derived:
  * minted from the row the board just claimed.
  */
@@ -266,14 +277,37 @@ export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): P
  * the actions, and the ledger.
  */
 export function defineConversationBoard(options: ConversationBoardOptions) {
-  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await options.delegates(ctx));
+  /**
+   * Who a filing in the running session can name, read now: its delegates
+   * that take a task, and in a task session (its pieces) every worker on the
+   * user's roster that takes one too. Server-side only: the session's task
+   * and its delegate list are server-written state, never input.
+   */
+  const reach = async (ctx: BlockContext): Promise<{ reachable: TaskDelegates; delegates: TaskDelegates; taskSession: boolean }> => {
+    const delegates = await options.delegates(ctx);
+    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+    if (typeof state[TASK_ID_STATE_KEY] !== "string") return { reachable: delegates, delegates, taskSession: false };
+    // The session's own worker is on the roster too, so it can file a piece
+    // for itself. Deliberate: the chain limits (`./chain`) bound it.
+    const roster = await options.rosterTaskTakers(ctx);
+    const available = new Map([...delegates.available, ...roster.available]);
+    const unavailable = new Map([...delegates.unavailable, ...roster.unavailable].filter(([worker]) => !available.has(worker)));
+    return { reachable: { available, unavailable }, delegates, taskSession: true };
+  };
+
+  /** The roster the task tools and actions check an assignee against; its sole assignee is still the only delegate. */
+  const roster: AssigneeRosterSource = async (ctx) => {
+    const { reachable, delegates } = await reach(ctx);
+    return { ...rosterOf(reachable), soleAssignee: rosterOf(delegates).soleAssignee };
+  };
 
   /**
    * Whether the running session files now (FIX-1802 D1): one of its
-   * delegates takes a task, read from its list as it stands. Server-side
-   * only: the list is server-written state, never input.
+   * delegates takes a task, read from its list as it stands; in a task
+   * session, any worker on the roster that takes one. So a task session with
+   * no delegates still files when the roster has a task taker: deliberate.
    */
-  const files = async (ctx: BlockContext): Promise<boolean> => (await options.delegates(ctx)).available.size > 0;
+  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).reachable.available.size > 0;
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than
@@ -291,7 +325,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       by: (task) => (postOf(task) !== undefined ? DELEGATED_POST_ENTRY : WORKER_TASK_ENTRY)
     },
     session: {
-      // The board's hand-off computes it while the claim it took is still on
+      // The board's dispatch computes it while the claim it took is still on
       // its worker body's state: the assignee is the one the row was claimed
       // with, which the board freezes while an attempt holds it.
       by: (task, ctx) => {
@@ -310,19 +344,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return { key: taskSessionKey(claim?.followUpOf ?? task.taskId, worker) };
       }
     },
-    // Re-run the delegate check at hand-over: a delegate fired, removed or
-    // moved to a flow that takes no tasks since the filing is refused here,
-    // with the claim held, so the task fails and the conversation hears it.
+    // Re-run the check at hand-over: a delegate (or, for a task session's
+    // pieces, a roster worker) fired, removed or moved to a flow that takes
+    // no tasks since the filing is refused here, with the claim held, so the
+    // task fails and the conversation hears it.
     // A post row's delegate is checked for a post instead.
     flowKind: async (task, ctx) => {
       if (postOf(task) !== undefined) {
         if (options.postFlow === undefined) throw new Error(`Task "${task.taskId}" is a post, and this board hands over none.`);
         return options.postFlow(ctx, task.assignee);
       }
-      const delegates = await options.delegates(ctx);
-      const flow = delegates.available.get(task.assignee);
+      const { reachable, taskSession } = await reach(ctx);
+      const flow = reachable.available.get(task.assignee);
       if (flow !== undefined) return flow;
-      const why = delegates.unavailable.get(task.assignee) ?? "it isn't one of this conversation's delegates";
+      const why =
+        reachable.unavailable.get(task.assignee) ??
+        (taskSession ? "it isn't a worker on this roster that takes tasks" : "it isn't one of this conversation's delegates");
       throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
     },
     // The task session is born naming its worker, the task, the session
@@ -341,7 +378,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (postOf(task) !== undefined) {
         return { [WORKER_ID_STATE_KEY]: task.assignee, [FILING_SESSION_STATE_KEY]: partition };
       }
-      const flow = (await options.delegates(ctx)).available.get(task.assignee);
+      const flow = (await reach(ctx)).reachable.available.get(task.assignee);
       // The session's task: a follow-up's root, though the root's own
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
@@ -353,19 +390,23 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         [FILING_FLOW_STATE_KEY]: options.flowKind,
         [TASK_ID_STATE_KEY]: taskId,
         [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, taskId).birth,
+        // The filer's worker-message hop count and chain (FIX-1989): a
+        // message from the task counts on in the exchange of the turn that
+        // filed it. Never the task chain's.
+        ...carriedHopState(ctx.session.state),
         ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {}),
         ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
         ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project })
       };
     }
   };
-  const handOffToDelegate = markDispatcher(
+  const dispatchToDelegate = markDispatcher(
     handler({
-      name: "conversation-board-hand-off",
+      name: "conversation-board-dispatch",
       inputSchema: z.unknown(),
       outputSchema: z.unknown(),
       execute: () => {
-        throw new Error("The conversation board's hand-off runs through the board, never on its own.");
+        throw new Error("The conversation board's dispatch runs through the board, never on its own.");
       }
     }),
     address
@@ -376,7 +417,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     boardId: CONVERSATION_LEDGER_ID,
     collection: conversationLedger,
     workers: {},
-    defaultWorker: handOffToDelegate as never,
+    defaultWorker: dispatchToDelegate as never,
     dispatcher: startableOnly,
     // Exit once nothing this run can start is waiting. An unassigned row
     // waits on the board for `assignTask`, so a run must not wait on it.
@@ -558,6 +599,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     if (hasStartable(ref)) await wake(ctx);
     const rows = ref.list();
     await replayNotices(ctx, rows);
+    await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
     // And the settles owed down the chain: each parked split row's session
     // settles its task once its pieces are done, this one's included, behind
     // any turn it is running (FIX-1802 BR-17).
@@ -596,6 +638,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       await resumeOwedWaits(ctx as never, ref);
       const rows = ref.list();
       const replayed = await replayNotices(ctx, rows);
+      await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
       await replaySplits(ctx, rows);
       const top = taskChainOf(ctx)?.top;
       if (top !== undefined) await markAddedInChain(ctx, top, rows.map((row) => chainEntryKey(partition, row.id)));
@@ -622,9 +665,14 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   // dispatches wake a run of it, so `dispatchTask` starts work now.
   // On a turn routing a post (FIX-1872), `dispatchTask` also takes its post
   // form; a session that files no task gets that one tool alone.
+  // A task session's turn can't wait, but its task can: a piece filed without
+  // `wait` parks the task when the turn ends, and the piece's ending wakes it
+  // (`./split`). The refusal and the description say so.
   const eight = taskToolsForTurn(resolver, roster, {
     resumesWaits: true,
     dispatches: true,
+    taskTurnInstead:
+      "To wait for it, file it without `wait`, then end this turn: when that task ends, its ending wakes this task in a new turn, with the result.",
     ...(options.posts === undefined ? {} : { posts: options.posts })
   });
   const posts = options.posts;
@@ -637,6 +685,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           if (await files(ctx as never)) return eight(ctx as never);
           if (posts === undefined || !posts.routing(ctx as never)) return [];
           return eight(ctx as never).filter((tool) => tool.name === "dispatchTask");
+        },
+        // The session's project, read from its server-written fields (BP-031),
+        // so a filer in a workstream or a project's conversation never has to
+        // guess one: the board writes it on every task filed here anyway.
+        context: async (_input, ctx) => {
+          const own = filingProjectAddressOf(ctx.session.state);
+          if (own === undefined || !(await files(ctx as never))) return undefined;
+          // A project id is its creator's text and may hold quotes, so it goes
+          // in as a JSON string: it can't close the name and start a sentence.
+          return (
+            `This conversation works in the ${own.visibility} project ${JSON.stringify(own.id)}. ` +
+            "Every task you file here works in that project, so leave `project` out of a task's `input`."
+          );
         }
       },
       default: ["tools"]

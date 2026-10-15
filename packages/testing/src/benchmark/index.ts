@@ -61,10 +61,10 @@ export function baselineSubject(opts: {
   };
 }
 
-/** Last path segment of a model id, for compact baseline names. */
+/** Last slash segment; a colon id with no slash drops the name before `:`. */
 function shortModel(model: string): string {
-  const parts = model.split("/");
-  return parts[parts.length - 1];
+  const slash = model.lastIndexOf("/");
+  return slash === -1 ? model.slice(model.indexOf(":") + 1) : model.slice(slash + 1);
 }
 
 /** Config for `comparePatterns` — `runBenchmark` config minus the resolved subjects. */

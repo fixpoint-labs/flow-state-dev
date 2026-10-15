@@ -259,3 +259,41 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     }
   });
 });
+
+describe("a task session's turn that asks to wait", { timeout: 30_000 }, () => {
+  it("is refused, and told how its task can wait: file without `wait` and end the turn", async () => {
+    const seen: GeneratorModelCallOptions[] = [];
+    const judgment: GeneratorModel = {
+      modelId: "task-turn-judgment",
+      async generate() {
+        throw new Error("driven step by step");
+      },
+      async generateStep(options) {
+        seen.push(options);
+        const asked = JSON.stringify(options.messages ?? []);
+        if (toolResults(options.messages) === "" && asked.includes("Ship the release") && !asked.includes("completed by")) {
+          return {
+            toolCalls: [{ toolCallId: "w1", toolName: "dispatchTask", args: { goal: "Check the build", assignee: "eng.tasker", wait: true } }],
+            finishReason: "tool-calls"
+          };
+        }
+        return { text: "Done.", finishReason: "stop" };
+      }
+    };
+    const host = await waitingHost(judgment);
+    try {
+      // boss hands lead a task; lead's task turn, which files for its own delegate, asks to wait.
+      const conv = await host.conversation("alice", "boss");
+      const filed = await host.act("alice", conv, "dispatchTask_tasks", { goal: "Ship the release", assignee: "lead" });
+      expect(filed.output).toMatchObject({ ok: true });
+      await host.settled();
+      const refusal = seen.map((call) => toolResults(call.messages)).find((results) => results.includes("wait_unavailable"));
+      expect(refusal).toBeDefined();
+      expect(refusal).toContain("file it without `wait`, then end this turn");
+      expect(refusal).toContain("its ending wakes this task");
+      expect((await host.rows("alice")).filter((row) => row.goal === "Check the build")).toEqual([]);
+    } finally {
+      await host.dispose();
+    }
+  });
+});

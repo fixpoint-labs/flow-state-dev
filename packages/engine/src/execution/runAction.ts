@@ -42,6 +42,7 @@ import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
+import { safeCaptureError, toFinalErrorCaptureEvent } from "../errors/error-capture";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
@@ -244,7 +245,7 @@ async function reconcileDroppedDelivery(
 /**
  * Refuse any dispatcher reachable from `roots` whose address the flow does not
  * declare — and, for a task dispatcher, one the entry's own board does not
- * hold. Target existence is not routability for a hand-off: the entry runs
+ * hold. Target existence is not routability for a dispatch: the entry runs
  * behind ONE board's gate, so a dispatcher another board holds would claim a row on
  * its ledger and have the child refuse it at the gate, after the dispatch was
  * accepted, leaving the row `in_progress` until lease recovery. `defineFlow`
@@ -297,11 +298,11 @@ function assertDispatchersRoutable(
             if (binding === undefined || gatedBy === undefined || gatedBy.gate !== binding.gate) {
               throw new ValidationError(
                 `Flow "${flow.kind}" cannot run this dispatch's action core: block "${block.name}" ` +
-                  `hands off to task:"${action}", which is gated for board ` +
+                  `dispatches to task:"${action}", which is gated for board ` +
                   `"${gatedBy?.boardId ?? "<none>"}", but the dispatcher is held by ` +
                   (binding === undefined ? "no board" : `board "${binding.boardId}"`) +
                   `. One entry settles against one ledger; a row claimed on another board's ledger ` +
-                  `would be refused at this gate after the dispatch was accepted. Hand off from the ` +
+                  `would be refused at this gate after the dispatch was accepted. Dispatch from the ` +
                   `board that declares this entry, or declare an entry for the other board.`,
                 { scope: "request" }
               );
@@ -2078,6 +2079,22 @@ async function runActionAttempt<
         error: setupError,
         logger
       });
+      // FIX-1983: the final-failure event, only when the failed write landed.
+      const errorCapture = options.runtimeConfig.errorCapture;
+      if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
+        void safeCaptureError(
+          errorCapture,
+          toFinalErrorCaptureEvent(normalizeError(setupError, { scope: "request" }), {
+            requestId,
+            flowKind: options.flow.kind,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            orgId: options.orgId
+          }),
+          logger
+        );
+      }
     }
     throw setupError;
   }
@@ -2235,6 +2252,7 @@ async function runActionAttempt<
             sessionId: options.sessionId,
             userId: options.userId,
             reason: suspendError.reason,
+            ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
             message: suspendError.message,
             data: suspendError.data,
             resumeSchema: suspendError.resumeSchema,
@@ -2270,6 +2288,7 @@ async function runActionAttempt<
           suspensionId: suspendError.suspensionId,
           suspensionStatus: "pending",
           reason: suspendError.reason,
+          ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
           message: suspendError.message,
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
@@ -2875,6 +2894,11 @@ async function runActionAttempt<
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
+
+      // FIX-1983: the request's one final-failure event, as soon as the failed
+      // record is written, so a status event that throws can't lose it. Only a
+      // request this run settled sends it.
+      if (terminalRecordIncarnation !== undefined) ctx._captureFinalError?.(error);
 
       await response.emitRequestStatus("failed");
 

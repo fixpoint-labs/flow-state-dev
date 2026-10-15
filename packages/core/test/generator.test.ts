@@ -1482,6 +1482,9 @@ describe("generator — observable model identity (FIX-518)", () => {
     const ctx = createMockContext({
       resolveModel: () => ({
         modelId: "mock-model",
+        async generate() {
+          throw new Error("not called: this test streams");
+        },
         async *stream() {
           yield {
             type: "text_delta" as const,

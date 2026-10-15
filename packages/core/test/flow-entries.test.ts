@@ -179,7 +179,7 @@ describe("the address walk", () => {
 
   it("skips a task address that names another flow", () => {
     const assignee = dispatcher({
-      name: "hand-off-billing",
+      name: "dispatch-billing",
       type: "task",
       flowKind: "billing",
       action: "charge",
@@ -196,7 +196,7 @@ describe("the address walk", () => {
 
 describe("task entries", () => {
   /**
-   * A board's binding, as `taskBoard()` would bind it onto the hand-off it
+   * A board's binding, as `taskBoard()` would bind it onto the dispatch it
    * installs at a dispatcher assignee: the board id and a gate that wraps the
    * entry's block. The gate here just nests the block under a named sequencer,
    * which is enough to tell a gated entry from the author's.
@@ -216,19 +216,19 @@ describe("task entries", () => {
     return gate;
   };
   const bindingFor = (boardId: string): TaskBinding => ({ boardId, gate: gateFor(boardId) });
-  const handOff = (target: string, boardId: string, assignee = target) => {
+  const dispatchRow = (target: string, boardId: string, assignee = target) => {
     const block = markDispatcher(
-      handler({ name: `hand-off-${boardId}-${assignee}`, inputSchema: z.unknown(), execute: () => null }),
+      handler({ name: `dispatch-${boardId}-${assignee}`, inputSchema: z.unknown(), execute: () => null }),
       { type: "task", action: target, session: "per-task" }
     );
     bindTaskDispatcher(block, bindingFor(boardId));
     return block;
   };
 
-  it("puts a plain entry behind the gate of the board that hands off to it", () => {
+  it("puts a plain entry behind the gate of the board that dispatches to it", () => {
     const flow = defineFlow({
       kind: "gated",
-      actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } },
+      actions: { run: { block: sequencer({ name: "run" }).step(dispatchRow("implement", "issues")) } },
       task: { actions: { implement: { block: noop, concurrency: "queue" } } }
     });
     // The instance carries the gated entry, not the author's: the block is the
@@ -240,19 +240,19 @@ describe("task entries", () => {
     expect(flow().task?.actions.implement.block.name).toBe("issues-implement-gate");
   });
 
-  it("defaults an entry a shared-child assignee hands off to `queue`, and leaves a per-task one alone", () => {
+  it("defaults an entry a shared-child assignee dispatches to `queue`, and leaves a per-task one alone", () => {
     // `per-worker` and `key` assignees send several rows into one child session,
     // where the `allow` default interleaves their writes. `per-task` gives
     // every row its own session, so nothing there needs serialising.
     const shared = markDispatcher(
-      handler({ name: "hand-off-shared", inputSchema: z.unknown(), execute: () => null }),
+      handler({ name: "dispatch-shared", inputSchema: z.unknown(), execute: () => null }),
       { type: "task", action: "implement", session: "per-worker" }
     );
     bindTaskDispatcher(shared, bindingFor("issues"));
     const flow = defineFlow({
       kind: "shared-child",
       actions: {
-        run: { block: sequencer({ name: "run" }).step(shared).step(handOff("review", "issues")) }
+        run: { block: sequencer({ name: "run" }).step(shared).step(dispatchRow("review", "issues")) }
       },
       task: { actions: { implement: { block: noop }, review: { block: noop } } }
     });
@@ -262,7 +262,7 @@ describe("task entries", () => {
 
   it("keeps an author's explicit concurrency on a shared-child entry", () => {
     const keyed = markDispatcher(
-      handler({ name: "hand-off-keyed", inputSchema: z.unknown(), execute: () => null }),
+      handler({ name: "dispatch-keyed", inputSchema: z.unknown(), execute: () => null }),
       { type: "task", action: "implement", session: { key: () => "k" } }
     );
     bindTaskDispatcher(keyed, bindingFor("issues"));
@@ -280,8 +280,8 @@ describe("task entries", () => {
       actions: {
         run: {
           block: sequencer({ name: "run" })
-            .step(handOff("implement", "issues", "implement"))
-            .step(handOff("implement", "issues", "rework"))
+            .step(dispatchRow("implement", "issues", "implement"))
+            .step(dispatchRow("implement", "issues", "rework"))
         }
       },
       task: { actions: { implement: { block: noop } } }
@@ -305,7 +305,7 @@ describe("task entries", () => {
     // spell the same one over different ledgers, and only one gate can front
     // the entry. The rule keys on the gate the board bound, not the string.
     const other = markDispatcher(
-      handler({ name: "hand-off-other", inputSchema: z.unknown(), execute: () => null }),
+      handler({ name: "dispatch-other", inputSchema: z.unknown(), execute: () => null }),
       { type: "task", action: "implement", session: "per-task" }
     );
     bindTaskDispatcher(other, { boardId: "issues", gate: (entry) => entry });
@@ -313,20 +313,20 @@ describe("task entries", () => {
       defineFlow({
         kind: "same-id-two-boards",
         actions: {
-          run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")).step(other) }
+          run: { block: sequencer({ name: "run" }).step(dispatchRow("implement", "issues")).step(other) }
         },
         task: { actions: { implement: { block: noop } } }
       })
     ).toThrow(/two boards that both declare boardId "issues"/);
   });
 
-  it("refuses a hand-off to a task entry the flow does not declare", () => {
+  it("refuses a dispatch to a task entry the flow does not declare", () => {
     expect(() =>
       defineFlow({
         kind: "no-task-entry",
-        actions: { run: { block: sequencer({ name: "run" }).step(handOff("implement", "issues")) } }
+        actions: { run: { block: sequencer({ name: "run" }).step(dispatchRow("implement", "issues")) } }
       })
-    ).toThrow(/hands off to task:"implement".*declares no such task entry/);
+    ).toThrow(/dispatches to task:"implement".*declares no such task entry/);
   });
 
   it("refuses a task dispatcher no board holds", () => {
@@ -343,30 +343,30 @@ describe("task entries", () => {
     ).toThrow(/no task board holds it/);
   });
 
-  it("refuses a task entry no board hands off to", () => {
+  it("refuses a task entry no board dispatches to", () => {
     expect(() =>
       defineFlow({
         kind: "unaddressed",
         actions: {},
         task: { actions: { implement: { block: noop } } }
       })
-    ).toThrow(/declares task entry "implement", but no task board reachable from the flow hands off to it/);
+    ).toThrow(/declares task entry "implement", but no task board reachable from the flow dispatches to it/);
   });
 
-  it("refuses two boards handing off to one entry", () => {
+  it("refuses two boards dispatching to one entry", () => {
     expect(() =>
       defineFlow({
         kind: "shadowed",
         actions: {
           run: {
             block: sequencer({ name: "run" })
-              .step(handOff("implement", "issues"))
-              .step(handOff("implement", "reviews"))
+              .step(dispatchRow("implement", "issues"))
+              .step(dispatchRow("implement", "reviews"))
           }
         },
         task: { actions: { implement: { block: noop } } }
       })
-    ).toThrow(/handed off to by two boards, "(issues|reviews)" and "(issues|reviews)"/);
+    ).toThrow(/dispatched to by two boards, "(issues|reviews)" and "(issues|reviews)"/);
   });
 
   it("refuses the flat sibling map by name", () => {
@@ -395,17 +395,17 @@ describe("task entries", () => {
 });
 
 describe("resolveEntry — one lookup, no fallback", () => {
-  // A board's hand-off at a dispatcher assignee, with an identity gate so the
+  // A board's dispatch at a dispatcher assignee, with an identity gate so the
   // entry's block stays observable as the one declared.
-  const handOff = markDispatcher(
-    handler({ name: "hand-off-implement", inputSchema: z.unknown(), execute: () => null }),
+  const dispatchRow = markDispatcher(
+    handler({ name: "dispatch-implement", inputSchema: z.unknown(), execute: () => null }),
     { type: "task", action: "implement", session: "per-task" }
   );
-  bindTaskDispatcher(handOff, { boardId: "issues", gate: (entry) => entry });
+  bindTaskDispatcher(dispatchRow, { boardId: "issues", gate: (entry) => entry });
 
   const flow = defineFlow({
     kind: "lookup",
-    actions: { chat: { block: noop }, wake: { block: noop }, handOff: { block: handOff } },
+    actions: { chat: { block: noop }, wake: { block: noop }, dispatchRow: { block: dispatchRow } },
     internal: { actions: { wake: { block: wake }, status: { block: noop } } },
     task: { actions: { implement: { block: noop } } },
     webhooks: { github: { on: { push: { block: noop, input: () => ({}) } } } },
@@ -413,38 +413,38 @@ describe("resolveEntry — one lookup, no fallback", () => {
   })();
 
   it("reads each type's own map", () => {
-    expect(resolveEntry(flow, "public", "chat")?.block).toBe(noop);
-    expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
-    expect(resolveEntry(flow, "task", "implement")?.block).toBe(noop);
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "chat")?.block).toBe(noop);
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "wake")?.block).toBe(wake);
+    expect(resolveEntry<{ block: unknown }>(flow, "task", "implement")?.block).toBe(noop);
     expect(
-      resolveEntry(flow, "webhook", "any", { webhook: { provider: "github", eventType: "push" } })
+      resolveEntry<{ block: unknown }>(flow, "webhook", "any", { webhook: { provider: "github", eventType: "push" } })
         ?.block
     ).toBe(noop);
     expect(
-      resolveEntry(flow, "schedule", "any", { schedule: { scheduleId: "nightly" } })?.block
+      resolveEntry<{ block: unknown }>(flow, "schedule", "any", { schedule: { scheduleId: "nightly" } })?.block
     ).toBe(noop);
   });
 
   it("never resolves another type's map", () => {
     // `wake` exists as a user action AND an internal entry; each type sees only its own.
-    expect(resolveEntry(flow, "public", "wake")?.block).toBe(noop);
-    expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "wake")?.block).toBe(noop);
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "wake")?.block).toBe(wake);
     // `status` is internal only; `chat` is user only; `implement` is task only.
-    expect(resolveEntry(flow, "public", "status")).toBeUndefined();
-    expect(resolveEntry(flow, "internal", "chat")).toBeUndefined();
-    expect(resolveEntry(flow, "public", "implement")).toBeUndefined();
-    expect(resolveEntry(flow, "task", "wake")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "status")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "chat")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "implement")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "task", "wake")).toBeUndefined();
   });
 
   it("refuses a protocol-owned type with no coordinate rather than reading the name", () => {
-    expect(resolveEntry(flow, "webhook", "push")).toBeUndefined();
-    expect(resolveEntry(flow, "schedule", "nightly")).toBeUndefined();
-    expect(resolveEntry(flow, "webhook", "any", { webhook: { provider: "github" } })).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "webhook", "push")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "schedule", "nightly")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "webhook", "any", { webhook: { provider: "github" } })).toBeUndefined();
   });
 
   it("resolves nothing for a name that spells an inherited member", () => {
-    expect(resolveEntry(flow, "public", "constructor")).toBeUndefined();
-    expect(resolveEntry(flow, "internal", "__proto__")).toBeUndefined();
-    expect(resolveEntry(flow, "task", "toString")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "constructor")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "__proto__")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "task", "toString")).toBeUndefined();
   });
 });

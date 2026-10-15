@@ -15,7 +15,7 @@ import type { ComponentItem } from "@flow-state-dev/core/items";
 import { DelegatesPanel } from "../src/components/DelegatesPanel";
 import { CoordinatorRoute } from "../src/components/CoordinatorRoute";
 import { shiftManagerRenderers } from "../src/components/ToolLine";
-import { delegateOf } from "../src/lib/conversation";
+import { knownWorkers, senderOf } from "../src/lib/conversation";
 import { toWorker } from "../src/lib/reads";
 
 let listed: Array<{ worker: string; note?: string }> = [];
@@ -135,11 +135,25 @@ describe("a routing record (BR-29)", () => {
   });
 });
 
-describe("a delegate's answer, under the delegate's name (BR-20)", () => {
-  it("names the delegate on a coordinator, and nobody for the coordinator's own turn or any other worker", () => {
-    expect(delegateOf(cos, { agentName: "eng.em" })).toBe("eng.em");
-    expect(delegateOf(cos, { agentName: "coordinator-judgment" })).toBeUndefined();
-    expect(delegateOf(cos, {})).toBeUndefined();
-    expect(delegateOf(toWorker({ id: "helper", kind: "agent", door: "run" })!, { agentName: "eng.em" })).toBeUndefined();
+describe("a line from another worker, under that worker's name (BR-20, FIX-1989)", () => {
+  const known = new Set(["desk.chief-of-staff", "eng.em", "helper"]);
+  const helper = toWorker({ id: "helper", kind: "agent", door: "run" })!;
+
+  it("names a delegate's answer on a coordinator, and nobody for the coordinator's own turn", () => {
+    expect(senderOf(cos, { agentName: "eng.em" }, known)).toBe("eng.em");
+    expect(senderOf(cos, { agentName: "coordinator-judgment" }, known)).toBeUndefined();
+    expect(senderOf(cos, {}, known)).toBeUndefined();
+  });
+
+  it("names a message's sender on any worker's conversation, never the worker itself or a generator", () => {
+    // A worker on the agent flow gets messages too, so its lines are labelled as well.
+    expect(senderOf(helper, { agentName: "eng.em" }, known)).toBe("eng.em");
+    expect(senderOf(helper, { agentName: "helper" }, known)).toBeUndefined();
+    expect(senderOf(helper, { agentName: "agent-answer" }, known)).toBeUndefined();
+  });
+
+  it("knows the inventory's workers and every worker a listed session runs", () => {
+    const sessions = [{ id: "s1", state: { workerId: "mine.scribe" } }, { id: "s2" }] as unknown as Parameters<typeof knownWorkers>[1];
+    expect([...knownWorkers([{ id: "eng.em" }], sessions)].sort()).toEqual(["eng.em", "mine.scribe"]);
   });
 });

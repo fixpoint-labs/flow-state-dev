@@ -175,7 +175,7 @@ incomplete, with the error, so a reader never shows a half-written list as the p
 plan-mode document, the one `mode: "plan"` produces, is not recorded.
 
 `recordPlan` is off by default. Off, the block declares no session state, exactly as before,
-which is what lets a task board hand it off without any further option.
+which is what lets a task board dispatch it without any further option.
 
 ## Where the run works
 
@@ -188,6 +188,23 @@ is rarely what you want.
 
 It is a working directory, not a fence: the run can still address paths outside
 it. `local.sandboxOptions` on `agent` is the fence.
+
+Cursor fails a run whose sandbox can't start rather than running without it.
+`probeCursorSandbox` reports whether the sandbox can start for a run in `cwd`
+with that `env`, without starting a run. It takes about a second, so call it
+once, from a startup or health check.
+
+```ts
+import { probeCursorSandbox } from "@flow-state-dev/cursor";
+
+const result = await probeCursorSandbox({ cwd: repoDir, env });
+// { supported: true } or { supported: false, reason: "<Cursor's message>" }
+```
+
+The sandbox needs a helper binary from Cursor's platform package, which this
+package installs. With `env` set (next section), no extra dependency is needed.
+Without `env`, under pnpm, add `@cursor/sdk-<platform>-<arch>` to your app's
+dependencies, or the sandbox can't start and the run fails.
 
 ## Choosing the environment the run starts with
 
@@ -267,7 +284,7 @@ reads `"unknown-conversation"`. Any other failure reads `null`, including one af
 Cursor has resumed the agent.
 
 Keeping no session state also means the block declares none, which is what lets a
-task board hand it off without any further option. `recordPlan` is the one option
+task board dispatch it without any further option. `recordPlan` is the one option
 that adds some, and it is off by default.
 
 ## How a run ends

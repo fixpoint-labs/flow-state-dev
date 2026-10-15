@@ -1,7 +1,7 @@
 /**
  * The manager — a task row becomes a watched, settled coding run.
  *
- * One handed-off worker on a conductor board:
+ * One dispatched worker on a conductor board:
  *
  *   open the run row → build the prompt & take the checkout → run the harness
  *   → read the verdict → settle or fail
@@ -646,7 +646,7 @@ const decisionSchema = harnessJudgeInputSchema.nullable();
 /**
  * The manager's per-run values.
  *
- * Sequencer state, not session state: `defineFlow` refuses a handed-off worker
+ * Sequencer state, not session state: `defineFlow` refuses a dispatched worker
  * that declares session state, because the entry runs in a child session it
  * may share with other rows, where two blocks choosing one key with different
  * shapes corrupt each other silently.
@@ -1240,7 +1240,7 @@ export type HarnessManager = TaskWorker & {
 };
 
 /**
- * Build the manager: one handed-off worker for one phase.
+ * Build the manager: one dispatched worker for one phase.
  *
  * Only a manager with a fixed board has a message door: the door reads that
  * board's rows. A manager given only {@link ManagerOptions.ledgers} is a plain

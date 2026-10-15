@@ -4,7 +4,7 @@
  *
  * `createRecordSuccess` and `createRecordError` are exported blocks. `taskBoard()`
  * composes them behind a drain that ends in a tail check, and the gate composes
- * them around a handed-off task — but a consumer can compose them itself, and
+ * them around a dispatched task — but a consumer can compose them itself, and
  * then there is no tail and nothing that will ever read the report.
  *
  * So **deferring is the configured behaviour, not the default one.** A recorder

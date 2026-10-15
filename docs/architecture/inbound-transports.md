@@ -203,7 +203,7 @@ One operation runs *from inside a block* through the same host, installed on
 `RuntimeConfig.requestHost` by `createFlowState` (and as a last resort by the
 HTTP handlers): `dispatchOperation`, which the dispatch seam uses for an
 `internal` or `task` dispatch — a `dispatcher()` block, or a task board's
-hand-off at a dispatcher in its `workers`. The seam (`engine/context/create-request-host.ts`)
+dispatch at a dispatcher in its `workers`. The seam (`engine/context/create-request-host.ts`)
 resolves the entry, derives or adopts the child session and writes its record,
 and assembles the envelope with the source and the server-assembled
 `metadata.dispatch`; `createDispatchOperation({ host })`
@@ -242,21 +242,29 @@ transparently. See `authentication.md`.
 
 ### Concurrency arbitration
 
-The **concurrency policy** (FIX-837) is enforced at the top of `host.dispatch`,
-before any request record or live stream is created, so every transport
-inherits it at the one shared seam. The arbiter resolves the effective policy
+The **concurrency policy** (FIX-837) is enforced inside `host.dispatch`, before
+any request record is created, so every transport inherits it at the one shared
+seam. The arbiter resolves the effective policy
 (`action.concurrency ?? flow.request.concurrency ?? "allow"`) and a key
-(default: the tenant-namespaced session id):
+(default: the tenant-namespaced session id).
+
+On every backend, the in-memory default included, a keyed dispatch takes its
+place only after the session and request-id ownership read passes, so a caller
+who does not own the session never holds the key, stands in its line, or gets
+the owner refused. `dispatch` still returns its handle synchronously; the
+outcome of admission arrives through `accepted` and `finished`. Places on one
+key are taken in dispatch order within a process: a dispatch waits for the one
+dispatched before it on the same key to take its place, be refused, or fail its
+own ownership check, however long each ownership read takes. A dispatch that
+fails ownership takes nothing and the next one proceeds. Across processes on a
+shared backend, the backend's own `take` order decides.
 
 - `reject` claims the key; if another request holds it, the dispatch is refused
   with `ConcurrencyRejectedError` (status 409, carrying the in-flight
   `requestId`) before a record exists, so the dropped caller never materializes
-  a run. Over the in-memory default the claim is synchronous and `dispatch`
-  throws, which extends the set of synchronous `dispatch` throws beyond
-  malformed/unknown-flow. Over a shared lease backend the claim is a round
-  trip, taken only after the session and request-id ownership read passes, and
-  the refusal rejects `accepted` and `finished` instead. Every adapter maps
-  both: HTTP to 409, webhook and scheduled to a skipped 200, MCP to server-busy.
+  a run. The refusal rejects `accepted` and `finished`; `dispatch` itself does
+  not throw it. Every adapter maps it: HTTP to 409, webhook and scheduled to a
+  skipped 200, MCP to server-busy.
 - `queue` defers the *start* of execution behind the key (FIFO) while still
   returning the handle synchronously, so an SSE client gets an open stream while
   queued. An over-long wait rejects `finished` with `ConcurrencyQueueTimeoutError`
@@ -282,10 +290,9 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   of the line, behind the runs present at that moment, and waits for its turn
   with no budget. A caller sending `hold` requests back to back delays it by
   at most the patience plus the runs it found.
-- `hold` and `defer` take their place only after `admitOwnership` passes, on
-  the in-memory default too, so a caller who does not own the session never
-  marks its key held or fills its defer cap. Neither is refused synchronously:
-  a `defer` over its cap is refused through `accepted` / `finished`.
+- `hold` and `defer` follow the same ownership-first rule, so a caller who does
+  not own the session never marks its key held or fills its defer cap. A
+  `defer` over its cap is refused through `accepted` / `finished`.
 - The policy is read only from the flow's declaration (the entry's
   `concurrency`, else `request.concurrency`), found through the trusted
   `source`. Nothing in the body, `metadata` or headers selects it (BP-031).
@@ -295,7 +302,7 @@ inherits it at the one shared seam. The arbiter resolves the effective policy
   a `defer`, whose worker claims the key with `take({ ifEmpty: true })` and
   requeues on `planDeferWait`'s schedule until it is free, lining up behind
   the key's places once its patience is spent. The same `planDeferWait` drives
-  the arbiter's in-process wait. The dispatching process counts a handed-off
+  the arbiter's in-process wait. The dispatching process counts a dispatched
   `defer` against its cap until the job's `finished` settles
   (`ConcurrencyAdmission.handOff(jobEnded)`).
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,

@@ -53,7 +53,7 @@ import {
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { assertHandOffBlockSupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { assertDispatchEntrySupported, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import {
   conversationLedgers,
@@ -163,7 +163,7 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
   // `workerTaskEntry` keeps the turn's skill state on the session, which lets
   // a harness through that would. Refused here, at startup, naming the entry.
   for (const manager of [implement, answer]) {
-    assertHandOffBlockSupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
+    assertDispatchEntrySupported({ name: CODER_FLOW, target: WORKER_TASK_ENTRY, block: manager });
   }
 
   const byTask = router({

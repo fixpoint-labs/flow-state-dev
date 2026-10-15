@@ -129,7 +129,7 @@ To run on a free-tier model instead, override the executor with an OpenRouter mo
 
 ```bash
 fsdev benchmark ./benchmark.ts \
-  --model openrouter/meta-llama/llama-3.1-70b-instruct
+  --model openrouter:meta-llama/llama-3.1-70b-instruct
 ```
 
 ## Comparing across models

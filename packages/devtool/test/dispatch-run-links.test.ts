@@ -28,7 +28,7 @@ import type {
   TaskStreamItem,
 } from "../src/react/lib/task-collection-state";
 
-/** The key a `per-task` assignee's hand-off runs `taskId` under, as the writer spells it. */
+/** The key a `per-task` assignee's dispatch runs `taskId` under, as the writer spells it. */
 function perTaskKey(boardId: string, taskId: string): string {
   return taskSessionKeyFor(
     "board",
@@ -38,7 +38,7 @@ function perTaskKey(boardId: string, taskId: string): string {
   );
 }
 
-/** The key a `per-worker` assignee's hand-off runs every one of its rows under. */
+/** The key a `per-worker` assignee's dispatch runs every one of its rows under. */
 function perWorkerKey(boardId: string, assignee: string): string {
   return taskSessionKeyFor(
     "board",

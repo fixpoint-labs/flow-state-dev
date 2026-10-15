@@ -322,9 +322,9 @@ describe("configured ref via dynamic uses", () => {
       name: "dyn",
       model: "intent/utility",
       prompt: "p",
-      uses: [(_ctx) => [banner.config({ note: "x" })]],
+      uses: [() => [banner.config({ note: "x" })]],
     });
-    const context = (gen.config as { context: Array<(i: unknown, c: unknown) => unknown> }).context;
+    const context = (gen.config as unknown as { context: Array<(i: unknown, c: unknown) => unknown> }).context;
     const dynamicResolver = context[context.length - 1];
     await expect(dynamicResolver({}, {} as never)).rejects.toThrow(
       /Capability "banner" declares open config but was reached through a dynamic/,

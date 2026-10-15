@@ -1372,9 +1372,9 @@ describe("claudeCodeAgent", () => {
 });
 
 /**
- * `detached: true` — the mode that runs the block as handed-off background work.
+ * `detached: true` — the mode that runs the block as dispatched background work.
  *
- * `defineFlow` refuses a handed-off entry whose block (or any block under it)
+ * `defineFlow` refuses a dispatched entry whose block (or any block under it)
  * authors a `sessionStateSchema`, because the block runs in a child session it
  * may share with other rows. A background job is one run in one child session,
  * so the conversation state this block keeps — a resume handle and a run log —

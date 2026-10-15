@@ -104,10 +104,11 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
-- `"handed-off"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a [assignee that hands off](#assignees-that-hand-off) reports it, and `counts.in_progress` is how many are still running.
-- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
+- `"dispatched"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
+  Older logs report `"handed-off"` for the same thing.
+- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"dispatched"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
-Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a hand-off: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
+Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
 
 ```ts
 // On the final task-board-meta item:
@@ -117,7 +118,7 @@ Order matters when a board ends up in more than one of these states at once. `"b
     collectionId: "echo",
     status: "completed",
     terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
-                                          //  | "handed-off" | "parked-for-review"
+                                          //  | "dispatched" | "parked-for-review"
     maxTotalRetries: 50,
     counts: {
       total: 2,
@@ -134,7 +135,7 @@ Order matters when a board ends up in more than one of these states at once. `"b
 }
 ```
 
-The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other three are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, `"handed-off"` only when every outstanding task is one a dispatch run is holding, and `"parked-for-review"` only when the board stopped because it was told not to wait on a review.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other three are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, `"dispatched"` only when every outstanding task is one a dispatch run is holding, and `"parked-for-review"` only when the board stopped because it was told not to wait on a review.
 
 ### `"complete"`
 
@@ -311,15 +312,17 @@ There is no `defaultWorker` unless you pass one.
 
 The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `addTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
 
-A registry assignee can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that hand off](#assignees-that-hand-off).
+A registry assignee can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
 
-## Assignees that hand off
+## Assignees that dispatch {#assignees-that-dispatch}
 
-An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. An assignee can instead hand each claimed row off to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+<a id="assignees-that-hand-off"></a>
+
+An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. An assignee can instead **dispatch** each claimed row to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
 A dispatch run is an ordinary session — of this flow, or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
-An assignee hands off when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. A board can mix assignees that hand off with assignees that run inline:
+An assignee dispatches when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. A board can mix assignees that dispatch with assignees that run inline:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -340,8 +343,8 @@ const board = taskBoard({
   collection: issues,
   workers: {
     triage: triageBlock,                 // runs inline, in the drain
-    implement: dispatcher({              // hands off to flow.task.actions.implement
-      name: "hand-off-implement",
+    implement: dispatcher({              // dispatches to flow.task.actions.implement
+      name: "dispatch-implement",
       action: "implement",
       session: "per-task",
     }),
@@ -361,6 +364,8 @@ export default defineFlow({
 
 `implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the assignee is the only way in.
 
+The drain dispatches a row once it has claimed it. A board run by a drain has no `dispatchTask` tool, because the drain decides when each task runs. For a worker that needs another worker to start now, see [Giving another worker work](#giving-another-worker-work).
+
 ### Which session a task runs in
 
 `session` on the dispatcher decides, per row:
@@ -378,24 +383,24 @@ The two presets fold `boardId` into the key, so two boards' `per-task` runs stay
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 
 implement: dispatcher({
-  name: "hand-off-implement",
+  name: "dispatch-implement",
   action: "implement",
   session: { key: (task: TaskWorkerInput) => (task.input as { issueKey: string }).issueKey },
 }),
 ```
 
-When the flow an assignee hands off to needs state in each new session, such as a required readonly field, give the dispatcher a `state` beside `session`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. It works with every `session` policy, the presets included. Each new run is created with it, and the target flow's [`stateSchema` and `createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept or refuse it. A run that already exists keeps its own state. Without one, a flow that needs it refuses every new run, and the task fails with `create-refused`.
+When the flow an assignee dispatches to needs state in each new session, such as a required readonly field, give the dispatcher a `state` beside `session`: a fixed object, or `(task) => object`, which receives the row's `assignee`, `taskId` and `input`. It works with every `session` policy, the presets included. Each new run is created with it, and the target flow's [`stateSchema` and `createCheck`](../fundamentals/state-and-scopes.md#creating-sessions) accept or refuse it. A run that already exists keeps its own state. Without one, a flow that needs it refuses every new run, and the task fails with `create-refused`.
 
 ```ts
 implement: dispatcher({
-  name: "hand-off-implement",
+  name: "dispatch-implement",
   action: "implement",
   session: "per-task",
   state: (task) => ({ issueKey: (task.input as { issueKey: string }).issueKey }),
 }),
 ```
 
-A run that handles several tasks does so under its entry's `concurrency` policy. The entry a `per-worker` or `key` assignee hands off to defaults to `"queue"`, so those tasks run one at a time; a `per-task` assignee's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
+A run that handles several tasks does so under its entry's `concurrency` policy. The entry a `per-worker` or `key` assignee dispatches to defaults to `"queue"`, so those tasks run one at a time; a `per-task` assignee's entry keeps the flow's default. An explicit `concurrency` on the entry wins:
 
 ```ts
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
@@ -405,7 +410,7 @@ The in-process dispatcher applies that policy, and so do queue workers that shar
 
 A task keeps its session for its whole life. If its worker [parks it on a question](#when-a-task-stops-on-a-question), the answer brings it back to that same session as its next message, so it carries on with everything it did before. When the task is done, the session stays open. To pick the same task up again, [`reopen`](./task-substrate.md#putting-a-finished-task-back-in-the-queue) it: it goes back in the queue under its own id, and when the board next drains, its next attempt carries `reopened: true` and runs in the same session. On a Workforce conversation's board, a message to the task's worker in that session [does this for you](../workforce/coordinators.md#after-a-task-finishes).
 
-To file new work on a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee hands off `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by.
+To file new work on a finished task, add a follow-up task with `followUpOf`. A follow-up runs in the same session when the assignee dispatches `per-task` or the task is on a Workforce conversation's board. A `key` policy decides for itself, and the worker input carries `followUpOf` for it to key by.
 
 ### Sending a task to a flow chosen per task
 
@@ -426,10 +431,10 @@ const board = taskBoard({
   boardId: "support-work",
   collection: supportWork,                 // a defineTaskCollection()
   workers: {
-    triage: dispatcher({ name: "hand-off-triage", flowKind: "support-triage", action: "work", session: "per-task" }),
+    triage: dispatcher({ name: "dispatch-triage", flowKind: "support-triage", action: "work", session: "per-task" }),
   },
   defaultWorker: dispatcher({
-    name: "hand-off-by-assignee",
+    name: "dispatch-by-assignee",
     action: "work",
     session: "per-task",
     flowKind: (task: TaskTargetQuery, ctx: BlockContext) => findFlowFor(task.assignee, ctx),
@@ -455,7 +460,7 @@ const filed = (task: TaskTargetQuery) =>
   (task.input as TaskWorkerInput).input as { reply?: boolean; sessionId?: string };
 
 assistant: dispatcher({
-  name: "hand-off-assistant",
+  name: "dispatch-assistant",
   action: {
     among: ["work", "reply"],
     by: (task) => (filed(task).reply ? "reply" : "work"),
@@ -471,7 +476,7 @@ assistant: dispatcher({
 
 Every name in `among` is checked when the flow is defined, exactly as a single `action` is, so each one must be declared under `task.actions`. A `by` that returns a name outside `among` fails that task with `refused: "no-entry"` before anything is sent.
 
-A session picked by `{ id }` is never created. If it doesn't exist, belongs to someone else, or belongs to another flow, the task fails with `session-not-found` or `session-not-addressable`, the same refusals a dispatcher's `{ id }` gets anywhere else. The session keeps its own state, so the dispatcher's `state` applies only to tasks answered with `{ key }`. An answer that isn't exactly one non-empty `key` or `id` fails the task. As with `per-worker` and `{ key }`, the entries a `{ by }` assignee hands off to default to `"queue"` concurrency, since several tasks can land in one session.
+A session picked by `{ id }` is never created. If it doesn't exist, belongs to someone else, or belongs to another flow, the task fails with `session-not-found` or `session-not-addressable`, the same refusals a dispatcher's `{ id }` gets anywhere else. The session keeps its own state, so the dispatcher's `state` applies only to tasks answered with `{ key }`. An answer that isn't exactly one non-empty `key` or `id` fails the task. As with `per-worker` and `{ key }`, the entries a `{ by }` assignee dispatches to default to `"queue"` concurrency, since several tasks can land in one session.
 
 ### A task entry served by many boards
 
@@ -507,36 +512,36 @@ export const reviewer = defineFlow({
 })();
 ```
 
-The ledger id is the `boardId` the sending board hands off under. So a board sending into a `from` entry sets `boardId` to its ledger's id, which is what `resolve` looks up.
+The ledger id is the `boardId` the sending board dispatches under. So a board sending into a `from` entry sets `boardId` to its ledger's id, which is what `resolve` looks up.
 
 Each arriving task gets the same checks a board's own entry runs: same attempt, same row, still `in_progress`, still for this assignee. A ledger id `resolve` doesn't answer for is refused before any row is read, with an `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`) naming the entry, the task and the ledger. The id travels with the dispatch, so treat it as untrusted: answer from `ctx`, for ledgers the running request may read, never from a map of every ledger in the process.
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
-An entry with `from` that a board in the same flow also hands off to is refused when the flow is defined. Declare a separate entry for that board.
+An entry with `from` that a board in the same flow also dispatches to is refused when the flow is defined. Declare a separate entry for that board.
 
 ### What the board requires
 
-`taskBoard()` throws, naming the board and the assignee, unless all of these hold for a board with any assignee that hands off:
+`taskBoard()` throws, naming the board and the assignee, unless all of these hold for a board with any assignee that dispatches:
 
 - **`boardId` is set.** It is part of every dispatch run's session identity, so renaming it orphans work already in flight.
 - **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the run settles its row after the request that claimed it is gone.
-- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its assignees hand off within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
+- **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its assignees dispatch within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
 - **The dispatcher is a named registry entry or `defaultWorker`.** A uniform `workers` block has no assignee to route by, so it can't be a dispatcher. `defaultWorker` can: it hands each task over under the assignee the task names.
 
-`defineFlow()` throws for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board hands off to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards handing off to the same entry, for an entry with `from` that a board in the same flow also hands off to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a handed-off worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
+`defineFlow()` throws for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board dispatches to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards dispatching to the same entry, for an entry with `from` that a board in the same flow also dispatches to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a dispatched worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
 
-A board that hands tasks off fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or blocked task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
+A board that dispatches tasks fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or blocked task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
 
 ### What the drain reports
 
-`board.handedOff` lists the dispatcher assignees in declaration order, each with its `name`, `kind` (`"named"`), `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name`, kind `"floor"` and the label `floor`. Branch on `kind`; `label` is for messages. The list is empty on a board with no dispatcher.
+`board.dispatchers` lists the dispatcher assignees in declaration order, each with its `name`, `kind` (`"named"`), `label` (`assignee:<name>`), and `dispatch` address. A `defaultWorker` dispatcher comes last, with an empty `name`, kind `"floor"` and the label `floor`. Branch on `kind`; `label` is for messages. The list is empty on a board with no dispatcher.
 
-The drain's final `task-board-meta` item reports `terminationReason: "handed-off"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
+The drain's final `task-board-meta` item reports `terminationReason: "dispatched"` when every outstanding task is running in a dispatch run, with `counts.in_progress` saying how many. The drain returned; the work did not finish. See [Termination](#termination-onidle-modes).
 
-The hand-off block itself returns `{ handedOff: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the run and `requestId` the request the dispatch became. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path, with the same `DispatchRefusedError` a `dispatcher()` block throws, so a `.rescue()` can read its `refused` code either way.
+The dispatch block itself returns `{ dispatched: true, taskId, sessionId, requestId, adopted }`, where `sessionId` is the run and `requestId` the request the dispatch became. The task's worker input has to survive a JSON round-trip; a payload carrying a `Date`, a `Map`, a class instance, or `undefined` in object position fails the task in the drain, naming the offending path. A refused dispatch fails the task through the board's ordinary error path, with the same `DispatchRefusedError` a `dispatcher()` block throws, so a `.rescue()` can read its `refused` code either way.
 
-Don't read `sessionId` as an id for this hand-off. `requestId` is the one value that is always one per dispatch. `sessionId` is the run, which is shared under `per-worker` and a shared `{ key }`; even under `per-task` it identifies the row rather than the dispatch, so a retry of that row re-enters the same session. `adopted` is how you tell the two apart: `false` when the dispatch created the session, `true` when it re-entered one that already existed.
+Don't read `sessionId` as an id for this dispatch. `requestId` is the one value that is always one per dispatch. `sessionId` is the run, which is shared under `per-worker` and a shared `{ key }`; even under `per-task` it identifies the row rather than the dispatch, so a retry of that row re-enters the same session. `adopted` is how you tell the two apart: `false` when the dispatch created the session, `true` when it re-entered one that already existed.
 
 When the dispatch arrives, the run re-reads the row and runs the worker only if the claim is still current: same attempt, same row, still `in_progress`, still routed to this assignee. Otherwise it throws `StaleTaskClaimError` (`code: "stale-task-claim"`) and writes nothing, so the row is left exactly as it was. If the row is still `in_progress`, whether a newer attempt, another assignee, or a row recreated under the same id holds it, that claim runs until its lease runs out and the next drain reclaims it. A row that was deleted, or is already settled or parked, has no outstanding claim, so there is nothing to reclaim.
 
@@ -546,7 +551,7 @@ The board's `onError` reaches the run. `"skip"` settles the row with the error a
 
 ### Which run is working a task
 
-A run is the session a handed-off task executes in. When that run starts, it writes itself onto the task. The row gains a `run` field naming the session the work is running in, the request, and the attempt:
+A run is the session a dispatched task executes in. When that run starts, it writes itself onto the task. The row gains a `run` field naming the session the work is running in, the request, and the attempt:
 
 ```ts
 // `collection` is the board's TaskCollectionRef
@@ -573,7 +578,7 @@ The `run_linked` change is published on the run's own session, like everything e
 
 The field is written just before the worker's first step. If the write is refused, because the claim moved on in the meantime, the run stops with `StaleTaskClaimError` as it would for any stale claim. If the store fails, the run stops before the worker starts and the board hands the row out again later. If the run fails after `run` was written but before the worker starts, `run` stays: it names the run that stopped, and that run's request carries the error. Under `onError: "fail"` the request reads failed; under `"skip"` it completes with the error as its output.
 
-`run` lasts until the task is next claimed. A completed, failed or cancelled task keeps the run that last worked it, so you can open that session and see what happened. The claim that starts the next attempt clears it, so between a hand-off and the new run's start the task has no `run`.
+`run` lasts until the task is next claimed. A completed, failed or cancelled task keeps the run that last worked it, so you can open that session and see what happened. The claim that starts the next attempt clears it, so between a dispatch and the new run's start the task has no `run`.
 
 Read it as "which run", not "is it running". Whether work is live is the task's `status` and the run's request. Rows stored before this field existed have no `run`; treat that the same as a task whose run hasn't started. Tasks whose worker runs inline, in the drain itself, never get one.
 
@@ -632,7 +637,7 @@ when its task ends and sits out its whole `timeoutMs`.
 
 | Input | |
 |---|---|
-| `goal`, `assignee`, `deps`, `priority`, `input`, `metadata`, `followUpOf` | A new task, exactly as for `addTask`, and refused the same way |
+| `goal`, `title`, `assignee`, `deps`, `priority`, `input`, `metadata`, `followUpOf` | A new task, exactly as for `addTask`, and refused the same way. `title` is a short, non-empty label shown where the task is listed; `listTasks` answers it when a task has one |
 | `taskId` | A task you recorded earlier on this board, instead of a new one. It must not have started |
 | `wait` | `true` to wait for the result |
 | `timeoutMs` | How long to wait: 30 000 to 3 600 000, five minutes by default. Only with `wait` |
@@ -661,7 +666,7 @@ apply. When it ends, the waiting turn continues with the answer, and the convers
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.
 
-**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`. Nothing is filed. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`.
+**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`. Nothing is filed. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`. {/* retired-name-refusal: migration note */}
 
 ## Concurrency and error handling
 
@@ -671,7 +676,7 @@ waits.
 - `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
-`onError` reaches a [assignee that hands off](#assignees-that-hand-off) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
+`onError` reaches an [assignee that dispatches](#assignees-that-dispatch) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 
@@ -713,7 +718,7 @@ Then the board run fails, after every other task has finished. `onError: "skip"`
 
 A row the board is unsure about is handed back rather than left claimed, so it settles or returns to the queue on the same pass instead of waiting out its lease.
 
-On a [assignee that hands off](#assignees-that-hand-off) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
+On an [assignee that dispatches](#assignees-that-dispatch) there is no batch to drain and no board run to defer to, so the failure fails the dispatch run itself — again regardless of `onError`.
 
 Nothing retries a failed announcement. The item and that failure are the whole of what the board does about it.
 
@@ -890,7 +895,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 ## Changing tasks from outside a run
 
-Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the nine task tools a model can hold, as actions any caller of the flow can run:
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the ten task tools a model can hold, as actions any caller of the flow can run:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -909,7 +914,7 @@ defineFlow({
 });
 ```
 
-The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos`, `listTasks_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos`, `listTasks_todos`, `readTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
 
 Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. An `addTask`, `assignTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
 
@@ -920,6 +925,8 @@ The board needs a collection that outlives a request, built with `defineTaskColl
 These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers the ones that take a `taskId` on each row.
 
 Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
+
+`readTask` returns one task whole: its goal and input, its status, and what it came back with, meaning its `output`, its `error`, or the `question` it is parked on. An `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `outputCut: true`. A `taskId` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 ## When a task stops on a question
 
@@ -1011,7 +1018,7 @@ const work = defineTaskCollection({
 });
 ```
 
-Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board hands a row off, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
+Rows are stored at the user's scope, under the partition the running session's function returns. A board resolved in one session reads, claims, waits on and settles only its own partition, and so do its task tools and its `taskToolActions`. When the board dispatches a row, the dispatch carries the partition, and the task entry on the other flow reads its one row there, with every check a board's own entry runs.
 
 On the receiving flow, declare the same collection and serve the task entry with [`taskLedgers`](#a-task-entry-served-by-many-boards). Its `resolve` gets the partition as a third argument; resolve the ledger at it:
 

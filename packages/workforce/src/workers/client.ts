@@ -11,6 +11,7 @@
  */
 import {
   ClientHttpError,
+  createClient,
   createResourceClient,
   createSessionClient,
   readEveryCollectionPage,
@@ -26,6 +27,8 @@ import {
 import { ownerSegment } from "@flow-state-dev/core/types";
 import { workstreamsAccessor, workstreamStorageKey, type WorkstreamAddress } from "../projects/workstream-ref";
 import { FILING_SESSION_STATE_KEY, ROSTER_FLOW, STANDARD_WORKERS_RESOURCE, WORKERS_RESOURCE } from "./keys";
+import { STANDING_RULES_ACTION } from "../standing-rules/keys";
+import type { StandingRulesActionInput, StandingRulesActionOutput } from "../standing-rules/rules-action";
 
 /** The transport options `createSessionClient` takes, plus the user the client acts for. */
 export type WorkforceClientOptions = {
@@ -59,10 +62,13 @@ export interface WorkforceClient {
    */
   roster(): Promise<RosterEntry[]>;
   /**
-   * The user's most recent session with the worker the criteria name, on the
-   * worker's current flow, or `undefined` when there is none. Matches on the
-   * criteria's keys: a session that carries a criteria key the call doesn't
-   * name is not returned. With `workstreamId`, the one session the user's
+   * The user's session with the worker the criteria name, on the worker's
+   * current flow, or `undefined` when there is none. With `worker` alone, or
+   * with `projectId`, that is the session at the derived address
+   * {@link ensureWorkerSession} creates, where another worker's message
+   * lands: a session the user opened at any other id is not returned.
+   * Otherwise the most recent match on the criteria's keys: a session that
+   * carries a criteria key the call doesn't name is not returned. With `workstreamId`, the one session the user's
    * entry for that workstream names, or `undefined` while it names none.
    * Throws when the worker isn't on the user's roster.
    */
@@ -81,6 +87,13 @@ export interface WorkforceClient {
    * user's roster.
    */
   ensureWorkerSession(criteria: WorkerSessionCriteria): Promise<SessionSummary>;
+  /**
+   * Read or edit the user's standing rules with `worker`, in that user's
+   * session with the worker. The worker's flow must declare the rules action
+   * (its inventory row says `rules: true`). A refused write rejects with the
+   * reason and stores nothing.
+   */
+  standingRules(worker: string, input: StandingRulesActionInput): Promise<StandingRulesActionOutput>;
 }
 
 function stateOf(session: SessionSummary): Record<string, unknown> {
@@ -91,6 +104,10 @@ function stateOf(session: SessionSummary): Record<string, unknown> {
 function mostRecent<T extends { updatedAt: number; createdAt: number }>(rows: readonly T[]): T | undefined {
   return [...rows].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0];
 }
+
+/** How often an action run through the client checks whether its request ended, and how long it waits. */
+const ACTION_POLL_MS = 100;
+const ACTION_TIMEOUT_MS = 30_000;
 
 /**
  * Build a workforce client.
@@ -170,28 +187,44 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return typeof sessionId === "string" ? sessionId : null;
   };
 
+  /**
+   * Whether the criteria name a session the client opens itself: a worker's
+   * own conversation, or a project coordinator's for one project. Those live
+   * at one derived address, the one a worker's message lands in (FIX-1989).
+   */
+  const derivable = (criteria: WorkerSessionCriteria): boolean =>
+    criteria.taskId === undefined && criteria.filingSessionId === undefined && criteria.workstreamId === undefined;
+
+  /**
+   * The session at the criteria's derived address, or `undefined` while there
+   * is none. Found in the listing by its id rather than read by it, so an
+   * absent conversation is an empty answer, not a 404 a page logs.
+   */
+  const atDerived = async (criteria: WorkerSessionCriteria, flow: string, orgId: string): Promise<SessionSummary | undefined> => {
+    const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
+    const rows = await sessions.listSessions({ flowKind: flow, userId, state: criteriaState(criteria) });
+    return rows.find((row) => row.id === sessionId);
+  };
+
   const find = async (
     criteria: WorkerSessionCriteria,
     flow: string,
-    rosterId: string
+    rosterId: string,
+    orgId: string
   ): Promise<SessionSummary | undefined> => {
+    // A conversation opened at another id (a random one, from before the
+    // derived address) stays in the session lists but is never returned.
+    if (derivable(criteria)) return atDerived(criteria, flow, orgId);
     const filter = criteriaState(criteria);
     const named = new Set(Object.keys(filter));
     const rows = await sessions.listSessions({
       flowKind: flow,
       userId,
       state: filter,
-      // A coordinator's delivery opens its delegate's session as a dispatch run
-      // of the conversation, a workstream's open opens its lead's session as
-      // a dispatch run of the session that opened it, and a conversation's
-      // board opens a task's session as a dispatch run of the conversation, so
-      // a lookup for any of them includes those. A lookup that names none
-      // keeps to the sessions a user started.
-      ...(criteria.filingSessionId === undefined &&
-      criteria.workstreamId === undefined &&
-      criteria.taskId === undefined
-        ? {}
-        : { include: "dispatch-runs" as const })
+      // A coordinator's delegate session, a workstream's lead and a task's
+      // session are each a dispatch run of the session that opened it. A
+      // lookup naming none of those returned at the derived address above.
+      include: "dispatch-runs"
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
@@ -208,18 +241,37 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return leadSession === null ? undefined : matching.find((row) => row.id === leadSession);
   };
 
-  return {
+  /** Run one action in `sessionId` on `flow` and return its output, or reject with the reason it failed. */
+  const runIn = async (flow: string, sessionId: string, action: string, input: unknown): Promise<unknown> => {
+    const actions = createClient({ flowKind: flow, userId, ...transport });
+    const started = await actions.sendAction(action, input, { sessionId });
+    const requestId = started.request.id;
+    const until = Date.now() + ACTION_TIMEOUT_MS;
+    let status: Awaited<ReturnType<typeof actions.getRequestStatus>>["status"] = started.status;
+    while (status === "in_progress") {
+      if (Date.now() > until) throw new Error(`${action} did not finish in time.`);
+      await new Promise((resolve) => setTimeout(resolve, ACTION_POLL_MS));
+      status = (await actions.getRequestStatus(requestId)).status;
+    }
+    const listed = await sessions.listSessionRequests(sessionId, { status, includeResultOutput: true, limit: 100 });
+    const found = listed.find((request) => request.id === requestId);
+    if (status !== "completed") throw new Error(found?.result?.error?.message ?? `${action} ended ${status}.`);
+    if (found === undefined) throw new Error(`${action} finished, but its answer could not be read.`);
+    return found.result?.output;
+  };
+
+  const client: WorkforceClient = {
     roster: async () => readRoster((await roster()).id),
     findWorkerSession: async (criteria) => {
-      const { id } = await roster();
-      return find(criteria, flowOf(await readRoster(id), criteria.worker), id);
+      const { id, orgId } = await roster();
+      return find(criteria, flowOf(await readRoster(id), criteria.worker), id, orgId);
     },
     ensureWorkerSession: async (criteria) => {
       // One roster read per call, and the roster session's organization from
       // the same lookup.
       const { id, orgId } = await roster();
       const flow = flowOf(await readRoster(id), criteria.worker);
-      const existing = await find(criteria, flow, id);
+      const existing = await find(criteria, flow, id, orgId);
       if (existing !== undefined) return existing;
       if (criteria.taskId !== undefined) {
         // Only the hand-over opens a task's session: it is a child of the
@@ -263,6 +315,12 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
         if (error instanceof ClientHttpError && error.status === 409) return sessions.getSession(sessionId);
         throw error;
       }
+    },
+    standingRules: async (worker, input) => {
+      const session = await client.ensureWorkerSession({ worker });
+      const flow = flowOf(await readRoster((await roster()).id), worker);
+      return (await runIn(flow, session.id, STANDING_RULES_ACTION, input)) as StandingRulesActionOutput;
     }
   };
+  return client;
 }

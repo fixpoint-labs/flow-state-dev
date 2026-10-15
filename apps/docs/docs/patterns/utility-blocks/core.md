@@ -380,7 +380,7 @@ export const planProject = sequencer({
 
 **Common use cases:**
 - Daily standup digests for stakeholders
-- Conversation recaps before handoff between agents
+- Conversation recaps before one agent passes a conversation to another
 - Document previews in search results
 - Executive briefings from detailed technical reports
 

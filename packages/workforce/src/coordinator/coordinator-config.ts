@@ -33,6 +33,17 @@ export const COORDINATOR_ROUTING = ["judgment", "best-fit", "round-robin", "ever
 export type CoordinatorRouting = (typeof COORDINATOR_ROUTING)[number];
 
 /**
+ * Whether a coordinator on `routing` runs a turn of its own on what reaches
+ * it: judgment always does, and best fit does when it picks the coordinator
+ * or misses. Round robin and everyone hand every line to delegates and never
+ * run it. A routing this doesn't know is read as the default, judgment.
+ */
+export function coordinatorRunsOwnTurn(routing: unknown): boolean {
+  const known = (COORDINATOR_ROUTING as readonly unknown[]).includes(routing) ? (routing as CoordinatorRouting) : "judgment";
+  return known === "judgment" || known === "best-fit";
+}
+
+/**
  * A coordinator's configuration schema: the settings of the turn it runs plus
  * its own. On the `coordinator` flow the base is the built-in agent's settings
  * (its model, tools, skills and capabilities), since its judgment is the

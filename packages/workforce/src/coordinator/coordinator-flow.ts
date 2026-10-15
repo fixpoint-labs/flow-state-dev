@@ -102,6 +102,8 @@ import {
   type BestFitPlacement
 } from "../best-fit";
 import { agentWorkerTurn, type AgentWorkerFlowOptions } from "../agent-worker-flow";
+import { markUserTurn, userTurnStateSchema } from "../standing-rules/user-turn";
+import { STANDING_RULES_ACTION, standingRulesAction } from "../standing-rules/rules-action";
 import { filingSessionIdOf } from "../conversation-board/filing-session";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
 import {
@@ -113,7 +115,7 @@ import {
 import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
 import { conversationLedgerAt } from "../conversation-board/ledger";
 import { sendOwedNotices } from "../conversation-board/notice-delivery";
-import { defineSessionBoard } from "../conversation-board/session-board";
+import { defineSessionBoard, WORKER_MESSAGE_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   CONVERSATION_BOARD_SERVER_OWNED,
@@ -123,11 +125,13 @@ import {
   type PostEnding
 } from "../conversation-board/task-settled";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { reportRescuedFailure } from "../error-reporter/rescued";
 import { workerConfigOf } from "../workers/verified-worker";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
   coordinatorConfigProblems,
   coordinatorConfigSchema,
+  coordinatorRunsOwnTurn,
   type CoordinatorConfig,
   type CoordinatorRouting
 } from "./coordinator-config";
@@ -269,8 +273,8 @@ const postStateSchema = z.object({
   recent: z.array(conversationLineSchema),
   policy: z.string(),
   defaults: z.object({ delegates: z.array(z.string()), fallback: z.string().optional() }),
-  /** What each hand-off of the judgment turn came to. */
-  handOffs: z.array(routedDelegateSchema),
+  /** What each dispatch of the judgment turn came to. */
+  dispatches: z.array(routedDelegateSchema),
   /** In a round after the user's post: the answers going back out. */
   answers: z.array(roundAnswerSchema).optional(),
   /** Who they never go back to: their author, under best fit and round robin. */
@@ -283,9 +287,21 @@ const postStateSchema = z.object({
   evaluationFailed: z.string().optional()
 });
 
-type PostState = z.infer<typeof postStateSchema>;
+export type PostState = z.infer<typeof postStateSchema>;
 
 const requestStateSchema = z.object({ [POST_STATE]: postStateSchema.optional() });
+
+/**
+ * A request opened while `dispatches` had its old name, and resumed since, reads it as
+ * `dispatches` (BP-030). Request state is not parsed on read, so this is the one reader.
+ *
+ * @internal Exported for its test.
+ */
+export function withDispatches(post: PostState): PostState {
+  const { handOffs: legacy, ...rest } = post as PostState & { handOffs?: PostState["dispatches"] }; // retired-name-refusal: BP-030
+  if (legacy === undefined) return post;
+  return { ...rest, dispatches: rest.dispatches ?? legacy };
+}
 
 /** One delivery to make. */
 const deliveryRequestSchema = z.object({
@@ -564,7 +580,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const post = (ctx.request.state as Record<string, unknown>)[POST_STATE] as PostState | undefined;
     if (post === undefined) throw new Error("No post is being routed in this request.");
     // A request opened before posts carried their lines, and resumed since, reads as having none (BP-030).
-    return post.recent === undefined ? { ...post, recent: [] } : post;
+    return withDispatches(post.recent === undefined ? { ...post, recent: [] } : post);
   };
 
   /** A delegate record as a delivery names it: its worker, and its target when it has one. */
@@ -628,7 +644,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       }),
       policy: config.routing,
       defaults: { delegates: [...defaults.delegates], ...(defaults.fallback === undefined ? {} : { fallback: defaults.fallback }) },
-      handOffs: []
+      dispatches: []
     };
     // Below the limit, this round waits for its answers so they can go back out.
     // `beginRound` counts the routings adding to a round: under best fit or round
@@ -659,7 +675,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     inputSchema: doorInputSchema,
     outputSchema: z.object({ message: z.string(), policy: z.string() }),
     ...blockBase,
-    requestStateSchema,
+    // Declares the user-turn mark it sets, as the agent flow's marking step does.
+    requestStateSchema: requestStateSchema.merge(userTurnStateSchema),
     execute: async (input: DoorInput, ctx) => {
       const post = await postStateOf(ctx as never, {
         postId: ctx.request.identity.id,
@@ -667,6 +684,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         from: ctx.session.identity.userId ?? "",
         round: 0
       });
+      // A user's own post: the judgment turn it runs is offered the rule
+      // tools (FIX-1945 D2). A round that sends answers back out is not.
+      await markUserTurn(ctx as never);
       return { message: input.message, policy: post.policy };
     }
   });
@@ -714,7 +734,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   };
 
   /**
-   * The judgment turn's hand-off: `dispatchTask` with `post: true` (FIX-1872),
+   * The judgment turn's dispatch: `dispatchTask` with `post: true` (FIX-1872),
    * on a turn routing a post. The post comes from this request's state, never
    * from the model, which names only the delegate. What it came to is kept for
    * the turn's record, and told to the model.
@@ -736,10 +756,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       "refused" in judged
         ? { worker: call.assignee, outcome: "skipped", reason: judged.refused }
         : await deliverTo(ctx, judged);
-    await ctx.request.patchState(POST_STATE as never, ((state: PostState) => ({
-      ...state,
-      handOffs: [...state.handOffs, routed]
-    })) as never);
+    await ctx.request.patchState(POST_STATE as never, ((state: PostState) => {
+      const post = withDispatches(state);
+      return { ...post, dispatches: [...post.dispatches, routed] };
+    }) as never);
     // A refusal's reason is a sentence of its own, often with its period.
     if (routed.outcome === "delivered") {
       return { ok: true, note: `Handed to ${routed.worker}. Its answer will land in this conversation under its name.` };
@@ -755,7 +775,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * The judgment turn: the built-in agent's own turn, shared rather than
    * copied, run as this conversation's worker. It reads the worker's
    * instructions, model, tools, skills and capabilities as an `agent` worker's
-   * are read, and carries the four delegate tools, the hand-off and the eight
+   * are read, and carries the four delegate tools, the dispatch tool and the eight
    * task tools on every coordinator, whatever the worker's `tools:` line
    * grants. The task tools come from one capability instance, the
    * conversation's board's, composed by the turn once, so no skill or preset
@@ -787,7 +807,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
   /** A task handed to a coordinator worker: one turn of its own, the task as the message. */
   const taskEntry = workerTaskEntry({ name: "coordinator-task-turn", turn: turn.run });
 
-  /** The judgment turn's one record: each hand-off it made, or that it answered itself. */
+  /** The judgment turn's one record: each dispatch it made, or that it answered itself. */
   const recordJudgment = handler({
     name: "coordinator-record-judgment",
     inputSchema: z.unknown(),
@@ -798,8 +818,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       await emitCoordinatorRoute(ctx as never, {
         ...recordOf(post),
         by: "judgment",
-        delegates: post.handOffs,
-        ...(post.handOffs.some((handOff) => handOff.outcome === "delivered")
+        delegates: post.dispatches,
+        ...(post.dispatches.some((dispatch) => dispatch.outcome === "delivered")
           ? {}
           : { none: "the coordinator handed it to no delegate" }),
         ...(post.fit === undefined ? {} : { fit: post.fit })
@@ -1100,6 +1120,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         delegates: [],
         none: why,
         ...(post.fit === undefined ? {} : { fit: post.fit })
+      });
+      // The request completes on this answer, so no final failure is sent for it: the crash is reported here.
+      await reportRescuedFailure(ctx as never, {
+        flowKind: COORDINATOR_FLOW,
+        actionName: post.round === 0 ? "run" : ROUTE_ON_ACTION,
+        blockName: COORDINATOR_JUDGMENT,
+        error
       });
       // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
@@ -1572,7 +1599,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     turn.run,
     (ctx) => {
       const { routing } = workerConfigOf(ctx) as unknown as CoordinatorConfig;
-      return routing === "judgment" || routing === "best-fit" ? "judgment" : "fixed";
+      return coordinatorRunsOwnTurn(routing) ? "judgment" : "fixed";
     },
     onPostEnded
   );
@@ -1585,8 +1612,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
     session: {
-      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED],
+      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
+      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED, ...WORKER_MESSAGE_SERVER_OWNED],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }
@@ -1604,7 +1631,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         block: door,
         userMessage: (input: DoorInput) => input.message,
         concurrency: REPLY_CONCURRENCY
-      }
+      },
+      [STANDING_RULES_ACTION]: standingRulesAction
     },
     internal: {
       actions: {

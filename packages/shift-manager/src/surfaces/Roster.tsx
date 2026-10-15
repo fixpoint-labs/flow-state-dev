@@ -16,7 +16,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
-import { chiefOfStaffOf, pickedTeam, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
+import { chiefOfStaffOf, pickedTeam, workerLabel, workerStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type WorkerState, type ShiftStatus } from "../lib/derive";
 import { readStatus } from "../lib/columns";
 import { themeLabel, type ThemeLook } from "../lib/theme";
 import { useLab } from "../lib/lab-data";
@@ -77,7 +77,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
     >
       <div className="min-w-0">
         <p className="flex items-baseline gap-2">
-          <span className="font-medium">{worker.name}</span>
+          <span className="font-medium">{workerLabel(worker.name)}</span>
           <span className="text-xs text-muted-foreground">{worker.team}</span>
           {own ? (
             <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
@@ -92,6 +92,14 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
             —
           </span>
         </p>
+        <button
+          type="button"
+          onClick={() => navigate({ level: "worker-settings", worker: worker.id })}
+          className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
+          data-testid="roster-worker-settings"
+        >
+          Settings
+        </button>
       </div>
       <div className="space-y-1 pt-0.5">
         <span className="flex gap-0.5">
@@ -139,7 +147,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
         {asks.map((ask) => (
-          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.message ?? "waiting on you"} />
+          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.title || ask.item.message || "waiting on you"} />
         ))}
       </ul>
     </li>

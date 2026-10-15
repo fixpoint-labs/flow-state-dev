@@ -111,13 +111,13 @@ Pass a flow under a key that is not its own `kind` and it is refused. [Workers o
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `createWorkerInstallation` and `hireWorkforce` from `@flow-state-dev/workforce`.
 
-## Projects and the chief of staff
+## Projects and the Shift Coordinator
 
 A **project** is a body of work, private to you or shared with your organization. It's a row your app creates while it runs, not a file.
 
 A **workstream** is one area of a project with one owner: an entry on the project that everyone who reads the project can see, and a lasting session of one of the owner's workers that does the work. Each user talks to a project through their own project coordinator, which hands work only to their own workstreams. See [Projects](./projects).
 
-The **chief of staff** is an org-level worker a user asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the user who asks. A Lab that doesn't declare one doesn't have one. See [The chief of staff](./chief-of-staff).
+The **Shift Coordinator** is an org-level worker a user asks about the organization, such as who works here. Ask it for another worker and it hires one of your own. Ask it for one fewer and it puts the fire in front of you, and nothing is removed until you approve. Given the project tools, it also starts projects for the user who asks. A Lab that doesn't declare one doesn't have one. See [The Shift Coordinator](./shift-coordinator).
 
 ## Giving a task to a worker
 
@@ -194,6 +194,7 @@ Actions run as the user and organization your resolver returns; the client's `us
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, `hireWorkforce`, and talking to a worker.
 - [The built-in worker](./built-in-worker) — the `agent` worker flow a record with no `flow:` runs on: its settings, tools, skills, and memory.
+- [Standing rules](./standing-rules) — notes a user asks a worker to keep, followed on every turn with that user.
 - [Documents on disk](./documents-on-disk) — a team's shared reference material as Markdown, installed as resources.
 - [Code on disk](./code-on-disk) — your own flows, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
@@ -202,7 +203,8 @@ Actions run as the user and organization your resolver returns; the client's `us
 - [Projects](./projects) — private or shared, with workstreams that each have one owner.
 - [Inventory](./inventory) — a record of every worker registered in an organization, readable by a block.
 - [Hiring and forking](./durable-hire) — a user's own workers, hired, forked and fired while the app runs.
-- [The chief of staff](./chief-of-staff) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
+- [The Shift Coordinator](./shift-coordinator) — the one worker a user asks to hire or fire workers of their own, with a fire waiting for their approval.
+- [The Error Reporter](./error-reporter) — a worker that turns each failure that stayed failed, or a problem a user describes, into one bug report the operator previews before it is filed.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

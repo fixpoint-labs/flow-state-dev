@@ -455,6 +455,14 @@ export function createInboundTransportHost(
   // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
   const arbitratesExternalDispatch = isExternalDispatcher && arbiter.arbitratesAcrossProcesses;
+  /**
+   * Per concurrency key, the turn of the latest dispatch to take a place there
+   * after its ownership check. A dispatch waits for the one before it on its
+   * key to take its place (or be refused, or fail ownership) before taking
+   * its own, so places are taken in dispatch order however long each
+   * ownership read takes. Removed when the last turn on a key passes.
+   */
+  const admissionTurns = new Map<string, Promise<void>>();
 
   /**
    * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
@@ -757,13 +765,11 @@ export function createInboundTransportHost(
     // SSE client gets an open stream while queued. External dispatch without a
     // shared backend skips arbitration (no key, nothing taken).
     //
-    // WHEN the place is taken depends on the backend. Over the in-memory
-    // default it is taken here, synchronously, before any record or stream
-    // exists, so a `reject` is still thrown from `dispatch`. Over a shared
-    // backend it is taken only once `admitOwnership` has passed (BP-031): a
-    // caller that does not own the session or request id must not hold, or
-    // stand in line on, its key, where every process would honour the place.
-    // That refusal, and the backend's own errors, arrive through `accepted`.
+    // The place is taken only once `admitOwnership` has passed, on every
+    // backend (BP-031): a non-owner must not hold or stand in line on the
+    // key for that read. A `reject` refusal, and a shared backend's own
+    // errors, arrive through `accepted` / `finished`, never as a throw
+    // from `dispatch`.
     //
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
@@ -771,13 +777,7 @@ export function createInboundTransportHost(
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    // `hold` and `defer` take their place only once ownership has passed, on
-    // every backend. Neither is refused synchronously (a `defer` over its cap
-    // is refused through the handle), so nothing is lost by waiting, and a
-    // caller who does not own the session never marks its key held or uses
-    // up its defer cap, not even for the moment before the refusal (BP-031).
-    const admitsAfterOwnership =
-      arbiter.arbitratesAcrossProcesses || decision.policy === "hold" || decision.policy === "defer";
+    const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
     const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its
     // run, every failure gives it back: the synchronous setup is wrapped below,
@@ -809,6 +809,51 @@ export function createInboundTransportHost(
           held = admitted;
           return next(admitted);
         });
+    };
+    /**
+     * Check ownership, then take the place and continue with it. On a key the
+     * place is taken in dispatch order: after this dispatch's own ownership
+     * check and after the dispatch before it on the key has taken its place,
+     * been refused, or failed its own check. A dispatch that fails ownership
+     * takes nothing and passes its turn on. Without a key to wait on, the place
+     * is taken as `admitThen` takes it.
+     */
+    const admitOwnedThen = <T>(
+      next: (session: SessionRecord | undefined, admitted: ConcurrencyAdmission) => T | Promise<T>
+    ): Promise<T> => {
+      const ownership = admitOwnership(flow, dispatchEnvelope);
+      const key = admitsAfterOwnership ? decision.key : undefined;
+      if (key === undefined) {
+        return ownership.then((session) => admitThen((admitted) => next(session, admitted)));
+      }
+      const ahead = admissionTurns.get(key);
+      let passTurn!: () => void;
+      const turn = new Promise<void>((resolve) => {
+        passTurn = resolve;
+      });
+      admissionTurns.set(key, turn);
+      const pass = (): void => {
+        passTurn();
+        if (admissionTurns.get(key) === turn) admissionTurns.delete(key);
+      };
+      return ownership.then(
+        async (session) => {
+          await ahead;
+          let admitted: ConcurrencyAdmission;
+          try {
+            admitted = await arbiter.admit(decision, requestId);
+          } finally {
+            pass();
+          }
+          held = admitted;
+          return next(session, admitted);
+        },
+        async (error: unknown) => {
+          await ahead;
+          pass();
+          throw error;
+        }
+      );
     };
     /**
      * Undo a dispatch that failed after admission and before its run started,
@@ -981,9 +1026,8 @@ export function createInboundTransportHost(
           const ts = Date.now();
           // Ownership first, then the place, then the writes: see the
           // admission note above for why the place waits on ownership.
-          const materialized = admitOwnership(flow, dispatchEnvelope)
-            .then((admitted) =>
-              admitThen(() => materializeOwned(flow, dispatchEnvelope, admitted, {
+          const materialized = admitOwnedThen((admitted) =>
+              materializeOwned(flow, dispatchEnvelope, admitted, {
                 requestId,
                 actionName: dispatchEnvelope.actionName,
                 sessionId: dispatchEnvelope.sessionId,
@@ -1001,7 +1045,7 @@ export function createInboundTransportHost(
                 // moment the record exists, because a cancel can land from then on.
                 claimedIncarnation = incarnation;
                 tagAbortController(requestId, queuedAbort, incarnation);
-              }))
+              })
             )
             .then(() => {
               entryOwned = true;
@@ -1191,15 +1235,9 @@ export function createInboundTransportHost(
             });
         } else {
           // Nothing is written before the run here (`runAction` writes its own
-          // records), so a shared backend's place waits only on ownership.
-          const arbitrated =
-            admitsAfterOwnership &&
-            decision.key !== undefined &&
-            decision.policy !== "allow";
-          finished = arbitrated
-            ? admitOwnership(flow, dispatchEnvelope).then(() =>
-                admitThen((admitted) => admitted.run(startRun))
-              )
+          // records), so the place waits only on ownership.
+          finished = admitsAfterOwnership
+            ? admitOwnedThen((_session, admitted) => admitted.run(startRun))
             : admitThen((admitted) => admitted.run(startRun));
           // A start that never happens (the gate threw on the way in) must fail
           // acceptance rather than leave it pending forever. Once the run has
@@ -1215,7 +1253,7 @@ export function createInboundTransportHost(
         // time, so the stream route resolves a live record and tails events
         // immediately (FIX-828). The shared `createInitialRequestRecord` builder
         // constructs this stub the same way the worker would, so the worker
-        // adopts it as-is and skips its own write. Gating the dispatcher hand-off
+        // adopts it as-is and skips its own write. Gating the dispatcher call
         // on these writes means a store failure fails the dispatch rather than
         // enqueueing a job with no discoverable record (no orphan). Resume and the
         // Vercel adapter route through here too, so both inherit the fix.
@@ -1251,9 +1289,8 @@ export function createInboundTransportHost(
         // is enqueued the place is this dispatch's, so every failure on the way
         // gives it back. Without a shared backend nothing was taken.
         const ts = Date.now();
-        const acceptance = admitOwnership(flow, dispatchEnvelope)
-          .then((admitted) =>
-            admitThen(() => materializeOwned(flow, dispatchEnvelope, admitted, {
+        const acceptance = admitOwnedThen((admitted) =>
+            materializeOwned(flow, dispatchEnvelope, admitted, {
               requestId,
               actionName: dispatchEnvelope.actionName,
               sessionId: dispatchEnvelope.sessionId,
@@ -1268,7 +1305,7 @@ export function createInboundTransportHost(
               queuedAt: ts
             }, (incarnation) => {
               claimedIncarnation = incarnation;
-            }))
+            })
           )
           .then(async () => {
             entryOwned = true;
