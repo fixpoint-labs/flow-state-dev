@@ -154,7 +154,7 @@ export function perspectiveApply(config: PerspectiveBlockConfig) {
  *
  * const securityAnalysis = perspectiveAnalyze({
  *   perspective: securityEngineer,
- *   model: 'gpt-5',
+ *   model: 'gpt-6.1-sol',
  * })
  *
  * const pipeline = sequencer({
@@ -220,7 +220,7 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
  *
  * const securityAudit = perspectiveAuditor({
  *   perspective: securityEngineer,
- *   model: 'gpt-5',
+ *   model: 'gpt-6.1-sol',
  * })
  *
  * // As a sequencer step

@@ -24,6 +24,12 @@ interface ModelPrice {
  * is a substring of the model id wins. Approximate; benchmark-scoped.
  */
 const PRICE_TABLE: Array<{ key: string; price: ModelPrice }> = [
+  { key: "gpt-6-luna", price: { inputPer1M: 0.1, outputPer1M: 0.5 } },
+  { key: "gpt-6.1-sol", price: { inputPer1M: 2.0, outputPer1M: 10.0 } },
+  { key: "claude-haiku-5-5", price: { inputPer1M: 0.1, outputPer1M: 0.5 } },
+  { key: "claude-haiku-5.5", price: { inputPer1M: 0.1, outputPer1M: 0.5 } },
+  { key: "claude-sonnet-5-5", price: { inputPer1M: 2.0, outputPer1M: 10.0 } },
+  { key: "claude-sonnet-5.5", price: { inputPer1M: 2.0, outputPer1M: 10.0 } },
   { key: "gpt-5.4-mini", price: { inputPer1M: 0.2, outputPer1M: 0.8 } },
   { key: "claude-haiku-4-5", price: { inputPer1M: 0.8, outputPer1M: 4.0 } },
   { key: "claude-haiku", price: { inputPer1M: 0.8, outputPer1M: 4.0 } },

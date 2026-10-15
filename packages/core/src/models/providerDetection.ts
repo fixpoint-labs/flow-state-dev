@@ -132,14 +132,14 @@ export type ParsedModelString =
       type: "direct";
       /** Provider name (e.g., "openai"). */
       provider: string;
-      /** The part after the slash (`gpt-5.4`). */
+      /** The part after the slash (`gpt-6.1-sol`). */
       modelId: string;
     }
   | {
       type: "alias";
       /** The route name before the first colon (e.g., "vercel", "triage"). */
       alias: string;
-      /** Everything after the first colon, untouched (`anthropic/claude-sonnet-5`). */
+      /** Everything after the first colon, untouched (`anthropic/claude-sonnet-5-5`). */
       modelId: string;
     }
   | {
@@ -182,7 +182,7 @@ export function parseModelString(modelString: string): ParsedModelString {
     if (alias.length === 0 || modelId.length === 0) {
       throw new Error(
         `Invalid model format: "${modelString}". ` +
-          `A named route needs a name and a model id, e.g. "vercel:openai/gpt-5.4" or "openai:gpt-5.4".`
+          `A named route needs a name and a model id, e.g. "vercel:openai/gpt-6.1-sol" or "openai:gpt-6.1-sol".`
       );
     }
     return { type: "alias", alias, modelId };
@@ -218,8 +218,8 @@ export function parseModelString(modelString: string): ParsedModelString {
 
   throw new Error(
     `Invalid model format: "${modelString}". ` +
-      `Expected "provider/model" (e.g., "openai/gpt-5.4") or a named route ` +
-      `"name:model" (e.g., "vercel:openai/gpt-5.4").`
+      `Expected "provider/model" (e.g., "openai/gpt-6.1-sol") or a named route ` +
+      `"name:model" (e.g., "vercel:openai/gpt-6.1-sol").`
   );
 }
 

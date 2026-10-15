@@ -42,7 +42,7 @@ const publishPost = handler({
 
 const writer = generator({
   name: "writer",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You draft and publish blog posts. Call publish-post when the draft is ready.",
   inputSchema: z.object({ request: z.string() }),
   user: (input) => input.request,

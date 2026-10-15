@@ -45,7 +45,7 @@ export interface CreateModelResolverOptions {
   keys?: Partial<Record<string, string>>;
   /**
    * Gateway instances or configurations. Keys are gateway names (e.g., "vercel", "openrouter"),
-   * and each key is a route name for `name:model` strings (`"vercel:openai/gpt-5.4"`).
+   * and each key is a route name for `name:model` strings (`"vercel:openai/gpt-6.1-sol"`).
    * A key may not also be a key of `providers`.
    * Pass a pre-created instance for bundled environments (Next.js):
    *   `gateways: { vercel: createGateway({ apiKey }) }`
@@ -676,9 +676,9 @@ function applyOverrides(
  *
  * Supports:
  * - `"provider/model"` — the provider directly, else a configured gateway
- *   (e.g., `"openai/gpt-5.4"`)
- * - `"name:model"` — a named route, pinned: a gateway (`"vercel:openai/gpt-5.4"`)
- *   or a provider (`"openai:gpt-5.4"`, `"triage:native"`). Never falls through.
+ *   (e.g., `"openai/gpt-6.1-sol"`)
+ * - `"name:model"` — a named route, pinned: a gateway (`"vercel:openai/gpt-6.1-sol"`)
+ *   or a provider (`"openai:gpt-6.1-sol"`, `"triage:native"`). Never falls through.
  * - `"intent/name"` — resolve a configured intent to a fallback model
  *   (e.g., `"intent/chat"`)
  *
@@ -894,7 +894,7 @@ export function createModelResolver(
     return undefined;
   }
 
-  /** A gateway's language model for its own id (`openai/gpt-5.4`, `typesafe-ai/jev`). */
+  /** A gateway's language model for its own id (`openai/gpt-6.1-sol`, `typesafe-ai/jev`). */
   function gatewayLanguageModel(
     entry: { gateway: Record<string, unknown>; type: string },
     gatewayModelId: string
@@ -996,7 +996,7 @@ export function createModelResolver(
    * A best-effort label: the provider a model string's call reaches, read
    * from this resolver's maps. It never throws; where resolving the string
    * would throw, it returns `"unknown"`. `anthropic` for `vercel:anthropic/…`,
-   * `triage` for `triage:native`, `openai` for `openai/gpt-5.4`; `"unknown"`
+   * `triage` for `triage:native`, `openai` for `openai/gpt-6.1-sol`; `"unknown"`
    * for an intent or a gateway id with no provider segment. Drives provider
    * preference and per-provider options.
    */

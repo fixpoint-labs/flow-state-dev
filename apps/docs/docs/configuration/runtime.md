@@ -14,7 +14,7 @@ import chatFlow from "./src/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

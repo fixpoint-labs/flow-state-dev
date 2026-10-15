@@ -200,7 +200,7 @@ It's listed once a session whose flow serves it exists. A document without that 
 ---
 description: The user's one point of contact.
 flow: agent
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 ---
 You are the Shift Coordinator for this Lab. Answer questions about who is working on what.
 ```

@@ -137,7 +137,7 @@ export interface PerspectiveSystem {
  * import { perspective, system } from '@thought-fabric/core/identity'
  *
  * const securityEngineer = perspective({ ... })
- * const sec = system(securityEngineer, { positionScope: 'user', model: 'gpt-5' })
+ * const sec = system(securityEngineer, { positionScope: 'user', model: 'gpt-6.1-sol' })
  *
  * // Use the capability to wire resources + context into your generator
  * const chat = generator({ uses: [sec.capability], ... })
