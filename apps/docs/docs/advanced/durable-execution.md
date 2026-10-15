@@ -106,7 +106,7 @@ On the React side, `useSuspensions(session)` derives pending and resolved suspen
 | Field | Type | Description |
 |---|---|---|
 | `reason` | `"human_approval" \| "human_input" \| "external_event" \| string` | Machine-readable category for the suspension |
-| `title` | `string` | Optional short heading for the ask, a few words. A UI that lists or heads asks can show this and put `message` underneath as the body. Leave it out when `message` is already one short line |
+| `title` | `string` | Optional short heading for the suspension, a few words. A UI that lists or heads pending suspensions can show this and put `message` underneath as the body. Leave it out when `message` is already one short line |
 | `message` | `string` | Human-readable description, emitted in the `SuspensionItem`. With a `title`, it's the body and may be markdown |
 | `data` | `Record<string, unknown>` | Arbitrary metadata attached to the suspension record |
 | `resumeSchema` | `Record<string, unknown>` | JSON Schema describing the expected resume payload shape |

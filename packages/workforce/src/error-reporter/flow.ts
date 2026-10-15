@@ -346,7 +346,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         "Read the code in your working directory to find where it fails and why. Do not change any file.",
         "The dossier below was gathered by code; its ids are exact. Refer to them, never invent one.",
         "Write steps to reproduce that a user could follow in a clean Lab: the message or action that trips it, and where.",
-        "Keep the title to one short line, under ten words, naming what breaks: it heads the ask in Inbox and the filed issue.",
+        "Keep the title to one short line, under ten words, naming what breaks: it heads the question in Inbox and the filed issue.",
         "List the questions you want the operator to answer before it files. They render as markdown, so put code in backticks.",
         "",
         "Dossier:",
@@ -416,7 +416,7 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       if (ctx.suspend === undefined) {
         throw new Error("An error report waits for the operator's answer, and this Lab runs without durable execution.");
       }
-      // A short title heads the ask in Inbox; the count and the drafter's questions are its markdown body.
+      // A short title heads the question in Inbox; the count and the drafter's questions are its markdown body.
       const seen = row?.count ?? 1;
       const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {

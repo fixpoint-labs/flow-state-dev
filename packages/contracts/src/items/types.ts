@@ -664,9 +664,9 @@ export type SuspensionItem = OutputItemBase & {
   suspensionStatus: SuspensionStatus;
   reason: SuspensionReason;
   /**
-   * The ask's short heading, when the suspension gave one; `message` is then
+   * The suspension's short heading, when it gave one; `message` is then
    * its body, and may be markdown. Absent otherwise, and on items written
-   * before it existed: a renderer heads the ask with `message` instead.
+   * before it existed: a renderer heads the suspension with `message` instead.
    */
   title?: string;
   message: string;
