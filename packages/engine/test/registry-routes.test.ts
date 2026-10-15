@@ -183,7 +183,7 @@ describe("flow listing carries no instance config", () => {
     // The value IS on the instance — this test is about the wire, not the mint.
     expect(configured.config).toEqual({ apiKey: "sk-do-not-publish", model: "opus" });
 
-    // @ts-expect-error registering takes a FlowInstance with no config schema, so a configured flow is refused (to be filed, found by FIX-1343)
+    // @ts-expect-error FlowInstance carries no config schema, so a configured flow is refused where one is taken (to be filed, found by FIX-1343)
     registry.register(configured);
     const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
     const response = await router.GET(new Request("http://localhost/api/flows"), {

@@ -119,7 +119,7 @@ describe("V1 · a flow registered after construction is served by the SAME route
     // non-empty check validates an instance id, and this is the check that
     // says so.
     const worker = deskClerk({ id: "acme.support.ada", config: { desk: "back-left" } });
-    // @ts-expect-error registering takes a FlowInstance with no config schema, so a configured flow is refused (to be filed, found by FIX-1343)
+    // @ts-expect-error FlowInstance carries no config schema, so a configured flow is refused where one is taken (to be filed, found by FIX-1343)
     flowstate.register(worker);
 
     const during = await router.POST(...answerRequest("acme.support.ada"));
@@ -145,7 +145,7 @@ describe("V1 · a flow registered after construction is served by the SAME route
 
     expect(flowstate.meta.flowKeys).toEqual(["resident"]);
 
-    // @ts-expect-error registering takes a FlowInstance with no config schema, so a configured flow is refused (to be filed, found by FIX-1343)
+    // @ts-expect-error FlowInstance carries no config schema, so a configured flow is refused where one is taken (to be filed, found by FIX-1343)
     flowstate.register(deskClerk({ id: "acme.support.ada" }));
     expect(flowstate.meta.flowKeys).toContain("acme.support.ada");
 
@@ -160,11 +160,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
   it("refuses a duplicate id and leaves the registry byte-identical", () => {
     const registry = createFlowRegistry();
     const first = deskClerk({ id: "acme.support.ada", config: { desk: "front" } });
-    // @ts-expect-error registering takes a FlowInstance with no config schema, so a configured flow is refused (to be filed, found by FIX-1343)
+    // @ts-expect-error FlowInstance carries no config schema, so a configured flow is refused where one is taken (to be filed, found by FIX-1343)
     registry.register(first);
 
     expect(() =>
-      // @ts-expect-error registering takes a FlowInstance with no config schema, so a configured flow is refused (to be filed, found by FIX-1343)
+      // @ts-expect-error FlowInstance carries no config schema, so a configured flow is refused where one is taken (to be filed, found by FIX-1343)
       registry.register(deskClerk({ id: "acme.support.ada", config: { desk: "back" } }))
     ).toThrow(FlowIdentityConflictError);
 
