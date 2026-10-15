@@ -14,6 +14,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import { driverPrograms } from "./typecheck-programs.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -23,9 +24,7 @@ const DEFERRED = {
   bullmq: LATER_IN_STACK,
   "claude-code": LATER_IN_STACK,
   cli: LATER_IN_STACK,
-  client: LATER_IN_STACK,
   codex: LATER_IN_STACK,
-  contracts: LATER_IN_STACK,
   cursor: LATER_IN_STACK,
   devtool: LATER_IN_STACK,
   engine: LATER_IN_STACK,
@@ -36,17 +35,13 @@ const DEFERRED = {
   node: LATER_IN_STACK,
   orchestration: LATER_IN_STACK,
   patterns: LATER_IN_STACK,
-  react: LATER_IN_STACK,
   scheduled: LATER_IN_STACK,
   "store-postgres": LATER_IN_STACK,
   "store-sqlite": LATER_IN_STACK,
   testing: LATER_IN_STACK,
   "thought-fabric-core": LATER_IN_STACK,
   tools: LATER_IN_STACK,
-  ui: LATER_IN_STACK,
   vercel: LATER_IN_STACK,
-  "voice-openai": LATER_IN_STACK,
-  workspace: LATER_IN_STACK,
   workforce: "FIX-2016: wired after the open PRs that rewrite its tests land",
 };
 
@@ -61,8 +56,7 @@ export function typecheckPrograms(script, hasConfig) {
   const out = [];
   for (const segment of script.split("&&")) {
     if (/typecheck\.mjs/.test(segment)) {
-      out.push("tsconfig.json");
-      if (hasConfig("tsconfig.test.json")) out.push("tsconfig.test.json");
+      out.push(...driverPrograms(hasConfig));
     } else if (/\btsc\b/.test(segment)) {
       out.push(tscProgram(segment));
     }

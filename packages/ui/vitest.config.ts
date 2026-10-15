@@ -12,7 +12,7 @@ export default defineConfig({
   resolve: {
     // Registry components import shadcn primitives through `@/`, which only an
     // app resolves. Tests that render them get Storybook's stubs, through the
-    // same aliases `.storybook/main.ts` sets.
+    // same aliases `.storybook/main.ts` and `tsconfig.test.json` set.
     alias: {
       "@/components/ui": resolve(here, ".storybook/shadcn/components/ui"),
       "@/lib/utils": resolve(here, ".storybook/shadcn/lib/utils"),
