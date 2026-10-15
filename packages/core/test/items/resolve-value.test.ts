@@ -7,7 +7,7 @@
  * resolution is unchanged.
  */
 import { describe, expect, it } from "vitest";
-import type { BlockTraceItem, MessageItem, OutputItem } from "../../src/items";
+import type { BlockTraceItem, MessageItem, OutputItem, ToolOutputItem } from "../../src/items";
 import { buildItemLookup } from "../../src/items";
 // A `ref` is executor-written, so this calls the internal resolver.
 import { resolveBlockValueInternal } from "../../src/items/internal";
@@ -129,5 +129,36 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       buildItemLookup([]),
     );
     expect(out).toEqual({ hello: "world" });
+  });
+});
+
+describe("resolveBlockValue (ref to a tool result)", () => {
+  function makeToolOutput(id: string, fields: Partial<ToolOutputItem>): ToolOutputItem {
+    return {
+      id,
+      type: "tool_output",
+      status: "completed",
+      requestId: "req",
+      itemIndex: 0,
+      provenance: baseProvenance,
+      ts: 0,
+      blockName: "readFiles",
+      output: undefined,
+      toolCall: { callId: "c1", name: "readFiles", arguments: "{}" },
+      ...fields,
+    } as ToolOutputItem;
+  }
+
+  it("resolves a ref pointing at a tool_output to its recorded output", () => {
+    const tool = makeToolOutput("item_tool_1", { output: { files: ["a.ts"] } });
+    const out = resolveBlockValueInternal({ kind: "ref", sourceItemId: "item_tool_1" }, buildItemLookup([tool]));
+    expect(out).toEqual({ files: ["a.ts"] });
+  });
+
+  it("resolves a ref through a block_trace that itself refs the tool_output", () => {
+    const tool = makeToolOutput("item_tool_1", { output: 42 });
+    const inner = makeBlockOutput("item_bo_inner", { kind: "ref", sourceItemId: "item_tool_1" } as BlockTraceItem["output"]);
+    const out = resolveBlockValueInternal({ kind: "ref", sourceItemId: "item_bo_inner" }, buildItemLookup([tool, inner]));
+    expect(out).toBe(42);
   });
 });

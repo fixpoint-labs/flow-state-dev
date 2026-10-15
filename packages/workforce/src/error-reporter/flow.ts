@@ -31,9 +31,10 @@ import {
   reportsOf,
   updateReport,
   type IntakeDecision,
+  type Occurrence,
   type ReportRow
 } from "./reports";
-import type { ErrorReporter } from "./reporter";
+import type { ErrorReporter, FinalFailureEvent } from "./reporter";
 
 export { ERROR_REPORTER_FLOW, ERROR_REPORTER_INTAKE_FLOW };
 
@@ -732,6 +733,22 @@ export interface ErrorReporterIntakeFlowOptions {
   reporter: ErrorReporter;
 }
 
+/** A request occurrence as the failure event the Lab's filter is written against. */
+function failureOf(occurrence: Extract<Occurrence, { kind: "request" }>): FinalFailureEvent {
+  return {
+    final: true,
+    error: { message: occurrence.message, ...(occurrence.code === undefined ? {} : { code: occurrence.code }) },
+    requestId: occurrence.requestId,
+    flowKind: occurrence.flowKind,
+    actionName: occurrence.actionName,
+    userId: occurrence.userId,
+    ...(occurrence.sessionId === undefined ? {} : { sessionId: occurrence.sessionId }),
+    ...(occurrence.orgId === undefined ? {} : { orgId: occurrence.orgId }),
+    ...(occurrence.blockName === undefined ? {} : { blockName: occurrence.blockName }),
+    ...(occurrence.blockPath === undefined ? {} : { blockPath: occurrence.blockPath })
+  };
+}
+
 /**
  * The reporter's intake, on a flow of its own: the one door every occurrence
  * comes in by. The reporter's capture runs it for a failed request; a board
@@ -750,6 +767,10 @@ export function defineErrorReporterIntakeFlow(options: ErrorReporterIntakeFlowOp
     resources: { ...errorReportsResources },
     execute: async (input, ctx): Promise<IntakeDecision> => {
       const occurrence = input.occurrence;
+      // A failure a flow rescued comes here without the capture: the Lab's filter decides it here too.
+      if (occurrence.kind === "request" && !reporter.takes(failureOf(occurrence))) {
+        return { decision: "ignored", reason: "the Lab's filter left it out" };
+      }
       const decision = await intakeOccurrence(reportsOf(ctx as never), occurrence, {
         reporterFlow: reporter.flowKind,
         limits: reporter.limits,

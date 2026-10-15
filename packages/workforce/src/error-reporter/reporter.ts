@@ -138,6 +138,8 @@ export interface ErrorReporter {
   readonly limits: Partial<ReportLimits> | undefined;
   /** The engine's `errorCapture` handler. Takes `final` events only; never throws. */
   capture(event: FinalFailureEvent): void;
+  /** Whether the Lab's `filter` takes this failure. A filter that throws takes nothing. */
+  takes(event: FinalFailureEvent): boolean;
   /** Bind the runtime, and restart what the store says is still owed. */
   bind(host: ErrorReporterHost): Promise<void>;
   /** Resolves when every run the reporter started so far has settled. */
@@ -301,14 +303,18 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
     preview: options.preview,
     limits: options.limits,
 
-    capture(event) {
-      if (event.final !== true || event.flowKind === flowKind || event.flowKind === ERROR_REPORTER_INTAKE_FLOW) return;
+    takes(event) {
       try {
-        if (options.filter !== undefined && !options.filter(event)) return;
+        return options.filter === undefined || options.filter(event);
       } catch (error) {
         log(`filter threw: ${String(error)}`);
-        return;
+        return false;
       }
+    },
+
+    capture(event) {
+      if (event.final !== true || event.flowKind === flowKind || event.flowKind === ERROR_REPORTER_INTAKE_FLOW) return;
+      if (!reporter.takes(event)) return;
       if (host === undefined) early.push(event);
       else take(event);
     },

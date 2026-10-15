@@ -13,10 +13,11 @@ It comes from `@flow-state-dev/workforce`. You register two flows and hand the e
 
 ## What gets reported
 
-Three things reach it:
+Four things reach it:
 
 - **A request that settled failed.** The engine's [error capture](../advanced/error-capture.md) sends one `final` event per request that ends failed, after rescues and retries. The reporter takes only those events, so a failure that a retry fixed is never reported.
-- **A task that ended errored** on a conversation board, including a task that gave up without throwing. A task's failed requests join the task's report instead of making reports of their own.
+- **A task that ended errored** on a conversation board, including a task that gave up without throwing. A task's failed requests join the task's report instead of making reports of their own. A post a coordinator hands to a delegate counts too: when the delegate's turn fails, the post's report goes out as the post ends.
+- **A coordinator's own crash that it answered.** A best-fit coordinator whose turn fails tells the user "Nobody took this post", so the request doesn't fail. The crash is still reported.
 - **A problem a user describes.** A user messages the Error Reporter in its own conversation ("the board shows a task as done that never ran"), optionally naming the session, task or project. A named session is read only if it belongs to the user who named it.
 
 The reporter never reports its own failures.

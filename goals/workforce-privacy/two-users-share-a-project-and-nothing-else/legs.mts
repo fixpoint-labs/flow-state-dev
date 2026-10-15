@@ -454,8 +454,22 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     if (!sameSet(roster1.alice, roster0.alice) || !sameSet(roster1.bob, roster0.bob)) r.fail("b2", `a roster changed: ${show(roster0)} → ${show(roster1)}`);
     else r.saw("b2", "nothing was added to either roster");
     for (const [person, owner, key] of [[A, true, "alice"], [B, false, "bob"]] as const) {
-      const drawn = await projectWorkstreams(o.browser, origin(), person, owner, r, `b2-${key}-workstreams`, P);
-      const entries = await entriesOf(key === "alice" ? alice : bob, P);
+      // The leads keep working after b2's asks and may edit their objectives while the screen is read, so
+      // the screen is graded against a store that held still across the read.
+      const who = key === "alice" ? alice : bob;
+      let entries = await entriesOf(who, P);
+      let drawn!: Awaited<ReturnType<typeof projectWorkstreams>>;
+      let still = false;
+      for (let tries = 0; tries < 3 && !still; tries++) {
+        const before = entries;
+        drawn = await projectWorkstreams(o.browser, origin(), person, owner, r, `b2-${key}-workstreams`, P);
+        entries = await entriesOf(who, P);
+        still = JSON.stringify(before) === JSON.stringify(entries);
+      }
+      if (!still) {
+        r.fail("b2", `${person.label}'s P workstreams changed during each of 3 screen reads, so the screen can't be graded against them`);
+        continue;
+      }
       const want = Object.values(workstreams).map((w) => w.id);
       if (drawn.value === undefined) r.fail("b2", `${person.label}'s P Workstreams tab failed: ${drawn.errors.join(" | ")}`);
       else {
