@@ -758,11 +758,10 @@ export function createInboundTransportHost(
     // shared backend skips arbitration (no key, nothing taken).
     //
     // The place is taken only once `admitOwnership` has passed, on every
-    // backend (BP-031, FIX-1837): a caller that does not own the session or
-    // request id must not hold, or stand in line on, its key, not even for the
-    // one store read the check takes. A `reject` refusal, and a shared
-    // backend's own errors, therefore arrive through `accepted` / `finished`,
-    // never as a synchronous throw from `dispatch`.
+    // backend (BP-031): a non-owner must not hold or stand in line on the
+    // key for that read. A `reject` refusal, and a shared backend's own
+    // errors, arrive through `accepted` / `finished`, never as a throw
+    // from `dispatch`.
     //
     // `hold` and `defer` cross the queue too (FIX-1836): the job carries how
     // it reaches its turn (`leaseTurn`), and its worker carries that out.
@@ -770,9 +769,6 @@ export function createInboundTransportHost(
       isExternalDispatcher && !arbitratesExternalDispatch
         ? { policy: "allow" as const, key: undefined }
         : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    // Every arbitrated policy waits on ownership; only `allow` (or no key),
-    // which takes nothing, is admitted up front, keeping its timing to the
-    // microtask.
     const admitsAfterOwnership = decision.policy !== "allow" && decision.key !== undefined;
     const upFront = admitsAfterOwnership ? undefined : arbiter.admit(decision, requestId);
     // The admission once taken. From here until a branch below hands it to its

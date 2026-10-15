@@ -1,13 +1,6 @@
 /**
- * A caller who does not own a session must never hold, or stand in line on,
- * that session's concurrency key — on the in-memory default backend too.
- *
- * The owner's experience is what is asserted: a `reject` action of theirs is
- * not refused, and a `queue` action of theirs is not kept waiting, because a
- * stranger's request for the same session happened to arrive first. The
- * stranger's ownership read is held open by a store wrapper, so the window
- * between "place taken" and "ownership checked" is as wide as the test wants
- * rather than one store read wide.
+ * A non-owner's session read is held open, so the window before the
+ * concurrency place is taken is as wide as the test wants.
  */
 import { describe, it, expect } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
@@ -24,11 +17,6 @@ type Gate = { id: string; release: () => void };
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-/**
- * One flow with a `reject` and a `queue` action that block until released.
- * `pauseNextSessionRead()` holds the next session read open until the
- * returned function is called.
- */
 function buildHost() {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
@@ -125,23 +113,18 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     const foreign = h.dispatch("strict", "x-1", "u_2");
     void foreign.finished.catch(() => {});
 
-    // The owner's own request, while the stranger's ownership check is pending.
-    let owner: ReturnType<typeof h.dispatch> | undefined;
-    let refusedSync: unknown;
-    try {
+    let owner!: ReturnType<typeof h.dispatch>;
+    expect(() => {
       owner = h.dispatch("strict", "owner-2");
-    } catch (error) {
-      refusedSync = error;
-    }
-    expect(refusedSync).toBeUndefined();
-    await owner!.accepted;
+    }).not.toThrow();
+    await owner.accepted;
     await tick();
     expect(h.started).toEqual(["owner-first", "owner-2"]);
 
     resume();
     await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
     h.release("owner-2");
-    await owner!.finished;
+    await owner.finished;
     expect(h.started).not.toContain("x-1");
   });
 
@@ -157,7 +140,6 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     await owner.accepted;
     await tick();
     await tick();
-    // The owner's run starts without waiting on the stranger's refusal.
     expect(h.started).toEqual(["owner-first", "owner-2"]);
 
     resume();
