@@ -264,10 +264,12 @@ in-process dispatcher gates the run there (and, over a shared lease backend,
 the host takes an external run's place before enqueueing; see below), so every
 transport inherits the
 same behavior and adapters only map the outcome to their native response.
-When a `reject` policy drops a competing request, `host.dispatch` throws
-`ConcurrencyRejectedError` synchronously over the default in-memory backend
-(through `accepted` over a shared one; see below), carrying the contended `key` and the
-`inFlightRequestId`); the HTTP adapter maps it to 409, fire-and-forget
+When a `reject` policy drops a competing request, the handle `host.dispatch`
+returns refuses through `accepted` (and `finished`) with
+`ConcurrencyRejectedError`, carrying the contended `key` and the
+`inFlightRequestId`. The place is taken only after the caller's ownership of
+the session has been checked, on every backend, so a caller who does not own a
+session never holds its key; the HTTP adapter maps it to 409, fire-and-forget
 webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
 error. A `queue` policy that waits past its budget rejects the request's
 `finished` with `ConcurrencyQueueTimeoutError` (it surfaces through the request

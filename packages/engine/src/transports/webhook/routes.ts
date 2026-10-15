@@ -221,10 +221,10 @@ export async function handleWebhook(
   try {
     handle = host.dispatch(envelope);
   } catch (err) {
-    // Concurrency `reject`: a duplicate delivery for this key is already in
-    // flight (the classic webhook double-fire). Acked as skipped so the
-    // provider stops redelivering — see `concurrencyRefusalResponse`, which
-    // answers the refusal arriving through `accepted` below the same way.
+    // A concurrency `reject` (a duplicate delivery for this key already in
+    // flight, the classic webhook double-fire) arrives through `accepted`
+    // below; it is mapped here too, acked as skipped, so a refusal thrown from
+    // `dispatch` could not become a 503 the provider would retry.
     const refused = concurrencyRefusalResponse(err, "webhook");
     if (refused !== undefined) return refused;
     return jsonResponse(503, { error: "flow_unregistered", message: errorMessage(err) });
@@ -240,9 +240,9 @@ export async function handleWebhook(
     try {
       await handle.accepted;
     } catch (err) {
-      // A `reject` refusal from an arbiter over a shared backend (FIX-1634):
-      // nothing was recorded because nothing was admitted, and the answer is
-      // the synchronous refusal's, not a 503 the provider would retry.
+      // A `reject` refusal, on any backend (FIX-1634, FIX-1837): nothing was
+      // recorded because nothing was admitted, so it is acked as skipped, not
+      // a 503 the provider would retry.
       const refused = concurrencyRefusalResponse(err, "webhook");
       if (refused !== undefined) return refused;
       host.logger?.error?.("webhook dispatch was not durably recorded", {
