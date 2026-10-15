@@ -348,7 +348,7 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   });
 });
 
-describe("a titled ask in Inbox (FIX-2030)", () => {
+describe("a titled ask in Inbox", () => {
   it("is headed by its short title, with its message drawn as markdown body text under it", async () => {
     const lab = await serveLab((await openAskLab()).flowState);
     served.push(lab);

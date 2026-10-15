@@ -1,7 +1,7 @@
 ---
-"@flow-state-dev/core": minor
-"@flow-state-dev/contracts": minor
-"@flow-state-dev/engine": minor
+"@flow-state-dev/core": patch
+"@flow-state-dev/contracts": patch
+"@flow-state-dev/engine": patch
 "@flow-state-dev/workforce": patch
 ---
 
