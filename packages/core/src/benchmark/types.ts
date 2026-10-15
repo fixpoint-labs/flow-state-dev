@@ -27,7 +27,7 @@ export type BenchmarkCategory =
   | "multi-step-research"
   | "critique-revision"
   | "planning"
-  // eslint-disable-next-line @typescript-eslint/ban-types
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   | (string & {});
 
 /**

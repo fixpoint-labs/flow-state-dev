@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 352" role="img" aria-label="Four rows of model strings, today against after. Intent strings, intent/utility, are unchanged. Provider/model strings, openai/gpt-5.4, are unchanged and route as today: direct with a key, else through a gateway. Gateway routes change from vercel/anthropic/claude-sonnet-5 to vercel:anthropic/claude-sonnet-5; the old form is an error that names the new spelling. The last row: today triage/native runs but reads as a Gateway id; after, triage:native or openai:gpt-5.4 names a provider or gateway the app set up, the way an AI SDK registry names one."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .same  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .none  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:3 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+    .t-cn  { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; font-weight:600; }
+    .t-co  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; text-decoration:line-through; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="352"/>
+
+  <g id="header">
+    <rect class="head" x="16" y="14" width="908" height="30" rx="5"/>
+    <text class="t-lbl" x="32" y="33">LANE</text>
+    <text class="t-lbl" x="232" y="33">TODAY</text>
+    <text class="t-lbl" x="592" y="33">AFTER</text>
+  </g>
+
+  <g id="row-intent">
+    <text class="t-b" x="32" y="80">Intent</text>
+    <text class="t-s" x="32" y="97">a named ladder</text>
+    <rect class="same" x="216" y="58" width="320" height="52" rx="5"/>
+    <text class="t-c" x="232" y="82">intent/utility</text>
+    <path class="arrow" d="M544 84 H568"/>
+    <rect class="same" x="576" y="58" width="348" height="52" rx="5"/>
+    <text class="t-c" x="592" y="82">intent/utility</text>
+    <text class="t-s" x="592" y="99">unchanged</text>
+  </g>
+
+  <g id="row-provider-model">
+    <text class="t-b" x="32" y="148">Provider and model</text>
+    <text class="t-s" x="32" y="165">1,054 strings today</text>
+    <rect class="same" x="216" y="126" width="320" height="52" rx="5"/>
+    <text class="t-c" x="232" y="150">openai/gpt-5.4</text>
+    <text class="t-s" x="232" y="167">direct with a key, else a gateway</text>
+    <path class="arrow" d="M544 152 H568"/>
+    <rect class="same" x="576" y="126" width="348" height="52" rx="5"/>
+    <text class="t-c" x="592" y="150">openai/gpt-5.4</text>
+    <text class="t-s" x="592" y="167">unchanged · also the Gateway's own id</text>
+  </g>
+
+  <g id="row-gateway">
+    <text class="t-b" x="32" y="216">Gateway route</text>
+    <text class="t-s" x="32" y="233">131 strings to respell</text>
+    <rect class="old" x="216" y="194" width="320" height="52" rx="5"/>
+    <text class="t-co" x="232" y="218">vercel/anthropic/claude-sonnet-5</text>
+    <text class="t-s" x="232" y="235">after this release: an error naming the new form</text>
+    <path class="arrow" d="M544 220 H568"/>
+    <rect class="new" x="576" y="194" width="348" height="52" rx="5"/>
+    <text class="t-cn" x="592" y="218">vercel:anthropic/claude-sonnet-5</text>
+    <text class="t-s" x="592" y="235">AI SDK's form · the id after the colon is untouched</text>
+  </g>
+
+  <g id="row-alias">
+    <text class="t-b" x="32" y="284">Named provider</text>
+    <text class="t-s" x="32" y="301">registry style</text>
+    <rect class="none" x="216" y="262" width="320" height="52" rx="5"/>
+    <text class="t-c" x="232" y="286">triage/native</text>
+    <text class="t-s" x="232" y="303">runs, but reads as a Gateway id · may fall through</text>
+    <path class="arrow" d="M544 288 H568"/>
+    <rect class="new" x="576" y="262" width="348" height="52" rx="5"/>
+    <text class="t-cn" x="592" y="286">triage:native · openai:gpt-5.4</text>
+    <text class="t-s" x="592" y="303">a provider or gateway the app set up · no fall-through</text>
+  </g>
+
+  <g id="legend">
+    <text class="t-s" x="32" y="338">Solid blue: new spelling. Dashed red: an error from this release, with the fix in the message.</text>
+  </g>
+</svg>

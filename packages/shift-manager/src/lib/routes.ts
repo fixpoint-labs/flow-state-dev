@@ -13,7 +13,8 @@
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
- *     /roster/<workerId>/rules       one worker's standing rules for the user (FIX-1945)
+ *     /roster/<workerId>/settings    one worker's settings: its standing rules for the user (FIX-2007)
+ *     /roster/<workerId>/rules       the same page, at the address it had before (read, never written)
  *     /settings                      the user's own keys for the Lab's MCP servers (pinned, FIX-1905)
  */
 import { useSyncExternalStore } from "react";
@@ -44,7 +45,8 @@ export type Route =
   | { level: "resource"; sessionId: string; ref: string }
   /** `team: null` is All. */
   | { level: "roster"; team: string | null }
-  | { level: "rules"; worker: string }
+  /** One worker's settings: not the user's own `settings`. */
+  | { level: "worker-settings"; worker: string }
   | { level: "settings" };
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined, fallback: T): T {
@@ -66,7 +68,8 @@ export function parseRoute(pathname: string, search = ""): Route {
   }
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream"), ...entryOf(search) };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
-  if (head === "roster" && a !== undefined && b === "rules") return { level: "rules", worker: a };
+  // `/rules` was this page's address; links to it keep opening it (an unknown path would open Chief of Staff).
+  if (head === "roster" && a !== undefined && (b === "settings" || b === "rules")) return { level: "worker-settings", worker: a };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
   if (head === "settings") return { level: "settings" };
@@ -102,8 +105,8 @@ export function pathFor(route: Route): string {
       return `/r/${e(route.sessionId)}/${e(route.ref)}`;
     case "roster":
       return route.team === null ? "/roster" : `/roster?team=${e(route.team)}`;
-    case "rules":
-      return `/roster/${e(route.worker)}/rules`;
+    case "worker-settings":
+      return `/roster/${e(route.worker)}/settings`;
     case "settings":
       return "/settings";
   }

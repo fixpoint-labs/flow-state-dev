@@ -47,6 +47,10 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "workstream name", audit: "F18", v2: { line: 88, has: "padding:5px 6px;font-size:13px" }, select: "[data-testid^=nav-workstream-] > [data-look=nav-label]", min: ({ store }) => Object.keys(store.mailboxes).length, want: { family: "sans", size: 13 } },
   { id: "workstream dot, needs you", audit: "F18", v2: { line: 1184, has: "dot: wn ? Y : wr ? A" }, select: "[data-testid^=nav-workstream-] > [data-state-square=needs]", min: ({ store }) => mailboxesWith(store, "needs"), want: { square: "needs", width: 6 } },
   { id: "workstream dot, running", audit: "F18", v2: { line: 1184, has: "dotBd: wn ? INK : wr ? A" }, select: "[data-testid^=nav-workstream-] > [data-state-square=run]", min: ({ store }) => mailboxesWith(store, "run"), want: { square: "run", width: 6 } },
+  // A project under PROJECTS: its caret, and while it is open its workstreams, each a `#` and its title.
+  // Only the project screen is sure to hold one open with a workstream in it: the sweep opened one there.
+  { id: "project caret", audit: "F17", v2: { line: 80, has: "font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3);width:12px" }, select: "[data-testid=project-group] [data-testid$=-toggle] > [data-look=meta-meta]", min: ({ screen }) => (screen === "project" ? 1 : 0), want: { family: "mono", size: 11, width: 12 } },
+  { id: "project workstream #", audit: "F18", v2: { line: 88, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink4)\">#" }, select: "[data-testid=nav-workstream] > [data-look=meta-meta]", min: ({ screen }) => (screen === "project" ? 1 : 0), want: { family: "mono", size: 11.5 } },
   { id: "TEAMS heading", audit: "F20", v2: { line: 97, has: "<span>TEAMS</span><span>on shift</span>" }, select: "[data-testid=teams-heading] > [data-look=meta-label]", min: 2, want: { family: "mono", size: 10 } },
   { id: "footer initials", audit: "F22", v2: { line: 110, has: "width:22px;height:22px;box-sizing:border-box;border:1px solid var(--ink)" }, select: "[data-testid=footer-user]", min: 1, want: { family: "mono", size: 10, width: 22, border: { width: 1, colour: "foreground" } } },
 

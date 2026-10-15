@@ -222,9 +222,9 @@ export function createDispatchOperation(inputs: DispatchOperationInputs): Dispat
 
     // A SYNCHRONOUS throw here is pre-dispatch, and that is a property
     // `host.dispatch` is BUILT to hold rather than one this seam infers.
-    // Everything that can throw synchronously — resolving the flow, claiming the
-    // concurrency key, the kickoff itself — runs before a child exists; the one
-    // step that runs after the child has started, the `onBackgroundWork`
+    // Everything that can throw synchronously — resolving the flow, the kickoff
+    // itself — runs before a child exists; the one step that runs after the
+    // child has started, the `onBackgroundWork`
     // keep-alive hook, is contained there precisely so it cannot escape as a
     // throw. Read `createInboundTransportHost`'s note on that hook before
     // relying on this: an uncontained post-start throw would arrive here

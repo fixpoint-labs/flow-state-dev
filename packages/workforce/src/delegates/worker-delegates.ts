@@ -290,6 +290,24 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     return { available, unavailable };
   };
 
+  /**
+   * Every worker on the session user's roster that takes a task now, with the
+   * flow it runs on: who a task session's pieces can go to. Read per call, as
+   * {@link taskDelegates} is, and why each other one on the roster can't, in
+   * the words the one check uses.
+   */
+  const rosterTaskTakers = async (ctx: BlockContext): Promise<TaskDelegates> => {
+    const available = new Map<string, string>();
+    const unavailable = new Map<string, string>();
+    for (const worker of await installation.roster(ctx as never)) {
+      // The one check, so "takes a task" has one definition, and its refusal one wording.
+      const checked = await check(ctx as never, worker.id, "task");
+      if (checked.ok) available.set(worker.id, checked.worker.flow);
+      else unavailable.set(worker.id, checked.message);
+    }
+    return { available, unavailable };
+  };
+
   return {
     /** The one check, for an add, a post or a task. */
     check,
@@ -299,6 +317,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     postFlows,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates,
+    /** Every worker on the session user's roster that takes a task now. */
+    rosterTaskTakers,
     /** The four delegate actions, for the flow's `actions`. */
     actions: {
       [ADD_DELEGATE]: {

@@ -15,7 +15,8 @@
  *      would strand its turn: nothing else may resume it.
  *   2b. Re-drive a request left `suspended` or `interrupted` behind a gate that
  *      is already resolved (a wait's answer, failure, timeout or stop, any
- *      gate stopped, or an approval that expired), under the request's lease,
+ *      gate stopped, an approval that expired, or a gate a person approved,
+ *      rejected, submitted or skipped), under the request's lease,
  *      with the recorded outcome; and stop a parked request whose stop was
  *      recorded while it was still running (`abortRequested`), as a stop of a
  *      parked turn does. An approval step 2 just expired is continued here in
@@ -66,10 +67,10 @@ import {
   type RuntimeLogger
 } from "../execution/logging";
 import type { DurabilityProvider } from "./types";
-import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
+import { isWaitGate } from "@flow-state-dev/core/types";
 import { resumeWaitGate } from "./resume-wait-gate";
 import { onWaitDeadline } from "./wait-deadlines";
-import { PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
+import { owesRedrive, PARKED, redriveResolvedGate, stopSuspendedRequest } from "./stop-suspended";
 import { expireUnderLease, latestGateIdOf } from "./resume-under-lease";
 import type { ResumeDeps } from "./resume-under-lease";
 
@@ -448,7 +449,8 @@ async function enforceSuspensionExpiry(
 /**
  * Step 2b: re-drive a request left parked behind a gate that is already
  * resolved (FIX-1816, BR-11a, BR-16c). A wait gate answered, failed, timed out
- * or stopped, or any gate stopped, whose request is still `suspended` or
+ * or stopped, any gate stopped, an approval that expired, or any other gate a
+ * person resolved (FIX-1850), whose request is still `suspended` or
  * `interrupted`: the process died after the gate's write and before the turn
  * moved on. It is driven on under its lease with the recorded outcome, never a
  * new one. A live resume holds that lease, so it is never raced.
@@ -468,12 +470,7 @@ async function redriveResolvedGates(args: ResolvedTickArgs): Promise<void> {
   const redriveOne = async (requestId: string, suspensionId: string): Promise<void> => {
     try {
       const gate = await provider.loadSuspension(requestId, suspensionId);
-      // Owed a re-drive: a wait's answer or ending, any gate stopped, or an
-      // approval that expired.
-      if (gate === null) return;
-      const owed =
-        gate.status === "stopped" || (gate.status === "submitted" && isWaitGate(gate)) || isExpiredApproval(gate);
-      if (!owed) return;
+      if (gate === null || !owesRedrive(gate)) return;
       const result = await redriveResolvedGate({ provider, stores, continueRequest }, gate);
       if (result === "redriven") {
         logRuntimeEvent(logger, "info", "[flow-state] durability sweeper: re-drove a parked request", {

@@ -6,7 +6,16 @@
  * SQLite cold restarts) lives with the wait's own tests in orchestration.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildReplayLog, DEFAULT_ORG_ID, defineFlow, generator, handler, parkOnWait, sequencer } from "@flow-state-dev/core";
+import {
+  buildReplayLog,
+  DEFAULT_ORG_ID,
+  defineFlow,
+  generator,
+  handler,
+  parkOnWait,
+  sequencer,
+  SUSPENSION_SKIPPED
+} from "@flow-state-dev/core";
 import type { WaitOutcome, FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { continueRequest, createFlowRegistry, createFlowState, createInMemoryStores, inMemoryStores, runAction } from "../src";
@@ -751,6 +760,201 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
   });
 });
 
+describe("the sweep re-drives a gate a person resolved whose turn never continued (FIX-1850)", () => {
+  /** Live runs the resume. Crashed writes the gate, then the lease runs out before the turn continues. */
+  async function resolve(
+    action: "approve" | "reject" | "submit" | "skip",
+    data: unknown,
+    mode: "live" | "crashed",
+    allow?: ("approve" | "reject" | "submit" | "skip")[]
+  ) {
+    const seen: string[] = [];
+    const answers: unknown[] = [];
+    const step = handler({
+      name: "gate-step",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (_i, ctx) => {
+        const answer = await ctx.suspend!({ reason: "human_approval", message: "Approve?", ...(allow ? { allow } : {}) });
+        answers.push(answer);
+        seen.push("after-gate");
+        return { answer: answer === SUSPENSION_SKIPPED ? "skipped" : answer };
+      }
+    });
+    const flow = defineFlow({ kind: "parking", actions: { approve: { block: sequencer({ name: "a" }).step(step) } } })({
+      id: "parking"
+    });
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    const deps = mode === "live" ? h.parked : { ...h.parked, continueRequest: async () => ({ requestId }) as never };
+    const resumed = await resumeUnderLease(deps, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: gate }),
+      action,
+      data,
+      resumedBy: USER
+    });
+    expect(resumed.ok).toBe(true);
+    if (mode === "crashed") {
+      expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+      const lease = await h.stores.leases.get(requestId);
+      await h.stores.leases.release(requestId, lease!.leaseId);
+    }
+    await drain(h);
+    await runTick(tickArgs(h));
+    await drain(h);
+    const record = await h.stores.request.get(requestId);
+    return {
+      h,
+      requestId,
+      gate,
+      seen,
+      answers,
+      status: record?.status,
+      output: (record as { result?: { output?: unknown } } | undefined)?.result?.output,
+      resumes: (await resumeItemsOf(h, requestId)).map((r) => ({ suspensionId: r.suspensionId, resolution: r.resolution })),
+      gateStatus: (await h.provider.loadSuspension(requestId, gate.suspensionId))?.status
+    };
+  }
+
+  const cases = [
+    { name: "an approval", action: "approve", data: { ok: true }, resolution: "approved" },
+    { name: "a rejection", action: "reject", data: { reason: "no" }, resolution: "rejected" },
+    {
+      name: "a submitted form",
+      action: "submit",
+      data: { name: "Ada" },
+      resolution: "submitted",
+      allow: ["submit"]
+    },
+    { name: "a skip", action: "skip", data: undefined, resolution: "skipped", allow: ["approve", "skip"] }
+  ] as const;
+
+  for (const c of cases) {
+    it(`${c.name} whose turn never continued is carried on by the sweep, ending as the live resume does`, async () => {
+      const allow = "allow" in c ? [...c.allow] : undefined;
+      const live = await resolve(c.action, c.data, "live", allow);
+      const crashed = await resolve(c.action, c.data, "crashed", allow);
+
+      expect(crashed.status).not.toBe("suspended");
+      expect(crashed.status).toBe(live.status);
+      expect(crashed.seen).toEqual(live.seen);
+      expect(crashed.output).toEqual(live.output);
+      expect(crashed.answers).toEqual(live.answers);
+      expect(crashed.resumes).toEqual([{ suspensionId: crashed.gate.suspensionId, resolution: c.resolution }]);
+      expect(crashed.gateStatus).toBe(live.gateStatus);
+      if (c.action === "approve") {
+        expect(crashed.status).toBe("completed");
+        expect(crashed.seen).toEqual(["after-gate"]);
+        expect(crashed.answers).toEqual([{ ok: true }]);
+      }
+
+      const continued = crashed.h.finished.length;
+      await runTick(tickArgs(crashed.h));
+      expect(crashed.h.finished).toHaveLength(continued);
+    });
+  }
+
+  it("the re-drive of an approval waits for a live resume holding the turn's lease", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // A live resume holds the lease and has written the gate; its run has not
+    // yet moved the turn on.
+    await h.provider.acquireLease(requestId, { holder: "resume", durationMs: 60_000 });
+    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(0);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect(seen).toEqual([]);
+  });
+
+  it("an approval recorded on an older gate is not replayed onto a turn parked at a newer one", async () => {
+    const seen: string[] = [];
+    const flow = twoApprovalFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await resumeUnderLease(h.parked, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: gate }),
+      action: "approve",
+      resumedBy: USER
+    });
+    await drain(h);
+    expect(seen).toEqual(["first:approved"]);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect(seen).toEqual(["first:approved"]);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+  });
+
+  it("an approval whose re-drive itself crashed (the turn left interrupted) is carried on by the next sweep", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted" }, ["suspended"], Date.now());
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(seen).toEqual(["after-approval"]);
+  });
+
+  it("a re-drive of an approval whose run fails setup leaves the turn answerable, not stuck", async () => {
+    const state = { calls: [] as unknown[], toolRuns: 0 };
+    const flow = approvalToolFlow(state);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+
+    vi.spyOn(h.stores.checkpoints, "latest").mockRejectedValueOnce(new Error("crash before continuing"));
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
+    expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("pending");
+    expect(await h.stores.leases.get(requestId)).toBeNull();
+    expect(state.toolRuns).toBe(0);
+
+    const again = await resumeUnderLease(h.parked, {
+      requestId,
+      holder: "resume",
+      admit: async () => ({ suspension: (await h.provider.loadSuspension(requestId, gate.suspensionId))! }),
+      action: "approve",
+      data: {},
+      resumedBy: USER
+    });
+    expect(again.ok).toBe(true);
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("completed");
+    expect(state.toolRuns).toBe(1);
+  });
+
+  it("a stop recorded on a turn whose approval was recorded but never carried on still ends it aborted", async () => {
+    const seen: string[] = [];
+    const flow = parkingFlow(seen);
+    const h = harness(flow);
+    const { requestId, gate } = await park(h, flow, "approve");
+    // The approval won the gate; the stop stays on the turn.
+    await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
+    await h.stores.request.setFieldsIfStatus(requestId, { abortRequested: true }, ["suspended"], Date.now());
+
+    await runTick(tickArgs(h));
+    await drain(h);
+    expect((await h.stores.request.get(requestId))?.status).toBe("aborted");
+    const continued = h.finished.length;
+    await runTick(tickArgs(h));
+    expect(h.finished).toHaveLength(continued);
+  });
+});
+
 /**
  * A flow whose `approve` turn asks a model, and the model's one tool call
  * parks on a person's approval with a deadline. `toolRuns` counts the times
@@ -1134,15 +1338,17 @@ describe("an approval past its deadline: the turn carries on as if it is no long
     // The accepted approval stands.
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
 
-    // The dead run's lease runs out; the sweep must not reject the approval.
+    // The dead run's lease runs out. The sweep carries the approval on and does not reject it.
     const lease = await h.stores.leases.get(requestId);
     await h.stores.leases.release(requestId, lease!.leaseId);
     await runTick(tickArgs(h));
     await drain(h);
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
-    // Nothing continued it as a rejection.
-    expect(h.finished).toHaveLength(0);
-    expect(await resumeItemsOf(h, requestId)).toEqual([]);
+    expect(h.finished).toHaveLength(1);
+    expect(await resumeItemsOf(h, requestId)).toEqual([
+      expect.objectContaining({ suspensionId: gate.suspensionId, resolution: "approved" })
+    ]);
+    expect(seen).toEqual(["first:approved"]);
     expect((await h.stores.request.get(requestId))?.status).toBe("suspended");
   });
 

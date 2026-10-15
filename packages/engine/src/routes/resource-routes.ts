@@ -39,7 +39,7 @@ import {
 } from "../resources/normalize-resource-state";
 import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
-import { ownerKeyAdmits, ownerWriteRefusal } from "../resources/owner-private";
+import { ownerKeyAdmits, ownerKeyMaySeed, ownerWriteRefusal } from "../resources/owner-private";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {
@@ -78,15 +78,21 @@ type ResourceRouteContext = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Absent unless `ownerKeyMaySeed` admits the key for this user against the template scope's collections. */
 async function resolveTemplateRaw(
   ctx: ResourceRouteContext,
   flow: ResourceOwnerFlow,
   sessionId: string,
+  userId: string | undefined,
   config: { contentTemplateRef?: string }
 ): Promise<string | undefined> {
   if (!config.contentTemplateRef) return undefined;
   const templateFound = findResourceConfig(flow, config.contentTemplateRef);
   if (!templateFound) return undefined;
+  const scopeConfigs = Object.values(flow.resources ?? {}).filter(
+    (entry) => (entry as { scope?: unknown } | null)?.scope === templateFound.scope
+  );
+  if (!ownerKeyMaySeed(templateFound.storageKey, userId, scopeConfigs)) return undefined;
   const templateData = await getPersistedData(ctx, flow, sessionId, templateFound.scope, ctx.tenantId);
   return templateData?.content[templateFound.storageKey];
 }
@@ -142,7 +148,7 @@ export async function handleGetResourceContent(
   const rawContent =
     data.content[found.storageKey] ??
     normalizeScopeResourceContent({ [found.storageKey]: config }, undefined)[found.storageKey];
-  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, session.userId, config);
   const content = await renderContent(config, rawContent, state, templateRaw);
 
   return jsonResponse(200, { ref: route.ref, content });
@@ -207,7 +213,7 @@ export async function handleGetCollectionItemContent(
     if (extState === undefined) {
       return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
     }
-    const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+    const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, session.userId, config);
     const content = await renderContent(config, undefined, extState, templateRaw);
     return jsonResponse(200, { ref: route.ref, topic: route.topic, content });
   }
@@ -222,7 +228,7 @@ export async function handleGetCollectionItemContent(
 
   const state = isJsonObject(instanceState) ? instanceState : {};
   const rawContent = data.content[storageKey];
-  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
+  const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, session.userId, config);
   const content = await renderContent(config, rawContent, state as JsonObject, templateRaw);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic, content });

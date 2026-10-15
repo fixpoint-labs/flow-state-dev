@@ -122,6 +122,7 @@ export * from "./coordinator";
 export * from "./delegates";
 export * from "./standing-rules";
 export * from "./messages";
+export * from "./error-reporter";
 export {
   defineSessionBoard,
   type SessionBoard,

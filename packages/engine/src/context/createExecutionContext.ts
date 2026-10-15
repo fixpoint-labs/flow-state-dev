@@ -79,6 +79,7 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
   safeCaptureError,
   toErrorCaptureEvent,
+  toFinalErrorCaptureEvent,
   type ErrorCaptureBlockInfo,
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
@@ -2941,10 +2942,14 @@ export async function createExecutionContext<
     orgId: orgRecord?.orgId
   };
   const capturedErrors = new Set<unknown>();
+  // The leaf each captured throw came from, so the request's final-failure
+  // event (FIX-1983) can name it. Keyed like the dedup set, on the raw value.
+  const leafOfError = new Map<unknown, ErrorCaptureBlockInfo>();
   const captureError = (error: unknown, block?: ErrorCaptureBlockInfo): void => {
     if (errorCapture === undefined) return;
     if (capturedErrors.has(error)) return;
     capturedErrors.add(error);
+    if (block !== undefined) leafOfError.set(error, block);
     // `normalizeError` treats `blockName: undefined` as absent, so this is safe
     // whether or not the caller resolved a block name.
     const normalized = normalizeError(error, {
@@ -2954,6 +2959,25 @@ export async function createExecutionContext<
     void safeCaptureError(
       errorCapture,
       toErrorCaptureEvent(normalized, captureIdentity, block),
+      logger
+    );
+  };
+
+  // FIX-1983: the request's one final-failure event, sent by `runAction` once
+  // the failed record is written. It bypasses the dedup set, which already
+  // holds the thrown value from the leaf's own capture. A `FlowError` the
+  // runtime wrapped around the throw is looked up by its `cause` too.
+  const captureFinalError = (error: unknown): void => {
+    if (errorCapture === undefined) return;
+    const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+    const leaf = leafOfError.get(error) ?? (cause !== undefined ? leafOfError.get(cause) : undefined);
+    void safeCaptureError(
+      errorCapture,
+      toFinalErrorCaptureEvent(
+        normalizeError(error, { blockName: leaf?.blockName, scope: "request" }),
+        captureIdentity,
+        leaf === undefined ? undefined : { ...leaf, scope: "request" }
+      ),
       logger
     );
   };
@@ -3587,6 +3611,7 @@ export async function createExecutionContext<
       // FIX-724: root-block / fallback capture entrypoint. `undefined` when no
       // `errorCapture` handler is configured so callers incur zero overhead.
       _captureError: errorCapture !== undefined ? captureError : undefined,
+      _captureFinalError: errorCapture !== undefined ? captureFinalError : undefined,
       _loadDeclaredResources: loadDeclaredResourcesIntoCache,
       // Resume replay (FIX-811): register a completed sibling entry for a block
       // the core executor short-circuited (its output came from the ReplayLog,

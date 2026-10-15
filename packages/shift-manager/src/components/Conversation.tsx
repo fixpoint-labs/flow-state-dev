@@ -35,6 +35,12 @@ import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
 
+/**
+ * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
+ * `NON_RENDERABLE_TYPES` in `@flow-state-dev/react`'s `ItemRenderer.ts`.
+ */
+const UNDRAWN = new Set<string>(["state_change", "resource_change", "suspension_resume", "continuation"]);
+
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
   children,
@@ -126,8 +132,20 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line.
-  const shown = useMemo(() => (read === undefined ? [] : buildItemRenderStream(read.items, shiftManagerRenderers, { groupToolCalls: true })), [read]);
+  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items it never draws
+  // are left out, so a session holding only those (a standing-rules read writes a state change into
+  // it before any line is sent) counts as empty.
+  const shown = useMemo(
+    () =>
+      read === undefined
+        ? []
+        : buildItemRenderStream(
+            read.items.filter((item) => !UNDRAWN.has(item.type)),
+            shiftManagerRenderers,
+            { groupToolCalls: true },
+          ),
+    [read],
+  );
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
@@ -190,8 +208,9 @@ export function Conversation({
       >
         {failure !== undefined ? (
           <SectionFailure what="The conversation" failure={failure} onRetry={reread} testId={`${testId}-conversation-failure`} />
-        ) : sessionId === null || read?.items.length === 0 ? (
-          // A session the view opened before a first line (a project's Stream) reads empty: say so, never draw nothing.
+        ) : sessionId === null || (read !== undefined && shown.length === 0 && !read.truncated) ? (
+          // A session the view opened before a first line (a project's Stream), or one whose whole read holds
+          // nothing the feed draws, reads empty: say so, never draw nothing. A cut-short read may hold more.
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
             {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
           </p>
@@ -201,7 +220,7 @@ export function Conversation({
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <SessionScope sessionId={sessionId} items={read.items}>
+            <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
               {read.truncated ? (
                 <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
                   More than shown: this conversation holds more than one read returns.

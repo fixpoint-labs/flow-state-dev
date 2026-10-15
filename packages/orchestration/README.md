@@ -877,11 +877,14 @@ whatever runs the board calls `resumeOwedWaits` as it touches the board outside 
 run, a task's notice), and the host has durable execution and a running durability sweeper
 (`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`. On a task turn a wait is
+refused with `wait_unavailable`; a layer that has its own way for a task to wait on another
+passes it as `taskTurnInstead` (a sentence), and the refusal and the `dispatchTask` description
+say it in place of the generic advice.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
+- `dispatchAndWait(ctx, collection, init, { timeoutMs?, taskTurnInstead? })`, from
   `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from inside
   a generator's tool call. Call it from your own tool when you don't use the task tools'
   `dispatchTask`. Before filing it refuses a host that can't bound the wait (`canHoldWait(ctx)`,

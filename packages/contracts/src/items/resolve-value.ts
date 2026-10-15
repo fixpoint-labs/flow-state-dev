@@ -13,7 +13,9 @@
  * FIX-480 §3.2: refs may now point at `MessageItem` ids (in addition to
  * `BlockTraceItem` ids), so a streaming-text generator's `block_trace.output`
  * can carry a ref to its own emitted message instead of duplicating the
- * text. Resolution returns the joined `output_text` content.
+ * text. Resolution returns the joined `output_text` content. Refs may also
+ * point at `ToolOutputItem` ids: a block run as a tool (or an `.asTool()`
+ * step) refs the tool result it recorded, and resolution returns its `output`.
  */
 import type {
   BlockTraceItem,
@@ -21,7 +23,8 @@ import type {
   BlockValueInternal,
   MessageItem,
   OutputItem,
-  StructureShape
+  StructureShape,
+  ToolOutputItem
 } from "./types";
 
 /** Construct an inline BlockValue carrying novel content. */
@@ -65,6 +68,8 @@ export type ItemLookup = (itemId: string) => OutputItem | BlockTraceItem | undef
  *     - `block_trace` → recurse into its own BlockValue.
  *     - `message` → returns the joined `output_text` content cast to `T`
  *       (FIX-480: streaming-text generators emit refs to their own message).
+ *     - `tool_output` → returns its `output` (a block run as a tool, or an
+ *       `.asTool()` step, refs the tool result it recorded).
  *   Returns `undefined` if the target is missing (e.g., evicted).
  * - `structure` → deep-resolves each entry, reconstructing the container.
  * - `omitted` → `undefined`: the record left the value out.
@@ -118,9 +123,13 @@ function resolveInternal(
       // Terminal node — the joined text IS the resolved value. No recursion.
       return joinMessageText(target as MessageItem);
     }
+    if (target.type === "tool_output") {
+      // Terminal node — the recorded output IS the resolved value. No recursion.
+      return (target as ToolOutputItem).output;
+    }
     // Unknown ref target type. Returning `undefined` is the safe choice —
     // callers already tolerate ref-misses (e.g. retention eviction), and a
-    // hard throw would break adapters for any future non-message content
+    // hard throw would break adapters for any unknown ref target type
     // that legitimately becomes ref-able.
     return undefined;
   }
@@ -157,8 +166,8 @@ function joinMessageText(item: MessageItem): string {
 
 /**
  * Build a lookup closure from a flat items list. Indexes every item by
- * id (not just `block_trace`) so refs may resolve to `message` items
- * as well — FIX-480 widened the source pool. Callers with a Map already
+ * id (not just `block_trace`) so refs may resolve to `message` and
+ * `tool_output` items as well. Callers with a Map already
  * indexed by id should wrap that directly.
  */
 export function buildItemLookup(items: readonly OutputItem[] | readonly { id: string; type: string }[]): ItemLookup {

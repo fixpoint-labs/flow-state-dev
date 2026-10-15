@@ -121,6 +121,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
+    rosterTaskTakers: delegates.rosterTaskTakers,
     flowKind: options.flowKind,
     chainLimit: () => taskChainLimitOf(options.installation),
     ...(options.posts === undefined ? {} : { posts: options.posts }),
