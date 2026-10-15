@@ -56,6 +56,23 @@ function installFakeTsc(root: string, status: number): void {
   fs.chmodSync(tscPath, 0o755);
 }
 
+/**
+ * Install a fake `tsc` that appends its `-p` config to `calls.log` and fails
+ * with `status` only when that config is `tsconfig.test.json`.
+ */
+function installRecordingTsc(root: string, status: number): string {
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  const log = path.join(root, "calls.log");
+  const tscPath = path.join(binDir, "tsc");
+  fs.writeFileSync(
+    tscPath,
+    `#!/bin/sh\necho "$2" >> "${log}"\n[ "$2" = "tsconfig.test.json" ] && exit ${status}\nexit 0\n`
+  );
+  fs.chmodSync(tscPath, 0o755);
+  return log;
+}
+
 function run(root: string, packageDir: string) {
   const result = spawnSync(process.execPath, [path.join(root, "scripts", "typecheck.mjs")], {
     cwd: packageDir,
@@ -100,5 +117,37 @@ describe("typecheck script — never reports success without running tsc", () =>
     installFakeTsc(root, 0);
 
     expect(run(root, packageDir).status).toBe(0);
+  });
+});
+
+/**
+ * Test files are compiled only by the second program. If the script stopped
+ * running it, the guard would still count those tests as covered, so both the
+ * call and its failure are pinned here.
+ */
+describe("typecheck script — runs tsconfig.test.json after tsconfig.json", () => {
+  it.skipIf(!onPosix)("runs both programs, build config first, when the package has a test config", () => {
+    const { root, packageDir } = makeRoot();
+    fs.writeFileSync(path.join(packageDir, "tsconfig.test.json"), "{}");
+    const log = installRecordingTsc(root, 0);
+
+    expect(run(root, packageDir).status).toBe(0);
+    expect(fs.readFileSync(log, "utf8").trim().split("\n")).toEqual(["tsconfig.json", "tsconfig.test.json"]);
+  });
+
+  it.skipIf(!onPosix)("fails when only the test-config program fails", () => {
+    const { root, packageDir } = makeRoot();
+    fs.writeFileSync(path.join(packageDir, "tsconfig.test.json"), "{}");
+    installRecordingTsc(root, 3);
+
+    expect(run(root, packageDir).status).toBe(3);
+  });
+
+  it.skipIf(!onPosix)("runs only tsconfig.json when the package has no test config", () => {
+    const { root, packageDir } = makeRoot();
+    const log = installRecordingTsc(root, 3);
+
+    expect(run(root, packageDir).status).toBe(0);
+    expect(fs.readFileSync(log, "utf8").trim().split("\n")).toEqual(["tsconfig.json"]);
   });
 });

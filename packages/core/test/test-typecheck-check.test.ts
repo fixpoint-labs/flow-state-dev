@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { deferred, findGaps, typecheckPrograms } from "../../../scripts/validate-test-typecheck.mjs";
 
 type Pkg = { dir: string; tests: string[]; covered: string[] };
-type Gap = { dir: string; reason: string; files?: string[] };
+type Gap = { dir: string; reason: "uncovered" | "stale-deferral" | "unknown-deferral"; files?: string[] };
 
 const gaps = (packages: Pkg[], deferredList: Record<string, string> = {}): Gap[] =>
   (findGaps as (p: Pkg[], d: Record<string, string>) => Gap[])(packages, deferredList);

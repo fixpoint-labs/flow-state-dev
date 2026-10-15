@@ -26,10 +26,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
-const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /**
  * Packages whose tests typecheck does not yet fully compile, by workspace
@@ -144,7 +144,7 @@ function readPackage(dir) {
   const pkgDir = join(ROOT, "packages", dir);
   const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
   const programs = typecheckPrograms(manifest.scripts?.typecheck, (name) => existsSync(join(pkgDir, name)));
-  const covered = programs.filter((name) => existsSync(join(pkgDir, name))).flatMap((name) => programFiles(pkgDir, name));
+  const covered = programs.flatMap((name) => programFiles(pkgDir, name));
   const tests = execFileSync("git", ["ls-files", "--", "*.ts", "*.tsx", "*.mts"], { cwd: pkgDir, encoding: "utf8" })
     .split("\n")
     .filter((file) => file && !file.endsWith(".d.ts") && isTestFile(file));
