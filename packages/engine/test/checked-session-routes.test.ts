@@ -260,15 +260,17 @@ function sessionAddressedRouteKinds(): string[] {
   return [...kinds].sort();
 }
 
+const SESSION_ADDRESSED_ROUTE_KINDS = sessionAddressedRouteKinds();
+
 describe("every session-addressed route is held to the compare", () => {
   it("finds the session-addressed routes from the guard's classification", () => {
     // Guards the derivation itself: an empty set would pass the check below.
-    expect(sessionAddressedRouteKinds().length).toBeGreaterThan(0);
+    expect(SESSION_ADDRESSED_ROUTE_KINDS.length).toBeGreaterThan(0);
   });
 
   it("has a row for every route the guard classifies as session-addressed", () => {
     const covered = new Set(ROUTES.map((route) => route.name));
-    const missing = sessionAddressedRouteKinds().filter((kind) => !covered.has(kind));
+    const missing = SESSION_ADDRESSED_ROUTE_KINDS.filter((kind) => !covered.has(kind));
     expect(missing, "session-addressed routes with no row in ROUTES").toEqual([]);
   });
 
@@ -280,7 +282,7 @@ describe("every session-addressed route is held to the compare", () => {
   });
 
   it("has no row for a route that is not session-addressed", () => {
-    const kinds = new Set(sessionAddressedRouteKinds());
+    const kinds = new Set(SESSION_ADDRESSED_ROUTE_KINDS);
     const stale = ROUTES.map((route) => route.name).filter((name) => !kinds.has(name));
     expect(stale, "rows for routes the guard does not treat as session-addressed").toEqual([]);
   });
@@ -377,7 +379,15 @@ describe("a session route acts only on the session the owner check admitted the 
       const { router, stores } = build(true);
       await seed(router, stores, "alice");
       const res = await call(router, route.method, route.path, route.body);
-      expect(res.status).toBe(route.okStatus);
+      try {
+        expect(res.status).toBe(route.okStatus);
+      } finally {
+        // The stream route answers with an open stream whose loop polls the
+        // stores until the reader goes away; disposing the router does not
+        // stop it. Cancelling the unread body ends it, and is a no-op for
+        // every other route.
+        await res.body?.cancel();
+      }
     });
   }
 
@@ -388,7 +398,15 @@ describe("a session route acts only on the session the owner check admitted the 
       const { router, stores } = build(false);
       await seed(router, stores, "alice");
       const res = await call(router, route.method, route.path, route.body);
-      expect(res.status).toBe(route.okStatus);
+      try {
+        expect(res.status).toBe(route.okStatus);
+      } finally {
+        // The stream route answers with an open stream whose loop polls the
+        // stores until the reader goes away; disposing the router does not
+        // stop it. Cancelling the unread body ends it, and is a no-op for
+        // every other route.
+        await res.body?.cancel();
+      }
     });
   }
 });
