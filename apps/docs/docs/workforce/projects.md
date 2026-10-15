@@ -354,7 +354,7 @@ const installation = createWorkerInstallation({
 });
 ```
 
-Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
+Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to and marks each workstream `yours: true` when the user owns it. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
 
 ```ts
 import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/workforce";
