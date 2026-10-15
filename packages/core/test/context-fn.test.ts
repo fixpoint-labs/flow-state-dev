@@ -47,7 +47,7 @@ describe("contextFn", () => {
   it("reads user state when schemas include user", () => {
     const fn = contextFn(
       { session: sessionStateSchema, user: userStateSchema },
-      // @ts-expect-error — source bug, to be filed (found by FIX-1343): contextFn's session-only
+      // @ts-expect-error — source bug FIX-2022: contextFn's session-only
       // overload is tried first and accepts `{ session, user }`, so the session+user overload is
       // unreachable and `user` is missing from the callback's type. Remove once that is fixed.
       ({ session, user }) => `${user.role}: ${session.phase}`

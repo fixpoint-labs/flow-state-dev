@@ -122,7 +122,7 @@ describe("defineProjectedResourceCollection", () => {
         portfolio: typeof coll;
       }>;
       // The projected collection resolves to the read-only ref...
-      // @ts-expect-error — source bug, to be filed (found by FIX-1343): the collection's state
+      // @ts-expect-error — source bug FIX-2023: the collection's state
       // type is inferred as `any`, so this is ProjectedResourceCollectionRef<any>. Remove once fixed.
       expectTypeOf<Refs["portfolio"]>().toEqualTypeOf<
         ProjectedResourceCollectionRef<{ ticker: string; shares: number }>
@@ -147,7 +147,7 @@ describe("defineProjectedResourceCollection", () => {
       type Client = import("../src/types/resource").ClientDataOf<typeof coll>;
       // `expose: ["ticker"]` → the projection is Pick<state, "ticker">, not the
       // default JsonValue.
-      // @ts-expect-error — the same source bug: the projection is Pick<any, "ticker">.
+      // @ts-expect-error — FIX-2023, the same source bug: the projection is Pick<any, "ticker">.
       expectTypeOf<Client>().toEqualTypeOf<{ ticker: string }>();
     });
 
