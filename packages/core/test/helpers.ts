@@ -1,4 +1,4 @@
-import type { BlockContext, BlockDefinition } from "../src/types/block";
+import type { BlockContext, BlockDefinition, ResponseEmitterHandle } from "../src/types/block";
 import { asRuntime } from "../src/types/block";
 import type { GeneratorModel, ModelResolver } from "../src/types/model";
 import type { ScopeStateOps } from "../src/types/state";
@@ -21,27 +21,42 @@ export function runForTest<TInput, TOutput>(
 
 function createStateOps<TState extends object>(): ScopeStateOps<TState> {
   return {
-    patchState: async () => undefined,
-    setState: async () => undefined,
-    incState: async () => undefined,
-    pushState: async () => undefined,
-    setStateRecord: async () => undefined,
-    deleteStateRecord: async () => undefined,
-    atomicState: async () => undefined
+    patchState: async () => true,
+    setState: async () => true,
+    incState: async () => true,
+    pushState: async () => true,
+    setStateRecord: async () => true,
+    deleteStateRecord: async () => true,
+    atomicState: async () => true
   };
 }
 
-export function createMockContext(overrides?: Partial<BlockContext>): BlockContext {
+/**
+ * What a test may override on the mock context. Tests stub only the parts a
+ * block touches, so two fields are looser than `BlockContext`: `resolveModel`
+ * may be a plain function without `resolveId`, and `response` may carry only
+ * the methods the test reads. They are merged in as given.
+ */
+export type MockContextOverrides = Omit<Partial<BlockContext>, "resolveModel" | "response"> & {
+  resolveModel?: (modelId: string, blockName?: string) => GeneratorModel;
+  response?: Partial<ResponseEmitterHandle>;
+};
+
+export function createMockContext(overrides?: MockContextOverrides): BlockContext {
   const stateOps = createStateOps<Record<string, unknown>>();
   const resolveModel = ((): GeneratorModel => {
     throw new Error("No model resolver configured in createMockContext");
-  }) as ModelResolver;
+  }) as unknown as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelId;
 
-  const baseContext: BlockContext = {
+  // A partial context: a test that needs a session, settings or targets passes them.
+  const baseContext: Omit<BlockContext, "session" | "settings" | "targets"> = {
     request: {
       identity: { type: "request", id: "req_1" },
+      incarnation: "inc_1",
       state: {},
+      tokenUsage: { totalConsumed: 0, byModel: {}, remaining: Number.POSITIVE_INFINITY },
+      costEstimate: { totalUSD: 0, byModel: {} },
       ...stateOps
     },
     user: {
@@ -58,6 +73,7 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
     response: {
       emit: () => undefined,
       getItems: () => [],
+      getItemCount: () => 0,
       subscribeToItems: (_l) => () => undefined
     },
     emit: {
@@ -73,7 +89,6 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
     getBlockOutput: () => undefined,
     getBlockResult: () => ({ status: "not_started" as const }),
     wasRescued: () => false,
-    targetStateSchemas: {},
     cap: {} as any,
     // The narrowed flow view every production context carries (FIX-1331). A
     // frozen empty bag, so a block that reads `ctx.flow.config` here sees what
@@ -84,5 +99,5 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
   return {
     ...baseContext,
     ...overrides
-  };
+  } as BlockContext;
 }

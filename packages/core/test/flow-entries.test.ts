@@ -413,38 +413,38 @@ describe("resolveEntry — one lookup, no fallback", () => {
   })();
 
   it("reads each type's own map", () => {
-    expect(resolveEntry(flow, "public", "chat")?.block).toBe(noop);
-    expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
-    expect(resolveEntry(flow, "task", "implement")?.block).toBe(noop);
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "chat")?.block).toBe(noop);
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "wake")?.block).toBe(wake);
+    expect(resolveEntry<{ block: unknown }>(flow, "task", "implement")?.block).toBe(noop);
     expect(
-      resolveEntry(flow, "webhook", "any", { webhook: { provider: "github", eventType: "push" } })
+      resolveEntry<{ block: unknown }>(flow, "webhook", "any", { webhook: { provider: "github", eventType: "push" } })
         ?.block
     ).toBe(noop);
     expect(
-      resolveEntry(flow, "schedule", "any", { schedule: { scheduleId: "nightly" } })?.block
+      resolveEntry<{ block: unknown }>(flow, "schedule", "any", { schedule: { scheduleId: "nightly" } })?.block
     ).toBe(noop);
   });
 
   it("never resolves another type's map", () => {
     // `wake` exists as a user action AND an internal entry; each type sees only its own.
-    expect(resolveEntry(flow, "public", "wake")?.block).toBe(noop);
-    expect(resolveEntry(flow, "internal", "wake")?.block).toBe(wake);
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "wake")?.block).toBe(noop);
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "wake")?.block).toBe(wake);
     // `status` is internal only; `chat` is user only; `implement` is task only.
-    expect(resolveEntry(flow, "public", "status")).toBeUndefined();
-    expect(resolveEntry(flow, "internal", "chat")).toBeUndefined();
-    expect(resolveEntry(flow, "public", "implement")).toBeUndefined();
-    expect(resolveEntry(flow, "task", "wake")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "status")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "chat")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "implement")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "task", "wake")).toBeUndefined();
   });
 
   it("refuses a protocol-owned type with no coordinate rather than reading the name", () => {
-    expect(resolveEntry(flow, "webhook", "push")).toBeUndefined();
-    expect(resolveEntry(flow, "schedule", "nightly")).toBeUndefined();
-    expect(resolveEntry(flow, "webhook", "any", { webhook: { provider: "github" } })).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "webhook", "push")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "schedule", "nightly")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "webhook", "any", { webhook: { provider: "github" } })).toBeUndefined();
   });
 
   it("resolves nothing for a name that spells an inherited member", () => {
-    expect(resolveEntry(flow, "public", "constructor")).toBeUndefined();
-    expect(resolveEntry(flow, "internal", "__proto__")).toBeUndefined();
-    expect(resolveEntry(flow, "task", "toString")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "public", "constructor")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "internal", "__proto__")).toBeUndefined();
+    expect(resolveEntry<{ block: unknown }>(flow, "task", "toString")).toBeUndefined();
   });
 });

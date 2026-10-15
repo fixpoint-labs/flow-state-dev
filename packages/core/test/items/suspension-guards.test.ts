@@ -87,7 +87,7 @@ describe("isSuspensionResumeItem", () => {
     const item: OutputItem = {
       ...base,
       type: "status",
-      status: "streaming",
+      status: "in_progress",
       message: "Thinking..."
     };
 
@@ -106,6 +106,7 @@ describe("isSuspensionWait", () => {
     expect(isSuspensionWait(tool("failed", { message: "boom" }))).toBe(false);
     expect(isSuspensionWait(tool("failed", { message: "boom", code: "E_TIMEOUT" }))).toBe(false);
     expect(isSuspensionWait(tool("completed"))).toBe(false);
-    expect(isSuspensionWait({ ...base, type: "block_trace", status: "failed", error: { message: "Approve?", code: "SUSPENSION" } })).toBe(false);
+    const blockTrace = { ...base, type: "block_trace", status: "failed", error: { message: "Approve?", code: "SUSPENSION" } };
+    expect(isSuspensionWait(blockTrace)).toBe(false);
   });
 });

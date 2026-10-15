@@ -152,7 +152,7 @@ describe("parsePromptFile — LiquidJS render", () => {
     const pf = parsePromptFile(
       `<system>{% if ctx.session.state.flag %}ON{% else %}OFF{% endif %}</system>`
     );
-    const ctx = mockCtx({ session: { state: { flag: true } } } as Partial<BlockContext>);
+    const ctx = mockCtx({ session: { state: { flag: true } } } as unknown as Partial<BlockContext>);
     expect(await pf.prompt({}, ctx)).toBe("ON");
   });
 

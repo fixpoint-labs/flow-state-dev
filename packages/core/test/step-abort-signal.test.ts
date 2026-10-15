@@ -31,7 +31,7 @@ const waitsForAbort = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({ ended: z.string() }),
   execute: async (_input, ctx) =>
-    new Promise((resolve) => {
+    new Promise<{ ended: string }>((resolve) => {
       if (ctx.signal?.aborted === true) return resolve({ ended: "already" });
       ctx.signal?.addEventListener("abort", () => resolve({ ended: "aborted" }), {
         once: true,
@@ -557,7 +557,7 @@ describe("a REPLAYED step does not settle", () => {
   }
 
   function ctxWithReplay(path: string, value: unknown) {
-    const ctx = createMockContext() as Record<string, unknown>;
+    const ctx = createMockContext() as unknown as Record<string, unknown>;
     ctx._replayLog = replayLogFor(path, value);
     return ctx as unknown as ReturnType<typeof createMockContext>;
   }
@@ -702,7 +702,7 @@ describe("the abortSignal RESOLVER is skipped on replay too", () => {
   // runs again on every re-entry.
 
   function ctxWithReplay(path: string, value: unknown) {
-    const ctx = createMockContext() as Record<string, unknown>;
+    const ctx = createMockContext() as unknown as Record<string, unknown>;
     ctx._replayLog = {
       getCompletedOutput: (key: string) =>
         key.endsWith(`/${path}`) || key.endsWith(`:${path}`)

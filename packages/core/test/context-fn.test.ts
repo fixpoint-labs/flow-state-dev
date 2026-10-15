@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { contextFn } from "../src/context";
+import type { SessionScopeHandle, UserScopeHandle } from "../src/types/scope";
 import { createMockContext } from "./helpers";
+
+// contextFn reads only `state` off a scope handle, so these are partial
+// handles: the state, an identity, and no-op writers.
+const stateOps = {
+  patchState: async () => true,
+  setState: async () => true,
+  incState: async () => true,
+  pushState: async () => true,
+  setStateRecord: async () => true,
+  deleteStateRecord: async () => true,
+  atomicState: async () => true
+};
+const mockSession = (state: Record<string, unknown>) =>
+  ({ identity: { type: "session", id: "sess_1" }, state, ...stateOps }) as unknown as SessionScopeHandle;
+const mockUser = (state: Record<string, unknown>) =>
+  ({ identity: { type: "user", id: "user_1", userId: "user_1" }, state, ...stateOps }) as unknown as UserScopeHandle;
 
 describe("contextFn", () => {
   const sessionStateSchema = z.object({
@@ -20,21 +37,7 @@ describe("contextFn", () => {
     );
 
     const ctx = createMockContext({
-      session: {
-        identity: { type: "session", id: "sess_1" },
-        state: { topics: ["AI", "ML"], phase: "research" },
-        resources: { get: () => { throw new Error("no resources"); }, list: () => [] } as any,
-        items: { all: () => [], client: () => [], llm: async () => [] },
-        appendJournal: async () => undefined,
-        getJournal: async () => [],
-        patchState: async () => undefined,
-        setState: async () => undefined,
-        incState: async () => undefined,
-        pushState: async () => undefined,
-        setStateRecord: async () => undefined,
-        deleteStateRecord: async () => undefined,
-        atomicState: async () => undefined
-      }
+      session: mockSession({ topics: ["AI", "ML"], phase: "research" })
     });
 
     const result = fn(undefined, ctx);
@@ -44,37 +47,15 @@ describe("contextFn", () => {
   it("reads user state when schemas include user", () => {
     const fn = contextFn(
       { session: sessionStateSchema, user: userStateSchema },
+      // @ts-expect-error — source bug, to be filed (found by FIX-1343): contextFn's session-only
+      // overload is tried first and accepts `{ session, user }`, so the session+user overload is
+      // unreachable and `user` is missing from the callback's type. Remove once that is fixed.
       ({ session, user }) => `${user.role}: ${session.phase}`
     );
 
     const ctx = createMockContext({
-      session: {
-        identity: { type: "session", id: "sess_1" },
-        state: { topics: [], phase: "active" },
-        resources: { get: () => { throw new Error("no resources"); }, list: () => [] } as any,
-        items: { all: () => [], client: () => [], llm: async () => [] },
-        appendJournal: async () => undefined,
-        getJournal: async () => [],
-        patchState: async () => undefined,
-        setState: async () => undefined,
-        incState: async () => undefined,
-        pushState: async () => undefined,
-        setStateRecord: async () => undefined,
-        deleteStateRecord: async () => undefined,
-        atomicState: async () => undefined
-      },
-      user: {
-        identity: { type: "user", id: "user_1", userId: "user_1" },
-        state: { role: "admin" },
-        resources: { get: () => { throw new Error("no resources"); }, list: () => [] } as any,
-        patchState: async () => undefined,
-        setState: async () => undefined,
-        incState: async () => undefined,
-        pushState: async () => undefined,
-        setStateRecord: async () => undefined,
-        deleteStateRecord: async () => undefined,
-        atomicState: async () => undefined
-      }
+      session: mockSession({ topics: [], phase: "active" }),
+      user: mockUser({ role: "admin" })
     });
 
     const result = fn({}, ctx);
@@ -88,21 +69,7 @@ describe("contextFn", () => {
     );
 
     const ctx = createMockContext({
-      session: {
-        identity: { type: "session", id: "sess_1" },
-        state: { topics: [], phase: "done" },
-        resources: { get: () => { throw new Error("no resources"); }, list: () => [] } as any,
-        items: { all: () => [], client: () => [], llm: async () => [] },
-        appendJournal: async () => undefined,
-        getJournal: async () => [],
-        patchState: async () => undefined,
-        setState: async () => undefined,
-        incState: async () => undefined,
-        pushState: async () => undefined,
-        setStateRecord: async () => undefined,
-        deleteStateRecord: async () => undefined,
-        atomicState: async () => undefined
-      }
+      session: mockSession({ topics: [], phase: "done" })
     });
 
     // Different inputs should not change the result
@@ -118,21 +85,7 @@ describe("contextFn", () => {
     );
 
     const ctx = createMockContext({
-      session: {
-        identity: { type: "session", id: "sess_1" },
-        state: { topics: [], phase: "init" },
-        resources: { get: () => { throw new Error("no resources"); }, list: () => [] } as any,
-        items: { all: () => [], client: () => [], llm: async () => [] },
-        appendJournal: async () => undefined,
-        getJournal: async () => [],
-        patchState: async () => undefined,
-        setState: async () => undefined,
-        incState: async () => undefined,
-        pushState: async () => undefined,
-        setStateRecord: async () => undefined,
-        deleteStateRecord: async () => undefined,
-        atomicState: async () => undefined
-      }
+      session: mockSession({ topics: [], phase: "init" })
     });
 
     expect(fn(undefined, ctx)).toBe("request: req_1");

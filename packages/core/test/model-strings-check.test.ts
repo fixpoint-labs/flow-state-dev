@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import {
-  isScannedPath,
-  rejectionImplFiles,
-  resolverWindow,
-  scanSources,
-} from "../../../scripts/validate-model-strings.mjs";
+import { isScannedPath, rejectionImplFiles, resolverWindow, scanSources } from "../../../scripts/validate-model-strings.mjs";
 
 type Hit = { file: string; line: number; text: string; rule: string };
 

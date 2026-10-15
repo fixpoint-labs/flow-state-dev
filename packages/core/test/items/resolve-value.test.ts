@@ -8,10 +8,10 @@
  */
 import { describe, expect, it } from "vitest";
 import type { BlockTraceItem, MessageItem, OutputItem } from "../../src/items";
-import {
-  buildItemLookup,
-  resolveBlockValue,
-} from "../../src/items";
+import { buildItemLookup } from "../../src/items";
+// A `ref` is internal: only the executor writes one, so the resolver that takes
+// it is the internal one; the public `resolveBlockValue` delegates to it.
+import { resolveBlockValueInternal } from "../../src/items/internal";
 
 const baseProvenance = {
   blockName: "x",
@@ -57,7 +57,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
     const msg = makeMessage("item_msg_1", "hello world");
     const items: OutputItem[] = [msg];
     const lookup = buildItemLookup(items);
-    const out = resolveBlockValue<string>(
+    const out = resolveBlockValueInternal<string>(
       { kind: "ref", sourceItemId: "item_msg_1" },
       lookup,
     );
@@ -73,7 +73,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       ],
     };
     const lookup = buildItemLookup([msg]);
-    const out = resolveBlockValue<string>(
+    const out = resolveBlockValueInternal<string>(
       { kind: "ref", sourceItemId: "item_msg_2" },
       lookup,
     );
@@ -85,9 +85,9 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       kind: "inline",
       value: { y: 42 },
     });
-    const items: OutputItem[] = [inner];
+    const items = [inner];
     const lookup = buildItemLookup(items);
-    const out = resolveBlockValue<{ y: number }>(
+    const out = resolveBlockValueInternal<{ y: number }>(
       { kind: "ref", sourceItemId: "item_block_output_inner" },
       lookup,
     );
@@ -96,7 +96,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
 
   it("returns undefined when the ref target is missing", () => {
     const lookup = buildItemLookup([]);
-    const out = resolveBlockValue<string>(
+    const out = resolveBlockValueInternal<string>(
       { kind: "ref", sourceItemId: "missing" },
       lookup,
     );
@@ -117,7 +117,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
       message: "x",
     };
     const lookup = buildItemLookup([status]);
-    const out = resolveBlockValue(
+    const out = resolveBlockValueInternal(
       { kind: "ref", sourceItemId: "item_status_1" },
       lookup,
     );
@@ -125,7 +125,7 @@ describe("resolveBlockValue (FIX-480 ref-to-message)", () => {
   });
 
   it("resolves inline values without lookup interaction", () => {
-    const out = resolveBlockValue(
+    const out = resolveBlockValueInternal(
       { kind: "inline", value: { hello: "world" } },
       buildItemLookup([]),
     );

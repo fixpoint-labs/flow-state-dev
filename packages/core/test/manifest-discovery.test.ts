@@ -153,8 +153,10 @@ describe("discover", () => {
 
     const result = await runForTest(discover, { domain: null, detail: "thin" }, ctx);
 
-    const resources = result.domains.find((d) => d.domain === "resources")!;
-    const workers = result.domains.find((d) => d.domain === "workers")!;
+    // The output type is a union of arrays (`never[]` from the unknown-domain
+    // branch); spreading it gives one array to search.
+    const resources = [...result.domains].find((d) => d.domain === "resources")!;
+    const workers = [...result.domains].find((d) => d.domain === "workers")!;
     expect(resources.problem).toBe("collection store unreachable");
     expect(resources.entries).toEqual([]);
     expect(workers.entries).toHaveLength(1);

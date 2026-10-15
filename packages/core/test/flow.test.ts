@@ -148,6 +148,9 @@ describe("defineFlow", () => {
         }
       },
       session: {
+        // @ts-expect-error — source gap, to be filed (found by FIX-1343): an instance's
+        // `session` option is typed as the definition's exact session config, so a
+        // `metadata` schema the runtime accepts here is refused by the type.
         metadata: z.object({ traceId: z.string() })
       }
     });
@@ -160,6 +163,7 @@ describe("defineFlow", () => {
     expect(custom.requireUser).toBe(true);
     expect(Object.keys(custom.actions).sort()).toEqual(["extra", "run"]);
     expect(custom.session?.stateSchema).toBeDefined();
+    // @ts-expect-error — the same source gap: the instance type does not carry `metadata`.
     expect(custom.session?.metadata).toBeDefined();
   });
 
