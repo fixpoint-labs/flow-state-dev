@@ -348,6 +348,45 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   });
 });
 
+describe("a titled ask in Inbox (FIX-2030)", () => {
+  it("is headed by its short title, with its message drawn as markdown body text under it", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    const detail = "Seen 2 times. File it?\n\n**Questions**\n\n- Should `runAction` retry?\n- Which team owns it?";
+    await workerAction(clients, "ops.asker", "ask", { what: "ship it", detail }, "s_ops_asker");
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+
+    // The list row names the ask by its title, not the body.
+    const item = await screen.findByTestId("inbox-item");
+    expect(within(item).getByTestId("inbox-item-question").textContent).toBe("Approve: ship it");
+    act(() => fireEvent.click(item));
+
+    // Only the title is set in display type; the questions and code are body text.
+    expect((await screen.findByTestId("inbox-detail-title")).textContent).toBe("Approve: ship it");
+    const body = screen.getByTestId("inbox-detail-body");
+    expect([...body.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Should runAction retry?", "Which team owns it?"]);
+    expect(body.querySelector("code")?.textContent).toBe("runAction");
+    expect(body.textContent).not.toContain("**");
+    // The card under it still answers the ask.
+    expect(within(screen.getByTestId("inbox-detail")).getByRole("button", { name: "Approve" })).toBeTruthy();
+  });
+
+  it("an ask with no title is headed by its message, with no body under it", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await workerAction(clients, "ops.asker", "ask", { what: "ship it" }, "s_ops_asker");
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const item = await screen.findByTestId("inbox-item");
+    act(() => fireEvent.click(item));
+    expect((await screen.findByTestId("inbox-detail-title")).textContent).toBe("Approve: ship it");
+    expect(screen.queryByTestId("inbox-detail-body")).toBeNull();
+  });
+});
+
 describe("Jump to a declared document (BR-10)", () => {
   it("finds the Lab's document by name and opens it read-only, with the file's body", async () => {
     const lab = await serveLab((await openAskLab()).flowState);

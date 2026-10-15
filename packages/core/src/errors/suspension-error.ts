@@ -16,6 +16,13 @@ import type { ResumeAction, SuspensionReason } from "../types/suspension";
 
 export interface SuspendOptions {
   reason: SuspensionReason;
+  /**
+   * A short heading for the ask, a few words. Surfaces that list or head an
+   * ask draw this, and `message` becomes the body under it. Omit it for an ask
+   * whose `message` is already one short line.
+   */
+  title?: string;
+  /** What the ask says. With a `title`, the body under it, and may be markdown. */
   message?: string;
   data?: Record<string, unknown>;
   /**
@@ -75,6 +82,8 @@ function normalizeResumeSchema(
 export class SuspensionError extends Error {
   readonly suspensionId: string;
   readonly reason: SuspensionReason;
+  /** The ask's short heading, when the caller gave one (see {@link SuspendOptions.title}). */
+  readonly title?: string;
   readonly data?: Record<string, unknown>;
   readonly resumeSchema?: Record<string, unknown>;
   readonly render?: { component: string; props?: Record<string, unknown> };
@@ -111,6 +120,7 @@ export class SuspensionError extends Error {
     this.name = "SuspensionError";
     this.suspensionId = options.suspensionId;
     this.reason = options.reason;
+    if (options.title !== undefined) this.title = options.title;
     this.data = options.data;
     this.resumeSchema = normalizeResumeSchema(options.resumeSchema);
     this.render = options.render;
