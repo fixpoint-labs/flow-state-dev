@@ -61,11 +61,12 @@
     "goals/lib/module-patch*.mjs"
   ],
 
-  // Not analyzed. Specs and their PoCs aren't workspace code. The rest is code that runs
-  // somewhere else, so its imports resolve against that place's paths and
-  // dependencies: goal harnesses and hosts run inside kitchen-sink, install-fsd
-  // templates are copied into a user's project, and packed-install fixtures run
-  // against a packed install. `goals/_template` is copied to start a new goal.
+  // Not analyzed. Specs and their PoCs aren't workspace code, and
+  // `goals/_template` is copied to start a new goal. The rest runs somewhere
+  // else, so its imports resolve against that place's paths and dependencies:
+  // goal harnesses and hosts run inside kitchen-sink, install-fsd templates are
+  // copied into a user's project, and packed-install fixtures run against a
+  // packed install.
   "ignorePatterns": [
     "!.omp/**",
     "spec-poc/**",

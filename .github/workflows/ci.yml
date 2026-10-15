@@ -327,7 +327,7 @@ jobs:
       # PRs only: fails on unused files, exports, dependencies or duplicated
       # code this PR introduces. Findings already on the base don't count, so
       # the existing backlog never blocks a PR. Complexity reports here but
-      # doesn't fail (see `rules` in .fallowrc.jsonc). `pnpm fallow` locally
+      # doesn't fail (see `rules` in .fallowrc.json). `pnpm fallow` locally
       # shows the whole backlog.
       - name: New dead code & duplication
         if: github.event_name == 'pull_request'

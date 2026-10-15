@@ -147,6 +147,28 @@ new package needs no entry. Rebalance the named shards when one job runs much
 longer than the others. `Typecheck & Test` stays the single check to require:
 it passes only when the typecheck and every shard pass.
 
+### Dead code and duplication
+
+The `Fallow` CI job runs [fallow](https://fallow.tools) against
+`.fallowrc.json` in two steps:
+
+- **Every run, whole tree:** `pnpm fallow:ci` fails on an import that doesn't
+  resolve or a package imported without being declared in that workspace's
+  `package.json`.
+- **PRs only:** `pnpm fallow:audit --base <PR base>` fails on an unused file,
+  export, type or dependency, or a duplicated block, that the PR introduces.
+  What's already on the base doesn't count, so the backlog never blocks a PR.
+  Complexity findings are reported but don't fail.
+
+Run the PR step locally with `pnpm fallow:audit --base origin/main`. When it
+fails, remove the dead export or extract the duplicated block. If a finding is
+wrong, suppress that one line with a reason (`// fallow-ignore-next-line
+unused-export -- loaded by path from X`). If the tool can't see an entry point
+at all, add it to `entry` or `dynamicallyLoaded` in the config instead.
+`.github/fallow-dupes-baseline.json` lists the clones already on main. Refresh
+it (command in the config) when you move or delete a file that holds one.
+`pnpm fallow` prints the whole backlog.
+
 You don't order builds by hand. The one explicit edge in `turbo.json` is
 `@flow-state-dev/engine#build`, pinned to `core` only: `testing` is a dev-only
 dependency of `engine`, so the default graph traversal would otherwise see a
