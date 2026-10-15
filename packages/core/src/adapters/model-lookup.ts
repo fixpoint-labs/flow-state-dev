@@ -18,8 +18,8 @@ export const DEFAULT_MODEL_LOOKUP: ModelLookupEntry[] = [
   // Anthropic — most-specific first. 5.5 rows come in pairs: direct API `claude-opus-5-5`, Vercel gateway `claude-opus-5.5`.
   { keyword: "claude-opus-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 4.0, completionPer1M: 20.0, cacheReadPer1M: 0.2 } },
   { keyword: "claude-opus-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 4.0, completionPer1M: 20.0, cacheReadPer1M: 0.2 } },
-  { keyword: "claude-sonnet-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0 } },
-  { keyword: "claude-sonnet-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0 } },
+  { keyword: "claude-sonnet-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0, cacheReadPer1M: 0.1 } },
+  { keyword: "claude-sonnet-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0, cacheReadPer1M: 0.1 } },
   { keyword: "claude-haiku-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 0.1, completionPer1M: 0.5 } },
   { keyword: "claude-haiku-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 0.1, completionPer1M: 0.5 } },
   { keyword: "claude-opus-4-6", charsPerToken: 4.0, pricing: { promptPer1M: 15.0, completionPer1M: 75.0 } },
