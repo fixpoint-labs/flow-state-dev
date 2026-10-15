@@ -204,11 +204,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
   }
 
   // ---- a2 · fork ----
-  // The standard worker forked: one whose flow takes a delegated post, so a
-  // coordinator can hand the fork a post (a4), and one a4 has a held-out ask
-  // for. That is the EM, the researcher or the general lead: the workers named
-  // in ASK. Excluding flows instead let a2 pick the Error Reporter, whose flow
-  // takes neither a post nor a task, so a3 couldn't add it as a delegate.
+  // Keyed on ASK. Excluding coordinator and coder still forked the Error Reporter.
   const forkable = standard.filter((e) => Object.hasOwn(ASK, e.id));
   if (runs("a2")) {
     o.say("a2: Alice forks a standard worker under a held-out name");
