@@ -7,9 +7,10 @@
 //
 // **Deliberately three exports.** Everything inside this lab imports the
 // individual `./src/*` modules directly, so a wide barrel would be surface
-// nothing consumes — and `knip.json` treats this file as the public boundary,
-// which means anything re-exported here reads as supported. Re-add a specific
-// symbol when LAB-139 or a second phase actually reaches for it (tenet 3).
+// nothing consumes — and fallow treats this file (the package entry) as the
+// public boundary, which means anything re-exported here reads as supported.
+// Re-add a specific symbol when LAB-139 or a second phase actually reaches for
+// it (tenet 3).
 // ---------------------------------------------------------------------------
 
 export {
