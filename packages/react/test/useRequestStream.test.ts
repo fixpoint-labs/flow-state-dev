@@ -28,7 +28,6 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 
 import { useRequestStream } from "../src/hooks/useRequestStream";
 
-/** The text of a message's first content part. A part may be a file, which has no text. */
 function firstText(message: { content: readonly Content[] } | undefined): string | undefined {
   const part = message?.content[0];
   return part !== undefined && "text" in part ? part.text : undefined;
