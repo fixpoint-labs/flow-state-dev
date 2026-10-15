@@ -198,6 +198,8 @@ export type HostOptions = {
    */
   reportCancel?: boolean;
   stores?: StoreRegistry;
+  /** More flows to register beside the fixture ones, keyed by flow name. */
+  flows?: Record<string, FlowInstance>;
 };
 
 /** One host of the app over `stores`. */
@@ -234,7 +236,8 @@ export function bootHost(options: HostOptions = {}) {
     quiet: quiet() as unknown as FlowInstance,
     tasker: tasker() as unknown as FlowInstance,
     allround: allround() as unknown as FlowInstance,
-    roster: rosterFlow() as unknown as FlowInstance
+    roster: rosterFlow() as unknown as FlowInstance,
+    ...(options.flows ?? {})
   };
   const route =
     options.languageRoute === undefined

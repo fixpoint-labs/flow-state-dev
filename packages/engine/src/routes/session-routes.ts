@@ -315,10 +315,11 @@ export async function handleGetSession(
   route: Extract<ParsedFlowRoute, { kind: "get_session" }>,
   ctx: SessionRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (session === undefined) {
     return unknownSessionResponse(route.sessionId);

@@ -6,8 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "node ../../scripts/typecheck.mjs",
-    "lint": "echo 'lint not configured yet'"
+    "typecheck": "node ../../scripts/typecheck.mjs"
   },
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",

@@ -260,7 +260,8 @@ export type WorkstreamBlocks = {
   /**
    * `openWorkstream` for a worker to call: with `leadFit` set, it first checks
    * the lead's description says it does the work, and refuses `lead-doesnt-fit`
-   * when it doesn't. Without `leadFit`, it is `openWorkstream`.
+   * when it doesn't. Work that doesn't say what sort it is is never refused.
+   * Without `leadFit`, it is `openWorkstream`.
    */
   openWorkstreamTool: BlockDefinition<
     typeof openWorkstreamInputSchema,

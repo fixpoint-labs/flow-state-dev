@@ -283,7 +283,7 @@ function SidebarRail({
         <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} onClick={() => navigate({ level: "tasks", by: "state" })} testId="rail-tasks">
           <NavIcon name="tasks" />
         </RailItem>
-        <RailItem label="Roster" active={route.level === "roster" || route.level === "rules"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
+        <RailItem label="Roster" active={route.level === "roster" || route.level === "worker-settings"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
           <NavIcon name="roster" />
         </RailItem>
         <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} onClick={() => navigate({ level: "messages" })} testId="rail-messages">
@@ -344,7 +344,7 @@ function ProjectGroup({
           data-testid={`${testId}-toggle`}
           className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         >
-          <Meta className={`text-[10px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
+          <Meta className={`inline-flex size-3 items-center justify-center text-[11px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
         </button>
         <div className="min-w-0 flex-1">
           <NavItem
@@ -528,7 +528,7 @@ export function Sidebar({
                 icon={<NavIcon name="roster" />}
                 count={counts?.["on shift"]}
                 mark={partial}
-                active={(route.level === "roster" && route.team === null) || route.level === "rules"}
+                active={(route.level === "roster" && route.team === null) || route.level === "worker-settings"}
                 onClick={() => navigate({ level: "roster", team: null })}
                 testId="nav-roster"
               />

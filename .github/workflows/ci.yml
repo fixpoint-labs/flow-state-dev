@@ -79,6 +79,13 @@ jobs:
       - name: OMP mailbox regressions
         run: node --test .omp/test/mailbox.test.mjs
 
+      # `git push --no-verify` skips the pre-push hook.
+      - name: Lint
+        run: pnpm lint
+
+      - name: The lint gate can fail
+        run: node --test scripts/lint-gate.test.mjs
+
   # The package tests, split across runners by scripts/test-shards.mjs. Each
   # shard runs its packages one at a time, as `pnpm test` does: two at once on
   # one runner oversubscribe it and tests start timing out.

@@ -666,9 +666,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
             "under-delivering"
         );
       }
-      // The host refuses synchronously for a small set of pre-dispatch
-      // conditions, the reachable one being a `reject` concurrency policy whose
-      // key is already held.
+      // The host refused before starting, either by throwing from `dispatch`
+      // or through `accepted` — the latter being where a `reject` concurrency
+      // policy whose key is already held arrives.
       return refuse(
         "dispatch-rejected",
         `the host refused the dispatch before starting it: ${started.reason}`

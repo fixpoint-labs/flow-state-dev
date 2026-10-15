@@ -1513,7 +1513,8 @@ Refusals are `ProjectRefusedError`, with a `reason`.
 session of the standard worker `createWorkerInstallation({ projectCoordinator })` names (a worker on
 the `coordinator` flow), one per user per project, found or started with
 `ensureWorkerSession({ worker, projectId: { visibility, id } })`. A create for a project the user
-can't read is refused. Its `readProject` tool (`projectCoordinatorTools`) reads every entry. Its
+can't read is refused. Its `readProject` tool (`projectCoordinatorTools`) reads every entry, each
+marked `yours: true` when the session's user owns it. Its
 delegates are the user's open workstreams in the project, one per workstream: the lead, with the
 workstream's address as the target, so it hands work only to the user's own workstreams. They
 follow the workstreams: the session's delegate list starts with one per open workstream the first
@@ -1540,8 +1541,10 @@ with a single lead tends to pick it. To have the open refuse that pick, pass `de
 leadFlows, leadFit: { model: "openai/gpt-5.4-mini" } })`: `openWorkstreamTool` then makes one call
 to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
 the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
-is written; the message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open
-nothing and say a worker for it has to be hired first. A failed call, or a lead with no description,
+is written. The same call asks whether the title and objectives say what sort of work it is at all, and work
+they don't, such as a bare name, passes the check. A refusal's message tells the worker to pick another lead
+from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
+A failed call, or a lead with no description,
 lets the open through. The check runs after every other refusal, and an open of a workstream that is
 already open with the same lead isn't checked again. The tool's answer carries `leadFit`: `{ checked: true }`,
 or `{ checked: false, why }` with `why` one of `already-open`, `no-description` or `unanswered: <error>`.
@@ -1867,7 +1870,8 @@ Orchestration's task tools (`dispatchTask`, `addTask`, `assignTask`, `listTasks`
 the rest), and the conversation's session takes them as actions named for the board:
 `dispatchTask_tasks`, `addTask_tasks`, `listTasks_tasks` and so on.
 
-An assignee must be one of the conversation's delegates whose flow takes tasks. Any other is
+An assignee must be one of the conversation's delegates whose flow takes tasks (a task session's
+pieces can go further; see below). Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
 `addTask` records a task; `dispatchTask` starts it in its task session, which belongs to you.
@@ -1881,7 +1885,12 @@ it waited, the conversation hears once when the task ends; a waiting turn gets t
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow
 that carries the session board: the built-in `agent` and `coordinator` flows do, and your own flow
 does through `defineSessionBoard({ installation, flowKind })` (see its row under Exports). A worker with no such delegate gets no task tools, and its actions answer
-`{ ok: false, error: "no_delegation_board" }`. A task's worker can split it the same way, up to
+`{ ok: false, error: "no_delegation_board" }`. A task's worker can split it into pieces for any
+worker on the user's roster that takes tasks, its delegates or not; an unassigned piece goes to
+its delegate when it has exactly one. Each piece's ending wakes a turn in the task session. The task
+completes with `{ answer, pieces }`: `answer` is what the worker said in the turn after the last
+piece ended, and `pieces` lists each piece's output. With no such turn (after a restart, for
+example), `answer` is absent. Splitting goes up to
 five boards deep and 100 tasks under one top task; a filing past either is answered
 `{ ok: false, error: "total_task_cap_exceeded" }`. Raise the 100 with `hireWorkforce`'s
 `taskChainLimit`. See [Delegating work](https://flow-state.dev/docs/workforce/delegating-work).
@@ -1953,6 +1962,32 @@ A message is not a task: it files no row, owes no result, and doesn't count towa
 On a flow of your own, add the kit's `messages` to the model block's `uses`, beside `tools`, to let
 its workers send; `entries(turn)` already lets them receive. See
 [Messaging other workers](https://flow-state.dev/docs/workforce/messaging-workers).
+
+## Error Reporter
+
+A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task or delegated post on a conversation board that ended errored, a coordinator crash that best fit answered with "Nobody took this post" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
+
+```ts
+import { createErrorReporter, defineErrorReporterFlow, defineErrorReporterIntakeFlow } from "@flow-state-dev/workforce";
+
+const reporter = createErrorReporter({
+  worker: "error-reporter",                       // a WORKER.md whose flow is `error-reporter`
+  operator: { userId: "olive", orgId: "acme" },   // who previews and files
+  tracker: { project: "shared/storefront" },      // absent: reports are kept, never filed
+});
+const reporterFlow = defineErrorReporterFlow({ reporter, installation, harness, mcpTools }); // a worker flow
+const intake = defineErrorReporterIntakeFlow({ reporter });                                  // a plain flow
+
+createFlowState({ flows: { /* ..., intake */ }, durable: true, errorCapture: reporter.capture });
+await reporter.bind(host); // after the runtime exists; restarts owed work
+```
+
+- **One report per fingerprint** (flow, action, error code, normalized message). A repeat raises the count; a redelivered occurrence counts once. At most `limits.newPerWindow` (5) new reports per `limits.windowMs` (1 hour); the rest go into one storm report.
+- **Secrets are redacted at intake**, before a row, a held request or a storm entry is written: the environment's keys, `secrets()`, and the operator's stored MCP keys.
+- **The draft run has no tracker tools.** A separate filing run gets the tracker project's MCP servers, and a failed filing is tried again.
+- **Preview.** The draft waits on a `human_input` suspension (so the runtime needs `durable: true`) until the operator files or dismisses it, unless `preview.autoFile` or `preview.autoFileAfterMs` say otherwise.
+- **A filed report's repeats** add a comment at most every `limits.commentEveryMs`.
+- **It never reports its own failures**, and runs on its own flow, never through a coordinator.
 
 ## Importing from a browser component
 
@@ -2044,10 +2079,10 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `projectMcpTools(servers, { operator?, env? })` / `ProjectMcpServers` / `ProjectMcpToolsResolver` | The resolver a coding harness calls once per run for its project's MCP tools, relayed through FSD's own connection with the run owner's key. See [Projects](#projects). |
 | `defineMcpCredentialsCollection()` / `mcpCredentialsCapability` / `mcpCredentialProblem(value)` / `MCP_CREDENTIALS_PREFIX` | Each user's MCP server keys, `mcp-credentials/*` at user scope (client read: `setAt` only), the capability the resolving block holds, and the check a key route runs on a value. |
 | `checkedMcpServers(names, offered)` / `isMcpServerName(value)` | The check both project writes run on `mcpServers`. |
-| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the lead's description doesn't say it does the work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
+| `defineWorkstreamBlocks({ installation, leadFlows, leadFit? })` | Returns `{ openWorkstream, openWorkstreamTool, updateWorkstream, updateWorkstreamTool, editWorkstreamTool, listLeadsTool, actions }`. `editWorkstreamTool` (input `editWorkstreamInputSchema`) is a project coordinator's change to one of the caller's own workstreams by id. `openWorkstreamTool` is the open for a worker; with `leadFit: { model }`, it refuses with `lead-doesnt-fit` when the work says what sort it is and the lead's description doesn't say it does that work. Each lead flow declares `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`, as the built-in `agent` flow does; one that doesn't throws. See [Projects](#projects). |
 | `readProject` / `projectProgress(entries, now)` / `STALE_AFTER_MS` / `DONE_STATUS` | A project's row, entries and progress, and the progress function itself (also from `./browser`): counts by status, objectives met, the next due date, and the entries not done and unchanged for `STALE_AFTER_MS` (seven days). `"done"` is the one status with a meaning. |
 | `parseWorkstreamEntry(path, state)` | One entry read off its storage key and checked against `workstreamEntrySchema`, with its `project`, `owner` and `id`; `undefined` for a key that isn't an entry. Also from `./browser`, for a browser reading entries through the resource routes. |
-| `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
+| `projectCoordinatorTools` | `{ readProject }`, the project coordinator's tool, which marks each workstream `yours` when the user it talks to owns it: put it in `defineCoordinatorFlow({ agent: { catalog } })` and name it in the coordinator's `tools:`. Add `setBrief` and `setRepository` from `defineProjectBlocks()` for it to manage its own project. |
 | `linkedProjectOf(state)` | The `{ visibility, id }` a session's state links it to by its `projectId`, or `undefined`. |
 | `projectWorkspace({ checkouts? })` / `projectWorkspaceCapability` / `ProjectCheckout` | A run source for a coding run on a project: from the workstream its session leads or was filed from, the project its conversation belongs to, or the project its task names. `checkouts` (`ProjectCheckout[]`: `{ remote, checkout, projects, baseRef? }`) sends the listed shared projects' runs, in their own organization, to a checkout on this machine. The capability holds the collections it reads. See [Projects](#projects). |
 | `createWorkerLookup({ installation })` | Which standard worker a task's name means. Returns `{ find, flowKind, state, filingCheck }`. `find(name)` answers `{ found: true, flowId }`, or `{ found: false, reason, message }` with `reason` `not-found` or `takes-no-tasks` (a worker whose flow declares no `work` task entry). `flowKind` and `state` are a `per-task` dispatcher's targets: the flow of the worker the task's `assignee` names, and a starting state naming that worker. |

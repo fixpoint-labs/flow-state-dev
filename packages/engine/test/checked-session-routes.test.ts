@@ -141,6 +141,7 @@ type RouteCase = {
 };
 
 const ROUTES: RouteCase[] = [
+  { name: "get_session", method: "GET", path: ["sessions", SESSION], okStatus: 200 },
   { name: "delete_session", method: "DELETE", path: ["sessions", SESSION], okStatus: 204 },
   { name: "list_session_children", method: "GET", path: ["sessions", SESSION, "children"], okStatus: 200 },
   { name: "list_session_requests", method: "GET", path: ["sessions", SESSION, "requests"], okStatus: 200 },
@@ -246,6 +247,7 @@ describe("a session route acts only on the session the owner check admitted the 
             // Nothing of mallory's session reached alice.
             expect(text).not.toContain("req_mallory");
             expect(text).not.toContain("child_mallory");
+            expect(text).not.toContain('"mallory"');
             vi.restoreAllMocks();
             // Mallory's session is still hers, and its content as it was.
             const held = await stores.session.get(SESSION);

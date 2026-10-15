@@ -1,0 +1,71 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="One conversation's task, split into two pieces, before and after. Before: the conversation rail shows only the task, marked parked; Tasks shows the two pieces as flat rows in a different stream, named for the worker that split the task, with nothing tying them to it. After: the rail and Tasks both show the task with its two pieces indented under it, one running and one done."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .row   { fill:var(--surface-2); }
+    .kid   { fill:var(--code-soft); }
+    .lone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .stem  { stroke:var(--code); stroke-width:1.6; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-code { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .sq-run  { fill:var(--accent); }
+    .sq-wait { fill:var(--ink-3); }
+    .sq-done { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="24">BEFORE</text>
+    <rect class="panel" x="16" y="34" width="440" height="310" rx="6"/>
+    <text class="t-lbl" x="32" y="58">CONVERSATION RAIL</text>
+    <rect class="row" x="32" y="68" width="408" height="40" rx="4"/>
+    <rect class="sq-wait" x="44" y="80" width="9" height="9"/>
+    <text class="t-b" x="62" y="86">Ship the export</text>
+    <text class="t-s" x="62" y="101">parked · eng.lead</text>
+    <text class="t-gone" x="32" y="128">its two pieces: not here</text>
+
+    <text class="t-lbl" x="32" y="170">TASKS · ANOTHER STREAM, @ENG.LEAD</text>
+    <rect class="lone" x="32" y="180" width="408" height="40" rx="4"/>
+    <rect class="sq-run" x="44" y="192" width="9" height="9"/>
+    <text class="t-b" x="62" y="198">Review round 1</text>
+    <text class="t-s" x="62" y="213">running · eng.reviewer</text>
+    <rect class="lone" x="32" y="228" width="408" height="40" rx="4"/>
+    <rect class="sq-done" x="44" y="240" width="9" height="9"/>
+    <text class="t-b" x="62" y="246">Write the export</text>
+    <text class="t-s" x="62" y="261">done, so dropped from Tasks · eng.coder</text>
+    <text class="t-gone" x="32" y="296">nothing says which task these belong to</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="484" y="24">AFTER · THE RAIL AND TASKS ALIKE</text>
+    <rect class="panel" x="484" y="34" width="440" height="310" rx="6"/>
+    <text class="t-lbl" x="500" y="58">CONVERSATION RAIL</text>
+    <rect class="row" x="500" y="68" width="408" height="40" rx="4"/>
+    <rect class="sq-wait" x="512" y="80" width="9" height="9"/>
+    <text class="t-b" x="530" y="86">Ship the export</text>
+    <text class="t-s" x="530" y="101">parked · eng.lead</text>
+    <path class="stem" d="M516 108 V 192 M516 140 H 536 M516 192 H 536"/>
+    <rect class="kid" x="536" y="120" width="372" height="40" rx="4"/>
+    <rect class="sq-done" x="548" y="132" width="9" height="9"/>
+    <text class="t-b" x="566" y="138">Write the export</text>
+    <text class="t-s" x="566" y="153">done · eng.coder</text>
+    <rect class="kid" x="536" y="172" width="372" height="40" rx="4"/>
+    <rect class="sq-run" x="548" y="184" width="9" height="9"/>
+    <text class="t-b" x="566" y="190">Review round 1</text>
+    <text class="t-s" x="566" y="205">running · eng.reviewer</text>
+    <text class="t-code" x="500" y="244">each piece once, under its task, with its own</text>
+    <text class="t-code" x="500" y="260">worker and live status; a finished one stays</text>
+    <text class="t-lbl" x="500" y="296">A PIECE OF A PIECE NESTS ONE LEVEL FURTHER</text>
+  </g>
+</svg>
