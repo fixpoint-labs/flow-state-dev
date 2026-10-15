@@ -1965,7 +1965,7 @@ its workers send; `entries(turn)` already lets them receive. See
 
 ## Error Reporter
 
-A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task or delegated post on a conversation board that ended errored, a coordinator crash that best fit answered with "Nobody took this post" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
+A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task or delegated post on a conversation board that ended errored (a cancelled one, a post whose run was stopped included, ends `cancelled` and is not reported; a user who cancelled because something went wrong describes it to the reporter instead), a coordinator crash that best fit answered with "Nobody took this post" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
 
 ```ts
 import { createErrorReporter, defineErrorReporterFlow, defineErrorReporterIntakeFlow } from "@flow-state-dev/workforce";

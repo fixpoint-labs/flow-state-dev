@@ -571,7 +571,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     await quiet(host);
 
     const cancelled = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
-    expect(cancelled).toMatchObject({ status: "errored", error: "its run was cancelled" });
+    expect(cancelled).toMatchObject({ status: "cancelled", error: "its run was cancelled" });
     expect(passedToCoder(host, "status?")).toHaveLength(1);
     expect((await host.sessionState(id)).openRounds).toEqual([]);
   });

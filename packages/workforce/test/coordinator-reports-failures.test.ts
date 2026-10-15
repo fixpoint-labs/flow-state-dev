@@ -3,6 +3,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { owedReports } from "../src/conversation-board/report-owed";
 import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY } from "../src/error-reporter/keys";
 import { bootHost } from "./coordinator-harness";
 
@@ -36,6 +37,25 @@ describe("a coordinator's failures reach the Error Reporter", () => {
     expect(taken).toEqual([
       expect.objectContaining({ kind: "task", taskId: row.id, assignee: "eng.em", error: "eng.em could not answer", userId: "alice" })
     ]);
+  });
+
+  it("doesn't send a post whose run the user cancelled: the row ends cancelled, not errored", async () => {
+    // A user who stops a delegate's run meant to: that is not a bug to file.
+    const taken: Array<Record<string, unknown>> = [];
+    const host = bootHost({ flows: { [ERROR_REPORTER_INTAKE_FLOW]: recordingIntake(taken) }, roundDeadlineMs: 60_000 });
+    const id = await host.conversation("alice", "desk");
+    const turn = await host.act("alice", id, "run", { message: "[route:eng.coder] [conf:0.9] [hang:eng.coder] status?" });
+    expect(turn.error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    for (let i = 0; i < 100 && (await host.postRows("alice"))[0]?.status === "in_progress"; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await host.settled();
+    const [row] = await host.postRows("alice");
+    // Nothing is owed, so no later touch of the board sends it either.
+    expect(owedReports(row)).toEqual([]);
+    expect(taken).toEqual([]);
+    expect(row).toMatchObject({ status: "cancelled", assignee: "eng.coder" });
   });
 
   it("sends best fit's crashed judgment turn, which the post's answer rescues", async () => {
