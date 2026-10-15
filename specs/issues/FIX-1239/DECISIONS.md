@@ -23,8 +23,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why. 
 | | |
 |---|---|
 | **Instead of** | Running the census's negation check on every CI run, so typecheck fails when any assertion stops being able to fail |
-| **Because** | All 147 assertions that today's typecheck compiles can fail; all 10 broken ones sit in the 50 nothing compiles. The defect is *not compiled*, and FIX-1343's guard closes it for good. A standing check would add about a minute to every CI run, and a script to keep in step with TypeScript, to catch one class with 0 members today: assertions about `any`. That is the risk any loose runtime matcher carries, and we don't mutation-test runtime tests either (tenet 3, earn every addition) |
-| **Locks in** | A later assertion about `any` passes until a reviewer catches it. That one-minute cost per run is why the census is not promoted to CI. Its counts are frozen in `poc/type-assertion-census/snapshot-4f2e13ed.json` and are authoritative; the script models #3433's program in memory and may drift from what merges, so no one re-runs it as a gate |
+| **Because** | All 164 assertions that today's typecheck compiles can fail; all 10 broken ones sit in the 50 nothing compiles. The defect is *not compiled*, and FIX-1343's guard closes it for good. A standing check would add about a minute to every CI run, and a script to keep in step with TypeScript, to catch one class with 0 members today: assertions about `any`. That is the risk any loose runtime matcher carries, and we don't mutation-test runtime tests either (tenet 3, earn every addition) |
+| **Locks in** | A later assertion about `any` passes until a reviewer catches it. That one-minute cost per run is why the census is not promoted to CI. Its counts are settled in [`poc/type-assertion-census/SETTLED.md`](poc/type-assertion-census/SETTLED.md) and are authoritative; the script models #3433's program in memory and may drift from what merges, so no one re-runs it as a gate |
 
 ![D1: prove once in the implementation PR, beside a negation check on every CI run. Decides it: what the standing check would catch today, which is nothing FIX-1343 misses. Price: an assertion about any is caught only in review](figures/d1-proof.svg)
 
@@ -53,7 +53,7 @@ It comes down to whether test files compile: after FIX-1343 they do, so the move
 - **`@ts-expect-error` needs nothing new.** All 128 carry a reason. Five only silence a missing `.mjs` declaration (TS7016); they are not assertions, and the census counts them apart.
 - **The seven false comments are corrected:** three in `core/src/types/tests/`, two in `orchestration/src/**/tests/`, one in `orchestration/test/collection/task-caps.test.ts`, and the header of `orchestration/test/types.type-test.ts`, which credits a vitest typecheck mode nobody enabled.
 - **`toMatchTypeOf` stays** at its 3 sites: deprecated since expect-type 1.2, live under `tsc`.
-- **The workforce site** (`workforce/test/codegen.test.ts:419`) waits for [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016), FIX-1343's workforce follow-up. Workforce's 10 `.test-d.ts` sites are compiled and live.
+- **The workforce site** (`workforce/test/codegen.test.ts:419`) waits for [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016), FIX-1343's workforce follow-up. Workforce's other 11 sites (10 in `.test-d.ts`, 1 in `src/worker-capabilities.ts`) are compiled and live. Until FIX-2016 the goal and the completion claim exclude it; this issue does not wait for FIX-2016.
 - **Branch** `fix/FIX-1239-type-assertions`, stacked on the last branch of #3433's implementation stack, cut after both specs merge. **No changeset.**
 
 ## Considered and dropped
@@ -71,13 +71,13 @@ It comes down to whether test files compile: after FIX-1343 they do, so the move
 
 - **A wrong assertion in a test file is green on today's `main`.** **CONFIRMED**: `expectTypeOf<string>().toEqualTypeOf<number>()` planted in `packages/core/test/` gave `pnpm typecheck` exit 0 and vitest 1 passed.
 - **`expectTypeOf` fails under plain `tsc`.** **CONFIRMED** by `poc/type-assertion-census/`: all 21 sites, across `toEqualTypeOf`, `toMatchTypeOf`, `toHaveProperty` and `.not`, error when negated or already error because their claim is false.
-- **Every compiled assertion can fail; every broken one is uncompiled.** **CONFIRMED**: 147 compiled, 147 live. Of the 50 uncompiled: 5 failing, 5 dead, 40 live in the program #3433 proposes.
-- **The census tells live from failing, vacuous, dead and uncompiled.** **CONFIRMED** by `--plant` on core: 7 of 7. Its first version called an assertion about `any` live, because negation errors there too; so an `any` subject counts as vacuous.
+- **Every compiled assertion can fail; every broken one is uncompiled.** **CONFIRMED**: 164 compiled, 164 live. Of the 50 uncompiled: 5 failing, 5 dead, 40 live in the program #3433 proposes.
+- **The census tells live from failing, vacuous, dead and uncompiled.** **CONFIRMED** by `--plant` on core: 9 of 9, with a live alias planted for each pinned constraint (`true`, `false`, `never`). Its first version called an assertion about `any` live, because negation errors there too; so an `any` subject counts as vacuous.
 - **The issue's file list is out of date.** `external-resource-collection.test.ts` is gone, and the sweep missed `resource-collection-async-shape.test.ts` (6 hand-rolled assertions), `orchestration/test/types.type-test.ts`, and 23 directives in uncompiled tests.
 
 ## How it got here
 
-- **Draft** — scoped to what #3433 leaves: proof that each type assertion can fail, measured first by a census that negates all 197 and asks the compiler; the measurement showed the defect is entirely *not compiled*, so the spec proves once and adds no standing machinery.
-- **Review** — the goal check rests on `pnpm typecheck`, the 10 sites listed with their verdicts, and a frozen census snapshot, because a reviewer showed that re-running the census at implementation contradicted D1.
+- **Draft** — scoped to what #3433 leaves: proof that each type assertion can fail, measured first by a census that negates all 214 and asks the compiler; the measurement showed the defect is entirely *not compiled*, so the spec proves once and adds no standing machinery.
+- **Review** — the goal check rests on `pnpm typecheck`, the 10 sites listed with their verdicts, and settled census counts, because a reviewer showed that re-running the census at implementation contradicted D1. A later review found the census missed helpers pinned to `false` and `never` (17 sites, all compiled and live, none wrong), replaced the generated snapshot with the authored [`SETTLED.md`](poc/type-assertion-census/SETTLED.md), and narrowed the goal: the workforce site is deferred to FIX-2016, not covered.
 
 **Open: none.**

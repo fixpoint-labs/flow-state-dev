@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, how we know each assertion can fail. Chosen: prove every assertion once, in the implementation PR. Instead of: a negation check on every CI run. It comes down to what the standing check would catch today: nothing more than FIX-1343's guard, because all 147 compiled assertions already fail when negated and all 10 broken ones were uncompiled. The price is that a later assertion about any is caught only in review; the standing check costs about a minute per CI run and a script to maintain. Locks in: no machine check for assertions about any. Flips if: a compiled assertion is ever found that cannot fail."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, how we know each assertion can fail. Chosen: prove every assertion once, in the implementation PR. Instead of: a negation check on every CI run. It comes down to what the standing check would catch today: nothing more than FIX-1343's guard, because all 164 compiled assertions already fail when negated and all 10 broken ones were uncompiled. The price is that a later assertion about any is caught only in review; the standing check costs about a minute per CI run and a script to maintain. Locks in: no machine check for assertions about any. Flips if: a compiled assertion is ever found that cannot fail."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -59,7 +59,7 @@
     <text class="t-s" x="248" y="179">all 10 sat in uncompiled files</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Nothing FIX-1343 misses</text>
-    <text class="t-s" x="612" y="179">147 of 147 compiled sites already fail</text>
+    <text class="t-s" x="612" y="179">164 of 164 compiled sites already fail</text>
   </g>
 
   <g id="row-1">

@@ -6,7 +6,9 @@
  * wrong. Three idioms exist under `packages/`:
  *   - `expect`    — a vitest `expectTypeOf(...)…matcher()` chain, or `assertType<T>(v)`
  *   - `directive` — a `// @ts-expect-error` comment
- *   - `alias`     — a hand-rolled `Assert<…>` / `Expect<…>` (a local `type X<T extends true> = T`)
+ *   - `alias`     — a hand-rolled identity helper: a local `type X<T extends C> = T` where C is
+ *                   `true` (`Assert`, `Expect`, `IsTrue`), `false` (`IsFalse`) or `never`
+ *                   (`AssertNever`, `NoneOf`)
  *
  * For every site it answers three questions:
  *   1. compiled today?  Is the file in a program the package's `typecheck` script runs?
@@ -19,7 +21,8 @@
  *      the subject is `any` (it then passes whatever type the assertion names).
  *        expect    → toggle `.not` before the final matcher; `assertType<T>` → `assertType<never>`
  *        directive → remove the directive; live means the next line then errors
- *        alias     → `Assert<E>` → `Assert<[E] extends [true] ? false : true>`
+ *        alias     → `X<E>` → `X<[E] extends [C] ? W : C>`, W a type that is not C:
+ *                    `true`→`false`, `false`→`true`, `never`→`true`
  *      A directive that is reported unused (TS2578) in the baseline is `dead`; an expect or alias
  *      site that already errors in the baseline is `failing` — the claim is false today.
  *
@@ -32,14 +35,14 @@
  * neither program opens is reported, never skipped.
  *
  * Negative control (`--plant`): adds a virtual test file to the first `--only` package holding
- * one assertion of each kind that must be live, one that must be vacuous, one dead directive,
+ * one assertion of each kind that must be live (an alias of each pinned constraint), one that must be vacuous, one dead directive,
  * and the same wrong assertion in a file outside every program. The run fails unless each is
  * classified as planted. A census that has never been seen to call something vacuous is not
  * evidence that nothing is.
  *
  * Usage (repo root, after `pnpm install && pnpm packages:build`):
  *   node specs/issues/FIX-1239/poc/type-assertion-census/census.mjs [--only a,b] [--json] [--plant]
- * Its output on main at 4f2e13ed is frozen beside it in snapshot-4f2e13ed.json, which is the
+ * Its result on main at 4f2e13ed is recorded beside it in SETTLED.md, which is the
  * authoritative record; implementers do not re-run this as a gate.
  * Retained spec evidence; not part of any package, test glob, or build.
  */
@@ -68,19 +71,20 @@ const UNUSED = new Set([6133, 6196, 6198, 6205]);
 
 // ── site discovery ─────────────────────────────────────────────────────────
 
-/** Local `type X<T extends true> = T` aliases — the hand-rolled assertion helpers. */
+/** The constraint an identity helper pins, mapped to a type that violates it. */
+function pinned(c) {
+  if (c?.kind === ts.SyntaxKind.NeverKeyword) return { pin: "never", wrong: "true" };
+  if (c?.kind === ts.SyntaxKind.LiteralType && c.literal.kind === ts.SyntaxKind.TrueKeyword) return { pin: "true", wrong: "false" };
+  if (c?.kind === ts.SyntaxKind.LiteralType && c.literal.kind === ts.SyntaxKind.FalseKeyword) return { pin: "false", wrong: "true" };
+  return null;
+}
+
+/** Local `type X<T extends true | false | never> = T` aliases — the hand-rolled assertion helpers. */
 function assertAliases(sf) {
-  const names = new Set();
+  const names = new Map();
   sf.forEachChild(function walk(n) {
-    if (
-      ts.isTypeAliasDeclaration(n) &&
-      n.typeParameters?.length === 1 &&
-      n.typeParameters[0].constraint?.kind === ts.SyntaxKind.LiteralType &&
-      n.typeParameters[0].constraint.literal.kind === ts.SyntaxKind.TrueKeyword &&
-      ts.isTypeReferenceNode(n.type) &&
-      n.type.typeName.getText(sf) === n.typeParameters[0].name.text
-    )
-      names.add(n.name.text);
+    const p = ts.isTypeAliasDeclaration(n) && n.typeParameters?.length === 1 ? pinned(n.typeParameters[0].constraint) : null;
+    if (p && ts.isTypeReferenceNode(n.type) && n.type.typeName.getText(sf) === n.typeParameters[0].name.text) names.set(n.name.text, p);
     n.forEachChild(walk);
   });
   return names;
@@ -124,13 +128,14 @@ function findSites(sf) {
     }
     if (ts.isTypeReferenceNode(n) && ts.isIdentifier(n.typeName) && aliases.has(n.typeName.text) && n.typeArguments?.length === 1) {
       const e = n.typeArguments[0];
+      const { pin, wrong } = aliases.get(n.typeName.text);
       const stmt = stmtOf(n);
       sites.push({
         kind: "alias",
         subject: e,
         from: line(sf, stmt.getStart(sf)),
         to: line(sf, stmt.end),
-        edit: { start: e.getStart(sf), end: e.end, text: `[${e.getText(sf)}] extends [true] ? false : true` },
+        edit: { start: e.getStart(sf), end: e.end, text: `[${e.getText(sf)}] extends [${pin}] ? ${wrong} : ${pin}` },
         label: n.typeName.text,
       });
     }
@@ -230,12 +235,18 @@ function check(parsed, overrides, files, oldProgram) {
 
 const PLANT = `import { expectTypeOf, assertType } from "vitest";
 type Assert<T extends true> = T;
+type AssertNever<T extends never> = T;
+type IsFalse<T extends false> = T;
 type Equal<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false;
 declare const anything: any;
 // census:live
 expectTypeOf<string>().toEqualTypeOf<string>();
 // census:live
 type _ok = Assert<Equal<1, 1>>;
+// census:live
+type _none = AssertNever<Extract<"a" | "b", "c">>;
+// census:live
+type _no = IsFalse<Equal<1, 2>>;
 // census:vacuous — any satisfies a match in both directions
 expectTypeOf(anything).toMatchTypeOf<{ a: 1 }>();
 // census:dead
@@ -265,7 +276,7 @@ function census(name, planted) {
   const perFile = new Map();
   for (const f of files) {
     const t = text(f);
-    if (!/expectTypeOf|assertType|@ts-expect-error|extends true>/.test(t)) continue;
+    if (!/expectTypeOf|assertType|@ts-expect-error|extends (true|false|never)>/.test(t)) continue;
     const sf = ts.createSourceFile(f, t, ts.ScriptTarget.Latest, true, f.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
     const sites = findSites(sf);
     if (sites.length) perFile.set(f, { sf, sites });
@@ -372,13 +383,13 @@ if (plant) {
   const r = census(only[0], true);
   const plantedSites = r.sites.filter((s) => s.file.includes("__fix1239_plant"));
   const want = { live: "live", failing: "failing", vacuous: "vacuous", dead: "dead", outside: "not-compiled" };
-  let ok = plantedSites.length === 7;
+  let ok = plantedSites.length === 9;
   for (const s of plantedSites) {
     const good = want[s.planted] === s.verdict;
     ok &&= good;
     console.log(`  ${good ? "ok  " : "FAIL"} planted ${s.planted.padEnd(8)} ${s.kind.padEnd(9)} → ${s.verdict}${s.anySubject ? " (any subject)" : ""}  ${s.file}:${s.line}`);
   }
-  console.log(`negative control on ${only[0]}: ${plantedSites.length}/7 planted sites found · ${ok ? "PASS (the census tells live from failing, vacuous, dead and uncompiled)" : "FAIL"}`);
+  console.log(`negative control on ${only[0]}: ${plantedSites.length}/9 planted sites found · ${ok ? "PASS (the census tells live from failing, vacuous, dead and uncompiled)" : "FAIL"}`);
   process.exit(ok ? 0 : 1);
 }
 
