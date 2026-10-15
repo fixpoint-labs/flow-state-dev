@@ -456,13 +456,19 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     for (const [person, owner, key] of [[A, true, "alice"], [B, false, "bob"]] as const) {
       // The leads keep working after b2's asks and may edit their objectives while the screen is read, so
       // the screen is graded against a store that held still across the read.
-      let entries = await entriesOf(key === "alice" ? alice : bob, P);
+      const who = key === "alice" ? alice : bob;
+      let entries = await entriesOf(who, P);
       let drawn!: Awaited<ReturnType<typeof projectWorkstreams>>;
-      for (let tries = 0; tries < 3; tries++) {
+      let still = false;
+      for (let tries = 0; tries < 3 && !still; tries++) {
         const before = entries;
         drawn = await projectWorkstreams(o.browser, origin(), person, owner, r, `b2-${key}-workstreams`, P);
-        entries = await entriesOf(key === "alice" ? alice : bob, P);
-        if (JSON.stringify(before) === JSON.stringify(entries)) break;
+        entries = await entriesOf(who, P);
+        still = JSON.stringify(before) === JSON.stringify(entries);
+      }
+      if (!still) {
+        r.fail("b2", `${person.label}'s P workstreams changed during each of 3 screen reads, so the screen can't be graded against them`);
+        continue;
       }
       const want = Object.values(workstreams).map((w) => w.id);
       if (drawn.value === undefined) r.fail("b2", `${person.label}'s P Workstreams tab failed: ${drawn.errors.join(" | ")}`);
