@@ -1,22 +1,4 @@
-/**
- * Goal check: a person edits a worker's standing rules in the Rules section of
- * that worker's settings page in Shift Manager, and the worker's next
- * conversation follows the edit.
- *
- * DevTeam's install, served by Shift Manager's command over a store the run
- * owns, opened in Chromium as its owner. The page is driven the way a person
- * drives it: Roster, the researcher's Settings button, add, edit, delete; then
- * the Shift Coordinator's gear. What
- * is graded is what the page draws, what it draws again after a reload, and
- * the replies of fresh conversations with the researcher, read back from the
- * session that stored them. The rules store is never an oracle.
- *
- * Control: `GOAL_CONTROL=page-does-not-save` builds the page with its writes
- * swapped for a local edit of the list drawn, so it shows each change and
- * saves none. It must fail `edit-is-followed` and `reload`.
- *
- * Run: PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/standing-rules/the-rules-page-edits-what-the-worker-follows/run.mts
- */
+/** What this run proves is `goal.md` beside this file. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "playwright";
@@ -103,7 +85,6 @@ await runGoal(async (failures) => {
     const roster = await workforce.roster();
     const researcher = roster.find((w) => w.id === WORKER);
     if (researcher === undefined) throw new Error(`setup: the roster has no ${WORKER}: ${roster.map((w) => w.id).join(", ")}`);
-    // The coordinator's id is the one Shift Manager's own rule finds: `chief-of-staff`, or `<team>.chief-of-staff`.
     const found = chiefOfStaffOf(roster.map((w) => ({ id: w.id }) as Worker));
     if (found.kind !== "one") throw new Error(`setup: the roster has ${found.kind === "none" ? "no" : "several"} Shift Coordinators: ${roster.map((w) => w.id).join(", ")}`);
     const coordinatorId = found.worker.id;
@@ -130,7 +111,7 @@ await runGoal(async (failures) => {
 
     const { context, page, errors } = await personPage(browser, served.origin, alice, true);
     try {
-      // way-in: every Roster row offers Settings; the researcher's opens its settings page, and so does the old /rules address.
+      // way-in: every Roster row offers Settings, and the researcher's opens its settings page.
       await openShiftManager(page, served.origin, "/roster");
       const row = (id: string) => page.locator(`[data-testid=roster-worker][data-worker-id="${id}"]`);
       await row(WORKER).waitFor();
