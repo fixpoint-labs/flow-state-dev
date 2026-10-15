@@ -156,8 +156,8 @@ gate's single-vendor-leakage signals.
 When a failure forces a workaround at the call site, the bug usually lives one layer
 down. Push the fix to the layer that owns the behavior so it's cured for every
 caller, not repeated at each. A workaround every caller must copy is a smell.
-A prompt is a call site too: when a model does the wrong thing with what it was
-handed, fix what it was handed, not the instruction.
+A prompt is a call site too: when the instruction is right and a model still does
+the wrong thing, fix what it was handed rather than adding instructions.
 
 **Depth is only half of it.** The owning layer is where the paths *converge*: an
 invariant with five writers is not enforced until the guard sits where all five pass
