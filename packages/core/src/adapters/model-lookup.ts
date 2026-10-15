@@ -15,8 +15,7 @@ export interface ModelLookupEntry {
 }
 
 export const DEFAULT_MODEL_LOOKUP: ModelLookupEntry[] = [
-  // Anthropic — most-specific first. Each 5.5 row lists both spellings: the
-  // direct API writes `claude-opus-5-5`, the Vercel gateway `claude-opus-5.5`.
+  // Anthropic — most-specific first. 5.5 rows come in pairs: direct API `claude-opus-5-5`, Vercel gateway `claude-opus-5.5`.
   { keyword: "claude-opus-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 4.0, completionPer1M: 20.0, cacheReadPer1M: 0.2 } },
   { keyword: "claude-opus-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 4.0, completionPer1M: 20.0, cacheReadPer1M: 0.2 } },
   { keyword: "claude-sonnet-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0 } },
