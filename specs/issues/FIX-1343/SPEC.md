@@ -9,7 +9,7 @@
 | **removes a field that a test still sets** | `pnpm typecheck` and CI stay green unless `src/` also used the field. The test keeps asserting a shape the type forbids | `pnpm typecheck` fails on the test line, in CI and locally |
 | **writes a new test with a mock that doesn't fit its type** | Nothing notices. The mock drifts further each time the type changes | The mismatch fails typecheck the day it is written. A deliberate partial mock says so with a cast |
 | **adds a new package by copying a neighbour's config** | Copies `include: ["src/**/*"]` and silently opts the new package's tests out | Typecheck fails until the package's tests are wired, or the package is named in `DEFERRED` with an issue ([D3](DECISIONS.md#d3)) |
-| **works in `packages/workforce`** | Same blind spot, with 132 errors already in its tests | Unchanged for now: deferred by name with an issue, because two open PRs (#3304, #3387) are rewriting its tests ([D1](DECISIONS.md#d1)) |
+| **works in `packages/workforce`** | Same blind spot, with 132 errors already in its tests | Unchanged for now: deferred by name with [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016/typecheck-workforces-test-files-deferred-from-fix-1343), because two open PRs (#3304, #3387) are rewriting its tests ([D1](DECISIONS.md#d1)) |
 | **writes `expectTypeOf` inside a `*.test.ts`** | The assertion is decorative: nothing compiles it (FIX-1239) | It compiles, so a wrong type fails typecheck. Proving each one *can* fail stays FIX-1239's |
 | **writes a render test in `packages/ui`** | `test/render/**` is excluded from ui's config, so its four tests are not compiled, though the rest of ui's tests are | Compiled like every other ui test: the test config maps the same `@/` stubs vitest already uses |
 
@@ -109,7 +109,7 @@ The build config each package emits from stays as it is. Typecheck runs a second
 | The debt | |
 |---|---|
 | **Removes** | About 1,376 type errors in the test files of 25 packages: drifted mocks and fixtures, each a test asserting a shape its type no longer allows. ui's `test/render/**` exclude |
-| **Adds** | A second config file per package, `tsconfig.test.json` (permanent by design, [D2](DECISIONS.md#d2)). A `DEFERRED` list that the stack shrinks to one entry, workforce, paid by its follow-up issue, which is filed and linked here **before this spec merges** (see the sign-off); the guard keeps the list from growing quietly and fails an entry left behind ([D3](DECISIONS.md#d3)). About 300 s more serial `tsc` time in CI, spread across turbo's parallel tasks; engine's run peaks near 1 GB. The guard itself runs no `tsc` |
+| **Adds** | A second config file per package, `tsconfig.test.json` (permanent by design, [D2](DECISIONS.md#d2)). A `DEFERRED` list that the stack shrinks to one entry, workforce, paid by [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016/typecheck-workforces-test-files-deferred-from-fix-1343), which wires it once #3304 and #3387 land; the guard keeps the list from growing quietly and fails an entry left behind ([D3](DECISIONS.md#d3)). About 300 s more serial `tsc` time in CI, spread across turbo's parallel tasks; engine's run peaks near 1 GB. The guard itself runs no `tsc` |
 | **Leaves** | The overlap between `tsconfig.test-d.json` and the new program, in six packages. Test files outside `packages/` (FIX-945 for `goals/`). Editors still treat test files as outside any project, so CI can catch an error the editor did not show ([D2](DECISIONS.md#d2)) |
 
 **Net: down.** About 1,376 hidden errors go, and the same class can't come back unnoticed; one config file per package is added, and a `DEFERRED` list that ends the stack holding only workforce.
@@ -118,9 +118,9 @@ The build config each package emits from stays as it is. Typecheck runs a second
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** every package's tests compile against their types, all of them, or the package is named as deferred. If wrong: we ship a check that covers the easy packages and call the repo safe.
 
-**[The debt](#whats-already-here-and-the-debt), net down:** about 1,376 errors fixed; a test config per package added, and a `DEFERRED` list the stack shrinks to workforce. If wrong: workforce stays deferred and nobody comes back to it; its filed issue is what prevents that.
+**[The debt](#whats-already-here-and-the-debt), net down:** about 1,376 errors fixed; a test config per package added, and a `DEFERRED` list the stack shrinks to workforce. If wrong: workforce stays deferred and nobody comes back to it; [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016/typecheck-workforces-test-files-deferred-from-fix-1343) owns bringing it back.
 
-**Before merge, one item for the owner:** the workforce follow-up issue ("typecheck workforce tests", 132 errors in 42 files, after #3304 and #3387 land) is filed in Linear and linked from this spec. Filing is with the owner; this spec links it once it exists, and the `DEFERRED` entry cites it. If wrong: workforce's blind spot has no owner once this merges.
+**Workforce's deferral is owned by [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016/typecheck-workforces-test-files-deferred-from-fix-1343)** (typecheck workforce's tests, 132 errors in 42 files, after #3304 and #3387 land). Its `DEFERRED` entry cites it. If wrong: workforce's blind spot outlives the PRs that justified it.
 
 1. **[D1](DECISIONS.md#d1) · A short stack of PRs in package order wires the 28 remaining packages and fixes every error; workforce is deferred by name.** If wrong: the guarantee takes several merges to arrive, or workforce's blind spot outlives the PRs that justified it. **The one to weigh.**
 2. **[D2](DECISIONS.md#d2) · Tests are checked by a second, no-emit config per package, not by widening the build config.** If wrong: editors keep showing less than CI does.
