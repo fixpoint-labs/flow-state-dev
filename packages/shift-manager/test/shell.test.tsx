@@ -180,13 +180,14 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
     // Projects are read on their own: an unread inventory leaves PROJECTS whole.
     expect(screen.queryByTestId("projects-failure")).toBeNull();
     expect(screen.getByTestId("nav-tasks")).toBeTruthy();
-    expect(screen.getByTestId("jump-to")).toBeTruthy();
+    expect(screen.getByTestId("jump-tip").textContent).toMatch(/⌘K/);
+    expect(screen.queryByTestId("jump-to")).toBeNull();
   });
 
-  it("a Lab whose flows declare no inventory still names the organization it binds the user to", async () => {
+  it("a Lab whose flows declare no inventory shows no organization selector", async () => {
     await openApp("/inbox", { inventoryDeclared: false });
     expect((await screen.findByTestId("teams-failure")).textContent).toMatch(/without opening its inventory/);
-    expect(screen.getByTestId("org-switcher").textContent).toContain(DEFAULT_ORG_ID);
+    expect(screen.queryByTestId("org-switcher")).toBeNull();
     expect(document.body.textContent).not.toMatch(/Unknown organization/);
   });
 });
@@ -404,8 +405,8 @@ describe("Jump to a declared document (BR-10)", () => {
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
 
-    const jump = await screen.findByTestId("jump-to");
-    act(() => fireEvent.click(jump));
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "runbook" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
     expect(rest).toEqual([]);
@@ -473,7 +474,7 @@ describe("Chief of Staff (FIX-1722)", () => {
   it("Jump to finds it and opens it (BR-2)", async () => {
     await openCos("/");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
-    act(() => fireEvent.click(screen.getByTestId("jump-to")));
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "coordinator" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
     expect(rest).toEqual([]);
@@ -837,8 +838,8 @@ describe("Chief of Staff (FIX-1722)", () => {
 describe("Jump to from the keyboard", () => {
   it("arrow keys move the highlight through the results, and Enter goes to the highlighted one", async () => {
     await openApp("/inbox");
-    const jump = await screen.findByTestId("jump-to");
-    act(() => fireEvent.click(jump));
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     const input = screen.getByTestId("jump-input");
     const results = await screen.findAllByTestId("jump-result");
     expect(results.length).toBeGreaterThan(2);
@@ -875,8 +876,8 @@ describe("Jump to from the keyboard", () => {
 
   it("the pointer highlights the result it is over", async () => {
     await openApp("/inbox");
-    const jump = await screen.findByTestId("jump-to");
-    act(() => fireEvent.click(jump));
+    await screen.findByTestId("jump-tip");
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     const results = await screen.findAllByTestId("jump-result");
     act(() => fireEvent.mouseMove(results[2]!));
     expect(results.map((r) => r.getAttribute("aria-selected"))).toEqual(results.map((_, i) => String(i === 2)));
