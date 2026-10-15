@@ -53,10 +53,7 @@ const loggedSlashIds = new Set<string>();
 /**
  * Resolve a persisted or client-provided model id to a catalog entry.
  * Unknown or removed catalog ids fall back to {@link DEFAULT_KITCHEN_SINK_MODEL}.
- *
- * A choice saved before model strings took the colon form has three slash
- * segments. It falls back the same way, and is logged once so the old id is
- * visible; it is never rewritten into the new spelling.
+ * A saved three-slash id falls back the same way and is logged once; it is never rewritten.
  */
 export function coalesceKitchenSinkModel(
   value: string | null | undefined,

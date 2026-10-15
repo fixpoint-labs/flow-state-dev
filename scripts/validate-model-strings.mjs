@@ -141,7 +141,6 @@ const REJECTION_IMPL_FILES = new Set([
  */
 const RETAINED_HISTORY_PREFIXES = ["specs/", "docs/internal/archive/"];
 
-/** Whether a repo-relative path is retained history (see above). */
 export function isRetainedHistory(relPath) {
   const norm = relPath.split("\\").join("/");
   return RETAINED_HISTORY_PREFIXES.some((prefix) => norm.startsWith(prefix));

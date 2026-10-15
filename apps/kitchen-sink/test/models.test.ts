@@ -17,10 +17,7 @@ describe("coalesceKitchenSinkModel", () => {
     );
   });
 
-  // A choice saved before model strings took the colon form is the old
-  // gateway/provider/model spelling. It is not translated: the user gets the
-  // default model, and the app logs the old id once. Built by join so this
-  // file does not itself spell the removed form the repo guard refuses.
+  // Joined so this file does not spell the removed form the guard refuses.
   it("falls back to the default for a saved slash id, logging it once", () => {
     const saved = ["vercel", "anthropic", "claude-opus-4.8"].join("/");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
