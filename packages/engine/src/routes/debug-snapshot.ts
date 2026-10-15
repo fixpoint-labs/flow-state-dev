@@ -382,7 +382,8 @@ export async function buildDebugResourceTree(opts: {
         flow as ResourceOwnerFlow,
         sessionId,
         scope,
-        tenantId
+        tenantId,
+        session
       );
       persistedCache.set(scope, data ?? null);
     })
@@ -557,7 +558,8 @@ export async function buildDebugCollectionItems(opts: {
     flow as ResourceOwnerFlow,
     sessionId,
     group.scope,
-    tenantId
+    tenantId,
+    session
   );
   if (!persisted) {
     return {
@@ -694,7 +696,8 @@ export async function lookupDebugContent(opts: {
     flow as ResourceOwnerFlow,
     sessionId,
     group.scope,
-    tenantId
+    tenantId,
+    session
   );
   if (!persisted) return { ok: false, kind: "content_not_found" };
 

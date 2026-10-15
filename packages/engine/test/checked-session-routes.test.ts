@@ -31,6 +31,7 @@ import {
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
 import { routeSubject } from "../src/routes/route-auth";
 import { listFlowRoutes, matchFlowRoute } from "../src/routes/router";
+import { resourceScopeIds, toIsolationFlow } from "../src/stores/scope-keys";
 
 const ORG = "org_test";
 const SESSION = "sess_shared";
@@ -41,6 +42,20 @@ const notes = defineResourceCollection({
   stateSchema: z.object({ title: z.string().default("") }),
   client: {
     content: { read: true, create: true, update: true, delete: true },
+    state: { read: true }
+  }
+});
+
+/**
+ * Kept per user, so a route that reads it under mallory's session reads her
+ * rows, not alice's, even though both sessions sit at the same id.
+ */
+const prefs = defineResourceCollection({
+  scope: "user",
+  pattern: "prefs/*",
+  stateSchema: z.object({ title: z.string().default("") }),
+  client: {
+    content: { read: true, create: true },
     state: { read: true }
   }
 });
@@ -57,7 +72,7 @@ function build(authenticated: boolean) {
     kind: "guarded",
     actions: {
       run: {
-        block: handler({ name: "guarded-run", resources: { notes, doc }, execute: () => ({}) })
+        block: handler({ name: "guarded-run", resources: { notes, doc, prefs }, execute: () => ({}) })
       }
     },
     ...(authenticated
@@ -83,7 +98,7 @@ function build(authenticated: boolean) {
     debugAllowAnonymousLocal: true
   });
   routers.push(router);
-  return { router, stores };
+  return { router, stores, flow };
 }
 
 const routers: ReturnType<typeof createFlowApiRouter>[] = [];
@@ -129,11 +144,12 @@ function call(
   router: ReturnType<typeof createFlowApiRouter>,
   method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string[],
-  body?: unknown
+  body?: unknown,
+  user = "alice"
 ): Promise<Response> {
   const init: RequestInit = {
     method,
-    headers: { "content-type": "application/json", "x-user": "alice" },
+    headers: { "content-type": "application/json", "x-user": user },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   };
   const request = new Request(`http://localhost/api/flows/${path.join("/")}`, init);
@@ -311,14 +327,15 @@ async function seed(router: ReturnType<typeof createFlowApiRouter>, stores: Stor
  * Once the guard has read the session at `SESSION` (alice's, or none), the
  * id is mallory's before the handler reads it.
  */
-function handIdToMallory(stores: StoreRegistry): { changed: () => boolean } {
+function handIdToMallory(stores: StoreRegistry, afterReads = 1): { changed: () => boolean } {
   const get = stores.session.get.bind(stores.session);
   const set = stores.session.set.bind(stores.session);
   const remove = stores.session.delete.bind(stores.session);
   let changed = false;
+  let reads = 0;
   vi.spyOn(stores.session, "get").mockImplementation(async (id) => {
     const found = await get(id);
-    if (!changed && id === SESSION) {
+    if (!changed && id === SESSION && ++reads === afterReads) {
       changed = true;
       if (found !== undefined) await remove(id);
       await set(id, sessionOf("mallory", Date.now()), "absent");
@@ -327,6 +344,57 @@ function handIdToMallory(stores: StoreRegistry): { changed: () => boolean } {
   });
   return { changed: () => changed };
 }
+
+/**
+ * Routes that go on to read the session's resources after their checked read.
+ * `leak` is what the response shows of mallory's row when it served it; by
+ * default her row's own text, for the routes that show only a count, the
+ * count of a collection alice never wrote to.
+ */
+const LATE_ROUTES: (Pick<RouteCase, "name" | "path"> & { leak?: RegExp })[] = [
+  { name: "get_session_state", path: ["sessions", SESSION, "state"], leak: /"prefs":\{"count":1\}/ },
+  { name: "list_collection_state", path: ["sessions", SESSION, "resources", "prefs"] },
+  { name: "get_collection_item_state", path: ["sessions", SESSION, "resources", "prefs", "p1"] },
+  {
+    name: "get_collection_item_content",
+    path: ["sessions", SESSION, "resources", "prefs", "p1", "content"]
+  },
+  {
+    name: "debug_list_resources",
+    path: ["sessions", SESSION, "debug", "resources"],
+    leak: /"primaryName":"prefs"[^}]*"itemCount":1[,}]/
+  },
+  {
+    name: "debug_list_collection_items",
+    path: ["sessions", SESSION, "debug", "resources", "prefs", "items"]
+  },
+  {
+    name: "debug_get_collection_item_content",
+    path: ["sessions", SESSION, "debug", "resources", "prefs", "p1", "content"]
+  }
+];
+
+describe("a session route reads resources under the session it checked, not one read again", () => {
+  // The guard and the handler both read alice's session; the id is mallory's
+  // from the read after. A route that reads the session a third time to find
+  // its user rows reads mallory's.
+  for (const route of LATE_ROUTES) {
+    it(`${route.name} serves none of the user rows of a session that took the id later`, async () => {
+      const { router, stores, flow } = build(true);
+      await seed(router, stores, "alice");
+      // Mallory's own row in this flow's user scope, where her runs write it.
+      for (const id of resourceScopeIds({ userId: "mallory", orgId: ORG }, toIsolationFlow(flow), "user")) {
+        await stores.resourceState.set("user", id, "prefs/p1", { title: "mallory's pref" }, "any");
+        await stores.content.set("user", id, "prefs/p1", "mallory's pref");
+      }
+      handIdToMallory(stores, 2);
+
+      const res = await call(router, "GET", route.path);
+
+      expect(await res.text()).not.toMatch(route.leak ?? /mallory's pref/);
+    });
+  }
+});
 
 describe("a session route acts only on the session the owner check admitted the caller to", () => {
   for (const scenario of ["taken", "arrived"] as const) {
