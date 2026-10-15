@@ -47,9 +47,9 @@ Ask the Shift Coordinator for work on either project, and say which one, for exa
 
 If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run starts from your local `main`, and a warning prints where you started Shift Manager.
 
-The Lab remembers the URL of each remote and the upstream your branches track from the first time it starts with your checkout, and fetches only from those. If you move your remote on purpose, the next run prints a warning naming a file: delete that file and restart Shift Manager to accept the new URL.
+The Lab pins the URL of each remote and the upstream your branches track the first time it starts with your checkout, and fetches only from those. If you change a remote's URL on purpose, the next run fetches nothing, starts from your local `main`, and prints a warning naming a pin file. If you change a branch's upstream, the run still fetches the pinned upstream and prints the same kind of warning. Either way, delete that pin file and restart Shift Manager to accept the change.
 
-A coding run works in your checkout with your trust, the way Claude Code does when you start it there. It can create and move branches and refs in your repository.
+A coding run works in your checkout with your trust, the way Claude Code does when you start it there. It can create and move branches, tags and remote-tracking refs in your repository.
 
 Review the work in that worktree, or from your checkout with `git log -p <branch> --not main main@{upstream}`. That shows only the run's commits, whichever of the two it started from. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
 
