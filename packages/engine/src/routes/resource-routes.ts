@@ -29,7 +29,6 @@ import {
   extractBareTopic,
   jsonResponse,
   loadCheckedSession,
-  loadTenantSession,
   unknownSessionResponse,
   parseJsonBody,
 } from "./route-utils";
@@ -68,8 +67,8 @@ type ResourceRouteContext = {
   tenantId?: string;
   /**
    * The session the owner check read and admitted the caller to
-   * (`RouteAuthResult.session`). The content routes read and write only under
-   * that session; the state routes do not compare against it yet.
+   * (`RouteAuthResult.session`). Every route here reads and writes only under
+   * that session.
    */
   checkedSession?: SessionRecord | null;
 };
@@ -463,10 +462,11 @@ export async function handleListCollectionState(
   route: Extract<ParsedFlowRoute, { kind: "list_collection_state" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (!session) return unknownSessionResponse(route.sessionId);
 
@@ -586,10 +586,11 @@ export async function handleGetCollectionItemState(
   route: Extract<ParsedFlowRoute, { kind: "get_collection_item_state" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (!session) return unknownSessionResponse(route.sessionId);
 
@@ -692,10 +693,11 @@ export async function handleGetResourceManifest(
   route: Extract<ParsedFlowRoute, { kind: "get_resource_manifest" }>,
   ctx: ResourceRouteContext
 ): Promise<Response> {
-  const session = await loadTenantSession(
+  const session = await loadCheckedSession(
     ctx.stores.session,
     route.sessionId,
-    ctx.tenantId
+    ctx.tenantId,
+    ctx.checkedSession
   );
   if (!session) return unknownSessionResponse(route.sessionId);
 

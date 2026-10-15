@@ -29,6 +29,8 @@ import {
   disposeFlowApiRouter
 } from "../src";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import { routeSubject } from "../src/routes/route-auth";
+import { listFlowRoutes, matchFlowRoute } from "../src/routes/router";
 
 const ORG = "org_test";
 const SESSION = "sess_shared";
@@ -72,7 +74,15 @@ function build(authenticated: boolean) {
   const registry = createFlowRegistry();
   registry.register(flow);
   const stores = createInMemoryStores();
-  const router = createFlowApiRouter({ registry, stores, staleSweepIntervalMs: 0 });
+  const router = createFlowApiRouter({
+    registry,
+    stores,
+    staleSweepIntervalMs: 0,
+    // The debug routes are session-addressed too, so they are opened here and
+    // held to the same compare as every other session route.
+    debugEndpointsEnabled: true,
+    debugAllowAnonymousLocal: true
+  });
   routers.push(router);
   return { router, stores };
 }
@@ -176,8 +186,105 @@ const ROUTES: RouteCase[] = [
     method: "DELETE",
     path: ["sessions", SESSION, "resources", "notes", "n1"],
     okStatus: 200
+  },
+  {
+    name: "patch_session_metadata",
+    method: "PATCH",
+    path: ["sessions", SESSION, "metadata"],
+    body: { title: "alice's title" },
+    okStatus: 200
+  },
+  { name: "get_session_state", method: "GET", path: ["sessions", SESSION, "state"], okStatus: 200 },
+  { name: "session_stream", method: "GET", path: ["sessions", SESSION, "stream"], okStatus: 200 },
+  {
+    name: "list_collection_state",
+    method: "GET",
+    path: ["sessions", SESSION, "resources", "notes"],
+    okStatus: 200
+  },
+  {
+    name: "get_collection_item_state",
+    method: "GET",
+    path: ["sessions", SESSION, "resources", "notes", "n1"],
+    okStatus: 200
+  },
+  { name: "get_resource_manifest", method: "GET", path: ["sessions", SESSION, "manifest"], okStatus: 200 },
+  {
+    name: "debug_list_resources",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources"],
+    okStatus: 200
+  },
+  {
+    name: "debug_list_suspensions",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "suspensions"],
+    okStatus: 200
+  },
+  {
+    name: "debug_list_collection_items",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources", "notes", "items"],
+    okStatus: 200
+  },
+  {
+    name: "debug_get_resource_content",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources", "doc", "content"],
+    okStatus: 200
+  },
+  {
+    name: "debug_get_collection_item_content",
+    method: "GET",
+    path: ["sessions", SESSION, "debug", "resources", "notes", "n1", "content"],
+    okStatus: 200
   }
 ];
+
+/**
+ * Every route the owner check treats as session-addressed, from the guard's
+ * own classification (`routeSubject`) over the router's table. A route added
+ * there lands here, and fails below until it has a row in `ROUTES`, so it is
+ * held to the compare before it ships rather than after a review finds it.
+ */
+function sessionAddressedRouteKinds(): string[] {
+  const kinds = new Set<string>();
+  for (const route of listFlowRoutes()) {
+    const sample = route.pattern.replace(/[:*](\w+)/g, (_, name: string) => `sample-${name}`);
+    const parsed = matchFlowRoute(route.method, sample);
+    if (parsed.kind !== route.kind) {
+      throw new Error(`sample path for ${route.method} ${route.pattern} parsed as "${parsed.kind}"`);
+    }
+    if (routeSubject(parsed).kind === "session") kinds.add(route.kind);
+  }
+  return [...kinds].sort();
+}
+
+describe("every session-addressed route is held to the compare", () => {
+  it("finds the session-addressed routes from the guard's classification", () => {
+    // Guards the derivation itself: an empty set would pass the check below.
+    expect(sessionAddressedRouteKinds().length).toBeGreaterThan(0);
+  });
+
+  it("has a row for every route the guard classifies as session-addressed", () => {
+    const covered = new Set(ROUTES.map((route) => route.name));
+    const missing = sessionAddressedRouteKinds().filter((kind) => !covered.has(kind));
+    expect(missing, "session-addressed routes with no row in ROUTES").toEqual([]);
+  });
+
+  it("calls the route each row is named for", () => {
+    const misnamed = ROUTES.filter(
+      (route) => matchFlowRoute(route.method, `/${route.path.join("/")}`).kind !== route.name
+    ).map((route) => route.name);
+    expect(misnamed, "rows whose path reaches another route").toEqual([]);
+  });
+
+  it("has no row for a route that is not session-addressed", () => {
+    const kinds = new Set(sessionAddressedRouteKinds());
+    const stale = ROUTES.map((route) => route.name).filter((name) => !kinds.has(name));
+    expect(stale, "rows for routes the guard does not treat as session-addressed").toEqual([]);
+  });
+});
 
 /**
  * Alice's session with one note in it, written through the route as she
@@ -198,6 +305,9 @@ async function seed(router: ReturnType<typeof createFlowApiRouter>, stores: Stor
     content: "alice's note"
   });
   expect(created.status).toBe(201);
+  // The single resource's content as a run would have written it, for the
+  // debug read, which serves stored content and not the declared default.
+  await stores.content.set("session", SESSION, "doc", "alice's doc");
   // No session at the id, but the note stays under it, so a route that read
   // the session arriving there has an item to serve.
   if (owner === "none") await stores.session.delete(SESSION);
