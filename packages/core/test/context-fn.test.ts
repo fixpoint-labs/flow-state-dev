@@ -2,19 +2,10 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { contextFn } from "../src/context";
 import type { SessionScopeHandle, UserScopeHandle } from "../src/types/scope";
-import { createMockContext } from "./helpers";
+import { createMockContext, createStateOps } from "./helpers";
 
-// contextFn reads only `state` off a scope handle, so these are partial
-// handles: the state, an identity, and no-op writers.
-const stateOps = {
-  patchState: async () => true,
-  setState: async () => true,
-  incState: async () => true,
-  pushState: async () => true,
-  setStateRecord: async () => true,
-  deleteStateRecord: async () => true,
-  atomicState: async () => true
-};
+// Partial handles: contextFn reads `state`. The writers are the shared no-ops.
+const stateOps = createStateOps<Record<string, unknown>>();
 const mockSession = (state: Record<string, unknown>) =>
   ({ identity: { type: "session", id: "sess_1" }, state, ...stateOps }) as unknown as SessionScopeHandle;
 const mockUser = (state: Record<string, unknown>) =>
@@ -47,9 +38,7 @@ describe("contextFn", () => {
   it("reads user state when schemas include user", () => {
     const fn = contextFn(
       { session: sessionStateSchema, user: userStateSchema },
-      // @ts-expect-error — source bug, to be filed (found by FIX-1343): contextFn's session-only
-      // overload is tried first and accepts `{ session, user }`, so the session+user overload is
-      // unreachable and `user` is missing from the callback's type. Remove once that is fixed.
+      // @ts-expect-error — source bug, to be filed (found by FIX-1343): the session-only overload accepts `{ session, user }`, so `user` is missing on the callback.
       ({ session, user }) => `${user.role}: ${session.phase}`
     );
 

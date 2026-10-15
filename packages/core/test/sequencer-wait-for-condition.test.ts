@@ -299,7 +299,6 @@ describe("sequencer .waitForCondition", () => {
       expect(evaluations).toEqual([0]);
 
       // Filter-out item — listener (and thus predicate) must not fire.
-      // A trace item is not an OutputItem type; the cast says so.
       fake.pushItem(makeItem({ type: "block_trace" } as unknown as Partial<OutputItem> & { type: OutputItem["type"] }));
       expect(evaluations).toEqual([0]);
 

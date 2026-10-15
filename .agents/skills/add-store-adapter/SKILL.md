@@ -102,15 +102,7 @@ packages/store-<name>/
 }
 ```
 
-Add a `tsconfig.test.json` next to `tsconfig.json` so `typecheck` also compiles the tests. `scripts/typecheck.mjs` runs it after `tsconfig.json`, and root `pnpm typecheck` fails while any test file is outside every program (`scripts/validate-test-typecheck.mjs`):
-
-```json
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "composite": false, "rootDir": "../..", "noEmit": true },
-  "include": ["src/**/*", "test/**/*"]
-}
-```
+Add `tsconfig.test.json` by copying `packages/core/tsconfig.test.json`. `scripts/typecheck.mjs` runs it after `tsconfig.json`.
 
 ### Step 4: Write the Factory
 

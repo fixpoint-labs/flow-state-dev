@@ -19,7 +19,7 @@ export function runForTest<TInput, TOutput>(
   return asRuntime(block).run(input, ctx);
 }
 
-function createStateOps<TState extends object>(): ScopeStateOps<TState> {
+export function createStateOps<TState extends object>(): ScopeStateOps<TState> {
   return {
     patchState: async () => true,
     setState: async () => true,
@@ -31,12 +31,7 @@ function createStateOps<TState extends object>(): ScopeStateOps<TState> {
   };
 }
 
-/**
- * What a test may override on the mock context. Tests stub only the parts a
- * block touches, so two fields are looser than `BlockContext`: `resolveModel`
- * may be a plain function without `resolveId`, and `response` may carry only
- * the methods the test reads. They are merged in as given.
- */
+/** Overrides a test may pass. `resolveModel` and `response` may be partial. */
 export type MockContextOverrides = Omit<Partial<BlockContext>, "resolveModel" | "response"> & {
   resolveModel?: (modelId: string, blockName?: string) => GeneratorModel;
   response?: Partial<ResponseEmitterHandle>;
@@ -49,7 +44,6 @@ export function createMockContext(overrides?: MockContextOverrides): BlockContex
   }) as unknown as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelId;
 
-  // A partial context: a test that needs a session, settings or targets passes them.
   const baseContext: Omit<BlockContext, "session" | "settings" | "targets"> = {
     request: {
       identity: { type: "request", id: "req_1" },

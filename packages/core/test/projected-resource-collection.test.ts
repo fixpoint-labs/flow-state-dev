@@ -122,8 +122,7 @@ describe("defineProjectedResourceCollection", () => {
         portfolio: typeof coll;
       }>;
       // The projected collection resolves to the read-only ref...
-      // @ts-expect-error — source bug, to be filed (found by FIX-1343): the collection's state
-      // type is inferred as `any`, so this is ProjectedResourceCollectionRef<any>. Remove once fixed.
+      // @ts-expect-error — source bug, to be filed (found by FIX-1343): state is inferred as `any`, so this is ProjectedResourceCollectionRef<any>.
       expectTypeOf<Refs["portfolio"]>().toEqualTypeOf<
         ProjectedResourceCollectionRef<{ ticker: string; shares: number }>
       >();

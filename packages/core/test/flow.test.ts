@@ -148,9 +148,7 @@ describe("defineFlow", () => {
         }
       },
       session: {
-        // @ts-expect-error — source gap, to be filed (found by FIX-1343): an instance's
-        // `session` option is typed as the definition's exact session config, so a
-        // `metadata` schema the runtime accepts here is refused by the type.
+        // @ts-expect-error — source gap, to be filed (found by FIX-1343): `session` is typed as the definition's config, so a `metadata` schema the runtime accepts is refused.
         metadata: z.object({ traceId: z.string() })
       }
     });

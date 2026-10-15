@@ -9,8 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlockTraceItem, MessageItem, OutputItem } from "../../src/items";
 import { buildItemLookup } from "../../src/items";
-// A `ref` is internal: only the executor writes one, so the resolver that takes
-// it is the internal one; the public `resolveBlockValue` delegates to it.
+// A `ref` is executor-written, so this calls the internal resolver.
 import { resolveBlockValueInternal } from "../../src/items/internal";
 
 const baseProvenance = {
