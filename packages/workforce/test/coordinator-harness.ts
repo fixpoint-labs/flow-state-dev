@@ -431,6 +431,20 @@ function textOf(item: any): string {
 }
 
 /** An error's message, whatever shape a run reported it in. */
+/**
+ * Every request settled, read again after a grace period, until nothing new
+ * starts: answers that go back out run in requests of their own.
+ */
+export async function quiet(host: { settled(): Promise<unknown[]> }) {
+  let seen = -1;
+  for (;;) {
+    const settled = await host.settled();
+    if (settled.length === seen) return settled;
+    seen = settled.length;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 export function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error !== null && typeof error === "object" && "message" in error) return String((error as { message: unknown }).message);

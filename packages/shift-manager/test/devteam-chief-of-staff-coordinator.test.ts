@@ -374,7 +374,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
 
     // The EM's post row ended with the cancel, and the round closed on it.
     const posts = Object.values(await stored(lab, "tasks/")).filter((row: any) => row.sealed?.kind === "post");
-    expect(posts).toEqual([expect.objectContaining({ assignee: "eng.em", status: "errored", error: "its run was cancelled" })]);
+    expect(posts).toEqual([expect.objectContaining({ assignee: "eng.em", status: "cancelled", error: "its run was cancelled" })]);
     expect(((await runtime.stores.session.get(id))?.state as { openRounds: unknown[] }).openRounds).toEqual([]);
   });
 });

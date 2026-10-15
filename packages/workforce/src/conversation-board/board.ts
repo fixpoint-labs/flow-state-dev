@@ -106,7 +106,7 @@ import {
   conversationLedgerAt,
   conversationLedgerResources
 } from "./ledger";
-import { POST_SETTLED_ENTRY, sendOwedNotices } from "./notice-delivery";
+import { sendOwedNotices, sendPostCancelled } from "./notice-delivery";
 import { sendOwedReports } from "./report-owed";
 import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
 
@@ -530,17 +530,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const outcome = await ending(ref.cancel.bind(ref))(id, ...rest);
         const row = ref.get(id);
         if (outcome.outcome !== "declined" && isPostRow(row) && row!.status === "cancelled") {
-          try {
-            await dispatchThroughSeam(ctx, {
-              type: "internal",
-              action: POST_SETTLED_ENTRY,
-              session: { id: ctx.session.identity.id },
-              payload: { boardId: CONVERSATION_LEDGER_ID, taskId: id, attempt: row!.attempts, ending: "cancelled" },
-              from: "conversation-board-cancel"
-            });
-          } catch {
-            // Its round closes at its deadline.
-          }
+          await sendPostCancelled(ctx, row!, { session: { id: ctx.session.identity.id }, from: "conversation-board-cancel" });
         }
         return outcome;
       }) as TaskCollectionRef["cancel"],
