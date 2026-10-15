@@ -1,6 +1,6 @@
 /**
  * A claimed worker can read its own claim ticket, on both routes a worker is
- * run by: inline in a board's drain, and behind the claim gate of a hand-off.
+ * run by: inline in a board's drain, and behind the claim gate of a dispatch.
  *
  * `currentWorkerClaim()` is what lets the model-facing task tools present
  * ownership without the model ever seeing a token, so a worker that cannot
@@ -142,8 +142,8 @@ describe("an inline board worker", () => {
   });
 });
 
-describe("a handed-off worker behind the claim gate", () => {
-  it("reads the claim ticket the gate minted for the handed-off row", async () => {
+describe("a dispatched worker behind the claim gate", () => {
+  it("reads the claim ticket the gate minted for the dispatched row", async () => {
     const USER_ID = "u_claim_scope";
     const BOARD_ID = "claim-scope-board";
     const ledger = () => defineTaskCollection({ id: "claim-scope-ledger", scope: "user" });
@@ -158,7 +158,7 @@ describe("a handed-off worker behind the claim gate", () => {
         return { done: true };
       },
     });
-    const handOff = (name: string, flowKind?: string) =>
+    const dispatchTo = (name: string, flowKind?: string) =>
       dispatcher<TaskWorkerInput>({
         name,
         ...(flowKind !== undefined ? { flowKind } : {}),
@@ -174,7 +174,7 @@ describe("a handed-off worker behind the claim gate", () => {
             name: "claim-recipient-board",
             boardId: BOARD_ID,
             collection: ledger(),
-            workers: { work: handOff("claim-recipient-hand-off") },
+            workers: { work: dispatchTo("claim-recipient-dispatch") },
           }).drain,
         },
       },
@@ -189,8 +189,8 @@ describe("a handed-off worker behind the claim gate", () => {
             name: "claim-sender-board",
             boardId: BOARD_ID,
             collection: ledger(),
-            workers: { work: handOff("claim-sender-hand-off", "claim-recipient") },
-            initialTasks: [{ id: "t1", goal: "handed off", assignee: "work" }],
+            workers: { work: dispatchTo("claim-sender-dispatch", "claim-recipient") },
+            initialTasks: [{ id: "t1", goal: "dispatched", assignee: "work" }],
           }).drain,
         },
       },

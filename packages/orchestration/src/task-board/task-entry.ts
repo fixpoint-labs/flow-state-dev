@@ -238,7 +238,7 @@ export interface TaskLedgersOptions {
    *
    * Set `false` for an entry whose turn answers the user directly rather than
    * its filer, such as Workforce's delegated post: it can wait on work it
-   * hands off, and it has no filer to ask. The claim is still stamped, so
+   * dispatches, and it has no filer to ask. The claim is still stamped, so
    * task-tool writes from the turn stay fenced to the row it holds.
    */
   taskTurn?: boolean;

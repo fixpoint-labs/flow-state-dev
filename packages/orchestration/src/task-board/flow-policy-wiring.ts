@@ -409,7 +409,7 @@ export function openWorkerClaimScope(): void {
  * the same condition and cannot drift apart.
  *
  * **Bound to `ctx`'s request.** AsyncLocalStorage follows the async chain, and
- * that chain runs on into work the worker starts: a hand-off that runs the
+ * that chain runs on into work the worker starts: a dispatch that runs the
  * receiving flow in-process, or a task's ending that resumes a parked turn.
  * Those are other requests, and none of them holds this claim. Recording the
  * request here is what lets {@link currentWorkerClaim} keep them out.

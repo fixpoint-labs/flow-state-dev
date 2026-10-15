@@ -24,9 +24,9 @@ describe("isTaskTurn", () => {
     expect(seen).toBe(true);
   });
 
-  it("is not a task turn in another request the claimed turn started (a resume, a hand-off)", async () => {
+  it("is not a task turn in another request the claimed turn started (a resume, a dispatch)", async () => {
     // The async chain runs on into requests the worker starts in-process; the
-    // claim does not. A resumed coordinator turn or a handed-off agent turn
+    // claim does not. A resumed coordinator turn or a dispatched agent turn
     // that read the worker's claim would refuse to wait, or park on a question.
     const inRequest = (id: string) => ({ session: { state: {} }, request: { identity: { id }, incarnation: "i1" } });
     const seen = await isolated(() => {
@@ -38,7 +38,7 @@ describe("isTaskTurn", () => {
   });
 
   it("is not a task turn under a claim its entry stamped as no task turn (a delegated post)", async () => {
-    // A post's turn answers the user: it may wait on work it hands off and
+    // A post's turn answers the user: it may wait on work it dispatches and
     // has no filer to ask. Its claim still fences its task-tool writes.
     const ctx = { session: { state: {} }, request: { identity: { id: "r_post" }, incarnation: "i1" } };
     const seen = await isolated(() => {
