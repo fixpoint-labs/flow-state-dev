@@ -106,9 +106,8 @@ describe("resolveInProcessPrincipal · the host's own answer", () => {
     });
     // Not asserted: that this path stays silent (the CLI reports the identity
     // itself, so the host's development-default warning would be a second line).
-    // resolveInProcessPrincipal builds its resolution with no warning sink, so no
-    // spy a test can attach would ever be called. Source gap (to be filed, found
-    // by FIX-1343).
+    // Source bug FIX-2055: resolveInProcessPrincipal builds its resolution with no
+    // warning sink, so no spy a test can attach would ever be called.
   });
 
   it("answers a bare registry the same way (the discovery path)", async () => {
