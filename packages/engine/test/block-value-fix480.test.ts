@@ -101,7 +101,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const blockOutput = items.find(
-      // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && i.blockName === "stream-gen",
     ) as BlockTraceItem | undefined;
     expect(blockOutput).toBeDefined();
@@ -155,7 +155,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const genOutput = items.find(
-      // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && i.blockName === "nested-stream-gen",
     ) as BlockTraceItem | undefined;
     expect(genOutput).toBeDefined();
@@ -173,7 +173,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     // refs the generator's, which refs the message. Flatten-at-emit
     // collapses to a single hop pointing at the message.
     const passOutput = items.find(
-      // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && i.blockName === "pass-through",
     ) as BlockTraceItem | undefined;
     expect(passOutput).toBeDefined();

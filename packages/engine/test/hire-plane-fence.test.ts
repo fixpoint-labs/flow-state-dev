@@ -243,7 +243,7 @@ async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}
 }
 
 function worker(id: string, instructions: string): FlowInstance {
-  // @ts-expect-error — source bug FIX-2053: FlowInstance carries no config schema, so a configured flow is refused where one is taken.
+  // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
   return workerKind({ id, config: { instructions } });
 }
 

@@ -134,14 +134,14 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const blockOutputItems = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "block_trace"
       ) as BlockTraceItem[];
 
       const rootItem = blockOutputItems.find((i) => i.blockName === "simple-handler");
       expect(rootItem).toBeDefined();
       expect(rootItem!.blockKind).toBe("handler");
-      // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       const rootVis = resolveItemVisibility(rootItem!);
       expect(rootVis.client).toBe(false);
       expect(rootVis.history).toBe(false);
@@ -175,7 +175,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "block_trace" && !resolveItemVisibility(i).client
       ) as BlockTraceItem[];
 
@@ -242,7 +242,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "block_trace" && !resolveItemVisibility(i).client
       ) as BlockTraceItem[];
 
@@ -285,7 +285,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const routerDecisions = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "router_decision"
       ) as RouterDecisionItem[];
 
@@ -294,7 +294,7 @@ describe("execution trace system", () => {
       const decision = routerDecisions[0]!;
       expect(decision.routerName).toBe("test-router");
       expect(decision.selectedRoute).toBe("handler-a");
-      // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       const decisionVis = resolveItemVisibility(decision);
       expect(decisionVis.client).toBe(false);
       expect(decisionVis.history).toBe(false);
@@ -321,7 +321,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const routerDecisions = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "router_decision"
       ) as RouterDecisionItem[];
 
@@ -350,12 +350,12 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const blockOutputItems = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "block_trace"
       ) as BlockTraceItem[];
 
       for (const item of blockOutputItems) {
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         const vis = resolveItemVisibility(item);
         expect(vis.client).toBe(false);
         expect(vis.history).toBe(false);
@@ -382,7 +382,7 @@ describe("execution trace system", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const items = response.getItems();
-      // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       const routerDecisions = items.filter((i) => i.type === "router_decision");
       for (const item of routerDecisions) {
         const vis = resolveItemVisibility(item);
@@ -581,7 +581,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "block_trace" && !resolveItemVisibility(i).client
       ) as BlockTraceItem[];
 
@@ -621,7 +621,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const routerDecisions = items.filter(
-        // @ts-expect-error — source bug FIX-2054: item APIs are typed OutputItem but carry RuntimeItem trace rows.
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         (i) => i.type === "router_decision"
       ) as RouterDecisionItem[];
 
