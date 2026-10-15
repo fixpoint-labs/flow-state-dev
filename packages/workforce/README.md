@@ -1677,8 +1677,10 @@ to a model as [tools](#hire-fork-and-fire-as-tools).
   with no starting state, which a worker flow refuses, so find or start the session with the client
   and select it on the hook (`flow.selectSession(session.id)`).
 
-  `ensureWorkerSession` returns the user's most recent session with the worker, or creates one.
-  Two calls at once get the same session. `findWorkerSession` takes the same argument and returns
+  `ensureWorkerSession` returns the user's conversation with the worker, or creates it.
+  Two calls at once get the same session. Messages from other workers (see
+  [Worker messages](#worker-messages)) land in it. A session the user started at any other id is
+  never returned. `findWorkerSession` takes the same argument and returns
   the session or `undefined`, creating nothing. Both throw `No worker "<id>" on your roster.` for a
   worker that isn't on the user's roster. The roster flow keeps one session per user, of the
   flow kind `workforce-roster`; if you list every flow's sessions, filter out
@@ -1911,6 +1913,56 @@ conversation it was filed in; `sessionIdOfFiling`, from `./browser`, reads that 
 session id back out of it. Only the board's fields go out (goal, status, assignee, run, timestamps
 and the like), never a task's input, output or metadata.
 
+## Worker messages
+
+A worker with a conversation can send any other worker on its user's roster a short message: a
+question, an FYI, a heads-up. Workers on the built-in `agent` flow and coordinators that route
+by `judgment` or `best-fit` get the `messageWorker` tool on every turn. On a flow built with
+`defineSessionBoard`, add the kit's `messages` to the model block's `uses`. The tool's
+description lists the workers this one can message now.
+
+```json
+{ "to": "chief-of-staff", "text": "What's the codename for the spring launch?" }
+```
+
+- **Sending.** The input is `{ to, text, replyTo? }` and nothing else; `text` holds up to 8,000
+  characters. A sent message answers `{ sent: "msg_…" }`, plus `unconfirmed` (a reason) when its
+  delivery couldn't be confirmed and may still arrive. A refused one answers
+  `{ ok: false, error }`, the error starting with a code: `no_worker` (also for another user's
+  worker), `not_yourself`, `worker_unavailable`, `takes_tasks_only` (a worker that only takes
+  tasks, such as a coding run: file a task instead), `no_turn` (a coordinator that routes by
+  `round-robin` or `everyone`), `no_such_message`, `hop_limit`, `per_turn_limit`,
+  `empty_message`, `message_too_long` or `not_delivered`.
+- **Receiving.** The message lands in the recipient's own conversation with the user, the session
+  `ensureWorkerSession({ worker })` returns (started when absent), as a `From <sender>: <text>`
+  line whose `agentName` is the sender. The recipient always takes a turn on it, after any turn it
+  is in the middle of.
+- **Answering.** The recipient answers with `messageWorker`, `to` the sender and `replyTo` the
+  message's id. The answer lands in the session the message was sent from and wakes the sender
+  there; a message sent from a task session is answered in the sender's own conversation instead.
+  A turn woken by a message (not an answer) that ends without messaging the sender has its final
+  text sent to the sender as the answer, as if with `replyTo` (cut to 8,000 characters). That
+  answer counts toward both limits; when one refuses it, nothing is sent or logged. A turn that
+  ends with no text sends nothing, and a turn woken by an answer never sends its text back.
+  Nothing waits on an answer.
+- **Limits.** Everything descending from one user's line is one chain: its messages, the turns
+  they wake and the tasks filed along the way, parallel branches included. A chain stops after
+  `hopLimit` (6) messages in total; a user's line starts a new chain. One turn sends at most
+  `perTurn` (3). Set both with `hireWorkforce(installation, { messages: { hopLimit, perTurn } })`;
+  each must be a whole number of at least 1, or `hireWorkforce` throws.
+- **The log.** Every message is a row in the user's `workforce/messages/*` collection
+  (`WORKER_MESSAGES_RESOURCE`, rows parsed by `workerMessageRowSchema`), readable from the browser
+  through the user's roster session or any session on a flow that carries the session board:
+  `id`, `from`, `to`, `text`, `exchange`, `replyTo`, `fromSession`, `toSession`, `chain` (the
+  chain's id; optional), `hop` (the message's place in the chain, from 1), `status`
+  (`delivered`, `refused` or `unconfirmed`), `reason` and `at`. Another user's rows are never
+  returned.
+
+A message is not a task: it files no row, owes no result, and doesn't count toward `taskChainLimit`.
+On a flow of your own, add the kit's `messages` to the model block's `uses`, beside `tools`, to let
+its workers send; `entries(turn)` already lets them receive. See
+[Messaging other workers](https://flow-state.dev/docs/workforce/messaging-workers).
+
 ## Error Reporter
 
 A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task or delegated post on a conversation board that ended errored, a coordinator crash that best fit answered with "Nobody took this post" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
@@ -1952,8 +2004,9 @@ It exports `createWorkforceClient`, `deriveWorkerSessionId`, `isDerivedWorkerSes
 `ROSTER_FLOW`, `WORKER_ID_STATE_KEY`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE`, `COORDINATOR_JUDGMENT` (the
 coordinator's own turn's answer name, which its messages carry as `agentName`) and
 `sessionIdOfFiling` (the conversation a board row was filed in), `RULE_TOOLS`, `MAX_RULES`,
-`MAX_RULE_CHARS`, `STANDING_RULES_ACTION` and `STANDING_RULES_LINE`, the same values
-the root exports, and reaches no Node built-in.
+`MAX_RULE_CHARS`, `STANDING_RULES_ACTION`, `STANDING_RULES_LINE`, `MESSAGE_WORKER_TOOL` (the
+tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATTERN`,
+`WORKER_MESSAGES_RESOURCE` and `workerMessageRowSchema`, the same values the root exports, and reaches no Node built-in.
 
 ## Exports
 
@@ -1968,7 +2021,7 @@ the root exports, and reaches no Node built-in.
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
-| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's ten task tools, present only while the session has a delegate that takes tasks), `actions` (the ten as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `entries(turn)` for `internal: { actions }`, and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
+| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's ten task tools, present only while the session has a delegate that takes tasks), `actions` (the ten as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `messageWorker` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which also delivers worker messages, and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `delegatedPostEntry(turn)` | The `onDelegatedPost` task entry that makes a flow's workers delegates that take posts: `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } }`. It takes a post's task from the conversation's board, runs `turn` on it, and ends the task with the reply. At the round's deadline, while the turn is still running, it tells the coordinator so the round can close. The turn isn't stopped; a later answer lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated run is cancelled, it tells the coordinator, which fails the post's task, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
@@ -1997,7 +2050,8 @@ the root exports, and reaches no Node built-in.
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `workerBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, workerBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `workerBlocks` and `packageBlocks` as a module of static imports exporting `workerFlows`, `blocks`, `resourceModules`, `workerBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(installation, { taskChainLimit? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. |
+| `hireWorkforce(installation, { taskChainLimit?, messages? })` | The flows to register for an installation: one copy of each worker flow, under its name, and the roster flow (`workforce-roster`) with `hire`, `fork`, `edit` and `fire`. Throws, naming every problem, when a worker flow misses the contract or doesn't declare the installation's session, or when a standard worker would be refused on its first turn; nothing is registered. `taskChainLimit` is the most tasks one top task may have under it, at any depth (100 when omitted); a value that isn't a whole number of at least 1 throws. `messages: { hopLimit?, perTurn? }` limits [worker messages](#worker-messages) (6 and 3 when omitted), under the same rule. |
+| `MESSAGE_WORKER_TOOL` / `WORKER_MESSAGE_ENTRY` / `WORKER_MESSAGES_RESOURCE` / `WORKER_MESSAGES_PATTERN` / `workerMessageRowSchema` / `WorkerMessageRow` / `MAX_MESSAGE_CHARS` / `DEFAULT_MESSAGE_HOP_LIMIT` / `DEFAULT_MESSAGES_PER_TURN` / `messageWorkerInputSchema` | [Worker messages](#worker-messages): the tool's name (`"messageWorker"`), the entry a message arrives on (`"onWorkerMessage"`), the log's accessor and pattern and its row schema, the 8,000-character cap, the default limits (6 and 3), and the tool's input schema. Also exported: `MESSAGE_STATUSES`, `MessageAddress`, `workerMessagesCollection` and `workerMessagesResources` (the log as a flow resource), `takesWorkerMessages(flow)` (whether a flow declares the entry), and `sendWorkerMessage(ctx, installation, flowKind, { to, text, replyTo? }, from)`, the send the tool runs, answering a `SendOutcome`. |
 | `mergeWorkerFlows(flows, workers)` | Add the flows `hireWorkforce` returned to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when one is already in `flows`. |
 | `workerFlowProblems(name, flow)` | Every way `flow`, registered as `name`, misses the worker contract: a name that is not its `kind`, a configuration it refuses by key or by value, or takes but rewrites, no door or two, a resource with `writtenBy` that `sharedResource()` didn't build. An empty list for a worker flow. The check `hireWorkforce` runs, exported for a library's own tests. |
 | `sharedResource(pattern, shape)` | An org-scoped collection whose every entry carries a required `writtenBy: { userId, workerId? }` beside the fields of `shape`. An entry written without it is refused by the resource's own schema. The only way to declare a resource with `writtenBy` on a worker flow: the contract refuses one defined by hand, or a copy of this one with its schema replaced. |

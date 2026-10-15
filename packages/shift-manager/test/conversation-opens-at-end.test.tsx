@@ -14,14 +14,16 @@ vi.mock("../src/lib/lab-data", () => ({
   useLab: () => ({ clients: { userId: "alice" }, refresh: async () => undefined, answered: undefined }),
 }));
 vi.mock("../src/lib/conversation", () => ({
-  delegateOf: () => undefined,
-  openConversation: async () => undefined,
+  senderOf: () => undefined,
+  knownWorkers: () => new Set<string>(),
   useWorkerConversation: () => ({
     sessionId: "s1",
     opened: "s1",
     read: { items: [], truncated: false },
     failure: undefined,
     reread: () => undefined,
+    resolving: false,
+    ensure: async () => "s1",
   }),
 }));
 

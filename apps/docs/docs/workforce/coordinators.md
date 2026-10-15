@@ -106,7 +106,7 @@ const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
-`ensureWorkerSession` returns your most recent session with the coordinator, or starts one if you have none.
+`ensureWorkerSession` returns your conversation with the coordinator, or starts it if you have none. Other workers' [messages](./messaging-workers.md) to the coordinator land in that same conversation.
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
