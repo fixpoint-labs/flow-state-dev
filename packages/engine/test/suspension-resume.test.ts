@@ -125,8 +125,6 @@ describe("ctx.suspend() — initial suspension", () => {
   });
 
   it("keeps an ask's short title apart from its body, on the item and the record", async () => {
-    // A surface heads an ask with its title and draws the message as body, so
-    // the two must arrive separately rather than as one long message.
     const step = handler({
       name: "titledAsk",
       inputSchema: z.any(),

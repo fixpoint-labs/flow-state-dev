@@ -358,12 +358,10 @@ describe("a titled ask in Inbox (FIX-2030)", () => {
     await workerAction(clients, "ops.asker", "ask", { what: "ship it", detail }, "s_ops_asker");
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
 
-    // The list row names the ask by its title, not the body.
     const item = await screen.findByTestId("inbox-item");
     expect(within(item).getByTestId("inbox-item-question").textContent).toBe("Approve: ship it");
     act(() => fireEvent.click(item));
 
-    // Only the title is set in display type; the questions and code are body text.
     expect((await screen.findByTestId("inbox-detail-title")).textContent).toBe("Approve: ship it");
     const body = screen.getByTestId("inbox-detail-body");
     expect([...body.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Should runAction retry?", "Which team owns it?"]);

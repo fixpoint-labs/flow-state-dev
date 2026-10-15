@@ -41,7 +41,6 @@ function matches(filter: Filter, ask: Ask): boolean {
   return filter === "All" || (filter === "Approvals") === (ask.kind === "approval");
 }
 
-/** What heads an ask: its short title, or its message when it gave none. */
 function askHeading(ask: Ask): string {
   return ask.item.title || ask.item.message || "(no message)";
 }
@@ -179,11 +178,6 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
   );
 }
 
-/**
- * A titled ask's message, under its title: body text drawn from markdown, so
- * a list of questions is a list and code is code. Headings in it stay body
- * size; the ask's title is the only heading.
- */
 function AskBody({ text }: { text: string }) {
   const plain = ({ children }: { children?: ReactNode }) => <p className="font-semibold">{children}</p>;
   return (

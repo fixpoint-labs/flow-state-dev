@@ -271,7 +271,6 @@ describe("a request that settled failed", () => {
     const asks = await lab.asks();
     expect(asks).toHaveLength(1);
     expect(asks[0]!.reason).toBe("human_input");
-    // Inbox heads the ask with its short title; the count and questions are the body under it.
     expect(asks[0]!.title).toBe("Error report: Coordinator fails on a project with no repository");
     expect(asks[0]!.message).toBe("Seen 1 time. File it?\n\n**Questions**\n\n- Which team?");
 
