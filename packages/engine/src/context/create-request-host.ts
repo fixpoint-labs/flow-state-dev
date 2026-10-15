@@ -29,7 +29,9 @@
  * 2. **Resolve the session.** A `key` derives a child of the running session
  *    and mints or adopts it; an `id` names a session that must exist and be this
  *    principal's, owned by the addressed instance — `session-not-found` /
- *    `session-not-addressable` otherwise, never created. `{ from: true }` is the
+ *    `session-not-addressable` otherwise, never created unless the target
+ *    carries starting state, which creates it at that id through the target
+ *    flow's create check (`create-refused` otherwise). `{ from: true }` is the
  *    same delivery as `id`, addressed at the trusted `dispatchStamp.from` —
  *    `no-sender` when this request was not dispatched.
  * 3. **Build the envelope**, from values the seam derived: the dispatch type as
@@ -85,6 +87,7 @@ import type { DispatchOperation } from "./dispatch-operation";
 import {
   birthSession,
   SessionCreateRefusedError,
+  type SessionBirthOutcome,
   type SessionRecordSeed
 } from "./session-birth";
 import { pinRejectsCaller } from "./instance-pin";
@@ -216,19 +219,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   /**
    * An `id` target: the session must exist and be reachable from this request
    * — same flow, same principal, same tenant, and not bound to a different org.
-   * Never created: an unknown id is a typo, a stale reference, or a hallucinated
-   * value, and creating a session for it would be work nobody is watching.
+   * Never created here: an unknown id is a typo, a stale reference, or a
+   * hallucinated value, and creating a session for it would be work nobody is
+   * watching. Only a target that carries starting state creates, and that goes
+   * through `resolveOrBirthSession` and the target flow's create check first.
    *
    * Absent, another owner, and another tenant answer the same refusal on
    * purpose: a distinct reason would confirm that a session exists across a
    * boundary the caller cannot see past, which is an existence oracle.
+   *
+   * @param read The record when the caller has just read it (a birth that
+   *   found one), so it is not read twice. Read here when absent.
    */
   const resolveExistingSession = async (
     sessionId: string,
-    targetFlow: FlowInstance
+    targetFlow: FlowInstance,
+    read?: SessionRecord
   ): Promise<ResolvedSession> => {
     const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
-    const record = await stores.session.get(storageKey);
+    const record = read ?? (await stores.session.get(storageKey));
     if (
       record === undefined ||
       record.userId !== identity.userId ||
@@ -278,6 +287,66 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // downstream re-checks. `runAction`'s guard compares against this.
       recipientLineageId: resolveLineageId({ id: storageKey, lineageId: record.lineageId })
     };
+  };
+
+  /** The record both dispatch births start from. A `key` child adds parent, lineage, and labels. */
+  const dispatchSeed = (
+    storageKey: string,
+    targetFlow: FlowInstance,
+    ts: number
+  ): SessionRecordSeed => ({
+    id: storageKey,
+    version: 0,
+    createdAt: ts,
+    updatedAt: ts,
+    flowKind: targetFlow.kind,
+    flowId: targetFlow.id,
+    userId: identity.userId,
+    journal: [],
+    ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+    orgId: identity.orgId
+  });
+
+  /**
+   * Birth a dispatch session. State comes from the block (`fromCaller: false`),
+   * so a server-owned field is the flow's to set; the target schema parses it
+   * (defaults applied). Judged `via: "dispatch"`, tombstones reclaimed (FIX-1258),
+   * written create-if-absent. A refused create check is `create-refused`.
+   */
+  const birthDispatchSession = async (
+    storageKey: string,
+    sessionId: string,
+    targetFlow: FlowInstance,
+    state: Readonly<Record<string, unknown>> | undefined,
+    build: (ts: number) => SessionRecordSeed
+  ): Promise<{ outcome: SessionBirthOutcome } | { refused: Refused }> => {
+    const ts = nowMs();
+    try {
+      return {
+        outcome: await birthSession(
+          stores,
+          storageKey,
+          {
+            flow: targetFlow,
+            sessionId,
+            principal: {
+              userId: identity.userId,
+              orgId: identity.orgId,
+              ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
+            },
+            ...(state !== undefined ? { state: { ...state } } : {}),
+            fromCaller: false,
+            via: "dispatch"
+          },
+          () => build(ts)
+        )
+      };
+    } catch (error) {
+      if (error instanceof SessionCreateRefusedError) {
+        return { refused: refuse("create-refused", error.message) };
+      }
+      throw error;
+    }
   };
 
   /**
@@ -338,18 +407,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       lineageId: childLineageId
     };
 
-    const ts = nowMs();
-    const build = (): SessionRecordSeed => ({
-      id: storageKey,
-      version: 0,
-      createdAt: ts,
-      updatedAt: ts,
-      flowKind: targetFlow.kind,
-      flowId: targetFlow.id,
-      userId: identity.userId,
-      journal: [],
-      ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
-      ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
+    // A child's id is derived, so a retry reuses it and create-if-absent is that race.
+    const attempt = await birthDispatchSession(storageKey, childId, targetFlow, initialState, (ts) => ({
+      ...dispatchSeed(storageKey, targetFlow, ts),
       parentSessionId: identity.sessionId,
       // Inherited verbatim for a same-flow child. Not a hash, not a
       // re-derivation — the same value, so parent and child address one bucket
@@ -363,42 +423,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // fields the children listing reads.
       ...label("topic", key),
       ...label("coordinate", `${address.type}:${address.action}`)
-    });
-
-    // Through the one birth function every new session record takes: it
-    // parses the state the dispatching block's code named through the target
-    // flow's schema (defaults applied, so typed block reads never observe a
-    // missing key), runs its create check, reclaims the id's resource-state tombstones (FIX-1258) — a
-    // child's id is DERIVED from its key, so reuse is the norm — and writes
-    // create-if-absent, which is how a caller wins or loses a create race
-    // rather than silently overwriting a concurrent adopter's child.
-    let outcome: Awaited<ReturnType<typeof birthSession>>;
-    try {
-      outcome = await birthSession(
-        stores,
-        storageKey,
-        {
-          flow: targetFlow,
-          sessionId: childId,
-          principal: {
-            userId: identity.userId,
-            orgId: identity.orgId,
-            ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {})
-          },
-          ...(initialState !== undefined ? { state: { ...initialState } } : {}),
-          // From the dispatching block's code, not a caller, so a
-          // server-owned field is the flow's to set here.
-          fromCaller: false,
-          via: "dispatch"
-        },
-        build
-      );
-    } catch (error) {
-      if (error instanceof SessionCreateRefusedError) {
-        return refuse("create-refused", error.message);
-      }
-      throw error;
-    }
+    }));
+    if ("refused" in attempt) return attempt.refused;
+    const outcome = attempt.outcome;
     if (outcome.born) {
       return { ok: true, sessionId: childId, orgId: identity.orgId, adopted: false, delivery: "child" };
     }
@@ -439,6 +466,33 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   /**
+   * `{ id, state }`: birth a top-level session when the id is absent. A session
+   * already there, including one a racing creator wrote, goes through the plain
+   * `id` guards and keeps its own state.
+   */
+  const resolveOrBirthSession = async (
+    sessionId: string,
+    initialState: Readonly<Record<string, unknown>>,
+    targetFlow: FlowInstance
+  ): Promise<ResolvedSession> => {
+    const storageKey = resolveSessionStorageKey(sessionId, identity.tenantId);
+    const attempt = await birthDispatchSession(storageKey, sessionId, targetFlow, initialState, (ts) =>
+      dispatchSeed(storageKey, targetFlow, ts)
+    );
+    if ("refused" in attempt) return attempt.refused;
+    if (!attempt.outcome.born) return resolveExistingSession(sessionId, targetFlow, attempt.outcome.record);
+    return {
+      ok: true,
+      sessionId,
+      orgId: identity.orgId,
+      adopted: false,
+      // Not a child: concurrency and the incarnation guard apply.
+      delivery: "existing",
+      recipientLineageId: resolveLineageId({ id: storageKey, lineageId: attempt.outcome.record.lineageId })
+    };
+  };
+
+  /**
    * Spec → store. `{ from: true }` is delivery into the stamped sender — the
    * same path as `id`, with the id taken from the trusted `dispatchStamp`,
    * not from the spec. The author cannot name a reply-to; a missing stamp is
@@ -473,6 +527,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       return sender;
     }
     if ("id" in spec.session) {
+      if (spec.session.state !== undefined) {
+        return resolveOrBirthSession(spec.session.id, spec.session.state, targetFlow);
+      }
       return resolveExistingSession(spec.session.id, targetFlow);
     }
     return resolveDispatchRunSession(spec.session.key, spec.session.state, spec, targetFlow);
