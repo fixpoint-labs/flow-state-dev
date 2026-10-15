@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 418" role="img" aria-label="D1, how to switch the check on. Chosen: one PR with every error fixed and workforce deferred by name. Instead of: on everywhere now with broken files marked ts-nocheck. It comes down to the day it merges: the chosen option covers every wired test file, while suppression leaves about 320 files blind behind a marker. The price is one large review, read one commit per package. Workforce is deferred either way. Locks in: one big review and workforce unchecked until its follow-up. Flips if: even per commit the review is too large to read; then a short stack in package order."
+<svg viewBox="0 0 940 418" role="img" aria-label="D1, how to switch the check on. Chosen: a short stack of PRs in package order. Instead of: one PR with about 1,376 fixes. It comes down to review size: each step can be read in one sitting, while one PR cannot. The price is timing: the guarantee arrives step by step, with unwired packages named in DEFERRED. Drift between steps is a tie: the guard fails a new gap either way. Locks in: several PRs merged in order, the gap visible in DEFERRED until the last. Flips if: the fixes prove trivial enough to read in one sitting."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,59 +42,60 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">One PR, every error fixed</text>
+    <text class="t-h c-code" x="228" y="112">A short stack, package order</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">On now, broken files suppressed</text>
+    <text class="t-h c-lost" x="592" y="112">One PR, about 1,376 fixes</text>
   </g>
 
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
-    <text class="t-lbl" x="32" y="156">THE DAY IT</text>
-    <text class="t-lbl" x="32" y="169">MERGES</text>
+    <text class="t-lbl" x="32" y="156">REVIEW SIZE</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Every wired test file checked</text>
-    <text class="t-s" x="248" y="179">green CI means the types hold</text>
+    <text class="t-b" x="248" y="161">Each step read in one sitting</text>
+    <text class="t-s" x="248" y="179">a few packages, in dependency order</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">About 320 files still blind</text>
-    <text class="t-s" x="612" y="179">behind a marker that reads like coverage</text>
+    <text class="t-b" x="612" y="161">About 1,376 fixes in one review</text>
+    <text class="t-s" x="612" y="179">more than one sitting</text>
   </g>
 
   <g id="row-1">
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
-    <text class="t-lbl" x="32" y="222">REVIEW SIZE</text>
+    <text class="t-lbl" x="32" y="222">WHEN THE</text>
+    <text class="t-lbl" x="32" y="235">GUARANTEE LANDS</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">About 1,376 fixes, one commit per package</text>
-    <text class="t-s" x="248" y="241">mostly casts and missing fields</text>
+    <text class="t-b" x="248" y="223">Step by step</text>
+    <text class="t-s" x="248" y="241">unwired packages named in DEFERRED</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Small: config and markers</text>
-    <text class="t-s" x="612" y="241">the fixes come later, file by file</text>
+    <text class="t-b" x="612" y="223">All on one day</text>
+    <text class="t-s" x="612" y="241">one merge</text>
   </g>
 
   <g id="row-2">
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
-    <text class="t-lbl" x="32" y="280">WORKFORCE</text>
+    <text class="t-lbl" x="32" y="280">DRIFT BETWEEN</text>
+    <text class="t-lbl" x="32" y="293">STEPS</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">Deferred by name</text>
-    <text class="t-s" x="248" y="299">two open PRs rewrite its tests</text>
+    <text class="t-b" x="248" y="281">Guard fails any new gap</text>
+    <text class="t-s" x="248" y="299">from the first PR on</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">Suppressed like the rest</text>
-    <text class="t-s" x="612" y="299">the same gap, less visible</text>
+    <text class="t-b" x="612" y="281">No steps to drift between</text>
+    <text class="t-s" x="612" y="299">the same guard</text>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="349">LOCKS IN</text>
-    <text class="t-b" x="32" y="369">One big review; workforce waits</text>
-    <text class="t-s" x="32" y="387">its follow-up issue brings it back</text>
+    <text class="t-b" x="32" y="369">Several PRs, merged in order</text>
+    <text class="t-s" x="32" y="387">the gap visible in DEFERRED until the last</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="328" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="349">FLIPS IF</text>
-    <text class="t-b" x="494" y="369">Even per commit, too large to read</text>
-    <text class="t-s" x="494" y="387">then a short stack in package order</text>
+    <text class="t-b" x="494" y="369">The fixes prove trivial to read</text>
+    <text class="t-s" x="494" y="387">then fewer, larger steps; never suppression</text>
   </g>
 </svg>
