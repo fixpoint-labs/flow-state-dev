@@ -23,7 +23,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { isProjectedResourceCollection, readProjectedRecord } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
+import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
@@ -187,20 +187,25 @@ export function findResourceConfig(
  * the bare identity id, which may differ from the (flow-flag) scope-record
  * key — gating on the record would hide cross-flow shared data. A scope with
  * nothing written simply reads as empty.
+ *
+ * @param checked The session the caller already read and checked for this
+ * request. When given, the buckets come from it and the session is not read
+ * again: a second read by id can find another session that took the id since,
+ * and would serve that session's user and org rows.
  */
 export async function getPersistedData(
   ctx: ResourcePersistenceContext,
   flow: ResourceOwnerFlow,
   sessionId: string,
   scope: ResolvedResourceScope,
-  tenantId?: string
+  tenantId?: string,
+  checked?: SessionRecord
 ): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
   // Namespace the session lookup by tenant (FIX-682); `session.id` then carries
   // the namespaced key so the session-scope content/state reads below are
   // tenant-isolated. `undefined` tenant → bare key (single-tenant, unchanged).
-  const session = await ctx.stores.session.get(
-    resolveSessionStorageKey(sessionId, tenantId)
-  );
+  const session =
+    checked ?? (await ctx.stores.session.get(resolveSessionStorageKey(sessionId, tenantId)));
   if (!session) return undefined;
   // Tenant binding: the `${tenantId}:${sessionId}` key is ambiguous when the
   // caller controls `sessionId`, so reject a record whose stored tenant differs

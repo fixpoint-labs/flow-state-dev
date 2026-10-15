@@ -77,6 +77,9 @@ export type TaskView = {
   interrupt: InterruptState;
   requestInterrupt(): Promise<void>;
   devtoolUrl: string | undefined;
+  /** Request ids this composer started, newest last, for this open task only (FIX-2009). */
+  sent: readonly string[];
+  noteSent(requestId: string): void;
 };
 
 const TaskContext = createContext<TaskView | null>(null);
@@ -283,6 +286,10 @@ export function TaskProvider({
     }
   }, [clients, openRun, interrupt.kind, reportStatus]);
 
+  const [sent, setSent] = useState<string[]>([]);
+  useEffect(() => setSent([]), [boardRef, taskId]);
+  const noteSent = useCallback((requestId: string) => setSent((held) => (held.includes(requestId) ? held : [...held, requestId])), []);
+
   const value: TaskView = {
     boardRef,
     taskId,
@@ -303,6 +310,8 @@ export function TaskProvider({
     interrupt,
     requestInterrupt,
     devtoolUrl,
+    sent,
+    noteSent,
   };
   return <TaskContext.Provider value={value}>{children}</TaskContext.Provider>;
 }

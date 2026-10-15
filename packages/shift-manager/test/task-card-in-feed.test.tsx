@@ -3,7 +3,7 @@
  * One card per task the turn filed. Status comes from the board, so a task
  * the feed still holds as running can show errored.
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { SessionScope, TaskBoardMeta } from "../src/components/TaskBoardMeta";
@@ -14,8 +14,23 @@ let rows: Row[] = [];
 let failing = false;
 const calls: string[] = [];
 let refreshes = 0;
-const lab = { clients: { userId: "alice" }, snapshot: { readAt: 1 }, refresh: async () => void refreshes++ };
+const lab: { clients: { userId: string }; snapshot: Record<string, unknown>; refresh: () => Promise<void> } = {
+  clients: { userId: "alice" },
+  snapshot: { readAt: 1 },
+  refresh: async () => void refreshes++,
+};
 vi.mock("../src/lib/lab-data", () => ({ useLab: () => lab }));
+// The user's conversation with the Error Reporter, as the snapshot lists it; `null` before a first line.
+let reporterConversation: string | null = null;
+const conversationsAskedFor: unknown[] = [];
+vi.mock("../src/lib/conversation", () => ({
+  useConversationSession: (worker: unknown) => {
+    conversationsAskedFor.push(worker);
+    return worker === undefined ? null : reporterConversation;
+  },
+}));
+const navigated: unknown[] = [];
+vi.mock("../src/lib/routes", () => ({ navigate: (route: unknown) => void navigated.push(route) }));
 vi.mock("../src/lib/conversation-tasks", () => ({
   readConversationTasks: async (_c: unknown, flow: string, sessionId: string) => {
     calls.push(`list ${flow} ${sessionId}`);
@@ -30,6 +45,9 @@ beforeEach(() => {
   refreshes = 0;
   calls.length = 0;
   lab.snapshot = { readAt: 1 };
+  reporterConversation = null;
+  conversationsAskedFor.length = 0;
+  navigated.length = 0;
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 });
 afterEach(() => {
@@ -140,5 +158,57 @@ describe("a delegated post's task in the feed", () => {
     render(scope(items, ["r1", "r2"]));
     await tick(0);
     expect(calls).toEqual(["list coordinator s1"]);
+  });
+});
+
+describe("a cancelled task's card", () => {
+  const reporter = { id: "error-reporter", kind: "error-reporter", door: "run", rules: true, team: "general", name: "Error Reporter" };
+  const withReporter = () => {
+    lab.snapshot = { readAt: 1, inventory: { ok: true, value: { workers: [reporter] } }, sessions: [] };
+  };
+  const cancelledRow = { id: "t1", goal: "g", title: "Post for eng.pm", status: "cancelled", assignee: "eng.pm", attempts: 1 };
+
+  it("tells the user to tell the Error Reporter, naming the task, if it was cancelled because something went wrong", async () => {
+    // A cancel isn't reported on its own: the user is the only one who knows it hid a problem.
+    withReporter();
+    rows = [cancelledRow];
+    render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    const note = screen.getByTestId("task-cancelled-note");
+    expect(note.textContent).toContain("Cancelled because something went wrong?");
+    expect(note.textContent).toContain("Error Reporter");
+    expect(note.textContent).toContain("t1");
+    expect(conversationsAskedFor).toContainEqual(reporter);
+  });
+
+  it("opens the user's conversation with the Error Reporter from the note when they have one", async () => {
+    withReporter();
+    reporterConversation = "s-reporter";
+    rows = [cancelledRow];
+    render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    fireEvent.click(screen.getByTestId("task-cancelled-report"));
+    expect(navigated).toEqual([{ level: "session", sessionId: "s-reporter" }]);
+  });
+
+  it("names no worker to tell when the Lab has no Error Reporter", async () => {
+    rows = [cancelledRow];
+    render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    expect(screen.queryByTestId("task-cancelled-note")).toBeNull();
+  });
+
+  it("isn't on a task that failed or finished: a failure is reported without asking", async () => {
+    withReporter();
+    rows = [{ ...cancelledRow, status: "errored" }];
+    const { rerender } = render(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    expect(screen.queryByTestId("task-cancelled-note")).toBeNull();
+    rows = [{ ...cancelledRow, status: "completed" }];
+    lab.snapshot = { ...lab.snapshot, readAt: 2 };
+    rerender(scope([filed("r1", "t1", "Post for eng.pm", "eng.pm")], ["r1"]));
+    await tick(0);
+    expect(cards()[0]!.status).toBe("completed");
+    expect(screen.queryByTestId("task-cancelled-note")).toBeNull();
   });
 });

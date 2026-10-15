@@ -40,11 +40,10 @@ function suspension(overrides: Partial<SuspensionItem> = {}): SuspensionItem {
 
 function wrapperWith(resolve: SuspensionResolver) {
   return ({ children }: { children: ReactNode }) =>
-    createElement(
-      FlowProvider,
-      { flowKind: "demo" },
-      createElement(SuspensionResolverProvider, { resolve }, children)
-    );
+    createElement(FlowProvider, {
+      flowKind: "demo",
+      children: createElement(SuspensionResolverProvider, { resolve, children })
+    });
 }
 
 describe("analyzeResumeSchema", () => {

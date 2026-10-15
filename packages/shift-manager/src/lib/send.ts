@@ -198,6 +198,7 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
  * @param options.onHeld called once, while the request is still running, when
  * the session first holds the line. A request that ends before a poll sees it
  * running never calls it: the send's own resolve says the same thing then.
+ * @param options.onStarted called once with the request id as soon as the Lab started it.
  * @returns the door's request; `suspended`, whether the poll saw it suspended,
  * which is when a caller reads the Lab again; and what it `stopped` on
  * ({@link TurnStop}), for the words only.
@@ -206,7 +207,7 @@ export async function sendTurn(
   clients: LabClients,
   target: TurnTarget,
   message: string,
-  options: { timeoutMs?: number; pollMs?: number; onHeld?: () => void } = {},
+  options: { timeoutMs?: number; pollMs?: number; onHeld?: () => void; onStarted?: (requestId: string) => void } = {},
 ): Promise<{ requestId: string; suspended: boolean; stopped: TurnStop }> {
   const actions = clients.actions(target.flowId);
   let requestId: string;
@@ -216,6 +217,7 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw new TurnNotDelivered("not-sent", error.message);
     throw error;
   }
+  options.onStarted?.(requestId);
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
   let suspended = false;
