@@ -1,6 +1,8 @@
 /**
- * A non-owner's session read is held open, so the window before the
- * concurrency place is taken is as wide as the test wants.
+ * A session read is held open, so the window before the concurrency place is
+ * taken is as wide as the test wants. Places on a key are taken in dispatch
+ * order, so a request dispatched behind a pending read waits for it; what a
+ * non-owner's pending read must never do is take a place of its own.
  */
 import { describe, it, expect } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
@@ -12,6 +14,7 @@ import {
   defaultBodyUserIdPrincipalResolver,
   UserBindingMismatchError
 } from "../../src";
+import { ConcurrencyRejectedError } from "../../src/transports/errors";
 
 type Gate = { id: string; release: () => void };
 
@@ -117,12 +120,14 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     expect(() => {
       owner = h.dispatch("strict", "owner-2");
     }).not.toThrow();
-    await owner.accepted;
     await tick();
-    expect(h.started).toEqual(["owner-first", "owner-2"]);
+    expect(h.started).toEqual(["owner-first"]);
 
     resume();
     await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
+    await owner.accepted;
+    await tick();
+    expect(h.started).toEqual(["owner-first", "owner-2"]);
     h.release("owner-2");
     await owner.finished;
     expect(h.started).not.toContain("x-1");
@@ -137,13 +142,15 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     void foreign.finished.catch(() => {});
 
     const owner = h.dispatch("line", "owner-2");
+    await tick();
+    expect(h.started).toEqual(["owner-first"]);
+
+    resume();
+    await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
     await owner.accepted;
     await tick();
     await tick();
     expect(h.started).toEqual(["owner-first", "owner-2"]);
-
-    resume();
-    await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
     h.release("owner-2");
     await owner.finished;
     expect(h.started).not.toContain("x-1");
@@ -162,5 +169,50 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     h.release("owner-2");
     await owner.finished;
     expect(h.started).toEqual(["owner-first", "owner-2"]);
+  });
+});
+
+describe("two requests from the session's owner on one key (in-memory backend)", () => {
+  // The first request's ownership read is the slow one, so its place would be
+  // taken after the second's if places followed read completion.
+  it("`queue`: the first dispatched runs first", async () => {
+    const h = buildHost();
+    await ownedSession(h);
+
+    const resume = h.pauseNextSessionRead();
+    const first = h.dispatch("line", "a");
+    const second = h.dispatch("line", "b");
+    await tick();
+    resume();
+    await first.accepted;
+    await second.accepted;
+    await tick();
+    expect(h.started).toEqual(["owner-first", "a"]);
+
+    h.release("a");
+    await first.finished;
+    await tick();
+    h.release("b");
+    await second.finished;
+    expect(h.started).toEqual(["owner-first", "a", "b"]);
+  });
+
+  it("`reject`: the first dispatched runs and the second is refused", async () => {
+    const h = buildHost();
+    await ownedSession(h);
+
+    const resume = h.pauseNextSessionRead();
+    const first = h.dispatch("strict", "a");
+    const second = h.dispatch("strict", "b");
+    void second.finished.catch(() => {});
+    await tick();
+    resume();
+    await tick();
+    await tick();
+    expect(h.started).toEqual(["owner-first", "a"]);
+    await expect(second.finished).rejects.toBeInstanceOf(ConcurrencyRejectedError);
+
+    h.release("a");
+    await first.finished;
   });
 });
