@@ -351,15 +351,10 @@ export async function buildDebugResourceTree(opts: {
   countLimit: number;
   /** Tenant id for namespacing the session lookup (FIX-682). */
   tenantId?: string;
-  /**
-   * The session the route guard checked (`RouteAuthResult.session`). The
-   * session read here must be that one, or it reads as not found.
-   */
+  /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
 }): Promise<DebugResourcesResponse | null> {
   const { sessionId, ctx, countLimit, tenantId } = opts;
-  // In the caller's tenant (FIX-682), and the session the guard checked: a
-  // session that took the id since is not the one the caller may inspect.
   const session = await loadCheckedSession(
     ctx.stores.session,
     sessionId,
@@ -522,10 +517,7 @@ export async function buildDebugCollectionItems(opts: {
   ctx: ResourcePersistenceContext;
   /** Tenant id for namespacing the session lookup (FIX-682). */
   tenantId?: string;
-  /**
-   * The session the route guard checked (`RouteAuthResult.session`). The
-   * session read here must be that one, or it reads as not found.
-   */
+  /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
 }): Promise<BuildItemsResult> {
   const { sessionId, ref, ctx, tenantId } = opts;
@@ -675,10 +667,7 @@ export async function lookupDebugContent(opts: {
   ctx: ResourcePersistenceContext;
   /** Tenant id for namespacing the session lookup (FIX-682). */
   tenantId?: string;
-  /**
-   * The session the route guard checked (`RouteAuthResult.session`). The
-   * session read here must be that one, or it reads as not found.
-   */
+  /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
 }): Promise<DebugContentResult> {
   const { sessionId, ref, topic, ctx, tenantId } = opts;
