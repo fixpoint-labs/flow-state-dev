@@ -33,9 +33,7 @@ describe("defineResourceCollection prefetchMode", () => {
     expect(coll.prefetchMode).toBe("lazy");
   });
 
-  // 6. Read signatures: since FIX-700 every collection read is async whatever
-  // the prefetch mode, so a lazy and an eager collection expose the same
-  // ctx.resources.<key> read methods. The mode changes loading, not the type.
+  // FIX-700: every collection read is async, so prefetch mode does not change the read type.
   it("gives lazy and eager collections the same async read signatures (type-level)", () => {
     const lazyColl = defineResourceCollection({
       pattern: "files/*",
@@ -54,8 +52,7 @@ describe("defineResourceCollection prefetchMode", () => {
       resources: { files: lazyColl, notes: eagerColl },
       execute: (_v, ctx) => {
         // Lazy: list() is async.
-        // @ts-expect-error — source bug FIX-2023: defineResourceCollection
-        // infers its state type as `any`, so the ref is ResourceRef<any>. Remove once fixed.
+        // @ts-expect-error — source bug FIX-2023: defineResourceCollection infers state as `any`, so the ref is ResourceRef<any>.
         expectTypeOf(ctx.resources.files.list()).toEqualTypeOf<
           Promise<ResourceRef<{ language: string }>[]>
         >();
@@ -265,8 +262,7 @@ describe("FlowDefinition.flowLevelResourceKeys", () => {
     // Only the flow's own declaration key is captured.
     expect([...flow.flowLevelResourceKeys].sort()).toEqual(["fromFlow"]);
 
-    // Sanity: the bubbled block resource is still in the merged map. The flow's
-    // type carries only its own declarations, so read the merged map untyped.
+    // The flow type lists only its own keys, so the bubbled resource is read untyped.
     expect((flow.resources as Record<string, unknown> | undefined)?.fromBlock).toBe(blockRes);
     expect(flow.resources?.fromFlow).toBe(flowRes);
   });

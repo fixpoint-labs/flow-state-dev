@@ -1,10 +1,6 @@
 /**
- * Run `tsc --noEmit` for the package in the current working directory: its
- * `tsconfig.json`, then its `tsconfig.test.json` when it has one. The build
- * config covers `src`; the test config extends it and adds the tests, with no
- * emit, so test code is checked against the same compiler options without
- * building into `dist` (FIX-1343). `scripts/validate-test-typecheck.mjs` fails
- * root typecheck when a package's tests are outside every program.
+ * Run `tsc --noEmit` for the package in the current working directory:
+ * `tsconfig.json`, then `tsconfig.test.json` when the package has one.
  *
  * Every package's `typecheck` script routes through here, so this file is the
  * single place that decides whether a typecheck happened. It must never report

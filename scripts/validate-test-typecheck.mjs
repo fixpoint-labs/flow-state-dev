@@ -1,26 +1,11 @@
 #!/usr/bin/env node
 /**
- * Guards that every package's test files are compiled by its typecheck.
- *
- * `pnpm test` runs vitest, which strips types and checks none, so a test file
- * that no `tsc` program opens can drift from the types it uses with nothing
- * going red. That is how 29 packages ended up with tests outside typecheck: a
- * new package copies a neighbour's `include: ["src/**\/*"]`, or one `exclude`
- * line drops a directory (ui's `test/render/**`), and nobody notices.
- *
- * So this checks files, not configs. For each package under `packages/` it
- * reads the programs its `typecheck` script compiles (every `&&` segment: the
- * shared `scripts/typecheck.mjs` runs `tsconfig.json` and then
- * `tsconfig.test.json` when present; `tsc -p X` runs X; a bare `tsc` runs
- * `tsconfig.json`), resolves each program's file list with the repo's
- * `typescript` (so `extends`, `include` and `exclude` behave exactly as in
- * `tsc`), and fails on any tracked test file outside their union.
- *
- * A package may be left out only by name, in `DEFERRED`, with the issue that
- * brings it back. An entry whose package is already fully covered fails too:
- * the package is wired, so the entry has to go.
- *
- * It never runs `tsc`; it only reads configs. Chained into root `typecheck`.
+ * Fails when a tracked test file under `packages/` is outside every program
+ * that package's typecheck script compiles. Vitest strips types, so a
+ * src-only `include` or one `exclude` (ui's `test/render`) drifts with
+ * nothing going red. A package still waiting is named in `DEFERRED` with
+ * the issue that wires it; a covered package left there fails too.
+ * Reads configs with the typescript API and never runs `tsc`.
  */
 
 import { execFileSync } from "node:child_process";
@@ -31,14 +16,7 @@ import ts from "typescript";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/**
- * Packages whose tests typecheck does not yet fully compile, by workspace
- * directory under `packages/`, each with the issue that wires it.
- *
- * FIX-1343 wires them in a stack of PRs in dependency order; each PR removes
- * its packages from this list. Workforce stays: two open PRs are rewriting its
- * tests, and FIX-2016 wires it after they land.
- */
+/** Directory under `packages/` → the issue that removes the entry. */
 const LATER_IN_STACK = "FIX-1343: wired by a later PR in its stack";
 const DEFERRED = {
   bullmq: LATER_IN_STACK,
@@ -76,13 +54,7 @@ const TEST_DIR = /^(test|tests|__tests__)\//;
 const TEST_NAME = /\.(test|spec|test-d)\.(ts|tsx|mts)$/;
 const isTestFile = (rel) => TEST_DIR.test(rel) || TEST_NAME.test(rel);
 
-/**
- * The tsconfig files a package's `typecheck` script compiles, in order.
- *
- * @param {string | undefined} script — the package's `scripts.typecheck`.
- * @param {(name: string) => boolean} hasConfig — whether the package has that tsconfig file.
- * @returns {string[]}
- */
+/** Configs a package's `typecheck` script compiles, in order. */
 export function typecheckPrograms(script, hasConfig) {
   if (!script) return [];
   const out = [];
@@ -98,16 +70,8 @@ export function typecheckPrograms(script, hasConfig) {
 }
 
 /**
- * Compare each package's test files with what its programs cover.
- *
- * Exported so a test can drive it with fixtures, without depending on the
- * repo's real configs staying still.
- *
- * @param {{ dir: string, tests: string[], covered: string[] }[]} packages —
- *   `tests` are the package's test files and `covered` the files its programs
- *   resolve, both relative to the package directory.
- * @param {Record<string, string>} deferredList — package directory → issue.
- * @returns {{ dir: string, reason: "uncovered" | "stale-deferral" | "unknown-deferral", files?: string[] }[]}
+ * Uncovered test files, a deferral whose package is already covered, and a
+ * deferral that names no package. Exported so a test can drive it with fixtures.
  */
 export function findGaps(packages, deferredList) {
   const gaps = [];

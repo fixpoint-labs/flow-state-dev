@@ -14,13 +14,6 @@ const programs = (script: string | undefined, present: string[] = ["tsconfig.jso
     (name) => present.includes(name),
   );
 
-/**
- * The guard exists because a test file can drop out of typecheck without
- * anyone noticing: 22 packages copied a `src`-only config and ui excluded a
- * directory with one line. Each case below is a way coverage silently goes
- * missing, so each one must fail loudly, including a deferral left behind
- * after its package was wired.
- */
 describe("every package's tests are in a program its typecheck compiles", () => {
   it("flags a package whose tests no program opens, naming the files", () => {
     const found = gaps([{ dir: "engine", tests: ["test/a.test.ts", "test/b.test.ts"], covered: [] }]);
