@@ -1,5 +1,10 @@
 /**
- * Run `tsc --noEmit` for the package in the current working directory.
+ * Run `tsc --noEmit` for the package in the current working directory: its
+ * `tsconfig.json`, then its `tsconfig.test.json` when it has one. The build
+ * config covers `src`; the test config extends it and adds the tests, with no
+ * emit, so test code is checked against the same compiler options without
+ * building into `dist` (FIX-1343). `scripts/validate-test-typecheck.mjs` fails
+ * root typecheck when a package's tests are outside every program.
  *
  * Every package's `typecheck` script routes through here, so this file is the
  * single place that decides whether a typecheck happened. It must never report
@@ -46,14 +51,19 @@ if (!fs.existsSync(tscPath)) {
   process.exit(1);
 }
 
-const tscRun = spawnSync(tscPath, ["-p", "tsconfig.json", "--noEmit"], {
-  cwd: packageDir,
-  stdio: "inherit"
-});
+const configs = ["tsconfig.json"];
+if (fs.existsSync(path.join(packageDir, "tsconfig.test.json"))) configs.push("tsconfig.test.json");
 
-if (tscRun.error) {
-  console.error(`typecheck failed: could not run ${tscPath}: ${tscRun.error.message}`);
-  process.exit(1);
+for (const config of configs) {
+  const tscRun = spawnSync(tscPath, ["-p", config, "--noEmit"], {
+    cwd: packageDir,
+    stdio: "inherit"
+  });
+
+  if (tscRun.error) {
+    console.error(`typecheck failed: could not run ${tscPath}: ${tscRun.error.message}`);
+    process.exit(1);
+  }
+
+  if (tscRun.status !== 0) process.exit(tscRun.status ?? 1);
 }
-
-process.exit(tscRun.status ?? 1);
