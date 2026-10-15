@@ -147,7 +147,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
         {asks.map((ask) => (
-          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.message ?? "waiting on you"} />
+          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.title || ask.item.message || "waiting on you"} />
         ))}
       </ul>
     </li>

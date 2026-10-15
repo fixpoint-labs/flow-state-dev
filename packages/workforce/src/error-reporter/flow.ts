@@ -346,7 +346,8 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
         "Read the code in your working directory to find where it fails and why. Do not change any file.",
         "The dossier below was gathered by code; its ids are exact. Refer to them, never invent one.",
         "Write steps to reproduce that a user could follow in a clean Lab: the message or action that trips it, and where.",
-        "List the questions you want the operator to answer before it files.",
+        "Keep the title to one short line, under ten words, naming what breaks: it heads the question in Inbox and the filed issue.",
+        "List the questions you want the operator to answer before it files. They render as markdown, so put code in backticks.",
         "",
         "Dossier:",
         "```json",
@@ -415,12 +416,15 @@ export function defineErrorReporterFlow(options: ErrorReporterFlowOptions) {
       if (ctx.suspend === undefined) {
         throw new Error("An error report waits for the operator's answer, and this Lab runs without durable execution.");
       }
-      const questions = draft.questions.length === 0 ? "" : `\n\nQuestions:\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
+      const seen = row?.count ?? 1;
+      const questions = draft.questions.length === 0 ? "" : `\n\n**Questions**\n\n${draft.questions.map((q) => `- ${q}`).join("\n")}`;
       try {
         const answer = await ctx.suspend({
           reason: "human_input",
-          message: `Error report: ${draft.title} (seen ${row?.count ?? 1} time${row?.count === 1 ? "" : "s"}). File it?${questions}`,
-          data: { reportId: id, title: draft.title, body: draft.body, questions: draft.questions, count: row?.count ?? 1, decision: "file" },
+          // The question's heading in Inbox; `data.title` is the issue title it files under.
+          title: `Error report: ${draft.title}`,
+          message: `Seen ${seen} time${seen === 1 ? "" : "s"}. File it?${questions}`,
+          data: { reportId: id, title: draft.title, body: draft.body, questions: draft.questions, count: seen, decision: "file" },
           resumeSchema: previewAnswerSchema,
           allow: ["submit"],
           ...(reporter.preview?.autoFileAfterMs === undefined ? {} : { timeoutMs: reporter.preview.autoFileAfterMs })

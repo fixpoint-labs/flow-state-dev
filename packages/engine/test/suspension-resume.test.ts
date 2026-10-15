@@ -124,6 +124,28 @@ describe("ctx.suspend() — initial suspension", () => {
     expect(suspItem.resumeSchema).toBeDefined();
   });
 
+  it("keeps a suspension's short title apart from its body, on the item and the record", async () => {
+    const step = handler({
+      name: "titledSuspension",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_input", title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" })
+    });
+    const flow = defineFlow({
+      kind: "suspend-title-test",
+      actions: { ask: { block: sequencer({ name: "titledSeq", durable: true }).step(step), inputSchema: z.any() } }
+    })();
+    const { stores, provider } = createDurableStores();
+
+    const result = await runAction({ orgId: DEFAULT_ORG_ID, flow, actionName: "ask", input: {}, userId: "u1", stores, runtimeConfig: { durabilityProvider: provider } });
+
+    const suspItem = result.items.find((i) => i.type === "suspension") as any;
+    expect(suspItem).toMatchObject({ title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" });
+    const [record] = await provider.listSuspended({ status: "pending" });
+    expect(record).toMatchObject({ title: "Deploy failed", message: "It failed twice.\n\n- Retry it?" });
+  });
+
   it("records the nested suspending block's identity so the ReplayLog can recover it (FIX-811)", async () => {
     const approvalStep = handler({
       name: "approvalStep",
