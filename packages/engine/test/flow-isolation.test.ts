@@ -130,7 +130,8 @@ function makeFlow(
   const { unvalidatedResources, ...rest } = options;
   const flow = makeFlowFactory(rest)();
   if (unvalidatedResources === undefined) return flow;
-  return { ...flow, resources: { ...flow.resources, ...unvalidatedResources } } as typeof flow;
+  // Assembled outside defineFlow on purpose (see above), so the cast is the point.
+  return { ...flow, resources: { ...(flow.resources ?? {}), ...unvalidatedResources } } as unknown as typeof flow;
 }
 
 function captureConflict(fn: () => void): CrossFlowSchemaConflictError {

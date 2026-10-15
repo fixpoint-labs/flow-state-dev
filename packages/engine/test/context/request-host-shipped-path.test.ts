@@ -348,7 +348,7 @@ describe("request-host seam on the shipped router path", () => {
 describe("request-host seam on the shipped worker path", () => {
   it("the runtime handed to worker.startWorker carries the seam", async () => {
     const seen: Seen = {};
-    const flow = probeFlow("worker-seam", seen, [])();
+    const flow = probeFlow("worker-seam", seen, []);
 
     const state = createFlowState({
       flows: { workerSeam: flow },

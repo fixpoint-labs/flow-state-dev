@@ -21,7 +21,7 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { z } from "zod";
-import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
+import type { JsonObject, ResourceConfig, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   FlowError,
   NetworkError,
@@ -284,7 +284,8 @@ describe("collection writable:false refusals are not retried", () => {
               attempts += 1;
               // Creating a new key stays open on a read-only collection;
               // overwriting the instance it just made is the refused write.
-              const doc = await ctx.resources.items.getOrCreate("doc1", { v: 1 });
+              const items = ctx.resources.items as unknown as ResourceCollectionRef<{ v: number }>;
+              const doc = await items.getOrCreate("doc1", { v: 1 });
               await doc.patchState({ v: 2 });
               return { ok: true };
             }

@@ -502,7 +502,7 @@ describe("request-addressed routes", () => {
 describe("user-addressed routes", () => {
   async function registerActive(
     stores: StoreRegistry,
-    init: { requestId: string; flowKind: string; userId: string }
+    init: { requestId: string; flowKind: string; userId: string; orgId?: string }
   ): Promise<void> {
     // Heartbeat stopped well past the host's threshold, so the sweep would reap
     // it on its default clock. What decides the outcome is the scoping under

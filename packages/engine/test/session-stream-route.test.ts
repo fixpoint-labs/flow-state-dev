@@ -1118,7 +1118,7 @@ describe("a request the list found, read again by its id", () => {
     vi.spyOn(stores.request, "list").mockImplementation(async (options) => {
       const rows = await list(options);
       // As the SQL adapters answer a list read without `withItems`.
-      return options?.withItems === true ? rows : rows.map((row) => ({ ...row, items: undefined }));
+      return options?.withItems === true ? rows : rows.map((row: RequestRecord) => ({ ...row, items: undefined }));
     });
     const get = stores.request.get.bind(stores.request);
     let reads = 0;

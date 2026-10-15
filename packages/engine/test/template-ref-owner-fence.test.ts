@@ -35,7 +35,7 @@ const templates = {
   plainPeek: defineResource({ scope: "org", ref: "plainPeek", stateSchema: passthrough, contentTemplateRef: "templates/plain", ...readable }),
 };
 
-const flow = defineFlow({ kind: "tpl", resources: templates, authentication: verified });
+const flow = defineFlow({ kind: "tpl", actions: {}, resources: templates, authentication: verified });
 
 async function boot() {
   const stores = inMemoryStores();

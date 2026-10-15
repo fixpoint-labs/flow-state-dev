@@ -422,6 +422,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
     const finalItems = (await stores.request.get(requestId))?.items ?? [];
     const lookup = buildItemLookup(finalItems as never);
     const iterOutput = (index: number): unknown => {
+      // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
       const trace = (finalItems as BlockTraceItem[])
         .filter((i) => i.type === "block_trace" && i.status === "completed")
         .find((t) => {
@@ -517,6 +518,7 @@ describe("attached durable background-work recovery — failed background task u
     // its logical path `…/sideChain[<step>]`. The enum is
     // `in_progress | completed | failed | planned` — there is no `errored`.
     const items = (await stores.request.get(requestId))?.items ?? [];
+    // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
     const failedSideChainTraces = (items as BlockTraceItem[]).filter(
       (i) =>
         i.type === "block_trace" &&

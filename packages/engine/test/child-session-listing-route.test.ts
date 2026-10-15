@@ -289,10 +289,10 @@ describe("the read", () => {
     await seedSession(stores, "child", {
       parentSessionId: "parent",
       journal: Array.from({ length: 50 }, (_, i) => ({
+        id: `entry_${i}`,
         ts: i,
-        type: "note",
         text: `entry ${i}`
-      })) as SessionRecord["journal"],
+      })),
       state: { secret: "should not ship" },
       resources: { big: { blob: "x".repeat(1000) } }
     });

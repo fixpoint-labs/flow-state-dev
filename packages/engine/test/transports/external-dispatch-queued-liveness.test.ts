@@ -55,7 +55,7 @@ function buildRegistry(): FlowRegistry {
             // Models a worker that has claimed the job and is still working:
             // it never returns on its own, so the entry stays registered and
             // the sweeper's view of it is the thing under test.
-            execute: (_input: { value: string }): { ok: true } =>
+            execute: (_input: { value: string }): Promise<{ ok: true }> =>
               new Promise<{ ok: true }>((resolve) => {
                 releaseWorker = () => resolve({ ok: true });
               })

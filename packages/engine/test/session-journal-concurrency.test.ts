@@ -13,6 +13,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createExecutionContext, createInMemoryStores } from "../src";
 import type { SessionRecord } from "../src";
+import type { JsonObject } from "@flow-state-dev/core/types";
 
 type Ctx = Awaited<ReturnType<typeof createExecutionContext>>;
 
@@ -46,7 +47,8 @@ async function openContexts(session?: Parameters<typeof createFlow>[0]) {
   const first = await createExecutionContext({
     ...base,
     requestId: "req_first",
-    sessionState: { count: 0 }
+    // Typed as the open state the flow declares, not the seed's own shape.
+    sessionState: { count: 0 } as JsonObject
   });
   const second = await createExecutionContext({ ...base, requestId: "req_second" });
   return { stores, first, second };

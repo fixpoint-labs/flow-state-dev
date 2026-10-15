@@ -5,6 +5,7 @@ import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction, type StoreRegistry } from "../src";
 import type { ErrorCaptureEvent } from "../src/errors/error-capture";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 
 /** Wait until `events` holds a final event, or give up after a short budget. */
 async function finalOf(events: ErrorCaptureEvent[]): Promise<ErrorCaptureEvent[]> {
@@ -15,7 +16,7 @@ async function finalOf(events: ErrorCaptureEvent[]): Promise<ErrorCaptureEvent[]
   return events.filter((e) => e.final === true);
 }
 
-async function run(flow: ReturnType<typeof defineFlow>, stores: StoreRegistry, events: ErrorCaptureEvent[]) {
+async function run(flow: FlowInstance, stores: StoreRegistry, events: ErrorCaptureEvent[]) {
   return runAction({
     orgId: DEFAULT_ORG_ID,
     flow,

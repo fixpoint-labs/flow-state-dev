@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
 import type { RequestListOptions, RequestRecord } from "../src/stores/types";
+import type { MessageItem } from "@flow-state-dev/core/items";
 import {
   applyRetentionPolicy,
   resolveRetentionPolicy,
@@ -27,6 +28,7 @@ function makeRequest(
     actionName: "run",
     userId: "user1",
     sessionId,
+    source: "http",
     status: opts.status ?? "completed",
     startedAtMs: opts.startedAtMs,
     completedAtMs: opts.completedAtMs,
@@ -35,11 +37,16 @@ function makeRequest(
     version: 1,
     createdAt: opts.startedAtMs,
     updatedAt: opts.completedAtMs,
-    items: Array.from({ length: opts.itemCount }, (_, i) => ({
-      kind: "message" as const,
-      role: "assistant" as const,
-      content: [{ type: "text" as const, text: `item-${i}` }],
-      provenance: { blockName: "test", blockInstanceId: "inst", requestId: id },
+    items: Array.from({ length: opts.itemCount }, (_, i): MessageItem => ({
+      id: `${id}_item_${i}`,
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: `item-${i}` }],
+      status: "completed",
+      requestId: id,
+      itemIndex: i,
+      provenance: { blockName: "test", blockInstanceId: "inst", phase: "main" },
+      ts: opts.startedAtMs + i,
     })),
   };
 }
@@ -285,7 +292,7 @@ describe("applyRetentionPolicy", () => {
       stores.request.list = async (options?: RequestListOptions) => {
         listCalls.push(options);
         const records = await origList(options);
-        return records.map((r) => ({ ...r, items: undefined }));
+        return records.map((r: RequestRecord) => ({ ...r, items: undefined }));
       };
 
       const policy: ResolvedRetentionPolicy = { maxItems: 10 };

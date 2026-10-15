@@ -336,7 +336,7 @@ describe("user-route scoping · stage 1: every user-addressed route has an entry
   });
 
   it("has no entry for a route that is no longer user-addressed", () => {
-    const kinds = new Set(userRoutes.map((route) => route.kind));
+    const kinds = new Set<string>(userRoutes.map((route) => route.kind));
     const stale = Object.keys(USER_ROUTE_SCOPING).filter((kind) => !kinds.has(kind));
     expect(stale, "scoping-table entries for routes that are not user-addressed").toEqual([]);
   });

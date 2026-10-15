@@ -109,7 +109,7 @@ describe("TTS pipeline — batch dispatch", () => {
       id: "mock-batch:slow",
       providerName: "mock",
       abilities: { speak: true, speakStream: false, transcribe: false, listVoices: false },
-      speak: vi.fn(() => new Promise(() => {})) // never resolves
+      speak: vi.fn(() => new Promise<never>(() => {})) // never resolves
     };
     const { emitter, captured } = makeEmitter();
     const pipeline = createTTSPipeline({ provider, config, emitter });

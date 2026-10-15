@@ -294,6 +294,7 @@ describe("execution trace system", () => {
       const decision = routerDecisions[0]!;
       expect(decision.routerName).toBe("test-router");
       expect(decision.selectedRoute).toBe("handler-a");
+      // @ts-expect-error item APIs are typed OutputItem but carry RuntimeItem trace rows (to be filed, found by FIX-1343)
       const decisionVis = resolveItemVisibility(decision);
       expect(decisionVis.client).toBe(false);
       expect(decisionVis.history).toBe(false);

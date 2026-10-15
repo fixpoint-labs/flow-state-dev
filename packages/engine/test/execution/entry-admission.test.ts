@@ -188,7 +188,7 @@ describe("resolveEntry — webhook/scheduled need their own coordinate, never a 
   it("resolves nothing on a flow that declares no webhooks/schedules at all", () => {
     // The dynamic-schedule case too: no static coordinate to resolve, and the
     // carried core (not this lookup) is what handles it upstream.
-    const bare = defineFlow({ kind: "bare", actions: { run: { block: publicBlock } } })();
+    const bare: FlowInstance = defineFlow({ kind: "bare", actions: { run: { block: publicBlock } } })();
     expect(
       resolveEntry(bare, "run", WEBHOOK_SOURCE, { webhook: { provider: "github", eventType: "push" } })
     ).toBeUndefined();

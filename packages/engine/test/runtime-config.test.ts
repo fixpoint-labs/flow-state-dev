@@ -15,8 +15,7 @@ describe("createRuntimeConfig", () => {
 
     expect(config).toEqual({
       modelResolver: undefined,
-      speechResolver: undefined,
-      transcriptionResolver: undefined,
+      voiceProvider: undefined,
       settings: undefined,
       logger: undefined,
       tracingLevel: undefined,
@@ -42,7 +41,7 @@ describe("createRuntimeConfig", () => {
     expect(config.tracingLevel).toBe("verbose");
     expect(config.defaultSseHeartbeatMs).toBe(5_000);
     // Unset fields remain undefined.
-    expect(config.speechResolver).toBeUndefined();
+    expect(config.voiceProvider).toBeUndefined();
     expect(config.logger).toBeUndefined();
   });
 });
