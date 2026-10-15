@@ -73,7 +73,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
   };
 
   return (
-    <div className="fixed inset-0 z-20 flex items-start justify-center bg-foreground/20 pt-24" onClick={onClose} data-testid="jump-dialog">
+    <div className="fixed inset-0 z-20 flex items-start justify-center bg-background/70 pt-24" onClick={onClose} data-testid="jump-dialog">
       <div role="dialog" aria-label="Jump to" className="w-full max-w-lg border bg-popover text-popover-foreground shadow-lg" onClick={(e) => e.stopPropagation()}>
         <input
           ref={input}
