@@ -174,7 +174,7 @@ describe("flow registry config admission", () => {
     expect(registry.list()).toEqual([]);
 
     // Minted, it registers exactly as before.
-    // @ts-expect-error FlowInstance carries no config schema, so a configured flow is refused where one is taken (to be filed, found by FIX-1343)
+    // @ts-expect-error — source bug FIX-2053: FlowInstance carries no config schema, so a configured flow is refused where one is taken.
     registry.register(engineer({ config: { harness: "codex", model: "gpt-5.4" } }));
     expect(registry.get("engineer-blueprint")?.config).toEqual({
       harness: "codex",
