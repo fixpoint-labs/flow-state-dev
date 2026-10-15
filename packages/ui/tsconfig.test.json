@@ -4,11 +4,8 @@
     "composite": false,
     "rootDir": "../..",
     "noEmit": true,
-    // The render tests import registry components, which reach shadcn helpers
-    // through `@/`. These map to the same Storybook stubs vitest.config.ts and
-    // .storybook/main.ts alias. Relative to the base config's baseUrl, the repo
-    // root. Setting `paths` replaces the base's source mappings, so workspace
-    // packages resolve through their package exports instead.
+    // paths replace the base mappings (repo-root paths; other imports then use
+    // package exports). Same stubs as vitest.config.ts.
     "paths": {
       "@/components/ui/*": ["./packages/ui/.storybook/shadcn/components/ui/*"],
       "@/lib/utils": ["./packages/ui/.storybook/shadcn/lib/utils"]

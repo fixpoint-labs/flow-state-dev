@@ -11,11 +11,7 @@ import {
   createRequestStreamStore
 } from "../src/stream-client/request-stream-store";
 
-/**
- * `type` also takes `block_trace`: trace rows are an internal runtime type outside
- * the public `OutputItem` union, yet a snapshot carries them when trace is included,
- * and the canonical collapse reads them.
- */
+/** `block_trace` sits outside `OutputItem`; a trace snapshot still carries those rows. */
 function makeItem(
   overrides: Omit<Partial<OutputItem>, "type"> & { id: string; type?: OutputItem["type"] | "block_trace" }
 ): OutputItem {
