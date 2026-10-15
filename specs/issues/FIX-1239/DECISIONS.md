@@ -39,7 +39,7 @@ It comes down to what a standing check would catch today: nothing that FIX-1343'
 |---|---|
 | **Instead of** | The issue's suggested shape: move each type-only assertion into a sibling `.test-d.ts`, add test-d wiring to `memory`, and reject `expectTypeOf` and `assertType` inside `*.test.ts` with a lint or CI guard |
 | **Because** | Every part of that shape works around `.test.ts` not being compiled. After FIX-1343 it is, with the same compiler options as `src`. The move would split six test files from the runtime tests they sit beside, and the rule would forbid a pattern that then works. `memory` already has its test-d wiring (FIX-1223) |
-| **Locks in** | Three places a type assertion can live: inline in a `.test.ts`, in a `.test-d.ts`, and in a `src/**/*.type-test.ts`. The `src` ones keep shipping in five packages' published `dist` until a follow-up moves them (filed by the owner before merge) |
+| **Locks in** | Three places a type assertion can live: inline in a `.test.ts`, in a `.test-d.ts`, and in a `src/**/*.type-test.ts`. The `src` ones keep shipping in five packages' published `dist` until [FIX-2018](https://linear.app/fixpoint-labs/issue/FIX-2018) moves them |
 
 ![D2: assertions stay where they are, beside a move to test-d files with a ban. Decides it: test files compile after FIX-1343. Price: three homes for type tests](figures/d2-where.svg)
 
@@ -48,13 +48,13 @@ It comes down to whether test files compile: after FIX-1343 they do, so the move
 ## Decided, not asked
 
 - **`tsc` is the only gate**, as #3433 decided; vitest's typecheck mode stays off. Plain `tsc` fails every matcher in use ([Settled](#settled)).
-- **The 10 broken sites are FIX-1343's to clear**: each is a type error in a test file, under #3433's [triage rule](https://github.com/fixpoint-labs/flow-state-dev/blob/5f2aee7e5454bcaaeec9c6faf736c90a40e8eeae/specs/issues/FIX-1343/DECISIONS.md#L66): never re-pointed; a stale claim is updated with its reason, a source bug is filed and held. The stacked implementation PR lists each with the claim it made and how that claim now stands, so a false assertion re-pointed at whatever the compiler reports cannot pass unseen. They are `core/test/prefetch-mode.test.ts:56,62,66` (they assert sync reads that FIX-700 made async), `core/test/projected-resource-collection.test.ts:125,148`, and five directives one line off their error: `core/test/resource-collection.test.ts:88` and four multi-line `.mjs` imports in `core/test/*-check.test.ts`.
+- **The 10 broken sites are FIX-1343's to clear**: each is a type error in a test file, under #3433's [triage rule](https://github.com/fixpoint-labs/flow-state-dev/blob/4f0ed338f4ceae54eebc13aaa4fa8116690ceb22/specs/issues/FIX-1343/DECISIONS.md#L68): never re-pointed; a stale claim is updated with its reason, a source bug is filed and held. The stacked implementation PR lists each with the claim it made and how that claim now stands, so a false assertion re-pointed at whatever the compiler reports cannot pass unseen. They are `core/test/prefetch-mode.test.ts:56,62,66` (they assert sync reads that FIX-700 made async), `core/test/projected-resource-collection.test.ts:125,148`, and five directives one line off their error: `core/test/resource-collection.test.ts:88` and four multi-line `.mjs` imports in `core/test/*-check.test.ts`.
 - **The convergence point is FIX-1343's guard plus TypeScript's unused-directive error (TS2578).** Every type assertion is in a compiled program, and a directive that stops suppressing anything fails on its own.
 - **`@ts-expect-error` needs nothing new.** All 128 carry a reason. Five only silence a missing `.mjs` declaration (TS7016); they are not assertions, and the census counts them apart.
 - **The seven false comments are corrected:** three in `core/src/types/tests/`, two in `orchestration/src/**/tests/`, one in `orchestration/test/collection/task-caps.test.ts`, and the header of `orchestration/test/types.type-test.ts`, which credits a vitest typecheck mode nobody enabled.
 - **`toMatchTypeOf` stays** at its 3 sites: deprecated since expect-type 1.2, live under `tsc`.
 - **The workforce site** (`workforce/test/codegen.test.ts:419`) waits for FIX-1343's workforce follow-up. Workforce's 10 `.test-d.ts` sites are compiled and live.
-- **Branch** `fix/FIX-1239-type-assertions`, stacked on the top of #3433's implementation (`fix/FIX-1343-typecheck-tests`, or the last branch of its stack if D1 becomes one), cut after both specs merge. **No changeset.**
+- **Branch** `fix/FIX-1239-type-assertions`, stacked on the last branch of #3433's implementation stack, cut after both specs merge. **No changeset.**
 
 ## Considered and dropped
 
