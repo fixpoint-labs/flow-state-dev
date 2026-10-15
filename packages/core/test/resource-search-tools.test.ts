@@ -327,7 +327,7 @@ describe("searchResources", () => {
       },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "hooks", prefix: null, limit: 10 },
+      { query: "hooks", prefix: null, limit: 10, cursor: null },
       ctx,
     );
     expect(results.map((r) => r.uri)).toEqual(["org/concepts/high", "org/concepts/mid", "org/concepts/low"]);
@@ -347,7 +347,7 @@ describe("searchResources", () => {
       { pattern: "hidden/**", llmReadable: false, instances: [{ path: "hidden/a", content: "hooks hooks" }] },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "hooks", prefix: null, limit: 10 },
+      { query: "hooks", prefix: null, limit: 10, cursor: null },
       ctx,
     );
     expect(results.map((r) => r.uri)).toEqual(["org/concepts/match"]);
@@ -361,7 +361,7 @@ describe("searchResources", () => {
       },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "hooks", prefix: null, limit: 10 },
+      { query: "hooks", prefix: null, limit: 10, cursor: null },
       ctx,
     );
     expect(results[0]!.snippet).toBe("the hooks api");
@@ -370,7 +370,7 @@ describe("searchResources", () => {
   it("returns empty for a query with no usable terms", async () => {
     const ctx = makeCtx([], [{ pattern: "c/**", instances: [{ path: "c/a", content: "anything" }] }]);
     const { results } = await runForTest(searchResources,
-      { query: "   ", prefix: null, limit: 10 },
+      { query: "   ", prefix: null, limit: 10, cursor: null },
       ctx,
     );
     expect(results).toEqual([]);
@@ -387,7 +387,7 @@ describe("searchResources", () => {
       },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "hooks", prefix: "concepts/", limit: 10 },
+      { query: "hooks", prefix: "concepts/", limit: 10, cursor: null },
       ctx,
     );
     expect(results.map((r) => r.uri)).toEqual(["org/concepts/a"]);
@@ -404,7 +404,7 @@ describe("searchResources", () => {
       },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "hooks", prefix: "concept", limit: 10 },
+      { query: "hooks", prefix: "concept", limit: 10, cursor: null },
       ctx,
     );
     expect(results.map((r) => r.uri)).toEqual(["org/concept/a"]);
@@ -420,7 +420,7 @@ describe("searchResources", () => {
       },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "analyst", prefix: null, limit: 10 },
+      { query: "analyst", prefix: null, limit: 10, cursor: null },
       ctx,
     );
     expect(results.map((r) => r.uri)).toEqual(["org/personas/analyst"]);
@@ -438,7 +438,7 @@ describe("searchResources", () => {
       },
     ]);
     const { results } = await runForTest(searchResources,
-      { query: "hooks", prefix: null, limit: 2 },
+      { query: "hooks", prefix: null, limit: 2, cursor: null },
       ctx,
     );
     expect(results).toHaveLength(2);

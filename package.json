@@ -7,7 +7,7 @@
     "install:all": "pnpm install",
     "build": "turbo run build && pnpm build:assets",
     "build:assets": "pnpm --filter @flow-state-dev/devtool build:assets",
-    "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs && node scripts/validate-updater-purity.mjs && node scripts/validate-side-chain-vocabulary.mjs && pnpm --filter @flow-state-dev/goals guard:control-shape",
+    "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs && node scripts/validate-updater-purity.mjs && node scripts/validate-side-chain-vocabulary.mjs && node scripts/validate-test-typecheck.mjs && pnpm --filter @flow-state-dev/goals guard:control-shape",
     "lint": "eslint --cache --cache-location node_modules/.cache/eslint/ .",
     "prepare": "husky",
     "knip": "knip",

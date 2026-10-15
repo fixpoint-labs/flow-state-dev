@@ -175,7 +175,7 @@ describe("utility.analyzer", () => {
       name: "analysis-router",
       routes: [proceedRoute, reviewRoute],
       execute: (input) => {
-        const hasCritical = input.findings.some((finding) => finding.severity === "critical");
+        const hasCritical = input.findings.some((finding: { severity?: string }) => finding.severity === "critical");
         return hasCritical ? reviewRoute : proceedRoute;
       }
     });
