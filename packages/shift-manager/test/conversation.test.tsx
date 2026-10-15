@@ -88,9 +88,9 @@ async function send(line: string) {
 }
 
 describe("what a view of its own draws", () => {
-  it("says what it is before a first line, under that view's own ids", () => {
+  it("says what it is before a first line, under that view's own ids", async () => {
     drawn([]);
-    expect(screen.getByTestId("rev-conversation-empty").textContent).toBe("Nothing said to the reviewer yet.");
+    expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
     expect(screen.getByTestId("rev-composer")).toBeTruthy();
     expect(screen.queryByTestId("cos")).toBeNull();
   });
@@ -115,7 +115,7 @@ describe("what a view of its own draws", () => {
       ],
       truncated: false,
     });
-    drawn([session("s1")]);
+    drawn([session(s1)]);
     expect((await screen.findByTestId("rev-conversation-empty")).textContent).toBe("Nothing said to the reviewer yet.");
     expect(screen.queryByTestId("rev-items")).toBeNull();
     expect(screen.queryByTestId("mine")).toBeNull();
@@ -123,7 +123,7 @@ describe("what a view of its own draws", () => {
 
   it("doesn't call a cut-short read empty when what it holds draws nothing: later items may", async () => {
     read.mockResolvedValue({ items: [{ id: "sc1", requestId: "r", type: "state_change", ts: 1 }], truncated: true });
-    drawn([session("s1")]);
+    drawn([session(s1)]);
     expect(await screen.findByTestId("rev-truncated")).toBeTruthy();
     expect(screen.queryByTestId("rev-conversation-empty")).toBeNull();
   });
@@ -183,7 +183,7 @@ describe("when a line may go", () => {
   it("isn't another worker's conversation on the same flow", async () => {
     const theirs = { ...session("s9"), state: { workerId: "eng.author" } } as unknown as SessionSummary;
     drawn([theirs]);
-    expect(screen.getByTestId("rev-conversation-empty")).toBeTruthy();
+    expect(await screen.findByTestId("rev-conversation-empty")).toBeTruthy();
     expect(read).not.toHaveBeenCalled();
   });
 
@@ -297,7 +297,7 @@ describe("sending", () => {
 
   it("isn't a session the user opened with the worker at any other id", async () => {
     drawn([session("conv_random")]);
-    expect(screen.getByTestId("rev-conversation-empty")).toBeTruthy();
+    expect(await screen.findByTestId("rev-conversation-empty")).toBeTruthy();
     expect(read).not.toHaveBeenCalled();
   });
 

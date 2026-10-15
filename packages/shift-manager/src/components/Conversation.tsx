@@ -219,13 +219,14 @@ export function Conversation({
       >
         {failure !== undefined ? (
           <SectionFailure what="The conversation" failure={failure} onRetry={reread} testId={`${testId}-conversation-failure`} />
-        ) : sessionId === null || (read !== undefined && shown.length === 0 && !read.truncated) ? (
-          // A session the view opened before a first line (a project's Stream), or one whose whole read holds
-          // nothing the feed draws, reads empty: say so, never draw nothing. A cut-short read may hold more.
+        ) : (sessionId === null && !conversation.resolving) || (read !== undefined && shown.length === 0 && !read.truncated) ? (
+          // No conversation at its worked-out address, a session the view opened before a first line (a project's
+          // Stream), or one whose whole read holds nothing the feed draws, reads empty: say so, never draw nothing.
+          // A cut-short read may hold more, and while the address is still being worked out it isn't known yet.
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
             {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
           </p>
-        ) : read === undefined ? (
+        ) : sessionId === null || read === undefined ? (
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-reading`}>
             Reading the conversation…
           </p>

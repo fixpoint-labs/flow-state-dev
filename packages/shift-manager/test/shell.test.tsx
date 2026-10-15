@@ -492,7 +492,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const conversation = await screen.findByTestId("cos-conversation");
     expect(conversation.getAttribute("data-worker-id")).toBe("ops.chief-of-staff");
     expect(conversation.textContent).not.toMatch(/chief of staff/i);
-    expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
+    expect(await screen.findByTestId("cos-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.
     let release!: () => void;
