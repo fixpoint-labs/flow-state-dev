@@ -38,7 +38,7 @@ describe("isTaskTurn", () => {
   });
 
   it("is not a task turn under a claim its entry stamped as no task turn (a delegated post)", async () => {
-    // A post's turn answers the person: it may wait on work it hands off and
+    // A post's turn answers the user: it may wait on work it hands off and
     // has no filer to ask. Its claim still fences its task-tool writes.
     const ctx = { session: { state: {} }, request: { identity: { id: "r_post" }, incarnation: "i1" } };
     const seen = await isolated(() => {

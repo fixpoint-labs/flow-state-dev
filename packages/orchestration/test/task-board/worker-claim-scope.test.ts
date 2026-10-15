@@ -158,7 +158,7 @@ describe("a handed-off worker behind the claim gate", () => {
         return { done: true };
       },
     });
-    const seat = (name: string, flowKind?: string) =>
+    const handOff = (name: string, flowKind?: string) =>
       dispatcher<TaskWorkerInput>({
         name,
         ...(flowKind !== undefined ? { flowKind } : {}),
@@ -174,7 +174,7 @@ describe("a handed-off worker behind the claim gate", () => {
             name: "claim-recipient-board",
             boardId: BOARD_ID,
             collection: ledger(),
-            workers: { work: seat("claim-recipient-hand-off") },
+            workers: { work: handOff("claim-recipient-hand-off") },
           }).drain,
         },
       },
@@ -189,7 +189,7 @@ describe("a handed-off worker behind the claim gate", () => {
             name: "claim-sender-board",
             boardId: BOARD_ID,
             collection: ledger(),
-            workers: { work: seat("claim-sender-hand-off", "claim-recipient") },
+            workers: { work: handOff("claim-sender-hand-off", "claim-recipient") },
             initialTasks: [{ id: "t1", goal: "handed off", assignee: "work" }],
           }).drain,
         },

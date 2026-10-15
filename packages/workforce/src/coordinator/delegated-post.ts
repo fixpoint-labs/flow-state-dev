@@ -449,7 +449,7 @@ export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
     uses: [defineCapability({ name: "delegated-post-ledgers", resources: { ...conversationLedgerResources } })],
     // The turn keeps the worker's own session state, the same shape for every post.
     allowSessionState: true,
-    // A post's turn answers the person, not a filer: it may wait on work it
+    // A post's turn answers the user, not a filer: it may wait on work it
     // hands off, and is not offered the question park (it has nobody to ask).
     taskTurn: false
   });

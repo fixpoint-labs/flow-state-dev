@@ -236,7 +236,7 @@ export interface TaskLedgersOptions {
    * and it is the turn offered the question park, whose question goes back to
    * whoever filed the task.
    *
-   * Set `false` for an entry whose turn answers a person directly rather than
+   * Set `false` for an entry whose turn answers the user directly rather than
    * its filer, such as Workforce's delegated post: it can wait on work it
    * hands off, and it has no filer to ask. The claim is still stamped, so
    * task-tool writes from the turn stay fenced to the row it holds.

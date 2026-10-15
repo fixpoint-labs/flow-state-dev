@@ -7,4 +7,4 @@ A task-board worker can now read its own claim. `currentWorkerClaim(ctx)` return
 
 `currentWorkerClaim` and `stampCurrentClaim` now take the block context. A claim belongs to the request that took it: a request the worker starts in-process (a message, a hand-off, a resumed turn) does not read it. Code that called `currentWorkerClaim()` with no argument must pass its `ctx`.
 
-`taskLedgers` takes `taskTurn: false` for an entry whose turn answers a person rather than its filer. Such a turn keeps its claim but is not a task turn: it may wait on work it hands off, and it is not offered the question park. Workforce's delegated-post entry sets it, so a post turn behaves as it did before (FIX-1047).
+`taskLedgers` takes `taskTurn: false` for an entry whose turn answers the user rather than its filer. Such a turn keeps its claim but is not a task turn: it may wait on work it hands off, and it is not offered the question park. Workforce's delegated-post entry sets it, so a post turn behaves as it did before (FIX-1047).
