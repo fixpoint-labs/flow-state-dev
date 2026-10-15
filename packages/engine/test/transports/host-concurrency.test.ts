@@ -117,8 +117,7 @@ describe("host concurrency — reject", () => {
     const r1 = h.host.dispatch(env1);
     await tick();
 
-    // The refusal arrives through `accepted` (the place is taken only once
-    // ownership has been read, FIX-1837) — and before any record exists.
+    // Through `accepted`, before any record exists.
     const env2 = envelope("b");
     const r2 = h.host.dispatch(env2);
     const refusal = await r2.accepted!.then(

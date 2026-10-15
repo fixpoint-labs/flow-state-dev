@@ -29,9 +29,7 @@
  * refusal is thrown from it — and a queued run is woken when the run ahead of
  * it settles. Over an adapter-supplied backend (FIX-1634) admission is
  * asynchronous, and a queued run re-checks its turn on the schedule
- * `planQueueWait` sets. Either way the host calls `admit` only once the
- * caller's ownership has been checked (FIX-1837), so `dispatch` reports a
- * `reject` refusal through its handle's `accepted`, never by throwing. An unreachable backend refuses the dispatch; nothing
+ * `planQueueWait` sets. An unreachable backend refuses the dispatch; nothing
  * runs unarbitrated.
  *
  * Without a supplied backend the arbiter holds keys in this process only, so a
