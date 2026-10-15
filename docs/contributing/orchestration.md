@@ -477,9 +477,10 @@ surface. A head with **no** `Typecheck & Test` run is untested, not green. GitHu
 `pull_request` workflow while a PR conflicts with its base, so a PR opened on a conflicting
 head shows only third-party checks, all passing, until a push resolves the conflict.
 `Typecheck & Test` gates only typecheck and the test shards, so it is not the whole failure
-signal: CI is failing when **any** check run on the current head concluded failure (a
-cancelled run superseded by a later success of the same check aside), even while
-`Typecheck & Test` passes. A missing run is untested, not failing.
+signal: CI is failing when **any** check on the current head failed, even while
+`Typecheck & Test` passes. Per check name only its latest completed run counts, so a failed
+or cancelled run that a rerun turned green is not a failure. A failing head is never ready
+to merge. A missing run is untested, not failing.
 
 **In-session approval is a human channel.** Record the user's explicit go-ahead as
 `approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
