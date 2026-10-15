@@ -617,7 +617,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     });
 
     it("opens it when the work doesn't say what sort it is, whatever the judge makes of the lead: that is no clear misfit", async () => {
-      // The ask names no kind of work, so no lead can be the wrong sort for it.
+      // The work names no sort, so no lead can be the wrong sort for it.
       const unsaid = { id: "garnet", title: "garnet delta 6965", lead: "alice-lead", objectives: [] };
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: unsaid }]), leadFit: fit(false, false) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
