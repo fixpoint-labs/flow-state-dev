@@ -53,7 +53,7 @@ It comes down to whether test files compile: after FIX-1343 they do, so the move
 - **`@ts-expect-error` needs nothing new.** All 128 carry a reason. Five only silence a missing `.mjs` declaration (TS7016); they are not assertions, and the census counts them apart.
 - **The seven false comments are corrected:** three in `core/src/types/tests/`, two in `orchestration/src/**/tests/`, one in `orchestration/test/collection/task-caps.test.ts`, and the header of `orchestration/test/types.type-test.ts`, which credits a vitest typecheck mode nobody enabled.
 - **`toMatchTypeOf` stays** at its 3 sites: deprecated since expect-type 1.2, live under `tsc`.
-- **The workforce site** (`workforce/test/codegen.test.ts:419`) waits for FIX-1343's workforce follow-up. Workforce's 10 `.test-d.ts` sites are compiled and live.
+- **The workforce site** (`workforce/test/codegen.test.ts:419`) waits for [FIX-2016](https://linear.app/fixpoint-labs/issue/FIX-2016), FIX-1343's workforce follow-up. Workforce's 10 `.test-d.ts` sites are compiled and live.
 - **Branch** `fix/FIX-1239-type-assertions`, stacked on the last branch of #3433's implementation stack, cut after both specs merge. **No changeset.**
 
 ## Considered and dropped
