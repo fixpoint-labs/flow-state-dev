@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { collectionOfBoard, createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
+import { collectionOfBoard, createLabReader, GENERAL_TEAM, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -52,11 +52,11 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
 }
 
-/** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under Staff. */
+/** TEAMS, as the tree declares it: each team's worker ids, an org worker (no team in its id) under General. */
 function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
   for (const worker of roster.workers) {
-    (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : STAFF_TEAM] ??= []).push(worker.id);
+    (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : GENERAL_TEAM] ??= []).push(worker.id);
   }
   for (const ids of Object.values(teams)) ids.sort();
   return teams;

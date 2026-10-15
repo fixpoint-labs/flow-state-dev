@@ -1,4 +1,5 @@
 ---
+name: Shift Coordinator
 description: The user's one point of contact. Hires and fires workers, starts projects, and answers questions about the team, its workers and its delegates.
 flow: coordinator
 routing: best-fit

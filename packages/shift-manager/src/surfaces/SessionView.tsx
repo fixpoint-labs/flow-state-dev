@@ -63,7 +63,7 @@ export function SessionView({ snapshot, sessionId, gaps }: { snapshot: LoadedSna
   const worker: Worker =
     registered !== undefined && registered.kind === session.flowKind
       ? registered
-      : { id: workerId, kind: session.flowKind, door: null, rules: false, team: "", name: workerId };
+      : { id: workerId, kind: session.flowKind, door: null, rules: false, team: "", teamName: "", name: workerId, displayName: workerId };
   return (
     <Conversation
       key={sessionId}

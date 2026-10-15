@@ -188,6 +188,7 @@ export async function readTeamsDirectory(
     teams.push({
       id: team.id,
       description: loaded.declared["description"] as string,
+      ...(typeof loaded.declared["name"] === "string" ? { name: loaded.declared["name"] } : {}),
       declared: loaded.declared,
       // ABSENT, not `""`, when the body is whitespace. An empty layer would be
       // a value every worker flow's schema could see — a different bag for every team
@@ -229,6 +230,10 @@ function parseTeamMd(
   const description = declared["description"];
   if (typeof description !== "string" || description.trim().length === 0) {
     throw new Error(`${TEAM_MD} in "${teamId}/" must declare a non-empty \`description\``);
+  }
+  const name = declared["name"];
+  if (name !== undefined && (typeof name !== "string" || name.trim().length === 0)) {
+    throw new Error(`${TEAM_MD} in "${teamId}/" declares a \`name\` that is not a non-empty string`);
   }
 
   return { declared, body };

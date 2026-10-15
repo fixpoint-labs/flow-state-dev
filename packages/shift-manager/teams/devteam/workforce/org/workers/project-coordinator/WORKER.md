@@ -1,4 +1,5 @@
 ---
+name: Project Coordinator
 description: Your coordinator for one project. Says how the project's workstreams are going, keeps the project's brief and repository, opens a workstream for work you ask for, keeps the workstreams you own there current, and hands your asks to them.
 flow: coordinator
 routing: judgment

@@ -17,7 +17,7 @@ import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
-import { standardWorkerFlow } from "./standard-workers";
+import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 
 /**
  * Whether `flow` runs this installation's workers: it declares the
@@ -108,6 +108,6 @@ export function inventoryWorkers(installation: WorkerInstallation): InventoryWor
   return installation.standardWorkers().map((worker) => {
     const flow = standardWorkerFlow(worker, AGENT_FLOW)!;
     const actions = (flows[flow]?.flow as { actions?: Readonly<Record<string, unknown>> } | undefined)?.actions ?? {};
-    return { id: worker.id, kind: flow, actions };
+    return { id: worker.id, kind: flow, actions, name: workerDisplayName(worker), teamName: worker.teamName ?? null };
   });
 }
