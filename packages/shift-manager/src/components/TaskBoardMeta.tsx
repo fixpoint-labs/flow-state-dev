@@ -3,11 +3,6 @@
  * board; status comes from that board, because the feed only holds the task as
  * filed. Any other board is drawn by `TaskPlan` (`flow-state/task-plan.tsx`,
  * byte-equal to the registry, no router).
- *
- * A cancelled task is never reported on its own (FIX-2051): the card says to
- * tell the Lab's Error Reporter if the cancel was because something went
- * wrong, naming the task, and opens the user's conversation with it when the
- * Lab lists one.
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";

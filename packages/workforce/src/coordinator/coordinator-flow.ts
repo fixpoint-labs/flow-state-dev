@@ -1559,14 +1559,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .step(postEnded)
     .tapIf(hasRouteOns, sendOn);
 
-  /**
-   * A delegate's run on one of this conversation's posts was cancelled: the
-   * user stopped it. Cancel its row under the claim the delegate sent, so it
-   * ends `cancelled`, not `errored`, and owes the Error Reporter nothing, and
-   * send its ending here, as the board's own cancel does. The claim fences
-   * the write: a row already ended, or claimed again since, declines it, and
-   * nothing changes.
-   */
+  /** The user stopped a delegate's run on a post: cancel its row under the delegate's claim (so no report is owed) and send its ending, as the board's cancel does. */
   const postCancelled = handler({
     name: "coordinator-post-cancelled",
     inputSchema: postCancelledSchema,
