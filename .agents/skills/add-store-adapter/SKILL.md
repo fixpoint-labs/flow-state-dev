@@ -62,6 +62,7 @@ packages/store-<name>/
     stores.test.ts              # Comprehensive test suite
   package.json
   tsconfig.json
+  tsconfig.test.json            # Typechecks src + tests (no emit)
   README.md
 ```
 
@@ -98,6 +99,16 @@ packages/store-<name>/
     "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && vitest run --root .",
     "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/engine build && vitest --root ."
   }
+}
+```
+
+Add a `tsconfig.test.json` next to `tsconfig.json` so `typecheck` also compiles the tests. `scripts/typecheck.mjs` runs it after `tsconfig.json`, and root `pnpm typecheck` fails while any test file is outside every program (`scripts/validate-test-typecheck.mjs`):
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "composite": false, "rootDir": "../..", "noEmit": true },
+  "include": ["src/**/*", "test/**/*"]
 }
 ```
 

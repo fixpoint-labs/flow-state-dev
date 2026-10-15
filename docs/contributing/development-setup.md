@@ -231,6 +231,9 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 - `tsconfig.base.json` at the repo root defines base settings and path mappings
 - Each package has its own `tsconfig.json` extending the base
 - `scripts/typecheck.mjs` runs `tsc --noEmit` for one package; it requires the root TypeScript install, and fails with a message naming `pnpm install` when that is missing
+- Test files are typechecked too. A package's `tsconfig.json` is its build config and covers `src` only; its `tsconfig.test.json` extends it with `composite: false`, `rootDir: "../.."` and `noEmit: true`, and includes `src` and `test`. `scripts/typecheck.mjs` runs `tsconfig.test.json` after `tsconfig.json` when the file exists. Copy `packages/core/tsconfig.test.json` for a new package
+- `scripts/validate-test-typecheck.mjs` (chained into root `pnpm typecheck`) fails when a tracked test file of any package is outside every program its `typecheck` script compiles. It reads the configs with the `typescript` API and does not run `tsc`. A package that cannot be wired yet is named in the `DEFERRED` list at the top of that file, with the issue that wires it. The guard also fails an entry whose package is already fully covered, so remove the entry when you wire the package
+- In a test, say a deliberate partial mock with `as unknown as T` or a typed helper, and mark deliberately invalid input with `// @ts-expect-error` and the reason. Don't clear errors with `@ts-nocheck` or `@ts-ignore`
 
 ## Key Files to Know
 
