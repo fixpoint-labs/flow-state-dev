@@ -157,9 +157,7 @@ When a failure forces a workaround at the call site, the bug usually lives one l
 down. Push the fix to the layer that owns the behavior so it's cured for every
 caller, not repeated at each. A workaround every caller must copy is a smell.
 A prompt is a call site too: when a model does the wrong thing with what it was
-handed, an instruction not to is the workaround, and the fix is usually in what it
-was handed (a schema that accepts the wrong shape, a document written for something
-else, a tool that returns too little).
+handed, fix what it was handed, not the instruction.
 
 **Depth is only half of it.** The owning layer is where the paths *converge*: an
 invariant with five writers is not enforced until the guard sits where all five pass

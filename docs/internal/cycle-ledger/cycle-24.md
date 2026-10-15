@@ -48,7 +48,7 @@ The classes, checked against the ledger:
 
 **Proposal:** one sentence in tenet 5, saying that a prompt is a call site.
 
-**Method: scope.** 19 reviewed artifacts. The epic's Linear children (FIX-1904, 1905, 1906, 1919,
+**Method: scope.** 18 reviewed artifacts. The epic's Linear children (FIX-1904, 1905, 1906, 1919,
 1965, 1966, 1971, 1973, 1991) and their attachments were read over GraphQL. The 400 newest
 repository PRs were matched on those ids and the three outside-epic issues the coordinator named
 as born from the epic (FIX-1926, 1927, 1957).
@@ -134,9 +134,9 @@ not the retelling. That fixed how such a failure is *seen*. This fixes where it'
 
 | File | Now | Proposed |
 |---|---|---|
-| `docs/philosophy.md` · tenet 5, first paragraph | *"…A workaround every caller must copy is a smell."* | *"…A workaround every caller must copy is a smell. A prompt is a call site too: when a model does the wrong thing with what it was handed, an instruction not to is the workaround, and the fix is usually in what it was handed (a schema that accepts the wrong shape, a document written for something else, a tool that returns too little)."* |
+| `docs/philosophy.md` · tenet 5, first paragraph | *"…A workaround every caller must copy is a smell."* | *"…A workaround every caller must copy is a smell. A prompt is a call site too: when a model does the wrong thing with what it was handed, fix what it was handed, not the instruction."* |
 
-It adds no rule and no checklist. It names the layer the three fixes above missed. A worker
+It adds no rule and no checklist. It names the layer the three fixes above missed: here, a schema that accepted the wrong shape (FIX-1965), a document written for another profile (FIX-1971), and a tool that returned too little (cycle 22's #2768). The examples stay in this entry so the apex clause stays short. A worker
 following it on #3205 would have asked why `input` took a string and where *"the feature brief"*
 came from, and both closure blockers sat one answer away.
 
@@ -178,52 +178,23 @@ this is code and scheduling (a shared grader in `goals/lib`, and FIX-1183), and 
 - **The #3201 tail** (r2–r7). The race trigger fired at r3 and FIX-1934 was filed at r4, which is
   what cycle 22's and 23's sentences ask. Scored below, not reopened.
 
-## Job surface: what the batch added, and the job each addition does
+## Job audit
 
-Merged child specs predate question 7's *What's already here* list, except FIX-1905's, which named
-its job and its closest entries (`projectWorkspace()`, `createMcpManager`). The additions below come
-from the merged implementation diffs: package exports, subpath re-exports, tools, actions and
-internal entries.
+The PR body lists every addition the batch made and the job each one does. Seven jobs grew. Three
+are coherent: where a run's checkout comes from (J1), storing a user's own credential (J5), and
+changing one setting on a project (J6). `audit-coherence` found a fold in the other four, each
+where an addition met an entry no spec compared it against. **Filed, not proposed:**
 
-| Addition | Package · PR | Job |
-|---|---|---|
-| `projectWorkspace({ checkouts })`, `ProjectCheckout` | workforce · #3185 | J1 say where a run's checkout comes from |
-| `checkoutSource` (derives `localRepositories` from `checkouts`) | shift-manager host · #3194 | J1 |
-| `RunLocation.orgless` (legacy place for runs already on disk) | harness-manager · #3199 | J1 |
-| local checkout fetch-before-cut, upstream pins, `baseCommit` on the run record | workspace, harness-manager · #3201 | J1, and J1b count a run's own commits |
-| `readRunCommits(…, baseCommit)` | harness-manager · #3201 | J1b |
-| `probeClaudeAccount`, `ClaudeAccountProbe`, `ProbeClaudeAccountOptions` | claude-code/sdk · #3189 | J2 check a harness can run before work |
-| `startHarness` start-time check | shift-manager host · #3189 | J2 |
-| `mcpTools` option, `ClaudeCodeMcpTool*` types | claude-code/sdk · #3261 | J3 hand a run tools from MCP servers |
-| `projectMcpTools`, `RelayedMcpServer`/`RelayedMcpTool`, `ProjectMcpServer*` | workforce · #3261 | J3 |
-| `MCPCallToolOptions`, the manager's call path | tools/mcp · #3261 | J3 |
-| `redactSecrets` | tools/mcp · #3261 | J4 keep a secret out of what leaves the server |
-| `mcpCredentialsCapability`, `defineMcpCredentialsCollection`, `mcpCredentialSchema`, `mcpCredentialProblem`, `MCP_CREDENTIALS_*`; Settings route `mcpCredentialsAdapter` | workforce, shift-manager · #3261 | J5 store a user's own credential |
-| `setMcpServers` block and schemas, `checkedMcpServers`, `isMcpServerName` | workforce · #3261 | J6 change one setting on a project |
-| `openLab({ documents, skills })` | shift-manager host · #3317 | J7 give a profile's workers their standing documents |
-| `addTask`/`dispatchTask` `input` must be an object | orchestration · #3308 | deliver work. Changes an existing entry's schema and adds none, so **no audit** |
-| `Conversation` passes `groupToolCalls: true` | shift-manager UI · #3272 | none. Wiring, no entry |
-
-## Job audits (`audit-coherence`, one per job that grew)
-
-Each job got the audit: J3 and J1 grew by two or more additions, and no merged spec compared the
-rest against their closest entries.
-
-| Job | Surface map (keep / fold / retire) | Finding | Routed |
-|---|---|---|---|
-| J1 say where a run's checkout comes from | `projectWorkspace({ checkouts })` keep · `localWorkspaceHost({ localRepositories })` keep · `checkoutSource` keep (the one host that composes both) · `conductorFlow({ root, sourceRepo, baseRef })` keep · `RunLocation.orgless` keep (BP-030 bridge) | Coherent. The two config places that must agree are reconciled once, where they're composed. FIX-1906's spec noted that a boot check can't sit in either package | none |
-| J1b count a run's own commits | `readRunCommits` from the recorded `baseCommit` keep · the closure check's own `git log … --not HEAD main main@{upstream}` **fold** | code-conflict: the check re-decides the base the run recorded. Its first version got it wrong (stale `main`) | **FIX-2015** |
-| J2 check a harness can run | `probeClaudeAccount` (claude-code) keep · Cursor's sign-in check in `apps/kitchen-sink/lib/cursor-mode.ts` **fold into `@flow-state-dev/cursor`** · Codex's `codex login status` in `codex-mode.ts` **fold into `@flow-state-dev/codex`** · `probeCursorSandbox` (cursor) keep · `CLAUDE_CODE_PASS` written out twice (kitchen-sink, shift-manager) **fold** | code-conflict: one vendor's sign-in check lives in its package, two live in an app. The Claude run environment is copied word for word | **FIX-2014** |
-| J3 hand a run tools from MCP servers | `createMcpManager` keep · `createMcpCapability` keep (for generators) · `projectMcpTools` keep · `claudeCodeAgent({ mcpTools })` keep · `ClaudeCodeMcpTool*` and `RelayedMcp*` **fold to one type in core's neutral harness types** · Cursor's `mcpServers` keep (verbatim SDK passthrough, the escape hatch) | philosophy-drift (tenet 4): the harness-neutral relay contract is typed in a vendor package and re-declared structurally in workforce. Codex and Cursor will be the second and third consumers | comment on **FIX-1986** (dedupe; that issue owns the change) |
-| J4 keep a secret out of what leaves the server | `redactSecrets` (tools/mcp, any length) **fold** · Error Reporter `redact` (workforce, skips secrets under 8 characters) **fold** · `omitSecretFields` (core) keep (drops fields, a different job) · `harnessEnv` (core) keep · `redactRemote` (workspace) keep | code-conflict with a leak: an MCP key under eight characters is scrubbed from MCP errors and printed in an Error Reporter issue | **FIX-2012** |
-| J5 store a user's own credential | `mcp-credentials/*` at user scope, with `secret: ["value"]` (FIX-1955's primitive) | Coherent. It is the only per-user credential store, and it uses the engine's secret fields | none |
-| J6 change one setting on a project | `setRepository`, `setBrief`, `setMcpServers` | Coherent. The third handler of an existing one-field-per-handler family, each with its own validation | none |
-| J7 give a profile's workers their standing documents | `openLab({ documents })` and `openLab({ skills })` (replace by name) · `documentOverrides` and `mutateSkills` (goal controls; also copied in `goals/pentest-lab/lab/host.mts`) | The `fsd` profile replaces only the DevTeam fixtures it names, so every other one reaches real runs: the coder's `branch-naming` marker and the EM's demo handbook do today | **FIX-2013** |
-
-Coherence read: the batch is coherent where a spec compared its addition (J5, J6, and J1's main
-path). The four folds sit where an addition met an entry no spec looked at: an app's copy (J2),
-a vendor package's type (J3), a sibling epic's helper written a day apart (J4), and a check's own
-re-derivation (J1b).
+- **FIX-2015** (J1b, counting a run's own commits): the closure check re-derives the base the run
+  already recorded as `baseCommit`, and its first version got it wrong.
+- **FIX-2014** (J2, checking a harness can run): Cursor's and Codex's sign-in checks live in
+  Kitchen Sink app code, not their packages, and the Claude run environment is copied twice.
+- **FIX-1986**, commented rather than filed again (J3, handing a run MCP tools): the
+  harness-neutral relay type is defined in the claude-code package and re-declared in workforce.
+- **FIX-2012** (J4, keeping a secret out of what leaves the server): two redaction rules disagree,
+  so an MCP key under eight characters reaches Error Reporter issues.
+- **FIX-2013** (J7, a profile's standing documents): the `fsd` profile still hands its workers the
+  coder's `branch-naming` skill and the EM's demo handbook.
 
 ## Scoring the previous cycles' fixes and claims
 
