@@ -117,6 +117,9 @@ export function claudeCodeEnv(): Record<string, string> {
  * it, since the key reaches the run's tools through the Lab's connection, not
  * the run.
  *
+ * No `maxTurns`: the SDK's default is no cap, and a real coding run takes
+ * hundreds of turns, so a small cap ends it mid-task as `error_max_turns`.
+ *
  * With `mcpTools`, the run is handed its project's MCP servers and nothing
  * else, and the block holds the project and key collections the resolver
  * reads. Without, the options are exactly what they were.
@@ -130,7 +133,6 @@ export function claudeCodeHarness({ mcpTools, ...feeds }: HarnessFeeds): Harness
     recordWork: true,
     allowedTools: ["Read", "Write", "Edit", "Bash"],
     permissionMode: "acceptEdits",
-    maxTurns: 30,
     systemPrompt:
       "You are a coding agent working in the directory you have been placed in. " +
       "Do what your instructions and your brief say, then commit your work with git. " +
@@ -152,7 +154,6 @@ export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeed
     allowedTools: ["Read", "Grep", "Glob"],
     disallowedTools: ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
     permissionMode: "default",
-    maxTurns: 40,
     systemPrompt:
       "You investigate failures in the code in your working directory and write bug reports about them. " +
       "Read and search the code; never change a file. Do what the prompt asks, then answer as it says.",

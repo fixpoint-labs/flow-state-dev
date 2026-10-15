@@ -305,7 +305,7 @@ describe("the harness a Lab runs", () => {
     }
     const [without, withTools] = handed;
     expect(Object.keys(without!).sort()).toEqual(
-      ["allowedTools", "cwd", "detached", "env", "maxTurns", "onSession", "permissionMode", "recordWork", "resume", "systemPrompt"].sort(),
+      ["allowedTools", "cwd", "detached", "env", "onSession", "permissionMode", "recordWork", "resume", "systemPrompt"].sort(),
     );
     const { mcpTools, uses, ...rest } = withTools!;
     expect(rest).toEqual(without);
