@@ -78,8 +78,7 @@ function build(authenticated: boolean) {
     registry,
     stores,
     staleSweepIntervalMs: 0,
-    // The debug routes are session-addressed too, so they are opened here and
-    // held to the same compare as every other session route.
+    // Debug routes are in the compare; call() sends no Origin.
     debugEndpointsEnabled: true,
     debugAllowAnonymousLocal: true
   });
@@ -241,12 +240,6 @@ const ROUTES: RouteCase[] = [
   }
 ];
 
-/**
- * Every route the owner check treats as session-addressed, from the guard's
- * own classification (`routeSubject`) over the router's table. A route added
- * there lands here, and fails below until it has a row in `ROUTES`, so it is
- * held to the compare before it ships rather than after a review finds it.
- */
 function sessionAddressedRouteKinds(): string[] {
   const kinds = new Set<string>();
   for (const route of listFlowRoutes()) {
@@ -307,8 +300,7 @@ async function seed(router: ReturnType<typeof createFlowApiRouter>, stores: Stor
     content: "alice's note"
   });
   expect(created.status).toBe(201);
-  // The single resource's content as a run would have written it, for the
-  // debug read, which serves stored content and not the declared default.
+  // The debug content read serves stored bytes, not doc's declared default.
   await stores.content.set("session", SESSION, "doc", "alice's doc");
   // No session at the id, but the note stays under it, so a route that read
   // the session arriving there has an item to serve.

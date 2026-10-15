@@ -42,11 +42,7 @@ export interface DebugRouteContext {
   debug: ResolvedDebugConfig;
   /** Tenant id from the request header (FIX-682); namespaces session lookups. */
   tenantId?: string;
-  /**
-   * The session the route guard read and admitted the caller to
-   * (`RouteAuthResult.session`). Each debug route reads only that session,
-   * so one that took the id after the check reads as not found.
-   */
+  /** Session the route guard checked (`RouteAuthResult.session`). */
   checkedSession?: SessionRecord | null;
 }
 
