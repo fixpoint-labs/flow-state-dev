@@ -261,19 +261,9 @@ export async function changeWorkstreamRecordHere(
 }
 
 /**
- * What a project coordinator's `readProject` tool answers: the read, with each
- * workstream marked `yours` when the session's user owns it. The model sees
- * owners only as user ids, and never its user's own, so without the mark it
- * can't tell its user's workstream from another member's.
- */
-const readLinkedProjectOutputSchema = readProjectOutputSchema.extend({
-  workstreams: z.array(workstreamViewSchema.extend({ yours: z.boolean() }))
-});
-
-/**
  * A project coordinator's `readProject` tool: the project its session is
- * linked to, every workstream's entry, each marked `yours` or not, and the
- * progress worked out from them.
+ * linked to, every workstream's entry marked `yours` when the session's user
+ * owns it, and the progress worked out from them.
  */
 const readLinkedProject = handler({
   name: "readProject",
@@ -282,7 +272,9 @@ const readLinkedProject = handler({
     "with `yours: true` on the user's own, who leads it, its status, due date and objectives, and when it was " +
     "last updated), and its progress. Answer how the project is going from this, never from memory.",
   inputSchema: z.object({}).strict(),
-  outputSchema: readLinkedProjectOutputSchema,
+  outputSchema: readProjectOutputSchema.extend({
+    workstreams: z.array(workstreamViewSchema.extend({ yours: z.boolean() }))
+  }),
   resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
   execute: async (_input, ctx) => {
     const project = linkedProjectOf(ctx.session.state);
