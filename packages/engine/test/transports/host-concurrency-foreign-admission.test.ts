@@ -16,9 +16,9 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   createInboundTransportHost,
-  defaultBodyUserIdPrincipalResolver
+  defaultBodyUserIdPrincipalResolver,
+  UserBindingMismatchError
 } from "../../src";
-import { ConcurrencyRejectedError } from "../../src/transports/errors";
 
 type Gate = { id: string; release: () => void };
 
@@ -139,7 +139,7 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     expect(h.started).toEqual(["owner-first", "owner-2"]);
 
     resume();
-    await expect(foreign.finished).rejects.not.toBeInstanceOf(ConcurrencyRejectedError);
+    await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
     h.release("owner-2");
     await owner!.finished;
     expect(h.started).not.toContain("x-1");
@@ -161,7 +161,7 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     expect(h.started).toEqual(["owner-first", "owner-2"]);
 
     resume();
-    await expect(foreign.finished).rejects.toBeDefined();
+    await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
     h.release("owner-2");
     await owner.finished;
     expect(h.started).not.toContain("x-1");
@@ -172,7 +172,7 @@ describe("a caller who does not own the session (in-memory backend)", () => {
     await ownedSession(h);
 
     const foreign = h.dispatch("strict", "x-1", "u_2");
-    await expect(foreign.finished).rejects.not.toBeInstanceOf(ConcurrencyRejectedError);
+    await expect(foreign.finished).rejects.toBeInstanceOf(UserBindingMismatchError);
 
     const owner = h.dispatch("strict", "owner-2");
     await owner.accepted;

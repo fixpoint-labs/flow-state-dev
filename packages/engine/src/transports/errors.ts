@@ -48,8 +48,10 @@ export class OrgRequiredError extends Error {
 }
 
 /**
- * Thrown synchronously from `host.dispatch` (before any request record exists)
- * when an action's concurrency policy is `reject` and another request already
+ * Rejects the `accepted` and `finished` of the handle `host.dispatch` returns
+ * (before any request record exists, and only once the caller's ownership of
+ * the session has been checked) when an action's concurrency policy is
+ * `reject` and another request already
  * holds the key (default: the session). Carries an HTTP-shaped `status` (409)
  * like `PrincipalResolutionError`, the contended `key`, and the in-flight
  * `requestId` so a caller may choose to tail the surviving request instead of
