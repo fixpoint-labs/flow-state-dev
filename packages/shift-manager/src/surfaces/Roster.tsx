@@ -92,20 +92,14 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
             —
           </span>
         </p>
-        {worker.rules ? (
-          <button
-            type="button"
-            onClick={() => navigate({ level: "rules", worker: worker.id })}
-            className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
-            data-testid="roster-worker-rules"
-          >
-            Rules
-          </button>
-        ) : (
-          <p className="mt-1 text-xs text-muted-foreground" data-testid="roster-worker-no-rules">
-            This worker's flow doesn't keep standing rules.
-          </p>
-        )}
+        <button
+          type="button"
+          onClick={() => navigate({ level: "worker-settings", worker: worker.id })}
+          className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
+          data-testid="roster-worker-settings"
+        >
+          Settings
+        </button>
       </div>
       <div className="space-y-1 pt-0.5">
         <span className="flex gap-0.5">
@@ -153,7 +147,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
         {asks.map((ask) => (
-          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.message ?? "waiting on you"} />
+          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.title || ask.item.message || "waiting on you"} />
         ))}
       </ul>
     </li>

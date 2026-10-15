@@ -455,7 +455,7 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 `state_change` and `resource_change` share an exported `InvalidationItem` base (common `scope`/`delta`/`version` fields) for consumers that react to "something changed in a scope" generically. It is a base type, not a member of the `OutputItem` union — only the two leaves are.
 
-**`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
+**`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. A ref points at one of three kinds of item: another `block_output`, whose own value is resolved; a `MessageItem`, which resolves to its joined text (streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline); or a `ToolOutputItem`, which resolves to its `output` (a block run as a tool refs the tool result it recorded). `buildItemLookup(items)` indexes every item by id so the resolver can follow each kind of ref.
 
 ### Running a step under an extra abort signal
 
@@ -827,7 +827,7 @@ Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitize
 Generators reference a model with a string. The string can be:
 
 - `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4-6"`
-- `gateway/provider/model` — routed through a gateway, e.g., `"vercel/openai/gpt-5.5"`
+- `name:model` — a named route: a gateway (`"vercel:openai/gpt-5.5"`) or a provider (`"openai:gpt-5.5"`, or a key of `providers` such as `"triage:native"`). Never falls back to another route. A model string with three slash-separated parts throws, naming its colon spelling.
 - `intent/<name>` — a named routing group resolved by the model resolver
 
 Configure intents on the resolver. Each intent maps a name to an ordered list of candidate model strings. Resolution walks the list, filters to providers the app has keys for, and falls back to `defaultModel` when nothing in the intent is reachable.
@@ -876,7 +876,7 @@ Env vars can replace which model a declared intent (or `defaultModel`) resolves 
 - `FSDEV_INTENT_<NAME>` — replace the candidate list for intent `<name>`. `<NAME>` is the intent name uppercased with hyphens replaced by underscores (`my-custom` → `FSDEV_INTENT_MY_CUSTOM`).
 - `FSDEV_DEFAULT_MODEL` — replace `defaultModel`. Useful when an intent falls through.
 
-Each value is a `provider/model` or `gateway/provider/model` string. `intent/*` values are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
+Each value is a `provider/model` or `name:model` string. `intent/*` values are rejected. Vars are read once at construction; setting them after the resolver is built has no effect.
 
 ```bash
 # .env.local

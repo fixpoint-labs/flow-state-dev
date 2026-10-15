@@ -115,7 +115,7 @@ import {
 import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
 import { conversationLedgerAt } from "../conversation-board/ledger";
 import { sendOwedNotices } from "../conversation-board/notice-delivery";
-import { defineSessionBoard } from "../conversation-board/session-board";
+import { defineSessionBoard, WORKER_MESSAGE_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   CONVERSATION_BOARD_SERVER_OWNED,
@@ -125,11 +125,13 @@ import {
   type PostEnding
 } from "../conversation-board/task-settled";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { reportRescuedFailure } from "../error-reporter/rescued";
 import { workerConfigOf } from "../workers/verified-worker";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
   coordinatorConfigProblems,
   coordinatorConfigSchema,
+  coordinatorRunsOwnTurn,
   type CoordinatorConfig,
   type CoordinatorRouting
 } from "./coordinator-config";
@@ -1119,6 +1121,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         none: why,
         ...(post.fit === undefined ? {} : { fit: post.fit })
       });
+      // The request completes on this answer, so no final failure is sent for it: the crash is reported here.
+      await reportRescuedFailure(ctx as never, {
+        flowKind: COORDINATOR_FLOW,
+        actionName: post.round === 0 ? "run" : ROUTE_ON_ACTION,
+        blockName: COORDINATOR_JUDGMENT,
+        error
+      });
       // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
       return { unplaced: why };
@@ -1590,7 +1599,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     turn.run,
     (ctx) => {
       const { routing } = workerConfigOf(ctx) as unknown as CoordinatorConfig;
-      return routing === "judgment" || routing === "best-fit" ? "judgment" : "fixed";
+      return coordinatorRunsOwnTurn(routing) ? "judgment" : "fixed";
     },
     onPostEnded
   );
@@ -1603,8 +1612,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
     session: {
-      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED],
+      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
+      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED, ...WORKER_MESSAGE_SERVER_OWNED],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }

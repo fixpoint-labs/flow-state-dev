@@ -32,7 +32,7 @@ export const TASKS_POLL_MS = 3_000;
 const AFTER_A_MOVE_MS = 30_000;
 
 /** Whether a task can still move by itself. */
-const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";
+export const isOpen = (task: ConversationTask) => task.status === "pending" || task.status === "in_progress";
 /** What the panel compares between reads: each task and where it stands. */
 const standing = (tasks: readonly ConversationTask[]) => tasks.map((task) => `${task.id}:${task.status}`).join(",");
 

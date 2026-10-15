@@ -2,9 +2,9 @@
  * Model ids for goal checks — one convention, written down.
  *
  * The corpus had spelled the same model five ways: `openai/gpt-5.4-mini`,
- * `vercel/openai/gpt-5.4-mini`, `process.env.GOAL_MODEL ?? …`,
+ * `vercel:openai/gpt-5.4-mini`, `process.env.GOAL_MODEL ?? …`,
  * `process.env.FSDEV_DEFAULT_MODEL ?? …`, and bare literals repeated inline.
- * The `vercel/` prefix is load-bearing — it routes through the Vercel AI
+ * The `vercel:` prefix is load-bearing — it routes through the Vercel AI
  * Gateway — but that was documented nowhere.
  *
  * The rule:
@@ -32,7 +32,7 @@ export const DEFAULT_GATEWAY = "vercel";
  * their own resolver. Already-qualified ids pass through unchanged.
  */
 export function gatewayModel(id: string = DEFAULT_MODEL, gateway = DEFAULT_GATEWAY): string {
-  return id.startsWith(`${gateway}/`) ? id : `${gateway}/${id}`;
+  return id.startsWith(`${gateway}:`) ? id : `${gateway}:${id}`;
 }
 
 /**

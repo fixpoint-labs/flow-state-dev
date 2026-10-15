@@ -13,13 +13,41 @@ describe("parseModelString", () => {
     });
   });
 
-  it("parses gateway/provider/model format", () => {
-    expect(parseModelString("vercel/openai/gpt-5.4")).toEqual({
-      type: "gateway",
-      gateway: "vercel",
-      provider: "openai",
-      modelId: "gpt-5.4",
+  // The colon names a route (D1/D2). The parser sees only the string, so it
+  // returns the name and the model id; the resolver decides whether the name
+  // is a gateway or a provider.
+  it("parses gateway:provider/model as an alias, keeping the slash in the model id", () => {
+    expect(parseModelString("vercel:openai/gpt-5.4")).toEqual({
+      type: "alias",
+      alias: "vercel",
+      modelId: "openai/gpt-5.4",
     });
+  });
+
+  it("parses provider:model and a registered name:model as an alias", () => {
+    expect(parseModelString("openai:gpt-5.4")).toEqual({ type: "alias", alias: "openai", modelId: "gpt-5.4" });
+    expect(parseModelString("triage:native")).toEqual({ type: "alias", alias: "triage", modelId: "native" });
+  });
+
+  it("splits at the first colon only, so a model id may carry its own colon", () => {
+    expect(parseModelString("openrouter:openai/gpt-oss-20b:free")).toEqual({
+      type: "alias",
+      alias: "openrouter",
+      modelId: "openai/gpt-oss-20b:free",
+    });
+  });
+
+  it("keeps a slash id whose colon comes after the first slash in the provider-model lane", () => {
+    expect(parseModelString("openai/gpt-oss:free")).toEqual({
+      type: "direct",
+      provider: "openai",
+      modelId: "gpt-oss:free",
+    });
+  });
+
+  it("rejects an alias with an empty name or model id", () => {
+    expect(() => parseModelString(":gpt-5.4")).toThrow(/Invalid model format/);
+    expect(() => parseModelString("openai:")).toThrow(/Invalid model format/);
   });
 
   it("parses intent/name format", () => {

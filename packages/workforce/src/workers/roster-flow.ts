@@ -7,7 +7,8 @@
  * may, private ones included, and a project's entries by its prefix. It
  * declares the organization's worker inventory (`inventory/workers/*`), so the
  * same session reads who the organization's workers are without a coordinator
- * session to read it through.
+ * session to read it through. And it declares the user's worker message log
+ * (`workforce/messages/*`), so an app shows who messaged whom.
  *
  * Its own kind (`workforce-roster`), so a listing of a worker flow's sessions
  * never shows a roster session. It takes no create check: a roster session
@@ -17,6 +18,7 @@
 import { defineFlow } from "@flow-state-dev/core";
 import type { ActionConfig } from "@flow-state-dev/core/types";
 import { defineWorkerInventoryCollection } from "../inventory/collections";
+import { workerMessagesResources } from "../messages/message-log";
 import { PROJECT_ROW_RESOURCES } from "../projects/project-address";
 import type { WorkerInstallation } from "./installation";
 import { ROSTER_FLOW } from "./keys";
@@ -34,7 +36,12 @@ export function defineWorkerRosterFlow(
 ) {
   return defineFlow({
     kind: ROSTER_FLOW,
-    resources: { ...installation.resources, ...PROJECT_ROW_RESOURCES, inventoryWorkers: defineWorkerInventoryCollection() },
+    resources: {
+      ...installation.resources,
+      ...PROJECT_ROW_RESOURCES,
+      ...workerMessagesResources,
+      inventoryWorkers: defineWorkerInventoryCollection()
+    },
     actions
   });
 }

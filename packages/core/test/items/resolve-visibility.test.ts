@@ -15,7 +15,7 @@ const baseProv = {
 };
 
 function makeItem(
-  overrides: Partial<OutputItem> & { type: string },
+  overrides: { type: string; [field: string]: unknown },
 ): OutputItem {
   return {
     id: "item-1",

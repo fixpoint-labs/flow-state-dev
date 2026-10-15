@@ -33,7 +33,7 @@ import {
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
 
-const USER_ID = "u_cross_hand_off";
+const USER_ID = "u_cross_dispatch";
 const SENDER = "task-sender";
 const RECIPIENT = "task-recipient";
 const BOARD_ID = "work-board";

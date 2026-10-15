@@ -26,13 +26,15 @@ import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { RosterView } from "./surfaces/Roster";
-import { RulesView } from "./surfaces/Rules";
+import { WorkerSettingsView } from "./surfaces/WorkerSettings";
 import { SettingsView } from "./surfaces/Settings";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
 import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
+import { Messages } from "./surfaces/Messages";
+import { SessionView } from "./surfaces/SessionView";
 import { isTyping, usePanels } from "./lib/panels";
 
 /**
@@ -130,7 +132,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       <main className="min-w-0 flex-1 overflow-hidden" data-testid="centre" data-level={route.level}>
         <Centre snapshot={snapshot} route={route} gaps={gaps} look={look} devtoolUrl={devtoolUrl} />
       </main>
-      <Panel snapshot={snapshot} route={route} gaps={gaps} devtoolUrl={devtoolUrl} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
+      <Panel snapshot={snapshot} route={route} gaps={gaps} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
     </>
   );
   return (
@@ -167,12 +169,16 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
       return <TaskFrame tab={route.tab} gaps={gaps} />;
+    case "messages":
+      return <Messages snapshot={snapshot} />;
+    case "session":
+      return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
     case "resource":
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
-    case "rules":
-      return <RulesView snapshot={snapshot} workerId={route.worker} devtoolUrl={devtoolUrl} />;
+    case "worker-settings":
+      return <WorkerSettingsView snapshot={snapshot} workerId={route.worker} devtoolUrl={devtoolUrl} />;
     case "settings":
       return <SettingsView />;
   }
@@ -199,7 +205,6 @@ function Panel({
   snapshot,
   route,
   gaps,
-  devtoolUrl,
   open,
   overlay,
   onToggle,
@@ -207,14 +212,13 @@ function Panel({
   snapshot: LoadedSnapshot;
   route: Route;
   gaps: Gaps;
-  devtoolUrl: string | undefined;
   open: boolean;
   overlay: boolean;
   onToggle: () => void;
 }) {
   let content = null;
   if (route.level === "cos") {
-    content = <ChiefOfStaffPanel snapshot={snapshot} devtoolUrl={devtoolUrl} />;
+    content = <ChiefOfStaffPanel snapshot={snapshot} />;
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }

@@ -2114,6 +2114,8 @@ const PR_STATE_SCHEMA = {
     // that re-arms the end-to-end goal.
     repairMerged: { type: 'boolean' },
     repairReadyToMerge: { type: 'boolean' },
+    // Optional, read like the row's `ciFailed`: true withholds the repair PR's merge gate.
+    repairCiFailed: { type: 'boolean' },
     // Optional like the other repair fields; an omission reads as "not reviewed" (→ `reviewedAtHead`).
     repairHeadSha: { type: ['string', 'null'], description: 'Current head of the repair PR; a null head never passes the merge gate' },
     repairReviewedHeadSha: {
@@ -2510,7 +2512,7 @@ const [gate, linear, prScan] = await parallel([
                     // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
                     // forever because nothing else can ever set `fixMerged`.
                     (row.assembledGoal && row.assembledGoal.fixPr
-                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged, repairReadyToMerge, repairHeadSha and repairReviewedHeadSha for it, and repairClosedUnmerged if it was closed without merging.\n`
+                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged, repairReadyToMerge, repairCiFailed, repairHeadSha and repairReviewedHeadSha for it, and repairClosedUnmerged if it was closed without merging.\n`
                       : '') +
                     // PER ISSUE, and it has to stay that way. The cursor is how this issue tells new
                     // feedback from feedback a worker already handled; one cursor shared across the batch
@@ -2525,7 +2527,8 @@ const [gate, linear, prScan] = await parallel([
                 ? `SEPARATELY report specApprovedByLabel:true only for a \`spec approved\` label that \`${approvalOwner}\` applied to the reviewed source head. Read the most recent labeling event and require that exact owner's login, not merely any human. Establish approvedHeadSha from the event and PR timeline; a label left on a later push is stale. Unreadable provenance or an unknown reviewed revision means FALSE, not inherited approval.\n`
                 : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
               `ALSO report humanChangesRequested:true when any human's latest review requests changes on the open spec. It outranks every approval channel, including an owner label. Bots never count.\n` +
-              `Also report whether CI is failing.\n` +
+              // orchestration.md → Gates, "Green means CI ran on this head and passed".
+              `CI: read check runs on each PR's current head, never the combined commit status. Green means a successful \`Typecheck & Test\` check run; with no such run CI never ran, so the head is untested, not green, and readyToMerge is false (that alone is not ciFailed). ciFailed is true when any check on the current head failed: per check name only its LATEST completed run counts, so a failed or cancelled run superseded by a later success of the same check does not. readyToMerge is false whenever ciFailed is true.\n` +
               // orchestration.md → Gates, "A merge-ready head has been reviewed". Two shas rather than a
               // boolean, so the wake does the comparison (→ `reviewedAtHead`).
               `MERGE READINESS: fill implHeadSha / implReviewedHeadSha (and each sub-PR's and the repair PR's pair) per their schema descriptions. A reviewed sha is the current head if ANY completed automated review (Codex review commit_id or Cursor check-run head_sha) ran against it; otherwise the most recent reviewed sha, or null. Do not fold the comparison into readyToMerge: the wake runs it (reviewedAtHead).`,
@@ -2934,8 +2937,11 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     // And only for a head the automated review has returned on (→ `reviewedAtHead`), here and on the
     // two per-handle readiness fields below.
+    // And never while a check run on that head is failing: a scout can report readyToMerge AND ciFailed
+    // (`Typecheck & Test` passed, another check failed), and the wake would dispatch pr-feedback for the
+    // failure while offering the merge for the same head. Same for each sub-PR and the repair PR below.
     readyToMerge: refreshedLive
-      ? reviewedAtHead(fresh.readyToMerge, fresh.implHeadSha, fresh.implReviewedHeadSha, `${row.id} #${fresh.implPr || row.implPr}`)
+      ? !fresh.ciFailed && reviewedAtHead(fresh.readyToMerge, fresh.implHeadSha, fresh.implReviewedHeadSha, `${row.id} #${fresh.implPr || row.implPr}`)
       : false,
     // Same rule: CI that recovered must stop looking like a failure, or pr-feedback re-dispatches forever.
     ciFailed: refreshedLive ? !!fresh.ciFailed : false,
@@ -2946,11 +2952,11 @@ const refreshed = [...rows, ...discovered].map((row) => {
     subPrStates: refreshedLive
       ? (fresh.subPrStates || []).map((s) => ({
           ...s,
-          readyToMerge: reviewedAtHead(s.readyToMerge, s.headSha, s.reviewedHeadSha, `${row.id} sub-PR ${s.id}`),
+          readyToMerge: !s.ciFailed && reviewedAtHead(s.readyToMerge, s.headSha, s.reviewedHeadSha, `${row.id} sub-PR ${s.id}`),
         }))
       : [],
     repairReadyToMerge: refreshedLive
-      ? reviewedAtHead(fresh.repairReadyToMerge, fresh.repairHeadSha, fresh.repairReviewedHeadSha, `${row.id} repair PR`)
+      ? !fresh.repairCiFailed && reviewedAtHead(fresh.repairReadyToMerge, fresh.repairHeadSha, fresh.repairReviewedHeadSha, `${row.id} repair PR`)
       : false,
     // Whether the scan ANSWERED about the repair PR, as distinct from what it answered. `false` and
     // "didn't look" have opposite meanings here (see cursorUsable), and one boolean can't carry both.

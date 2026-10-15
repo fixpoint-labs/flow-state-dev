@@ -79,7 +79,7 @@ function toolResults(messages: unknown[]): string[] {
   return out;
 }
 
-const GATE_ID = "gate_ask_1";
+const GATE_ID = "gate_wait_1";
 
 /**
  * A flow with a waiting turn and a `touch` action that resumes a wait gate,

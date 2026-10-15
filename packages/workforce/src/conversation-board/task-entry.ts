@@ -48,6 +48,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } fr
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sendOwedNotices } from "./notice-delivery";
+import { sendOwedReports } from "./report-owed";
 import { sessionIdOfFiling } from "./filing-session";
 import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
@@ -307,7 +308,10 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     // The session's task and its follow-ups (FIX-1817): each runs here, so
     // each ending this session recorded is told from here.
     let sent = 0;
-    for (const row of ref.list().filter((task) => (task.followUpOf ?? task.id) === taskId)) {
+    const own = ref.list().filter((task) => (task.followUpOf ?? task.id) === taskId);
+    // What an errored ending owes the Error Reporter goes out first, from here (FIX-1983).
+    await sendOwedReports(ctx, ref, own, { boardId: CONVERSATION_LEDGER_ID, partition }, `${name}-report`);
+    for (const row of own) {
       sent += await sendOwedNotices(ctx, row, address, async (notice, refusal) => {
         // Any other refusal (the host turned it away, the store was down) may
         // pass: the marker stays for the conversation's next touch.

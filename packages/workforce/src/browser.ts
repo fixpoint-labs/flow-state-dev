@@ -29,7 +29,7 @@ export {
   isDerivedWorkerSessionId,
   type WorkerSessionCriteria
 } from "./workers/derive-session-id";
-export { PROJECT_STATE_KEY, ROSTER_FLOW, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
+export { FILING_SESSION_STATE_KEY, PROJECT_STATE_KEY, ROSTER_FLOW, TASK_ID_STATE_KEY, WORKER_ID_STATE_KEY, WORKSTREAM_STATE_KEY } from "./workers/keys";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
   parseProjectRef,
@@ -56,6 +56,13 @@ export {
   type WorkstreamEntry
 } from "./projects/workstream-entry";
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
+export { MESSAGE_WORKER_TOOL, WORKER_MESSAGE_ENTRY } from "./messages/keys";
+export {
+  WORKER_MESSAGES_PATTERN,
+  WORKER_MESSAGES_RESOURCE,
+  workerMessageRowSchema,
+  type WorkerMessageRow
+} from "./messages/log-row";
 export { MAX_RULES, MAX_RULE_CHARS, type StandingRule } from "./standing-rules/rules-list";
 export { RULE_TOOLS, STANDING_RULES_ACTION, STANDING_RULES_LINE } from "./standing-rules/keys";
 export type { StandingRulesActionInput, StandingRulesActionOutput } from "./standing-rules/rules-action";

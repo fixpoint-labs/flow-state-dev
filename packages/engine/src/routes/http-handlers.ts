@@ -500,7 +500,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetSession(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 

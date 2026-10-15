@@ -34,7 +34,7 @@ const CAPTURE = join(goalTmpDir("structured-output"), "run.json");
 // `GOAL_MODEL` silently swap in a more schema-compliant model, and the run
 // would report PASS without ever exercising the off-schema recovery this goal
 // exists to check. A contract-pinned model must never be overridable.
-const MODEL = "vercel/zai/glm-5.2";
+const MODEL = "vercel:zai/glm-5.2";
 
 // Held-out fixture. Nothing below hardcodes the topic or the answer — only that
 // the run completed through plan-and-execute with real content.

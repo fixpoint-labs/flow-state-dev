@@ -865,7 +865,7 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
 minutes by default). `listTasks` marks a waited-on row `waitedOn: true`. A wait is refused on a
 turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. `addTask`
-never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name,
+never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name, <!-- retired-name-refusal: the refusal of the old fields -->
 `add_task_does_not_wait`, and nothing is filed. See
 [Task board → Giving another worker work](https://flow-state.dev/docs/orchestration/task-board#giving-another-worker-work)
 for limits and errors.
@@ -877,11 +877,14 @@ whatever runs the board calls `resumeOwedWaits` as it touches the board outside 
 run, a task's notice), and the host has durable execution and a running durability sweeper
 (`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`. On a task turn a wait is
+refused with `wait_unavailable`; a layer that has its own way for a task to wait on another
+passes it as `taskTurnInstead` (a sentence), and the refusal and the `dispatchTask` description
+say it in place of the generic advice.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
+- `dispatchAndWait(ctx, collection, init, { timeoutMs?, taskTurnInstead? })`, from
   `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from inside
   a generator's tool call. Call it from your own tool when you don't use the task tools'
   `dispatchTask`. Before filing it refuses a host that can't bound the wait (`canHoldWait(ctx)`,

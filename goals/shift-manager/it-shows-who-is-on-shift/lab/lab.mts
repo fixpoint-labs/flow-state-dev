@@ -73,7 +73,7 @@ const INVENTORY_WRITER_FLOW = "inventory-writer";
  * The model best fit's one evaluator call would run on. The desks route to
  * everyone and nothing posts to them, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 /** What a parked task's goal says, so its run parks it instead of holding it. */
 const PARK = "park for a person";
 /** The question a parked task waits on. */

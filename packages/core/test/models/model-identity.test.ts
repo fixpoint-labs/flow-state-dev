@@ -66,9 +66,9 @@ describe("ModelIdentity — wrapAiSdkModel (direct)", () => {
 
   it("propagates `gateway` when the model was routed through one", async () => {
     const model = wrapAiSdkModel(
-      mockGenerateModel({ modelId: "vercel/openai/gpt-5.5" }),
-      "vercel/openai/gpt-5.5",
-      { requested: "vercel/openai/gpt-5.5", gateway: "vercel" }
+      mockGenerateModel({ modelId: "vercel:openai/gpt-5.5" }),
+      "vercel:openai/gpt-5.5",
+      { requested: "vercel:openai/gpt-5.5", gateway: "vercel" }
     );
     const result = await model.generate({ messages: [{ role: "user", content: "hi" }] });
     expect(result.resolvedIdentity!.gateway).toBe("vercel");

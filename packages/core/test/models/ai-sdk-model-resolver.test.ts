@@ -141,7 +141,7 @@ describe("createAiSdkModelResolver — prompt caching", () => {
     (model as any).provider = "gateway.chat";
 
     const resolver = createAiSdkModelResolver(() => model);
-    await resolver("vercel/anthropic/claude-sonnet-4-6", "gen").generate({
+    await resolver("vercel:anthropic/claude-sonnet-4-6", "gen").generate({
       messages: [{ role: "user", content: "hi" }],
     });
 
@@ -197,7 +197,7 @@ describe("createAiSdkModelResolver", () => {
             type: "tool-call",
             toolCallId: "call_1",
             toolName: "lookup",
-            input: { query: "status" }
+            input: JSON.stringify({ query: "status" })
           }
         ],
         finishReason: { unified: "tool-calls", raw: undefined },
@@ -263,7 +263,7 @@ describe("createAiSdkModelResolver", () => {
             type: "tool-call",
             toolCallId: "call_abc",
             toolName: "search",
-            input: { q: "hello" }
+            input: JSON.stringify({ q: "hello" })
           }
         ],
         finishReason: { unified: "tool-calls", raw: undefined },
@@ -413,7 +413,7 @@ describe("createAiSdkModelResolver", () => {
     const primaryModel = new MockLanguageModelV3({
       doGenerate: async () => ({
         content: [
-          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: { q: "test" } }
+          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: JSON.stringify({ q: "test" }) }
         ],
         finishReason: { unified: "tool-calls", raw: undefined },
         usage: {
@@ -511,7 +511,7 @@ describe("createAiSdkModelResolver — tool name sanitization", () => {
             toolCallId: "call_1",
             // Provider echoes back whatever name we sent — so this carries the alias.
             toolName: "tf_memory_recall",
-            input: { query: "anything" }
+            input: JSON.stringify({ query: "anything" })
           }
         ],
         finishReason: { unified: "tool-calls", raw: undefined },
@@ -1035,7 +1035,7 @@ describe("createAiSdkModelResolver — toModelOutput bridge (AI SDK 7 tool-resul
 
     // The second step's prompt carries the tool result the model actually
     // sees — the mapped summary string, not the structured execute() output.
-    const secondPrompt = model.doGenerateCalls[1]!.prompt as Array<{
+    const secondPrompt = model.doGenerateCalls[1]!.prompt as unknown as Array<{
       role: string;
       content: Array<Record<string, unknown>>;
     }>;

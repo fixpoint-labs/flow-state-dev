@@ -60,7 +60,7 @@ export const ORG = "org_routed_host";
 export const REPLY_MARKER = "[reply:routed-host]";
 
 /** The evaluation model the app routes with, named once, resolved by the app's resolver. */
-export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
+export const ROUTE_MODEL = "vercel:typesafe-ai/jev";
 
 /** The goal check's seams. An app passes none. */
 export interface HostSeams {

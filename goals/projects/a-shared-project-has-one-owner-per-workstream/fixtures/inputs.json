@@ -26,6 +26,7 @@
   "asks": {
     "status": "How is project \"{project}\" going? What is the status of {bob}'s workstream \"{bobTitle}\"?",
     "work": "Hand this to every one of my workstreams in this project, each delegate you have, and don't ask me anything first: write a one-line plan for the {word} milestone.",
+    "workAgain": "Go ahead, without asking me anything: hand this to each delegate you listed, now: write a one-line plan for the {word} milestone.",
     "tool": "Set the status of {alice}'s workstream \"{aliceId}\" in project \"{project}\" to \"{word}\" with updateWorkstream, now."
   }
 }

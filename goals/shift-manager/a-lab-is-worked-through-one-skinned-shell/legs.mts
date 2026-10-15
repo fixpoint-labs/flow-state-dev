@@ -102,6 +102,9 @@ function readableDocuments(root: string): string[] {
 
 // ---- a3 / b's reach: every surface, by clicking from the first screen ---------
 
+/** The name typed into Jump to: the id, or Shift Coordinator for `chief-of-staff`, bare or after a team dot (apps/docs/docs/workforce/shift-coordinator.md). */
+const shownName = (id: string) => (id.slice(id.indexOf(".") + 1) === "chief-of-staff" ? "Shift Coordinator" : id);
+
 /**
  * Walk every surface ER-1 names, by clicking from the first screen, and grade
  * each against the store. `reach` failures go to `signals.reach`, seat-list
@@ -137,7 +140,7 @@ export async function walkSurfaces(
   // Jump to: a worker, a task and a declared document.
   const docs = readableDocuments(tree.root);
   const targets: Array<{ group: string; query: string; lands: string }> = [
-    { group: "Workers", query: store.seats[0] ?? "", lands: "[data-testid=roster]" },
+    { group: "Workers", query: shownName(store.seats[0] ?? ""), lands: "[data-testid=roster]" },
     ...(rows[0] === undefined ? [] : [{ group: "Tasks", query: rows[0].title.slice(0, 24), lands: `[data-testid=task-frame][data-task-id="${rows[0].id}"]` }]),
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
   ];

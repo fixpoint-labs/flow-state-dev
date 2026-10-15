@@ -256,7 +256,7 @@ describe("runBenchmark", () => {
     const report = await runBenchmark({
       subjects: [genSubject("p", "pattern")],
       tasks: [tasks[0]],
-      model: "openrouter/meta-llama/llama-3.1-70b-instruct", // unpriced
+      model: "openrouter:meta-llama/llama-3.1-70b-instruct", // unpriced
       judgeModel: "anthropic/claude-haiku-4-5", // priced
       runs: 1,
       maxCostUsd: 1.0,
