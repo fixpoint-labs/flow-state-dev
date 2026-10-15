@@ -232,4 +232,12 @@ describe("the Shift Coordinator: no rules in its panel, a gear to its settings",
     expect((await screen.findByTestId("rules-not-kept")).textContent).toMatch(/doesn't keep standing rules/);
     expect(calls).toEqual([]);
   });
+
+  it("offers no gear when several workers could be the coordinator, rather than guessing one", async () => {
+    fixture = lab(toWorker({ id: "chief-of-staff", kind: "agent", rules: true })!, toWorker({ id: "ops.chief-of-staff", kind: "agent", rules: true })!);
+    await open("/cos");
+    const header = await screen.findByTestId("cos-header");
+    await within(header).findByTestId("cos-watching");
+    expect(within(header).queryByTestId("cos-settings")).toBeNull();
+  });
 });
