@@ -139,11 +139,7 @@ const snapshot = await sessions.getSessionState("sess_1", {
 await sessions.deleteSession("sess_1");
 ```
 
-If the same user, in the same organization, later creates a session under that id, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list.
-
-Deleting a session doesn't wait for work it still has running. Session ids come from you, so if you create a new session under the same id before that work finishes, the leftover work writes into the new session, and some of the old session's metadata updates can land there too. It never reaches another user's session.
-
-Give a new session a new id. If you have to reuse one, wait for the deleted session's running work to finish first.
+Session ids come from you. If the same user, in the same organization, later creates a session under that id, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. `deleteSession` doesn't stop or wait for requests and background runs that are still going. Once a new session holds the id, whichever user created it, their writes land in that session: its state, its resources, its journal, and any title, description, tags or metadata they set. Give a new session a new id.
 
 **Listing sessions:**
 
