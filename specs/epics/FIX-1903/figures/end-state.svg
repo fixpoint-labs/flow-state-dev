@@ -39,7 +39,7 @@
     <text class="t-b" x="312" y="158">a project's MCP servers</text>
     <text class="t-s" x="312" y="176">read when a coding run starts</text>
     <text class="t-s" x="312" y="190">from the run's own task row</text>
-    <text class="t-s" x="312" y="204">by host alias: no URL, no key on it</text>
+    <text class="t-s" x="312" y="204">by host alias: no URL, no key on the row</text>
     <text class="t-s" x="312" y="218">FSD connects with your key (Settings)</text>
   </g>
 
