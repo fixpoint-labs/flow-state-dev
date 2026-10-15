@@ -59,7 +59,6 @@ const flow = defineFlow({
 
 const ROOT_ID = "sess_shared_root";
 
-/** The runtime context, with `flow`'s `notes` resource typed as declared. */
 type NotesContext = Awaited<ReturnType<typeof createExecutionContext>> & {
   resources: { notes: ResourceRef<{ body: string }> };
 };

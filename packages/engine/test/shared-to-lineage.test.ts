@@ -119,7 +119,6 @@ async function seedSession(
   await stores.session.set(id, record, "any");
 }
 
-/** The runtime context, with `flow`'s two single resources typed as declared. */
 type LineageContext = Awaited<ReturnType<typeof createExecutionContext>> & {
   resources: { board: ResourceRef<{ note: string }>; scratch: ResourceRef<{ note: string }> };
 };
