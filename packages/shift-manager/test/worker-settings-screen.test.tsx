@@ -1,11 +1,7 @@
 // @vitest-environment happy-dom
 /**
- * A worker's settings page and its Rules section (FIX-1945 S6, BR-19 to
- * BR-21a; FIX-2007): every Roster row opens one, the Shift Coordinator's
- * gear opens its own, the old `/rules` address still lands there, the
- * panel no longer draws the rules, and every edit goes to the Lab naming the
- * version of the list it was drawn from. The Lab is a fake that keeps one
- * list and refuses as the rules action does, so a page that drew its own
+ * A worker's settings page and its Rules section (FIX-1945 S6, BR-19 to BR-21a; FIX-2007).
+ * The Lab is a fake that keeps one list and refuses as the rules action does, so a page that drew its own
  * idea of the list, or wrote without the version, shows here.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -88,7 +84,6 @@ describe("the Roster's way in (BR-20, BR-21a)", () => {
     await open("/roster");
     const rows = await screen.findAllByTestId("roster-worker");
     const row = (id: string) => rows.find((r) => r.getAttribute("data-worker-id") === id)!;
-    // A worker whose flow keeps no rules still has a settings page; the row no longer carries the line.
     for (const id of ["researcher", "eng.coder", "eng.helper"]) expect(within(row(id)).getByTestId("roster-worker-settings").textContent).toBe("Settings");
     expect(screen.queryByTestId("roster-worker-no-rules")).toBeNull();
     expect(screen.queryByTestId("roster-worker-rules")).toBeNull();

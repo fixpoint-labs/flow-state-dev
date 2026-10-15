@@ -1,8 +1,7 @@
 /**
  * Chief of Staff (FIX-1722): where Shift Manager opens. The shift summary,
  * then the user's conversation with the Lab's chief-of-staff worker; the right
- * panel lists its delegates and tasks. A gear in the header opens the worker's
- * settings, where its standing rules are (FIX-2007).
+ * panel lists its delegates and tasks.
  *
  * **The summary is Shift Manager's, not the worker's (D1).** It is drawn from
  * the one snapshot, with the helpers Inbox and Tasks use, so its numbers are

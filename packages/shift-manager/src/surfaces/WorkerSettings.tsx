@@ -1,12 +1,7 @@
 /**
- * A roster worker's settings (`/roster/<workerId>/settings`, FIX-2007),
- * opened from its Roster row and, for the Shift Coordinator, from the gear in
- * its header. Its one section is Rules: the standing rules that worker keeps
- * for the user (FIX-1945). The page's old address, `/roster/<workerId>/rules`,
- * opens it too.
- *
- * Only a worker on a flow Workforce says keeps rules has them (BR-20). A worker on any other flow gets a line saying its flow doesn't
- * keep them, rather than an empty list it could never fill (BR-21a).
+ * A roster worker's settings (`/roster/<workerId>/settings`, FIX-2007).
+ * `/roster/<workerId>/rules` still opens it. A flow that keeps no rules gets a
+ * line here, not an empty list (BR-21a).
  */
 import { StandingRules } from "../components/StandingRules";
 import { ScreenTitle } from "../components/ui";
