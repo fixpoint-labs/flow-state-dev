@@ -53,7 +53,7 @@ import { PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./p
 import { DONE_STATUS } from "./project-progress";
 import { projectEntries, readProjectAt, readProjectOutputSchema } from "./project-read";
 import { ProjectRefusedError } from "./project-refusal";
-import { WORKSTREAM_RESOURCES, workstreamEntryKey, workstreamEntrySchema } from "./workstream-collections";
+import { WORKSTREAM_RESOURCES, workstreamEntryKey, workstreamEntrySchema, workstreamViewSchema } from "./workstream-collections";
 import { parseProjectRef, parseWorkstreamRef, workstreamRef } from "./workstream-ref";
 
 /**
@@ -261,24 +261,37 @@ export async function changeWorkstreamRecordHere(
 }
 
 /**
+ * What a project coordinator's `readProject` tool answers: the read, with each
+ * workstream marked `yours` when the session's user owns it. The model sees
+ * owners only as user ids, and never its user's own, so without the mark it
+ * can't tell its user's workstream from another member's.
+ */
+const readLinkedProjectOutputSchema = readProjectOutputSchema.extend({
+  workstreams: z.array(workstreamViewSchema.extend({ yours: z.boolean() }))
+});
+
+/**
  * A project coordinator's `readProject` tool: the project its session is
- * linked to, every workstream's entry and the progress worked out from them.
+ * linked to, every workstream's entry, each marked `yours` or not, and the
+ * progress worked out from them.
  */
 const readLinkedProject = handler({
   name: "readProject",
   description:
     "Read the project this conversation is about: its title and brief, every workstream in it (whose it is, " +
-    "who leads it, its status, due date and objectives, and when it was last updated), and its progress. " +
-    "Answer how the project is going from this, never from memory.",
+    "with `yours: true` on the user's own, who leads it, its status, due date and objectives, and when it was " +
+    "last updated), and its progress. Answer how the project is going from this, never from memory.",
   inputSchema: z.object({}).strict(),
-  outputSchema: readProjectOutputSchema,
+  outputSchema: readLinkedProjectOutputSchema,
   resources: { ...PROJECT_ROW_RESOURCES, ...WORKSTREAM_RESOURCES },
   execute: async (_input, ctx) => {
     const project = linkedProjectOf(ctx.session.state);
     if (project === undefined) {
       throw new ProjectRefusedError("no-such-project", "this conversation is linked to no project.");
     }
-    return readProjectAt(ctx, project);
+    const user = userOf(ctx);
+    const read = await readProjectAt(ctx, project);
+    return { ...read, workstreams: read.workstreams.map((workstream) => ({ ...workstream, yours: workstream.owner === user })) };
   }
 });
 

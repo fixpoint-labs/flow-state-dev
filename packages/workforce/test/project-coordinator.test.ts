@@ -424,6 +424,23 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     expect((await h.sessionsWith("workerId", "alice-lead")).length).toBe(0);
   });
 
+  it("marks the user's own workstreams in its read, since the model sees owners only as user ids", async () => {
+    const judgment = scripted([{ toolName: "readProject", args: {} }], "Checkout is yours; billing is Bob's.");
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    await h.open("bob", "billing", "bob-lead");
+    const id = await h.coordinator("alice");
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Which of these workstreams is mine?" });
+    await h.settled();
+    const requests = await h.runtime.stores.request.list({ sessionId: id, withItems: true });
+    const read = requests
+      .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+      .find((item) => item.type === "tool_output" && item.blockName === "readProject");
+    // Without the mark, Bob's coordinator read his own workstream as another member's and handed it nothing.
+    const marks = Object.fromEntries((read.output.workstreams as Array<{ id: string; owner: string; yours: boolean }>).map((w) => [w.id, w.yours]));
+    expect(marks).toEqual({ checkout: true, billing: false });
+  });
+
   it("lists the project's entries at most once in a turn, for its delegates and its read tool together (V5)", async () => {
     const judgment = scripted([
       { toolName: "readProject", args: {} },
