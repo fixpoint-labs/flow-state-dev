@@ -2,8 +2,9 @@
 //
 // Two CI gates read this file (see the `fallow` job in .github/workflows/ci.yml):
 //   - `pnpm fallow:ci`    whole tree, unresolved imports + unlisted dependencies only.
-//   - `pnpm fallow:audit --base <ref>`  PRs only, fails on dead code or duplication
-//     the change introduces (findings already on the base don't count).
+//   - `pnpm fallow:audit --base <ref>`  PRs only, fails on dead code the change
+//     introduces (findings already on the base don't count); reports new
+//     duplication and complexity without failing.
 // `pnpm fallow` locally shows the whole backlog, and exits 1 while there is one.
 //
 // Framework plugins discover most entry points (package.json exports/bin, vitest,
@@ -85,26 +86,19 @@
     "packages/ui/.storybook/shadcn/**"
   ],
 
-  // Complexity reports but doesn't fail yet: existing hot spots are common
-  // enough that a new-only gate would still fire on ordinary PRs. Dead code
-  // keeps its default severity and fails `fallow audit`.
+  // Dead code fails `fallow audit` at its default severity. Complexity reports
+  // but doesn't fail: existing hot spots are common enough that a new-only gate
+  // would still fire on ordinary PRs. Duplication also reports without failing
+  // (fallow's default, no `duplicates.threshold`): editing code inside an
+  // existing clone splits it into clones fallow counts as new, so a failing
+  // gate would block ordinary fixes to code that is already duplicated.
   "rules": {
     "complexity-cyclomatic": "warn",
     "complexity-cognitive": "warn",
     "complexity-crap": "warn"
   },
 
-  // Duplication only fails the audit past a threshold, so any new clone does.
-  // The baseline lists the clones already on main: without it, editing a line
-  // inside an existing clone counts as introducing it. Moving or deleting a
-  // file that holds a baselined clone needs a refresh:
-  //   pnpm fallow dupes --save-baseline .github/fallow-dupes-baseline.json
-  "duplicates": { "threshold": 0.01 },
-
-  "audit": {
-    "gate": "new-only",
-    "dupesBaseline": ".github/fallow-dupes-baseline.json"
-  },
+  "audit": { "gate": "new-only" },
 
   "ignoreDependencies": [
     "@oh-my-pi/pi-coding-agent",

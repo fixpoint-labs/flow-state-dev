@@ -342,12 +342,12 @@ jobs:
       - name: Unresolved imports & unlisted dependencies
         run: pnpm fallow:ci
 
-      # PRs only: fails on unused files, exports, dependencies or duplicated
-      # code this PR introduces. Findings already on the base don't count, so
-      # the existing backlog never blocks a PR. Complexity reports here but
-      # doesn't fail (see `rules` in .fallowrc.json). `pnpm fallow` locally
-      # shows the whole backlog.
-      - name: New dead code & duplication
+      # PRs only: fails on unused files, exports or dependencies this PR
+      # introduces. Findings already on the base don't count, so the existing
+      # backlog never blocks a PR. New duplication and complexity are reported
+      # here without failing (see .fallowrc.json). `pnpm fallow` locally shows
+      # the whole backlog.
+      - name: New dead code
         if: github.event_name == 'pull_request'
         run: pnpm fallow:audit --base ${{ github.event.pull_request.base.sha }}
 
