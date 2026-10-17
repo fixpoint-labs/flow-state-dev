@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 324" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The territory: this project builds Shift Manager, the Workforce app: the shell and design system plus four product surfaces: org primitives, the eng workstream kit, attention and inspect, and review and GitHub wake. Below the fence is what it consumes and never extends: Workforce Layer 2 conventions, Layer 1 sessions, tasks and boards, the FIX-1637 wake spine, and reused FSD components. To the right, outside the project: Heartbeats or Paperclip clones, a Conductor or factory shell, kitchen-sink, and new Layer 1 nouns. The fence is one test: a noun a second app would need goes to Workforce, not into Shift Manager.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .n-own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .n-box  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .n-sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-out  { fill:none; stroke:var(--rule); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+              font-size:9.5px; letter-spacing:.1em; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-m    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-out  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .fence  { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:6 4; fill:none; }
+    .t-fence{ fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11px; }
+  </style>
+
+  <g id="owned">
+    <rect class="n-own" x="16" y="16" width="660" height="150" rx="6"/>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · SHIFT MANAGER, THE WORKFORCE APP · EACH SURFACE OWNS WHAT IT MEANS</text>
+    <rect class="n-box" x="32" y="46" width="612" height="40" rx="4"/>
+    <text class="t-b" x="44" y="64">Shell · design system · nav</text>
+    <text class="t-s" x="44" y="79">FIX-1649 — how every surface is reached and how it looks</text>
+    <rect class="n-box" x="32" y="96" width="147" height="56" rx="4"/>
+    <text class="t-m" x="42" y="116">Org primitives</text>
+    <text class="t-s" x="42" y="132">FIX-1650</text>
+    <text class="t-s" x="42" y="145">project · workstream</text>
+    <rect class="n-box" x="187" y="96" width="147" height="56" rx="4"/>
+    <text class="t-m" x="197" y="116">Eng workstream kit</text>
+    <text class="t-s" x="197" y="132">FIX-1651</text>
+    <text class="t-s" x="197" y="145">board · seats</text>
+    <rect class="n-box" x="342" y="96" width="147" height="56" rx="4"/>
+    <text class="t-m" x="352" y="116">Attention &amp; inspect</text>
+    <text class="t-s" x="352" y="132">FIX-1652</text>
+    <text class="t-s" x="352" y="145">needs-you · resources</text>
+    <rect class="n-box" x="497" y="96" width="147" height="56" rx="4"/>
+    <text class="t-m" x="507" y="116">Review &amp; wake</text>
+    <text class="t-s" x="507" y="132">FIX-1653</text>
+    <text class="t-s" x="507" y="145">GitHub review wake</text>
+  </g>
+
+  <g id="not-here">
+    <rect class="n-out" x="688" y="16" width="236" height="150" rx="6"/>
+    <text class="t-lbl" x="704" y="36">OUTSIDE · NEVER BUILT HERE</text>
+    <text class="t-out" x="704" y="60">Heartbeats / Paperclip clone</text>
+    <text class="t-out" x="704" y="82">Conductor or factory shell</text>
+    <text class="t-out" x="704" y="104">Kitchen-sink (the teach surface)</text>
+    <text class="t-out" x="704" y="126">New Layer 1 nouns</text>
+    <text class="t-s"   x="704" y="152">Agent · Team · Channel · Board</text>
+  </g>
+
+  <g id="fence">
+    <path class="fence" d="M16 192 H924"/>
+    <text class="t-fence" x="16" y="186">Would a second app need this noun?  Yes → Workforce, below.  Only the Lab → above.</text>
+  </g>
+
+  <g id="substrate">
+    <rect class="n-sub" x="16" y="210" width="908" height="100" rx="6"/>
+    <text class="t-lbl" x="32" y="230">CONSUMED, NEVER EXTENDED · OWNED ELSEWHERE</text>
+    <text class="t-b"  x="32" y="254">Workforce Layer 2 conventions · seats, channels, boards</text>
+    <text class="t-s"  x="32" y="270">Workforce: Layer 2 Abstraction (P-FIX-40)</text>
+    <text class="t-b"  x="500" y="254">Wake spine · FIX-1637</text>
+    <text class="t-s"  x="500" y="270">keeping flows alive, 24/7</text>
+    <text class="t-b"  x="32" y="296">Layer 1 sessions · tasks · reused FSD components (react, ui)</text>
+  </g>
+</svg>
