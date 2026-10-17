@@ -34,7 +34,7 @@ function drawerFlow(partitioned: boolean): FlowInstance {
     inputSchema: z.object({ note: z.string() }),
     resources: { skills },
     execute: async (input, ctx) => {
-      // @ts-expect-error a resource-declaring block's ctx is not assignable to BlockContext (to be filed, found by FIX-1343)
+      // @ts-expect-error — source bug FIX-2060: a resource-declaring block's ctx is not a BlockContext.
       const skills = resolveSkillsCollection(ctx, "skills")!;
       await skills.create(`${input.note}/SKILL.md`, { name: input.note, description: input.note });
       return { held: (await skills.list()).map((ref) => ref.state.name).sort() };
@@ -45,7 +45,7 @@ function drawerFlow(partitioned: boolean): FlowInstance {
     inputSchema: z.object({ note: z.string() }),
     resources: { skills },
     execute: async (_input, ctx) => {
-      // @ts-expect-error a resource-declaring block's ctx is not assignable to BlockContext (to be filed, found by FIX-1343)
+      // @ts-expect-error — source bug FIX-2060: a resource-declaring block's ctx is not a BlockContext.
       const view = resolveSkillsCollection(ctx, "skills")!;
       return {
         held: (await view.list()).map((ref) => ref.state.name).sort(),
