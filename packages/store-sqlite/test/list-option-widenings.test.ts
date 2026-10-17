@@ -164,14 +164,17 @@ describe("SQLite list-option widenings", () => {
       "nulled",
       session("nulled", {
         parentSessionId: "p",
-        ...({ orgId: null, tenantId: null } as Partial<SessionRecord>)
+        // Through `unknown`, deliberately: the record type declares
+        // `string | undefined`, and the point of the case is the `null` a
+        // persisted record can actually carry, which the type does not admit.
+        ...({ orgId: null, tenantId: null } as unknown as Partial<SessionRecord>)
       }),
       "any"
     );
     await s.request.set(
       "r_nulled",
       request("r_nulled", {
-        ...({ orgId: null, tenantId: null } as Partial<RequestRecord>)
+        ...({ orgId: null, tenantId: null } as unknown as Partial<RequestRecord>)
       }),
       "any"
     );

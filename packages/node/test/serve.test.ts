@@ -32,7 +32,7 @@ const noopFlow = defineFlow({
 /** A raw FlowApiRouter for exercising serve()'s routing/health/SSE wiring. */
 const fakeRouter: FlowApiRouter = {
   GET: async (_req, ctx) => {
-    const [first] = ctx.params.path;
+    const [first] = ctx.params.path ?? [];
     if (first === "stream") {
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
