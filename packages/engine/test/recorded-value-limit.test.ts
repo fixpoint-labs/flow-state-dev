@@ -78,6 +78,7 @@ describe("the record limit at the response emitter", () => {
     // A string serializes with two quote bytes, so this is exactly LIMIT bytes.
     const atLimit = "y".repeat(LIMIT - 2);
     expect(bytesOf(atLimit)).toBe(LIMIT);
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     await emitter.emitItemDone(traceItem("t1", { kind: "inline", value: atLimit }));
     expect(stored(emitter, "t1").output).toEqual({ kind: "inline", value: atLimit });
   });
@@ -86,6 +87,7 @@ describe("the record limit at the response emitter", () => {
     const emitter = createResponseEmitter({ requestId: "req_limit", maxRecordedValueBytes: LIMIT });
     const over = "y".repeat(LIMIT - 1);
     const item = traceItem("t1", { kind: "inline", value: over });
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     await emitter.emitItemDone(item);
 
     const output = stored(emitter, "t1").output;
@@ -97,6 +99,7 @@ describe("the record limit at the response emitter", () => {
   it("gives the placeholder the exact serialized size and the first 512 characters", async () => {
     const emitter = createResponseEmitter({ requestId: "req_limit", maxRecordedValueBytes: LIMIT });
     const value = { note: "héllo ✓", ...bulk(LIMIT * 3), when: new Date(0) };
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     await emitter.emitItemDone(traceItem("t1", { kind: "inline", value }));
     const output = stored(emitter, "t1").output;
     expect(output.kind).toBe("omitted");
@@ -108,6 +111,7 @@ describe("the record limit at the response emitter", () => {
   it("limits an inline leaf inside a structure output", async () => {
     const emitter = createResponseEmitter({ requestId: "req_limit", maxRecordedValueBytes: LIMIT });
     await emitter.emitItemDone(
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       traceItem("t1", {
         kind: "structure",
         shape: {
@@ -150,6 +154,7 @@ describe("the record limit at the response emitter", () => {
     const emitter = createResponseEmitter({ requestId: "req_limit", maxRecordedValueBytes: LIMIT });
     const cyclic: Record<string, unknown> = { a: 1 };
     cyclic.self = cyclic;
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     await emitter.emitItemDone(traceItem("t1", { kind: "inline", value: cyclic }));
     await emitter.emitItemDone(toolItem("o1", { status: "completed", output: { n: BigInt(1) } }));
     expect(stored(emitter, "t1").output).toMatchObject({ kind: "omitted", bytes: null });
@@ -187,7 +192,9 @@ describe("the record limit at the response emitter", () => {
     const emitter = createResponseEmitter({ requestId: "req_limit" });
     const under = "z".repeat(256 * 1024 - 2);
     const over = "z".repeat(256 * 1024 - 1);
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     await emitter.emitItemDone(traceItem("t1", { kind: "inline", value: under }));
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     await emitter.emitItemDone(traceItem("t2", { kind: "inline", value: over }));
     expect(stored(emitter, "t1").output.kind).toBe("inline");
     expect(stored(emitter, "t2").output.kind).toBe("omitted");
@@ -240,6 +247,7 @@ describe("the record limit through runAction", () => {
     const { result, persisted } = await runOnce(flow, { n: LIMIT * 2 });
 
     expect(result.output).toEqual({ length: LIMIT * 2 + MARKER.length, sawMarker: true });
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const trace = persisted.find((i) => i.type === "block_trace" && (i as BlockTraceItem).blockName === "readAll") as BlockTraceItem;
     expect((trace.output as { kind: string }).kind).toBe("omitted");
     expect(JSON.stringify(persisted)).not.toContain(MARKER);
@@ -273,6 +281,7 @@ describe("the record limit through runAction", () => {
     })();
     const last = await runOnce(lastMap, {});
     expect(last.result.output).toEqual(bulk(LIMIT * 2));
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const seqTrace = last.persisted.find((i) => i.type === "block_trace" && (i as BlockTraceItem).blockName === "seq") as BlockTraceItem;
     expect((seqTrace.output as { kind: string }).kind).toBe("omitted");
     expect(JSON.stringify(last.persisted)).not.toContain(MARKER);
@@ -295,6 +304,7 @@ describe("the record limit through runAction", () => {
       actions: { run: { block: sequencer({ name: "seq" }).step(readAll).step(measure), inputSchema: z.any() } }
     })();
     const { persisted } = await runOnce(flow, { n: LIMIT * 2 }, { maxRecordedValueBytes: LIMIT * 4 });
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const trace = persisted.find((i) => i.type === "block_trace" && (i as BlockTraceItem).blockName === "readAll") as BlockTraceItem;
     expect((trace.output as { kind: string }).kind).toBe("inline");
   });

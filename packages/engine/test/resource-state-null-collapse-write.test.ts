@@ -128,6 +128,7 @@ describe("a write the state schema parses to null", () => {
       flowKind: "null-collapse",
       userId: "user_1",
       state: {},
+      version: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       journal: []

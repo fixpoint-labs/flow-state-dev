@@ -36,9 +36,9 @@ function buildHost() {
   };
 
   const block = (name: string) =>
-    handler<{ value: string }, { ok: true }>({
+    handler({
       name,
-      execute: async (input) => {
+      execute: async (input: { value: string }): Promise<{ ok: true }> => {
         started.push(input.value);
         await new Promise<void>((resolve) => gates.push({ id: input.value, release: resolve }));
         return { ok: true };

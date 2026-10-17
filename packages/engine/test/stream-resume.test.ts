@@ -542,6 +542,7 @@ describe("stream resume — completed request replay from persisted events", () 
       id: requestId,
       flowKind: "test",
       actionName: "test",
+      source: "http",
       userId: "user1",
       status: "completed",
       startedAtMs: 100,

@@ -88,7 +88,7 @@ const forgedApproval = { suspensionId: "susp_forged", action: "approve", data: {
 async function settle(stores: ReturnType<typeof createInMemoryStores>, requestId: string) {
   for (let i = 0; i < 100; i += 1) {
     const record = await stores.request.get(requestId);
-    if (record !== undefined && record.status !== "in_progress" && record.status !== "queued") return record;
+    if (record !== undefined && record.status !== "in_progress") return record;
     await new Promise((r) => setTimeout(r, 10));
   }
   return stores.request.get(requestId);
@@ -100,7 +100,7 @@ describe("caller metadata cannot pre-approve a suspension (FIX-1707)", () => {
     const { stores, provider } = durableStores();
     const registry = createFlowRegistry();
     registry.register(payoutFlow("payout-http", paid) as never);
-    const router = createFlowApiRouter({ registry, stores, durabilityProvider: provider });
+    const router = createFlowApiRouter({ registry, stores, runtimeConfig: { durabilityProvider: provider } });
 
     const res = await router.POST(
       new Request("http://localhost/api/flows/payout-http/s_1/actions/run", {

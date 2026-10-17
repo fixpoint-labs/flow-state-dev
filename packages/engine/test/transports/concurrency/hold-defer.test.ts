@@ -9,6 +9,7 @@
  * gives back, must not strand a deferred run in another process.
  */
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import {
   createConcurrencyArbiter,
   type ConcurrencyFlowView
@@ -33,6 +34,7 @@ function envelope(requestId: string, actionName: string): DispatchEnvelope {
     actionName,
     input: {},
     userId: "u_1",
+    orgId: DEFAULT_ORG_ID,
     sessionId: "s_1"
   };
 }

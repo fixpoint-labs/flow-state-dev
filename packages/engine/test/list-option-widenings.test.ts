@@ -192,13 +192,13 @@ describe.each(adapters)("list-option widenings — $name adapter", ({ create }) 
         // Cast because the record type declares `string | undefined`; the
         // point of the case is the shape a persisted record can actually
         // carry, which the type does not admit.
-        ...({ orgId: null } as Partial<SessionRecord>)
+        ...({ orgId: null } as unknown as Partial<SessionRecord>)
       }),
       "any"
     );
     await requests.set(
       "r_nulled",
-      request("r_nulled", { ...({ orgId: null } as Partial<RequestRecord>) }),
+      request("r_nulled", { ...({ orgId: null } as unknown as Partial<RequestRecord>) }),
       "any"
     );
 
@@ -224,13 +224,13 @@ describe.each(adapters)("list-option widenings — $name adapter", ({ create }) 
       "nulled",
       session("nulled", {
         parentSessionId: "p",
-        ...({ tenantId: null } as Partial<SessionRecord>)
+        ...({ tenantId: null } as unknown as Partial<SessionRecord>)
       }),
       "any"
     );
     await requests.set(
       "r_nulled",
-      request("r_nulled", { ...({ tenantId: null } as Partial<RequestRecord>) }),
+      request("r_nulled", { ...({ tenantId: null } as unknown as Partial<RequestRecord>) }),
       "any"
     );
 

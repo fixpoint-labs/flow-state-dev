@@ -15,6 +15,7 @@
  * server-assembled.
  */
 import { describe, it, expect } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createRequestHost } from "../../src/context/create-request-host";
 import type { SessionRecord } from "../../src/stores/types";
 import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
@@ -22,7 +23,7 @@ import { CHILD_ENTRY, dispatchableFlow } from "./seam-harness";
 const IDENTITY = {
   userId: "u_alice",
   tenantId: undefined,
-  orgId: undefined,
+  orgId: DEFAULT_ORG_ID,
   sessionId: "s_parent",
   lineageId: "lin_parent"
 };

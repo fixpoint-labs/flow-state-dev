@@ -146,6 +146,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
     // The decision anchor is durable in the suspended record's item log BEFORE
     // the branch suspension — the router awaited the router_decision write.
     const suspendedRecord = await stores.request.get(requestId);
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const decisionItems = (suspendedRecord!.items ?? []).filter((i) => i.type === "router_decision") as any[];
     expect(decisionItems.length).toBe(1);
     expect(decisionItems[0].selectedRoute).toBe("branchA");
@@ -176,7 +177,8 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
     const other = handler({
       name: "other",
       inputSchema: z.any(),
-      outputSchema: z.any(),
+      // Matches its sibling route's output schema: a router's routes share one.
+      outputSchema: z.unknown(),
       execute: async () => "other"
     });
 
@@ -212,6 +214,7 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
     // router_decision anchor.
     const record = await stores.request.get(requestId);
     const items = record!.items ?? [];
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const decisionIndex = items.findIndex((i) => i.type === "router_decision");
     const suspensionIndex = items.findIndex((i) => i.type === "suspension");
     expect(decisionIndex).toBeGreaterThanOrEqual(0);
@@ -344,7 +347,8 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
     const branchB = handler({
       name: "branchB",
       inputSchema: z.any(),
-      outputSchema: z.any(),
+      // Matches its sibling route's output schema: a router's routes share one.
+      outputSchema: z.unknown(),
       execute: async () => {
         runs.b += 1;
         return "B";
