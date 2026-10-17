@@ -18,11 +18,11 @@ export const JEV = "typesafe-ai/jev";
  */
 export function modelWithoutConfidence(): EvaluationModel {
   if (process.env.OPENAI_API_KEY) {
-    return openai.evaluationModel("gpt-5.4-mini") as unknown as EvaluationModel;
+    return openai.evaluationModel("gpt-6-luna") as unknown as EvaluationModel;
   }
   const gateway = createOpenAI({
     baseURL: "https://ai-gateway.vercel.sh/v1",
     apiKey: process.env.AI_GATEWAY_API_KEY,
   });
-  return gateway.evaluationModel("openai/gpt-5.4-mini") as unknown as EvaluationModel;
+  return gateway.evaluationModel("openai/gpt-6-luna") as unknown as EvaluationModel;
 }

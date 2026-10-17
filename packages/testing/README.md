@@ -89,7 +89,7 @@ const result = await testFlow({
       },
     },
     user: {
-      state: { preferredModel: "openai/gpt-5.4-mini" },
+      state: { preferredModel: "openai/gpt-6-luna" },
     },
   },
 });
@@ -104,7 +104,7 @@ bag a block under test reads as `ctx.flow.config`, without minting a whole flow:
 ```ts
 const result = await testBlock(engineerWork, {
   input: { task: "review" },
-  flowConfig: { harness: "codex", model: "gpt-5.4" },
+  flowConfig: { harness: "codex", model: "gpt-6.1-sol" },
 });
 ```
 
@@ -145,7 +145,7 @@ const report = await evalBlock(classifier, {
     exactMatch("sentiment"),
     analyzerScorer({
       criteria: ["Output is relevant to the input"],
-      model: "anthropic/claude-haiku-4-5",
+      model: "anthropic/claude-haiku-5-5",
     }),
   ],
   concurrency: 3,
@@ -159,7 +159,7 @@ const report = await evalBlock(classifier, {
 ```ts
 analyzerScorer({
   criteria: ["Accurate", "Concise", "Professional tone"],
-  model: "anthropic/claude-haiku-4-5",  // cheaper model for grading
+  model: "anthropic/claude-haiku-5-5",  // cheaper model for grading
   scoreMapping: "mean",        // "mean" | "min" | { strategy: "weighted", weights }
   threshold: 0.7,              // pass/fail cutoff
 })
@@ -189,8 +189,8 @@ const report = await comparePatterns(
   ["supervisor", "debate"],
   {
     tasks,
-    model: "openai/gpt-5.4-mini",
-    judgeModel: "anthropic/claude-haiku-4-5",
+    model: "openai/gpt-6-luna",
+    judgeModel: "anthropic/claude-haiku-5-5",
     runs: 3,
   },
 );

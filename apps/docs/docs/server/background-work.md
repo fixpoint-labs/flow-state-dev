@@ -34,7 +34,7 @@ import { z } from "zod";
 
 const summarizeDocument = generator({
   name: "summarize-document",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({ documentId: z.string() }),
   prompt: "Summarize the document.",
 });

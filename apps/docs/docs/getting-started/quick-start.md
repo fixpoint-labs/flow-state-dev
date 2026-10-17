@@ -108,11 +108,11 @@ import chatFlow from "@/flows/hello-chat/flow";
 export const flowstate = createFlowState({
   flows: { chatFlow },
   models: {
-    default: "openai/gpt-5.4-mini",
+    default: "openai/gpt-6-luna",
     intents: {
       chat: [
-        "anthropic/claude-sonnet-4-6",
-        "openai/gpt-5.4-mini",
+        "anthropic/claude-sonnet-5-5",
+        "openai/gpt-6-luna",
         "google/gemini-3.1-pro",
       ],
     },

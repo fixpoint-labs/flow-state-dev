@@ -76,7 +76,7 @@ export const skillActivator = createSkillActivator({
 });
 ```
 
-`skillEvaluator` takes any model an evaluator accepts: a model string, or an evaluation model such as `openai.evaluationModel("gpt-5.4-mini")`. See [Evaluation models](/docs/fundamentals/models#evaluation-models).
+`skillEvaluator` takes any model an evaluator accepts: a model string, or an evaluation model such as `openai.evaluationModel("gpt-6-luna")`. See [Evaluation models](/docs/fundamentals/models#evaluation-models).
 
 #### Follow-ups that need the last few turns
 
@@ -122,7 +122,7 @@ import { skillQuestions } from "@flow-state-dev/orchestration";
 
 const pickSkill = evaluator({
   name: "pick-skill",
-  model: openai.evaluationModel("gpt-5.4-mini"),
+  model: openai.evaluationModel("gpt-6-luna"),
   state: (input) => input.message,
   questions: skillQuestions,
 });

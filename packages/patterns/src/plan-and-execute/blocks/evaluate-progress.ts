@@ -153,7 +153,7 @@ export function createLLMEvaluator(options: {
   return generator({
     name: `${name}-evaluate-llm`,
     activeStatusMessage: "Reviewing progress",
-    model: model ?? "openai/gpt-5.4-mini",
+    model: model ?? "openai/gpt-6-luna",
     outputSchema: llmEvaluatorOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
     prompt: [

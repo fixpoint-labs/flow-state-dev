@@ -64,8 +64,8 @@ fsdev block ./src/flows/hello-chat/blocks/counter.ts -i '{}'
 Swap models without changing code:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hi"}' -m openai/gpt-5.4-mini
-fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m anthropic/claude-haiku-4-5
+fsdev run hello-chat chat -i '{"message": "Hi"}' -m openai/gpt-6-luna
+fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m anthropic/claude-haiku-5-5
 ```
 
 Handy for forcing a cheaper model during development, and for comparing how two models behave on the same input.
@@ -89,17 +89,17 @@ Swap the model an intent resolves to from the environment, without touching reso
 
 ```bash
 # .env.test
-FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
-FSDEV_INTENT_UTILITY=openai/gpt-5.4-mini
-FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+FSDEV_INTENT_CHAT=openai/gpt-6-luna
+FSDEV_INTENT_UTILITY=openai/gpt-6-luna
+FSDEV_DEFAULT_MODEL=openai/gpt-6-luna
 ```
 
 ```yaml
 # GitHub Actions
 - name: Run integration tests
   env:
-    FSDEV_INTENT_CHAT: openai/gpt-5.4-mini
-    FSDEV_INTENT_UTILITY: openai/gpt-5.4-mini
+    FSDEV_INTENT_CHAT: openai/gpt-6-luna
+    FSDEV_INTENT_UTILITY: openai/gpt-6-luna
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   run: pnpm test:integration
 ```
