@@ -64,16 +64,18 @@ const planner = generator({
     createCursorAgentCapability({
       cwd: async (ctx) => checkoutForThisRun(ctx),
       // Cursor's model, in Cursor's own ids.
-      agent: { model: { id: "composer-2.5" } },
+      model: "composer-2.5",
     }),
   ],
 });
 ```
 
 **Cursor needs a model.** Its SDK refuses to open a local agent without one, so
-`agent.model` is not optional in practice. It takes `{ id }`, plus an optional
-`params` list of `{ id, value }` pairs for whatever that model exposes.
-`Cursor.models.list()` in the SDK enumerates what your account can select.
+name one with `model` (an id, or a resolver asked once per run, so each session
+can run its own) or with `agent.model`, which also takes Cursor's `params` list of
+`{ id, value }` pairs for whatever that model exposes. Setting both is refused
+when the block is built. `Cursor.models.list()` in the SDK enumerates what your
+account can select.
 
 ## As a sequencer step
 
@@ -86,10 +88,10 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
     cwd: (ctx) => workspacePathFor(ctx),
     resume: (ctx) => previousAgentIdFor(ctx),
     onSession: (id, ctx) => rememberAgentId(id, ctx),
-    // Options passed straight to Cursor, in Cursor's own vocabulary — `model`
-    // here is a Cursor model id, not a flow-state-dev one.
+    // A Cursor model id, not a flow-state-dev one, read per run. A resumed agent gets it too.
+    model: (ctx) => modelPickedFor(ctx),
+    // Options passed straight to Cursor, in Cursor's own vocabulary.
     agent: {
-      model: { id: "composer-2.5" },
       mode: "agent",
       local: { sandboxOptions: { enabled: true } },
     },
@@ -99,7 +101,7 @@ const pipeline = sequencer({ name: "do-the-work" }).step(
 ```
 
 The block's input is the prompt, and nothing else. Everything that decides where
-a run writes or which conversation it continues is configuration. The same block
+a run writes, which conversation it continues or which model it runs is configuration. The same block
 can be handed to a model as a tool, and a field on the input is a field the model
 could set.
 
@@ -112,6 +114,7 @@ the block is built:
 | `agent.agentId` | `resume` decides which conversation a run continues. |
 | `agent.local.cwd` | `cwd` decides where a run works. The rest of `local` is forwarded. |
 | `agent.cloud`, `send.cloud` | Cursor's cloud agents are not supported here. |
+| `agent.model`, `send.model` beside `model` | Each names the model a run uses; keep one. |
 
 ## What it emits
 

@@ -502,6 +502,18 @@ doesn't silently take the relocation ones away. `contain: false` turns all
 three off, which is what a trusted-workspace deployment wants and what nothing
 else should.
 
+### Choosing the model
+
+`model` takes a Claude model id, or a resolver asked once per run like `cwd` and
+`resume`, so one block can run a different model per session; a resumed
+conversation is handed it too. `null` leaves Claude Code on its default.
+
+`listClaudeModels({ env })` asks Claude Code which models it offers, with no
+message and no model turn, and resolves to `{ status: "models", models }` or
+`{ status: "failed", reason }`. Each model carries the concrete id its alias
+resolves to (`sonnet`, the default row), its name, and whether it is the default,
+so a stored id keeps naming one model after the alias moves on.
+
 ### Checking for a credential before you start
 
 A run with no credential fails on its first turn, which for a server can be long after it started. `probeClaudeAccount` asks Claude Code up front whether it has something to run on: an API key, or a sign-in under the home folder (the keychain on macOS). It sends no message, so it costs no model turn, and takes about half a second.

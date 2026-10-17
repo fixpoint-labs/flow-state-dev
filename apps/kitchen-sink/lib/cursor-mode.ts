@@ -38,14 +38,20 @@ import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import type { HarnessModel, ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCursor } from "./scripted-cursor";
 
 /** Cursor mode's flow kind, from the mode list: the rail lists its sessions by it. */
 export const CURSOR_SESSION = flowKindOf(modeById("cursor"));
 
-/** The model Cursor mode runs. */
-export const CURSOR_MODEL = "composer-2.5";
+/**
+ * Cursor mode's default model: preselected in New session, the one a session
+ * from before models could be picked runs on, and the only one offered when
+ * Cursor's model list can't be read. Cursor's SDK refuses a local agent with
+ * no model, so there is always one to hand it.
+ */
+export const CURSOR_DEFAULT_MODEL = "composer-2.5";
 
 /**
  * The only variables of the server's environment Cursor's runtime is handed
@@ -101,10 +107,10 @@ export function cursorBlockOptions(feeds: HarnessFeeds, seams: CursorSeams = {})
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    model: feeds.model,
     // Declares no plan record, so goal leg **p** can be seen to fail.
     recordPlan: goalControl() !== "no-record",
     agent: {
-      model: { id: CURSOR_MODEL },
       mode: "agent",
       // Writes confined to the run's `cwd`, the session's worktree. Cursor fails
       // the run when its sandbox can't start, rather than running without it.
@@ -133,7 +139,76 @@ export function cursorBlock(feeds: HarnessFeeds, seams: CursorSeams = {}): Harne
 
 /** Cursor mode's session flow. `seams` is for tests. */
 export function cursorSessionFlow(seams: CursorSeams = {}) {
-  return harnessSessionFlow({ kind: CURSOR_SESSION, agent: (feeds) => cursorBlock(feeds, seams) });
+  return harnessSessionFlow({
+    kind: CURSOR_SESSION,
+    agent: (feeds) => cursorBlock(feeds, seams),
+    defaultModel: CURSOR_DEFAULT_MODEL,
+  });
+}
+
+/** Cursor's own model list, read over the run's sign-in. A seam for tests. */
+export type CursorModelList = (env: Record<string, string>) => Promise<readonly HarnessModel[]>;
+
+/** One entry of Cursor's catalog, as far as the picker reads it (`ModelListItem` in `@cursor/sdk`). */
+export interface CursorCatalogEntry {
+  readonly id: string;
+  readonly displayName?: string;
+  /** The settings the model is chosen with (`optimize_for` on `auto-smart`, say). */
+  readonly parameters?: readonly unknown[];
+}
+
+/**
+ * The catalog entries a session can run by id alone. The model feed hands the
+ * block an id and nothing else, so an entry that declares parameters is left
+ * out rather than offered without them.
+ */
+export function cursorCatalogModels(items: readonly CursorCatalogEntry[]): HarnessModel[] {
+  return items
+    .filter((item) => (item.parameters?.length ?? 0) === 0)
+    .map((item) => ({ id: item.id, label: item.displayName || item.id }));
+}
+
+/** The SDK's catalog call: the models the signed-in account can run, by Cursor's ids and names. */
+const listCursorModels: CursorModelList = async (env) => {
+  // Loaded only here, so a host without the SDK never loads it.
+  const { Cursor } = (await import("@cursor/sdk")) as unknown as {
+    Cursor: { models: { list(options?: { apiKey?: string }): Promise<CursorCatalogEntry[]> } };
+  };
+  const key = env.CURSOR_API_KEY ?? "";
+  return cursorCatalogModels(await Cursor.models.list(key === "" ? undefined : { apiKey: key }));
+};
+
+/** How long the page waits for Cursor's catalog before offering the default alone. */
+const CURSOR_LIST_TIMEOUT_MS = 10_000;
+
+/**
+ * Cursor's list, the mode's default put first when Cursor omits it; the
+ * default alone, with the reason, when the list can't be read within `timeoutMs`.
+ */
+export async function cursorModelChoices(
+  list: CursorModelList = listCursorModels,
+  timeoutMs: number = CURSOR_LIST_TIMEOUT_MS,
+): Promise<ModelChoices> {
+  const fallback: HarnessModel = { id: CURSOR_DEFAULT_MODEL, label: CURSOR_DEFAULT_MODEL };
+  const base = { defaultId: CURSOR_DEFAULT_MODEL, fallbackId: CURSOR_DEFAULT_MODEL };
+  if (cursorIsScripted()) return { ...base, models: [fallback], reason: null };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+    });
+    const models = await Promise.race([list(cursorEnv()), timedOut]);
+    const listed = models.some((model) => model.id === CURSOR_DEFAULT_MODEL);
+    return { ...base, models: listed ? models : [fallback, ...models], reason: null };
+  } catch (error) {
+    return {
+      ...base,
+      models: [fallback],
+      reason: `Cursor's model list can't be read (${error instanceof Error ? error.message : String(error)}), so only Cursor mode's default is offered.`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** How this host signs Cursor in: a key in the run's environment, a stored login, or neither. */
