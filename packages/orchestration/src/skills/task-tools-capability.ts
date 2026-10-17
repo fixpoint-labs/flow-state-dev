@@ -721,7 +721,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
     if (!isTaskTurn(ctx)) return undefined;
     const ledger = await options.resolve(ctx);
     if (ledger === undefined) return undefined;
-    const stamped = currentWorkerClaim();
+    const stamped = currentWorkerClaim(ctx);
     if (stamped !== undefined) {
       if (stamped.collectionId !== ledger.collectionId || stamped.partition !== ledger.partition) return undefined;
       return { claim: stamped, ledger, row: ledger.get(stamped.taskId) };
@@ -910,7 +910,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     if (bad) return bad;
     // Read once, so the ticket the write presented is the ticket the refusal is
     // rendered against even if the scope somehow changed mid-call.
-    const claim = claimless ? undefined : currentWorkerClaim();
+    const claim = claimless ? undefined : currentWorkerClaim(ctx);
     try {
       // Typed as nullable at this boundary on purpose (BP-030): a custom
       // `TaskCollectionRef` written before the widening — or one reached through

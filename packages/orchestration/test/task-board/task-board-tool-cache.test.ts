@@ -28,6 +28,7 @@ import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 const RESOLVER_BAG_KEY = "__fsd_fix610_resolverBag";
 const STORE_SLOT = "resolveToolCacheStore";
 const WRITER_SLOT = "writeToolObservation";
+const SOURCE_TASK_SLOT = "resolveCacheSourceTask";
 
 function readResolverBag(ctx: BlockContext): Record<string, unknown> | undefined {
   const req = ctx.request as unknown as Record<string, unknown>;
@@ -119,5 +120,44 @@ describe("taskBoard - tool-cache wiring", () => {
     expect(seenStores.size).toBe(1);
     expect(executions).toBe(1);
     expect(observedHitOnSecondTask.value).toBe(true);
+  });
+
+  it("attributes a worker's cache writes to the task that worker holds", async () => {
+    // What a later cross-task hit reports as `sourceTask`. It is read off the
+    // worker's claim scope, so a scope the worker cannot see attributes every
+    // write to no task at all — silently, since attribution is best-effort.
+    const attributed: Record<string, unknown> = {};
+
+    const worker: TaskWorker = handler({
+      name: "attributing-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ done: z.boolean() }),
+      execute: (input, ctx) => {
+        const resolver = readResolverBag(ctx)?.[SOURCE_TASK_SLOT];
+        attributed[input.taskId] =
+          typeof resolver === "function" ? (resolver as () => unknown)() : "no resolver";
+        return { done: true };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "attribution-board",
+      collection: { collectionId: "attribution" },
+      concurrency: 2,
+      workers: worker,
+      toolCache: true,
+      initialTasks: [
+        { id: "t1", goal: "first" },
+        { id: "t2", goal: "second" },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+
+    expect(attributed).toEqual({
+      t1: { collectionId: "attribution", taskId: "t1" },
+      t2: { collectionId: "attribution", taskId: "t2" },
+    });
   });
 });

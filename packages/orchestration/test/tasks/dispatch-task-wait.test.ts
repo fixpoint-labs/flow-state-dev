@@ -19,9 +19,10 @@ import {
   getOrCreateTaskCollection,
   resolveResourceCollection,
   resumeOwedWaits,
+  type TaskClaimTicket,
   type TaskCollectionRef
 } from "../../src";
-import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { act, statusOf, stepModel, toolResults, until, type StepFn } from "./wait-fixture";
 
 const BOARD = "waits";
@@ -35,7 +36,12 @@ async function boardOf(ctx: BlockContext): Promise<TaskCollectionRef | undefined
 const roster = { has: (name: string) => name === "researcher", describe: () => "researcher" };
 
 /** The waiting flow: `run` is a turn holding the task tools; `settle`, `touch` and `list` as in the wait fixture. */
-function toolFlow(model: ReturnType<typeof stepModel>["model"], resumesWaits = true, taskTurnInstead?: string): FlowInstance {
+function toolFlow(
+  model: ReturnType<typeof stepModel>["model"],
+  resumesWaits = true,
+  taskTurnInstead?: string,
+  claim?: TaskClaimTicket
+): FlowInstance {
   // This flow's `touch` action is its waker, so the board resumes waits.
   const tools = createTaskToolsCapability(boardOf, roster, {
     resumesWaits,
@@ -72,7 +78,15 @@ function toolFlow(model: ReturnType<typeof stepModel>["model"], resumesWaits = t
     resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
     actions: {
       run: {
-        block: sequencer({ name: "turn" }).step(generator({ name: "agent", model, prompt: "p", uses: [tools] })),
+        // With `claim`, the turn is a task turn: it stamps the claim in its own
+        // request before the generator runs, as the receiving gate does.
+        block: (claim === undefined
+          ? sequencer({ name: "turn" })
+          : sequencer({ name: "turn" }).tap((_input: unknown, ctx) => {
+              openWorkerClaimScope();
+              stampCurrentClaim(claim, ctx);
+            })
+        ).step(generator({ name: "agent", model, prompt: "p", uses: [tools] })),
         inputSchema: z.object({}).passthrough()
       },
       settle: { block: settle },
@@ -110,9 +124,8 @@ function dispatchTaskFields(seen: GeneratorModelCallOptions[]): string[] {
   return Object.keys((tool.parameters as z.AnyZodObject).shape).sort();
 }
 
-/** Run `fn` in an async scope of its own, so a stamped claim stays in it. */
-const isolated = <T>(fn: () => Promise<T>): Promise<T> =>
-  new Promise((resolve, reject) => setImmediate(() => fn().then(resolve, reject)));
+/** The claim a task turn's gate holds, stamped by `toolFlow`'s turn when given. */
+const WORKED_CLAIM: TaskClaimTicket = { collectionId: "tasks", taskId: "task_worked", attempt: 1, createdAt: 1 };
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -259,14 +272,10 @@ describe("refused before anything is filed", () => {
 
   it("on a task turn: wait_unavailable, so a wait is never started from inside a wait (BR-5a)", async () => {
     const { model, seen } = stepModel([dispatchTaskCall("c1", { assignee: "researcher", wait: true }), finalAnswer]);
-    const flow = toolFlow(model);
+    const flow = toolFlow(model, true, undefined, WORKED_CLAIM);
     const state = await host(flow, { durable: true, router: true });
     try {
-      const run = await isolated(async () => {
-        // The gate's claim, as it stamps it before the turn it serves.
-        stampCurrentClaim({ collectionId: "tasks", taskId: "task_worked", attempt: 1, createdAt: 1 });
-        return act(state as never, flow, "run");
-      });
+      const run = await act(state as never, flow, "run");
       expect(await statusOf(state as never, run.requestId!)).toBe("completed");
       expect(toolResults(seen[1]!.messages)).toContain('"error":"wait_unavailable');
       // A plain board's task turn completes its task when it returns, so
@@ -281,13 +290,10 @@ describe("refused before anything is filed", () => {
   it("on a task turn, with the layer's own way to wait: the refusal and the description say it", async () => {
     const instead = "File it without wait and end your turn; its ending wakes this task.";
     const { model, seen } = stepModel([dispatchTaskCall("c1", { assignee: "researcher", wait: true }), finalAnswer]);
-    const flow = toolFlow(model, true, instead);
+    const flow = toolFlow(model, true, instead, WORKED_CLAIM);
     const state = await host(flow, { durable: true, router: true });
     try {
-      await isolated(async () => {
-        stampCurrentClaim({ collectionId: "tasks", taskId: "task_worked", attempt: 1, createdAt: 1 });
-        return act(state as never, flow, "run");
-      });
+      await act(state as never, flow, "run");
       const refusal = toolResults(seen[1]!.messages);
       expect(refusal).toContain('"error":"wait_unavailable');
       expect(refusal).toContain(instead);
