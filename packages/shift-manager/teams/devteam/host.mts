@@ -165,7 +165,7 @@ export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
 
 /** Fallback when a worker names no model: the tree's model, via `intent/chat` (FIX-2008). */
-export const LAB_DEFAULT_MODEL = "openai/gpt-5.4-mini";
+export const LAB_DEFAULT_MODEL = "openai/gpt-6-luna";
 
 /** The Lab user's cell in the Lab org, where every flow keeps that user's data. */
 const LAB_USER_CELL = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
@@ -963,7 +963,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const workstreamBlocks = defineWorkstreamBlocks({
     installation,
     leadFlows: LEAD_FLOWS,
-    leadFit: { model: "openai/gpt-5.4-mini" },
+    leadFit: { model: "openai/gpt-6-luna" },
   });
   const { listProjects, ...projectWrites } = chiefOfStaffProjectTools(projectBlocks, workstreamBlocks);
   const projectTools = options.withoutProjectList === true ? projectWrites : { listProjects, ...projectWrites };
@@ -1085,7 +1085,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       delegateFlows: [agentFlow, emFlow as never],
       routeModel: "typesafe-ai/jev",
       agent: coordinatorMemory(agentTurn, {
-        model: "openai/gpt-5.4-mini",
+        model: "openai/gpt-6-luna",
         capture: options.memoryCapture === true,
       }),
     }) as never,

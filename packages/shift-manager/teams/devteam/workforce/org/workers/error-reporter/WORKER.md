@@ -1,7 +1,7 @@
 ---
 flow: error-reporter
 description: Told about every failure that stays failed, and about problems you describe to it. Investigates each one, asks you in Inbox, then files one issue an engineer can reproduce from.
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 tools: []
 ---
 

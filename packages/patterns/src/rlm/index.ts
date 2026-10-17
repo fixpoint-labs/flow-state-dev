@@ -44,7 +44,7 @@ export const subQueryGenerator = generator({
     "Process a sub-query on a context subset. " +
     "Use when you need to analyze a specific portion of the context in detail.",
   model: (_input, ctx) =>
-    ctx.resources.context?.state.metadata?.model ?? "gpt-4o-mini",
+    ctx.resources.context?.state.metadata?.model ?? "openai/gpt-6-luna",
 
   inputSchema: z.object({
     query: z.string().describe("The specific sub-question to answer"),
@@ -83,7 +83,7 @@ export const subQueryGenerator = generator({
 export const rootGenerator = generator({
   name: "rlm-root",
   model: (_input, ctx) =>
-    ctx.resources.context?.state.metadata?.model ?? "gpt-4o-mini",
+    ctx.resources.context?.state.metadata?.model ?? "openai/gpt-6-luna",
 
   inputSchema: z.object({
     query: z.string()

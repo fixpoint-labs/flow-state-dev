@@ -826,8 +826,8 @@ Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitize
 
 Generators reference a model with a string. The string can be:
 
-- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4-6"`
-- `name:model` — a named route: a gateway (`"vercel:openai/gpt-5.5"`) or a provider (`"openai:gpt-5.5"`, or a key of `providers` such as `"triage:native"`). Never falls back to another route. A model string with three slash-separated parts throws, naming its colon spelling.
+- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-5-5"`
+- `name:model` — a named route: a gateway (`"vercel:openai/gpt-6.1-sol"`) or a provider (`"openai:gpt-6.1-sol"`, or a key of `providers` such as `"triage:native"`). Never falls back to another route. A model string with three slash-separated parts throws, naming its colon spelling.
 - `intent/<name>` — a named routing group resolved by the model resolver
 
 Configure intents on the resolver. Each intent maps a name to an ordered list of candidate model strings. Resolution walks the list, filters to providers the app has keys for, and falls back to `defaultModel` when nothing in the intent is reachable.
@@ -836,11 +836,11 @@ Configure intents on the resolver. Each intent maps a name to an ordered list of
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4-6",
+  defaultModel: "anthropic/claude-sonnet-5-5",
   intents: {
-    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
-    chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
-    synthesize: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-5-5", "openai/gpt-6-luna"],
+    chat: ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
+    synthesize: ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"],
   },
 });
 ```
@@ -855,8 +855,8 @@ Configure `providerOptions` (e.g. Anthropic thinking) per intent so generators d
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "openai/gpt-5.4",
-  intents: { plan: ["anthropic/claude-opus-4-7"] },
+  defaultModel: "openai/gpt-6.1-sol",
+  intents: { plan: ["anthropic/claude-opus-5-5"] },
   intentDefaults: {
     plan: {
       providerOptions: {
@@ -880,8 +880,8 @@ Each value is a `provider/model` or `name:model` string. `intent/*` values are r
 
 ```bash
 # .env.local
-FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
-FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+FSDEV_INTENT_CHAT=openai/gpt-6-luna
+FSDEV_DEFAULT_MODEL=openai/gpt-6-luna
 ```
 
 Invalid values (an `intent/*` string, or an empty value) for a declared intent throw at construction. An `FSDEV_INTENT_*` that names an intent the resolver doesn't declare is **warned-and-skipped, not fatal** — env vars are ambient, and an app must not crash because a shared/CI environment pins an intent var for some *other* app. (A typo in an intent the app *does* declare still surfaces as a warning.) `FSDEV_DEFAULT_MODEL` applies whether or not intents are declared, so an app that resolves no model is unaffected by it. Each applied or ignored override emits one dev-only `console.warn` (suppressed by `NODE_ENV=production` and `FSD_QUIET_WARNINGS=1`). Tests can pass an explicit `env` option to `createModelResolver` to avoid mutating `process.env`.

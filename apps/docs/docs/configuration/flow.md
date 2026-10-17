@@ -83,7 +83,7 @@ const engineer = defineFlow({
   actions: { /* ... */ },
 });
 
-export const alice = engineer({ id: "eng-alice", config: { harness: "codex", model: "gpt-5.4" } });
+export const alice = engineer({ id: "eng-alice", config: { harness: "codex", model: "gpt-6.1-sol" } });
 ```
 
 What refuses, and when:

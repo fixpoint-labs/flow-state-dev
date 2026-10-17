@@ -152,7 +152,7 @@ describe("chat-agent flow", () => {
       user: {
         state: {
           displayName: "TestUser",
-          selectedModel: "vercel:openai/gpt-5.6-luna",
+          selectedModel: "vercel:openai/gpt-6-luna",
           thinkingEnabled: false,
         }
       },

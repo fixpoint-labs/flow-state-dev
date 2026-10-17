@@ -35,7 +35,7 @@ const port = parseInt(process.env.PORT ?? "3000", 10);
 //    long-lived disk; `primary` is the catch-all state slot.
 const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: filesystemStores({ rootDir: ".flow-state-data" }) } },
   onError: (error, context) => {
     console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);

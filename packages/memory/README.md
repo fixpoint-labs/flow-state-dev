@@ -27,7 +27,7 @@ import { defineFlow, generator } from "@flow-state-dev/core";
 import { createMemoryCapability } from "@flow-state-dev/memory";
 
 const mem = createMemoryCapability({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -56,7 +56,7 @@ import { defineFlow, generator } from "@flow-state-dev/core";
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -103,7 +103,7 @@ The semantic tier can store typed directed relationships between subjects, not j
 
 ```ts
 const mem = system({
-  model: 'openai/gpt-5.4-mini',
+  model: 'openai/gpt-6-luna',
   working: true,
   episodic: true,
   semantic: { relations: true },
@@ -149,7 +149,7 @@ you install that model's provider. Without an evaluator, every captured turn run
 import { system, captureEvaluator } from '@flow-state-dev/memory'
 
 const mem = system({
-  model: 'openai/gpt-5.4-mini',
+  model: 'openai/gpt-6-luna',
   working: true,
   evaluator: captureEvaluator('typesafe-ai/jev'),
 })

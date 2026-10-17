@@ -59,7 +59,7 @@ import { createCursorAgentCapability } from "@flow-state-dev/cursor";
 const planner = generator({
   name: "planner",
   // The generator's own model, as a flow-state-dev model id.
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [
     createCursorAgentCapability({
       cwd: async (ctx) => checkoutForThisRun(ctx),

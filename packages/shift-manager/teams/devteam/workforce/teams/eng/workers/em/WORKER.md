@@ -4,7 +4,7 @@ description: Files each feature as a task for the coder, and keeps the workstrea
 flow: em
 document: engineering-handbook
 delegates: [eng.coder, eng.reviewer]
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 tools: [updateWorkstream]
 ---
 

@@ -55,7 +55,7 @@ For production, `fsdev serve` runs the same flow API and MCP endpoints with no D
 
 ```bash
 # Start with a custom port and model override
-fsdev dev --port 3000 --model openai/gpt-5.4-mini
+fsdev dev --port 3000 --model openai/gpt-6-luna
 
 # Point at a specific flow directory
 fsdev dev --flow-dir ./my-flows

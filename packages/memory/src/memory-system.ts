@@ -370,7 +370,7 @@ export interface MemoryToolConfig {
 export interface MemorySystemConfig {
   /**
    * Default model id (or fallback chain) used by every memory generator
-   * unless overridden. Pass an array (e.g. `['gpt-5-mini', 'gpt-5']`) to
+   * unless overridden. Pass an array (e.g. `['gpt-6-luna', 'gpt-6.1-sol']`) to
    * build a fallback chain — the generator walks the list on retryable
    * provider errors.
    */
@@ -379,7 +379,7 @@ export interface MemorySystemConfig {
    * Model override for the consolidation generator. Defaults to `model`.
    * Consolidation has heavier structured-output demands than the observer,
    * so a stronger primary with a cheap fallback (e.g.
-   * `['gpt-5', 'gpt-5-mini']`) is a common configuration.
+   * `['gpt-6.1-sol', 'gpt-6-luna']`) is a common configuration.
    */
   consolidationModel?: string | string[]
   /** Model override for the prune generator. Defaults to `model`. */
@@ -751,7 +751,7 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
  * import { system } from '@flow-state-dev/memory'
  *
  * const mem = system({
- *   model: 'gpt-5-mini',
+ *   model: 'gpt-6-luna',
  *   working: { capacity: 7 },
  *   episodic: true,
  *   semantic: true,

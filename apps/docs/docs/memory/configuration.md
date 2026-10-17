@@ -12,7 +12,7 @@ Flow, runtime, and environment knobs that are not memory-specific sit next to th
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7, decay: { strategy: "power-law", rate: 0.5 } },
   episodic: { scope: "user", significanceThreshold: 0.6 },
   semantic: { consolidation: { episodicThreshold: 5 } },
@@ -40,7 +40,7 @@ import { defineFlow, generator } from "@flow-state-dev/core";
 import { createMemoryCapability } from "@flow-state-dev/memory";
 
 const mem = createMemoryCapability({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -94,7 +94,7 @@ ships the question and a helper that builds the block; you choose the model:
 import { system, captureEvaluator } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: true,
   episodic: true,
   evaluator: captureEvaluator("typesafe-ai/jev"),
@@ -104,8 +104,8 @@ const mem = system({
 The evaluator needs an evaluation model: a model that picks among fixed answers instead of
 writing text ([Evaluation models](/docs/fundamentals/models#evaluation-models)). `typesafe-ai/jev`
 is Jev, served through Vercel's AI Gateway. An ordinary chat model string like
-`openai/gpt-5.4-mini` is not an evaluation model: through the gateway, the capture fails with an
-error saying it's a language model. For OpenAI, pass `openai.evaluationModel("gpt-5.4-mini")`
+`openai/gpt-6-luna` is not an evaluation model: through the gateway, the capture fails with an
+error saying it's a language model. For OpenAI, pass `openai.evaluationModel("gpt-6-luna")`
 from `@ai-sdk/openai` instead.
 
 On each capture, the evaluator reads the same new messages the observer would and answers
@@ -228,7 +228,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: true,
   episodic: true,                       // follows isolateUserState: kept to this flow
   semantic: { flowIsolation: false },   // shared with the person's other flows
@@ -294,7 +294,7 @@ For the "I just want a working memory buffer with no observer" case, skip the un
 ```ts
 import { workingMemoryCapture, workingMemoryResource } from "@flow-state-dev/memory";
 
-const capture = workingMemoryCapture({ model: "openai/gpt-5.4-mini" });
+const capture = workingMemoryCapture({ model: "openai/gpt-6-luna" });
 ```
 
 See the [overview](./overview) for the unified path and [recall-tool](./recall-tool) for agent-invocable retrieval.

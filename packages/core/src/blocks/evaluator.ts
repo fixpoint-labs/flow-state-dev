@@ -161,12 +161,12 @@ function checkModelConfig(blockName: string, model: unknown): void {
     refuse(
       blockName,
       "the model can generate but not evaluate.\n" +
-        'Pass an evaluation model, e.g. openai.evaluationModel("gpt-5.4-mini"), or a model string.'
+        'Pass an evaluation model, e.g. openai.evaluationModel("gpt-6-luna"), or a model string.'
     );
   }
   refuse(
     blockName,
-    'model must be a model string or an evaluation model, e.g. openai.evaluationModel("gpt-5.4-mini").'
+    'model must be a model string or an evaluation model, e.g. openai.evaluationModel("gpt-6-luna").'
   );
 }
 
@@ -343,7 +343,7 @@ export interface EvaluatorConfig<
   /**
    * Which model answers: a model string (resolved through the app's model
    * setup) or an evaluation model instance, e.g.
-   * `openai.evaluationModel("gpt-5.4-mini")`. Intents, fallback arrays and
+   * `openai.evaluationModel("gpt-6-luna")`. Intents, fallback arrays and
    * `selectModel` are refused.
    */
   model: string | EvaluationModel;
