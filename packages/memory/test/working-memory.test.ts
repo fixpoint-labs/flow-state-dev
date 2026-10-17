@@ -39,10 +39,24 @@ import { partialRef } from './partial-ref.js'
 function createMockRef(
   initialState?: Partial<WorkingMemoryState>,
 ): ResourceRef<WorkingMemoryState> {
-  return partialRef<WorkingMemoryState>('workingMemory', 'session', workingMemoryStateSchema, {
+  let state: WorkingMemoryState = {
     entries: [],
     currentTurn: 0,
     ...initialState,
+  }
+
+  return partialRef<WorkingMemoryState>({
+    name: 'workingMemory',
+    scope: 'session',
+    get state() { return state },
+    patchState: async (updates) => {
+      state = { ...state, ...updates } as WorkingMemoryState
+    },
+    setState: async (next) => { state = next },
+    updateState: async (fn) => { state = await fn(state) },
+    readContent: async () => JSON.stringify(state),
+    writeContent: async () => {},
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
   })
 }
 

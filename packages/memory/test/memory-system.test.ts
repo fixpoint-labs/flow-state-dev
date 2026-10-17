@@ -46,33 +46,69 @@ import { partialRef } from './partial-ref.js'
 function createMockWmRef(
   initialState?: Partial<WorkingMemoryState>,
 ): ResourceRef<WorkingMemoryState> {
-  return partialRef<WorkingMemoryState>('workingMemory', 'session', workingMemoryStateSchema, {
+  let state: WorkingMemoryState = {
     entries: [],
     currentTurn: 0,
     ...initialState,
+  }
+
+  return partialRef<WorkingMemoryState>({
+    name: 'workingMemory',
+    scope: 'session',
+    get state() { return state },
+    patchState: async (updates) => { state = { ...state, ...updates } as WorkingMemoryState },
+    setState: async (next) => { state = next },
+    updateState: async (fn) => { state = await fn(state) },
+    readContent: async () => JSON.stringify(state),
+    writeContent: async () => {},
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
   })
 }
 
 function createMockSysRef(
   initialState?: Partial<MemorySystemState>,
 ): ResourceRef<MemorySystemState> {
-  return partialRef<MemorySystemState>('memorySystem', 'session', memorySystemStateSchema, {
+  let state: MemorySystemState = {
     lastProcessedIndex: -1,
     readMessages: null,
     episodicWritesSinceLastConsolidation: 0,
     evictedPersistentSinceLastConsolidation: 0,
     lastConsolidationTurn: 0,
     ...initialState,
+  }
+
+  return partialRef<MemorySystemState>({
+    name: 'memorySystem',
+    scope: 'session',
+    get state() { return state },
+    patchState: async (updates) => { state = { ...state, ...updates } as MemorySystemState },
+    setState: async (next) => { state = next },
+    updateState: async (fn) => { state = await fn(state) },
+    readContent: async () => JSON.stringify(state),
+    writeContent: async () => {},
+    config: { scope: 'session', stateSchema: memorySystemStateSchema, writable: true },
   })
 }
 
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
 ): ResourceRef<EpisodicMemoryState> {
-  return partialRef<EpisodicMemoryState>('episodicMemory', 'user', episodicMemoryStateSchema, {
+  let state: EpisodicMemoryState = {
     episodes: [],
     totalEncoded: 0,
     ...initialState,
+  }
+
+  return partialRef<EpisodicMemoryState>({
+    name: 'episodicMemory',
+    scope: 'user',
+    get state() { return state },
+    patchState: async (updates) => { state = { ...state, ...updates } as EpisodicMemoryState },
+    setState: async (next) => { state = next },
+    updateState: async (fn) => { state = await fn(state) },
+    readContent: async () => JSON.stringify(state),
+    writeContent: async () => {},
+    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
   })
 }
 
@@ -103,11 +139,23 @@ function mergeResources(...groups: Array<Record<string, any> | undefined>) {
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
 ): ResourceRef<SemanticMemoryState> {
-  return partialRef<SemanticMemoryState>('semanticMemory', 'user', semanticMemoryStateSchema, {
+  let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
     totalConsolidations: 0,
     ...initialState,
+  }
+
+  return partialRef<SemanticMemoryState>({
+    name: 'semanticMemory',
+    scope: 'user',
+    get state() { return state },
+    patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
+    setState: async (next) => { state = next },
+    updateState: async (fn) => { state = await fn(state) },
+    readContent: async () => JSON.stringify(state),
+    writeContent: async () => {},
+    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
   })
 }
 
