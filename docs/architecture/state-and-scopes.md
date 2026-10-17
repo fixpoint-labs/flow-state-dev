@@ -475,6 +475,8 @@ Block-level state declarations bubble upward for compatibility checking. This en
 - Type safety preservation across sequencer steps
 - Recursive shadowing rules for nested sequencers
 
+For sequencer state this happens when the flow is built: a block's `sequencerStateSchema`, and a capability's on a sequencer's `uses`, joins the `stateSchema` of the nearest enclosing sequencer that has one (the sequencer `ctx.sequencer` resolves to), defaults applied. A sequencer without a `stateSchema` is transparent and passes the requirement up; one with a `stateSchema` absorbs it and shadows its descendants from the sequencers above. A field both declare must agree in kind, or composing the chain throws `SequencerSchemaMismatchError`. See [Sequencer state schema bubbling](./blocks.md#sequencer-state-schema-bubbling) for the rules.
+
 ## Resource Declaration Bubbling
 
 Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. A flow-level entry under a block's accessor must be the same reference, or the build errors; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
