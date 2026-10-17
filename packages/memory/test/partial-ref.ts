@@ -1,13 +1,34 @@
-/**
- * Shared shape for the hand-built resource refs memory's tests pass to tier
- * code. Each mock stubs only the ref members that code reads.
- */
-import type { JsonObject, ResourceRef } from '@flow-state-dev/core/types'
+import type { JsonObject, ResourceRef, ResourceScope } from '@flow-state-dev/core/types'
 
-/** Types a hand-built mock ref as a full `ResourceRef<TState>`, keeping its methods contextually typed. */
+/** Tests never reach the omitted members. */
 export function partialRef<TState extends JsonObject>(
-  ref: Partial<ResourceRef<TState>> & { name?: string },
+  name: string,
+  scope: ResourceScope,
+  stateSchema: ResourceRef<TState>['config']['stateSchema'],
+  initial: TState,
 ): ResourceRef<TState> {
-  // Deliberately partial: tier code never reaches the members a mock omits.
+  let state = initial
+  const ref: Omit<
+    ResourceRef<TState>,
+    'path' | 'uri' | 'incState' | 'pushState' | 'getOrPatchState' | 'readContentRaw'
+  > & { name: string } = {
+    name,
+    scope,
+    get state() { return state },
+    async patchState(updates) {
+      state = { ...state, ...updates } as TState
+    },
+    async setState(next) {
+      state = next
+    },
+    async updateState(fn) {
+      state = await fn(state)
+    },
+    async readContent() {
+      return JSON.stringify(state)
+    },
+    async writeContent() {},
+    config: { scope, stateSchema, writable: true },
+  }
   return ref as unknown as ResourceRef<TState>
 }

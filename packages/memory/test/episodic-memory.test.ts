@@ -20,24 +20,10 @@ import { partialRef } from './partial-ref.js'
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
 ): ResourceRef<EpisodicMemoryState> {
-  let state: EpisodicMemoryState = {
+  return partialRef<EpisodicMemoryState>('episodicMemory', 'user', episodicMemoryStateSchema, {
     episodes: [],
     totalEncoded: 0,
     ...initialState,
-  }
-
-  return partialRef<EpisodicMemoryState>({
-    name: 'episodicMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (updates) => {
-      state = { ...state, ...updates } as EpisodicMemoryState
-    },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
   })
 }
 
