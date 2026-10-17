@@ -136,6 +136,11 @@ describe("the DEFERRED list", () => {
       "store-postgres",
       "bullmq",
       "vercel",
+      "orchestration",
+      "patterns",
+      "tools",
+      "memory",
+      "thought-fabric-core",
     ]) {
       expect(deferred, dir).not.toHaveProperty(dir);
     }

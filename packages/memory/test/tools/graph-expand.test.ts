@@ -35,6 +35,7 @@ import {
   type PrepareEnvelope,
   type PrepareInput,
 } from '../../src/tools/index.js'
+import { partialRef } from '../partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -42,7 +43,7 @@ import {
 
 function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
-  return {
+  return partialRef<WorkingMemoryState>({
     name: 'workingMemory', scope: 'session',
     get state() { return state },
     patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
@@ -50,13 +51,13 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<Wor
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
-  return {
+  return partialRef<EpisodicMemoryState>({
     name: 'episodicMemory', scope: 'user',
     get state() { return state },
     patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
@@ -64,8 +65,8 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<Ep
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockSemRef(

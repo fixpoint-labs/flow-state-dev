@@ -130,11 +130,7 @@ async function host(team: Set<string>) {
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig },
     } as never)) as { output?: any };
-  const rows = async () =>
-    (await runtime.stores.resourceState.list?.("session", "s_ops"))?.filter((entry: { key: string }) =>
-      entry.key.startsWith(`${id}/`)
-    ) ?? [];
-  return { id, act, rows, handleForm, dispose: () => state.dispose() };
+  return { id, act, handleForm, dispose: () => state.dispose() };
 }
 
 describe("taskToolActions with a roster (T1)", () => {

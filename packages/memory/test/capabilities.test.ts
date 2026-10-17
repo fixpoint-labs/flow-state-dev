@@ -16,7 +16,9 @@ import {
   semanticMemoryCapability,
 } from '../src/capabilities.js'
 import { system } from '../src/memory-system.js'
+import type { RankedMemoryItem } from '../src/memory-system.js'
 import { createMemoryCapability } from '../src/memory-capability.js'
+import { partialRef } from './partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers — mock resource refs that simulate the runtime context
@@ -31,7 +33,7 @@ function createMockWmRef(
     ...initialState,
   }
 
-  return {
+  return partialRef<WorkingMemoryState>({
     name: 'workingMemory',
     scope: 'session',
     get state() { return state },
@@ -40,8 +42,8 @@ function createMockWmRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockEpRef(
@@ -53,7 +55,7 @@ function createMockEpRef(
     ...initialState,
   }
 
-  return {
+  return partialRef<EpisodicMemoryState>({
     name: 'episodicMemory',
     scope: 'user',
     get state() { return state },
@@ -62,8 +64,8 @@ function createMockEpRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockSemRef(
@@ -76,7 +78,7 @@ function createMockSemRef(
     ...initialState,
   }
 
-  return {
+  return partialRef<SemanticMemoryState>({
     name: 'semanticMemory',
     scope: 'user',
     get state() { return state },
@@ -85,8 +87,8 @@ function createMockSemRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceRef<SemanticMemoryState>
+    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
+  })
 }
 
 /** Build a mock block context with the given resource refs. */
@@ -289,6 +291,8 @@ describe('memory/capabilities', () => {
         significance: 0.7,
         category: 'event',
         context: { sessionId: 'sess_1' },
+        subject: 'user',
+        durability: 'persistent',
       })
 
       expect(episode.content).toBe('User discussed TypeScript')
@@ -308,6 +312,8 @@ describe('memory/capabilities', () => {
         significance: 0.5,
         category: 'event',
         context: { sessionId: 's1' },
+        subject: 'user',
+        durability: 'persistent',
       })
       await fns.encode({
         content: 'Late',
@@ -315,6 +321,8 @@ describe('memory/capabilities', () => {
         significance: 0.6,
         category: 'event',
         context: { sessionId: 's1' },
+        subject: 'user',
+        durability: 'persistent',
       })
 
       const episodes = fns.recent()
@@ -333,6 +341,8 @@ describe('memory/capabilities', () => {
         significance: 0.8,
         category: 'identity',
         context: { sessionId: 's1' },
+        subject: 'user',
+        durability: 'persistent',
       })
 
       expect(epRef.state.episodes[0].consolidated).toBe(false)
@@ -684,14 +694,20 @@ describe('memory/capabilities', () => {
       await fns.encode({
         content: 'E1', occurredAtTurn: 1, significance: 0.5,
         category: 'event', context: { sessionId: 's1' },
+        subject: 'user',
+        durability: 'persistent',
       })
       await fns.encode({
         content: 'E2', occurredAtTurn: 2, significance: 0.6,
         category: 'event', context: { sessionId: 's1' },
+        subject: 'user',
+        durability: 'persistent',
       })
       await fns.encode({
         content: 'E3', occurredAtTurn: 3, significance: 0.7,
         category: 'event', context: { sessionId: 's1' },
+        subject: 'user',
+        durability: 'persistent',
       })
 
       // maxEpisodes is 2, so oldest should have been evicted
@@ -890,7 +906,7 @@ describe('memory/capabilities', () => {
         ],
       })
       const fns = cap.fns!(mockCtx({ sem: semRef }) as any)
-      const results = fns.recall().filter((r) => r.source === 'semantic')
+      const results = fns.recall().filter((r: RankedMemoryItem) => r.source === 'semantic')
       // No decay: the higher raw-confidence fact (OLD, 0.9) ranks first despite age.
       expect(results[0].id).toBe('sf_old')
     })
@@ -913,7 +929,7 @@ describe('memory/capabilities', () => {
         ],
       })
       const fns = cap.fns!(mockCtx({ sem: semRef }) as any)
-      const results = fns.recall().filter((r) => r.source === 'semantic')
+      const results = fns.recall().filter((r: RankedMemoryItem) => r.source === 'semantic')
       expect(results[0].id).toBe('sf_fresh')
     })
 

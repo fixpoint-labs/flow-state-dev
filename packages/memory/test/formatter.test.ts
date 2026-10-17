@@ -28,6 +28,7 @@ import {
 } from '../src/episodic-memory.js'
 import type { EpisodicMemoryState, Episode } from '../src/episodic-memory.js'
 import { system } from '../src/memory-system.js'
+import { partialRef } from './partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Mock resource helpers
@@ -41,7 +42,7 @@ function createMockWmRef(
     currentTurn: 0,
     ...initialState,
   }
-  return {
+  return partialRef<WorkingMemoryState>({
     name: 'workingMemory',
     scope: 'session',
     get state() { return state },
@@ -50,15 +51,15 @@ function createMockWmRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockDigestRef(
   initial?: Partial<DigestMemoryState>,
 ): ResourceRef<DigestMemoryState> {
   let state: DigestMemoryState = { totalGenerated: 0, ...initial }
-  return {
+  return partialRef<DigestMemoryState>({
     name: 'digestMemory',
     scope: 'user',
     get state() { return state },
@@ -67,8 +68,8 @@ function createMockDigestRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: digestMemoryStateSchema, writable: true },
-  } as ResourceRef<DigestMemoryState>
+    config: { scope: 'user', stateSchema: digestMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockSemRef(
@@ -80,7 +81,7 @@ function createMockSemRef(
     totalConsolidations: 0,
     ...initialState,
   }
-  return {
+  return partialRef<SemanticMemoryState>({
     name: 'semanticMemory',
     scope: 'user',
     get state() { return state },
@@ -89,8 +90,8 @@ function createMockSemRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceRef<SemanticMemoryState>
+    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockEpRef(
@@ -101,7 +102,7 @@ function createMockEpRef(
     totalEncoded: 0,
     ...initialState,
   }
-  return {
+  return partialRef<EpisodicMemoryState>({
     name: 'episodicMemory',
     scope: 'user',
     get state() { return state },
@@ -110,8 +111,8 @@ function createMockEpRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockResources(refs: Record<string, any>) {
@@ -166,6 +167,9 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     category: 'identity',
     context: { sessionId: 'test-session' },
     consolidated: false,
+    subject: 'user',
+    durability: 'persistent',
+    stale: false,
     ...overrides,
   }
 }

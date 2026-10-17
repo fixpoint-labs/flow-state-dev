@@ -43,6 +43,7 @@ import type { JanitorState } from '../src/janitor.js'
 import { memorySystemJanitor } from '../src/janitor-blocks.js'
 import { system } from '../src/memory-system.js'
 import { intrinsicSemanticScore } from '../src/tools/strategies/llm-filter-strategy.js'
+import { partialRef } from './partial-ref.js'
 
 const DAY = 1000 * 60 * 60 * 24
 
@@ -59,7 +60,7 @@ function createMockSemRef(
     totalConsolidations: 0,
     ...initialState,
   }
-  return {
+  return partialRef<SemanticMemoryState>({
     name: 'semanticMemory',
     scope: 'user',
     get state() { return state },
@@ -68,8 +69,8 @@ function createMockSemRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceRef<SemanticMemoryState>
+    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockEpRef(
@@ -80,7 +81,7 @@ function createMockEpRef(
     totalEncoded: 0,
     ...initialState,
   }
-  return {
+  return partialRef<EpisodicMemoryState>({
     name: 'episodicMemory',
     scope: 'user',
     get state() { return state },
@@ -89,8 +90,8 @@ function createMockEpRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockWmRef(
@@ -101,7 +102,7 @@ function createMockWmRef(
     currentTurn: 0,
     ...initialState,
   }
-  return {
+  return partialRef<WorkingMemoryState>({
     name: 'workingMemory',
     scope: 'session',
     get state() { return state },
@@ -110,8 +111,8 @@ function createMockWmRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockSysRef(
@@ -119,12 +120,13 @@ function createMockSysRef(
 ): ResourceRef<MemorySystemState> {
   let state: MemorySystemState = {
     lastProcessedIndex: -1,
+    readMessages: null,
     episodicWritesSinceLastConsolidation: 0,
     evictedPersistentSinceLastConsolidation: 0,
     lastConsolidationTurn: 0,
     ...initialState,
   }
-  return {
+  return partialRef<MemorySystemState>({
     name: 'memorySystem',
     scope: 'session',
     get state() { return state },
@@ -133,8 +135,8 @@ function createMockSysRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceRef<MemorySystemState>
+    config: { scope: 'session', stateSchema: memorySystemStateSchema, writable: true },
+  })
 }
 
 function createMockJanitorRef(
@@ -148,7 +150,7 @@ function createMockJanitorRef(
     lastMarkedStaleEpisodeIds: [],
     ...initialState,
   }
-  return {
+  return partialRef<JanitorState>({
     name: 'janitor',
     scope: 'session',
     get state() { return state },
@@ -157,8 +159,8 @@ function createMockJanitorRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: janitorStateSchema, writable: true },
-  } as ResourceRef<JanitorState>
+    config: { scope: 'session', stateSchema: janitorStateSchema, writable: true },
+  })
 }
 
 function createMockResources(refs: Record<string, any>) {
@@ -194,6 +196,7 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     consolidated: false,
     durability: 'persistent',
     stale: false,
+    subject: 'user',
     ...overrides,
   }
 }

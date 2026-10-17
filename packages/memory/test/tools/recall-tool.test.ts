@@ -45,6 +45,7 @@ import {
   type PrepareInput,
   type RetrievalStrategy,
 } from '../../src/tools/index.js'
+import { partialRef } from '../partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Mock resource handles
@@ -52,7 +53,7 @@ import {
 
 function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
-  return {
+  return partialRef<WorkingMemoryState>({
     name: 'workingMemory',
     scope: 'session',
     get state() { return state },
@@ -61,13 +62,13 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<Wor
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
-  return {
+  return partialRef<EpisodicMemoryState>({
     name: 'episodicMemory',
     scope: 'user',
     get state() { return state },
@@ -76,8 +77,8 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<Ep
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
+  })
 }
 
 function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceRef<SemanticMemoryState> {
@@ -87,7 +88,7 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceRef<S
     totalConsolidations: 0,
     ...initial,
   }
-  return {
+  return partialRef<SemanticMemoryState>({
     name: 'semanticMemory',
     scope: 'user',
     get state() { return state },
@@ -96,8 +97,8 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceRef<S
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceRef<SemanticMemoryState>
+    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
+  })
 }
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
@@ -122,6 +123,9 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     category: 'identity',
     context: { sessionId: 'test-session' },
     consolidated: false,
+    subject: 'user',
+    durability: 'persistent',
+    stale: false,
     ...overrides,
   }
 }

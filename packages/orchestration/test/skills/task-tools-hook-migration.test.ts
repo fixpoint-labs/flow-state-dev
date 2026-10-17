@@ -87,7 +87,7 @@ describe("taskTools — tool lifecycle hooks on a refused status transition", ()
       inputSchema: z.object({}),
       tools: [completeTaskTool()],
       flowTools: { onToolStarted, onToolCompleted, onToolErrored },
-      stateSchema: { [DELEGATION_BOARD_FIELD]: delegationBoardSchema },
+      stateSchema: z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema }),
     });
 
     const ctx = buildHookMigrationCtx(async (options: any) => {

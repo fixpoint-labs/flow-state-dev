@@ -30,6 +30,7 @@ import {
   workingMemoryCapture,
   workingMemoryRemember,
 } from '../src/working-memory-blocks.js'
+import { partialRef } from './partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -44,7 +45,7 @@ function createMockRef(
     ...initialState,
   }
 
-  return {
+  return partialRef<WorkingMemoryState>({
     name: 'workingMemory',
     scope: 'session',
     get state() { return state },
@@ -55,8 +56,8 @@ function createMockRef(
     updateState: async (fn) => { state = await fn(state) },
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
+  })
 }
 
 function makeEntry(overrides: Partial<WorkingMemoryEntry> & { id: string }): WorkingMemoryEntry {
@@ -67,6 +68,8 @@ function makeEntry(overrides: Partial<WorkingMemoryEntry> & { id: string }): Wor
     addedAtTurn: 0,
     lastAccessedAtTurn: 0,
     importance: 0.5,
+    durability: 'session',
+    category: 'identity',
     ...overrides,
   }
 }
