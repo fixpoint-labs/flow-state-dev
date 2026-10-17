@@ -54,22 +54,12 @@ function createMockSemRef(
   edges?: Edge[],
   relations?: EdgeSlotConfig,
 ): ResourceRef<SemanticMemoryState> {
-  let state: SemanticMemoryState = {
+  const ref = partialRef<SemanticMemoryState>('semanticMemory', 'user', semanticMemoryStateSchema, {
     facts,
     totalExtracted: 0,
     totalConsolidations: 0,
     ...(relations ? { edges: edges ?? [] } : {}),
-  } as SemanticMemoryState
-  const ref = partialRef<SemanticMemoryState>({
-    name: 'semanticMemory', scope: 'user',
-    get state() { return state },
-    patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
-    setState: async (n) => { state = n },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
-  })
+  } as SemanticMemoryState)
   if (relations) {
     ;(ref as { edges?: unknown }).edges = createResourceEdgeApi(ref as never, relations)
   }
