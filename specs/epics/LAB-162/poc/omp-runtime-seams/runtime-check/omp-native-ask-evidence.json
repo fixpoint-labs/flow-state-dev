@@ -1,0 +1,87 @@
+{
+  "runtime": "omp/18.1.14",
+  "mode": "rpc-ui",
+  "command": "get_state",
+  "evidenceType": "selected response fields; no model invocation",
+  "registeredTools": [
+    {
+      "name": "ask",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "question id"
+                },
+                "question": {
+                  "type": "string",
+                  "description": "question text"
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "description": "display label"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "optional explanatory text displayed below the label"
+                      },
+                      "preview": {
+                        "type": "string",
+                        "description": "optional rich preview content for interactive ask dialogs"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "available options"
+                },
+                "header": {
+                  "type": "string",
+                  "description": "optional short display chip for rich ask dialogs"
+                },
+                "multi": {
+                  "type": "boolean",
+                  "description": "allow multiple selections"
+                },
+                "recommended": {
+                  "type": "number",
+                  "description": "recommended option index"
+                }
+              },
+              "required": [
+                "id",
+                "question",
+                "options"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "description": "questions to ask"
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "notProved": [
+    "native ask execution",
+    "tool approval",
+    "durable park",
+    "restart and resume"
+  ]
+}
