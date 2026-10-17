@@ -1,15 +1,22 @@
 /**
- * The goal-check verdict protocol — one PASS/FAIL shape for every runner.
+ * The goal-check verdict protocol — one verdict shape for every runner.
  *
  * README "Script techniques" #5 requires every goal to print an explicit
- * verdict and exit non-zero on FAIL. Before this module each runner hand-rolled
- * it, and five different FAIL formats drifted into the corpus. This is the
- * single definition: `PASS — <evidence>` on stdout / exit 0, or `FAIL —` plus a
- * bulleted failure list on stderr / exit 1.
+ * verdict and exit non-zero unless it passed. Before this module each runner
+ * hand-rolled it, and five different FAIL formats drifted into the corpus. This
+ * is the single definition, with three verdicts:
+ *
+ *   - `PASS — <evidence> · read: …` on stdout, exit 0.
+ *   - `FAIL —` plus a bulleted failure list on stderr, exit 1.
+ *   - `CAN'T TELL —` plus one bullet per assertion that read nothing, on
+ *     stderr, exit {@link CANT_TELL_EXIT}. The check was blind: it did not see
+ *     the thing it claims to measure, so it neither passed nor failed. A run
+ *     with both a failure and a can't-tell prints both and exits as FAIL.
  *
  * Two usage shapes, matching how goals are actually written:
  *   - `runGoal(main)` for the common "collect failures, then decide" body;
- *     `main` collects into the list it is handed, so a later throw keeps them.
+ *     `main` collects into the list it is handed, so a later throw keeps them,
+ *     and floors each assertion's evidence with the {@link Tell} it is handed.
  *   - `fail(msg)` (returns `never`) to bail out mid-flight on a setup error.
  */
 
@@ -19,6 +26,83 @@ export interface GoalResult {
   failures: string[];
   /** The evidence inspected, printed after `PASS —`. Ignored when failing. */
   evidence: string;
+}
+
+/**
+ * The exit code of a CAN'T TELL verdict. Its own code, neither 0 nor 1, so
+ * `goal:all` tells a blind check from a failing one without parsing output.
+ */
+export const CANT_TELL_EXIT = 3;
+
+/** Options for one {@link Tell.over} floor. */
+export interface TellOptions {
+  /**
+   * Set only when an empty list IS the claim ("no session leaks", "no stray
+   * row"): the reason, printed in the PASS evidence where a reviewer can
+   * challenge it. Floor the population this list was filtered from with its
+   * own `tell.over`, so an absence claim still read something.
+   */
+  emptyIs?: string;
+}
+
+/**
+ * The evidence floor `runGoal` hands a goal body. Pass every list an assertion
+ * grades through `tell.over` before grading it: `[].every(...)` is true and a
+ * `length > 0 &&` guard skips the check, so an empty list would otherwise pass
+ * an assertion that saw nothing.
+ */
+export interface Tell {
+  /**
+   * Record that the assertion `name` reads `values`, and return `values`
+   * unchanged. If it is empty (and `emptyIs` isn't set), the run reports
+   * CAN'T TELL naming `name` instead of PASS. Calling it again with the same
+   * name adds to that name's count; any empty read of it is a can't-tell.
+   */
+  over<T>(name: string, values: readonly T[], options?: TellOptions): T[];
+}
+
+interface Reading {
+  read: number;
+  calls: number;
+  emptyCalls: number;
+  emptyIs?: string;
+}
+
+/** A fresh {@link Tell} and the readings it records, in first-call order. */
+function createTell(): { tell: Tell; readings: Map<string, Reading> } {
+  const readings = new Map<string, Reading>();
+  const tell: Tell = {
+    over(name, values, options) {
+      const entry = readings.get(name) ?? { read: 0, calls: 0, emptyCalls: 0 };
+      entry.read += values.length;
+      entry.calls += 1;
+      if (values.length === 0) entry.emptyCalls += 1;
+      if (options?.emptyIs !== undefined) entry.emptyIs = options.emptyIs;
+      readings.set(name, entry);
+      return [...values];
+    },
+  };
+  return { tell, readings };
+}
+
+/** One bullet per assertion that read nothing and did not declare empty the claim. */
+function cantTellLines(readings: Map<string, Reading>): string[] {
+  const lines: string[] = [];
+  for (const [name, r] of readings) {
+    if (r.emptyCalls === 0 || r.emptyIs !== undefined) continue;
+    lines.push(r.calls === 1 ? `${name}: read 0` : `${name}: read 0 in ${r.emptyCalls} of ${r.calls} reads`);
+  }
+  return lines;
+}
+
+/** The `read:` clause of a PASS: what each assertion read, and how many. */
+function readClause(readings: Map<string, Reading>): string {
+  const parts = [...readings].map(([name, r]) =>
+    r.read === 0 && r.emptyIs !== undefined
+      ? `${name}: 0, empty is ${r.emptyIs}`
+      : `${name}: ${r.read}${r.emptyIs !== undefined ? ` (empty is ${r.emptyIs})` : ""}`,
+  );
+  return parts.length === 0 ? "" : ` · read: ${parts.join("; ")}`;
 }
 
 /** Print the PASS verdict with the evidence inspected and exit 0. */
@@ -40,6 +124,12 @@ export function fail(...failures: (string | string[])[]): never {
   process.exit(1);
 }
 
+/** Print the CAN'T TELL verdict, one bullet per blind assertion, and exit {@link CANT_TELL_EXIT}. */
+function cantTell(lines: string[]): never {
+  console.error("CAN'T TELL —\n  - " + lines.join("\n  - "));
+  process.exit(CANT_TELL_EXIT);
+}
+
 /**
  * Run a goal body and turn its `GoalResult` into the verdict + exit code.
  * A throw is itself a FAIL (with the stack), so runners no longer need their
@@ -52,17 +142,27 @@ export function fail(...failures: (string | string[])[]): never {
  * later leg's setup error (often caused by the earlier failure) would be
  * reported as the whole story. On a normal return the returned `failures` is
  * what counts, so a body that returns a copy or a literal list is unaffected.
+ *
+ * `main` also receives a {@link Tell}. Any `tell.over` that read nothing turns
+ * a would-be PASS into CAN'T TELL; with failures as well, both print and the
+ * verdict is FAIL. A PASS names what each `tell.over` read.
  */
 export async function runGoal(
-  main: (failures: string[]) => GoalResult | Promise<GoalResult>,
+  main: (failures: string[], tell: Tell) => GoalResult | Promise<GoalResult>,
 ): Promise<never> {
   const graded: string[] = [];
+  const { tell, readings } = createTell();
   let result: GoalResult;
   try {
-    result = await main(graded);
+    result = await main(graded, tell);
   } catch (err) {
     const thrown = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
     return graded.length === 0 ? fail(thrown) : fail(graded, `then threw: ${thrown}`);
   }
-  return result.failures.length === 0 ? pass(result.evidence) : fail(result.failures);
+  const blind = cantTellLines(readings);
+  if (result.failures.length > 0) {
+    return blind.length === 0 ? fail(result.failures) : fail(result.failures, blind.map((l) => `CAN'T TELL: ${l}`));
+  }
+  if (blind.length > 0) return cantTell(blind);
+  return pass(`${result.evidence}${readClause(readings)}`);
 }

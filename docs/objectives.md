@@ -29,9 +29,9 @@ moves when we add a goal; that is the honest trade for a condition someone can e
 **Read the denominator carefully — it is not the ratio the tool prints.** `goal:all` reports
 `X/Y passed` over the goals that **have a runner**, and lists any `goal.md` with no `run.mts`
 separately as *unimplemented* without failing the sweep
-(`goals/scripts/run-all.mts`). Today that is one goal:
-`goals/plan-and-execute/carries-original-data-to-workers`. So the measure is **X / (Y +
-unimplemented)**, both numbers from the same run. Taking the printed ratio instead would let
+(`goals/scripts/run-all.mts`). Today there are none: the last one was retired because it
+had never told anything. So the measure is **X / (Y + unimplemented)**, both numbers from
+the same run. Taking the printed ratio instead would let
 `33/33 passed` read as complete while a defined goal has never proved anything — a goal you
 wrote and never wired is not a goal you passed.
 

@@ -31,7 +31,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
-import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, goalTmpDir, loadFixture, runGoal, type Tell } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree, routesFor } from "../../../packages/shift-manager/test/fixtures/multi-worker-collab/host.mts";
 import { Scenario, serveLab } from "../../multi-seat-collab/run-scenario.mts";
@@ -233,7 +233,7 @@ async function expanderText(page: Page, taskId: string): Promise<string> {
 // The run
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<{ failures: string[]; evidence: string }> {
+async function main(tell: Tell): Promise<{ failures: string[]; evidence: string }> {
   // The bundle the shell serves, built here so a stale artifact from another
   // branch cannot be what gets graded.
   execFileSync("pnpm", ["--filter", "@flow-state-dev/devtool", "build:assets"], {
@@ -370,6 +370,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       control: CONTROL,
       workDir: join(SHOTS, "server-row5"),
       shots: SHOTS,
+      tell,
     });
     failures.push(...row5.failures);
     notes.push(...row5.notes);
@@ -413,4 +414,4 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
 }
 
 mkdirSync(SHOTS, { recursive: true });
-void runGoal(main);
+void runGoal((_failures, tell) => main(tell));
