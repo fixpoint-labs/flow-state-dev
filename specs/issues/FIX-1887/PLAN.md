@@ -13,8 +13,8 @@ shipped code or a child's `goal.md` says otherwise, those win and the report say
 |---|---|---|
 | S1 | `goals/dispatching-work/runs-on-dispatch-task-alone/goal.md` | From [SPEC's goal](SPEC.md#the-goal-and-how-well-know-its-met), in the `goals/README.md` format, on-demand posture (CR-5) |
 | S2 | `…/run.mts` | The thin runner, shaped like FIX-1820's: refuses a dirty tree, records `HEAD`, re-checks it before each part, runs each check as its own process with its own `GOAL_CONTROL`, grades a control on its exact red set, prints each verdict with the SHA, stops at the first check that can't start |
-| S3 | `…/rename-map.mjs`, `…/fence-lines.json` | [`poc/rename-map/check.mjs`](poc/rename-map/check.mjs) moved in, unchanged in rule. The fence file lists each ledger read FIX-1872 turned into a row read: path, the removed text, its replacement, the reason |
-| S4 | `…/surface-sweep.mjs` | [`poc/surface-sweep/sweep.mjs`](poc/surface-sweep/sweep.mjs) moved in, unchanged in rule. It reads source only; the runtime refusals are the children's checks, cited in the report (CR-17) |
+| S3 | `…/rename-map.mjs`, `…/fence-lines.json` | The POC's `poc/rename-map/check.mjs`, [moved in](../../../goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs), unchanged in rule. The fence file lists each ledger read FIX-1872 turned into a row read: path, the removed text, its replacement, the reason |
+| S4 | `…/surface-sweep.mjs` | The POC's `poc/surface-sweep/sweep.mjs`, [moved in](../../../goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs), unchanged in rule. It reads source only; the runtime refusals are the children's checks, cited in the report (CR-17) |
 | S5 | The closure PR | Only after a clean run: S1 to S4, with the report as its body |
 
 Removed: nothing. No composed check, Lab, fixture or `goal.md` is edited (D1, CR-6).
@@ -41,7 +41,7 @@ model calls. Checks run one after another: real model, shared keys, readable out
 | P1.r | FIX-1820's runner, `goals/hand-offs/survives-a-restart-and-runs-once/run.mts` | Its own verdict: FIX-1816's and FIX-1817's checks plain and under their controls, FIX-1794's check, FIX-1791's two checks, J4 and `fresh-store`, each as its `goal.md` documents |
 | P1.k | `goals/workforce-mailboxes/a-routed-post-gets-one-answer/run.mts` (FIX-1610), then under each control its `goal.md` lists | Plain PASS; each control red at its documented legs only (`no-context` at **context** only, as FIX-1872's V9 also requires) |
 | P1.c | The controls of FIX-1791's and FIX-1794's checks that P1.r runs plain | Each red at its documented tags only (`unpartitioned`, `no-follow-up`, and `hands-each-post-to-its-delegates`'s `controls/patches.mts`) |
-| P1.m | `rename-map.mjs --sources`, `--control`, then the diff `f1ae352..HEAD` with `--rerun-base <control commit>` | `--sources` exits 0; `--control` exits 2 (every plant caught); the diff exits 0 with each fence line printed, FIX-1872 V9's reruns included |
+| P1.m | `rename-map.mjs --sources`, `--control`, then each child merge M (#3168, #3180, #3212, #3232, #3274, #3325, #3358) with `--base M^1 --head M --rerun-base M^1` ([D3](DECISIONS.md#d3)) | `--sources` exits 0; `--control` exits 2 (every plant caught); each merge exits 0 with each fence line printed, FIX-1872 V9's reruns included |
 | P1.s | `surface-sweep.mjs --assert` at `HEAD`, then `--assert --at <control commit>`, then `--control` | 0 live lines at `HEAD`; exit 1 at the control commit; `--control` exits 2 |
 
 **The control commit** is the first parent of the merge commit of FIX-1875's first PR (#3168
@@ -129,15 +129,16 @@ None to publish. [DOCS.md](DOCS.md) says why; part 4 follows the pages the child
 <a name="the-poc"></a>
 ## The POC
 
-Both scripts are built and retained under [`poc/`](poc/). They are the factual base this plan
-rests on, and the children's plans already cite them.
+Both scripts were built under [`poc/`](poc/) and have moved, unchanged in rule, into the goal
+directory ([`runs-on-dispatch-task-alone/`](../../../goals/dispatching-work/runs-on-dispatch-task-alone/goal.md)). They are the factual base this plan rests on,
+and the children's plans already cite them.
 
 ```bash
-node specs/issues/FIX-1887/poc/rename-map/check.mjs --sources      # exit 0: the map agrees with both tables
-node specs/issues/FIX-1887/poc/rename-map/check.mjs --control      # exit 2: every plant caught
-node specs/issues/FIX-1887/poc/rename-map/check.mjs --head origin/fix/fix-1875-p1
-node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --assert    # exit 1 on today's main, as the control must
-node specs/issues/FIX-1887/poc/surface-sweep/sweep.mjs --control   # exit 2: every rule catches its plant
+node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --sources      # exit 0: the map agrees with both tables
+node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --control      # exit 2: every plant caught
+node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --head origin/fix/fix-1875-p1
+node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --assert    # exit 1 on today's main, as the control must
+node goals/dispatching-work/runs-on-dispatch-task-alone/surface-sweep.mjs --control   # exit 2: every rule catches its plant
 ```
 
 **Showed (2026-10-12, `main` at `9825241`).** The sweep fails today's `main` at 165 live lines in

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// FIX-1887 rename-map check. Retained spec evidence, not production code.
+// FIX-1887 rename-map check: the closure's judge of "nothing changed but names" (goal.md, P1.m).
+// Moved from the spec's POC unchanged in rule.
 //
 // The epic's (FIX-1870) anti-game: since the epic spec merged, the diff to the
 // three regression checks is names only, and the diff to the three coordinator
@@ -7,11 +8,12 @@
 // shape entries, and listed fence lines.
 // Every changed hunk is explained, or the check fails and prints it.
 //
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs                   # base..HEAD
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs --head <ref>      # base..<ref>
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs --sources         # the map against the
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs                   # base..HEAD
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --head <ref>      # base..<ref>
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --head M --fix F  # F's files judged base..F (D4)
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --sources         # the map against the
 //                                                                         # children's pinned tables
-//   node specs/issues/FIX-1887/poc/rename-map/check.mjs --control         # planted edits, must FAIL
+//   node goals/dispatching-work/runs-on-dispatch-task-alone/rename-map.mjs --control         # planted edits, must FAIL
 //
 // Exit: 0 every hunk explained · 1 a hunk unexplained · 2 the control caught
 // every plant (the control's pass) · 3 the map and the sources disagree.
@@ -42,6 +44,11 @@ const HEAD = opt("--head", "HEAD");
  * first PR merged), passed by the closure runner. Not given: not judged, said so.
  */
 const RERUN_BASE = opt("--rerun-base", undefined);
+/**
+ * D4: a finding's fix PR for a child merge. The files it touches are judged from the base to the
+ * fix's merge (the child's change and its fix together); every other file is judged at `--head` alone.
+ */
+const FIX = opt("--fix", undefined);
 
 const REGRESSION = [
   "goals/hand-offs/ask-survives-a-restart/",
@@ -158,13 +165,25 @@ const SHAPES = {
 
 /** Why a differing token pair is a name, or undefined when it isn't. */
 function pairOk(o, n, i, oldT, newT, group, hunkText) {
+  // A name at the end of a regex literal (`/(^|[._/])addTask$/`): the tokenizer keeps the
+  // anchor on the word, so compare the names without it. Anything else in the literal is
+  // still compared token by token (D3).
+  if (o.endsWith("$") && n.endsWith("$") && oldT[i + 1] === "/" && newT[i + 1] === "/") {
+    const r = pairOk(o.slice(0, -1), n.slice(0, -1), i, oldT, newT, group, hunkText);
+    return r === undefined ? undefined : `${r}, in a regex literal`;
+  }
   const key = `${o}\u0000${n}`;
   if (COORDINATOR_ONLY.has(key)) {
     if (group !== "coordinator") return undefined;
     if (key === "internal\u0000task") return /DELEGATED_POST_ENTRY|delegatedPostEntry/.test(hunkText) ? "#3153 declaration move" : undefined;
     return /handOff/.test(hunkText) ? "#3153 handOff → dispatchTask({ post: true, assignee })" : undefined;
   }
-  if (key === "ask\u0000wait") return oldT[i - 1] === "." ? "FIX-1876 Task.ask" : undefined;
+  if (key === "ask\u0000wait") {
+    if (oldT[i - 1] === ".") return "FIX-1876 Task.ask";
+    // The same field as a type-literal or object key: `{ ask?: unknown }` → `{ wait?: unknown }` (D3).
+    const keyed = ["{", ",", ";"].includes(oldT[i - 1]) && (oldT[i + 1] === ":" || (oldT[i + 1] === "?" && oldT[i + 2] === ":"));
+    return keyed ? "FIX-1876 Task.ask, as a property key" : undefined;
+  }
   if (key === "asked\u0000waitedOn") return oldT[i + 1] === ":" ? "FIX-1876 listing field" : undefined;
   if (PAIRS.has(key)) return "map";
   if (askFamily(o, n)) return "FIX-1876 *Ask* family";
@@ -191,12 +210,18 @@ function judge(removed, added, group, fences, path) {
     added = [...added];
     for (const f of fences) {
       if (f.path !== path) continue;
-      const r = removed.findIndex((l) => l.includes(f.removed));
-      const a = added.findIndex((l) => l.includes(f.added));
+      // A side given as null is a line added or removed alone (an import, a moved body), D4.
+      // A one-sided entry names its whole line, so a short one (`});`) can't admit another.
+      if (f.removed == null && f.added == null) continue;
+      const oneSided = f.removed == null || f.added == null;
+      const matches = (want) => (l) => (oneSided ? l.trim() === want.trim() : l.includes(want));
+      const r = f.removed == null ? null : removed.findIndex(matches(f.removed));
+      const a = f.added == null ? null : added.findIndex(matches(f.added));
       if (r === -1 || a === -1) continue;
-      removed.splice(r, 1);
-      added.splice(a, 1);
-      fenced.push(`fence line (listed: ${f.why})`);
+      if (r !== null) removed.splice(r, 1);
+      if (a !== null) added.splice(a, 1);
+      // D4: a graded claim whose evidence moved (the ledger to the board's rows) is printed on its own.
+      fenced.push(f.kind === "outcome-evidence" ? `outcome-evidence (listed: ${f.why})` : `fence line (listed: ${f.why})`);
     }
   }
   const hunkText = removed.join("\n");
@@ -238,15 +263,20 @@ function run(base, head) {
   const fences = loadFences();
   let bad = 0;
   let good = 0;
+  const evidence = [];
   const groups = [["regression", REGRESSION, base], ["coordinator", COORDINATOR, base]];
   if (RERUN_BASE !== undefined) groups.push(["coordinator", RERUNS, RERUN_BASE]);
   else console.log("  (FIX-1872 V9's reruns not judged: pass --rerun-base <control commit>)");
+  const fixed = FIX === undefined ? [] : execFileSync("git", ["diff", "--name-only", `${FIX}^1`, FIX], { encoding: "utf8" }).split("\n").filter(Boolean);
   for (const [group, dirs, from] of groups) {
-    for (const h of hunks(from, head, dirs)) {
+    const ours = fixed.filter((f) => dirs.some((d) => f.startsWith(d)));
+    const diffs = [...hunks(from, head, [...dirs, ...ours.map((f) => `:(exclude)${f}`)]), ...(ours.length > 0 ? hunks(from, FIX, ours) : [])];
+    for (const h of diffs) {
       const v = judge(h.removed, h.added, group, fences, h.path);
       if (v.ok) {
         good++;
         console.log(`  ok    ${h.path}  (${v.reasons.join(", ")})`);
+        for (const r of v.reasons) if (r.startsWith("outcome-evidence")) evidence.push(`${h.path}  ${r}`);
       } else {
         bad++;
         console.log(`  FAIL  ${h.path}  ${v.why}`);
@@ -254,6 +284,10 @@ function run(base, head) {
         for (const l of h.added) console.log(`        + ${l.trim().slice(0, 150)}`);
       }
     }
+  }
+  if (evidence.length > 0) {
+    console.log(`\n  outcome lines whose evidence moved, the claim unchanged (D4): ${evidence.length}`);
+    for (const e of evidence) console.log(`    ${e}`);
   }
   return { good, bad };
 }
@@ -322,7 +356,13 @@ if (args.includes("--control")) {
   const FENCE_PATH = "goals/coordinators/hands-each-post-to-its-delegates/devteam.mts";
   const LEDGER_READ = '  const delivered = ledger.filter((d) => d.outcome === "delivered");';
   const ROW_READ = '  const delivered = rows.filter((r) => r.status === "completed" && r.post === true);';
-  const CONTROL_FENCES = [{ path: FENCE_PATH, removed: "ledger.filter(", added: "rows.filter(", why: "control: a ledger read becomes a row read" }];
+  const IMPORT_ROWS = 'import { postDeliveries } from "../../lib/post-rows.mts";';
+  const OPEN_DB = "  const db = new DatabaseSync(store, { readOnly: true });";
+  const CONTROL_FENCES = [
+    { path: FENCE_PATH, removed: "ledger.filter(", added: "rows.filter(", why: "control: a ledger read becomes a row read" },
+    { path: FENCE_PATH, removed: null, added: IMPORT_ROWS, why: "control: an import added alone" },
+    { path: FENCE_PATH, removed: OPEN_DB, added: null, why: "control: a line removed alone" },
+  ];
   const cases = [
     ["pure rename passes", [filed], [filed.replace("addTask_tasks", "dispatchTask_tasks")], "regression", true],
     ["re-wrapped rename passes", [filed], filed.replace("addTask_tasks", "dispatchTask_tasks").replace(", {", ",\n    {").split("\n"), "regression", true],
@@ -336,6 +376,20 @@ if (args.includes("--control")) {
     ["a fence line beside a loosened timeout FAILS", [LEDGER_READ, parked], [ROW_READ, parked.replace("120_000", "240_000")], "coordinator", false, FENCE_PATH],
     ["a fence entry in another path admits nothing", [LEDGER_READ], [ROW_READ], "coordinator", false, "goals/coordinators/files-tasks-down-the-owners-chain/run.mts"],
     ["a fence line in a regression check FAILS", [LEDGER_READ], [ROW_READ], "regression", false, FENCE_PATH],
+    // D4: a one-sided entry admits its one listed whole line, in a coordinator check, and nothing else.
+    ["a listed pure addition passes", [], [IMPORT_ROWS], "coordinator", true, FENCE_PATH],
+    ["an unlisted pure addition FAILS", [], ['import { other } from "../../lib/other.mts";'], "coordinator", false, FENCE_PATH],
+    ["a listed pure removal passes", [OPEN_DB], [], "coordinator", true, FENCE_PATH],
+    ["an unlisted pure removal FAILS", ['  db.exec("PRAGMA busy_timeout = 5000");'], [], "coordinator", false, FENCE_PATH],
+    ["a one-sided entry in a regression check admits nothing", [], [IMPORT_ROWS], "regression", false, FENCE_PATH],
+    ["a one-sided entry admits only its whole line", [], [`${IMPORT_ROWS} // and a widened read`], "coordinator", false, FENCE_PATH],
+    // D3: a name as a type-literal key, or at the end of a regex literal, is a name; any other change there is not.
+    ["a type-literal key renamed passes", ["const asked = rows.filter((t) => (t as { ask?: unknown }).ask != null);"], ["const asked = rows.filter((t) => (t as { wait?: unknown }).wait != null);"], "regression", true],
+    ["a type-literal key widened to both names FAILS", ["(t as { ask?: unknown }).ask != null"], ["(t as { ask?: unknown; wait?: unknown }).wait != null"], "regression", false],
+    ["a type-literal key made required FAILS", ["(t as { ask?: unknown }).ask != null"], ["(t as { wait: unknown }).wait != null"], "regression", false],
+    ["a name in a regex literal renamed passes", ['/(^|[._/])addTask$/.test(name)'], ['/(^|[._/])dispatchTask$/.test(name)'], "regression", true],
+    ["a regex literal widened to both names FAILS", ['/(^|[._/])addTask$/.test(name)'], ['/(^|[._/])(addTask|dispatchTask)$/.test(name)'], "regression", false],
+    ["a regex literal's anchor dropped FAILS", ['/(^|[._/])addTask$/.test(name)'], ['/(^|[._/])dispatchTask/.test(name)'], "regression", false],
   ];
   let wrong = 0;
   for (const [name, removed, added, group, want, path] of cases) {
@@ -348,6 +402,7 @@ if (args.includes("--control")) {
 }
 
 console.log(`rename-map check · ${BASE.slice(0, 12)}..${execFileSync("git", ["rev-parse", HEAD], { encoding: "utf8" }).trim().slice(0, 12)}`);
+if (FIX !== undefined) console.log(`  with its fix ${FIX.slice(0, 12)}: the files it touches judged ${BASE.slice(0, 12)}..${FIX.slice(0, 12)}`);
 const { good, bad } = run(BASE, HEAD);
 console.log(`\n${bad === 0 ? "PASS" : "FAIL"} · ${good} hunk(s) explained, ${bad} not`);
 process.exit(bad === 0 ? 0 : 1);
