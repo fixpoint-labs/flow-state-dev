@@ -169,9 +169,7 @@ describe("Postgres list-option widenings", () => {
       "nulled",
       session("nulled", {
         parentSessionId: "p",
-        // Through `unknown`, deliberately: the record type declares
-        // `string | undefined`, and the point of the case is the `null` a
-        // persisted record can actually carry, which the type does not admit.
+        // A stored row can hold null; the type only admits string | undefined.
         ...({ orgId: null, tenantId: null } as unknown as Partial<SessionRecord>)
       }),
       "any"
