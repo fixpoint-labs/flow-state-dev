@@ -4,7 +4,7 @@
  * mirror create/update/delete into a `ScheduleIndex` (via a small
  * in-memory fake).
  */
-import type { JsonObject } from "@flow-state-dev/core";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { defineScheduleCollection } from "../src/defineScheduleCollection";
 import type { ScheduleIndex, ScheduleIndexRow } from "../src/scheduleIndex";
