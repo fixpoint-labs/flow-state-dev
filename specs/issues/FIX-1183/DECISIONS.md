@@ -144,4 +144,12 @@ Read while building the inventory; inputs, not instructions.
 - The scan is `specs/issues/FIX-1183/poc/vacuity-scan/scan.mjs`; `inventory.json` beside it is
   the per-goal record with its reason.
 
+## Notes from review
+
+- "A sparse schema (default `keep` + empty reason, persist only prune/fix overrides and flagged goals with non-generic reasons) would preserve totality checks in `scan.mjs` with far less churn." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3502#discussion_r4303382584))
+- "Four near-duplicate SVG `<style>` blocks — ~130 lines of duplicated CSS; shared fragment or one stylesheet would be simpler if figures stay required." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3502#pullrequestreview-5558660617))
+- "Two mermaid flows show the same empty-filter bug. Fine for a gate read, but trimming one layer would shrink the diff without losing decisions." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3502#pullrequestreview-5558660617))
+
+These are inputs, not instructions. Adopt, adapt, or discard them.
+
 **Open: one** — [above](#open).
