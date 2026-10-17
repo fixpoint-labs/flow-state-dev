@@ -167,10 +167,22 @@ jobs:
   # what a release ships, DevTool's client assets included.
   # One job for this, extended rather than duplicated: new checks go in the
   # script's CHECKS list. The script header owns the rest.
+  #
+  # Queued after Typecheck, as are E2E, Storybook and Docs below. Runners are
+  # shared, and when several PRs push at once every job waits for one, in
+  # roughly the order it was created. Without this, each push put these four
+  # slowest optional jobs in that queue alongside Typecheck and the test shards,
+  # so `Typecheck & Test` waited behind them. `needs` keeps them out of the queue
+  # until Typecheck finishes, by which time the shards usually have runners.
+  # `!cancelled()` keeps them running when Typecheck fails, so no signal is
+  # lost; it only arrives later. Process guards and Knip stay ungated: each
+  # takes under a minute.
   packed-install:
     name: Packed release installs and imports
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [typecheck]
+    if: ${{ !cancelled() }}
 
     # The two-users-one-tenant suite runs against the installed copies, and its
     # queue case needs a real Redis. The script refuses that leg without one,
@@ -343,6 +355,9 @@ jobs:
     name: Kitchen-sink E2E (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Queued after Typecheck; the note above packed-install says why.
+    needs: [typecheck]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -390,6 +405,9 @@ jobs:
   storybook:
     name: Storybook Build
     runs-on: ubuntu-latest
+    # Queued after Typecheck; the note above packed-install says why.
+    needs: [typecheck]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -420,6 +438,9 @@ jobs:
   docs:
     name: Docs Site Build
     runs-on: ubuntu-latest
+    # Queued after Typecheck; the note above packed-install says why.
+    needs: [typecheck]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
