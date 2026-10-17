@@ -245,7 +245,7 @@ describe("taskBoard - durable collection resolutions inside one request", () => 
       execute: async (_input, ctx) => {
         const resolve = (): Promise<TaskCollectionRef> =>
           getOrCreateTaskCollection({
-            // @ts-expect-error a resource-declaring block's ctx is not assignable to BlockContext (to be filed, found by FIX-1343)
+            // @ts-expect-error — source bug FIX-2060: a resource-declaring block's ctx is not a BlockContext.
             ctx,
             backing: "resource",
             collectionId: "evicting",
