@@ -57,24 +57,13 @@ function createMockSemRef(
   initial?: Partial<SemanticMemoryState>,
   relations?: EdgeSlotConfig,
 ): ResourceRef<SemanticMemoryState> {
-  let state: SemanticMemoryState = {
+  const ref = partialRef<SemanticMemoryState>('semanticMemory', 'user', semanticMemoryStateSchema, {
     facts: [],
     totalExtracted: 0,
     totalConsolidations: 0,
     ...(relations ? { edges: [] } : {}),
     ...initial,
-  } as SemanticMemoryState
-  const ref = partialRef<SemanticMemoryState>({
-    name: 'semanticMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (u) => { state = { ...state, ...u } as SemanticMemoryState },
-    setState: async (n) => { state = n },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'user', stateSchema: semanticMemoryStateSchema, writable: true },
-  })
+  } as SemanticMemoryState)
   if (relations) {
     ;(ref as { edges?: unknown }).edges = createResourceEdgeApi(ref as never, relations)
   }
@@ -82,76 +71,32 @@ function createMockSemRef(
 }
 
 function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
-  let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
-  return partialRef<WorkingMemoryState>({
-    name: 'workingMemory',
-    scope: 'session',
-    get state() { return state },
-    patchState: async (u) => { state = { ...state, ...u } as WorkingMemoryState },
-    setState: async (n) => { state = n },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'session', stateSchema: workingMemoryStateSchema, writable: true },
-  })
+  return partialRef<WorkingMemoryState>('workingMemory', 'session', workingMemoryStateSchema, { entries: [], currentTurn: 0, ...initial })
 }
 
 function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceRef<MemorySystemState> {
-  let state: MemorySystemState = {
+  return partialRef<MemorySystemState>('memorySystem', 'session', memorySystemStateSchema, {
     lastProcessedIndex: -1,
     readMessages: null,
     episodicWritesSinceLastConsolidation: 0,
     evictedPersistentSinceLastConsolidation: 0,
     lastConsolidationTurn: 0,
     ...initial,
-  }
-  return partialRef<MemorySystemState>({
-    name: 'memorySystem',
-    scope: 'session',
-    get state() { return state },
-    patchState: async (u) => { state = { ...state, ...u } as MemorySystemState },
-    setState: async (n) => { state = n },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'session', stateSchema: memorySystemStateSchema, writable: true },
   })
 }
 
 function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
-  let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
-  return partialRef<EpisodicMemoryState>({
-    name: 'episodicMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (u) => { state = { ...state, ...u } as EpisodicMemoryState },
-    setState: async (n) => { state = n },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'user', stateSchema: episodicMemoryStateSchema, writable: true },
-  })
+  return partialRef<EpisodicMemoryState>('episodicMemory', 'user', episodicMemoryStateSchema, { episodes: [], totalEncoded: 0, ...initial })
 }
 
 function createMockJanRef(initial?: Partial<JanitorState>): ResourceRef<JanitorState> {
-  let state: JanitorState = {
+  return partialRef<JanitorState>('janitor', 'session', janitorStateSchema, {
     lastRunTurn: 0,
     totalRuns: 0,
     lastCulledFactIds: [],
     lastCulledEpisodeIds: [],
     lastMarkedStaleEpisodeIds: [],
     ...initial,
-  }
-  return partialRef<JanitorState>({
-    name: 'janitor',
-    scope: 'session',
-    get state() { return state },
-    patchState: async (u) => { state = { ...state, ...u } as JanitorState },
-    setState: async (n) => { state = n },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { scope: 'session', stateSchema: janitorStateSchema, writable: true },
   })
 }
 
