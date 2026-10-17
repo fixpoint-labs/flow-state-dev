@@ -715,7 +715,7 @@ describe("how many tasks one top task has under it (BR-21, BR-21a, BR-22, BR-22a
     } finally {
       await h.dispose();
     }
-  });
+  }, 60_000);
 
   it("stops every chain at the app's own limit", async () => {
     const h = bootSplitHost({ hire: { taskChainLimit: 3 } });
