@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · **Decisions**
 
 What was considered, what was chosen, why, and what each choice locks in. D1 to D3 are Jake's
-direction (2026-10-14), recorded as decided. One fork is open.
+direction (2026-10-15), recorded as decided. One fork is open.
 
 ## The tree
 

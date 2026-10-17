@@ -10,7 +10,7 @@
 | **looks for a goal to rerun** | 126 goals, six of which prove nothing another check doesn't, one of which has never had a runner | 120 goals, each able to tell; the six are gone, named in the README's *Retired* list |
 | **reads a verdict log a year later** | PASS, FAIL, and per-goal words (`NOT RUN`, `BLOCKED`) invented by three goals | PASS, FAIL, **CAN'T TELL**, and the same per-goal words, untouched |
 
-Jake set the direction (2026-10-14): *can't tell* fails the run, labelled apart from a real
+Jake set the direction (2026-10-15): *can't tell* fails the run, labelled apart from a real
 failure. *"If a goal can't be written to 'tell', then it's not a good goal"*: fix it or remove
 it. Prune what's unnecessary. The change that brings the rule in fixes every goal it turns red.
 
@@ -96,7 +96,9 @@ can't show a can't-tell the helper doesn't exist to report. A scan for four shap
 loop over observed data with no floor) flagged 132 sites in 53 goals; each was read. The scan
 and the per-goal table re-derive with
 `node specs/issues/FIX-1183/poc/vacuity-scan/scan.mjs --sites`; `--control` plants a blind
-goal and must FAIL.
+goal and must FAIL on it as a flagged site with no reason. That script is audit evidence, not the
+guard: the shipped CI check looks only for the `suppress` shape, and the `every`, `skip` and
+`loop` shapes are spec-time heuristics that must not be ported.
 
 | Action | Goals |
 |---|---|
@@ -138,6 +140,14 @@ goal and must FAIL.
    assertions into core's vitest, add *Retired* lines.
 3. **Any underlying bug** a fix exposes — its own Linear issue and PR, landed before PR 1
    ([D3](DECISIONS.md#d3)). None is known today.
+
+**Where the guard lives.** The production guard follows FIX-1796's retired-terms guard, not
+eslint or ast-grep: a script in `goals/scripts/` beside `check-run-goal-verdict`, vitest fixtures
+that prove it flags the `suppress` shape and leaves the two named non-cases alone
+([notes](DECISIONS.md#notes-for-the-implementer)), and two CI steps beside the vocabulary
+sweep, the check on the tree and the check under `--control` refusing its plant. CI runs that
+guard, the goal check above and `goal:all`'s new verdict; the vacuity scan and `inventory.json`
+stay in this spec as evidence and are never wired into CI.
 
 ## What stays as it is
 

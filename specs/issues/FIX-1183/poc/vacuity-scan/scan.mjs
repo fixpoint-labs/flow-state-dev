@@ -10,6 +10,11 @@
  *   node specs/issues/FIX-1183/poc/vacuity-scan/scan.mjs --sites    # also list every flagged site
  *   node specs/issues/FIX-1183/poc/vacuity-scan/scan.mjs --control  # plant a blind goal; must FAIL
  *
+ * Under --control the planted goal gets an inventory stub with no reason, so a
+ * healthy scan fails on exactly one problem: "flagged but no reason" for the
+ * planted goal, a blind site nobody read. If the scan stops flagging the planted
+ * suppression shape, a second line says so.
+ *
  * Exit 0: every goal is in inventory.json and every flagged goal carries a
  * reason. Exit 1: a goal is missing from the inventory (or an inventory entry
  * names no goal), or a flagged goal has no reason.
@@ -53,7 +58,11 @@ function sources(dir, out = []) {
   return out;
 }
 
-/** A loop source that is a literal, a constant, or the fixture: never empty at run time. */
+/**
+ * A loop source that is a literal, a constant, or the fixture: never empty at run time.
+ * POC-only: a per-goal allowlist tuned to today's goals. Do not copy it into the
+ * production guard, which checks only the `suppress` shape and needs no allowlist.
+ */
 const FIXED = /^(\[|[A-Z_][A-Z0-9_]*\b|Object\.(entries|keys|values)\(\s*[A-Z_]|fixture\b|fx\b|expected\b|want\b|o\.seats|r\.notes|leg\.failures)/;
 const PUSHES = /failures\.push|\bfail\(|\.fail\(|\bnote\(/;
 
@@ -113,6 +122,7 @@ if (CONTROL) {
   // A blind goal nobody inventoried, written in the issue's own shape.
   const planted = "control/planted-blind-goal";
   goals.push(planted);
+  inventory[planted] = { action: "keep", why: "" }; // inventoried, never read: only its flagged site can fail
   files.set(planted, [[`${planted}/run.mts`, [
     "await runGoal(async (failures) => {",
     "  const values = items.map((i) => i.sequence).filter((v) => typeof v === \"number\");",
