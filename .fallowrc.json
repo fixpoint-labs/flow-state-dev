@@ -1,0 +1,113 @@
+// fallow: unused code, duplication, circular imports and complexity.
+//
+// Two CI gates read this file (see the `fallow` job in .github/workflows/ci.yml):
+//   - `pnpm fallow:ci`    whole tree, unresolved imports + unlisted dependencies only.
+//   - `pnpm fallow:audit --base <ref>`  PRs only, fails on dead code the change
+//     introduces (findings already on the base don't count); reports new
+//     duplication and complexity without failing.
+// `pnpm fallow` locally shows the whole backlog, and exits 1 while there is one.
+//
+// Framework plugins discover most entry points (package.json exports/bin, vitest,
+// Next, Vite, Docusaurus, Storybook). `entry` lists only what they can't see.
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "minimumVersion": "3.33.1",
+
+  "entry": [
+    "scripts/*.mjs",
+    ".omp/extensions/*.ts",
+    ".omp/test/*.mjs",
+
+    "packages/*/test/**/*.{test,spec}.{ts,tsx}",
+    "packages/*/**/*.type-test.ts",
+    "packages/cli/bin/*.ts",
+    "packages/cli/test/fixtures/**/*.ts",
+    "packages/ui/stories/**/*.{ts,tsx}",
+
+    "apps/devtool/src/main.tsx",
+    "apps/devtool/vite.config.ts",
+    "apps/kitchen-sink/app/**/*.{ts,tsx}",
+    "apps/kitchen-sink/flows/**/index.ts",
+    "apps/kitchen-sink/next.config.{js,mjs,ts}",
+    "apps/kitchen-sink/e2e/**/*.{test,spec}.ts",
+    "apps/docs/docusaurus.config.ts",
+    "apps/docs/sidebars.ts",
+    "apps/docs/src/**/*.{ts,tsx}",
+
+    "examples/*/src/**/index.ts",
+    "examples/*/test/**/*.{test,spec}.ts",
+
+    "labs/knowledge-hub/src/index.ts",
+    "labs/knowledge-hub/fsdev.config.ts",
+    "labs/knowledge-hub/test/**/*.spec.ts",
+    "labs/knowledge-hub/scripts/**/*.mts",
+    "labs/conductor/fsdev.config.ts",
+    "labs/conductor/test/**/*.spec.ts",
+    "labs/conductor/test/harness.ts",
+
+    "plugins/flow-state-dev/test/**/*.test.mjs",
+    "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
+
+    // Each goal's runnable check, run by `goals/scripts/run-all.mts` or by hand.
+    "goals/*/*/run.mts",
+    "goals/scripts/*.mts"
+  ],
+
+  // Goals load their own files by path (fixtures, labs, controls, legs, hosts:
+  // copied, spawned, or imported by URL), so no import edge reaches them. The
+  // goal-local glob needs a file below `goals/<describe>/<it>/`, which keeps
+  // the shared `goals/lib` helpers analyzed like any module.
+  "dynamicallyLoaded": [
+    "goals/*/*/**/*.{ts,tsx,mts,mjs}",
+    "goals/lib/module-patch*.mjs"
+  ],
+
+  // Not analyzed. Specs and their PoCs aren't workspace code, and
+  // `goals/_template` is copied to start a new goal. The rest runs somewhere
+  // else, so its imports resolve against that place's paths and dependencies:
+  // goal harnesses and hosts run inside kitchen-sink, install-fsd templates are
+  // copied into a user's project, and packed-install fixtures run against a
+  // packed install.
+  "ignorePatterns": [
+    "!.omp/**",
+    "spec-poc/**",
+    "specs/**",
+    "plugins/flow-state-dev/skills/install-fsd/templates/**",
+    "scripts/packed-install/fixtures/**",
+    "goals/_template/**",
+    "goals/*/*/harness*.mts",
+    "goals/*/*/host/**"
+  ],
+
+  // Analyzed (their imports count) but never reported: vendored shadcn and
+  // registry sources.
+  "ignoreFindings": [
+    "packages/ui/registry/**",
+    "packages/ui/.storybook/shadcn/**"
+  ],
+
+  // Dead code fails `fallow audit` at its default severity. Complexity reports
+  // but doesn't fail: existing hot spots are common enough that a new-only gate
+  // would still fire on ordinary PRs. Duplication also reports without failing
+  // (fallow's default, no `duplicates.threshold`): editing code inside an
+  // existing clone splits it into clones fallow counts as new, so a failing
+  // gate would block ordinary fixes to code that is already duplicated.
+  "rules": {
+    "complexity-cyclomatic": "warn",
+    "complexity-cognitive": "warn",
+    "complexity-crap": "warn"
+  },
+
+  "audit": { "gate": "new-only" },
+
+  "ignoreDependencies": [
+    "@oh-my-pi/pi-coding-agent",
+    "class-variance-authority",
+    "clsx",
+    "cmdk",
+    "radix-ui",
+    "react-jsx-parser",
+    "tailwind-merge",
+    "tailwindcss"
+  ]
+}
