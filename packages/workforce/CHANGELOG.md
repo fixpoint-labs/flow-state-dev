@@ -1,5 +1,280 @@
 # @flow-state-dev/workforce
 
+## 0.4.0
+
+### Minor Changes
+
+- cfef958: Any worker files tasks for its delegates that take one, not only a coordinator: `delegates:` joins the worker contract (`workerConfigSchema()`), so a worker flow that hand-declares the contract must accept it too, the built-in `agent` flow carries the task tools, the `addTask_tasks`-style actions and the four delegate actions, an app's own worker flow carries them with `defineSessionBoard({ installation, flowKind })`, and a worker none of whose delegates takes a task, a coordinator included, gets no task tools and its actions answer `no_delegation_board` (FIX-1802).
+- b9de77e: A `best-fit` coordinator with a `description:` is now one of its own choices, so a post the evaluator picks it for runs the coordinator's own turn; a new `minConfidence:` key (0 to 1, `best-fit` only) sends a delegate pick below it, or one with no reported confidence, to the fallback or the coordinator's turn; the routing record's new `fit` field says why best fit handed a post on; and the coordinator's own turn now reads each delegate's answer under that delegate's name, with each post its routing handed on marked as handled (FIX-1833).
+- 80f6e25: `createSeatHireCapability` gives a seat `brokenSeats` and `rehire` tools, and takes `askBefore` to make `hire` or `fire` wait for a person's approval (`rehire` always waits) and `refuseRosterAdmin` to keep those tools off the seats it hires, so a Shift Coordinator can change the roster with a human in the loop (FIX-1719).
+- 12bf045: A coordinator conversation keeps its own task board, worked through Orchestration's task tools on the coordinator's turn and as `addTask_tasks`-style actions, for the conversation's delegates that take tasks; each task runs in a new task session of the user's, found with `findWorkerSession({ worker, taskId, filingSessionId })`, and the conversation hears once how it ended (FIX-1794).
+- 5492a77: A new `dispatchTask` tool (and `dispatchTask_<board>` action, offered in the DevTool's Tasks tab) starts work on another worker now and can wait for its result with `wait: true`, while on a board that dispatches (a Workforce conversation's, or one built with `{ dispatches: true }`) `addTask` and `assignTask` only record a task until `dispatchTask` names its `taskId`, `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`, and the wait names are renamed with no alias (`addTaskAndWait` → `dispatchAndWait`, `AskEndedError` → `WaitEndedError`, `canHoldAsk` → `canHoldWait`, and the rest of the `Ask` names to `Wait`) (FIX-1875).
+- 4f2e13e: Add the Error Reporter (FIX-1983): `createErrorReporter`, `defineErrorReporterFlow` and `defineErrorReporterIntakeFlow`. A request that settles failed, a task that ends errored on a conversation's board, or a problem a person describes to the reporter becomes one report per fingerprint, capped per window, drafted by a harness from a redacted dossier, previewed to the operator as an ordinary form, and filed through the tracker project's MCP servers once they answer.
+- a600325: `fsdev gen` no longer depends on `@flow-state-dev/workforce`. It runs the generator a dependency of the app exports on a `./fsdev-gen` subpath (typed as `FsdevGenerator`), and `@flow-state-dev/workforce` now exports its generator there, so a Workforce app runs `fsdev gen` as before. `GenResult` reports `generator`, `entries`, `paths` and `summary` in place of the Workforce discovery lists, and `--root` defaults to the generator's own folder (FIX-1771).
+- 7da156e: Organization ids are now validated as well-formed, non-blank Unicode everywhere (resolver, `runAction`, dispatch, BullMQ jobs, schedules, `fsdev run --org`) and seat addresses escape any such id, while route segments are decoded exactly once on every host (`parseFlowRoute` now takes decoded segments, built from a raw URL by the new `decodePathSegments`), so escaped seat ids resolve on Next and Vercel and stored rows or queued jobs with a lone-surrogate org id are now refused (FIX-1757).
+- 98fa8da: `hiredSeatOwnerPin` now refuses a missing or empty organization id with the same error `registerHiredSeat` throws, instead of returning a pin with an empty `orgId` (FIX-1572).
+- a3bfbc2: The seat, mailbox and membership inventory collections (`defineSeatInventoryCollection`, `defineMailboxInventoryCollection`, `defineMembershipIndexCollection`) declare a browser read. A session on any flow that installs one can list its rows through the collection-state route, for that session's own organization only, with the row's named fields (`id`, `kind` for a seat; `id`, `kind`, `members`, `openedAt` for a mailbox; `seatId`, `mailboxId` for a membership) and nothing else. Every member of an organization can now list its registered seats, mailboxes and memberships from the browser (FIX-1502).
+- d10b1ba: A mailbox `post` now keeps the line as one `mailbox-post` component item on the mailbox's session (`MAILBOX_POST_COMPONENT`), so a page can render the transcript from the session's items. The post resolves only once that item is stored, and fails if the write does. New posts no longer land in `state.transcript`; `read` returns the lines already there first, then the posted ones inside the session's history window (50 requests by default). A mailbox kind of your own keeps and reads its lines the same way with `emitMailboxPostLine` and `readMailboxPostLines`. A message sent to an `agent` seat's `run` is now kept as the caller's turn in that seat's conversation (FIX-1585).
+- b808784: Channels are now mailboxes everywhere (`MAILBOX.md` under `teams/<team>/mailboxes/`, the `mailbox` kind, `mailbox-post` items, the `mailboxes` discovery domain, and every export, such as `mailboxFlow`), and the old names are not read, so an old file is reported by name and a store written before this release does not open: start from an empty store (FIX-1748).
+- 02019e2: Seats declared under `org/workers/<name>/` now load as org seats, with the folder name as their id, and `parseDeclaredSeatId` reads any declared seat's id back into its team (if any) and name (FIX-1719).
+- 7d4c413: Resource collections can be declared owner-private with `ownerPrivate: { param }`, and `ownerSegment(userId)` builds the owner key segment. Key segments beginning `~` are reserved for owner-private collections in every app, and flow registration refuses a single resource whose key has one. `defineResourceCollection` and flow registration no longer refuse collection patterns on Workforce's account, and `@flow-state-dev/core` no longer exports `assertRosterCollectionIsNotDeep`. Workforce's private roster collection is now owner-private; its refusal messages name the owner-private collection instead of the roster (FIX-1549).
+- edc3197: A coordinator's post to each delegate is now one task row on the conversation's board, and the board's claim decides that an answer lands once. (FIX-1872) Three things for an app to change or expect:
+
+  - A worker file whose `tools:` names `handOff` is refused at load. Hand a post on with `dispatchTask` and `post: true`, naming the delegate as `assignee` (and a workstream's `target`). `dispatchTask` is on every coordinator, so `tools:` doesn't name it.
+  - A delegate flow declares the post entry under `task` entries: `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(door) } }`. Declaring it under `internal` makes `defineCoordinatorFlow` throw. `delegatedAnswerSchema` and `DelegatedAnswer` are removed.
+  - A conversation saved with the old delivery ledger reads as if it had none and drops it at its next write. An answer still owed for a post delivered before the upgrade is dropped, and its round closes at its deadline, so a conversation with `rounds:` set can lose one round of answers once.
+
+- 8ecb3e7: `defineWorkstreamBlocks()` adds `editWorkstreamTool`, a tool named `editWorkstream` for a project coordinator: it changes one of the caller's own workstreams by id (title, status, due date, objectives) in the project its conversation belongs to. Naming another project is refused (`other-project`), and an id the caller has no workstream under is refused (`no-such-workstream`). Marking one done takes its delegate off the coordinator in the same turn. `editWorkstreamInputSchema` is exported (FIX-1963).
+- b2f2d4c: Each person talks to a project through their own project coordinator (`createWorkerInstallation({ projectCoordinator })`, then `ensureWorkerSession({ worker, projectId })`), whose delegates are their open workstreams there, kept in step by `openWorkstream` and `updateWorkstream`, with `parseWorkstreamEntry` on `@flow-state-dev/workforce/browser` reading an entry the way `readProject` does (FIX-1793).
+- 58e92e1: A project can record its git remote (`repository`, set with `createProject` or the new `setRepository`) and keep members-only files in the new `project-files` collection, read with `readProjectFiles` (FIX-1762).
+- 0471725: `projectWorkspace({ board })` is a run source for a workspace host: a coding run on a project's mailbox board works in a branch of the project's repository with the project's files beside it, or on the project's files alone when it has no repository. It refuses a run whose owner is not a member, or whose workstream no project holds. The block that asks it holds `projectWorkspaceCapability` (FIX-1762).
+- c2cb231: Projects can be private or shared, and each workstream in a project has one owner (FIX-1793).
+
+  - `createProject` takes `visibility`: `"shared"` (the default) keeps the project in the organization, where everyone reads it; `"private"` keeps it in the creator's own user scope, where nobody else lists or reads it and it shows only in the organization it was made in. A private project names no other members (`private-has-members`) and lists no workstreams by mailbox id (`private-has-workstreams`). The answer carries the project's `visibility`.
+  - A project's address is its visibility and its id, `{ visibility, id }`. `setRepository` and `readProjectFiles` now take `{ project: { visibility, id } }` in place of `projectId`. The private rows and files are `definePrivateProjectsCollection()` and `definePrivateProjectFilesCollection()`, at `projects/*` and `project-files/**` in user scope.
+  - `defineWorkstreamBlocks({ installation, leadFlows })` adds `openWorkstream` and `updateWorkstream`. Opening one writes the caller's own entry at `workstreams/<project>/<~owner>/<workstream>` and starts the lead's workstream session, owned by the caller, on a lead from their roster. On a shared project only its members may open one. Everyone who reads the project reads every entry (title, lead, status, due date, objectives, latest report, `writtenBy`); only the owner can change theirs, whichever flow writes. A status is a short label in the owner's own words (at most `WORKSTREAM_STATUS_MAX_LENGTH` characters, `"on-track"` when opened); one label has a meaning, `"done"` (`DONE_STATUS`): a done workstream stays listed, is never stale and is never the next due date. `updateWorkstream` writes the caller's own entry, or the one its `owner` names, which the store refuses for anyone but that owner. `updateWorkstreamTool` lets a lead update the workstream its session leads.
+  - A worker flow lets its workers lead a workstream by declaring `workstreamOpenedEntry()` under `internal.actions[WORKSTREAM_OPENED_ENTRY]`. The built-in `agent` flow declares it.
+  - `findWorkerSession` and `ensureWorkerSession` take a `workstreamId` criterion: `{ project: { visibility, id }, id }`. They return the one session the caller's entry for that workstream names, and nothing while it names none; `ensureWorkerSession` never starts a workstream's session, since `openWorkstream` does. A worker session naming a workstream is created only for the caller's own entry, with the lead that entry names.
+  - `readProject` returns a project's row, every workstream's entry and its progress, from two reads. `projectProgress(entries, now)` works progress out the same way anywhere: how many workstreams carry each status label present, objectives met of total, the next due date, and entries unchanged for `STALE_AFTER_MS` (seven days).
+  - `projectWorkspace()` finds a run's project from the workstream its session leads, at the project's visibility, and refuses a run whose owner isn't the workstream's (`not-the-owner`). Its `board` option is now optional; a mailbox board still finds its project through its claim.
+  - `sharedResource(pattern, shape, options)` takes the rest of a collection's declaration, a user scope included, and `withWrittenBy(ctx, data)` stamps `writtenBy` for a writer that needs its own write.
+
+- 16bb676: A worker no longer gets `runBoard` and a private board's task tools from a skill it holds, because skills can no longer declare `agents:`; a worker skill that still does is reported in `skillErrors` when the tree is read (FIX-1814).
+- c4150e7: A person's message on a finished task reopens it: task collections gain `reopen(id)`, the harness manager's door reopens a finished run when its board names `reopenIn`, a worker's reply in a finished task's session on a Workforce conversation board reopens that task, and Shift Manager's task composer takes a message on a finished task (FIX-1764).
+- 9427a4d: `createSeatHireBlocks` adds `brokenSeats` and `rehire` to list and repair stored seats whose kind is gone, and `fire` now removes the seat's own inventory row too (FIX-1621).
+- d1a4cab: Workforce says worker and worker flow throughout: the `seat*` exports, configuration keys (`workerId`, `workerSkills`, `workerTools`, `workerPackages`) and stored names say worker, `KindRefusedHireError` is `WorkerFlowRefusedHireError`, `AGENT_KIND` is `AGENT_FLOW`, `fsdev gen` exports its worker flows as `workerFlows` (was `kinds`; run `fsdev gen` again), `discover:` takes `workers`, the loader's `SegmentLabel` `"Kind"` is `"Worker flow"`, and a best-fit coordinator's route question is answered under `worker` (was `member`), so a mocked evaluation model answers `{ worker: … }`; there are no aliases, and records saved under the old names are not read (FIX-1796).
+- d10b1ba: A mailbox whose `MAILBOX.md` declares `routing:` with a `fallback:` member now sends each post from a person to one member, picked by `routeByPurpose(seats, { model })` passed as `defineMailboxFlow({ route })`, and that member's reply is posted into the mailbox as its line, with the mailbox's last 20 lines in view (the `routed` and `recent` fields on the notify input) (FIX-1610).
+
+  A seat of the built-in `agent` kind now needs a `seatId` setting when it is minted, which `hireWorkforce` writes on every seat: one minted straight off the kind without it is refused at the mint, naming the key (FIX-1610).
+
+- 8ebab39: A worker given a task can split it: its task session files pieces for its own delegates, its task waits on them and completes from their outputs, or fails naming the pieces that failed for good. A chain of split tasks is at most five boards deep, and one top task has at most 100 tasks under it, finished ones included; `hireWorkforce(installation, { taskChainLimit })` sets an app's own limit. A filing past either is answered `total_task_cap_exceeded`. Cancelling a split task cancels its open pieces, down the chain. A worker flow's `work` entry now holds its session's reply line, so a piece's notice waits for the turn that filed it (FIX-1802).
+- 6f5a697: A task's session stays open until the task is done and after: a worker parks on a question with `parkOnQuestion`, the conversation answers with `answerTask_tasks`, and a follow-up filed with `followUpOf` runs in the same session (FIX-1817).
+- 30aa133: A task can now be handed to the worker its assignee names, including one hired after the host started (FIX-1778).
+
+  - core: a task dispatcher's `flowKind` may be a function of the task (`TaskFlowTarget`), resolved once per hand-over; an empty answer refuses it `flow-not-found`. A task entry may declare `from` to take tasks from more than one ledger; such an entry runs queued unless it sets its own concurrency. A function `flowKind` requires `session: "per-task"`.
+  - orchestration: `taskLedgers({ name, resolve })` builds that `from`, resolving each dispatch's ledger by id and refusing an unknown one before any row is read. A board's `defaultWorker` may now be a task dispatcher, handing a task over under its own assignee. Tasks record `createdBy` (the user whose request added them, server-only), which a hand-over passes to a per-task target as `filedBy`.
+  - workforce: `createWorkerLookup({ instanceAt, declared })` says which worker a name means for the running caller, from the live registry; its `flowKind` plugs into a board's fallback and `filingCheck` into a mailbox's new `checkAssignee` option, which refuses `fileTask` for a name no worker holds. `mailboxTaskLists(ids)` lets a worker take tasks from mailbox lists, and the `agent` kind's new `taskLists` option gives it a `work` task entry over them.
+
+- f219769: `WORKER.md` and `TEAM.md` take an optional `name:`, a display name for people (FIX-1959). A team's name rides each of its workers as `teamName`. Both reach the worker inventory rows and the standard workers' roster entries as `name` and `teamName` (`null` when unset). `name` is read by the installation, never handed to a worker flow as a setting.
+- fb99119: A worker session create now refuses a caller-set `filingSessionId`, and every worker flow built on `installation.session()` refuses `delegates`, `fallback`, `taskNotices` and `splitParent` by name instead of dropping them; `ensureWorkerSession` no longer creates a session for a `filingSessionId` (FIX-1855, FIX-1895).
+- ae72c9d: `hireWorkforce` now takes your worker flows as `workerFlows` (renamed from `kinds`), checks each one against the worker contract before any worker runs, can keep a flow for declared workers, and ships `workerFlowProblems`, `sharedResource` and `writeShared` (FIX-1789).
+- 0cbf42b: Workers can message each other with a `messageWorker({ to, text, replyTo? })` tool that lands the message in the recipient's own conversation and wakes it, limited by `hireWorkforce`'s `messages: { hopLimit, perTurn }`, and `findWorkerSession` / `ensureWorkerSession` with `{ worker }` now return only the session at the worker's derived address (FIX-1989).
+- ecca6d0: A worker on the built-in `agent` kind with no `tools:` line can now call the tools of the capability presets its file picks under `capabilities:`, where before it got only their context. Write `tools: []` to keep the old reach; a worker that writes a `tools:` line is unchanged. For a worker with no line, the hired seat's `config.tools` is now absent rather than `[]`, and the worker is refused at startup if two presets it picks list different tools under one name (FIX-1459).
+- b092e17: Every hired seat now carries its own id as the `seatId` setting (for a runtime-hired seat, its roster id, the one a mailbox's `members:` lists), a `WORKER.md` that sets `seatId:` is refused by name, and a worker kind whose settings schema is hand-written rather than built from `workerConfigSchema()` must admit `seatId` or it refuses at boot naming the key (FIX-1589).
+- 9d636c0: A coordinator worker hands each post to delegates from its user's own roster: `defineCoordinatorFlow` routes by judgment or best fit, each conversation keeps its own delegates (changed with `addDelegate`, `removeDelegate` and `setFallback`, read with `listDelegates`), and a flow declares `delegatedPostEntry` so its workers can be delegates; the built-in `agent` flow does. A coordinator's judgment is the agent's own turn, built from the `agent` options you give `defineCoordinatorFlow`, so its workers' `model`, `tools` and `skills` read as an `agent` worker's do. `createWorkerInstallation` now refuses a standard worker whose `delegates:` names a worker that isn't standard. An app finds the session a delegate was given for a conversation with `findWorkerSession({ worker, filingSessionId })`, using the `filingSessionId` that `listDelegates` returns; a lookup naming only `{ worker }` never returns one. `COORDINATOR_KIND`, `COORDINATOR_ROUTE` and `COORDINATOR_JUDGMENT` are on the `./browser` entry (FIX-1791).
+- e3c1927: A coordinator can route by `round-robin` (the next delegate in list order) and `everyone` (each delegate that can be reached), and `rounds:` from 1 to 3 is now accepted: a delegate's answer goes back out that many times. Under `best-fit` and `round-robin` each answer is routed again as it lands, never to its own author; under `everyone` each delegate gets the other delegates' answers when the round closes; under `judgment` the coordinator's turn runs once per closed round, and its hand-offs go out in the next round. A round closes when each delegate in it has answered or failed, or at its deadline, which `defineCoordinatorFlow({ roundDeadlineMs })` sets (five minutes by default). The routing record's `by` adds `round-robin` and `everyone`. `delegatedPostEntry` now tells the coordinator when it has no answer for a post whose answer can go back out, and `delegatedPostSchema` carries that post's optional `deadlineAt`. A delegate flow that sets the new `delegatedPostOnFinished` as its request `onFinished` also reports a cancelled run; the built-in `agent` flow does. A round whose delegate says nothing closes on the conversation's next wake after its deadline. A conversation keeps at most 50 rounds open; a post that would open one more is delivered without a round, and its routing record's new optional `note` says why. `roundDeadlineMs` must be a positive whole number of milliseconds (FIX-1791).
+- 617aeab: Mailboxes are removed (FIX-1792): `MAILBOX.md`, the mailbox flow, binder, boards and post tool, the mailbox and membership inventory collections, `fsdev gen`'s `flows/mailboxes/` slot and `mailboxKinds`, and the `mailboxBoards`, `taskLists` and `mailboxLists` options are gone; a coordinator is a `WORKER.md` on the `coordinator` flow.
+- b255c6b: Every worker runs on one shared copy of the flow it names. `hireWorkforce(installation)` returns one copy of each worker flow and the roster flow (`workforce-roster`, with `hire`, `fork`, `edit` and `fire`), and mints nothing per worker and pins nothing. A worker flow declares `session: installation.session()` and loads its worker each turn; `workerFlow(...)` builds a flow in its own file on its installation, and `installation.resourceVisibility` narrows each turn's model to its worker's document grants. The built-in `agent` on an installation keeps each worker's skills apart, refuses a turn whose input names a worker, and signs its mailbox posts as the turn's worker. The mailbox wake and the task lookup open each session naming its worker, for standard workers only. Removed: `createSeatHireCapability`, `createSeatHireBlocks`, `registerHiredSeat`, `reloadHiredSeats`, the hired-roster collections and keys, `seatAddress`/`splitSeatAddress`, and `listedSeatRows` (FIX-1788).
+- e9f9316: A worker can now hold packages, folders of a `PACKAGE.md` and a `blocks/` folder found in its own `packages/` folder or taken by name from its team's or the org's through `packages:`: the built-in `agent` kind adds their instructions to its prompt and, when the worker writes no `tools:` line, their blocks to its tools, with `readWorkforce` returning them on each record, `hireWorkforce` taking the generated `packageBlocks`, and a custom kind receiving them under `seatPackages` (FIX-1459).
+- e8380b0: Projects name the MCP servers their coding runs get. The row gains `mcpServers` (a row stored before reads `[]`); `createProject` takes it and the new members-only `setMcpServers` replaces it, checked against `defineProjectBlocks({ mcpServers })` (`unknown-mcp-server`, `invalid-mcp-server`). `projectMcpTools(servers, { operator })` resolves a run's servers from the same read as `projectWorkspace()` and relays their tools through FSD's own connection with the run owner's key, read from the new user-scoped `mcp-credentials/*` collection (client read: `setAt` only) (FIX-1905).
+- b74d8b6: A project no longer lists mailboxes as workstreams (FIX-1792). Its row has no `workstreams` field and `createProject` takes none; `setWorkstreams`, the workstream claims (`defineWorkstreamClaimsCollection`, `WORKSTREAM_CLAIMS_RESOURCE`, `workstreamClaimSchema`), `projectWritesMailboxInventory` and `projectWorkspace`'s `board` option are removed. A project's workstreams are the entries `openWorkstream` writes, and `projectWorkspace()` finds a run's project through its workstream, its conversation's project, or the project its task names. The roster flow (`workforce-roster`) now declares the worker inventory (`inventory/seats/*`), so a person's roster session reads the organization's workers.
+- b2f2d4c: Projects: an organization's `projects` collection (`defineProjectsCollection`), and `defineProjectBlocks` for writing rows. `createProject` creates a row owned by the calling session's owner, with its members and the workstreams (declared mailboxes, from any team) it groups; a workstream belongs to at most one project, claimed with `create` before the row is written. `setWorkstreams` replaces the list, members only. Refusals are `ProjectRefusedError` (FIX-1718, part of FIX-1793).
+- a1b122e: A mailbox can no longer declare a board named `lock`, in any case. It would mint an id ending in `.lock`, which no git branch can carry, so a coding run could never work that board. A tree that declares one now fails to load with the board-name rule's wording (FIX-1667).
+- c364ebb: Each seat's inventory row now names its **door** (FIX-1690), the action that takes a person's message: the one public action its kind declares with `userMessage` and a `{ message }` input. A kind with none publishes `door: null`. A kind with two also publishes `null`, and the hire warns, naming both. `openInventory` reads the door from the seats you pass it, and `InventorySeat` now requires `actions`: pass `hireWorkforce`'s seats as they are, or `actions: {}` for a seat you build by hand that takes no message. Also exports `seatDoorOf(seat)`.
+
+  Rows written before this read `door: null` until the next boot rewrites them.
+
+- b24a0f2: `workerTaskEntry` takes a `block` instead of a `turn` (one or the other), and its `mailboxLists` accept a list's declaration (`{ id, collection }`) beside its id: the block is handed the task itself plus `claim`, the board, partition and row incarnation the gate verified. `conversationLedgers` exports the entry's resolver for a conversation's board, and `filingConversationBoard(ctx)` finds the board of the conversation a task session was opened for, with the entry that runs it there. A conversation's board now copies a project conversation's project onto the task session it hands over (`filingProjectId`, readonly), and `projectWorkspace()` resolves a run's project from the filing workstream, then the filing project, then the task's `input.project` (`{ visibility, id }`, checked against the run's own user), then the `board` claim; a task naming another project than its conversation's is refused `other-project` (FIX-1866).
+- 98b90a6: Workers can be data: `createWorkerInstallation` gives a worker flow a create check that names the session's worker once, `resolveWorker` loads it each turn, `createWorkerHireBlocks` writes the user's roster, and `createWorkforceClient` finds or starts a session with a worker. `writeShared` now names the worker the turn loaded, not a `seatId` setting. `createSkillsLibrary` takes `partitionBy` to keep one catalog per party on one flow copy (FIX-1788).
+- 2b118ab: A workstream's lead must list delegates: `openWorkstream` refuses a lead whose `delegates:` is empty with `cannot-lead`. `defineWorkstreamBlocks` also returns `listLeadsTool` (`listLeads`), which lists the workers on the caller's roster that can lead, so a project coordinator given it and `openWorkstream` can open a workstream for the person and hand their ask to it in the same turn. `installation.roster(ctx)` reads the user's whole roster, and `RosterWorker` carries its `delegates` (FIX-1793).
+
+### Patch Changes
+
+- d10b1ba: The built-in `agent` kind now declares an internal `onMailboxPost` entry, so a mailbox's notify block can dispatch a post to an agent seat and have it answer with the post as its turn (FIX-1590).
+- 5ab09d4: A seat on the built-in `agent` kind now hands its model the earlier turns of its own conversation, up to the session's history window (the last 50 turns by default) and never another conversation's, so a follow-up keeps its subject (FIX-1612).
+- 082693f: Ask follow-ups (FIX-1816): `createTaskToolsCapability` and `taskToolsForTurn` take `{ resumesAsks }`, off by default, so an existing caller of either no longer offers `waitForResponse` until it passes `resumesAsks: true` for a board whose runner calls `resumeOwedAsks` (Workforce's conversation board does); `listTasks` marks an asked row `asked: true`; and `addTaskAndWait` files its row once across a crash, counts the deadline from the filing, answers with a row that completed just before its timeout's cancel, keeps a caller-supplied id but adopts a row under it only when the same call filed it (an ask's gate id now ends in a per-filing nonce, so read it from `row.ask.gateId`, never rebuild it with `askGateId`), and on a re-drive reports the outcome its gate recorded.
+- be1bddf: A worker can ask a colleague and carry on the same turn with the answer (FIX-1816). `addTask` takes `waitForResponse` and `timeoutMs` (five minutes by default, 30 seconds to an hour, refused outside that as `wait_timeout_out_of_range` and never clamped) on a turn whose host can hold an ask: durable execution and a running durability sweeper, which the request host now reports as `RequestHost.hasAskSweeper` (a router answers for its own sweeper, which `DurabilitySweeper.timesOutAsks()` reports). Anywhere else `addTask` is unchanged and adds no tool. An asked task's ending resumes the turn that waits on it, through the same notice every ending sends, and wakes no new turn. The task notice module (`recordEnding`, `owedNotices`, `decideNotice` and the rest) moved from Workforce into `@flow-state-dev/orchestration/tasks`. `isTaskTurn(ctx)` is true on a turn that is itself working a task, and an ask there is refused as `wait_unavailable`. Orchestration's root exports `isTaskTurn`, `TASK_SESSION_TASK_KEY`, `resumeOwedAsks` and `taskToolsForTurn`; the rest of the ask mechanism (`addTaskAndWait`, which refuses a host that can't bound the ask, `canHoldAsk`, `askGateId` and the timeout bounds) is on `@flow-state-dev/orchestration/task-board`.
+- dd80e01: A best-fit routing record now carries `evaluationFailed`, the evaluator's error, when that call failed and best fit asked again as a language model (FIX-1925).
+- 8485a48: A coordinator that routes by best fit now hears a task it filed end in its own turn, as one that routes by judgment does, so it can file a failed task again and tell the person. Round robin and everyone still show the ending as a line only (FIX-1863).
+- a11f57a: Best fit now routes when the coordinator flow's `routeModel` is a language model, such as `openai/gpt-5.4-mini` through Vercel's AI Gateway, by asking the same question once more as a language model when the evaluator call fails (FIX-1889).
+- 397cfa7: Boot warnings and the active-profile line now print once per server process, not on every dev hot reload (FIX-1632).
+- 4a367f6: A boot now publishes the inventory row of the hire the roster holds over a row left by an interrupted fire, so a replacement hire that stopped before publishing is listed again after the next restart (FIX-1621).
+- e8afd98: A delegated post whose run the user cancels now ends `cancelled` instead of `errored`, so it no longer owes the Error Reporter a report; `ERROR_REPORTER_FLOW` is exported from `@flow-state-dev/workforce/browser` (FIX-2051).
+- 43649da: `defineProjectBlocks()` adds `listProjects`: the projects the caller is a member of, each with its address, title and repository. A shared project the caller isn't a member of is left out. The DevTeam Shift Coordinator has it as a tool, with a `forCoding` line saying what a coder's task that names no project does next, so asked to have the coder look at "our repo" it files the task for the one project with a repository without asking, and with two or more asks which one, naming them (FIX-1869).
+- 8f604e7: A browser can now read its person's conversation boards through the `tasks` collection, every conversation's rows in one read and none of another person's, and `sessionIdOfFiling` is exported from `@flow-state-dev/workforce/browser` to name the conversation each row was filed in (FIX-1792).
+- 4fae894: A coordinator conversation retries its state writes more times before giving up, so when many delegates answer at once a closed round's answers still go back out instead of being lost (FIX-1840).
+- 87fb5c0: A worker's `discover:` line now narrows its discovery tool on every worker flow, `coordinator` included, so the DevTeam project coordinator reads workers only through `listLeads` (FIX-1920).
+- 5f7dda5: A coordinator's failures now reach the Error Reporter: a delegate's failed post as it ends, and a best-fit crash answered with "Nobody took this post" (FIX-2010).
+- 334c1e3: A best-fit coordinator reads each post with its conversation's recent lines, so a follow-up goes to the delegate whose answer it follows, and the delegate that takes a post is shown those lines for that turn; a delegate flow of your own shows them by setting its generator's `history` to `delegatedPostHistory` (FIX-1828).
+- effa822: A coordinator's `handOff` tool now tells the model that a new message is a new post, even when it repeats an earlier ask, so a coordinator no longer declines to hand a repeated ask to the delegate that took it before (FIX-1826).
+- 9b4e7b1: `defineCoordinatorFlow` now honours `agent.isolateUserState`: the coordinator flow keys its user-scoped storage by its copy when the judgment turn asks, as the `agent` flow does. Before, the option was accepted and ignored (FIX-1776).
+
+  Shift Manager's DevTeam Shift Coordinator carries the standard memory set (working memory, the rolling digest, `memory/recall`), read-side only unless `DEVTEAM_MEMORY_CAPTURE=1`. It says when it has no memory of something rather than inventing one.
+
+- ef185db: A task notice that reaches a coordinator conversation mid-reply now waits for the replies running when it arrives and any that start within 30 seconds of it, instead of running beside them, while a person's next message still starts at once (FIX-1834).
+- 50b5273: The workforce discovery door now leaves out a stored roster row it cannot address, such as one an app's own hire action wrote under the development organization or one whose seat id starts with `~`, instead of dropping the organization's whole seat listing, and `reloadHiredSeats` now files a row stamped for another organization under the organization it was read from in `byOrg` as well as in the flat `problems` (FIX-1541).
+- 6819520: A task board that starts a row on another worker now **dispatches** it; **hand-off** means only passing work that is already under way (FIX-1876).
+
+  - The board's ending for "every remaining row is running in a dispatch run" is now `terminationReason: "dispatched"` (was `"handed-off"`). A log stored before the upgrade still carries `"handed-off"` for the same ending, so a reader of `task-board-meta` items should take both.
+  - The row-dispatch block's output is now `{ dispatched: true, taskId, sessionId, requestId, adopted }` (was `handedOff: true`).
+
+  The old exports are gone, with no alias, so an import of one fails to compile and names it:
+
+  - `@flow-state-dev/orchestration`: `createHandOff` → `createRowDispatch`, `HandOffOptions` → `RowDispatchOptions`, `HandOffAssignee` → `DispatchingAssignee`, `handedOffTaskPredicate` → `dispatchedTaskPredicate`, `assertHandOffBoardSupported` → `assertDispatchBoardSupported`, `assertHandOffBlockSupported` → `assertDispatchEntrySupported`, and the board handle's `handedOff` → `dispatchers`. The board's internal dispatch blocks keep their names (`<board>-hand-off-<assignee>`, `<board>-hand-off-fallback`), since a recorded route decision names them and a request resumed across the upgrade must reselect the same route.
+  - `@flow-state-dev/core` and `@flow-state-dev/engine`: no export changes. Definition-time and run-time refusals say a block "dispatches to task:…" where they said it "hands off to task:…".
+
+  The task-board page's "Assignees that hand off" section is now "Assignees that dispatch"; the old anchor still lands on it.
+
+- ee1d251: Standing rules (FIX-1945): workers on `agent` and coordinators keep notes a user asks them to keep, one list per worker per user, read on every turn. The worker edits them with `rules/read`, `rules/add`, `rules/change` and `rules/remove`, offered only on a turn the user started, and each write shows a line in the conversation. Both flows declare a `standingRules` action, and `createWorkforceClient().standingRules(worker, input)` reads and edits the list for the signed-in user, and a worker's inventory row carries `rules`, true when its flow declares that action. Limits: 20 rules of up to 300 characters, one line each; every write names the version it read.
+- 01b29f0: A hired seat stays with the organization and user that hired it, so another organization or roster peer cannot list, open, or run that seat (FIX-1529).
+- 85696dd: The `hire` tool's description and `settings` field now tell a model that a kind may require settings, and a hire the kind's settings schema refuses now says nothing was written and to call `hire` again with the setting (FIX-1758).
+- 046d8cc: `openWorkstreamTool`'s lead-fit check also asks whether a workstream's title and objectives say what sort of work it is, and no longer refuses work they don't, such as a bare name (FIX-2019).
+- eede477: A lead's `updateWorkstream` tool (`updateWorkstreamTool`) no longer takes `title`, so a worker leading several workstreams can't write one's name onto another: `updateOwnWorkstreamInputSchema` is status, due date, objectives and report. A call with `title` fails validation. A workstream is renamed by its owner through `updateWorkstream`, or by their project coordinator's `editWorkstream` (FIX-1968).
+- d10b1ba: A mailbox `post` that claims an `author`, including one another flow dispatches, still wakes hearing members. Only a seat's own post, through the `seatPost` action, withholds those wakes (FIX-1715).
+- 718e84c: Adds `mergeSeatFlows(flows, seats)`, which refuses a hired seat whose id is already a flow's instead of replacing that flow, and exports `newIncarnation()` and `tagIncarnation()` so a host that writes roster rows itself can stamp its hires (FIX-1719).
+- 315f7f3: `projectWorkspace({ checkouts })` runs a listed shared project's coding runs in worktrees of a checkout on the server's machine, with the project's kept files beside each worktree, which `localWorkspaceHost`'s `localRepositories` now supports (FIX-1906).
+- ca2f7ea: A project coordinator's `readProject` tool now marks each workstream `yours: true` when the session's user owns it, so the coordinator can tell its user's workstreams from other members' (FIX-2005).
+- 30904d4: A project's coordinator can now manage its own project: `defineProjectBlocks()` adds `setBrief`, and `setBrief` and `setRepository` take an optional `project` that defaults to the conversation's linked project (FIX-1900).
+- 6a3ecf5: `@flow-state-dev/client` exports `readEveryCollectionPage`, one collection read with a single 1,000-page ceiling that fails when the server repeats a cursor, and the workforce panels, the DevTool Inventory tab, the Shift Manager and the workforce roster read now use it, so a repeated cursor ends a read with an error instead of 1,000 wasted page reads, a partial list shown as whole, or a read that never stops (FIX-1674).
+- dd2563b: Task tools gain `readTask`, which returns one task whole: its goal, input, status, and what it came back with (its result, its error, or the question it is parked on). `listTasks` still lists without results. `taskToolActions` exposes it as `readTask_<board>`. A conversation board now shows a browser the question a task parked on a question waits on (`feedback`, with `parkedOnQuestion`). Shift Manager's shift summary lists tasks parked on a question for the user under Needs you, and its DevTeam chief of staff answers from what a finished task found (FIX-1972).
+- 536b1f0: `reloadHiredSeats` no longer rejects when a stored roster row cannot be addressed, such as a runtime hire made under the development organization or a seat id starting with `~`. That row is skipped and named in `problems`, and every other organization's seats still reload (FIX-1536).
+- 1cfd80c: `defineResource` and `defineResourceCollection` take a `secret` list of state fields the engine never sends to a client or returns from the debug routes, and Workforce marks a stored MCP key's `value` secret so the debug routes no longer show it (FIX-1955).
+- 3311cc2: `HIRED_ROSTER_BROWSER_PATTERN` and `HIRED_ROSTER_PRIVATE_PATTERN` are now exported from `@flow-state-dev/workforce` instead of `@flow-state-dev/core/types`, and `@flow-state-dev/core` no longer exports `HIRED_ROSTER_PRIVATE_BRAND`, `markHiredRosterPrivateCollection` or `isHiredRosterPrivateCollection` (FIX-1549).
+- 24a0829: `reloadHiredSeats` also returns `byOrg`, one `{ orgId, seats, problems }` per organization passed in, so each organization's skipped seats can be reported to that organization alone (FIX-1477).
+- 02120a2: Added `createSeatHireBlocks(options)`, returning the seat-hire sequence's `hire` and `fire` handlers with no model in front of them — the same two handlers `createSeatHireCapability` mounts as catalog tools, for a caller that wants to dispatch `hire` (or `fire`) directly from an action (FIX-1500).
+- b823e03: `createSeatHireCapability` adds catalog `hire` and `fire` on the existing mint, and `createWorkforceCapability({ hiredRoster })` lets Discover list those runtime hires (FIX-1525, FIX-1526). Hire refuses to register a seat without an owner pin `{ orgId, userId? }` from the hire row's roster owner (FIX-1529 / F2-PLAN).
+- 4f03fae: A seat hired through `createSeatHireCapability` now records the organization that hired it, so a copy of its roster row read under another organization is refused on reload instead of becoming that organization's seat. Rows written before this change still reload in the organization they are stored under (FIX-1542).
+- 92a8b49: The session routes now send a session as a client may see it (FIX-1588). `GET /sessions/:id`, the session listing, and the create and metadata-edit responses carry only the `state` fields the flow names in `session.client.expose` or declares readonly (empty when there are none), and no longer include the record's `journal` or stored `resources`. Server-side code that needs the whole record reads the session store. `openMailboxes` callers: pass a `getSession` that reads the session store, since through the session API an open mailbox now reads as empty.
+- 3d30b70: A split task whose failed piece is filed again, in the turn that failure woke, now completes once the retry does, and fails naming the retry only if the retry fails for good too (FIX-1802).
+- eb66ddd: A worker on a task can split it into pieces for any worker on the user's roster that takes tasks, not only its own delegates; an unassigned piece still goes to its only delegate, and the chain limits still apply. A split task now completes with `{ answer, pieces }`: the answer of the turn the last piece's ending woke, with the pieces' outputs under it. It settles only once every piece has ended and its ending has been heard. When it settles with no such turn (a settle replayed after a restart), the output is `{ pieces }` alone, as before. `taskToolsForTurn` and `dispatchAndWait` take a new `taskTurnInstead` option, the layer's own way to wait, which the `wait_unavailable` refusal and the `dispatchTask` description name on a task turn; Workforce's conversation boards set it: file the task without `wait` and end the turn, and its ending wakes the task (FIX-1997).
+- e11764a: `ctx.suspend()` takes an optional `title`, a short heading for the ask, carried onto the suspension record and the `suspension` item; `message` is then the body under it. The Error Reporter's preview now sends a short title with its count and questions as a markdown body (FIX-2030).
+- 2e8f640: A handed-off task now names the run working it: its row carries `run: { sessionId, requestId, attempt }`, written by the run before its worker starts and published as a `run_linked` task change, and a mailbox board's `readBoard` and browser read both return it. `TaskCollectionRef` gains a required `linkRun` verb, so a hand-written collection must implement it (FIX-1668).
+- 912ae98: A durable task board's task tools can now run as flow actions (`taskToolActions(board)`, or `boardActions: true` in a `MAILBOX.md`), and the DevTool's Tasks tab opens a task's full record and runs those actions from the row, showing a refusal as a refusal (FIX-1629).
+- 7a1932d: A worker filing tasks from a workstream or a project's conversation is told that conversation's project in its task tools' context, and to leave `project` out of a task's `input`, so it no longer guesses one (FIX-1970).
+- b36a8a5: A hand-built worker manifest with `tools: undefined` is now treated as having no `tools:` line everywhere (FIX-1459). Before, every turn already granted it its picked presets' tools, but the startup check read it as a written line and skipped the clash refusal, so a preset tool-name clash surfaced mid-turn instead of at hire.
+- 78178a9: The mailbox wake and the project workspace now read the bare user id, not the user record's storage key, so a person reaches their own seat and is recognized as a project member (FIX-1790).
+- 96ff077: A turn waiting on another worker's task now says **wait** everywhere; **ask** means only a question to a person (FIX-1876). The old exports are gone, with no alias, so an import of one fails to compile and names it:
+
+  - `@flow-state-dev/core`: `ASK_GATE_REASON` → `WAIT_GATE_REASON`, `isAskGate` → `isWaitGate`, `AskGateBinding` → `WaitGateBinding`, `AskOutcome` → `WaitOutcome`, `AskEndingErrorCode` → `WaitEndingErrorCode`, `parkOnAsk` → `parkOnWait`, `ParkOnAskInput` → `ParkOnWaitInput`, `parseAskOutcome` → `parseWaitOutcome`, `recordedAskOutcome` → `recordedWaitOutcome`, `RequestHost.resumeAsk` → `RequestHost.resumeWait`, `RequestHost.hasAskSweeper` → `RequestHost.hasWaitSweeper`, `ResumeAskInput` → `ResumeWaitInput`, `ResumeAskResult` → `ResumeWaitResult`.
+  - `@flow-state-dev/orchestration`: `resumeOwedAsks` → `resumeOwedWaits`, `askGateId` → `waitGateId`, the task tools' `resumesAsks` option → `resumesWaits`, a row's `Task.ask` → `Task.wait`, `listTasks` marks a waited-on row `waitedOn: true` instead of `asked: true`, and `parkOnQuestion` on a task a turn is waiting on is refused with `waited_on_task` instead of `asked_task`.
+  - `@flow-state-dev/engine`: the request host's `askResume` → `waitResume` and `askSweeper` → `waitSweeper` (`RuntimeConfig.requestHost`).
+
+  A wait parked before the upgrade resumes after it: a gate stored with the reason `"ask"` is still a wait gate (the public resume route still answers not-found for it), and a row stored with `ask` reads as `wait`. The run-once keys (`fsd.ask.*`), the gate id prefix (`ask:`) and a task notice's `asked` flag keep their spelling, so a replay across the upgrade finds what it recorded.
+
+- ea0d0bf: Add `wakeMemberSeats(seats, { fallback? })`, a mailbox notify block that wakes each member whose hired seat declares `onMailboxPost`, once per post (FIX-1602).
+- f90171c: `workerTaskEntry` is exported, so a worker flow you write can take the tasks a coordinator files for its workers. A delegate whose flow's `work` entry takes tasks only from another board is now reported by `listDelegates` as taking `nothing`, and a task filed for it is refused instead of waiting forever (FIX-1842).
+- 1f2650b: Add a `@flow-state-dev/workforce/browser` subpath that exports the roster keys, `splitSeatAddress` and the mailbox post names without reaching any Node built-in, so client components can import them where the server-only package root would fail to compile (FIX-1605).
+- d67de66: A coordinator's `listDelegates` (the action and its turn's tool) now gives each delegate `description`, its worker's own description, and `takes`: `posts`, `tasks`, `both`, or `nothing` when it has been fired or its flow takes neither, read from the flow it runs on. A delegate that takes nothing, or a worker with no description, has a `description` of `null`. The type of `takes` is exported as `DelegateTakes`. A `handOff` refused for a delegate that can't take the post now ends by naming the delegates in the conversation that can, as in `Delegates here that take posts: eng.em.`, or `No delegate here takes posts.` A `hire`, `edit` or turn refused for a skill the installation doesn't register now names the skills it does, as in `Skills it registers: "cite", "summarize".`, or says `It registers no skills.` (FIX-1826).
+- 848020a: A `defineFlow(...)` worker flow passed in `workerFlows` now typechecks in an app compiled with `strict: true`; it was refused with TS2322 before. The routing record of a best-fit post that nobody took, after the coordinator's own turn failed too, now carries `fit` with why best fit missed (FIX-1909, FIX-1912).
+- c2168ec: `defineWorkstreamBlocks` takes an optional `leadFit: { model }` and returns `openWorkstreamTool`: a worker's open first checks, with one model call, that the lead's description says it does the work, and is refused `lead-doesnt-fit` when it doesn't. A user's own `openWorkstream` is never checked (FIX-1920).
+- e602014: A task filed from a workstream or a project's conversation now names that conversation's project in `input.project`, whatever project the filer named (FIX-1969). Before, a lead that guessed a wrong project id got every coding run refused `other-project`.
+- Updated dependencies [10ded49]
+- Updated dependencies [cd6f7fb]
+- Updated dependencies [0b57bc9]
+- Updated dependencies [e457697]
+- Updated dependencies [082693f]
+- Updated dependencies [be1bddf]
+- Updated dependencies [e00a3b0]
+- Updated dependencies [58ffc93]
+- Updated dependencies [397cfa7]
+- Updated dependencies [70cfac9]
+- Updated dependencies [53b50f0]
+- Updated dependencies [585b75b]
+- Updated dependencies [49852d9]
+- Updated dependencies [698e06b]
+- Updated dependencies [456fe85]
+- Updated dependencies [62133c4]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [89af7db]
+- Updated dependencies [7d4158f]
+- Updated dependencies [5492a77]
+- Updated dependencies [6819520]
+- Updated dependencies [211679a]
+- Updated dependencies [dd80e01]
+- Updated dependencies [5181ddb]
+- Updated dependencies [8628a54]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [e71ea1a]
+- Updated dependencies [49d6397]
+- Updated dependencies [a55d07f]
+- Updated dependencies [7db4d13]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [17444fe]
+- Updated dependencies [423a405]
+- Updated dependencies [809cebd]
+- Updated dependencies [0b37a7f]
+- Updated dependencies [ba74f01]
+- Updated dependencies [7da156e]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [f9995b1]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [d356f52]
+- Updated dependencies [7725f5c]
+- Updated dependencies [2348dbd]
+- Updated dependencies [b808784]
+- Updated dependencies [d5f5bba]
+- Updated dependencies [028af6f]
+- Updated dependencies [311a6d5]
+- Updated dependencies [7d4c413]
+- Updated dependencies [27b198a]
+- Updated dependencies [69a9e29]
+- Updated dependencies [12bf045]
+- Updated dependencies [db7df1c]
+- Updated dependencies [968faa6]
+- Updated dependencies [653549d]
+- Updated dependencies [315f7f3]
+- Updated dependencies [6a3ecf5]
+- Updated dependencies [dd2563b]
+- Updated dependencies [839e915]
+- Updated dependencies [02ee032]
+- Updated dependencies [16bb676]
+- Updated dependencies [16bb676]
+- Updated dependencies [c4150e7]
+- Updated dependencies [65ddb90]
+- Updated dependencies [9510a03]
+- Updated dependencies [1cfd80c]
+- Updated dependencies [385d01e]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [d1a4cab]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [edc3197]
+- Updated dependencies [97894aa]
+- Updated dependencies [334c1e3]
+- Updated dependencies [b7c523b]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [d994f51]
+- Updated dependencies [afb512f]
+- Updated dependencies [09e3705]
+- Updated dependencies [eb66ddd]
+- Updated dependencies [cd180d7]
+- Updated dependencies [68b8957]
+- Updated dependencies [e11764a]
+- Updated dependencies [edb3d46]
+- Updated dependencies [872a088]
+- Updated dependencies [437727e]
+- Updated dependencies [9cd314d]
+- Updated dependencies [6f5a697]
+- Updated dependencies [2e8f640]
+- Updated dependencies [7035b4c]
+- Updated dependencies [30aa133]
+- Updated dependencies [912ae98]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [e8380b0]
+- Updated dependencies [78178a9]
+- Updated dependencies [96ff077]
+- Updated dependencies [84cc226]
+- Updated dependencies [98b90a6]
+- Updated dependencies [57a859d]
+- Updated dependencies [707b340]
+- Updated dependencies [c4d14f6]
+  - @flow-state-dev/orchestration@0.4.0
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/client@0.3.0
+  - @flow-state-dev/workspace@0.2.0
+  - @flow-state-dev/tools@0.2.0
+
 ## 0.3.0
 
 ### Minor Changes
