@@ -262,13 +262,17 @@ The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository.
 
 Before cutting a new branch whose base tracks an upstream, the host fetches that one upstream branch, which updates only its remote-tracking ref. It then cuts from whichever of the two is newer, and records that commit as `place.repo.baseCommit`. Listing the repository allows the fetch without an entry in `remotes.allow`. Its URL goes through the same checks as any remote, with an absolute path read as `file://`.
 
-Every run shares the repository's `.git/config`, so the host reads each remote's URL, and the upstream each branch tracks, once, when it starts. It fetches that URL rather than the remote's name. Settings in the repository's own config that run a program, such as `core.sshCommand`, an upload-pack, a credential helper or hooks, are ignored during the fetch. Credential helpers from your global and system config, read at start, still run.
+Every run shares the repository's `.git/config`, so the host pins each remote's URL, and the upstream each branch tracks, the first time it starts with the repository listed. The pins are kept in `<root>/.fetch-pins/`, one JSON file per repository, so they survive a restart. A remote or branch that appears later is pinned at the next start. A value already pinned never changes on its own. The host fetches the pinned URL rather than the remote's name. Settings in the repository's own config that run a program, such as `core.sshCommand`, an upload-pack, a credential helper or hooks, are ignored during the fetch. Credential helpers from your global and system config, read at start, still run.
 
 - **Local and upstream have each moved:** the provision is refused as `base-diverged` before anything is made.
-- **The fetch fails:** the host compares with the copy last fetched and logs a warning.
-- **The remote's URL changed since the host started, or the remote is new:** nothing is fetched. The host compares with the copy last fetched and logs a warning naming both URLs. Restart the host to pick up the new URL.
-- **A branch's upstream changed since the host started:** the upstream it tracked then is still the one fetched, and the host logs a warning. A branch that had no upstream then is used as it is. Restart the host to pick up the change.
+- **The fetch fails:** the run starts from the local base and the host logs a warning. The remote-tracking ref isn't used.
+- **The remote's URL no longer matches its pin, or the remote isn't pinned:** nothing is fetched at all, so your credentials never go to the new URL. The run starts from the local base, and the host logs a warning naming both URLs and the pin file.
+- **A branch's upstream no longer matches its pin:** the host fetches the pinned upstream and logs a warning. A branch with no pinned upstream is used as it is.
 - **The base has no upstream, or the branch already exists:** nothing is fetched.
+
+To accept a remote or upstream you changed on purpose, delete the pin file the warning names and restart the host. It pins the repository's config as it is at that start.
+
+A run in a listed repository acts with your trust, the way a coding agent you start in your own checkout does. Git shares branches, tags and remote-tracking refs between worktrees, so a run can create or move them. The host keeps a run from steering the fetch or your credentials, not from your refs. To keep a run apart from a repository's branches, have the host clone the repository instead of listing it.
 
 Runs in one repository don't share a lock. Each has its own place and branch, and git keeps concurrent worktrees apart. If git finds one of its own lock files held, that provision fails with git's message and isn't retried. A `baseRef` the repository doesn't have fails the provision, naming it, before anything is made.
 
