@@ -39,7 +39,8 @@ person: nothing runs, it is stored, and it carries on from the same step when it
 2. **Message.** Conversation with any worker on your roster.
 3. **Inbox item.** The one way work stops for a person.
 4. **Routing.** How a coordinator hands a user's message to its delegates.
-5. **Chain of command.** How a worker gets work it can't assign itself.
+5. **Chain of command.** How work a worker shouldn't file itself, new or needed, reaches someone who
+   can.
 
 | Part (all owned by the user, private to them) | Stored | How many |
 | -- | -- | -- |
@@ -192,9 +193,32 @@ from its worker's defaults, and `all` means the whole roster. Only the user chan
 except a coordinator whose instructions say so and whose delegate tool is turned on (off by
 default).
 
-**Work you can't assign goes up as a message.** A worker that needs work none of its delegates can
-do messages the filer of its task, describing the need. That filer files the task if it can, or
-messages its own filer.
+**A worker files tasks only for work its own task needs.** Everything else goes up as a message to
+the filer of its task, who decides. It goes up for one of two reasons.
+
+**New work that isn't part of your task** is the common one. A worker finds something that needs
+doing but has nothing to do with the work it's on. It sends its filer a message describing the
+work and carries on. The filer files a **sibling**: a new task on its own board, beside the worker's
+task, usually in a new session. If the work isn't the filer's to plan either, it messages its own
+filer the same way.
+
+```mermaid
+sequenceDiagram
+  participant coder
+  participant launch
+  participant researcher
+  Note over coder: working on the adoption script
+  coder-->>launch: message: the CSV export double-counts refunds
+  coder->>launch: result: the script
+  launch->>researcher: sibling task, new session: find where refunds double-count
+```
+
+*The worker reports new work and keeps going; its filer turns it into a sibling task.* coder's
+task never waits on it. Dashed arrows are messages.
+
+**Work you need but can't assign** is the other. A worker that needs work none of its delegates
+can do messages its filer, describing the need. That filer files the task if it can, or messages
+its own filer.
 
 **A result always goes to whoever filed the task,** who passes it on, usually by filing a follow-up
 that carries it. The original task may finish first; the work resumes through the follow-up. It
@@ -289,7 +313,8 @@ A behavior none of these rules explains is a bug in the model.
 
 1. Every request acts as one user, with a server-set sender.
 2. A request holds a task's claim only if the board started it for that task.
-3. Work is a task, filed with a delegate or as a self-assigned row. Anything else is a message.
+3. Work is a task, filed with a delegate or as a self-assigned row, and only for work the filer's
+   own task needs. Anything else is a message to the filer above.
    Neither leaves one user's roster: Alice's workers never reach Bob's researcher.
 4. A task has one filer, who plans and coordinates it, one accountable assignee, and four
    settings.
@@ -322,6 +347,7 @@ chief of staff, and dispatcher for the claim order or the host.
 | Task, filer | Work assigned to a delegate; the session that filed it |
 | Board, self-assigned row | A session's list of tasks; a row a worker files for itself |
 | Follow-up | A task in an earlier task's session |
+| Sibling | A task a filer files beside one of its own, from new work that task's worker reported |
 | Send, call | A message that returns nothing; one whose sender waits for the result |
 | Inbox item | One stop for a person, as a suspended request: approval, question or review |
 | Routed task, fit check | A task routing filed; the model call that picks a delegate or vets a lead |
