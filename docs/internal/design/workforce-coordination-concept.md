@@ -70,15 +70,16 @@ apply. Nothing else is restricted.
 | Attempts | Failed runs before it fails | 2 |
 
 A session holds at most one open task assigned to it. Another one routed or continued into it
-stays pending until the first ends. Self-assigned rows don't count. So a worker never files a task
-into its own session: it would wait behind the worker's own task.
+stays pending until the first ends. The rule is about tasks from the board above, where the
+session's own task lives. Rows on the session's own board, its self-assigned rows, don't count:
+they are the work the session manages inside itself, and never wait behind its task.
 
 **Do it here, or file it?** Keep work in your session if it needs what the session knows and should
 run in order. File it if it can stand alone.
 
 | Choice | Use when | Example |
 | -- | -- | -- |
-| Self-assigned row | A step of your own task, done in order in this session | writer's plan: outline, draft, tighten |
+| Self-assigned row | A step of your own task, done in order in this session, on its own board | writer's plan: outline, draft, tighten |
 | Task, new session | It can run beside your work, needs a clean start, or deserves its own attempts and cancel | writer files researcher: find adoption numbers |
 | Follow-up | It continues earlier work and needs that session's memory | writer: shorten the stats, in researcher's session |
 
