@@ -70,7 +70,20 @@ apply. Nothing else is restricted.
 | Attempts | Failed runs before it fails | 2 |
 
 A session holds at most one open task assigned to it. Another one routed or continued into it
-stays pending until the first ends. Self-assigned rows don't count.
+stays pending until the first ends. Self-assigned rows don't count. So a worker never files a task
+into its own session: it would wait behind the worker's own task.
+
+**Do it here, or file it?** Keep work in your session if it needs what the session knows and should
+run in order. File it if it can stand alone.
+
+| Choice | Use when | Example |
+| -- | -- | -- |
+| Self-assigned row | A step of your own task, done in order in this session | writer's plan: outline, draft, tighten |
+| Task, new session | It can run beside your work, needs a clean start, or deserves its own attempts and cancel | writer files researcher: find adoption numbers |
+| Follow-up | It continues earlier work and needs that session's memory | writer: shorten the stats, in researcher's session |
+
+A worker is on its own roster, so it may file a task to itself in a new session, such as writer
+drafting three sections side by side.
 
 ```mermaid
 stateDiagram-v2
@@ -203,7 +216,9 @@ the filer of its task, who decides. It goes up for one of two reasons.
 **New work that isn't part of your task** is the common one. A worker finds something that needs
 doing but has nothing to do with the work it's on. It sends its filer a message describing the
 work and carries on. The filer files a **sibling**: a new task on its own board, beside the worker's
-task, usually in a new session. If the work isn't the filer's to plan either, it messages its own
+task, usually in a new session. Its flow may tell a request for work from other messages, for
+example with an **evaluator** (a block that judges input), and file it held, for the user to
+approve. If the work isn't the filer's to plan either, it messages its own
 filer the same way.
 
 ```mermaid
@@ -349,6 +364,7 @@ chief of staff, and dispatcher for the claim order or the host.
 | Suspended, resume, deadline | A request stopped for a person and stored; carrying on from the same step; when a suspension or wait resumes unanswered |
 | Roster | All the workers that belong to one user |
 | Delegate, coordinator | A worker a session may file tasks with; a worker that routes a user's messages |
+| Evaluator | A block that judges input; here, telling a request for work from other messages |
 | Task, filer | Work assigned to a delegate; the session that filed it |
 | Board, self-assigned row | A session's list of tasks; a row a worker files for itself |
 | Follow-up | A task in an earlier task's session |
@@ -393,6 +409,10 @@ Everything in the model above is decided by the owner. Open:
 - [ ] **Patterns' own task lists.** Recommend an in-request board, and pruning phase 0's dead code.
 - [ ] **Renames.** Recommend Shift Coordinator in code, "claim order" and "runner". The
   old worker id simply stops working: there are no consumers outside the repo to migrate.
+- [ ] **A separate entry for proposing work.** Punted. Found work rides on `sendMessage`, and the
+  receiver's flow classifies it. If classifying proves unreliable, an optional hint on the message
+  saying it's a request for new work comes first, as a hint the receiver may ignore, never as
+  authority.
 - [ ] **Whether a worker filer hears of its task's questions.** It may answer them with
   `updateTask`. Recommend yes: the question starts its next request, as an ending does.
 
