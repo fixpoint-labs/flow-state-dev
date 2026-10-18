@@ -15,7 +15,8 @@ last section lists where today's code differs.
 
 **A session is where a worker works.** Only its user can open it.
 
-**A conversation is the session where a user talks to one worker.** One per worker per user.
+**A conversation is the session where a user talks to one worker.** One per worker per user. A
+coordinator also has one per project it coordinates.
 
 **A request is one run of a worker in a session.** The server sets its **sender**: a user, another
 worker's session, or the board. It produces a **result**. A session runs one request at a time.
@@ -89,7 +90,8 @@ stateDiagram-v2
 
 - **Done:** a request for it finishes with a result, and nothing it filed is still open.
 - **Cancelled:** by the user, the filer, or the end of the task that filed it. Its open tasks go
-  too, as a failed attempt's do on a retry.
+  too, as they do when it retries or fails for good.
+- **A dependency that fails or is cancelled** cancels the tasks that were to start after it.
 - **Splitting:** a task stays running while tasks it filed are open. At most 5 deep, 100 under
   one top task.
 - **Waiting:** a request may wait on a task it filed, unless something already waits on its own
@@ -164,6 +166,8 @@ question or review ends the request with an error, which uses an attempt.
 - Only the user answers approvals and reviews. The filer may answer a question with `updateTask`,
   unless the task is a routed task.
 - A resumed request takes its turn in the session, like any other request.
+- **Stopping a suspended request** ends it, as a stop ends any request, and closes its Inbox item.
+  If it worked a task, the task is cancelled.
 - **A coding run can't pause midway,** because the coding agent runs as its own process. Its
   question ends the run, the coding flow's request suspends, and the answer starts the next run in
   the same coding session.
@@ -319,8 +323,9 @@ A behavior none of these rules explains is a bug in the model.
 4. A task has one filer, who plans and coordinates it, one accountable assignee, and four
    settings.
 5. A session holds at most one open task assigned to it.
-6. A task is done when a request for it finishes with nothing it filed still open. Cancelling or
-   retrying it cancels its open tasks.
+6. A task is done when a request for it finishes with nothing it filed still open. Cancelling,
+   retrying or failing it cancels its open tasks, and its failing or cancelling cancels the tasks
+   that depend on it.
 7. Every ending is delivered once, through `onTaskSettled`, to the task's filer, as its result
    setting says.
 8. A request may wait on a task it filed unless something already waits on its own task.
@@ -329,7 +334,7 @@ A behavior none of these rules explains is a bug in the model.
 10. A call into a waiting session is refused, and so is a message past the budget.
 11. Every stop for a person is one Inbox item: a suspended request. Only the user answers
     approvals and reviews.
-12. A suspension resumes once: answered, deadline or cancelled. A suspended task keeps its claim,
+12. A suspension resumes once, answered, deadline or cancelled, unless its request is stopped. A suspended task keeps its claim,
     and the resumed request takes its turn in the session.
 13. Only the user changes delegates, except a coordinator configured to change its own.
 
@@ -364,7 +369,7 @@ the listed identifiers as whole words (`-w`).
 
 | Retired | Say | In code | Files |
 | -- | -- | -- | -- |
-| Post | Routed task | `onDelegatedPost`, `isPostRow`, `onPostSettled`, `postCancelled` | 7 / 1 / 17 |
+| Post | Routed task | `onDelegatedPost`, `isPostRow`, `onPostSettled`, `postCancelled`; `postId`, `RoundPost` | 7 / 1 / 17; 6 / 2 / 21, 2 / 0 / 1 |
 | Message entry; tool | `receive`; `sendMessage` | `onWorkerMessage`; `messageWorker` | 5 / 1 / 2; 7 / 4 / 5 |
 | Park on a question; review park; a coding run's question inbox | Inbox item | `parkOnQuestion`, `parkedOnQuestion`; `awaitReview`, `unparkAndDrain`, `onReview`; `answerQuestion` | 8 / 4 / 15; 19 / 6 / 42; 2 / 3 / 5 |
 | Message door | Steer | `parkedForTurn`, `messageDoor`, `harnessMessageDoor` | 9 / 2 / 5 |
@@ -386,8 +391,8 @@ Everything in the model above is decided by the owner. Open:
   (FIX-2062), a waiting session no longer blocks a call, so the refusal may be unnecessary.
   Recommend revisiting once FIX-2062 lands.
 - [ ] **Patterns' own task lists.** Recommend an in-request board, and pruning phase 0's dead code.
-- [ ] **Renames.** Recommend Shift Coordinator in code (refusing the old worker id at load), "claim
-  order" and "runner".
+- [ ] **Renames.** Recommend Shift Coordinator in code, "claim order" and "runner". The
+  old worker id simply stops working: there are no consumers outside the repo to migrate.
 - [ ] **Whether a worker filer hears of its task's questions.** It may answer them with
   `updateTask`. Recommend yes: the question starts its next request, as an ending does.
 
@@ -402,20 +407,23 @@ deploy is a known risk, deferred.
 | Phase | Target | Today |
 | -- | -- | -- |
 | 0 · Land | A request reads its own claim only | Fixed on the FIX-1047 branch, not on main (`orchestration/src/task-board/flow-policy-wiring.ts`) |
-| 0 · Prune | No unused code | Unused: `dispatchAndExecuteBlock` (`orchestration/src/tasks/helpers/dispatch-and-execute.ts`), the classifier and event claim orders, and fifo, a copy of the default (`orchestration/src/tasks/dispatchers/`). The own-state board has no production user (`orchestration/src/skills/task-tools-capability.ts:122`). Drain Pool is docs only (`apps/docs/docs/patterns/overview.md:69`) |
-| 1 · One task | Routed tasks; attempts a setting | Posts have their own row kind and entries (`workforce/src/coordinator/delegated-post.ts`). Attempts are 2 for tasks (`workforce/src/conversation-board/board.ts:118`), 1 for posts |
+| 0 · Prune | Nothing the repo doesn't use. Exported and documented ones go with their README and docs entries; there are no outside consumers | Unused in the repo: `dispatchAndExecuteBlock` (`orchestration/src/tasks/helpers/dispatch-and-execute.ts`), the classifier and event claim orders, and fifo, a copy of the default (`orchestration/src/tasks/dispatchers/`). The own-state board has no production user (`orchestration/src/skills/task-tools-capability.ts:122`). Drain Pool is docs only (`apps/docs/docs/patterns/overview.md:69`) |
+| 1 · One task | Routed tasks; attempts a setting | Posts have their own row kind and entries (`workforce/src/coordinator/delegated-post.ts`). Rounds, their deadlines, `routeOn` and settlement key on `postId` (`workforce/src/coordinator/coordinator-rounds.ts`, `coordinator-state.ts`, `coordinator-flow.ts`), so they move with it. Attempts are 2 for tasks (`workforce/src/conversation-board/board.ts:118`), 1 for posts |
 | 1 · One task | `onTaskSettled` in orchestration, every ending delivered | Workforce owns it (`workforce/src/conversation-board/task-settled.ts`). A cancel owes a notice only when a request waits on the task (`orchestration/src/tasks/notice/task-notice.ts:100-102`) |
+| 1 · One task | A task's request may wait on a task it filed, unless something waits on its own task | Every task request is refused a wait (`orchestration/src/tasks/helpers/wait-for-response.ts:222-230`) |
 | 1 · One task | A wait's deadline leaves the task running | It cancels the row (`orchestration/src/tasks/helpers/wait-for-response.ts`) |
 | 1 · One task | Splits use delegates and stay running | Pieces go to any roster worker (`board.ts:280-296`). The parent parks until `settleSplitTask` (`workforce/src/conversation-board/split.ts`) |
 | 1 · One task | Delegates are authority; `all` | Any worker with delegates can change them (`workforce/src/delegates/worker-delegates.ts`). No `all` |
 | 1 · One task | One open task per session; another stays pending | A follow-up into a busy session is refused, not queued (`session_has_unfinished_task`, `orchestration/src/skills/task-tools-capability.ts:656-662`) |
 | 1 · One task | Start: now, after named tasks, or held until `updateTask` | No held start. A filed task can be moved to `blocked` (`orchestration/src/tasks/schema/task-status.ts:15`), and `unblock` has no caller |
-| 1 · One task | Cancelling or retrying a task cancels its open tasks | Only cancelling a split task cascades to its pieces (`workforce/src/conversation-board/split.ts:341-361`) |
+| 1 · One task | Cancelling, retrying or failing a task cancels its open tasks | Only cancelling a split task cascades to its pieces (`workforce/src/conversation-board/split.ts:341-361`) |
+| 1 · One task | A failed or cancelled dependency cancels its dependents | A dependent waits for a `completed` dependency (`orchestration/src/tasks/collection/internal.ts:742-750`), and one that will never complete leaves it pending for good (`orchestration/src/task-board/blocks/board-meta.ts:245-274`) |
 | 1 · One task | Eight tools; one fit call | Twelve task tools (`orchestration/src/skills/task-tools-capability.ts`) plus `messageWorker`. `unblock` has no caller (`orchestration/src/tasks/collection/state-backed.ts:695`). Two fit calls: best fit picks (`workforce/src/best-fit.ts`), lead fit only vets (`workforce/src/projects/lead-fit.ts`) |
 | 2 · One Inbox | Every stop for a person is a suspension, with one answer path | Suspensions sit beside three row parks: the question park, the review park and a coding run's question inbox. The Inbox shows only `human_approval` and `human_input` suspensions (`shift-manager/src/lib/reads.ts:327`). Answers go through a resume, `answerTask` or `unparkAndDrain` (`orchestration/src/task-board/park-exit.ts`). `answerQuestion()` has no screen (`harness-manager/src/inbox.ts:257`) |
 | 2 · One Inbox | A suspended task keeps its claim; its row records the suspension | A suspended worker stops renewing its claim, so the row lapses and another worker runs it again. Boards are told to park the task instead (`orchestration/src/task-board/index.ts:1101-1129`) |
 | 2 · One Inbox | A deadline resumes the block with `deadline`, and the flow decides | Every suspension has an `expiresAt` (`core/src/types/suspension.ts:83`), but only an approval acts on it, always as an expired rejection (`engine/src/durability/stop-suspended.ts`). A wait on a task times out separately, after 30 seconds to an hour (`orchestration/src/tasks/helpers/wait-for-response.ts:212-221`) |
 | 2 · One Inbox | Cancelling a task resolves its suspension with `cancelled` | Stopping a suspended request resolves a wait on a task so the parked call can carry on (`stop-suspended.ts`); nothing on the board resolves a person's suspension |
+| 2 · One Inbox | Stopping a suspended request closes its Inbox item and cancels its task | A stop of a person's suspension ends the turn `aborted` (`engine/src/durability/stop-suspended.ts`, header); the board isn't told |
 | 2 · One Inbox | The claim survives a resume | Untested. The claim is set by the worker's first step (`orchestration/src/task-board/flow-policy-wiring.ts`, on the FIX-1047 branch) |
 | 2 · One Inbox | A coding run's question suspends the coding flow's request; the answer starts the next run in the same coding session | The row parks, and the answer starts a new attempt that resumes the coding session (`harness-manager/src/door.ts:15-20`, `ask.ts:24-29`) |
 | 3 · Into a task | `updateTask` with a message, one rule by status | Reopen (`workforce/src/conversation-board/reopen.ts`), a coding run's door (`harness-manager/src/door.ts`), `answerTask` |
