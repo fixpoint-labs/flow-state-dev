@@ -10,7 +10,8 @@
  * workspace on every entry, the per-event scan cost compounds into
  * visible multi-second idle gaps between actor invocations.
  */
-import type { OutputItem, ComponentItem } from "@flow-state-dev/core/items";
+import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { TaskChangeEvent } from "./change-event";
 import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
 
@@ -19,6 +20,10 @@ import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
  * collection. Returns false for every other item type and for
  * `task-change` items targeting a different collection. Cheap: two
  * equality checks plus a single field read.
+ *
+ * Typed over `RuntimeItem` because the stream it filters carries trace rows
+ * (`block_trace` and the rest) as well as public items. It is still a valid
+ * `wakeOn` filter, which is typed over the public `OutputItem`.
  *
  * @example
  *   .waitForCondition(
@@ -31,7 +36,7 @@ import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
  */
 export function onTaskChangeFor(
   collectionId: string
-): (item: OutputItem) => boolean {
+): (item: RuntimeItem) => boolean {
   return (item) => {
     if (item.type !== "component") return false;
     const c = item as ComponentItem;

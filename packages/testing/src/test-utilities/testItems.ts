@@ -1,15 +1,22 @@
 import type { BlockTraceItem, ItemVisibility, OutputItem } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
+ *
+ * Takes the runtime item log (`RuntimeItem[]`), trace rows included, since
+ * `blockOutputs()` reads the `block_trace` rows. The helpers that return a
+ * plain item list keep the public `OutputItem` type; trace rows are reached
+ * through `blockOutputs()`.
  */
-export function testItems(items: OutputItem[]) {
+export function testItems(items: readonly RuntimeItem[]) {
   const allItems = [...items].sort((left, right) => left.itemIndex - right.itemIndex);
+  const listed = allItems as OutputItem[];
 
   return {
     all(): OutputItem[] {
-      return allItems;
+      return listed;
     },
     byType<TType extends OutputItem["type"]>(
       type: TType
@@ -29,15 +36,15 @@ export function testItems(items: OutputItem[]) {
       );
     },
     blockOutputs(blockName?: string): BlockTraceItem[] {
-      return (allItems as Array<OutputItem | BlockTraceItem>).filter(
+      return allItems.filter(
         (item): item is BlockTraceItem => {
-          if ((item as { type: string }).type !== "block_trace") {
+          if (item.type !== "block_trace") {
             return false;
           }
           if (blockName === undefined) {
             return true;
           }
-          return (item as BlockTraceItem).blockName === blockName;
+          return item.blockName === blockName;
         }
       );
     },
@@ -57,16 +64,16 @@ export function testItems(items: OutputItem[]) {
       );
     },
     sideChain(): OutputItem[] {
-      return allItems.filter((item) => item.provenance.phase === "sideChain");
+      return listed.filter((item) => item.provenance.phase === "sideChain");
     },
     main(): OutputItem[] {
-      return allItems.filter((item) => item.provenance.phase === "main");
+      return listed.filter((item) => item.provenance.phase === "main");
     },
     byAgent(agentName: string): OutputItem[] {
-      return allItems.filter((item) => item.agentName === agentName);
+      return listed.filter((item) => item.agentName === agentName);
     },
     byVisibility(predicate: Partial<ItemVisibility>): OutputItem[] {
-      return allItems.filter((item) => {
+      return listed.filter((item) => {
         const vis = resolveItemVisibility(item);
         if (predicate.client !== undefined && vis.client !== predicate.client) return false;
         if (predicate.history !== undefined && vis.history !== predicate.history) return false;

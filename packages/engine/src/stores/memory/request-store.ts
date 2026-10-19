@@ -1,5 +1,6 @@
 import { cloneValue } from "@flow-state-dev/core/helpers";
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
@@ -156,7 +157,7 @@ export class InMemoryRequestStore implements RequestStore {
    * than cloned: the runtime advances an item in place (FIX-839), and `get`
    * clones on the way out.
    */
-  persistItems(requestId: string, items: OutputItem[]): void {
+  persistItems(requestId: string, items: RuntimeItem[]): void {
     const record = this.records.get(requestId);
     if (record === undefined) return;
     this.records.set(requestId, { ...record, items: mergeItemsById(record.items ?? [], items) });

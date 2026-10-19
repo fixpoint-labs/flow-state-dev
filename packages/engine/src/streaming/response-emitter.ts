@@ -176,7 +176,7 @@ function isOutputItem(value: unknown): value is OutputItem {
  */
 function isTransientItemEvent(
   event: RequestStreamEventWithId,
-  itemsById: ReadonlyMap<string, OutputItem>
+  itemsById: ReadonlyMap<string, RuntimeItem>
 ): boolean {
   if (event.type === "item.added" || event.type === "item.done") {
     return (event.item as { transient?: boolean }).transient === true;
@@ -194,7 +194,21 @@ function isTransientItemEvent(
 }
 
 /**
+ * The item an `item.added` / `item.done` wire event carries. The public event
+ * types declare `OutputItem`, but the same events also carry the runtime's
+ * trace rows to the DevTool and the events log. This narrows the type where an
+ * item leaves the runtime buffer for the wire; it does not filter anything.
+ */
+function asWireItem(item: RuntimeItem): OutputItem {
+  return item as OutputItem;
+}
+
+/**
  * Stateful request event emitter used by runtime execution and SSE transport.
+ *
+ * Its item buffer is the runtime log, so `getItems()` and `subscribeToItems`
+ * are typed `RuntimeItem`: trace rows (`block_trace`, `router_decision`,
+ * `state_snapshot`) are in it.
  */
 export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly requestId: string;
@@ -208,15 +222,15 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private sequenceNumber: number;
   private readonly baseItemIndex: number;
   private readonly events: RequestStreamEventWithId[] = [];
-  private readonly itemsById = new Map<string, OutputItem>();
+  private readonly itemsById = new Map<string, RuntimeItem>();
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
   private droppedBufferedEvents = 0;
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
   private itemHooks?: ResponseEmitterItemHooks;
   private eventHooks?: ResponseEmitterEventHooks;
   private readonly itemListeners = new Set<{
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void;
-    filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+    listener: (item: RuntimeItem, kind: "added" | "updated" | "done") => void;
+    filter?: (item: RuntimeItem, kind: "added" | "updated" | "done") => boolean;
   }>();
 
   /**
@@ -279,9 +293,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * `.waitForCondition` timeouts with nothing in the trace explaining why.
    */
   subscribeToItems(
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    listener: (item: RuntimeItem, kind: "added" | "updated" | "done") => void,
     options?: {
-      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+      filter?: (item: RuntimeItem, kind: "added" | "updated" | "done") => boolean;
     }
   ): () => void {
     const entry = { listener, filter: options?.filter };
@@ -302,7 +316,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * are both isolated via debug events and do not propagate.
    */
   private fanoutItemEvent(
-    item: OutputItem,
+    item: RuntimeItem,
     kind: "added" | "updated" | "done"
   ): void {
     const snapshot = Array.from(this.itemListeners);
@@ -411,7 +425,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   /**
    * Emits an item-added event and tracks the item for later item views.
    */
-  async emitItemAdded(item: OutputItem): Promise<RequestStreamEventWithId> {
+  async emitItemAdded(item: RuntimeItem): Promise<RequestStreamEventWithId> {
     const interceptedItem = this.limitRecordedItem(
       applyItemSeam(this.internalSeams, item, "item.added")
     );
@@ -432,14 +446,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 
     return this.appendEvent<ItemAddedEvent>({
       type: "item.added",
-      item: interceptedItem
+      item: asWireItem(interceptedItem)
     });
   }
 
   /**
    * Emits an item-done event and updates tracked item state.
    */
-  async emitItemDone(item: OutputItem): Promise<RequestStreamEventWithId> {
+  async emitItemDone(item: RuntimeItem): Promise<RequestStreamEventWithId> {
     const interceptedItem = this.limitRecordedItem(
       applyItemSeam(this.internalSeams, item, "item.done")
     );
@@ -447,7 +461,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.fanoutItemEvent(interceptedItem, "done");
     const event = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
-      item: interceptedItem
+      item: asWireItem(interceptedItem)
     });
     this.itemHooks?.onItemDone?.(interceptedItem);
     return event;
@@ -477,7 +491,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     }
 
     const sanitized = this.limitRecordedFields(existing, stripInvariantKeys(patch));
-    const merged = { ...existing, ...sanitized } as OutputItem;
+    const merged = { ...existing, ...sanitized } as RuntimeItem;
     this.itemsById.set(itemId, merged);
     this.fanoutItemEvent(merged, "updated");
 
@@ -510,7 +524,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * next emission when the block re-resolves, and devtool replay reads from
    * the events log anyway.
    */
-  async emitItemOneShot(item: OutputItem): Promise<{
+  async emitItemOneShot(item: RuntimeItem): Promise<{
     addedEvent: RequestStreamEventWithId;
     doneEvent: RequestStreamEventWithId;
   }> {
@@ -519,14 +533,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     );
     const addedEvent = await this.appendEvent<ItemAddedEvent>({
       type: "item.added",
-      item: interceptedAdded
+      item: asWireItem(interceptedAdded)
     });
     const interceptedDone = this.limitRecordedItem(
       applyItemSeam(this.internalSeams, interceptedAdded, "item.done")
     );
     const doneEvent = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
-      item: interceptedDone
+      item: asWireItem(interceptedDone)
     });
     return { addedEvent, doneEvent };
   }
@@ -717,7 +731,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * (FIX-406 6G) — the previous `Array.from(...).sort()` ran on every emit via
    * `getItemCount`'s former `getItems().length`, compounding to O(N² log N).
    */
-  getItems(): OutputItem[] {
+  getItems(): RuntimeItem[] {
     return Array.from(this.itemsById.values());
   }
 
@@ -914,7 +928,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * caller's object: producers keep references to the items they emit, and the
    * run must keep the real value.
    */
-  private limitRecordedItem<TItem extends OutputItem>(item: TItem): TItem {
+  private limitRecordedItem<TItem extends RuntimeItem>(item: TItem): TItem {
     if (!carriesRecordedValue(item)) return item;
     return this.limitRecordedFields(item, item as unknown as Record<string, unknown>) as unknown as TItem;
   }
@@ -925,7 +939,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    * and measures nothing.
    */
   private limitRecordedFields(
-    item: Pick<OutputItem, "id" | "type">,
+    item: Pick<RuntimeItem, "id" | "type">,
     fields: Record<string, unknown>
   ): Record<string, unknown> {
     if (!carriesRecordedValue(item)) return fields;

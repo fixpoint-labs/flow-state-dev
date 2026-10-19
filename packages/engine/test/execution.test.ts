@@ -1762,7 +1762,6 @@ describe("execution runtime", () => {
     // state_snapshot payloads must not carry the transient key.
     const snapshots = response
       .getItems()
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       .filter((item) => item.type === "state_snapshot") as Array<{
         type: "state_snapshot";
         state: Record<string, unknown>;
@@ -2500,7 +2499,6 @@ describe("transient block output", () => {
     // transient block are filtered out of the persisted items log.
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
-    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const blockOutputItems = storedItems.filter((item) => item.type === "block_trace");
     expect(blockOutputItems.length).toBe(0);
   });
@@ -2596,7 +2594,6 @@ describe("transient block output", () => {
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedItems = requestRecord?.items ?? [];
     const storedBlockOutputNames = storedItems
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       .filter((item) => item.type === "block_trace")
       .map((item) => (item as { blockName: string }).blockName);
 
@@ -2663,7 +2660,6 @@ describe("transient block output", () => {
     // items log. The user-facing message above survives because emit.message
     // defaults to non-transient (FIX-478).
     const storedBlockOutputs = (requestRecord?.items ?? []).filter(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (item) => item.type === "block_trace"
     );
     const transientGenTrace = storedBlockOutputs.find(

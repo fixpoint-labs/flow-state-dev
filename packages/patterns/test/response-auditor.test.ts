@@ -336,7 +336,6 @@ describe("response auditor pattern", () => {
     const result = await testBlock(auditor, { input });
     expect(result.error).toBeNull();
 
-    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const captureTraces = testItems(result.items).blockOutputs("capture-context");
     expect(captureTraces.length).toBeGreaterThan(0);
     for (const trace of captureTraces) {

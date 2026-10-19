@@ -20,10 +20,9 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
   BlockTraceItem,
   MessageItem,
-  OutputItem,
 } from "@flow-state-dev/core/items";
 import { buildItemLookup } from "@flow-state-dev/core/items";
-import { resolveBlockValueInternal, type BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { resolveBlockValueInternal, type BlockValueInternal, type RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -58,7 +57,7 @@ async function runFlow(args: {
   flow: ReturnType<ReturnType<typeof defineFlow>>;
   input: unknown;
   chunks: string[];
-}): Promise<{ items: OutputItem[] }> {
+}): Promise<{ items: RuntimeItem[] }> {
   const stores = createInMemoryStores();
   const response = createResponseEmitter({
     requestId: "req_fix480",
@@ -101,7 +100,6 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const blockOutput = items.find(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && i.blockName === "stream-gen",
     ) as BlockTraceItem | undefined;
     expect(blockOutput).toBeDefined();
@@ -155,7 +153,6 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     });
 
     const genOutput = items.find(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && i.blockName === "nested-stream-gen",
     ) as BlockTraceItem | undefined;
     expect(genOutput).toBeDefined();
@@ -173,7 +170,6 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     // refs the generator's, which refs the message. Flatten-at-emit
     // collapses to a single hop pointing at the message.
     const passOutput = items.find(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && i.blockName === "pass-through",
     ) as BlockTraceItem | undefined;
     expect(passOutput).toBeDefined();

@@ -24,6 +24,7 @@ import type {
   RouterDecisionItem,
   StateSnapshotItem
 } from "../items/types";
+import type { RuntimeItem } from "../items/internal";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage, ModelIdentity } from "./model";
 
@@ -120,8 +121,12 @@ export interface ResponseEmitterHandle {
    * Snapshot of every item emitted to this response so far, in stream order.
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
    * over already-flushed items before subscribing for future ones.
+   *
+   * Typed `RuntimeItem`: the response buffer is the runtime log, so trace rows
+   * (`block_trace`, `router_decision`, `state_snapshot`) are in it alongside
+   * the public items.
    */
-  getItems(): readonly OutputItem[];
+  getItems(): readonly RuntimeItem[];
   /**
    * O(1) count of items currently tracked by this response. Equivalent to
    * `getItems().length` but without materializing or ordering the snapshot —
@@ -148,9 +153,9 @@ export interface ResponseEmitterHandle {
    * `.waitForCondition` timeout. Filters MUST be cheap and SHOULD NOT throw.
    */
   subscribeToItems(
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    listener: (item: RuntimeItem, kind: "added" | "updated" | "done") => void,
     options?: {
-      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+      filter?: (item: RuntimeItem, kind: "added" | "updated" | "done") => boolean;
     }
   ): () => void;
 }

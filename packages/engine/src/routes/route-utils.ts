@@ -25,6 +25,7 @@ import {
   resolveClientData
 } from "@flow-state-dev/core/helpers";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
@@ -730,13 +731,17 @@ export async function buildResourceSnapshot(options: {
  * @returns The items a snapshot would show from that request, in log order.
  */
 export function snapshotItemsOf(
-  items: readonly OutputItem[] | undefined,
+  items: readonly RuntimeItem[] | undefined,
   itemTypes?: ReadonlySet<string>
 ): OutputItem[] {
   if (items === undefined) return [];
+  // A record holds the runtime log; this is where it becomes a public
+  // snapshot. Without `itemTypes` the visibility rule drops every trace row;
+  // a caller that names a trace type in `itemTypes` gets it, typed as the
+  // public item it travels as.
   return collapseToCanonicalLog(items).filter((item) =>
     itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
-  );
+  ) as OutputItem[];
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {
@@ -788,7 +793,10 @@ export function buildReplayEvents(record: RequestRecord, session?: SessionRecord
     // reconstructs the stream from the items record, so it must drop a resumed
     // request's superseded run-1 emissions just like the GET history does. The
     // append-only event log (the primary replay source) is never collapsed.
-    for (const item of collapseToCanonicalLog(record.items)) {
+    for (const runtimeItem of collapseToCanonicalLog(record.items)) {
+      // Trace rows travel on these events too (as they do live); the wire
+      // event types name the public item, so narrow the type here.
+      const item = runtimeItem as OutputItem;
       events.push({
         stream: "request",
         type: "item.added",

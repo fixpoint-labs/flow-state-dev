@@ -9,11 +9,11 @@ import type { JsonObject } from "@flow-state-dev/core/types";
 import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
-  OutputItem,
   RequestStreamEvent,
   RouterDecisionItem,
   StateSnapshotItem
 } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { Lease, LeaseOptions } from "../durability/types";
 
 export type { RequestStatus };
@@ -202,11 +202,13 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   metadata?: Record<string, unknown>;
   input?: unknown;
   /**
-   * Output items produced by this request. Adapters that store items
-   * separately may leave this `undefined` on `list()` results unless
-   * `RequestListOptions.withItems` is true.
+   * Output items produced by this request, trace rows (`block_trace`,
+   * `router_decision`, `state_snapshot`) included: the record holds the
+   * runtime item log, not only the public `OutputItem` view. Adapters that
+   * store items separately may leave this `undefined` on `list()` results
+   * unless `RequestListOptions.withItems` is true.
    */
-  items?: OutputItem[];
+  items?: RuntimeItem[];
   interruptedAt?: number;
   /**
    * Whether cancellation has been requested for this request (FIX-1026).
@@ -794,7 +796,7 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * memoization. Re-persisting an id whose fields changed MUST write the
    * latest content. Enforced by the cross-store conformance suite.
    */
-  persistItems(requestId: string, items: OutputItem[]): void;
+  persistItems(requestId: string, items: RuntimeItem[]): void;
 
   /**
    * Wait for all pending item persistence writes to complete, so none lands

@@ -17,6 +17,7 @@ import {
   ITEM_UPDATE_INVARIANT_KEYS
 } from "@flow-state-dev/contracts/items";
 import { looseDeepEqual } from "@flow-state-dev/contracts/helpers";
+import type { RuntimeItem } from "@flow-state-dev/contracts/items/internal";
 import type {
   Content,
   MessageItem,
@@ -42,8 +43,12 @@ export type ContentDeltaAccumulator = {
  * created with `keyOf`.
  */
 export type RequestStreamStore = {
-  /** Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched. */
-  loadSnapshot(items: OutputItem[]): void;
+  /**
+   * Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched.
+   *
+   * Accepts a request's runtime item log, trace rows (`block_trace` and the rest) included, as the DevTool seeds it. The store keeps every item it is given, and its readers return them typed as the public `OutputItem`, the same type the stream's item events carry them under.
+   */
+  loadSnapshot(items: readonly RuntimeItem[]): void;
   /** Drop all items, sorted ids, ownership, pending deltas, and reset the status/sequence/status-event layer to a fresh stream. */
   clear(): void;
   /** Insert or update an item. Returns true if sorted order changed (insert or reorder), false if value-only update. */
@@ -346,14 +351,14 @@ export function createRequestStreamStore(
   };
 
   const store: RequestStreamStore = {
-    loadSnapshot(items: OutputItem[]): void {
+    loadSnapshot(items: readonly RuntimeItem[]): void {
       invalidateCanonical();
       itemsById = new Map<string, OutputItem>();
       sortedIds = [];
       ownershipIndex = new Map<string, Set<string>>();
       deltaQueue.clear();
 
-      for (const item of items) {
+      for (const item of items as readonly OutputItem[]) {
         const key = keyOf(item);
         itemsById.set(key, item);
         sortedIds.push(key);

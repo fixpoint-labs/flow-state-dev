@@ -13,7 +13,8 @@
  * independent of server runtime values.
  */
 import type Database from "better-sqlite3";
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
@@ -216,7 +217,7 @@ export function createSQLiteRequestStore(
   /** Set membership marks a request with a queued (synchronous) item flush. */
   const pendingItemWrites = new Set<string>();
   /** Holds the most recent items so the queued write always uses the latest data. */
-  const latestItemSnapshots = new Map<string, OutputItem[]>();
+  const latestItemSnapshots = new Map<string, RuntimeItem[]>();
   /**
    * Per-request map of item id → the JSON last persisted to `request_items`.
    * Diffing by serialized content (not object reference) keeps persistence
@@ -235,7 +236,7 @@ export function createSQLiteRequestStore(
       "sequence = excluded.sequence, item_type = excluded.item_type, data = excluded.data"
   );
   const writeItemsBatchTxn = db.transaction(
-    (batch: OutputItem[], requestId: string) => {
+    (batch: RuntimeItem[], requestId: string) => {
       for (const item of batch) {
         insertItemStmt.run(
           requestId,
@@ -335,9 +336,9 @@ export function createSQLiteRequestStore(
   }
 
   /** Read all persisted items for a request, ordered by sequence. */
-  function queryItems(requestId: string): OutputItem[] {
+  function queryItems(requestId: string): RuntimeItem[] {
     const rows = selectItemsStmt.all(requestId) as Array<{ data: string }>;
-    return rows.map((r) => JSON.parse(r.data) as OutputItem);
+    return rows.map((r) => JSON.parse(r.data) as RuntimeItem);
   }
 
   /** Forget the per-request item-tracking state (terminal write / delete). */
@@ -360,11 +361,11 @@ export function createSQLiteRequestStore(
    */
   function itemDelta(
     requestId: string,
-    snapshot: OutputItem[]
-  ): { batch: OutputItem[]; persisted: Map<string, string> } {
+    snapshot: RuntimeItem[]
+  ): { batch: RuntimeItem[]; persisted: Map<string, string> } {
     const priorById = lastPersistedItems.get(requestId);
     const persisted = new Map<string, string>();
-    const byId = new Map<string, OutputItem>();
+    const byId = new Map<string, RuntimeItem>();
     for (const item of snapshot) {
       const serialized = JSON.stringify(item);
       persisted.set(item.id, serialized);
@@ -375,7 +376,7 @@ export function createSQLiteRequestStore(
   }
 
   /** Reject an item id past the length bound, before any SQL runs. */
-  function assertItemIds(items: OutputItem[]): void {
+  function assertItemIds(items: RuntimeItem[]): void {
     for (const item of items) {
       if (item.id.length > MAX_ITEM_ID_LENGTH) {
         throw new Error(
@@ -408,7 +409,7 @@ export function createSQLiteRequestStore(
     if (withSource.length === 0) return withSource;
 
     const requestIds = withSource.map((r) => r.id);
-    const byRequestId = new Map<string, OutputItem[]>();
+    const byRequestId = new Map<string, RuntimeItem[]>();
     for (let i = 0; i < requestIds.length; i += SQLITE_MAX_VARIABLE_NUMBER) {
       const chunk = requestIds.slice(i, i + SQLITE_MAX_VARIABLE_NUMBER);
       const placeholders = chunk.map(() => "?").join(", ");
@@ -421,7 +422,7 @@ export function createSQLiteRequestStore(
         .all(...chunk) as Array<{ request_id: string; data: string }>;
       for (const r of rows) {
         const list = byRequestId.get(r.request_id) ?? [];
-        list.push(JSON.parse(r.data) as OutputItem);
+        list.push(JSON.parse(r.data) as RuntimeItem);
         byRequestId.set(r.request_id, list);
       }
     }
@@ -442,7 +443,7 @@ export function createSQLiteRequestStore(
       id: string,
       value: RequestRecord,
       expectedVersion: ExpectedVersion,
-      items: OutputItem[]
+      items: RuntimeItem[]
     ): SetResult<RequestRecord> => {
       const result = base.setSync(id, value, expectedVersion);
       if (result.ok) writeItemsBatchTxn(items, id);
@@ -572,7 +573,7 @@ export function createSQLiteRequestStore(
       return records.map((r) => withSourceDefault(r) as RequestRecord);
     },
 
-    persistItems(requestId: string, items: OutputItem[]): void {
+    persistItems(requestId: string, items: RuntimeItem[]): void {
       // Merge-by-id (FIX-811): writes are UPSERTs keyed on (request_id, item_id),
       // never a full-set replace — so two `persistItems` calls with disjoint
       // item sets leave `get` returning the ordered union. This is what lets a
