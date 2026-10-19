@@ -371,7 +371,7 @@ export const parkOnPieces = handler({
   outputSchema: z.unknown(),
   resources: { ...conversationLedgerResources },
   execute: async (answer, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
+    const ctx: BlockContext = rawCtx;
     const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
     const filerFlow = stringAt(ctx, FILING_FLOW_STATE_KEY);
     const taskFlow = stringAt(ctx, TASK_FLOW_STATE_KEY);
@@ -422,7 +422,7 @@ export const settleSplitBlock = handler({
   inputSchema: z.unknown(),
   outputSchema: z.object({ settled: z.boolean() }),
   resources: { ...conversationLedgerResources },
-  execute: async (_input, ctx) => ({ settled: await settleParent(ctx as unknown as BlockContext) })
+  execute: async (_input, ctx) => ({ settled: await settleParent(ctx) })
 });
 
 /** What the cancel entry takes: the split task whose pieces it cancels. Only the board above dispatches it. */
@@ -435,7 +435,7 @@ export const cancelPiecesBlock = handler({
   outputSchema: z.object({}),
   resources: { ...conversationLedgerResources },
   execute: async (input, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
+    const ctx: BlockContext = rawCtx;
     const own = await ownConversationLedger(ctx);
     if (own !== undefined) await cancelOpenRows(ctx, own, `Its parent task "${input.taskId}" was ended from above.`, input.taskId);
     // The settle the fence would decline anyway: drop it.

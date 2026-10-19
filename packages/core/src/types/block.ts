@@ -830,14 +830,13 @@ export interface BlockContext<
  * A permissive, variance-friendly alias for `BlockContext` — typed where it
  * matters (the session scope) and permissive everywhere else.
  *
- * Use this for helper functions that take a block's `ctx` as a parameter:
- * the full `BlockContext`'s `TResources` generic is invariant on
- * `ResourceRegistry`, so a handler whose `ctx.resources` is inferred as
- * `ResourceRegistry<{ memos: ... }>` can't be assigned to a parameter typed
- * `BlockContext<unknown, MyState>` (the default `ResourceRegistry<Record<...>>`
- * isn't a supertype of the narrow inferred form). `LooseBlockContext` sidesteps
- * the variance trap by leaving `resources` permissive — the helper accepts any
- * block's ctx, and the call site retains its narrower typing internally.
+ * Use this for helper functions that take a block's `ctx` as a parameter and
+ * read only a few scopes. A handler that declares resources is assignable to a
+ * plain `BlockContext`, but the full context still checks every other slot
+ * against the parameter's type arguments; `LooseBlockContext` asks for the
+ * session state shape and leaves the rest, including `resources`, permissive —
+ * the helper accepts any block's ctx, and the call site retains its narrower
+ * typing internally.
  *
  * When the helper actually needs typed resources, narrow per call site or
  * declare a stricter ctx shape inline. `LooseBlockContext` is for the

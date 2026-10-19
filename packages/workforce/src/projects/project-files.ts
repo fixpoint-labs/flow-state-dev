@@ -45,7 +45,7 @@ export const readProjectFiles = handler({
   outputSchema: readProjectFilesOutputSchema,
   resources: { ...PROJECT_ROW_RESOURCES, ...PROJECT_FILE_RESOURCES },
   execute: async (input, rawCtx): Promise<ReadProjectFilesOutput> => {
-    const ctx = rawCtx as unknown as BlockContext;
+    const ctx: BlockContext = rawCtx;
     const { visibility, id } = input.project;
     const row = await projectAt(ctx, input.project);
     if (!isMember(row.state, ctx.session.identity.userId)) {
