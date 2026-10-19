@@ -10,6 +10,8 @@
  * whichever backend is underneath.
  *
  *   - `resolve` derives the effective policy + key for a dispatch (pure).
+ *   - `continuationDecision` maps that decision for a parked request that
+ *     continues, which takes its turn on the same key (pure, FIX-2062).
  *   - `admit` takes the dispatch's place before any request record or live
  *     stream is created: for `reject` it claims the key only if it is free and
  *     refuses with `ConcurrencyRejectedError` otherwise (so the dropped caller
@@ -210,6 +212,30 @@ function resolveKey(key: ConcurrencyKey, envelope: DispatchEnvelope): string | u
   return key(ctx);
 }
 
+
+/**
+ * The decision a continued request takes its turn under (FIX-2062): a parked
+ * request resumed, stopped, or re-driven by the durability sweep. A parked run
+ * gave its place back, so its continuation takes a new one on the same key,
+ * from the same resolved policy:
+ *
+ *   - `allow` / no key → nothing, as before.
+ *   - `hold` → a place that has its turn at once, as a new `hold` run has.
+ *   - `queue`, `reject`, `defer` → a place in line, waited for under the
+ *     `queue` budget. The continuation is a request the session already
+ *     admitted, carrying a recorded answer, so `reject` does not turn it away;
+ *     and `defer`'s unbounded wait would outlast the resume's hold on the
+ *     request, letting a second continuation of it start. A continuation whose
+ *     wait runs out stays parked with its answer recorded, for the sweep's
+ *     re-drive.
+ *
+ * Pure. The key is the one the request's own policy resolved.
+ */
+export function continuationDecision(decision: ResolvedDecision): ResolvedDecision {
+  if (decision.key === undefined) return decision;
+  if (decision.policy === "allow" || decision.policy === "hold") return decision;
+  return { policy: "queue", key: decision.key };
+}
 
 /** Whether a value returned by `admit` is still pending. */
 export function isPendingAdmission(

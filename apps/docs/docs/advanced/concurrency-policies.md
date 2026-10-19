@@ -148,6 +148,16 @@ What the dropped caller sees depends on how it arrived:
 
 `reject` only catches a duplicate that arrives while the first is running. A redelivery minutes later, after the first finished, needs an [idempotency key](./idempotency.md).
 
+## Requests that pause and resume
+
+A request that [suspends](./durable-execution.md) to wait for a person gives up its place on the key, so other requests on the session can run while it waits. When it picks up again, whether from the person's answer, a stop, or the durability sweep, it takes a new place on the key like a fresh request.
+
+- Under **`queue`**, **`reject`** and **`defer`** it waits for its turn, then runs. It isn't dropped under `reject`: the answer it carries is already recorded. The wait has the same 30-second limit as `queue`. If the session is still busy after that, the request stays paused with the answer saved, and the durability sweep picks it up again later.
+- Under **`hold`** it runs at once and marks the key busy, as any `hold` request does.
+- Under **`allow`** it runs at once.
+
+While a resumed request waits for its turn, a stop doesn't reach it. Stop it again once it is running.
+
 ## Across processes
 
 Where the policy holds depends on how your server runs requests.

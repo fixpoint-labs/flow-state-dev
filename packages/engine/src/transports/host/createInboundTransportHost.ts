@@ -13,7 +13,7 @@
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
-import type { SessionRecord, StoreRegistry } from "../../stores/types";
+import type { RequestRecord, SessionRecord, StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
@@ -59,6 +59,7 @@ import {
   PrincipalResolutionError
 } from "../errors";
 import {
+  continuationDecision,
   createConcurrencyArbiter,
   isPendingAdmission,
   type ConcurrencyAdmission,
@@ -1403,6 +1404,83 @@ export function createInboundTransportHost(
     };
   };
 
+  /**
+   * Start a continued request in its turn on its concurrency key (FIX-2062).
+   *
+   * A parked request gave its place back when it suspended, so the session
+   * may be running another request by the time the parked one continues. The
+   * continuation therefore takes a place on the key its policy resolves, as a
+   * dispatch does, and starts only in its turn; `continuationDecision` says
+   * how. Every continuation comes through here: a person's resume, a stop of a
+   * parked request, a wait answered, the durability sweep's re-drive, and
+   * crash-recovery `continue`.
+   *
+   * The key is resolved from the stored record, never from the caller (BP-031):
+   * its action, session, tenant, user, source and metadata are what the
+   * original dispatch was admitted under. Work an external dispatcher runs in
+   * another process is arbitrated only over a shared backend, as `dispatch`
+   * decides, so the same rule applies here.
+   *
+   * Only the start waits: the handle (live stream, `finished`) is returned at
+   * once, so a running request that continues another in its own session
+   * (`resumeWait`, `stopRequest`) is not left waiting on its own place. A wait
+   * that fails before the run starts (the budget spent, a shared backend
+   * unreachable) leaves the request parked with its resolution recorded, so
+   * nothing the person sent is lost: the request's lease, which the run would
+   * have released, is released here, and the sweep's re-drive continues the
+   * request once the session is free.
+   */
+  const startContinuationInTurn = async (
+    { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    start: (signal?: AbortSignal) => Promise<ExecutionResult>
+  ): Promise<ExecutionResult> => {
+    const decision =
+      isExternalDispatcher && !arbitratesExternalDispatch
+        ? { policy: "allow" as const, key: undefined }
+        : continuationDecision(
+            arbiter.resolve(flow, record.actionName, {
+              requestId: record.id,
+              flowKind: record.flowKind,
+              actionName: record.actionName,
+              input: record.input,
+              userId: record.userId,
+              sessionId: record.sessionId,
+              orgId,
+              tenantId: record.tenantId,
+              source: record.source,
+              metadata: record.metadata
+            })
+          );
+    if (decision.key === undefined || decision.policy === "allow") return start();
+    let started = false;
+    try {
+      const admission = await arbiter.admit(decision, record.id);
+      // A run holding its turn on a shared backend is stopped once its place
+      // can no longer be kept, as a dispatched run is.
+      return await admission.run(() => {
+        started = true;
+        return start(admission.lost);
+      });
+    } catch (error) {
+      if (!started) {
+        logSafely(
+          runtimeConfig.logger,
+          "warn",
+          "[flow-state] a continued request did not get its turn in its session; it stays parked with its resolution recorded, and the durability sweep continues it",
+          { requestId: record.id, key: decision.key, error: summarizeForLog(error) }
+        );
+        try {
+          const lease = await stores.leases.get(record.id);
+          if (lease !== null) await stores.leases.release(record.id, lease.leaseId);
+        } catch {
+          // Best effort: the lease lapses on its own, and the error that
+          // matters is the one rethrown below.
+        }
+      }
+      throw error;
+    }
+  };
+
   const continueRequest = async (
     opts: HostContinueRequestOptions
   ): Promise<ContinueRequestResult> => {
@@ -1414,7 +1492,8 @@ export function createInboundTransportHost(
       includeTrace: opts.includeTrace,
       stores,
       flowRegistry: registry,
-      runtimeConfig
+      runtimeConfig,
+      startRun: startContinuationInTurn
     });
 
     // Keep the serverless function alive until the resumed run finishes, exactly
