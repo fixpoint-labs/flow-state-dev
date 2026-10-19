@@ -182,20 +182,6 @@ export type {
   TaskWorkerRegistry,
 } from "./workers/types";
 
-// Helpers
-export {
-  taskLoopBack,
-  defaultTaskLoopUntil,
-  DEFAULT_TASK_LOOP_MAX_ITERATIONS,
-  type TaskLoopBackOptions,
-  type TaskLoopBackHandle,
-} from "./helpers/task-loop-back";
-export {
-  dispatchAndExecuteBlock,
-  type DispatchAndExecuteOptions,
-  type DispatchAndExecuteResult,
-} from "./helpers/dispatch-and-execute";
-
 // Lease renewal (FIX-1005) — the worker half of durable-job recovery. Exported
 // so a caller driving `claim` itself renews the lease it holds; a claimed row
 // nobody renews is one the next drain takes back.
