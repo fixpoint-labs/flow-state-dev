@@ -814,7 +814,7 @@ const bounded = await getOrCreateTaskCollection({
 });
 ```
 
-`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, or a `defineTaskCollection()` value. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
+`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, a `defineTaskCollection()` value, or a factory. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
 
 `board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
 

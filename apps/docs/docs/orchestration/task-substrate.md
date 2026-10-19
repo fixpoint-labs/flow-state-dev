@@ -359,19 +359,21 @@ A `false` says your write changed nothing. It does not say why. If you need to k
 
 The task board uses this on its own result writes: a write that landed but could not be announced is reported rather than passed over. See [When the board cannot record a result](./task-board#when-the-board-cannot-record-a-result).
 
-## The three backings
+## The two backings
 
-Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over any of three backings, so your pattern code doesn't change when the storage does.
+Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over either of two backings, so your pattern code doesn't change when the storage does.
 
-| Backing | Lifetime | Reach for it when |
-|---------|----------|-------------------|
-| `request` (task-board default) | The whole request, across block boundaries | Most work: an outer loop re-enters the same board, or a sibling step adds tasks before the drain. |
-| `sequencer` | One board invocation | A pattern decomposes work and drains it within a single sequencer run and wants per-call storage. |
-| `resource` | Outlives the request | A durable queue: a user's task list, an org work pool that accepts tasks across sessions. Declare it with `defineTaskCollection`. |
+| Backing | Where the tasks live | Lifetime |
+|---------|----------------------|----------|
+| `state`, no `state` field | On the request (`ctx.request`) | The whole request, across block boundaries. This is where a default task board keeps them. |
+| `state` with `state: ctx.sequencer` (or another state ref) | On that state | As long as that state: one sequencer invocation for `ctx.sequencer`. |
+| `resource` | A resource collection declared with `defineTaskCollection` | Outlives the request: a user's task list, an org work pool that accepts tasks across sessions. |
 
-The sequencer backing is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, use `request`. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
+Any other `backing` value throws before anything is stored, including the removed `"request"` and `"sequencer"` spellings. A [task board](./task-board.md#collection-backing) names its storage differently: its `collection` option takes `{ backing: "request" }`, `{ backing: "sequencer" }`, a `defineTaskCollection()` value, or a factory, and the first two resolve to `backing: "state"` here.
 
-All three backings agree on freshness *within* a request: two resolutions of the same collection read the same tasks, so a task added through one is visible through the other right away. `resource` is the only backing where the question reaches past the request, and there the guarantee stops. A request already running can't rely on seeing a write made by another request. A later request reads it.
+A sequencer's state is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, leave `state` out. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
+
+Both backings agree on freshness *within* a request: two resolutions of the same collection read the same tasks, so a task added through one is visible through the other right away. `resource` is the only backing where the question reaches past the request, and there the guarantee stops. A request already running can't rely on seeing a write made by another request. A later request reads it.
 
 ```ts
 // Durable, resource-backed queue that outlives the request.
@@ -383,9 +385,9 @@ const collection = await getOrCreateTaskCollection({
 });
 ```
 
-The sequencer backing expects the sequencer's state schema to hold a `Record<string, Task>` at its state key (default `"tasks"`).
+A state ref you pass must hold a `Record<string, Task>` at its state key (default `"tasks"`) in its state schema.
 
-`getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous in all three cases.
+`getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous on both.
 
 ### The lease
 

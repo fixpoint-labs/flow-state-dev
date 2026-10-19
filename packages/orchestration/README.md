@@ -399,7 +399,7 @@ or reassign its tasks. See the docs, "Changing tasks from outside a run".
 Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
 any of them is a construction error, so configure caps on
-`getOrCreateTaskCollection`'s sequencer/request backing instead. Per-task retries
+`getOrCreateTaskCollection`'s `state` backing instead. Per-task retries
 are set via `maxAttempts` on each task (`TaskInit`), not on the board. At the retry
 budget the failing task settles terminal `errored` and the board's completion item
 reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries` and
