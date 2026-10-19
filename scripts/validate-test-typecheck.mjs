@@ -27,11 +27,6 @@ const DEFERRED = {
   cursor: LATER_IN_STACK,
   devtool: LATER_IN_STACK,
   "harness-manager": LATER_IN_STACK,
-  memory: LATER_IN_STACK,
-  orchestration: LATER_IN_STACK,
-  patterns: LATER_IN_STACK,
-  "thought-fabric-core": LATER_IN_STACK,
-  tools: LATER_IN_STACK,
   workforce: "FIX-2016: wired after the open PRs that rewrite its tests land",
 };
 

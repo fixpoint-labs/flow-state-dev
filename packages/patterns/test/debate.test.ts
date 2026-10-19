@@ -40,9 +40,7 @@ function makeDebater(
     },
     execute: (_input, ctx) => {
       const round = (ctx.sequencer!.state as { round: number }).round;
-      const trans = (ctx.resources as any).transcript?.state ??
-        (ctx.session?.resources as any)?.transcript ??
-        { entries: [] };
+      const trans = (ctx.resources as any).transcript?.state ?? { entries: [] };
       const priors = (trans.entries ?? []).length;
       seenSizes?.push({ name, round, priors });
       return { text: `${stance}-r${round}-from-${name}` };
