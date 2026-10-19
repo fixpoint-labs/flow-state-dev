@@ -51,7 +51,7 @@ function suppliedBackend(): ConcurrencyLeaseBackend {
 }
 
 /**
- * One flow, two actions on the same session key: `ask` parks on a person's
+ * One flow, two actions on the same session key: `transfer` parks on a person's
  * approval and then runs a step that blocks; `work` blocks. Every blocking
  * step records itself live until the test releases it.
  */
@@ -78,10 +78,10 @@ function buildHost(concurrency: ConcurrencyConfig, backend: Backend = "in-memory
     defineFlow({
       kind: "chat",
       actions: {
-        ask: {
+        transfer: {
           concurrency,
           inputSchema: z.any(),
-          block: sequencer({ name: "askSeq", durable: true })
+          block: sequencer({ name: "transferSeq", durable: true })
             .step(
               handler({
                 name: "approve",
@@ -109,7 +109,7 @@ function buildHost(concurrency: ConcurrencyConfig, backend: Backend = "in-memory
     arbiter: createConcurrencyArbiter(backend === "supplied" ? { backend: suppliedBackend() } : {})
   });
 
-  const envelope = (action: "ask" | "work", sessionId = "s_1") => ({
+  const envelope = (action: "transfer" | "work", sessionId = "s_1") => ({
     source: "http" as const,
     flowKind: "chat",
     action,
@@ -119,9 +119,9 @@ function buildHost(concurrency: ConcurrencyConfig, backend: Backend = "in-memory
     principal: { userId: "u_1", orgId: DEFAULT_ORG_ID }
   });
 
-  /** Park an `ask` on its approval and return its request id and gate. */
+  /** Park a `transfer` on its approval and return its request id and gate. */
   const park = async (sessionId = "s_1"): Promise<{ requestId: string; gate: SuspensionRecord }> => {
-    const handle = host.dispatch(envelope("ask", sessionId));
+    const handle = host.dispatch(envelope("transfer", sessionId));
     await handle.finished;
     expect((await stores.request.get(handle.requestId))?.status).toBe("suspended");
     const [gate] = (await provider.listSuspended({ status: "pending" })).filter(
