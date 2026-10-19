@@ -2,18 +2,17 @@ import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  taskTools,
   buildTaskToolsList,
   checkAssignee,
   createTaskToolsCapability,
-  defaultOwnStateResolver,
-  delegationBoardSchema,
-  DELEGATION_BOARD_FIELD,
   READ_OUTPUT_LIMIT,
   type AssigneeRoster,
 } from "../../src/skills/task-tools-capability";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
+
+/** The task tools over the test board on the host generator's own state. */
+const taskTools = createTaskToolsCapability(ownStateResolver);
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
@@ -92,7 +91,7 @@ describe("taskTools capability", () => {
   });
 
   it("createTaskToolsCapability returns a freshly composable capability", () => {
-    const cap = createTaskToolsCapability();
+    const cap = createTaskToolsCapability(ownStateResolver);
     expect(cap.name).toBe("taskTools");
   });
 
@@ -102,19 +101,6 @@ describe("taskTools capability", () => {
     const description = findTool("addTask").config?.description ?? "";
     expect(description).toContain("enqueued_task_cap_exceeded");
     expect(description).toContain("total_task_cap_exceeded");
-  });
-});
-
-describe("delegation board state slot", () => {
-  it("initializes from an empty parse, so the board exists on first use", () => {
-    // The engine seeds a block's initial own state via `stateSchema.safeParse({})`
-    // (see engine route-utils). Without a field default that parse fails, the
-    // state starts as `{}`, and the first addTask hits `no_delegation_board`
-    // even though the binding declared the board.
-    const hostSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
-    const parsed = hostSchema.safeParse({});
-    expect(parsed.success).toBe(true);
-    expect(parsed.success && parsed.data).toEqual({ [DELEGATION_BOARD_FIELD]: {} });
   });
 });
 
@@ -137,7 +123,7 @@ describe("taskTools — happy paths (own-state board)", () => {
     const taskId = (result as { taskId: string }).taskId;
     const board = (
       (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-        DELEGATION_BOARD_FIELD
+        BOARD_FIELD
       ] as Record<string, { input?: unknown }>
     );
     expect(board[taskId]?.input).toEqual({ subject: "ACME" });
@@ -316,7 +302,7 @@ const testRoster: AssigneeRoster = {
 
 /** The roster-carrying tools, as a caller supplying a roster builds them. */
 function rosterTool(name: string): GeneratorTool {
-  const tool = buildTaskToolsList(defaultOwnStateResolver, testRoster).find(
+  const tool = buildTaskToolsList(ownStateResolver, testRoster).find(
     (t) => (t as { config?: { name?: string } }).config?.name === name,
   );
   if (!tool) throw new Error(`tool not found: ${name}`);
@@ -326,7 +312,7 @@ function rosterTool(name: string): GeneratorTool {
 /** Read the live board record off a mock ctx. */
 function boardOf(ctx: unknown): Record<string, { assignee?: string }> {
   return (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-    DELEGATION_BOARD_FIELD
+    BOARD_FIELD
   ] as Record<string, { assignee?: string }>;
 }
 
@@ -500,7 +486,7 @@ function ctxWithTask(status: string, extra: Record<string, unknown> = {}) {
 /** The seeded task's status as it stands on the board now. */
 function statusOfA(ctx: unknown): string {
   const board = (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-    DELEGATION_BOARD_FIELD
+    BOARD_FIELD
   ] as Record<string, { status: string }>;
   return board.a!.status;
 }
@@ -712,7 +698,7 @@ describe("taskTools — failTask's retry budget", () => {
 function taskA(ctx: unknown) {
   return (
     (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
-      DELEGATION_BOARD_FIELD
+      BOARD_FIELD
     ] as Record<
       string,
       { assignee?: string; priority?: number; labels?: string[]; metadata?: unknown }

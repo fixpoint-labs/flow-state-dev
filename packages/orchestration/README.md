@@ -761,9 +761,8 @@ ready row as soon as it's written, the way a Workforce conversation does. It tak
 fields, or `taskId` for a recorded row, and with `wait` it parks the turn until the task ends
 ([below](#waiting-for-a-tasks-answer)). On such a board `addTask` and
 `assignTask` record rows that wait for a dispatch, and `addTask` answers
-`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`, so the
-standalone `taskTools` and a custom resolver offer no `dispatchTask`, and their `addTask` files a
-row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
+`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`, so a
+board without it offers no `dispatchTask`, and its `addTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
 the `dispatchTask_<board>` action, which never waits.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
@@ -781,16 +780,9 @@ board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
-> surface on its own. Wiring the
-> exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
-> generator's own-state board through a bare, **uncapped** collection: `addTask`
-> there is unbounded. For a bounded board on that path, build the
-> collection yourself with
-> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
-> resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
-> target the host generator's own state via `ctx.parent` (each tool runs as a
-> child block, so `ctx.sequencer` is the wrong container) and name the board's
-> `stateKey` (`DELEGATION_BOARD_FIELD`).
+> surface on its own. A resolver you hand to `createTaskToolsCapability(resolver)`
+> is bounded only if the collection it returns was built with
+> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })`.
 
 **Every `taskTools` call reports a problem the same way.** A status change the
 task's current status does not permit is a recoverable tool result too, not a

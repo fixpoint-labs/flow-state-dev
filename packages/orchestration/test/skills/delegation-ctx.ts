@@ -2,12 +2,39 @@
  * Shared execution-context fixture for the task-tools tests.
  *
  * Every task-tools test drives the same object graph: an executive generator
- * that owns a board on its own state (the `DELEGATION_BOARD_FIELD` the default
- * own-state resolver reads), with `self` and `parent` aliased to that same ref
- * by default (pass `self: false` to opt out).
+ * that owns a board on its own state (at {@link BOARD_FIELD}, which
+ * {@link ownStateResolver} reads), with `self` and `parent` aliased to that
+ * same ref by default (pass `self: false` to opt out).
  */
+import type { StateRef } from "@flow-state-dev/core/types";
 import { createMockSkillsCollection } from "./mocks";
-import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
+import { getOrCreateTaskCollection } from "../../src/tasks";
+import type { TaskCollectionResolver } from "../../src/skills/task-tools-capability";
+
+/** The own-state field these tests keep their board on. */
+export const BOARD_FIELD = "delegationBoard";
+
+/**
+ * A resolver for the board on the host generator's own state, reached through
+ * `ctx.parent`: each task tool runs as a child block, so `ctx.parent` (not
+ * `ctx.self`, the per-call scope) is the generator. `undefined` when the parent
+ * has no own state or no board field, so the tools answer `no_delegation_board`.
+ */
+export const ownStateResolver: TaskCollectionResolver = async (ctx) => {
+  const parent = (ctx as { parent?: Partial<StateRef<Record<string, unknown>>> }).parent;
+  if (!parent || typeof parent.atomicState !== "function") return undefined;
+  const state = parent.state;
+  if (state === null || typeof state !== "object") return undefined;
+  if (!(BOARD_FIELD in state)) return undefined;
+  return getOrCreateTaskCollection({
+    backing: "state",
+    state: parent as StateRef<Record<string, unknown>>,
+    stateKey: BOARD_FIELD,
+    collectionId: BOARD_FIELD,
+    ctx,
+    changeVisibility: { client: true, history: false },
+  });
+};
 
 /**
  * Build a mock generator execution ctx whose own state carries a delegation
@@ -36,7 +63,7 @@ export function buildDelegationCtx(
 ) {
   const collection = opts.collection ?? createMockSkillsCollection();
   const selfState: Record<string, unknown> = {
-    [DELEGATION_BOARD_FIELD]: opts.preTasks ?? {},
+    [BOARD_FIELD]: opts.preTasks ?? {},
   };
   const stateRef = {
     name: "executive",

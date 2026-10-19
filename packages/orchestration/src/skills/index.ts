@@ -110,10 +110,6 @@ export {
   taskToolsForTurn,
   type TaskToolsOptions,
   type DispatchPostForm,
-  taskTools,
-  defaultOwnStateResolver,
-  DELEGATION_BOARD_FIELD,
-  delegationBoardSchema,
   type TaskCollectionResolver,
   // Part of `createTaskToolsCapability`'s signature, so a caller supplying a
   // roster can name its type.
