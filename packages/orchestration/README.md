@@ -761,8 +761,7 @@ ready row as soon as it's written, the way a Workforce conversation does. It tak
 fields, or `taskId` for a recorded row, and with `wait` it parks the turn until the task ends
 ([below](#waiting-for-a-tasks-answer)). On such a board `addTask` and
 `assignTask` record rows that wait for a dispatch, and `addTask` answers
-`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`, so a
-board without it offers no `dispatchTask`, and its `addTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
+`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`. Without it the tools offer no `dispatchTask`, and `addTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
 the `dispatchTask_<board>` action, which never waits.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
