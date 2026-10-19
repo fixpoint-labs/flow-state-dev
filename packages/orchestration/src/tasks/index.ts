@@ -165,15 +165,6 @@ export type { TaskDispatcher } from "./dispatchers/types";
 export { fifoDispatcher } from "./dispatchers/fifo";
 export { topologicalDispatcher } from "./dispatchers/topological";
 export { priorityDispatcher } from "./dispatchers/priority";
-export {
-  classifierDispatcher,
-  type ClassifyFn,
-  type ClassifierDispatcherOptions,
-} from "./dispatchers/classifier";
-export {
-  eventDispatcher,
-  type EventDispatcherOptions,
-} from "./dispatchers/event";
 
 // Workers
 export type {

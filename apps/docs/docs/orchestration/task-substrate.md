@@ -461,7 +461,7 @@ This is not exactly-once dispatch. A lease that runs out sends the task back to 
 
 ## Dispatchers
 
-A dispatcher decides which ready task gets claimed next. Five ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
+A dispatcher decides which ready task gets claimed next. Three ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
 
 A custom `eligibility` predicate **narrows** the substrate's candidates. Claimability is the substrate's to decide: dependencies satisfied, and either never started or abandoned by a worker that stopped renewing. Your predicate selects among the tasks that already pass it.
 
@@ -480,24 +480,8 @@ An abandoned task your predicate filters out is not taken back by *this* dispatc
 | `fifoDispatcher` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
 | `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
 | `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
-| `classifierDispatcher({ classify })` | The id your `classify` callback returns, or nothing when it returns `null` | Claimable (pending or abandoned), all `deps` completed, then narrowed to the id you chose. |
-| `eventDispatcher({ topicFor, topic })` | First matching task in `createdAt` order | Claimable (pending or abandoned), all `deps` completed, `topicFor(task) === topic`. |
 
 `fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
-
-The classifier and event dispatchers are factories because they take config. The classifier sees only the claimable set, calls your callback to choose one id, then narrows the claim to that id, so if a parallel worker already took it, the compare-and-set still arbitrates:
-
-```ts
-import { classifierDispatcher } from "@flow-state-dev/orchestration";
-
-const urgencyFirst = classifierDispatcher({
-  async classify(candidates) {
-    // Prefer whatever is tagged urgent; otherwise take the first ready task.
-    const urgent = candidates.find((task) => task.labels?.includes("urgent"));
-    return (urgent ?? candidates[0]).id;
-  },
-});
-```
 
 ## task-change items
 
