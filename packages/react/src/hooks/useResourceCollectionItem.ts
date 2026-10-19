@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CollectionItemHandle } from "@flow-state-dev/client";
 import { findCollectionEntry, useResourceCollection } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
+import { useReadFence } from "./useReadFence";
 
 /**
  * `TClient` (FIX-741) is the collection's projected per-item client-data type;
@@ -33,7 +34,17 @@ export function useResourceCollectionItem<TClient = unknown>(
 ): UseResourceCollectionItemResult<TClient> {
   const { get, wrap } = useResourceCollection<TClient>(session, ref);
 
-  const [item, setItem] = useState<CollectionItemHandle<TClient> | null>(null);
+  // `wrap` is rebuilt exactly when the client, the session or the ref changes,
+  // so it names the collection being read. The fetched item is stamped with
+  // it and surfaced only while it still names the collection in play, so a
+  // switch to another session never shows the previous session's item.
+  const fence = useReadFence([wrap]);
+  const [read, setRead] = useState<{
+    identity: readonly unknown[];
+    item: CollectionItemHandle<TClient> | null;
+  } | null>(null);
+  const holdsCurrent = read !== null && fence.holds(read.identity);
+  const item = holdsCurrent ? read.item : null;
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | undefined>(undefined);
   const [generation, setGeneration] = useState(0);
@@ -46,9 +57,13 @@ export function useResourceCollectionItem<TClient = unknown>(
       try {
         const result = await get(topic);
         if (cancelled) return;
-        setItem(result === null ? null : wrap(result));
+        setRead({ identity: fence.identity, item: result === null ? null : wrap(result) });
       } catch (err) {
         if (!cancelled) {
+          // The read settled for this identity: keep an item it already held.
+          setRead((prev) =>
+            prev !== null && prev.identity === fence.identity ? prev : { identity: fence.identity, item: null }
+          );
           setError(err instanceof Error ? err : new Error(String(err)));
         }
       } finally {
@@ -58,7 +73,7 @@ export function useResourceCollectionItem<TClient = unknown>(
     return () => {
       cancelled = true;
     };
-  }, [get, wrap, topic, generation]);
+  }, [fence, get, wrap, topic, generation]);
 
   const refetch = useCallback(() => setGeneration((g) => g + 1), []);
 
@@ -86,5 +101,6 @@ export function useResourceCollectionItem<TClient = unknown>(
     return wrap({ topic, clientData: liveEntry.clientData });
   }, [item, liveEntry, topic, wrap]);
 
-  return { item: itemWithLive, isLoading, error, refetch };
+  // Nothing read for the collection in play yet means a read is coming.
+  return { item: itemWithLive, isLoading: holdsCurrent ? isLoading : true, error, refetch };
 }

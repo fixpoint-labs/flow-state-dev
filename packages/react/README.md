@@ -158,7 +158,7 @@ function PlanRenderer({ item }: { item: ContainerItem }) {
 
 ### `useResourceCollection(session, ref)`
 
-Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Pages are cached per-instance and invalidated on observed `resource_change` notices for the affected ref. Invalidation is driven by the `SessionView.resourceChanges` side channel (see below), so it works regardless of whether the caller opted into transient items.
+Underlying primitive for collection resources. Returns `list`, `get`, `query`, `actions`, `refetch`, `prefetched`, and `count`. Pages are cached per-instance for one session, collection and server: changing any of them reads afresh, and a response that lands after the change is never cached. Cached pages are invalidated on observed `resource_change` notices for the affected ref. Invalidation is driven by the `SessionView.resourceChanges` side channel (see below), so it works regardless of whether the caller opted into transient items.
 
 ### `useResourceCollectionList(session, ref, { limit?, topicPrefix? })`
 

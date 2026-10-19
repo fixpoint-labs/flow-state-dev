@@ -12,6 +12,10 @@ import {
   type UseResourceCollectionResult
 } from "./useResourceCollection";
 import type { SessionView } from "./useSession";
+import { useReadFence } from "./useReadFence";
+
+/** One empty list for every render with nothing read, so derived memos hold steady. */
+const NO_ITEMS: never[] = [];
 
 /**
  * Apply a `client.live` overlay (FIX-739) over a fetched/prefetched item list:
@@ -76,39 +80,74 @@ export function useResourceCollectionList<TClient = unknown>(
   const limit = options.limit;
   const topicPrefix = options.topicPrefix;
 
-  const [items, setItems] = useState<CollectionItemHandle<TClient>[]>([]);
-  // Opaque cursor for the NEXT page; `undefined` once the last page is reached.
-  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
-  const [fetched, setFetched] = useState<boolean>(false);
+  // The read identity. `wrap` is rebuilt exactly when the client, the session
+  // or the ref changes, and not on cache invalidation, so it names the
+  // collection being shown: a refetch keeps the rows on screen, a switch to
+  // another session does not.
+  const fence = useReadFence([wrap]);
+
+  // What has been read, stamped with the identity it was read under. Rows of
+  // an identity since left are never surfaced, even for the render between a
+  // switch and the new identity's first page (derived below, not reset in an
+  // effect).
+  const [read, setRead] = useState<{
+    identity: readonly unknown[];
+    items: CollectionItemHandle<TClient>[];
+    // Opaque cursor for the NEXT page; `undefined` once the last page is reached.
+    nextCursor: string | undefined;
+    fetched: boolean;
+    error: Error | undefined;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<Error | undefined>(undefined);
   // Used to force a refetch when the underlying ref/baseUrl/options change.
   const [generation, setGeneration] = useState(0);
 
+  const holdsCurrent = read !== null && fence.holds(read.identity);
+  const items: CollectionItemHandle<TClient>[] = holdsCurrent ? read.items : NO_ITEMS;
+  const nextCursor = holdsCurrent ? read.nextCursor : undefined;
+  const fetched = holdsCurrent ? read.fetched : false;
+  const error = holdsCurrent ? read.error : undefined;
+
   const fetchPage = useCallback(
     async (cursor: string | undefined, replace: boolean) => {
+      // Refused for an identity since left; otherwise the newest read wins,
+      // so a page that lands after a newer read began is not written.
+      const stillCurrent = fence.begin();
+      if (stillCurrent === null) return;
+      const identity = fence.identity;
       setIsLoading(true);
-      setError(undefined);
+      setRead((prev) => (prev === null || prev.error === undefined ? prev : { ...prev, error: undefined }));
       try {
         const queryOptions: CollectionListOptions = {};
         if (cursor !== undefined) queryOptions.cursor = cursor;
         if (limit !== undefined) queryOptions.limit = limit;
         if (topicPrefix !== undefined) queryOptions.topicPrefix = topicPrefix;
         const page = await list(queryOptions);
+        if (!stillCurrent()) return;
         // Wrap raw `{ topic, clientData? }` page items as handles using the
         // shared wrap helper from useResourceCollection (one client per
         // hook tree, not one per convenience hook).
         const handles = page.items.map(wrap);
-        setNextCursor(page.nextCursor);
-        setFetched(true);
-        setItems((prev) => (replace ? handles : [...prev, ...handles]));
+        setRead((prev) => ({
+          identity,
+          items: replace || prev === null || prev.identity !== identity ? handles : [...prev.items, ...handles],
+          nextCursor: page.nextCursor,
+          fetched: true,
+          error: undefined
+        }));
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        if (!stillCurrent()) return;
+        const failure = err instanceof Error ? err : new Error(String(err));
+        setRead((prev) =>
+          prev !== null && prev.identity === identity
+            ? { ...prev, error: failure }
+            : { identity, items: [], nextCursor: undefined, fetched: false, error: failure }
+        );
       } finally {
-        setIsLoading(false);
+        if (stillCurrent()) setIsLoading(false);
       }
     },
-    [list, wrap, limit, topicPrefix]
+    [fence, list, wrap, limit, topicPrefix]
   );
 
   // Initial / re-fetch whenever inputs change. `generation` lets refetch()
@@ -156,7 +195,8 @@ export function useResourceCollectionList<TClient = unknown>(
   return {
     items: surfaced,
     hasMore,
-    isLoading,
+    // Nothing read for the identity in play yet means a read is coming.
+    isLoading: holdsCurrent ? isLoading : true,
     error,
     refetch,
     loadMore

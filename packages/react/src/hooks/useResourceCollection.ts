@@ -6,9 +6,11 @@
  * (`useResourceCollectionList`, `useResourceCollectionItem`).
  *
  * Caching lives per-instance: each hook call owns its own page cache keyed
- * by the normalized query. On `resource_change` items observed in the
- * session stream, entries for the affected ref are invalidated; active
- * subscribers refetch.
+ * by the normalized query, and that cache belongs to one read identity (the
+ * client, the session and the collection ref). A change to any of them starts
+ * a fresh cache, so one session's pages are never served for another. On
+ * `resource_change` items observed in the session stream, entries for the
+ * affected ref are invalidated; active subscribers refetch.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -21,6 +23,7 @@ import {
   type ResourceClient
 } from "@flow-state-dev/client";
 import type { SessionView } from "./useSession";
+import { useReadFence, type ReadFence } from "./useReadFence";
 import { useFlowContext } from "../context/FlowContext";
 
 /**
@@ -88,6 +91,15 @@ export type UseResourceCollectionResult<TClient = unknown> = {
 
 type CachedPage = {
   page: CollectionListPage;
+};
+
+/**
+ * The page cache and the identity it belongs to. `owner` is the read fence of
+ * that identity; a read built under any other fence starts a fresh cache.
+ */
+type PageCache = {
+  owner: ReadFence | null;
+  pages: Map<string, CachedPage>;
 };
 
 /** Normalized cache key — sorted JSON of the query. */
@@ -168,9 +180,20 @@ export function useResourceCollection<TClient = unknown>(
     [baseUrl, apiPath]
   );
 
-  // Per-instance page cache keyed by normalized query. Held in a ref so
-  // it survives re-renders without participating in render diffing.
-  const cacheRef = useRef<Map<string, CachedPage>>(new Map());
+  const sessionId = session.sessionId;
+
+  // The read identity: transport, session and collection. The fence object is
+  // rebuilt whenever any of them changes, so it also names one stay on an
+  // identity: after A → B → A the cache from the first stay is not reused.
+  const fence = useReadFence([client, sessionId, ref]);
+
+  // Per-instance page cache keyed by normalized query, owned by one identity
+  // stay. Held in a ref so it survives re-renders without participating in
+  // render diffing. It is replaced when a read of a new identity first touches
+  // it, not cleared from an effect: a child component's effect can call the
+  // new `list` before this hook's effects run, and must not find the previous
+  // session's pages there.
+  const cacheRef = useRef<PageCache>({ owner: null, pages: new Map() });
   // Generation counter — bumped on invalidation. Captured before each list()
   // await, then compared after to discard stale write-backs from races
   // between SSE invalidations and in-flight requests. Also flows into the
@@ -179,7 +202,7 @@ export function useResourceCollection<TClient = unknown>(
   const generationRef = useRef(0);
 
   const invalidate = useCallback(() => {
-    cacheRef.current.clear();
+    cacheRef.current.pages.clear();
     generationRef.current++;
     setGeneration(generationRef.current);
   }, []);
@@ -230,27 +253,39 @@ export function useResourceCollection<TClient = unknown>(
 
   const list = useCallback(
     async (options?: CollectionListOptions): Promise<CollectionListPage> => {
-      const sessionId = session.sessionId;
       if (!sessionId) {
         return { items: [] };
       }
+      // A callback built for an identity since left (or after unmount) still
+      // answers for its own identity, but neither reads nor fills the cache:
+      // that belongs to the identity in play.
+      if (!fence.isCurrent()) {
+        return client.listCollectionItems(sessionId, ref, options);
+      }
+      if (cacheRef.current.owner !== fence) {
+        cacheRef.current = { owner: fence, pages: new Map() };
+      }
+      const cache = cacheRef.current;
       const key = cacheKey(options);
-      const cached = cacheRef.current.get(key);
+      const cached = cache.pages.get(key);
       if (cached !== undefined) return cached.page;
 
       // Snapshot the generation at request start. If invalidate() bumps it
       // before the response lands (e.g., SSE resource_change while fetching),
-      // skip the write-back so we don't repopulate a cleared cache.
+      // skip the write-back so we don't repopulate a cleared cache. The write
+      // goes to the cache captured above, never `cacheRef.current`: if the
+      // identity was left while this was in flight, that cache has been
+      // replaced and the late page lands nowhere a read can find it.
       const startGen = generationRef.current;
       const page = await client.listCollectionItems(sessionId, ref, options);
       if (startGen === generationRef.current) {
-        cacheRef.current.set(key, { page });
+        cache.pages.set(key, { page });
       }
       return page;
     },
     // generation is in deps so the callback identity flips on invalidation;
     // convenience hooks watching `list` re-run their effects and refetch.
-    [client, ref, session.sessionId, generation]
+    [client, ref, sessionId, fence, generation]
   );
 
   const get = useCallback(
