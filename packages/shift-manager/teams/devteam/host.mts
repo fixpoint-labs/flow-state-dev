@@ -1198,6 +1198,18 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.mcpServers === undefined ? {} : { adapters: [mcpCredentialsAdapter(Object.keys(options.mcpServers))] }),
   } as never);
 
+  // The Error Reporter's runs write through these stores, and every host stops
+  // the Lab through `state` (the configs export it, and `serve` disposes it),
+  // so stopping it has to settle those runs first. See `drainReporter`.
+  const reporterRuns = new AbortController();
+  if (reporter !== undefined) {
+    const disposeState = state.dispose.bind(state);
+    state.dispose = async () => {
+      await drainReporter(reporter, reporterRuns);
+      await disposeState();
+    };
+  }
+
   const runtime = await state.getRuntime();
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
@@ -1216,11 +1228,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (reporter !== undefined) {
     try {
       await reporter.bind(
-        reporterHost(runtime, flows, await openWorkerSession(runtime.stores, {
-          flow: copyOf(ERROR_REPORTER_FLOW),
-          workerId: reporterRecords[0]!.id,
-          principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
-        })),
+        reporterHost(
+          runtime,
+          flows,
+          await openWorkerSession(runtime.stores, {
+            flow: copyOf(ERROR_REPORTER_FLOW),
+            workerId: reporterRecords[0]!.id,
+            principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+          }),
+          reporterRuns.signal,
+        ),
       );
     } catch (error) {
       await state.dispose();
@@ -1614,11 +1631,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     door,
     ...(reporter === undefined ? {} : { errorReporter: reporter }),
 
-    dispose: async () => {
-      // No report starts once the stores are closing; one in flight stays owed for the next start.
-      reporter?.dispose();
-      await state.dispose();
-    },
+    dispose: () => state.dispose(),
   };
 }
 
@@ -1689,14 +1702,43 @@ async function sessionSummary(runtime: Awaited<ReturnType<FlowState["getRuntime"
   return lines.slice(-12);
 }
 
+/** How long a closing Lab waits for the Error Reporter's runs to finish before it cancels them. */
+const REPORTER_DRAIN_MS = 10_000;
+
+/** How long a cancelled reporter run gets to write its ending before the stores close. */
+const REPORTER_UNWIND_MS = 2_000;
+
+/** Whether `work` settles within `ms`. The timer never keeps the process alive. */
+async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  try {
+    return await Promise.race([work.then(() => true, () => true), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function drainReporter(reporter: ErrorReporter, runs: AbortController): Promise<void> {
+  reporter.dispose();
+  if (await settlesWithin(reporter.idle(), REPORTER_DRAIN_MS)) return;
+  runs.abort(new Error("the Lab is shutting down"));
+  await settlesWithin(reporter.idle(), REPORTER_UNWIND_MS);
+}
+
 /**
  * The runtime operations the Error Reporter is bound with: run an action as
  * the Lab's user, open a session, and read what a request or a session holds.
+ * `signal` cancels the runs it starts, when the Lab stops ({@link drainReporter}).
  */
 function reporterHost(
   runtime: Awaited<ReturnType<FlowState["getRuntime"]>>,
   flows: Record<string, unknown>,
   conversationSessionId: string,
+  signal: AbortSignal,
 ): ErrorReporterHost {
   return {
     conversationSessionId,
@@ -1711,6 +1753,7 @@ function reporterHost(
         source: request.source,
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig },
+        signal,
       } as never)) as { output?: unknown; error?: unknown };
       return result.error === undefined ? { output: result.output } : { error: messageOf(result.error) };
     },
