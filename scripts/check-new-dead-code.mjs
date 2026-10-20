@@ -55,8 +55,11 @@ function fail(message) {
   process.exit(2);
 }
 
-const base = process.argv[2];
-if (!base) fail("usage: node scripts/check-new-dead-code.mjs <base-ref>");
+const baseRef = process.argv[2];
+if (!baseRef) fail("usage: node scripts/check-new-dead-code.mjs <base-ref>");
+// Pin a relative ref (`HEAD^1`) before the checkout moves HEAD.
+const base = run("git", ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`]).stdout.trim();
+if (!base) fail(`cannot resolve ${baseRef}`);
 if (run("git", ["status", "--porcelain", "--untracked-files=no"]).stdout.trim()) {
   fail("the working tree has uncommitted changes; commit or stash them first");
 }

@@ -345,17 +345,20 @@ jobs:
       # PRs only: fails on unused files, exports, types or dependencies this
       # PR leaves anywhere in the tree, including an export in a file it never
       # touched whose last caller it deleted. Findings already on the base
-      # don't count, so the existing backlog never blocks a PR.
+      # don't count, so the existing backlog never blocks a PR. The checkout
+      # is the PR merged into its base branch's current tip, so the base is
+      # the merge's first parent (`HEAD^1`), not `pull_request.base.sha`,
+      # which goes stale as the base branch moves.
       - name: New dead code
         if: github.event_name == 'pull_request'
-        run: pnpm fallow:new-dead-code ${{ github.event.pull_request.base.sha }}
+        run: pnpm fallow:new-dead-code HEAD^1
 
       # PRs only: new duplication and complexity in the changed files, reported
       # without failing (see .fallowrc.json). `pnpm fallow` locally shows the
       # whole backlog.
       - name: New duplication & complexity
         if: github.event_name == 'pull_request'
-        run: pnpm fallow:audit --base ${{ github.event.pull_request.base.sha }}
+        run: pnpm fallow:audit --base HEAD^1
 
   e2e:
     name: Kitchen-sink E2E (Playwright)
