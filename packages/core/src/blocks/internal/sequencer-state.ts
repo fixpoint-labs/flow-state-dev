@@ -81,6 +81,39 @@ export function absorbSequencerStateRequirement(
   return mapZodObjectRoot(base, (object) => (object as ZodObject<ZodRawShape>).extend(added))!;
 }
 
+/**
+ * Join two capabilities' `sequencerStateSchema` requirements for one
+ * sequencer, before they meet its own state. A field both declare must agree
+ * in kind, or this throws; otherwise the later declaration wins, as it does
+ * for capabilities' other schemas. A wrapper on `earlier` is kept.
+ *
+ * @param source How `later` is named in the error (`capability "x"`).
+ */
+export function mergeSequencerStateRequirements(
+  earlier: ZodTypeAny,
+  later: ZodTypeAny,
+  sequencerName: string,
+  source: string
+): ZodTypeAny {
+  if (earlier === later) return earlier;
+  const earlierShape = shapeOf(earlier);
+  const laterShape = shapeOf(later);
+  if (earlierShape === undefined || laterShape === undefined) {
+    const reason = "every capability's sequencerStateSchema must be z.object() to merge";
+    conflict(sequencerName, `cannot merge the state ${source} requires: ${reason}`, reason, earlier, later);
+  }
+  for (const [key, field] of Object.entries(laterShape)) {
+    const declared = earlierShape[key];
+    if (declared === undefined || declared === field) continue;
+    const mismatch = compareStateFieldKinds(declared, field);
+    if (mismatch !== null) {
+      const reason = `state field "${key}": ${mismatch}`;
+      conflict(sequencerName, `${source} requires a different ${reason}`, reason, declared, field);
+    }
+  }
+  return mapZodObjectRoot(earlier, (object) => (object as ZodObject<ZodRawShape>).extend(laterShape))!;
+}
+
 /** The fields of an object schema, under any `.default()` / `.optional()` / effects wrapper. */
 function shapeOf(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined {
   const object = unwrapToZodObject(schema);

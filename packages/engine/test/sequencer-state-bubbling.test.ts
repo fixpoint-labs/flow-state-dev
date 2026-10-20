@@ -336,6 +336,26 @@ describe("a capability's sequencerStateSchema is installed on the sequencer that
       })
     ).toThrow(SequencerSchemaMismatchError);
   });
+
+  it("refuses two capabilities that require different kinds of the same field", () => {
+    // Merging the two before the check would keep only the later one, and
+    // hand the earlier capability a field of the wrong kind.
+    const numberCap = defineCapability({
+      name: "progress-number",
+      sequencerStateSchema: z.object({ progress: z.number().default(7) })
+    });
+    const stringCap = defineCapability({
+      name: "progress-string",
+      sequencerStateSchema: z.object({ progress: z.string().default("seven") })
+    });
+
+    expect(() =>
+      sequencer({ name: "two-cap-conflict", inputSchema: z.any(), uses: [numberCap, stringCap] })
+    ).toThrow(SequencerSchemaMismatchError);
+    expect(() =>
+      sequencer({ name: "two-cap-conflict", inputSchema: z.any(), uses: [numberCap, stringCap] })
+    ).toThrow(/capability "progress-string"/);
+  });
 });
 
 describe("a checkpoint written before a field bubbled in still restores", () => {

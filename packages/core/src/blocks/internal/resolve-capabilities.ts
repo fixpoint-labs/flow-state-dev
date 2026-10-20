@@ -126,7 +126,7 @@ export function resolveCapabilities(
   const allDynamic = [...topDynamicFns, ...nestedDynamic];
   const scoped = flattened.filter((cap) => capabilityMatchesAgent(cap, config.itemVisibility));
 
-  const merged = mergeCapabilities(scoped, blockKind);
+  const merged = mergeCapabilities(scoped, blockKind, config.name);
   const capResources = extractMergedResources(merged);
   const declaredResources = mergeWithBlockResources(capResources, blockResources);
   // FIX-914 PR2: a capability can contribute to this block's own state
