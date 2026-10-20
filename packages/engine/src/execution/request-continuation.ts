@@ -47,12 +47,8 @@ export interface ContinueRequestOptions {
    */
   includeTrace?: boolean;
   /**
-   * When the continued run starts. Called once, after the live stream and the
-   * active-request entry exist, with the stored record, the flow that runs it
-   * and its organization, and a `start` that runs it (also stopped when the
-   * given `signal` fires). Resolves as the run does. Absent → the run starts at
-   * once. The host passes its concurrency turn here, so a continued request
-   * waits for its session like any other request (FIX-2062).
+   * Gates `start` once the live stream and the active-request entry exist.
+   * `start`'s signal also stops the run. Absent, the run starts at once.
    */
   startRun?: (
     run: { flow: FlowInstance; record: RequestRecord; orgId: string },

@@ -1405,30 +1405,13 @@ export function createInboundTransportHost(
   };
 
   /**
-   * Start a continued request in its turn on its concurrency key (FIX-2062).
-   *
-   * A parked request gave its place back when it suspended, so the session
-   * may be running another request by the time the parked one continues. The
-   * continuation therefore takes a place on the key its policy resolves, as a
-   * dispatch does, and starts only in its turn; `continuationDecision` says
-   * how. Every continuation comes through here: a person's resume, a stop of a
-   * parked request, a wait answered, the durability sweep's re-drive, and
-   * crash-recovery `continue`.
-   *
-   * The key is resolved from the stored record, never from the caller (BP-031):
-   * its action, session, tenant, user, source and metadata are what the
-   * original dispatch was admitted under. Work an external dispatcher runs in
-   * another process is arbitrated only over a shared backend, as `dispatch`
-   * decides, so the same rule applies here.
-   *
-   * Only the start waits: the handle (live stream, `finished`) is returned at
-   * once, so a running request that continues another in its own session
-   * (`resumeWait`, `stopRequest`) is not left waiting on its own place. A wait
-   * that fails before the run starts (the budget spent, a shared backend
-   * unreachable) leaves the request parked with its resolution recorded, so
-   * nothing the person sent is lost: the request's lease, which the run would
-   * have released, is released here, and the sweep's re-drive continues the
-   * request once the session is free.
+   * Wait for this continuation's place inside `finished`, after the handle
+   * returns, so a run that continues another request in its own session is
+   * not blocked on its own place. The key is the stored record's. An external
+   * dispatcher with no shared backend skips arbitration, as `dispatch` does.
+   * The run stops if a shared backend can no longer keep the place. A wait
+   * that ends before the run starts releases the resume lease; the answer
+   * stays on the parked request for the sweep.
    */
   const startContinuationInTurn = async (
     { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
@@ -1455,8 +1438,6 @@ export function createInboundTransportHost(
     let started = false;
     try {
       const admission = await arbiter.admit(decision, record.id);
-      // A run holding its turn on a shared backend is stopped once its place
-      // can no longer be kept, as a dispatched run is.
       return await admission.run(() => {
         started = true;
         return start(admission.lost);
@@ -1473,8 +1454,7 @@ export function createInboundTransportHost(
           const lease = await stores.leases.get(record.id);
           if (lease !== null) await stores.leases.release(record.id, lease.leaseId);
         } catch {
-          // Best effort: the lease lapses on its own, and the error that
-          // matters is the one rethrown below.
+          // The lease lapses on its own. The wait error is rethrown below.
         }
       }
       throw error;

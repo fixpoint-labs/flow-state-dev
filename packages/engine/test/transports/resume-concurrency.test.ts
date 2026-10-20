@@ -396,8 +396,6 @@ describe("a resumed request under other policies", () => {
 
     expect(await outcome).toMatchObject({ name: "ConcurrencyQueueTimeoutError" });
     expect(h.live.has("resumed")).toBe(false);
-    // Not lost: the answer stays recorded, the request stays parked, and its
-    // lease is free for the sweep's re-drive.
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
     expect(await statusOf(h, requestId)).toBe("suspended");
     expect(await h.stores.leases.get(requestId)).toBeNull();
