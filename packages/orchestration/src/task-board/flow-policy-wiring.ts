@@ -145,13 +145,7 @@ export interface BoardRunFlowState {
  */
 const workerClaimStore = new AsyncLocalStorage<ClaimSlot>();
 
-/**
- * The per-iteration cell the claim ticket is published through — a **mutable
- * slot** rather than the ticket itself, for the same reason as the
- * lease-renewal seam's slot: the scope has to be entered before the setup's
- * first `await`, and the ticket only exists after those awaits. See
- * {@link openWorkerClaimScope}.
- */
+/** Opened before the ticket exists, same as the lease-renewal slot. */
 type ClaimSlot = { ticket?: TaskClaimTicket; request?: string; taskTurn?: boolean };
 
 /**
@@ -165,11 +159,7 @@ export interface WorkerClaimReader {
   };
 }
 
-/**
- * Which request `ctx` runs in, as one comparable string — `undefined` for a
- * harness context that carries no request. The incarnation is part of it, so
- * a later request reusing an id is a different request.
- */
+/** Id plus incarnation, so a reused request id is still a different request. */
 function claimRequestKey(ctx: WorkerClaimReader): string | undefined {
   const request = ctx.request;
   if (request?.identity?.id === undefined) return undefined;
@@ -375,32 +365,19 @@ export function createFlowPolicyResolver(name: string) {
 }
 
 /**
- * Open this worker iteration's claim slot. **Call it before the first `await`
- * in the block that claims the task** — the same rule as
- * `openLeaseRenewalScope`, for the same reason.
- *
- * `enterWith` mutates the *current* async resource. At the top of a block's
- * body that is still the caller's resource, so the steps that follow inherit
- * the slot; sibling worker iterations have their own resource and never see
- * it. After an `await` it is a continuation resource that dies with the
- * block, so the same call publishes to nobody and every reader sees
- * `undefined`. That is how this seam was first wired: the stamp ran after the
- * setup tap awaited the collection and a `patchState`, so no worker could read
- * its claim and the task tools wrote as a coordinator.
+ * Open this worker iteration's claim slot before the first `await` in the
+ * claiming block. After an await the call publishes to nobody.
+ * `openLeaseRenewalScope` has the rule.
  */
 export function openWorkerClaimScope(): void {
   workerClaimStore.enterWith({});
 }
 
 /**
- * Publish this worker's claim ticket into the slot
- * {@link openWorkerClaimScope} opened, so every subsequent step in the same
- * worker iteration (cache writes, observation appends, task-tool calls) reads
- * the right claim.
+ * Publish `ticket` into the slot {@link openWorkerClaimScope} opened.
  *
- * Throws when no slot is open rather than returning quietly: a ticket nobody
- * can read turns a claimed worker's task-tool writes into unguarded
- * coordinator writes, and nothing at runtime would say so.
+ * Throws when no slot is open. A ticket nobody can read turns the worker's
+ * task-tool writes into unguarded coordinator writes, and nothing else would say so.
  *
  * **The one stamp site.** This is the only place a claim enters the seam, which
  * is what makes the tool surface's posture a rule rather than a choice: inside
@@ -408,11 +385,8 @@ export function openWorkerClaimScope(): void {
  * never a stamp to read. "No ticket presented" and "not a claimed worker" are
  * the same condition and cannot drift apart.
  *
- * **Bound to `ctx`'s request.** AsyncLocalStorage follows the async chain, and
- * that chain runs on into work the worker starts: a dispatch that runs the
- * receiving flow in-process, or a task's ending that resumes a parked turn.
- * Those are other requests, and none of them holds this claim. Recording the
- * request here is what lets {@link currentWorkerClaim} keep them out.
+ * Readable only in `ctx`'s request. A dispatch or a resumed wait keeps the
+ * async chain and does not hold this claim.
  */
 export function stampCurrentClaim(
   ticket: TaskClaimTicket,
@@ -432,11 +406,7 @@ export function stampCurrentClaim(
   slot.taskTurn = options.taskTurn !== false;
 }
 
-/**
- * Whether `ctx` runs under a claim whose entry serves task turns — the claim
- * half of `isTaskTurn`. `false` with no claim in this request, and for a claim
- * stamped by an entry declared `taskTurn: false` (a delegated post).
- */
+/** A claim in this request whose stamp did not pass `taskTurn: false`. */
 export function claimServesTaskTurn(ctx: WorkerClaimReader): boolean {
   const slot = workerClaimStore.getStore();
   return claimInRequest(claimRequestKey(ctx)) !== undefined && slot?.taskTurn !== false;

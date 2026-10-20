@@ -1,17 +1,7 @@
 /**
- * A claimed worker can read its own claim ticket, on both routes a worker is
- * run by: inline in a board's drain, and behind the claim gate of a dispatch.
- *
- * `currentWorkerClaim()` is what lets the model-facing task tools present
- * ownership without the model ever seeing a token, so a worker that cannot
- * read its ticket writes as if it were a coordinator — a write to a task it
- * does not hold lands instead of being refused. Nothing fails loudly when
- * that happens, which is why these tests read the seam from inside the
- * worker rather than inferring it from a settled row.
- *
- * The seam's failure mode is an `AsyncLocalStorage.enterWith` made after an
- * `await` in the setup tap: it then publishes to a continuation scope that
- * dies with the tap, and every later step reads `undefined`.
+ * A claimed worker reads its ticket on both routes: an inline drain, and a
+ * dispatch gate. The seam is read from inside the worker, because a missing
+ * ticket does not fail on its own.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";

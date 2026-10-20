@@ -1028,15 +1028,10 @@ export function taskBoard<
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
     .tap(async (task: Task, ctx) => {
-      // FIRST STATEMENTS, before any await (FIX-1005). These publish the slots
-      // the claim ticket and the lease driver below are installed into; past
-      // the first `await` they would land on a continuation scope that dies
-      // with this tap, and every reader — `currentWorkerClaim()` in the task
-      // tools and cache, the step's `abortSignal`, both recorders, `onSettled`
-      // — would see `undefined`. The renewal scope also stops that driver if
-      // the setup below throws after the claim is committed, which is the one
-      // exit no recorder and no `onSettled` can see. See
-      // `openWorkerClaimScope` and `withLeaseRenewalScope`.
+      // FIRST STATEMENTS, before any await (FIX-1005). Opens the claim slot and
+      // the lease scope; past the first `await` both publish to nobody. The
+      // renewal scope also stops its driver if this setup throws after the
+      // claim is committed. See `openWorkerClaimScope` and `withLeaseRenewalScope`.
       openWorkerClaimScope();
       return withLeaseRenewalScope(async () => {
         // The ONE mint site for this board's claim tickets (FIX-981). `task` is

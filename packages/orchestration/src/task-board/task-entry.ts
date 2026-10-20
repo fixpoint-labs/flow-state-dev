@@ -416,10 +416,8 @@ function buildTaskGate(options: {
       ...(uses !== undefined ? { uses } : {}),
     })
       .tap(async (dispatch: TaskDispatchInput, ctx) => {
-        // FIRST STATEMENTS, before any await: these publish the slots the claim
-        // ticket and the lease driver are installed into; past the first
-        // `await` they would land on a continuation scope that dies with this
-        // tap, and the worker would read no claim and run under no lease signal.
+        // FIRST STATEMENTS, before any await. Opens the claim slot and the lease
+        // scope; past the first `await` both publish to nobody.
         openWorkerClaimScope();
         return withLeaseRenewalScope(async () => {
           const board = await ledgerFor(ctx, dispatch);
