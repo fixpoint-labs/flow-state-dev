@@ -24,6 +24,7 @@ import type {
   RouterDecisionItem,
   StateSnapshotItem
 } from "../items/types";
+import type { RuntimeItem } from "../items/internal";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage, ModelIdentity } from "./model";
 
@@ -121,7 +122,7 @@ export interface ResponseEmitterHandle {
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
    * over already-flushed items before subscribing for future ones.
    */
-  getItems(): readonly OutputItem[];
+  getItems(): readonly RuntimeItem[];
   /**
    * O(1) count of items currently tracked by this response. Equivalent to
    * `getItems().length` but without materializing or ordering the snapshot —
@@ -148,9 +149,9 @@ export interface ResponseEmitterHandle {
    * `.waitForCondition` timeout. Filters MUST be cheap and SHOULD NOT throw.
    */
   subscribeToItems(
-    listener: (item: OutputItem, kind: "added" | "updated" | "done") => void,
+    listener: (item: RuntimeItem, kind: "added" | "updated" | "done") => void,
     options?: {
-      filter?: (item: OutputItem, kind: "added" | "updated" | "done") => boolean;
+      filter?: (item: RuntimeItem, kind: "added" | "updated" | "done") => boolean;
     }
   ): () => void;
 }

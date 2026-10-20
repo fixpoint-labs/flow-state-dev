@@ -510,7 +510,6 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumeIdx).toBe(suspIdx + 1);
     // The pre-suspension block_trace exists and precedes the suspension.
     const preTraceIdx = (record!.items ?? []).findIndex(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace" && (i as any).blockName === "preStep"
     );
     expect(preTraceIdx).toBeGreaterThanOrEqual(0);

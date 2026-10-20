@@ -106,7 +106,6 @@ describe("completed block traces persist on a suspended request (FIX-839)", () =
     expect(record?.status).toBe("suspended");
 
     const traces = (record?.items ?? []).filter(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i): i is BlockTraceItem => i.type === "block_trace"
     );
     const completed = traces.filter((t) => t.status === "completed");

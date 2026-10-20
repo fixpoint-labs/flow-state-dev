@@ -3,6 +3,7 @@ import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, Rescu
 import { asRuntime } from "../types/block";
 import type { ModelIdentity } from "../types/model";
 import type { BlockValue, BlockValueInternal, OutputItem, StructureShape } from "../items/types";
+import type { RuntimeItem } from "../items/internal";
 import { SuspensionError } from "../errors/suspension-error";
 import { RecordedValueOmittedError } from "../errors/recorded-value-omitted-error";
 import type {
@@ -2322,10 +2323,15 @@ function createSequencer<
             if (response === undefined) {
               throw new Error("waitForCondition requires a response emitter on the context");
             }
+            // Predicates and wakeOn stay OutputItem; both receive trace rows unfiltered.
+            const items = (): readonly OutputItem[] => response.getItems() as readonly OutputItem[];
+            const wakeOn = options.wakeOn as
+              | ((item: RuntimeItem, kind: "added" | "updated" | "done") => boolean)
+              | undefined;
 
             // Initial synchronous eval — if already satisfied, no subscription
             // and no timer. Predicate throws here propagate directly.
-            if (predicate(response.getItems())) {
+            if (predicate(items())) {
               return { value: { timedOut: false } };
             }
 
@@ -2374,7 +2380,7 @@ function createSequencer<
                   (_item, _kind) => {
                     if (settled) return;
                     try {
-                      if (predicate(response.getItems())) {
+                      if (predicate(items())) {
                         controller.abort();
                       }
                     } catch (error) {
@@ -2382,7 +2388,7 @@ function createSequencer<
                       controller.abort();
                     }
                   },
-                  options.wakeOn !== undefined ? { filter: options.wakeOn } : undefined
+                  wakeOn !== undefined ? { filter: wakeOn } : undefined
                 );
               });
             } finally {
