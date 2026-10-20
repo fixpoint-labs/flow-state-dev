@@ -551,7 +551,7 @@ declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, labe
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
 **An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
-allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
+allowSessionState?, taskTurn? })` returns a `TaskBinding` to pass as a task entry's `from`.
 The entry then needs no board in its flow, and takes tasks from any board whose
 ledger `resolve(ledgerId, ctx, partition)` returns (`Promise<TaskCollectionRef | undefined>`).
 The ledger id is the `boardId` the sending board dispatches under, so a board over a
@@ -565,6 +565,14 @@ throws `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`, carrying `entry`
 that ledger. The id arrives on the dispatch, so resolve it against `ctx`, never from
 a process-wide map. `uses` declares the ledgers' resources, `onError` defaults to
 `"skip"`, and `allowSessionState` accepts an entry whose blocks keep session state.
+`taskTurn` defaults to `true`, which makes each run of the entry a task turn
+(`isTaskTurn(ctx)`): `dispatchTask` with `wait: true` is refused, and the run gets
+`parkOnQuestion`, whose question goes to whoever filed the task. Set `taskTurn: false`
+for an entry whose run answers the user directly: it can wait on work it dispatches,
+and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the
+task is still current, and task-tool writes from the run can touch only the task it
+holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session
+state; if it does, its runs are task turns anyway.
 
 ```ts
 task: {
@@ -590,6 +598,27 @@ task: {
     },
   },
 },
+```
+
+`currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`, returns the
+claim ticket (`TaskClaimTicket`, carrying `taskId` and `attempt` among others)
+of the task the calling worker holds. Pass the block's own `ctx`. It answers in a worker
+the board runs inline and in a worker reached through a task entry. It returns
+`undefined` everywhere else: a coordinator, a block wired directly, and any other
+request the worker starts or resumes. A worker's task-tool writes are limited to the
+task it holds. A write naming a different task is refused with
+`task_write_declined: you hold task "<held>", not "<named>"`.
+
+```ts
+const worker = handler({
+  name: "report",
+  inputSchema: taskWorkerInputSchema,
+  outputSchema: z.object({ result: z.string() }),
+  execute: async (input, ctx) => {
+    const claim = currentWorkerClaim(ctx); // undefined outside a claimed worker
+    return { result: `${input.goal} (task ${claim?.taskId}, attempt ${claim?.attempt})` };
+  },
+});
 ```
 
 The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
