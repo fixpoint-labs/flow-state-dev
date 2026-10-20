@@ -13,6 +13,7 @@
     "fallow": "fallow",
     "fallow:ci": "fallow dead-code --unresolved-imports --unlisted-deps",
     "fallow:audit": "fallow audit",
+    "fallow:new-dead-code": "node scripts/check-new-dead-code.mjs",
     "test": "turbo run test --concurrency=1",
     "test:watch": "pnpm -r --parallel --stream --if-present test:watch",
     "packages:build": "turbo run build --filter=\"./packages/*\"",

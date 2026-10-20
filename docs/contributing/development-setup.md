@@ -155,17 +155,20 @@ it passes only when the typecheck and every shard pass.
 ### Dead code and duplication
 
 The `Fallow` CI job runs [fallow](https://fallow.tools) against
-`.fallowrc.json` in two steps:
+`.fallowrc.json` in three steps:
 
 - **Every run, whole tree:** `pnpm fallow:ci` fails on an import that doesn't
   resolve or a package imported without being declared in that workspace's
   `package.json`.
-- **PRs only:** `pnpm fallow:audit --base <PR base>` fails on an unused file,
-  export, type or dependency that the PR introduces. What's already on the
-  base doesn't count, so the backlog never blocks a PR. New duplicated blocks
-  and complexity findings are listed in the same output but don't fail.
+- **PRs only:** `pnpm fallow:new-dead-code <PR base>` fails on an unused file,
+  export, type or dependency the PR leaves anywhere in the tree, including an
+  export in a file the PR never touched whose last caller it deleted. What's
+  already on the base doesn't count, so the backlog never blocks a PR.
+- **PRs only:** `pnpm fallow:audit --base <PR base>` lists new duplicated
+  blocks and complexity findings in the changed files, without failing.
 
-Run the PR step locally with `pnpm fallow:audit --base origin/main`. When it
+Run the dead-code check locally with `pnpm fallow:new-dead-code origin/main` on
+a clean working tree (it checks out the base briefly to analyze it). When it
 fails, remove the dead export or file. If a finding is wrong, suppress that one
 line with a reason (`// fallow-ignore-next-line unused-export -- loaded by path
 from X`). If the tool can't see an entry point at all, add it to `entry` or

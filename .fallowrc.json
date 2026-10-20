@@ -1,10 +1,11 @@
 // fallow: unused code, duplication, circular imports and complexity.
 //
-// Two CI gates read this file (see the `fallow` job in .github/workflows/ci.yml):
-//   - `pnpm fallow:ci`    whole tree, unresolved imports + unlisted dependencies only.
-//   - `pnpm fallow:audit --base <ref>`  PRs only, fails on dead code the change
-//     introduces (findings already on the base don't count); reports new
-//     duplication and complexity without failing.
+// The `fallow` job in .github/workflows/ci.yml reads this file:
+//   - `pnpm fallow:ci`  whole tree, unresolved imports + unlisted dependencies only.
+//   - `pnpm fallow:new-dead-code <ref>`  PRs only, fails on dead code the head
+//     has anywhere that the base ref doesn't.
+//   - `pnpm fallow:audit --base <ref>`  PRs only, reports new duplication and
+//     complexity in the changed files without failing.
 // `pnpm fallow` locally shows the whole backlog, and exits 1 while there is one.
 //
 // Framework plugins discover most entry points (package.json exports/bin, vitest,
@@ -91,14 +92,6 @@
     "complexity-crap": "warn"
   },
 
-  "ignoreDependencies": [
-    "@oh-my-pi/pi-coding-agent",
-    "class-variance-authority",
-    "clsx",
-    "cmdk",
-    "radix-ui",
-    "react-jsx-parser",
-    "tailwind-merge",
-    "tailwindcss"
-  ]
+  // The host API the .omp extensions import; OMP supplies it at run time.
+  "ignoreDependencies": ["@oh-my-pi/pi-coding-agent"]
 }
