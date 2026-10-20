@@ -2,14 +2,10 @@
    flow-state.dev — the Flow State brand, as Shift Manager and the
    DevTool wear it.
 
-   `@flow-state-dev/design-system` supplies the day tokens (on `:root`)
-   and brings Space Grotesk and IBM Plex Mono with it; this file points
-   Infima's `--ifm-*` variables at those tokens. Night is the one copy:
-   the design system keys it off `.dark`, Docusaurus marks dark mode
-   with `data-theme="dark"` on `<html>` and owns that element's class
-   list, so night's values are restated below under Docusaurus's
-   selector. Keep them equal to the `.dark` block in
-   `labs/design-system/shift-manager.css`.
+   `@flow-state-dev/design-system` holds every value (day on `:root`,
+   night on `.dark` and on Docusaurus's `html[data-theme=dark]`) and
+   brings Space Grotesk and IBM Plex Mono with it; this file only points
+   Infima's `--ifm-*` variables at those tokens.
 
    Rules the brand keeps: blueprint (`--info`) means interactive or
    live, the highlighter (`--attention`) is reserved for "a person must
@@ -18,44 +14,10 @@
 
 @import "@flow-state-dev/design-system/shift-manager.css";
 
-/* Night, as the design system's `.dark` block. */
-html[data-theme="dark"] {
-  --background: #1c1b15;
-  --foreground: #ece7da;
-  --card: #24231c;
-  --card-foreground: #ece7da;
-  --popover: #24231c;
-  --popover-foreground: #ece7da;
-  --primary: #ece7da;
-  --primary-foreground: #16150f;
-  --secondary: #16150f;
-  --secondary-foreground: #ece7da;
-  --muted: #16150f;
-  --muted-foreground: #a6a08f;
-  --accent: #3d3b33;
-  --accent-foreground: #ece7da;
-  --destructive: #e27a5f;
-  --destructive-foreground: #16150f;
-  --border: #57544a;
-  --input: #57544a;
-  --ring: #ece7da;
-  --success: #ece7da;
-  --success-foreground: #16150f;
-  --warning: #e0874f;
-  --warning-foreground: #16150f;
-  --info: #8fabe2;
-  --info-foreground: #16150f;
-  --attention: #e8f551;
-  --attention-foreground: #1b1a15;
-
-  --sidebar: #121109;
-  --inspector: #1a1913;
-}
-
-/* Declared on the dark selector too, so these recompute from night's tokens
-   rather than inheriting day's (Infima's own dark block sits at the same
-   specificity and loads earlier, so these win; `html` matches Docusaurus's
-   own `html[data-theme="dark"]` page colour). */
+/* Night's values come from the design system, whose night block matches
+   `html[data-theme=dark]` as well as `.dark`. This mapping sits on the same
+   selector so it recomputes from night's tokens and wins over Infima's own
+   dark block (same specificity, loaded earlier). */
 :root,
 html[data-theme="dark"] {
   /* Blueprint drives links, active nav items and focus. */
