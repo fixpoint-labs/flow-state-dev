@@ -359,7 +359,7 @@ A `false` says your write changed nothing. It does not say why. If you need to k
 
 The task board uses this on its own result writes: a write that landed but could not be announced is reported rather than passed over. See [When the board cannot record a result](./task-board#when-the-board-cannot-record-a-result).
 
-## The two backings
+## Backings
 
 Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over either of two backings, so your pattern code doesn't change when the storage does.
 
@@ -369,7 +369,7 @@ Where a collection stores its tasks decides how long they live. `getOrCreateTask
 | `state` with `state: ctx.sequencer` (or another state ref) | On that state | As long as that state: one sequencer invocation for `ctx.sequencer`. |
 | `resource` | A resource collection declared with `defineTaskCollection` | Outlives the request: a user's task list, an org work pool that accepts tasks across sessions. |
 
-Any other `backing` value throws before anything is stored, including `"request"` and `"sequencer"`. Those are [task board](./task-board.md#collection-backing) names; both resolve to `state` here.
+`getOrCreateTaskCollection` accepts only `"state"` and `"resource"`. Any other value throws before anything is stored, including the [task board](./task-board.md#collection-backing) names `"request"` and `"sequencer"`. A board's request backing is `state` with no `state` field, and its sequencer backing is `state` set to the board sequencer's own state.
 
 A sequencer's state is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, leave `state` out. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
 
