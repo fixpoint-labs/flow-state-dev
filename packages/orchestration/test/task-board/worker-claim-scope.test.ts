@@ -148,6 +148,12 @@ describe("a dispatched worker behind the claim gate", () => {
     const BOARD_ID = "claim-scope-board";
     const ledger = () => defineTaskCollection({ id: "claim-scope-ledger", scope: "user" });
     const seen: Array<TaskClaimTicket | undefined> = [];
+    // Resolved by the gated worker itself, so the test waits on the read it
+    // checks rather than polling for it.
+    let read!: () => void;
+    const workerRan = new Promise<void>((resolve) => {
+      read = resolve;
+    });
 
     const recipientWorker = handler({
       name: "gated-claim-reader",
@@ -155,6 +161,7 @@ describe("a dispatched worker behind the claim gate", () => {
       outputSchema: z.object({ done: z.boolean() }),
       execute: async (_input, ctx) => {
         seen.push(currentWorkerClaim(ctx));
+        read();
         return { done: true };
       },
     });
@@ -216,9 +223,7 @@ describe("a dispatched worker behind the claim gate", () => {
       });
       expect(parent.error).toBeUndefined();
 
-      for (let attempt = 0; attempt < 200 && seen.length === 0; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      await workerRan;
 
       expect(seen).toHaveLength(1);
       expect(seen[0]).toMatchObject({ taskId: "t1", attempt: 1 });
