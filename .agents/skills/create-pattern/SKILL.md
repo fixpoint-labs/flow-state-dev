@@ -198,7 +198,7 @@ export function <patternName>(config: <PatternName>Config) {
 
 Three supported places for a resource:
 
-- **On the child block that uses it** — `generator()` and `handler()` both take `resources`. The sequencer collects `declaredResources` from every child and bubbles them up to the flow, so declaring it on the consumer registers it just as well. This is the default; `rlm` does it this way.
+- **On the child block that uses it** — `generator()` and `handler()` both take `resources`. The sequencer collects `declaredResources` from every child and bubbles them up to the flow, so declaring it on the consumer registers it just as well. This is the default.
 - **Forwarded from your factory's config onto that child block** — the same route, with the caller choosing the resource instead of the pattern hard-coding it. `planAndExecute` (`resources`), `routedSpecialists` (`workspace`), and `debate` (`transcript`) all do this.
 - **In a capability, installed through `uses`** — when the resource is shared infrastructure that blocks outside the pattern also need. See [Exporting a Capability](#exporting-a-capability) below.
 

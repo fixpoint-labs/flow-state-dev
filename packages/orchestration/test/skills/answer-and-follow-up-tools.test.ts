@@ -13,13 +13,11 @@ import { runForTest } from "@flow-state-dev/testing";
 import {
   buildTaskToolsList,
   createParkOnQuestion,
-  defaultOwnStateResolver,
   taskToolsForTurn,
-  DELEGATION_BOARD_FIELD,
 } from "../../src/skills/task-tools-capability";
 import { createResourceBackedTaskCollection, ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";
 import { createCapturedChanges, createFakeResourceCollection } from "../helpers";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
 function toolNamed(tools: readonly unknown[], name: string): GeneratorTool {
   const tool = tools.find((t) => (t as { config?: { name?: string } }).config?.name === name);
@@ -33,8 +31,8 @@ const row = (id: string, patch: Partial<Task> = {}): Task =>
 /** A board seeded with `tasks`, its tools, and a reader for its rows. */
 async function board(tasks: Task[]) {
   const { ctx } = buildDelegationCtx({ self: false, preTasks: Object.fromEntries(tasks.map((t) => [t.id, t])) });
-  const tools = buildTaskToolsList(defaultOwnStateResolver);
-  const ref = (await defaultOwnStateResolver(ctx as never))!;
+  const tools = buildTaskToolsList(ownStateResolver);
+  const ref = (await ownStateResolver(ctx as never))!;
   const call = (name: string, input: unknown) => runForTest(toolNamed(tools, name), input, ctx) as Promise<any>;
   return { ctx, tools, ref, call, get: (id: string) => ref.get(id) as Task | undefined };
 }
@@ -46,7 +44,7 @@ async function board(tasks: Task[]) {
  */
 async function claimAsGate(ref: TaskCollectionRef, id: string, base: object, requestId = "r-turn") {
   const claimed = (await ref.claim("w", { eligibility: (t) => t.id === id }))!;
-  const ticket = ticketForClaim(DELEGATION_BOARD_FIELD, claimed);
+  const ticket = ticketForClaim(BOARD_FIELD, claimed);
   await ref.linkRun(id, { sessionId: "s-task", requestId, attempt: claimed.attempts }, { claim: ticket });
   return turnCtx(base, requestId);
 }
@@ -79,7 +77,7 @@ const turnCtx = (base: object, requestId: string) => ({
 
 describe("answerTask (S2)", () => {
   it("is one of the task tools, beside the other nine", () => {
-    const names = buildTaskToolsList(defaultOwnStateResolver).map((t) => (t as any).config.name);
+    const names = buildTaskToolsList(ownStateResolver).map((t) => (t as any).config.name);
     expect(names.filter((n: string) => n === "answerTask")).toHaveLength(1);
     expect(names).toHaveLength(10);
   });
@@ -130,7 +128,7 @@ describe("answerTask (S2)", () => {
   it("declines a quiet park, such as a task waiting on its pieces, as not_parked_on_question, writing nothing", async () => {
     const b = await board([row("t", { assignee: "w" })]);
     const claimed = (await b.ref.claim("w"))!;
-    await b.ref.awaitReview("t", undefined, { claim: ticketForClaim(DELEGATION_BOARD_FIELD, claimed), quiet: true });
+    await b.ref.awaitReview("t", undefined, { claim: ticketForClaim(BOARD_FIELD, claimed), quiet: true });
     const before = JSON.stringify(b.get("t"));
     const out = await b.call("answerTask", { taskId: "t", answer: "eu-west" });
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: /) });
@@ -138,7 +136,7 @@ describe("answerTask (S2)", () => {
   });
 
   it("refuses a stale answer that arrives after the task re-parked on a newer question, leaving that question parked", async () => {
-    const park = createParkOnQuestion({ resolve: (ctx) => defaultOwnStateResolver(ctx) });
+    const park = createParkOnQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
     const b = await board([row("t", { assignee: "w", maxAttempts: 3 })]);
     const first = await claimAsGate(b.ref, "t", b.ctx);
     await runForTest(park.tool, { question: "Which region?" }, first as never);
@@ -254,7 +252,7 @@ describe("addTask's followUpOf (S4)", () => {
     const b = await board([row("root", { status: "in_progress", assignee: "researcher", attempts: 1 })]);
     // A host that can hold a wait, so dispatchTask carries wait.
     const ctx = { ...(b.ctx as object), requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } } as never;
-    const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesWaits: true, dispatches: true })(ctx);
+    const tools = taskToolsForTurn(ownStateResolver, undefined, { resumesWaits: true, dispatches: true })(ctx);
     const dispatchTask = toolNamed(tools, "dispatchTask");
     expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
     const unfinished = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
@@ -296,7 +294,7 @@ describe("addTask's followUpOf (S4)", () => {
 });
 
 describe("parkOnQuestion off a task turn (BR-2)", () => {
-  const park = createParkOnQuestion({ resolve: (ctx) => defaultOwnStateResolver(ctx) });
+  const park = createParkOnQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
 
   it("is not offered, and reaches nothing, on a person's turn in the task session (another request)", async () => {
     const b = await board([row("t", { assignee: "w" })]);
@@ -316,7 +314,7 @@ describe("parkOnQuestion off a task turn (BR-2)", () => {
 });
 
 describe("parkOnQuestion (S1)", () => {
-  const park = createParkOnQuestion({ resolve: (ctx) => defaultOwnStateResolver(ctx) });
+  const park = createParkOnQuestion({ resolve: (ctx) => ownStateResolver(ctx) });
   const ask = (ctx: unknown, question = "Which region?") => runForTest(park.tool, { question }, ctx as never) as Promise<any>;
 
   it("parks the row the turn's claim holds, with its question (BR-1)", async () => {

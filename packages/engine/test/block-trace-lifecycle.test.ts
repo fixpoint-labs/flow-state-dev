@@ -565,7 +565,6 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const record = await stores.request.get("req_lf8");
     expect(record).toBeDefined();
     const persistedTraces = (record!.items ?? []).filter(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace"
     );
     expect(persistedTraces.length).toBe(0);
@@ -607,7 +606,6 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     const record = await stores.request.get("req_lf9");
     expect(record).toBeDefined();
     const persistedTraces = (record!.items ?? []).filter(
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       (i) => i.type === "block_trace"
     );
     expect(persistedTraces.length).toBeGreaterThanOrEqual(1);

@@ -119,7 +119,6 @@ Patterns expose `*ItemVisibility` config fields per internal role. Defaults matc
 | Reactive Blackboard | `actorItemVisibility` (default `{ client: true, history: false }`) |
 | Response Auditor | `auditorItemVisibility` (default `{ client: true, history: false }`) |
 | Event Queue | `workerItemVisibility` (default `{ client: true, history: false }`) |
-| RLM | `rootItemVisibility`, `subQueryItemVisibility` |
 
 Thought-fabric-core background blocks (memory, metacognition) default to `itemVisibility: { client: false, history: false }` — their items appear in the devtool for debugging but never reach the client stream or history.
 

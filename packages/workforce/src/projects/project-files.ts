@@ -12,7 +12,6 @@
  */
 
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { projectAddressSchema, projectFilesPrefix } from "./collections";
 import { isMember } from "./membership-gate";
@@ -44,8 +43,7 @@ export const readProjectFiles = handler({
   inputSchema: readProjectFilesInputSchema,
   outputSchema: readProjectFilesOutputSchema,
   resources: { ...PROJECT_ROW_RESOURCES, ...PROJECT_FILE_RESOURCES },
-  execute: async (input, rawCtx): Promise<ReadProjectFilesOutput> => {
-    const ctx = rawCtx as unknown as BlockContext;
+  execute: async (input, ctx): Promise<ReadProjectFilesOutput> => {
     const { visibility, id } = input.project;
     const row = await projectAt(ctx, input.project);
     if (!isMember(row.state, ctx.session.identity.userId)) {

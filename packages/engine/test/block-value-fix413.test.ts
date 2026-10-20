@@ -51,7 +51,6 @@ async function runFlowAndGetBlockOutputs(args: {
   });
   const allItems = response.getItems();
   const items = allItems.filter(
-    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     (i) => i.type === "block_trace"
   ) as BlockTraceItem[];
   return { items, allItems };

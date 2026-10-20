@@ -21,6 +21,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { FlowInstance, SuspensionRecord } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
@@ -121,7 +122,7 @@ function toolResultParts(
   return out;
 }
 
-function completedToolOutputs(items: readonly OutputItem[]) {
+function completedToolOutputs(items: readonly RuntimeItem[]) {
   return items.filter(
     (i) => i.type === "tool_output" && (i as { status?: string }).status === "completed"
   ) as Array<{ output?: unknown; modelOutput?: unknown; toolCall: { callId: string; name: string } }>;

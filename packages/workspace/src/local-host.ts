@@ -20,6 +20,8 @@
  * <root>/<place…>.provisioning      place IS the checkout, with its marker and lock
  * <root>/<place…>.place.lock        beside it, and the branch kept in that
  *                                   repository, never cloned
+ * <root>/.fetch-pins/<key>.json     each such repository's remote URLs and branch
+ *                                   upstreams, as a host start first saw them
  * ```
  *
  * A repository the operator named, answered WITH kept files, is laid out like
@@ -83,10 +85,10 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, type AllowedRemote } from "./remotes";
+import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
-import { readFetchPins } from "./repository";
+import { pinFetchSettings } from "./repository";
 import { firstLine, gitAnsweredNo, ignoredProblem, NO_HOOKS, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
@@ -165,13 +167,19 @@ export interface LocalWorkspaceHostOptions {
    * A NEW branch whose base tracks an upstream is cut from the newer of the
    * two, after fetching that one upstream branch into its tracking ref; a
    * base and upstream that have each moved are refused as `base-diverged`,
-   * and a failed fetch falls back to the copy last fetched, with a warning.
-   * Listing a path admits fetching its own upstream: `remotes.allow` isn't
-   * asked, though the URL is still judged for shape before git sees it.
-   * Each listed path's remote URLs are pinned when the host is built; a
-   * remote whose URL has changed since (a run shares the repository's
-   * config) is not fetched, with a warning, and the fetch obeys no
-   * program-running setting in the repository's own config.
+   * and a fetch that fails or is skipped starts the run from the local base,
+   * with a warning. Listing a path admits fetching its own upstream:
+   * `remotes.allow` isn't asked, though the URL is still judged for shape
+   * before git sees it. Each listed path's remote URLs and branch upstreams
+   * are pinned in `<root>/.fetch-pins/` the first time a host start sees
+   * them, and kept across restarts; a remote whose URL has changed since (a
+   * run shares the repository's config) is not fetched, with a warning that
+   * names the pin file to delete to accept the change, and the fetch obeys
+   * no program-running setting in the repository's own config.
+   *
+   * A run in a listed repository acts with the operator's own trust: it can
+   * move the repository's branches and refs as they can. Keep a run that
+   * must not do that in a separate clone, not in this list.
    *
    * Any other bare path is still refused. Listing a path is the operator's
    * allowance, judged before any git process, the same as `remotes.allow`.
@@ -384,10 +392,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const root = resolve(options.root);
   const allow = options.remotes.allow;
   const localRepositories = new Set((options.localRepositories ?? []).map((path) => resolve(path)));
-  // Read now, before any run of this process could rewrite a listed
-  // repository's config: its worktrees share that config, so a run could
-  // otherwise aim the next run's fetch.
-  const fetchPins = new Map([...localRepositories].map((path) => [path, readFetchPins(path)] as const));
+  const fetchPins = new Map([...localRepositories].map((path) => [path, pinFetchSettings(root, path)] as const));
   const provisionTimeoutMs = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
   const now = options.now ?? Date.now;
   const env = {
@@ -787,23 +792,25 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * Bring the upstream of `full`, the branch `base` named, up to date in a
    * repository the operator listed, and say where it is: its tracking ref and
    * commit, or `undefined` when the branch has none (it tracks nothing or
-   * another local branch) or none was ever fetched.
+   * another local branch) or this fetch didn't bring it.
    *
    * Only that one upstream branch is fetched, into its own tracking ref: no
    * tags, no `FETCH_HEAD`, no maintenance, no other ref. Listing the
    * repository admits its upstream, so `remotes.allow` isn't asked, but the
    * URL is judged for shape before git sees it and git may speak only its
-   * scheme. The URL fetched is the one pinned when the host was built: a remote
-   * repointed since, or not there then, is skipped. The fetch runs in an empty
+   * scheme. The URL fetched is the one pinned in the host's root
+   * (`pinFetchSettings`): a remote repointed since, or not pinned, is skipped.
+   * The fetch runs in an empty
    * repository of its own, so nothing in the repository's config, a
    * `url.insteadOf` included, is read by it; nothing outside it that runs a
    * program (ssh command, upload-pack, credential helper, hooks, askpass,
    * fsmonitor) is obeyed either; credential helpers from outside the
    * repository, read when the host was built, are. **A fetch that fails, a URL
    * that fails the judge, or one skipped, is a warning,
-   * never a refusal**: the comparison uses the copy last fetched. A probe
-   * that fails is raised: read as "no upstream", it would cut from a stale
-   * base without a word.
+   * never a refusal**, and the run starts from the local base: the tracking
+   * ref is shared with every run, so only a commit this fetch brought is
+   * compared. A probe that fails is raised: read as "no upstream", it would
+   * cut from a stale base without a word.
    */
   async function fetchUpstream(
     repo: string,
@@ -815,14 +822,14 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       await git(repo, ["for-each-ref", "--format=%(upstream)%0a%(upstream:remotename)%0a%(upstream:remoteref)", full], left())
     ).split("\n");
     const pins = fetchPins.get(repo);
-    // The upstream pinned when the host started, never the live config a run
-    // could have repointed. A branch with none pinned has no upstream here.
+    const acceptChange = pins === undefined ? "" : ` To pin the repository's current config, delete ${pins.file} and restart the host.`;
+    // Pinned upstream, not the live config. None pinned means no upstream here.
     const pinnedUpstream = pins?.upstreams.get(full);
     if (pinnedUpstream === undefined) {
       if (liveRef.startsWith("refs/remotes/") && liveRemote !== "" && liveRemote !== ".") {
         console.warn(
-          `[workspace] ${repo}: "${base}" now tracks ${liveRef}, which it didn't when the host started, ` +
-            `so its upstream is neither fetched nor compared.`,
+          `[workspace] ${repo}: "${base}" now tracks ${liveRef}, which it didn't when the host pinned its ` +
+            `fetch settings, so its upstream is neither fetched nor compared.${acceptChange}`,
         );
       }
       return undefined;
@@ -830,15 +837,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const { ref, remoteName, remoteRef } = pinnedUpstream;
     if (liveRef !== ref || liveRemote !== remoteName || liveRemoteRef !== remoteRef) {
       console.warn(
-        `[workspace] ${repo}: "${base}" now tracks ${liveRef || "nothing"}, not ${ref} as when the host ` +
-          `started; ${ref} is used.`,
+        `[workspace] ${repo}: "${base}" now tracks ${liveRef || "nothing"}, not ${ref} as pinned; ` +
+          `${ref} is used.${acceptChange}`,
       );
     }
 
-    const skip = (why: string) =>
-      console.warn(
-        `[workspace] ${repo}: ${why}, so "${base}" is compared with the copy of ${ref} last fetched.`,
-      );
+    const skip = (why: string, after = "") =>
+      console.warn(`[workspace] ${repo}: ${why}, so the run starts from the local "${base}", not ${ref}.${after}`);
     const pinned = pins?.remotes.get(remoteName);
     let url: string | undefined;
     try {
@@ -847,15 +852,22 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       skip(`could not read the URL of remote "${remoteName}" (${firstLine(error)})`);
     }
     if (url !== undefined && pinned === undefined) {
-      skip(`its upstream was not fetched: remote "${remoteName}" (${redactRemote(url)}) was not there when the host started`);
-    } else if (url !== undefined && url !== pinned) {
       skip(
-        `its upstream was not fetched: remote "${remoteName}" now points at "${redactRemote(url)}", ` +
-          `not "${redactRemote(pinned!)}" as when the host started`,
+        `its upstream was not fetched: remote "${remoteName}" (${redactRemote(url)}) was not there when the ` +
+          `host pinned its fetch settings`,
+        acceptChange,
+      );
+    } else if (url !== undefined && withoutCredential(url) !== pinned) {
+      skip(
+        `its upstream was not fetched with your credentials: remote "${remoteName}" now points at ` +
+          `"${redactRemote(url)}", not "${redactRemote(pinned!)}" as pinned`,
+        acceptChange,
       );
     } else if (pinned !== undefined && url !== undefined) {
-      // The pinned URL, never the remote's name, is what git is handed.
-      const judged = checkRemoteShape(pinned);
+      // `url` is the pinned URL unless it carries a credential, which the pin
+      // drops and the judge refuses: the pinned URL, never the remote's name,
+      // is what git is handed.
+      const judged = checkRemoteShape(url);
       if ("reason" in judged) skip(`its upstream was not fetched: ${judged.message}`);
       else if (!/^refs\/heads\/[^\s:]+$/.test(remoteRef)) skip(`its upstream was not fetched: "${remoteRef}" is not a branch`);
       // A `url.<base>.insteadOf` added since would still rewrite the URL git is handed.
@@ -931,12 +943,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         }
       }
     }
-    try {
-      return { ref, commit: await git(repo, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], left()) };
-    } catch (error) {
-      if (gitAnsweredNo(error)) return undefined;
-      throw error;
-    }
+    return undefined;
   }
 
   /** Whether `ancestor` is in `commit`'s history. A probe that failed is raised, never read as no. */

@@ -19,7 +19,6 @@ import {
 } from "../src/plan-and-execute";
 import { reviewerVerdictSchema } from "../src/supervisor/schemas";
 import { controllerOutputSchema } from "../src/routedSpecialists/schemas";
-import { rlmOutputSchema, subQueryOutputSchema } from "../src/rlm/schemas";
 import {
   debateModeratorOutputSchema,
   debateVerdictSchema,
@@ -32,8 +31,6 @@ const cases: Array<[string, ZodTypeAny]> = [
   ["plan-and-execute executorOutputSchema", executorOutputSchema],
   ["supervisor reviewerVerdictSchema", reviewerVerdictSchema],
   ["routedSpecialists controllerOutputSchema", controllerOutputSchema],
-  ["rlm subQueryOutputSchema", subQueryOutputSchema],
-  ["rlm rlmOutputSchema", rlmOutputSchema],
   ["debate debateModeratorOutputSchema", debateModeratorOutputSchema],
   ["debate debateVerdictSchema", debateVerdictSchema],
   ["round-robin roundRobinRefereeOutputSchema", roundRobinRefereeOutputSchema],

@@ -21,6 +21,7 @@ export type {
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";
 export type { ItemVisibility } from "./items/types";
+export type { RuntimeItem } from "./items";
 export {
   whenAnyItem,
   whenResourceChanged,
@@ -283,10 +284,9 @@ export {
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
 // children are rescued by the core `executeBlock` seam.
 export { runRescue } from "./blocks/sequencer";
-// Exported for the one first-party seam that dispatches a worker WITHOUT going
-// through the sequencer kernel (`dispatchAndExecuteBlock`'s substrate cast), so
-// it composes a subtree's background signal by the same rule the kernel uses
-// rather than a second copy of it.
+// Exported for a seam that dispatches a worker WITHOUT going through the
+// sequencer kernel, so it composes a subtree's background signal by the same
+// rule the kernel uses rather than a second copy of it.
 export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,

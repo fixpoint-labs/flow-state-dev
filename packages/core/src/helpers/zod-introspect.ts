@@ -124,6 +124,28 @@ export function unwrapToZodObject(schema: ZodTypeAny): ZodTypeAny | undefined {
 }
 
 /**
+ * Rebuild `schema` with the `ZodObject` that {@link unwrapToZodObject} finds
+ * replaced by `map(object)`, keeping every wrapper above it (`.default()`,
+ * `.optional()`, effects). Returns `schema` itself when `map` returns the
+ * object unchanged, and `undefined` when the schema isn't object-shaped.
+ */
+export function mapZodObjectRoot(
+  schema: ZodTypeAny,
+  map: (object: ZodTypeAny) => ZodTypeAny
+): ZodTypeAny | undefined {
+  if (isZodObject(schema)) return map(schema);
+  const inner = getZodInnerType(schema);
+  if (inner === undefined) return undefined;
+  const mapped = mapZodObjectRoot(inner, map);
+  if (mapped === undefined) return undefined;
+  if (mapped === inner) return schema;
+  const def = (schema as any)._def;
+  const innerKey = def.innerType !== undefined ? "innerType" : "schema";
+  const Wrapper = schema.constructor as new (def: unknown) => ZodTypeAny;
+  return new Wrapper({ ...def, [innerKey]: mapped });
+}
+
+/**
  * A `ZodObject`'s unknown-key policy: `"strip"` (default — silently drops
  * unknown keys), `"strict"` (rejects them), or `"passthrough"` (keeps them).
  * `undefined` for non-objects. Lets callers tell a closed object (whose key set
@@ -214,6 +236,73 @@ export function compareZodSchemasStructurally(
         inferredKind: iElemKind
       };
     }
+  }
+  return null;
+}
+
+/** True for a `.transform()`, whose output kind can't be read from the schema. */
+function isZodTransform(schema: ZodTypeAny): boolean {
+  return getZodTypeName(schema) === "ZodEffects" && (schema as any)._def.effect?.type === "transform";
+}
+
+/**
+ * Unwrap `.default()` / `.optional()` / `.nullable()` / brand / `z.lazy()` and the other wrappers.
+ * Deeper than {@link unwrapToZodObject} (brand, lazy) because it compares a state field's kind;
+ * {@link compareZodSchemasStructurally} compares output schemas as written, wrappers included.
+ * Stops at a `.transform()`: its input kind says nothing about its output.
+ */
+function peelZodWrappers(schema: ZodTypeAny): ZodTypeAny {
+  let current = schema;
+  const seen = new Set<unknown>();
+  while (!seen.has(current) && !isZodTransform(current)) {
+    seen.add(current);
+    const typeName = getZodTypeName(current);
+    const def = (current as any)._def;
+    const inner =
+      typeName === "ZodBranded" ? (def.type as ZodTypeAny)
+      : typeName === "ZodLazy" ? (def.getter() as ZodTypeAny)
+      : getZodInnerType(current);
+    if (inner === undefined) break;
+    current = inner;
+  }
+  return current;
+}
+
+/** True for the two Zod kinds that accept any value. */
+function isOpenZodKind(kind: string | undefined): boolean {
+  return kind === "ZodAny" || kind === "ZodUnknown";
+}
+
+const TRANSFORM_REASON =
+  "a .transform() on either side can't be checked, since its output kind isn't in the schema; " +
+  "declare the field without one, or share one schema between both sides";
+
+/**
+ * Why `declared` and `required` disagree, or `null` when the kind under the
+ * wrappers matches (array elements too). `z.any()` / `z.unknown()` match
+ * anything; a `.transform()` matches only the same schema. Nested shapes are
+ * not compared.
+ */
+export function compareStateFieldKinds(declared: ZodTypeAny, required: ZodTypeAny): string | null {
+  return compareKindsUnderWrappers(declared, required, false);
+}
+
+/** {@link compareStateFieldKinds} at one level; `inArray` compares an array's elements. */
+function compareKindsUnderWrappers(declared: ZodTypeAny, required: ZodTypeAny, inArray: boolean): string | null {
+  if (declared === required) return null;
+  const declaredInner = peelZodWrappers(declared);
+  const requiredInner = peelZodWrappers(required);
+  const declaredKind = getZodTypeName(declaredInner);
+  const requiredKind = getZodTypeName(requiredInner);
+  if (isOpenZodKind(declaredKind) || isOpenZodKind(requiredKind)) return null;
+  if (isZodTransform(declaredInner) || isZodTransform(requiredInner)) return TRANSFORM_REASON;
+  if (declaredKind !== requiredKind) {
+    return inArray
+      ? `declared an array of ${declaredKind} but a block requires an array of ${requiredKind}`
+      : `declared ${declaredKind} but a block requires ${requiredKind}`;
+  }
+  if (!inArray && declaredKind === "ZodArray") {
+    return compareKindsUnderWrappers(getZodArrayElement(declaredInner)!, getZodArrayElement(requiredInner)!, true);
   }
   return null;
 }

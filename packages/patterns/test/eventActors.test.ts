@@ -173,7 +173,6 @@ describe("eventActors", () => {
     // the one a remixed pipeline would have seen. The length check is what
     // keeps a suffix that stops matching from turning its case vacuously green.
     for (const suffix of ["-append", "-stash", "-spawn-initial", "-reemit"]) {
-      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       const traces = testItems(result.items)
         .blockOutputs()
         .filter((trace) => trace.blockName.endsWith(suffix));
@@ -235,7 +234,6 @@ describe("eventActors", () => {
     // duplicate and returned nothing would still pass the assertions below.
     expect(result.output).toEqual({ entryCount: 1 });
 
-    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const traces = testItems(result.items)
       .blockOutputs()
       .filter((trace) => trace.blockName.endsWith("-append"));

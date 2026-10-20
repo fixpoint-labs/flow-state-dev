@@ -19,7 +19,6 @@ import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   buildTaskToolsList,
-  defaultOwnStateResolver,
   type AssigneeRoster,
 } from "../../src/skills/task-tools-capability";
 import {
@@ -30,7 +29,7 @@ import {
   type TaskWorker,
 } from "../../src/tasks";
 import { taskBoard, taskToolActions } from "../../src/task-board";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
 /** A roster over a mutable set, so a test can change the team between calls. */
 function rosterOf(team: Set<string>): AssigneeRoster {
@@ -47,7 +46,7 @@ describe("a roster read per call (T1)", () => {
   it("checks each call against the team as it stands, so a member added between two calls is accepted on the second", async () => {
     const team = new Set(["researcher"]);
     const seen: unknown[] = [];
-    const tools = buildTaskToolsList(defaultOwnStateResolver, (ctx) => {
+    const tools = buildTaskToolsList(ownStateResolver, (ctx) => {
       seen.push(ctx);
       return rosterOf(team);
     });
@@ -66,7 +65,7 @@ describe("a roster read per call (T1)", () => {
 
   it("holds assignTask and updateTask to the same per-call roster", async () => {
     const team = new Set(["researcher"]);
-    const tools = buildTaskToolsList(defaultOwnStateResolver, async () => rosterOf(team));
+    const tools = buildTaskToolsList(ownStateResolver, async () => rosterOf(team));
     const { ctx } = buildDelegationCtx({
       self: false,
       preTasks: { a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: 1, updatedAt: 1 } },

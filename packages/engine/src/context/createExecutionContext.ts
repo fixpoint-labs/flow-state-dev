@@ -38,7 +38,7 @@ import type {
   StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
@@ -2502,8 +2502,8 @@ export async function createExecutionContext<
       resolveEvaluationModel.call(modelResolver, modelId, blockName);
   }
 
-  const readLiveItems = (): Array<OutputItem | BlockTraceItem> => {
-    const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockTraceItem> };
+  const readLiveItems = (): RuntimeItem[] => {
+    const typedResponse = responseRef.current as { getItems?: () => RuntimeItem[] };
     if (typeof typedResponse.getItems === "function") {
       return typedResponse.getItems();
     }
