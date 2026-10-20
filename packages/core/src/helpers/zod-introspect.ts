@@ -218,10 +218,7 @@ export function compareZodSchemasStructurally(
   return null;
 }
 
-/**
- * Peel every `.default()` / `.optional()` / `.nullable()` / `.readonly()` /
- * `.catch()` / effects / `.brand()` / `z.lazy()` layer off a schema.
- */
+/** Unwrap `.default()` / `.optional()` / `.nullable()` / brand / `z.lazy()` and the other wrappers. */
 function peelZodWrappers(schema: ZodTypeAny): ZodTypeAny {
   let current = schema;
   const seen = new Set<unknown>();
@@ -245,15 +242,9 @@ function isOpenZodKind(kind: string | undefined): boolean {
 }
 
 /**
- * Compare one state field as a sequencer declares it with the same field as a
- * block requires it (through `sequencerStateSchema`). Returns the reason they
- * disagree, or `null` when they are compatible.
- *
- * Compares the kind under the wrappers, so `z.number().default(0)` satisfies
- * `z.number()`, and the element kind of an array. `z.any()` / `z.unknown()` on
- * either side is compatible with anything. Like
- * {@link compareZodSchemasStructurally}, it is one level deep: nested object
- * shapes, refinements and union variants are not compared.
+ * Why `declared` and `required` disagree, or `null` when the kind under the
+ * wrappers matches (array elements too). `z.any()` / `z.unknown()` match
+ * anything. Nested shapes are not compared.
  */
 export function compareStateFieldKinds(declared: ZodTypeAny, required: ZodTypeAny): string | null {
   const declaredInner = peelZodWrappers(declared);
