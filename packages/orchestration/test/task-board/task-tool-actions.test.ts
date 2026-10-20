@@ -28,7 +28,7 @@ import {
   type TaskWorker,
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "../../src/task-board";
-import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 
 const TOOLS = [
   "addTask",
@@ -397,7 +397,9 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
       // Its own async context, so the stamp cannot leak into the rest of the test.
       const settled = await new Promise<{ output?: unknown }>((resolve, reject) => {
         setImmediate(() => {
-          stampCurrentClaim(claim);
+          openWorkerClaimScope();
+          // Stamped in the worker's own request; the action below is another.
+          stampCurrentClaim(claim, { request: { identity: { id: "r_worker" }, incarnation: "i1" } });
           h.act(`cancelTask_${h.id}`, { taskId: other, reason: "from the row" }).then(resolve, reject);
         });
       });

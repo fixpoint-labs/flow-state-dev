@@ -448,7 +448,8 @@ export function delegatedPostEntry(turn: BlockDefinition<any, any>) {
     resolve: postLedgers,
     uses: [defineCapability({ name: "delegated-post-ledgers", resources: { ...conversationLedgerResources } })],
     // The turn keeps the worker's own session state, the same shape for every post.
-    allowSessionState: true
+    allowSessionState: true,
+    taskTurn: false
   });
   const block = sequencer({ name: "delegated-post", inputSchema: taskWorkerInputSchema })
     .step(markPost)

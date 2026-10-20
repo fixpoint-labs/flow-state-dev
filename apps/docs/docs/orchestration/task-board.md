@@ -518,6 +518,26 @@ Each arriving task gets the same checks a board's own entry runs: same attempt, 
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
+`taskTurn`, `true` by default, makes each run of the entry a task turn: [`dispatchTask`](#giving-another-worker-work) with `wait: true` is refused, and the run gets [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run can wait on work it dispatches, and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and task-tool writes from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
+
+A worker reads the claim it holds with `currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`. Pass the block's own `ctx`. It returns the claim ticket, carrying `taskId` and `attempt` among others, in a worker the board runs inline and in one reached through a task entry, and `undefined` everywhere else: a coordinator, a block wired directly, or any other request the worker starts or resumes. A worker's task-tool writes are limited to the task it holds. A write naming a different task is refused with `task_write_declined: you hold task "<held>", not "<named>"`.
+
+```ts
+import { handler } from "@flow-state-dev/core";
+import { currentWorkerClaim, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { z } from "zod";
+
+const report = handler({
+  name: "report",
+  inputSchema: taskWorkerInputSchema,
+  outputSchema: z.object({ result: z.string() }),
+  execute: async (input, ctx) => {
+    const claim = currentWorkerClaim(ctx); // undefined outside a claimed worker
+    return { result: `${input.goal} (task ${claim?.taskId}, attempt ${claim?.attempt})` };
+  },
+});
+```
+
 An entry with `from` that a board in the same flow also dispatches to is refused when the flow is defined. Declare a separate entry for that board.
 
 ### What the board requires
