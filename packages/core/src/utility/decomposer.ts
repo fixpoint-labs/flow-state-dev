@@ -50,7 +50,7 @@ export function decomposer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "openai/gpt-6-luna",
     outputSchema,
     itemVisibility: config.itemVisibility,
     context: config.context,

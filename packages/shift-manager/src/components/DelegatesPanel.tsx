@@ -93,7 +93,7 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
           {read.list.delegates.map((delegate) => (
             <li key={delegate.worker} className="flex items-center justify-between gap-2 px-1 py-1 text-sm" data-testid="cos-delegate" data-worker={delegate.worker}>
               <span className="min-w-0 truncate" title={delegate.note}>
-                {workerLabel(delegate.worker)}
+                {workerLabel(roster.find((entry) => entry.id === delegate.worker)?.name ?? delegate.worker)}
               </span>
               <button
                 type="button"
@@ -126,7 +126,12 @@ export function DelegatesPanel({ worker, sessionId }: { worker: Worker; sessionI
             <option value="">Add from your roster…</option>
             {candidates.map((entry) => (
               <option key={entry.id} value={entry.id}>
-                {workerLabel(entry.id)}
+                {/* Two workers may share a display name; the id tells them apart. */}
+                {entry.name == null
+                  ? workerLabel(entry.id)
+                  : candidates.some((other) => other.id !== entry.id && other.name === entry.name)
+                    ? `${entry.name} (${entry.id})`
+                    : entry.name}
               </option>
             ))}
           </select>

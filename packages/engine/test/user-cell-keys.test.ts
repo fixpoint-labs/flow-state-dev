@@ -67,7 +67,8 @@ describe("the user key carries the org", () => {
     expect(resolveUserStorageKey("alice", "acme", pinned)).toBe("alice:~org:acme");
     // The org is the argument, never the pin's.
     const globexPin: InstanceOwnerPin = { orgId: "globex" };
-    expect(resolveUserStorageKey("alice", "acme", { ...pinned, ownerPin: globexPin })).toBe(
+    const globexPinned = { ...pinned, ownerPin: globexPin };
+    expect(resolveUserStorageKey("alice", "acme", globexPinned)).toBe(
       "alice:~org:acme"
     );
   });

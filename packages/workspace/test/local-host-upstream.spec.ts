@@ -11,7 +11,7 @@
  * not what the host reports.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -230,21 +230,54 @@ describe("a base with no upstream is cut as it is, with no fetch", () => {
   });
 });
 
-describe("a fetch that can't happen falls back to the last-fetched copy", () => {
-  it("starts from the last-fetched upstream when the upstream is gone, and warns naming the checkout", async () => {
-    // The person fetched once, didn't pull, and then lost the upstream.
-    const second = upstream.commit("main", "merged.txt", "a teammate's merge");
-    git(repo, "fetch", "-q", "origin");
-    expect(git(repo, "rev-parse", "origin/main")).toBe(second);
+describe("a fetch that can't happen starts from the local base", () => {
+  it("starts from local main when the upstream is gone, not from a tracking ref a run could have moved", async () => {
+    const localMain = git(repo, "rev-parse", "main");
+    // A run plants a tip on the shared tracking ref, then breaks the fetch.
+    const planted = git(repo, "commit-tree", "-p", localMain, "-m", "planted", `${localMain}^{tree}`);
+    git(repo, "update-ref", "refs/remotes/origin/main", planted);
     renameSync(upstream.bare, `${upstream.bare}.gone`);
 
     const place = await provision("main");
 
-    expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(second);
-    expect(place.repo?.baseCommit).toBe(second);
+    expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(localMain);
+    expect(place.repo?.baseCommit).toBe(localMain);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]![0])).toContain(repo);
-    expect(String(warn.mock.calls[0]![0])).toContain(upstream.url);
+    const message = String(warn.mock.calls[0]![0]);
+    expect(message).toContain(repo);
+    expect(message).toContain(upstream.url);
+    expect(message).toContain(`starts from the local "main"`);
+  });
+
+  it("starts from local main when the fetch is skipped, though the tracking ref is ahead of it", async () => {
+    // Fetched by the person once and never pulled: still not used without a fetch.
+    upstream.commit("main", "merged.txt", "a teammate's merge");
+    git(repo, "fetch", "-q", "origin");
+    const localMain = git(repo, "rev-parse", "main");
+    const h = host();
+    git(repo, "config", "remote.origin.url", createRemote("elsewhere").url);
+
+    await h.provision({ kind: "repo", repo, baseRef: "main" }, { place: ["run-1"], branch: "fsd/run-1" });
+
+    expect(fetches()).toHaveLength(0);
+    expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(localMain);
+  });
+
+  it("still refuses a remote whose URL carries a token, and the pin never saves the token", async () => {
+    const token = "ghp_secretsecretsecret";
+    git(repo, "config", "remote.origin.url", `https://x-access-token:${token}@github.com/acme/app.git`);
+    const localMain = git(repo, "rev-parse", "main");
+
+    const place = await provision("main");
+
+    expect(fetches()).toHaveLength(0);
+    expect(place.repo?.baseCommit).toBe(localMain);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]![0]);
+    expect(message).toContain("carries a password");
+    expect(message).not.toContain(token);
+    const pinned = readdirSync(join(root, ".fetch-pins")).filter((name) => name.endsWith(".json"));
+    expect(pinned.map((name) => readFileSync(join(root, ".fetch-pins", name), "utf8")).join("")).not.toContain(token);
   });
 
   it("falls back with a warning when the fetched tracking ref is locked and can't move", async () => {
@@ -496,5 +529,108 @@ describe("a run that rewrites the checkout's shared config can't aim the next ru
       expect(existsSync(theirs)).toBe(true);
       expect(warn).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/** The pin file a mismatch warning tells the person to delete. */
+function refreshFile(message: string): string {
+  const match = /delete (\S+) and restart the host/.exec(message);
+  if (match === null) throw new Error(`no refresh step in: ${message}`);
+  return match[1]!;
+}
+
+describe("a host restart keeps the fetch settings it first saw", () => {
+  it("does not fetch from a remote a run repointed before the restart, and says how to accept a new one", async () => {
+    await provision("main", "run-1");
+    // The run, in its worktree, repoints origin; then the host restarts.
+    const other = createRemote("someone else's");
+    const planted = other.commit("main", "planted.txt", "not the person's upstream");
+    git(repo, "config", "remote.origin.url", other.url);
+    spawned.mockClear();
+    warn.mockClear();
+
+    await provision("main", "run-2");
+
+    expect(fetches()).toHaveLength(0);
+    expect(contains("refs/remotes/origin/main", planted)).toBe(false);
+    expect(contains("refs/heads/fsd/run-2", planted)).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]![0]);
+    expect(message).toContain(repo);
+    expect(message).toContain(other.url);
+    expect(message).toContain(upstream.url);
+    // The refresh step names a file in the host's root, not in the repository.
+    expect(refreshFile(message).startsWith(`${root}/`)).toBe(true);
+    expect(existsSync(refreshFile(message))).toBe(true);
+  });
+
+  it("fetches the upstream branch pinned before the restart, not one a run repointed main at", async () => {
+    await provision("main", "run-1");
+    const planted = upstream.commit("attacker", "planted.txt", "not main");
+    git(repo, "config", "branch.main.merge", "refs/heads/attacker");
+    spawned.mockClear();
+
+    await provision("main", "run-2");
+
+    expect(contains("refs/heads/fsd/run-2", planted)).toBe(false);
+    expect(fetches()).toHaveLength(1);
+    expect(fetches()[0]![1]).toContain("+refs/heads/main:refs/remotes/origin/main");
+  });
+
+  it("fetches from a deliberately changed remote once the person runs the refresh step", async () => {
+    await provision("main", "run-1");
+    // The person moves their upstream on purpose.
+    const moved = createRemote("moved");
+    git(repo, "config", "remote.origin.url", moved.url);
+    git(repo, "fetch", "-q", "origin");
+    git(repo, "reset", "-q", "--hard", "origin/main");
+    const pushed = moved.commit("main", "merged.txt", "a teammate's merge on the new remote");
+    warn.mockClear();
+    await provision("main", "run-2");
+    expect(contains("refs/heads/fsd/run-2", pushed)).toBe(false);
+    const file = refreshFile(String(warn.mock.calls[0]![0]));
+
+    rmSync(file);
+    spawned.mockClear();
+    warn.mockClear();
+    await provision("main", "run-3");
+
+    expect(fetches()).toHaveLength(1);
+    expect(fetches()[0]![1]).toContain(moved.url);
+    expect(contains("refs/heads/fsd/run-3", pushed)).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("fetches nothing from a pin file it can't read, leaves the file alone, and names it", async () => {
+    await provision("main", "run-1");
+    git(repo, "config", "remote.origin.url", createRemote("someone else's").url);
+    warn.mockClear();
+    await provision("main", "run-2");
+    const file = refreshFile(String(warn.mock.calls[0]![0]));
+    writeFileSync(file, "{ not json");
+    const localMain = git(repo, "rev-parse", "main");
+    spawned.mockClear();
+    warn.mockClear();
+
+    await provision("main", "run-3");
+
+    expect(fetches()).toHaveLength(0);
+    expect(readFileSync(file, "utf8")).toBe("{ not json");
+    expect(git(repo, "rev-parse", "refs/heads/fsd/run-3")).toBe(localMain);
+    expect(String(warn.mock.calls[0]![0])).toContain(`could not be read`);
+    expect(refreshFile(String(warn.mock.calls[0]![0]))).toBe(file);
+  });
+
+  it("pins a branch's upstream the first time a host start sees it", async () => {
+    await provision("main", "run-1");
+    // The person starts tracking another upstream branch after the first start.
+    upstream.commit("release", "release.txt", "release branch");
+    git(repo, "fetch", "-q", "origin");
+    git(repo, "branch", "-q", "--track", "release", "origin/release");
+    const pushed = upstream.commit("release", "fix.txt", "a fix on release");
+
+    await provision("release", "run-2");
+
+    expect(contains("refs/heads/fsd/run-2", pushed)).toBe(true);
   });
 });

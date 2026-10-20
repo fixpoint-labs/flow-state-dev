@@ -78,7 +78,7 @@ have:
 - **A gateway key** (`AI_GATEWAY_API_KEY`): name Jev with the string `"typesafe-ai/jev"`. The
   gateway serves Jev as an evaluation model, but not `openai/...` strings.
 - **An OpenAI key** (`OPENAI_API_KEY`): pass the instance,
-  `openai.evaluationModel("gpt-5.4-mini")`. The example's `src/models.ts` also shows the same
+  `openai.evaluationModel("gpt-6-luna")`. The example's `src/models.ts` also shows the same
   adapter pointed at the gateway's OpenAI-compatible endpoint, for when you only have a gateway
   key.
 - **Your own Jev key**: install Jev's provider library and pass its evaluation model directly.
@@ -87,11 +87,11 @@ have:
 See [Evaluation models](/docs/fundamentals/models#evaluation-models).
 
 A model that can only generate text is refused before the block makes any call. Pass
-`openai("gpt-5.4-mini")` and building the block throws:
+`openai("gpt-6-luna")` and building the block throws:
 
 ```text
 Evaluator "classify-ticket": the model can generate but not evaluate.
-Pass an evaluation model, e.g. openai.evaluationModel("gpt-5.4-mini"), or a model string.
+Pass an evaluation model, e.g. openai.evaluationModel("gpt-6-luna"), or a model string.
 ```
 
 ## Confidence is only there when the model gives it

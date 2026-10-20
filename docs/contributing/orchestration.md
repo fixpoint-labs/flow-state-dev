@@ -904,7 +904,7 @@ The skill is [`spec-poc`](../../.agents/skills/spec-poc/SKILL.md).
 
 The artifact merges with its spec, but **retention is not production integration**.
 It remains explicitly experimental: outside production imports, workspace packages,
-default builds, test/lint and knip discovery. Keep authored evidence, not dependencies,
+default builds, test/lint and fallow discovery. Keep authored evidence, not dependencies,
 generated output or secrets. The cost of being wrong is a recorded experiment, not an API.
 
 **Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
@@ -968,7 +968,7 @@ flowchart LR
   `origin/main` after confirmed spec merge, not from the spec branch.
 - **Post-merge experiments use follow-up PRs**, never the original merged PR; see
   [Merging and amending a spec](#merging-and-amending-a-spec).
-- **Keep isolation narrow.** Default test/lint/knip discovery excludes retained experimental
+- **Keep isolation narrow.** Default test/lint/fallow discovery excludes retained experimental
   code under `specs/issues/*/poc/**` and `specs/epics/*/poc/**`, not production code.
   Required CI still runs for issue and epic spec branches. See [`specs/README.md`](../../specs/README.md).
 

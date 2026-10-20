@@ -31,6 +31,8 @@ type TaskChangeItem = {
     task?: {
       id?: string;
       goal?: string;
+      title?: string;
+      context?: string;
       input?: unknown;
       deps?: string[];
       priority?: number;

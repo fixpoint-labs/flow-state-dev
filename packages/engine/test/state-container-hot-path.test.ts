@@ -14,11 +14,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import {
-  createScopeStateOps,
-  createStateContainer,
-  type CASPersist
-} from "../src";
+import { createScopeStateOps, createStateContainer } from "../src";
+import type { CASPersist } from "../src/stores/cas";
 
 describe("hot-path cleanup", () => {
   it("MemoryStateContainer.read() returns the same reference each call (no per-read clone)", () => {

@@ -32,16 +32,12 @@ import { generator, type GeneratorTool } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
-import {
-  buildTaskToolsList,
-  delegationBoardSchema,
-  DELEGATION_BOARD_FIELD,
-} from "../../src/skills/task-tools-capability";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { buildTaskToolsList } from "../../src/skills/task-tools-capability";
+import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
 /** The real `completeTask` task tool, built from the real tool list. */
 function completeTaskTool(): GeneratorTool {
-  const tool = buildTaskToolsList().find((t) => t.config?.name === "completeTask");
+  const tool = buildTaskToolsList(ownStateResolver).find((t) => t.config?.name === "completeTask");
   if (!tool) throw new Error("tool not found: completeTask");
   return tool as GeneratorTool;
 }
@@ -49,7 +45,7 @@ function completeTaskTool(): GeneratorTool {
 /**
  * A generator execution context whose `ctx.parent` carries an own-state
  * delegation board holding one `pending` task — the state
- * `defaultOwnStateResolver` reads, and the status from which `complete()` is
+ * `ownStateResolver` reads, and the status from which `complete()` is
  * refused. The parent shape comes from the shared delegation fixture; this adds
  * only the model resolver, which the tool executor needs to compile and run the
  * generator's `tools:`.
@@ -87,7 +83,7 @@ describe("taskTools — tool lifecycle hooks on a refused status transition", ()
       inputSchema: z.object({}),
       tools: [completeTaskTool()],
       flowTools: { onToolStarted, onToolCompleted, onToolErrored },
-      stateSchema: { [DELEGATION_BOARD_FIELD]: delegationBoardSchema },
+      stateSchema: z.object({ [BOARD_FIELD]: z.record(z.string(), z.unknown()).default({}) }),
     });
 
     const ctx = buildHookMigrationCtx(async (options: any) => {
@@ -126,7 +122,7 @@ describe("taskTools — tool lifecycle hooks on a refused status transition", ()
 
     // The task did not move — the refusal is reported, not applied.
     const board = (ctx as unknown as { parent: { state: Record<string, any> } }).parent.state[
-      DELEGATION_BOARD_FIELD
+      BOARD_FIELD
     ];
     expect(board.a.status).toBe("pending");
   });

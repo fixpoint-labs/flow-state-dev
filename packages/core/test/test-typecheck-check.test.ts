@@ -118,7 +118,30 @@ describe("the DEFERRED list", () => {
   });
 
   it("does not defer a package that is wired", () => {
-    for (const dir of ["core", "contracts", "workspace", "voice-openai", "client", "react", "ui"]) {
+    for (const dir of [
+      "core",
+      "contracts",
+      "workspace",
+      "voice-openai",
+      "client",
+      "react",
+      "ui",
+      "engine",
+      "testing",
+      "scheduled",
+      "mcp",
+      "next",
+      "node",
+      "store-sqlite",
+      "store-postgres",
+      "bullmq",
+      "vercel",
+      "orchestration",
+      "patterns",
+      "tools",
+      "memory",
+      "thought-fabric-core",
+    ]) {
       expect(deferred, dir).not.toHaveProperty(dir);
     }
   });

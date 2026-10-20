@@ -98,7 +98,7 @@ function spawnChild(stores: StoreRegistry): Promise<string> {
     identity: {
       userId: "user_1",
       tenantId: undefined,
-      orgId: undefined,
+      orgId: DEFAULT_ORG_ID,
       sessionId: "sess_parent",
       lineageId: "lin_1"
     }

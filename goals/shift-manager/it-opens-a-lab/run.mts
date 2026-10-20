@@ -511,8 +511,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const under = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) =>
         els.map((e) => e.getAttribute("data-worker-id") ?? ""),
       );
-      // A seat with no team (an org seat) sits in the Staff row.
-      const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
+      // A worker with no team (an org worker) sits in the General row (id `_general`).
+      const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "_general") === team);
       if (!same(under, want)) fail("TEAMS equals the store's seats", `team ${team} lists ${diff(want, under)}`);
     }
 

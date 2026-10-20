@@ -8,7 +8,7 @@ New issue/epic experiments live with their owning retained spec:
 See [`specs/README.md`](../specs/README.md) for navigation and
 [Spec-branch POCs](../docs/contributing/orchestration.md#spec-branch-pocs-learn-before-implementing)
 for the canonical experiment contract. Retained evidence is not production code:
-keep it outside production imports, workspace packages, default builds and test/lint/knip
+keep it outside production imports, workspace packages, default builds and test/lint/fallow
 discovery. Keep authored artifacts, not installed dependencies, generated output or secrets.
 
 A POC added after the owning spec merges uses a follow-up PR from fresh `main`.

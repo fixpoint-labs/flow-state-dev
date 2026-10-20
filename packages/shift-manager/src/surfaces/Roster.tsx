@@ -77,8 +77,8 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
     >
       <div className="min-w-0">
         <p className="flex items-baseline gap-2">
-          <span className="font-medium">{workerLabel(worker.name)}</span>
-          <span className="text-xs text-muted-foreground">{worker.team}</span>
+          <span className="font-medium">{workerLabel(worker.displayName)}</span>
+          <span className="text-xs text-muted-foreground">{worker.teamName}</span>
           {own ? (
             <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
               YOURS
@@ -206,17 +206,17 @@ export function RosterView({
           </p>
         </div>
         <div role="group" aria-label="Team" className="flex border border-foreground text-xs">
-          {[null, ...teamsOf(workers).map((t) => t.team)].map((option, i) => (
+          {[null, ...teamsOf(workers)].map((option, i) => (
             <button
-              key={option ?? ""}
+              key={option?.team ?? ""}
               type="button"
-              aria-pressed={option === team}
-              onClick={() => navigate({ level: "roster", team: option })}
+              aria-pressed={(option?.team ?? null) === team}
+              onClick={() => navigate({ level: "roster", team: option?.team ?? null })}
               data-testid="roster-team-option"
-              data-team={option ?? ""}
-              className={`px-3 py-1 ${i > 0 ? "border-l border-foreground" : ""} ${option === team ? "bg-foreground text-background" : ""}`}
+              data-team={option?.team ?? ""}
+              className={`px-3 py-1 ${i > 0 ? "border-l border-foreground" : ""} ${(option?.team ?? null) === team ? "bg-foreground text-background" : ""}`}
             >
-              {option ?? "All"}
+              {option?.name ?? "All"}
             </button>
           ))}
         </div>

@@ -616,8 +616,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     inputSchema: z.unknown(),
     outputSchema: z.object({ replayed: z.number() }),
     resources: { ...conversationLedgerResources, ...taskChainResources },
-    execute: async (_input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (_input, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
       if (ref === undefined) return { replayed: 0 };

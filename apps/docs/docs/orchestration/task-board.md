@@ -267,7 +267,7 @@ The dispatcher decides which `pending` task gets claimed next. No dispatcher cla
 - `"fifo"` — the same ordering. The name reads better for a flat fan-out with no deps.
 - `"priority"` — highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
 
-Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance, and `@flow-state-dev/orchestration` exports five: the three above plus `classifierDispatcher` and `eventDispatcher`, which are factories that need config and so have no string name. Pass one of those, or your own, in place of the string. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
+Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
 Dependency cycles are not rejected at add time. Avoiding them is the caller's responsibility when you build the `deps` graph passed to `addTask`/`addTasks` or `initialTasks`. A board that declares a `deps` cycle still runs, but those tasks never become claimable: the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
 
@@ -834,7 +834,7 @@ const bounded = await getOrCreateTaskCollection({
 });
 ```
 
-`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, or a `defineTaskCollection()` value. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
+`taskBoard` and `getOrCreateTaskCollection` name backings differently. A board takes `collection: { backing: "request" }` or `{ backing: "sequencer" }`, a `defineTaskCollection()` value, or a factory. `getOrCreateTaskCollection` takes `backing: "state"` or `backing: "resource"`. With `backing: "state"` and no `state` field, the tasks live on the request, which is where a default board keeps them.
 
 `board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
 
@@ -909,7 +909,7 @@ const enqueue = handler({
 
 The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover).
 
-A sibling or outer step can add tasks before `board.drain` runs, and the board picks them up on its first pass. It can also add them *while* the board is draining: an idle worker takes the new task promptly rather than waiting out its poll interval. Both work on all three backings, as long as the add and the drain happen in the same request.
+A sibling or outer step can add tasks before `board.drain` runs, and the board picks them up on its first pass. It can also add them *while* the board is draining: an idle worker takes the new task promptly rather than waiting out its poll interval. Both work on the request, sequencer and durable backings, as long as the add and the drain happen in the same request.
 
 Each sugar call re-resolves the collection, so reads always reflect the latest state. That costs something per call on every backing. When you need several reads in a row with no writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
 

@@ -283,6 +283,19 @@ Body.
       expect(errors[0]!.error.message).toMatch(/non-empty `description`/);
     });
 
+    it("reports a WORKER.md whose display name is not a non-empty string", async () => {
+      const { workers, errors } = await readWorkforceDirectory(
+        tree({
+          ...HEALTHY,
+          "teams/engineering/workers/intake/WORKER.md": "---\ndescription: The front door.\nname: 42\n---\nBody.\n",
+        }),
+      );
+
+      expect(workers.map((w) => w.id)).toEqual(["engineering.lead"]);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.error.message).toMatch(/`name`/);
+    });
+
     it("reports a WORKER.md declaring the refused `persona:` key, naming the file and the spelling to use", async () => {
       const { workers, errors } = await readWorkforceDirectory(
         tree({

@@ -6,7 +6,7 @@ const meta = {
   title: "Components/ModelBadge",
   component: ModelBadge,
   parameters: { layout: "padded" },
-  args: { model: { actual: "gpt-5.4-mini" } },
+  args: { model: { actual: "gpt-6-luna" } },
 } satisfies Meta<typeof ModelBadge>;
 
 export default meta;
@@ -14,7 +14,7 @@ type Story = StoryObj<typeof meta>;
 
 /** Just the actual model id. */
 export const Basic: Story = {
-  args: { model: { actual: "gpt-5.4-mini" } },
+  args: { model: { actual: "gpt-6-luna" } },
 };
 
 /**
@@ -25,7 +25,7 @@ export const WithRequestedAndGateway: Story = {
   args: {
     model: {
       actual: "gpt-5.5-2025-04-12",
-      requested: "openai/gpt-5.5",
+      requested: "openai/gpt-6.1-sol",
       gateway: "openrouter",
     },
   },

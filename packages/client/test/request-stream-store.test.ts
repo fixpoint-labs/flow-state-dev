@@ -5,7 +5,12 @@
  * item patches, canonical collapse, and the status/sequence/status-event layer.
  */
 import { describe, expect, it } from "vitest";
-import type { BlockTraceItem, OutputItem, RequestStatusEvent } from "@flow-state-dev/core/items";
+import type {
+  BlockTraceItem,
+  OutputItem,
+  RequestStatusEvent,
+  RuntimeItem
+} from "@flow-state-dev/core/items";
 import {
   compareItemOrder,
   createRequestStreamStore
@@ -670,14 +675,13 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
   it("drops a re-run block's run-1 emission when it ran twice with no suspension_resume", () => {
     const gate = "req_1:root/step[0]:0";
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
-    const store = createRequestStreamStore();
+    const store = createRequestStreamStore<RuntimeItem>();
     const rows = [
       traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
       traceItem({ id: "t2", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
       makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
     ];
-    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
     store.loadSnapshot(rows);
 
     const ids = store.getSorted().map((i) => i.id);
@@ -690,12 +694,11 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
   it("leaves a single-run block untouched", () => {
     const gate = "req_1:root/step[0]:0";
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
-    const store = createRequestStreamStore();
+    const store = createRequestStreamStore<RuntimeItem>();
     const rows = [
       traceItem({ id: "t1", status: "completed", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov })
     ];
-    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
     store.loadSnapshot(rows);
     expect(store.getSorted().map((i) => i.id)).toEqual(["t1", "m1"]);
   });
@@ -703,14 +706,13 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
   it("getRaw() keeps the superseded run-1 emission that getSorted() strips", () => {
     const gate = "req_1:root/step[0]:0";
     const prov = { blockName: "gate", blockInstanceId: gate, phase: "main" as const };
-    const store = createRequestStreamStore();
+    const store = createRequestStreamStore<RuntimeItem>();
     const rows = [
       traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       makeItem({ id: "m1", type: "message", itemIndex: 1, ts: 1001, provenance: prov }),
       traceItem({ id: "t2", status: "completed", itemIndex: 2, ts: 1002, provenance: prov }),
       makeItem({ id: "m2", type: "message", itemIndex: 3, ts: 1003, provenance: prov })
     ];
-    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
     store.loadSnapshot(rows);
 
     expect(store.getSorted().map((i) => i.id)).toEqual(["t2", "m2"]);
@@ -745,7 +747,7 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
         toolCall: { callId, name: callId === "s1" ? "sibling" : "gate" }
       }) as OutputItem;
 
-    const store = createRequestStreamStore();
+    const store = createRequestStreamStore<RuntimeItem>();
     const rows = [
       traceItem({ id: "t1", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
       toolOutput("s1c", 1, "s1", "completed"),
@@ -753,7 +755,6 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
       traceItem({ id: "t2", status: "completed", itemIndex: 3, ts: 1003, provenance: prov }),
       toolOutput("g1c", 4, "g1", "completed")
     ];
-    // @ts-expect-error loadSnapshot does not accept RuntimeItem trace rows (to be filed, found by FIX-1343)
     store.loadSnapshot(rows);
 
     const toolIds = store.getSorted().filter((i) => i.type === "tool_output").map((i) => i.id);

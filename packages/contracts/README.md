@@ -18,13 +18,15 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
 ## What it exports
 
 - **Item taxonomy** (`@flow-state-dev/contracts/items`) — the `OutputItem`
-  union and its members, `Content` parts, stream-event types, and the pure
+  union and its members, the `RuntimeItem` union (`OutputItem` plus trace
+  rows), `Content` parts, stream-event types, and the pure
   resolution helpers: `resolveItemVisibility`, `collapseToCanonicalLog`,
   `resolveBlockValue` / `buildItemLookup` / `inlineBlockValue` /
   `isBlockValue` / `structureBlockValue`, task-attribution and predicate
   helpers.
-- **Internal item surface** (`@flow-state-dev/contracts/items/internal`) — the
-  runtime item union (`RuntimeItem`), `BlockValueInternal`, `refBlockValue`,
+- **Internal item surface** (`@flow-state-dev/contracts/items/internal`) —
+  `RuntimeItem` (also exported from `@flow-state-dev/contracts/items`),
+  `BlockValueInternal`, `refBlockValue`,
   `resolveBlockValueInternal`, and `parseBlockInstanceId`.
 - **Block-instance-id helpers** (`@flow-state-dev/contracts/block-instance-id`)
   — deterministic `buildBlockInstanceId` / `parseBlockInstanceId` and the

@@ -10,6 +10,7 @@
  * while the reply still delivers.
  */
 import { describe, expect, it } from "vitest";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -177,7 +178,7 @@ async function until(predicate: () => boolean, label: string): Promise<void> {
 
 async function boot(
   kind: string,
-  flowOf: (kind: string, observed: Observed) => ReturnType<typeof replyFlow>
+  flowOf: (kind: string, observed: Observed) => FlowInstance
 ) {
   const observed: Observed = { childRuns: [], replies: [], settlements: [] };
   const flow = flowOf(kind, observed);
@@ -191,7 +192,7 @@ async function boot(
 
 function run(
   runtime: FlowStateRuntime,
-  flow: ReturnType<typeof replyFlow>,
+  flow: FlowInstance,
   actionName: string,
   input: unknown,
   sessionId = "s_parent",
@@ -323,6 +324,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
   ): SessionRecord {
     const ts = Date.now();
     return {
+      orgId: DEFAULT_ORG_ID,
       id,
       state: {},
       version: 0,
@@ -357,7 +359,7 @@ describe("the seam reads only a trusted stamp for { from: true }", () => {
       identity: {
         userId: args.userId ?? "u_alice",
         tenantId: undefined,
-        orgId: undefined,
+        orgId: DEFAULT_ORG_ID,
         sessionId: "s_child",
         lineageId: "lin_child"
       },

@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef, JsonObject } from "@flow-state-dev/core/types";
 
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 // ---------------------------------------------------------------------------
@@ -73,7 +72,7 @@ async function createCtx(collections: Record<string, ReturnType<typeof defineRes
   return { ctx, stores };
 }
 
-function getFilesNs(ctx: any): ResourceCollectionRef<{ language: string; metadata?: Record<string, unknown> }> {
+function getFilesNs(ctx: any): ResourceCollectionRef<{ language: string; metadata?: JsonObject }> {
   return ctx.resources.files as any;
 }
 

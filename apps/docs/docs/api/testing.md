@@ -77,7 +77,7 @@ const result = await testFlow({
     "chat-gen": { output: "Hi!" },
   },
   models: {
-    "openai/gpt-5.4-mini": { output: "Fallback" },
+    "openai/gpt-6-luna": { output: "Fallback" },
   },
   unmockedGeneratorPolicy: "error",  // "error" | "warn" | "allow" | "default"
 });
@@ -132,7 +132,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const resolver = createMockModelResolver({
   models: {
-    "openai/gpt-5.4-mini": { output: "Mock response" },
+    "openai/gpt-6-luna": { output: "Mock response" },
   },
 });
 ```
@@ -385,7 +385,7 @@ const report = await evalBlock(myGenerator, {
         "Response does not hallucinate facts not present in the context",
         "Tone is professional and concise",
       ],
-      model: "anthropic/claude-haiku-4-5",     // optional: cheaper model for grading
+      model: "anthropic/claude-haiku-5-5",     // optional: cheaper model for grading
       scoreMapping: "mean",      // "mean" | "min" | { strategy: "weighted", weights }
       threshold: 0.7,            // pass/fail cutoff (default: 0.5)
     }),
@@ -425,7 +425,7 @@ analyzerScorer.safety()        // Output contains no harmful content
 Each accepts optional config overrides:
 
 ```ts
-analyzerScorer.relevance({ model: "anthropic/claude-haiku-4-5", threshold: 0.8 })
+analyzerScorer.relevance({ model: "anthropic/claude-haiku-5-5", threshold: 0.8 })
 ```
 
 ## Dataset Utilities

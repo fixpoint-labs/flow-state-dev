@@ -4,7 +4,7 @@
  * audit slot exists in sequencer state from turn one.
  */
 import { handler } from "@flow-state-dev/core";
-import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
+import type { DefinedResource } from "@flow-state-dev/core/types";
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import { debateInputSchema } from "../schemas";
 
@@ -22,7 +22,7 @@ export function createInitTranscript(opts: {
         entries: [],
       } as Parameters<typeof ctx.resources.transcript.setState>[0]);
       getOrCreateTaskCollection({
-        ctx: ctx as unknown as BlockContext,
+        ctx,
         backing: "state",
         collectionId: opts.collectionId,
         state: ctx.sequencer!,

@@ -1,11 +1,9 @@
 /**
  * A row stored as `ask` still reads as waited on (retired-name-refusal: WR-8).
- * A collection casts the row; the delegation board field parses it, and
- * `taskSchema` would strip the unknown key. Either miss and the ending never
- * resumes the turn.
+ * A collection casts the row, and `taskSchema` would strip the unknown key.
+ * Miss it and the ending never resumes the turn.
  */
 import { describe, expect, it } from "vitest";
-import { delegationBoardSchema } from "../../src/skills/task-tools-capability";
 import { withMigratedWait } from "../../src/tasks/schema/task";
 import {
   createResourceBackedTaskCollection,
@@ -78,15 +76,6 @@ describe("a row stored with its wait mark under the old name", () => {
       });
     });
   }
-
-  it("reads as waited on through the delegation board field, which parses its rows", () => {
-    const now = 1_700_000_000_000;
-    const row = { id: "t", goal: "find out", status: "pending", attempts: 0, createdAt: now, updatedAt: now };
-    const parsed = delegationBoardSchema.parse({ t: { ...row, ask: MARK } }); // retired-name-refusal: WR-8, a row stored before the rename
-    expect(parsed.t?.wait).toEqual(MARK);
-    // A fixed point: parsing the migrated board again moves nothing.
-    expect(delegationBoardSchema.parse(parsed)).toEqual(parsed);
-  });
 
   it("leaves a row with no old mark as it is, allocating nothing", () => {
     const row = { id: "t", wait: MARK };

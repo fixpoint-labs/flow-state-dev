@@ -1,4 +1,5 @@
 ---
+name: Coder
 description: Does the work a filed row names, in a checkout of its own.
 flow: coder
 document: teams/eng/feature-brief

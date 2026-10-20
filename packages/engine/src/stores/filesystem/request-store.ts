@@ -1,4 +1,5 @@
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
   ConditionalRequestFields,
   ConditionalWriteResult,
@@ -157,7 +158,7 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly itemWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly itemWriteQueued = new Set<string>();
   /** Holds the most recent items snapshot so the queued write always uses the latest data. */
-  private readonly latestItemSnapshots = new Map<string, OutputItem[]>();
+  private readonly latestItemSnapshots = new Map<string, RuntimeItem[]>();
   private readonly eventWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly eventWriteQueued = new Set<string>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
@@ -491,7 +492,7 @@ export class FilesystemRequestStore implements RequestStore {
     return overlaid.map((record) => withRequestSourceDefault(record));
   }
 
-  persistItems(requestId: string, items: OutputItem[]): void {
+  persistItems(requestId: string, items: RuntimeItem[]): void {
     // Always capture the latest snapshot so the queued write uses the most
     // recent items, even when subsequent calls are coalesced away.
     this.latestItemSnapshots.set(requestId, [...items]);

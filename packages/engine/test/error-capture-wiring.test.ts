@@ -39,7 +39,7 @@ async function createCtx(
     userId: "user_cap",
     // Explicit resolver bypasses env-driven intent wiring (mirrors the
     // execution-internals harness).
-    modelResolver: (modelId) => ({ modelId, async generate() { return { text: "ok" }; } }),
+    modelResolver: Object.assign((modelId: string) => ({ modelId, async generate() { return { text: "ok" }; } }), { resolveId: (id: string) => id }),
     stores,
     response,
     errorCapture
@@ -172,7 +172,7 @@ describe("errorCapture wiring", () => {
     const flow = defineFlow({
       kind: "e2e-capture-flow",
       actions: { run: { inputSchema: z.any(), block: failing } }
-    });
+    })();
 
     await runAction({
     orgId: DEFAULT_ORG_ID,

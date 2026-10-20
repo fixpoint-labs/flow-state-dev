@@ -62,7 +62,7 @@ function makeEchoWorker(name: string, traceTo?: string[]): TaskWorker {
     name,
     inputSchema: echoWorkerInputSchema,
     outputSchema: echoWorkerOutputSchema,
-    execute: (input) => {
+    execute: (input: z.infer<typeof echoWorkerInputSchema>) => {
       const tag = `${name}:${input.input?.topic ?? input.goal}`;
       traceTo?.push(tag);
       return { findings: tag };

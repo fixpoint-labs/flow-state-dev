@@ -120,18 +120,18 @@ const flowstate = createFlowState({
     intents: {
       utility: [
         "vercel:google/gemini-3.1-flash-lite",
-        "vercel:anthropic/claude-haiku-4.5",
-        "vercel:openai/gpt-5.4-nano",
+        "vercel:anthropic/claude-haiku-5.5",
+        "vercel:openai/gpt-6-luna",
       ],
-      chat: ["vercel:anthropic/claude-sonnet-5", "vercel:openai/gpt-5.6-luna"],
-      plan: ["vercel:anthropic/claude-opus-4.8", "vercel:openai/gpt-5.6-sol"],
+      chat: ["vercel:anthropic/claude-sonnet-5.5", "vercel:openai/gpt-6-luna"],
+      plan: ["vercel:anthropic/claude-opus-5.5", "vercel:openai/gpt-6-astra"],
       synthesize: [
-        "vercel:anthropic/claude-sonnet-5",
-        "vercel:openai/gpt-5.6-terra",
+        "vercel:anthropic/claude-sonnet-5.5",
+        "vercel:openai/gpt-6.1-sol",
         "vercel:google/gemini-2.5-pro",
       ],
-      code: ["vercel:anthropic/claude-sonnet-5", "vercel:openai/gpt-5.6-terra"],
-      reason: ["vercel:anthropic/claude-opus-4.8", "vercel:openai/gpt-5.6-sol"],
+      code: ["vercel:anthropic/claude-sonnet-5.5", "vercel:openai/gpt-6.1-sol"],
+      reason: ["vercel:anthropic/claude-opus-5.5", "vercel:openai/gpt-6-astra"],
     },
     // Bind the gateway explicitly: the resolver's dynamic require() path
     // doesn't run in bundled Next.js, so a static instance is required.

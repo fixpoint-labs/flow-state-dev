@@ -14,7 +14,7 @@ import myFlow from "./flows/my-flow";
 
 export const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

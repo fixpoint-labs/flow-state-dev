@@ -16,7 +16,8 @@
  * back to polling on the same shape as SQLite.
  */
 
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RequestStreamEvent } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import {
   abortableSleep,
   endsRequestStream,
@@ -56,9 +57,9 @@ const RECONNECT_BACKOFF_MAX_MS = 1_600;
 const MAX_ITEM_ID_LENGTH = 2600;
 
 /** `node-pg` and PGlite auto-parse JSONB; bypass paths may return strings. */
-function parseItemData(data: unknown): OutputItem {
-  if (typeof data === "string") return JSON.parse(data) as OutputItem;
-  return data as OutputItem;
+function parseItemData(data: unknown): RuntimeItem {
+  if (typeof data === "string") return JSON.parse(data) as RuntimeItem;
+  return data as RuntimeItem;
 }
 
 /**
@@ -73,7 +74,7 @@ const ITEMS_COLUMN =
   "FROM request_items i WHERE i.request_id = requests.id) AS table_items";
 
 /** The items {@link ITEMS_COLUMN} selected for a row. */
-function parseTableItems(value: unknown): OutputItem[] {
+function parseTableItems(value: unknown): RuntimeItem[] {
   const list = typeof value === "string" ? JSON.parse(value) : value;
   return Array.isArray(list) ? list.map(parseItemData) : [];
 }
@@ -86,7 +87,7 @@ function parseTableItems(value: unknown): OutputItem[] {
 function upsertItemsStatement(
   firstParam: number,
   requestId: string,
-  batch: OutputItem[],
+  batch: RuntimeItem[],
   gate?: string
 ): { sql: string; params: unknown[] } {
   const p = firstParam;
@@ -254,7 +255,7 @@ export function createPostgresRequestStore(
    */
   const pendingItemWrites = new Map<string, Promise<void>>();
   /** Holds the most recent items so the queued write always uses the latest data. */
-  const latestItemSnapshots = new Map<string, OutputItem[]>();
+  const latestItemSnapshots = new Map<string, RuntimeItem[]>();
   /**
    * Per-request map of item id → the JSON last persisted to `request_items`.
    * Diffing by serialized content (not object reference) keeps persistence
@@ -304,11 +305,11 @@ export function createPostgresRequestStore(
    */
   function itemDelta(
     requestId: string,
-    snapshot: OutputItem[]
-  ): { batch: OutputItem[]; persisted: Map<string, string> } {
+    snapshot: RuntimeItem[]
+  ): { batch: RuntimeItem[]; persisted: Map<string, string> } {
     const priorById = lastPersistedItems.get(requestId);
     const persisted = new Map<string, string>();
-    const byId = new Map<string, OutputItem>();
+    const byId = new Map<string, RuntimeItem>();
     for (const item of snapshot) {
       if (item.id.length > MAX_ITEM_ID_LENGTH) {
         throw new Error(
@@ -564,7 +565,7 @@ export function createPostgresRequestStore(
       return records.map((r) => withSourceDefault(r) as RequestRecord);
     },
 
-    persistItems(requestId: string, items: OutputItem[]): void {
+    persistItems(requestId: string, items: RuntimeItem[]): void {
       // Always capture the latest snapshot so the queued write picks up
       // the freshest items even when intervening calls are coalesced.
       latestItemSnapshots.set(requestId, [...items]);

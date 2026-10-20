@@ -106,7 +106,7 @@ const summarize = sequencer({ name: "summarize", inputSchema: resourceContentCha
       return { key: change.key, content: (await ref?.readContent()) ?? "" };
     },
   }))
-  .step((loaded) => loaded.content, utility.summarizer({ name: "summarizer", model: "openai/gpt-5.4-mini" }))
+  .step((loaded) => loaded.content, utility.summarizer({ name: "summarizer", model: "openai/gpt-6-luna" }))
   .step(saveSummary); // patchState({ summary }) — a state write, so it won't re-trigger this reaction
 
 const artifacts = defineResourceCollection({

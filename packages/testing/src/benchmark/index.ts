@@ -74,7 +74,7 @@ export type ComparePatternsConfig = Omit<RunBenchmarkConfig, "subjects"> & {
   /**
    * Pure-model baselines to compare the patterns against. Defaults to one
    * baseline on the run's `model` (named `single-generator`). Provide several —
-   * e.g. `[model, "anthropic/claude-sonnet-4-6"]` — to ask "do the patterns on
+   * e.g. `[model, "anthropic/claude-sonnet-5-5"]` — to ask "do the patterns on
    * the cheap model beat both pure models?". Each is a single-generator subject
    * on that model, named `pure-<model>`.
    */

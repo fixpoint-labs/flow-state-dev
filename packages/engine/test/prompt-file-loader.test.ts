@@ -6,9 +6,9 @@ import {
   createPromptLoader,
   loadPromptFile,
   moduleDir,
-  PromptFileLoadError,
   resolveBaseDir,
 } from "../src/prompt-file-loader";
+import { PromptFileLoadError } from "@flow-state-dev/core/prompt-file";
 
 const FIXTURE_DIR = fileURLToPath(new URL("./fixtures/prompts", import.meta.url));
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
