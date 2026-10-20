@@ -7,4 +7,4 @@ A task-board worker can now read its own claim. `currentWorkerClaim(ctx)` return
 
 `currentWorkerClaim` now takes the block context. A claim reads back only in the request that took it: a request the worker starts or resumes in the same process (a message, a dispatch, a resumed turn) gets `undefined`. Code that called `currentWorkerClaim()` with no argument must pass its `ctx`.
 
-`taskLedgers` takes `taskTurn: false` for an entry whose run answers the user rather than the task's filer. Such a run keeps its claim but is not a task turn: it can wait on work it dispatches, and it doesn't get `parkOnQuestion`. Workforce's delegated-post entry sets it, so a post run behaves as it did before.
+`taskLedgers` takes `taskTurn: false` for an entry whose run answers the user rather than the task's filer. Such a run keeps its claim but is not a task turn: it can wait on work it dispatches, and it doesn't get `parkOnQuestion`. Workforce's delegated-post entry sets it, so a post run behaves as it did before (FIX-1047).
