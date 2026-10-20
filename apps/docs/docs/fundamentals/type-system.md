@@ -286,27 +286,28 @@ type DocState = StateOf<typeof docResource>;  // { byId: Record<string, { title:
 | `BlockResult<TOutput>` | The handler `execute` return-value union. |
 | `SessionScopeHandle<TState>` | The shape of `ctx.session` — typed `state`, `patchState`, `setStateRecord`, etc. `UserScopeHandle`, `OrgScopeHandle`, and `RequestScopeHandle` are siblings for the other scopes. |
 | `ScopeStateOps<TState>` | The state-mutation interface every scope handle exposes (`patchState`, `setState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). |
-| `LooseBlockContext<TSessionState>` | Variance-friendly alias for `BlockContext` — typed on session, permissive on resources. Use for helper functions that take a block's `ctx` as a parameter. |
+| `LooseBlockContext<TSessionState>` | A partial `BlockContext`: typed session state, untyped user/org/request state, `any` resources, no other slots. Use for helper functions that take a block's `ctx` as a parameter. |
 
 The `*Input` / `*Output` / `StateOf` helpers use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately. The block-shape and scope-handle types are useful when *writing* factories: they let you type "any block" or "a ctx slice with a typed session" structurally, instead of falling back to `any` or hand-rolling `{ session: { patchState: ... } }` shapes.
 
 ### When to reach for `LooseBlockContext`
 
-A block that declares `resources` can pass its `ctx` to a helper typed `BlockContext`. Its declared refs keep their types inside the block. A full `BlockContext` parameter still checks every other slot of the context, though. For example, a block whose `uses` brings in a capability has a `ctx.targets` that a plain `BlockContext` won't accept:
+A helper parameter typed as the full `BlockContext` checks every slot of the `ctx` you pass it. One slot that often doesn't fit is `ctx.targets`, the handles to named ancestor blocks' state (see [State Targets and Parents](/docs/advanced/state-targets-and-parents)). A block that declares `targetStateSchemas`, or lists any capability in `uses`, gets a typed `ctx.targets`. A plain `BlockContext` expects no targets, so it rejects that block's `ctx`:
 
 ```ts
-async function publishMemo(ctx: BlockContext<Record<string, unknown>, MySessionState>, ...) {}
+async function publishMemo(ctx: BlockContext, ...) {}
 
 handler({
-  resources: { memos: memosCollection },
   uses: [someCapability],
   execute: async (input, ctx) => {
-    await publishMemo(ctx, ...); // Error: ctx.targets doesn't match
+    await publishMemo(ctx, ...); // Error: types of property 'targets' are incompatible
   },
 });
 ```
 
-`LooseBlockContext<TSessionState>` asks only for the scopes a helper usually reads. It types the session state and leaves `resources` permissive (`any`):
+Declared `resources` don't cause this: a block's `ctx` with declared resources fits a `BlockContext` parameter.
+
+`LooseBlockContext<TSessionState>` asks for less. It types `ctx.session` with `TSessionState`. It also requires `ctx.user` and `ctx.request` (and allows `ctx.org`), with their state untyped (`Record<string, unknown>`). `ctx.resources` is `any`. It doesn't mention any other slot, so `ctx.targets` and the rest are never checked:
 
 ```ts
 import type { LooseBlockContext } from "@flow-state-dev/core";
