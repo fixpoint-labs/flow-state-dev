@@ -1,64 +1,11 @@
-/* ══════════════════════════════════════════════════════════════
-   flow-state.dev — the Flow State brand, as Shift Manager and the
-   DevTool wear it.
-
-   `@flow-state-dev/design-system` supplies the day tokens (on `:root`)
-   and brings Space Grotesk and IBM Plex Mono with it; this file points
-   Infima's `--ifm-*` variables at those tokens. Night is the one copy:
-   the design system keys it off `.dark`, Docusaurus marks dark mode
-   with `data-theme="dark"` on `<html>` and owns that element's class
-   list, so night's values are restated below under Docusaurus's
-   selector. Keep them equal to the `.dark` block in
-   `labs/design-system/shift-manager.css`.
-
-   Rules the brand keeps: blueprint (`--info`) means interactive or
-   live, the highlighter (`--attention`) is reserved for "a person must
-   act" (here: text selection only), and corners are square.
-   ══════════════════════════════════════════════════════════════ */
+/* Infima's dark block sets these same `--ifm-*` names, so the mapping sits
+   on `html[data-theme="dark"]` to win. Night values come from the design
+   system, which uses that selector for the same block as `.dark`. */
 
 @import "@flow-state-dev/design-system/shift-manager.css";
 
-/* Night, as the design system's `.dark` block. */
-html[data-theme="dark"] {
-  --background: #1c1b15;
-  --foreground: #ece7da;
-  --card: #24231c;
-  --card-foreground: #ece7da;
-  --popover: #24231c;
-  --popover-foreground: #ece7da;
-  --primary: #ece7da;
-  --primary-foreground: #16150f;
-  --secondary: #16150f;
-  --secondary-foreground: #ece7da;
-  --muted: #16150f;
-  --muted-foreground: #a6a08f;
-  --accent: #3d3b33;
-  --accent-foreground: #ece7da;
-  --destructive: #e27a5f;
-  --destructive-foreground: #16150f;
-  --border: #57544a;
-  --input: #57544a;
-  --ring: #ece7da;
-  --success: #ece7da;
-  --success-foreground: #16150f;
-  --warning: #e0874f;
-  --warning-foreground: #16150f;
-  --info: #8fabe2;
-  --info-foreground: #16150f;
-  --attention: #e8f551;
-  --attention-foreground: #1b1a15;
-
-  --sidebar: #121109;
-  --inspector: #1a1913;
-}
-
-/* Declared on the dark selector too, so these recompute from night's tokens
-   rather than inheriting day's (Infima's own dark block sits at the same
-   specificity and loads earlier, so these win; `html` matches Docusaurus's
-   own `html[data-theme="dark"]` page colour). */
 :root,
 html[data-theme="dark"] {
-  /* Blueprint drives links, active nav items and focus. */
   --ifm-color-primary: var(--info);
   --ifm-color-primary-dark: color-mix(in oklab, var(--info) 90%, var(--foreground));
   --ifm-color-primary-darker: color-mix(in oklab, var(--info) 85%, var(--foreground));
@@ -69,7 +16,6 @@ html[data-theme="dark"] {
   --ifm-color-primary-contrast-background: color-mix(in oklab, var(--info) 10%, var(--card));
   --ifm-color-primary-contrast-foreground: var(--foreground);
 
-  /* Admonitions: a tinted card with a coloured rule, never the highlighter. */
   --ifm-color-secondary-dark: var(--border);
   --ifm-color-secondary-contrast-background: var(--muted);
   --ifm-color-secondary-contrast-foreground: var(--foreground);
@@ -91,8 +37,6 @@ html[data-theme="dark"] {
   --ifm-color-danger-contrast-foreground: var(--foreground);
   --ifm-alert-border-left-width: 3px;
 
-  /* Grounds and ink. Infima's grey scale becomes ink mixed into the page, so
-     every border and hover it draws stays in the warm neutrals. */
   --ifm-color-emphasis-0: var(--background);
   --ifm-color-emphasis-100: color-mix(in oklab, var(--foreground) 5%, var(--background));
   --ifm-color-emphasis-200: color-mix(in oklab, var(--foreground) 12%, var(--background));
@@ -130,7 +74,6 @@ html[data-theme="dark"] {
   --docusaurus-highlighted-code-line-bg: color-mix(in oklab, var(--info) 12%, transparent);
   --docusaurus-collapse-button-bg-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
 
-  /* Type. */
   --ifm-font-family-base: var(--font-sans);
   --ifm-heading-font-family: var(--font-display);
   --ifm-font-family-monospace: var(--font-mono);
@@ -139,7 +82,6 @@ html[data-theme="dark"] {
   --ifm-font-weight-bold: 600;
   --ifm-line-height-base: 1.65;
 
-  /* Square corners everywhere. */
   --ifm-global-radius: 0;
   --ifm-code-border-radius: 0;
   --ifm-button-border-radius: 0;
@@ -148,11 +90,6 @@ html[data-theme="dark"] {
   --ifm-badge-border-radius: 0;
   --ifm-alert-border-radius: 0;
   --ifm-breadcrumb-border-radius: 0;
-
-  /* Page-level tokens for src/pages. */
-  --fsd-accent: var(--info);
-  --fsd-surface-border: var(--border);
-  --fsd-text-muted: var(--muted-foreground);
 }
 
 /* ── Global base styles ── */
@@ -225,14 +162,12 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Inline code: a paper chip with a hairline. */
 .markdown :not(pre) > code {
   border: 1px solid var(--border);
   background: var(--muted);
 }
 
-/* Code blocks: background is owned by the Prism theme (src/prismThemes.ts);
-   this adds the hairline the app draws around every panel. */
+/* Prism owns the code-block background (src/prismThemes.ts). */
 .prism-code {
   border: 1px solid var(--border);
 }
@@ -256,20 +191,17 @@ body {
   font-weight: 600;
 }
 
-/* Section labels in the sidebar read as the app's mono metadata. */
 .menu__list-item-collapsible > .menu__link--sublist,
 .menu__caret {
   font-weight: 500;
 }
 
-/* Admonitions: hairline box with the coloured rule on the left. */
 .alert {
   box-shadow: none;
   border: 1px solid var(--border);
   border-left-color: var(--ifm-alert-border-color);
 }
 
-/* Cards, pagination, tabs */
 .pagination-nav__link {
   border-color: var(--border);
 }
@@ -289,20 +221,15 @@ body {
   border-radius: 0;
 }
 
-/* Focus: a 2px blueprint halo. */
 :focus-visible {
   outline: 2px solid var(--info);
   outline-offset: 2px;
 }
 
-/* ── Scrollbars: a thin thumb in the border colour on a clear track ── */
-
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
-
-/* ── Selection: the highlighter, ink on yellow ── */
 
 ::selection {
   background: var(--attention);
