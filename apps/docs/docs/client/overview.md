@@ -139,7 +139,15 @@ const snapshot = await sessions.getSessionState("sess_1", {
 await sessions.deleteSession("sess_1");
 ```
 
-If the same user, in the same organization, later creates a session under that id, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. Give a new session a new id.
+`deleteSession` doesn't stop or wait for requests and background runs that are still going.
+
+You can pass your own `sessionId` to `createSession` (see [Deriving the session id from your data](/docs/persistence/overview#deriving-the-session-id-from-your-data)). Give a new session a new id. If you derive ids from your data, include something that changes each time you recreate the session, such as a counter you bump on every delete.
+
+If you reuse a deleted session's id, the new session picks up what the old one left behind:
+
+- **What it shows.** If the new session is created by the same user, in the same organization and tenant, it lists the deleted session's background runs in its background-work list and its live stream, even if it's for a different flow instance. It shows the deleted session's requests, in its snapshot and its live stream, only if it's also for the same flow instance. A new session created by anyone else shows none of them.
+- **What gets written to it.** Requests that were still running in the deleted session keep writing under that id, so they write to the new session if it's in the same tenant, whoever created it. Their state changes, [journal](/docs/fundamentals/state-and-scopes#sessions-in-depth) entries, and any title, description, tags or metadata they set land there. A session under the same id in another tenant is stored separately and gets none of it. Background runs write to their own sessions, not this one.
+- **Resources.** Those requests can write the new session's resources too. A content write always lands, even over content the new session deleted. A state write lands if the new session has already written that resource, and is applied to the new session's value. If the new session hasn't written it, a write that changes a value the request had already loaded is refused, and any other write creates the resource. Resources marked [`sharedToLineage`](/docs/resources/storage#session-scope-and-background-work) aren't affected: the new session never sees those writes.
 
 **Listing sessions:**
 
