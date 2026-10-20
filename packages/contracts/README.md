@@ -24,8 +24,9 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
   `resolveBlockValue` / `buildItemLookup` / `inlineBlockValue` /
   `isBlockValue` / `structureBlockValue`, task-attribution and predicate
   helpers.
-- **Internal item surface** (`@flow-state-dev/contracts/items/internal`) — the
-  `RuntimeItem` (also on the items barrel), `BlockValueInternal`, `refBlockValue`,
+- **Internal item surface** (`@flow-state-dev/contracts/items/internal`) —
+  `RuntimeItem` (also exported from `@flow-state-dev/contracts/items`),
+  `BlockValueInternal`, `refBlockValue`,
   `resolveBlockValueInternal`, and `parseBlockInstanceId`.
 - **Block-instance-id helpers** (`@flow-state-dev/contracts/block-instance-id`)
   — deterministic `buildBlockInstanceId` / `parseBlockInstanceId` and the
