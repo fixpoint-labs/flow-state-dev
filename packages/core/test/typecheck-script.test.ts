@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const scriptSource = fs.readFileSync(path.join(repoRoot, "scripts/typecheck.mjs"), "utf8");
+const programsSource = fs.readFileSync(path.join(repoRoot, "scripts/typecheck-programs.mjs"), "utf8");
 
 const tempRoots: string[] = [];
 
@@ -19,7 +20,8 @@ afterEach(() => {
 /**
  * The script resolves `tsc` relative to its own location, so the only way to
  * exercise a checkout without TypeScript is to stand one up: a synthetic root
- * holding a copy of the script and one package for it to check.
+ * holding a copy of the script, the program list it imports, and one package
+ * for it to check.
  */
 function makeRoot(): { root: string; packageDir: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fsd-typecheck-"));
@@ -30,6 +32,7 @@ function makeRoot(): { root: string; packageDir: string } {
   fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
 
   fs.writeFileSync(path.join(root, "scripts", "typecheck.mjs"), scriptSource);
+  fs.writeFileSync(path.join(root, "scripts", "typecheck-programs.mjs"), programsSource);
   fs.writeFileSync(path.join(packageDir, "tsconfig.json"), "{}");
   fs.writeFileSync(path.join(packageDir, "src", "index.ts"), "export const answer = 42;\n");
 

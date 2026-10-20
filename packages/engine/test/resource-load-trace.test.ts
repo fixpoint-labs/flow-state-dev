@@ -52,6 +52,7 @@ async function run(flow: ReturnType<ReturnType<typeof defineFlow>>, stores: Stor
     runtimeConfig: { modelResolver: createStubModelResolver() }
   });
   expect(result.error).toBeUndefined();
+  // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
   const traces = response.getItems().filter((i) => i.type === "block_trace") as BlockTraceItem[];
   return { traces, byName: (name: string) => traces.find((t) => t.blockName === name) };
 }
@@ -160,6 +161,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
       runtimeConfig: { modelResolver: createStubModelResolver() }
     });
     expect(result.error).toBeDefined();
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const traces = response.getItems().filter((i) => i.type === "block_trace") as BlockTraceItem[];
     const failed = traces.find((t) => t.blockName === "boom");
     expect(failed?.status).toBe("failed");
@@ -386,6 +388,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     // With observability off the trace-capture hook is undefined, so no
     // block_trace items are emitted at all — which means neither `resourceLoads`
     // nor `declaredResources` can leak onto the items stream.
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const traceItems = response.getItems().filter((i) => i.type === "block_trace");
     expect(traceItems).toHaveLength(0);
   });

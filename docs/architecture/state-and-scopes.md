@@ -416,7 +416,7 @@ import { utility, sequencer } from "@flow-state-dev/core";
 
 const autoTitle = utility.sessionTitleGenerator({
   name: "auto-title",
-  model: "openai/gpt-5.4-mini"
+  model: "openai/gpt-6-luna"
 });
 
 const pipeline = sequencer({ name: "chat", inputSchema })

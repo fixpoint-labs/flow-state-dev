@@ -86,7 +86,7 @@ Engineers, writing to engineers. Warm, not chatty. A teammate walking you throug
 - Be direct about tradeoffs: "this works for demos, not production" is better than hedging.
 - Introduce a term the first time you use it, in plain words.
 - No internal issue or PR numbers, ever. Those live in commits, changesets, and `docs/internal/`.
-- Code examples use current model names (`openai/gpt-5.4-mini` for small and fast).
+- Code examples use current model names (`openai/gpt-6-luna` for small and fast).
 - `sidebar_label` never repeats its category. `Memory > Overview`, not `Memory > Memory`.
 
 The reference example for this voice is `apps/docs/blog/2026-03-06-philosophy.md`.

@@ -38,7 +38,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Side chain** | core | A block a sequencer starts without waiting for it. Its items are marked as side-chain output. | Sequencer, block |
 | **Tool** | core | A block listed in a generator's `tools`, so the model can call it. There is no separate tool type. | Block |
 | **Dispatcher block** | core | `dispatcher()` builds a handler that sends its input to an entry on another flow. It is not a sixth kind. | Handler |
-| **Model resolver** | core | Turns a model string such as `openai/gpt-5.4-mini` into a model a generator can call, with fallbacks. See [Models](./fundamentals/models.md). | Configuration |
+| **Model resolver** | core | Turns a model string such as `openai/gpt-6-luna` into a model a generator can call, with fallbacks. See [Models](./fundamentals/models.md). | Configuration |
 | **Action** | core | A named entry point on a flow. It wraps one root block and adds an input schema, hooks, a token budget and durability settings. See [Actions](./fundamentals/actions.md). | One block |
 | **Scope** | core | Where state lives and how long it lasts. There are four: `request`, `session`, `user` and `org`. See [State and scopes](./fundamentals/state-and-scopes.md). | None |
 | **State** | core | Zod-typed data on a scope, or on one block (`ctx.self`). | Scope |
@@ -139,7 +139,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |
 | **Roster** | Shift Manager | Your workers, grouped as on shift (running a task, or waiting on you with a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
-| **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
+| **General** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
 
 ## Words that mean two things
 

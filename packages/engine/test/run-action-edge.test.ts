@@ -397,7 +397,7 @@ describe("runAction edge behavior", () => {
       requestId: "req_budget_error",
       stores: createInMemoryStores(),
       runtimeConfig: {
-        modelResolver: () => ({
+        modelResolver: Object.assign(() => ({
           modelId: "openai/gpt-5-mini",
           async generate() {
             return {
@@ -405,7 +405,7 @@ describe("runAction edge behavior", () => {
               usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
             };
           }
-        })
+        }), { resolveId: (id: string) => id })
       }
     });
 
@@ -446,7 +446,7 @@ describe("runAction edge behavior", () => {
       requestId: "req_budget_warn",
       stores: createInMemoryStores(),
       runtimeConfig: {
-        modelResolver: () => ({
+        modelResolver: Object.assign(() => ({
           modelId: "openai/gpt-5-mini",
           async generate() {
             return {
@@ -454,7 +454,7 @@ describe("runAction edge behavior", () => {
               usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
             };
           }
-        })
+        }), { resolveId: (id: string) => id })
       }
     });
 
@@ -502,7 +502,7 @@ describe("runAction edge behavior", () => {
       requestId: "req_budget_stop",
       stores,
       runtimeConfig: {
-        modelResolver: () => ({
+        modelResolver: Object.assign(() => ({
           modelId: "openai/gpt-5-mini",
           async generate() {
             return {
@@ -510,7 +510,7 @@ describe("runAction edge behavior", () => {
               usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
             };
           }
-        })
+        }), { resolveId: (id: string) => id })
       }
     });
 

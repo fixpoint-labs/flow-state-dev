@@ -42,7 +42,7 @@ import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
   flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

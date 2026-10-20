@@ -405,8 +405,9 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
     const realDispatch = host.dispatch.bind(host);
     let handle: DispatchHandle | undefined;
     host.dispatch = (envelope) => {
-      handle = realDispatch(envelope);
-      return handle;
+      const dispatched = realDispatch(envelope);
+      handle = dispatched;
+      return dispatched;
     };
 
     const res = await handleWebhook(

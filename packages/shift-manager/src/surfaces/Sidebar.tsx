@@ -558,7 +558,7 @@ export function Sidebar({
             </Heading>
             <div data-testid="teams">
               {drawn === undefined ? null : (
-                teamsOf(drawn.workers).map(({ team, workers }) => (
+                teamsOf(drawn.workers).map(({ team, name, workers }) => (
                   <button
                     key={team}
                     type="button"
@@ -570,12 +570,12 @@ export function Sidebar({
                       route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
                     }`}
                   >
-                    <span className="flex-1 truncate">{team}</span>
+                    <span className="flex-1 truncate">{name}</span>
                     <span className="flex gap-0.5">
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${workerLabel(worker.name)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.displayName)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );

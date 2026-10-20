@@ -23,7 +23,7 @@ const stores = inMemoryStores();
 
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: stores } },
   durabilityProvider: createCheckpointDurabilityProvider(stores),
 });
@@ -303,7 +303,7 @@ Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic 
 ```ts
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: stores } },
   durabilityProvider: createCheckpointDurabilityProvider(stores),
   durabilityRetention: {

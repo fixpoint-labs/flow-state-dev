@@ -1,4 +1,5 @@
 ---
+name: Triage
 description: Where the team sorts incoming reports before anyone files a feature.
 flow: coordinator
 delegates: [eng.em]

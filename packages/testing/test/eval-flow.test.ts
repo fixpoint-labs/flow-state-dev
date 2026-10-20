@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { evalFlow, exactMatch, contains } from "../src/eval";
 
@@ -8,20 +8,19 @@ const passthroughSchema = {
 };
 
 function createTestFlowInstance(): FlowInstance {
-  return {
-    id: "eval-test",
+  return defineFlow({
     kind: "eval-test-flow",
     requireUser: true,
     actions: {
       echo: {
         inputSchema: passthroughSchema as any,
-        block: handler<{ value: string }, { echoed: string }>({
+        block: handler({
           name: "echo-handler",
-          execute: (input) => ({ echoed: input.value }),
+          execute: (input: { value: string }) => ({ echoed: input.value }),
         }),
       },
     },
-  } as FlowInstance;
+  })();
 }
 
 describe("evalFlow", () => {

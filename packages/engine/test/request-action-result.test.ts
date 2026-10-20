@@ -109,12 +109,12 @@ describe("the request record's action result", () => {
       sessionId: "s_result",
       stores,
       runtimeConfig: {
-        modelResolver: () => ({
+        modelResolver: Object.assign(() => ({
           modelId: "openai/gpt-5-mini",
           async generate() {
             return { text: "the answer", usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 } };
           }
-        })
+        }), { resolveId: (id: string) => id })
       }
     });
     const record = await stores.request.get("req_incomplete");

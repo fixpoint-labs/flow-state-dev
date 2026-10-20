@@ -72,9 +72,9 @@ describe("scorers", () => {
       expect(result).toMatchObject({ score: 1, passed: true });
     });
 
-    it("fails for invalid output with reason", () => {
+    it("fails for invalid output with reason", async () => {
       const scorer = schemaValid(schema);
-      const result = scorer.score({
+      const result = await scorer.score({
         output: { name: "alice", age: "not a number" },
         input: {},
       });
@@ -187,9 +187,9 @@ describe("scorers", () => {
       expect(result).toMatchObject({ score: 0, passed: false });
     });
 
-    it("fails when field is not a number", () => {
+    it("fails when field is not a number", async () => {
       const scorer = threshold("value", 0);
-      const result = scorer.score({
+      const result = await scorer.score({
         output: { value: "nope" },
         input: {},
       });

@@ -16,7 +16,7 @@ import { ticketsFlow } from "./src/flow";
 
 const triage = evaluator({
   name: "ticket-facets",
-  model: process.env.AI_GATEWAY_API_KEY ? "typesafe-ai/jev" : "openai/gpt-5.4-mini",
+  model: process.env.AI_GATEWAY_API_KEY ? "typesafe-ai/jev" : "openai/gpt-6-luna",
   questions: ticketQuestions,
 });
 

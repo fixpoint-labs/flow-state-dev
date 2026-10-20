@@ -72,6 +72,7 @@ describe("onTaskChangeFor", () => {
     const filter = onTaskChangeFor("c1");
     expect(filter(makeMessage())).toBe(false);
     expect(
+      // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
       filter({
         id: "i_trace",
         type: "block_trace",

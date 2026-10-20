@@ -454,7 +454,8 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     const bobs = (await screen.findAllByTestId("project-entry")).find((li) => li.getAttribute("data-owner") === BOB.userId)!;
     act(() => fireEvent.click(bobs.querySelector("button")!));
     const details = await screen.findByTestId("project-entry-details");
-    expect(details.textContent).toContain(`led by ${EM}`);
+    // DevTeam's `eng/workers/em/WORKER.md` names the EM; the entry shows that name, not its id.
+    expect(details.textContent).toContain("led by Engineering Manager");
     await eventually(async () => (/No report yet|didn't load/.test(screen.getByTestId("project-entry-report").textContent ?? "") ? true : undefined), "the report read");
     expect(seen.some((r) => r.path.includes(his.sessionId!) || r.body.includes(his.sessionId!))).toBe(false);
 
@@ -630,7 +631,7 @@ describe("a project view (V8: BR-12, BR-18)", () => {
     // Bob's opens on his entry's view, and is the sidebar's current row.
     act(() => fireEvent.click(nested.find((b) => b.getAttribute("data-owner") === BOB.userId)!));
     const details = await screen.findByTestId("project-entry-details", undefined, { timeout: 10_000 });
-    expect(details.textContent).toContain(`led by ${EM}`);
+    expect(details.textContent).toContain("led by Engineering Manager");
     const current = within(group).getAllByTestId("nav-workstream").find((b) => b.getAttribute("aria-current") === "page");
     expect(current?.getAttribute("data-workstream-id")).toBe("search");
 

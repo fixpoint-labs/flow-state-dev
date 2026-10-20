@@ -698,14 +698,11 @@ describe("both recorders", () => {
       async (which, mode, verdict, _site, wiring, runId) => {
         openLeaseRenewalScope();
         const fx = await fixture(which === "success" ? { complete: mode } : { fail: mode });
-        const block =
-          which === "success" ? success(fx, wiring) : failure(fx, "skip", wiring);
-
         // Raises at the gate, returns at the drain; the entry is what is pinned.
-        await runForTest(
-          block,
-          which === "success" ? { ok: true } : new Error("worker blew up"),
-          fx.ctx
+        await (
+          which === "success"
+            ? runForTest(success(fx, wiring), { ok: true }, fx.ctx)
+            : runForTest(failure(fx, "skip", wiring), new Error("worker blew up"), fx.ctx)
         ).catch(() => undefined);
 
         expect(fx.emitted).toHaveLength(1);

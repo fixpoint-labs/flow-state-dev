@@ -148,7 +148,8 @@ describe("a notice delivered", () => {
 describe("the dedupe key", () => {
   it("is the task, the attempt and the ending", () => {
     const base = { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed" } as const;
-    expect(noticeKey(base)).toBe(noticeKey({ ...base, output: "anything" }));
+    const withOutput = { ...base, output: "anything" };
+    expect(noticeKey(base)).toBe(noticeKey(withOutput));
     expect(noticeKey(base)).not.toBe(noticeKey({ ...base, attempt: 2 }));
     expect(noticeKey(base)).not.toBe(noticeKey({ ...base, ending: "errored" }));
     expect(noticeKey(base)).not.toBe(noticeKey({ ...base, taskId: "t2" }));

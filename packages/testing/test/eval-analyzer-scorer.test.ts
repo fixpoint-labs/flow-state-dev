@@ -138,9 +138,9 @@ describe("analyzerScorer", () => {
 
   describe("integration with evalBlock", () => {
     it("works alongside code-based scorers in evalBlock", async () => {
-      const echoBlock = handler<{ value: string }, { echoed: string }>({
+      const echoBlock = handler({
         name: "echo",
-        execute: (input) => ({ echoed: input.value }),
+        execute: (input: { value: string }) => ({ echoed: input.value }),
       });
 
       // Use code-based scorers only for this test (analyzer would need real LLM)

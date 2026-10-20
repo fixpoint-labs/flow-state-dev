@@ -108,7 +108,7 @@ import { z } from "zod";
 
 const investigate = generator({
   name: "investigate",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({ company: z.string() }),
   prompt: "Research the company and write up what you find.",
 });

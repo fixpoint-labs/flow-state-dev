@@ -41,6 +41,7 @@ function completedTurn(sessionId: string, n: number): RequestRecord {
     flowId: "win-flow",
     orgId: DEFAULT_ORG_ID,
     actionName: "run",
+    source: "http",
     userId: "u1",
     sessionId,
     status: "completed",

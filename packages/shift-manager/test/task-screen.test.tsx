@@ -392,6 +392,62 @@ describe("a finished task's composer (FIX-1764)", () => {
   }, 30_000);
 });
 
+// FIX-2009.
+describe("a line sent from a task's composer", () => {
+  it("shows in the task's Session with the worker's reply, though neither carries the task's stamp", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await screen.findByTestId("session", {}, { timeout: 10_000 });
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    const line = `where are we on this? ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    fireEvent.change(input, { target: { value: line } });
+    fireEvent.click(screen.getByTestId("task-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
+    // Shown because this view sent it: the door turn stores no task stamp.
+    const session = screen.getByTestId("session-items");
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 40_000);
+
+  it("still shows the line and the reply when the send ends before the Session's first read lands", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    // The Session's first read of the session is taken at once and answered
+    // late: it holds nothing of the line sent meanwhile.
+    const real = globalThis.fetch;
+    let held = 0;
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const answer = real(input, init);
+      if (held === 0 && url.includes(`/sessions/${encodeURIComponent(row.run!.sessionId)}/state`) && url.includes("include_items") && !url.includes("item_types")) {
+        held += 1;
+        return released.then(() => answer);
+      }
+      return answer;
+    });
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    const input = (await screen.findByTestId("task-composer-input")) as HTMLInputElement;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    await waitFor(() => expect(held).toBe(1), { timeout: 10_000 });
+    const line = `late read ${globalThis.crypto.randomUUID().slice(0, 6)}`;
+    fireEvent.change(input, { target: { value: line } });
+    fireEvent.click(screen.getByTestId("task-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("task-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 15_000 });
+    release();
+    const session = await screen.findByTestId("session-items", {}, { timeout: 10_000 });
+    await waitFor(() => {
+      expect(session.textContent).toContain(line);
+      expect(session.textContent).toContain(`Heard: ${line}`);
+    }, { timeout: 10_000 });
+  }, 40_000);
+});
+
 describe("the inspector (BR-18 to BR-23)", () => {
   it("shows the worker, started, the harness gap, what a recording run recorded, and the trace link with the session beside it", async () => {
     const opened = await openLab();

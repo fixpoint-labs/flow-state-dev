@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
 import { deferred, findGaps, typecheckPrograms } from "../../../scripts/validate-test-typecheck.mjs";
+// @ts-expect-error — root script, plain .mjs with no type declarations.
+import { driverPrograms } from "../../../scripts/typecheck-programs.mjs";
 
 type Pkg = { dir: string; tests: string[]; covered: string[] };
 type Gap = { dir: string; reason: "uncovered" | "stale-deferral" | "unknown-deferral"; files?: string[] };
@@ -70,6 +72,14 @@ describe("the programs a typecheck script compiles", () => {
     expect(programs("node ../../scripts/typecheck.mjs")).toEqual(["tsconfig.json"]);
   });
 
+  it("takes the shared driver's programs from the list the driver itself runs, so the two cannot drift", () => {
+    const driver = (present: string[]): string[] =>
+      (driverPrograms as (has: (name: string) => boolean) => string[])((name) => present.includes(name));
+    for (const present of [["tsconfig.json"], ["tsconfig.json", "tsconfig.test.json"]]) {
+      expect(programs("node ../../scripts/typecheck.mjs", present)).toEqual(driver(present));
+    }
+  });
+
   it("counts every chained tsc program, and a bare tsc as tsconfig.json", () => {
     expect(
       programs("node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json", [
@@ -107,7 +117,32 @@ describe("the DEFERRED list", () => {
     expect((deferred as Record<string, string>).workforce).toMatch(/FIX-2016/);
   });
 
-  it("does not defer core, which this change wires", () => {
-    expect(deferred).not.toHaveProperty("core");
+  it("does not defer a package that is wired", () => {
+    for (const dir of [
+      "core",
+      "contracts",
+      "workspace",
+      "voice-openai",
+      "client",
+      "react",
+      "ui",
+      "engine",
+      "testing",
+      "scheduled",
+      "mcp",
+      "next",
+      "node",
+      "store-sqlite",
+      "store-postgres",
+      "bullmq",
+      "vercel",
+      "orchestration",
+      "patterns",
+      "tools",
+      "memory",
+      "thought-fabric-core",
+    ]) {
+      expect(deferred, dir).not.toHaveProperty(dir);
+    }
   });
 });

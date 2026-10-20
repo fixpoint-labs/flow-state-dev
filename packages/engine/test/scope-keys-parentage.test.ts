@@ -11,6 +11,9 @@
 import { describe, expect, it } from "vitest";
 import { matchesParentageFilter } from "../src/stores/scope-keys";
 
+/** List options that name a user and say nothing about parentage. */
+const USER_ONLY: Parameters<typeof matchesParentageFilter>[0] & { userId: string } = { userId: "u" };
+
 describe("matchesParentageFilter", () => {
   describe("the default — absence narrows", () => {
     it("hides a parented record when options are absent entirely", () => {
@@ -22,11 +25,11 @@ describe("matchesParentageFilter", () => {
     });
 
     it("hides a parented record when the parentage key is absent", () => {
-      expect(matchesParentageFilter({ userId: "u" }, "sess_parent")).toBe(false);
+      expect(matchesParentageFilter(USER_ONLY, "sess_parent")).toBe(false);
     });
 
     it("keeps a top-level record when the parentage key is absent", () => {
-      expect(matchesParentageFilter({ userId: "u" }, undefined)).toBe(true);
+      expect(matchesParentageFilter(USER_ONLY, undefined)).toBe(true);
     });
   });
 

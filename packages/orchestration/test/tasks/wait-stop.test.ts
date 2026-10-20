@@ -134,7 +134,7 @@ describe("stop a turn parked on a wait", () => {
 
     // No sweep has timed the wait out (a cron host between runs): it still waits.
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(row!.wait.deadline + 10 * 60_000);
+    vi.setSystemTime(row!.wait!.deadline + 10 * 60_000);
     expect((await act(state, flow, "touch")).output).toEqual({ resumed: [], stillOwed: [] });
     expect(await rows(state, flow)).toEqual([expect.objectContaining({ status: "pending" })]);
     expect(await statusOf(state, parked.requestId!)).toBe("suspended");

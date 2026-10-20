@@ -16,7 +16,7 @@ describe("vercelPostgresStores", () => {
     // Calling index methods before resolve() must not throw or connect.
     await expect(adapter.scheduleIndex.upsert({} as never)).resolves.toBeUndefined();
     await expect(adapter.scheduleIndex.claimDue(Date.now())).resolves.toEqual([]);
-    await expect(adapter.scheduleIndex.remove("u1", "k1")).resolves.toBeUndefined();
+    await expect(adapter.scheduleIndex.remove({ cell: "u1", key: "k1" })).resolves.toBeUndefined();
   });
 
   it("fails fast with a clear error when no connection string is available", async () => {

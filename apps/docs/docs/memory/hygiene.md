@@ -70,7 +70,7 @@ Pass `hygiene` on the `memory.system()` call. Every field has a default; partial
 import { system } from '@flow-state-dev/memory'
 
 const mem = system({
-  model: 'openai/gpt-5.4-mini',
+  model: 'openai/gpt-6-luna',
   working: true,
   episodic: true,
   semantic: true,
@@ -118,7 +118,7 @@ For custom scheduling â€” a nightly cron, a Vercel cron route, a teardown step â
 
 ```ts
 const mem = system({
-  model: 'openai/gpt-5.4-mini',
+  model: 'openai/gpt-6-luna',
   working: true,
   episodic: true,
   semantic: true,
@@ -149,7 +149,7 @@ To revert entirely to pre-hygiene behavior, pass `hygiene: false`:
 
 ```ts
 const mem = system({
-  model: 'openai/gpt-5.4-mini',
+  model: 'openai/gpt-6-luna',
   working: true,
   episodic: true,
   semantic: true,

@@ -65,7 +65,7 @@ export const emFlow = workerFlow((installation) => {
 
   const answer = generator({
     name: "em-answer",
-    model: "openai/gpt-5.4-mini",
+    model: "openai/gpt-6-luna",
     inputSchema: messageInput,
     uses: [board.tools, board.messages],
     prompt: "You lead the feature. File the work for your delegates; never do it yourself.",

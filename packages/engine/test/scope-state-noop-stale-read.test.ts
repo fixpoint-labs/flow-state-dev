@@ -29,9 +29,9 @@ import { createScopeReread } from "../src/stores/scope-persist";
 type Mode = { mode: string };
 
 function createFlow(cas?: { maxRetries: number }) {
-  const block = handler<{ value: string }, { ok: boolean }>({
+  const block = handler({
     name: "noop-handler",
-    execute: () => ({ ok: true })
+    execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
   });
 
   return defineFlow({

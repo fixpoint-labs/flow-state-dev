@@ -68,6 +68,7 @@ function containerItem(id: string, blockInstanceId: string, component: string): 
   return {
     id,
     type: "container",
+    blockName: "container",
     status: "in_progress",
     requestId: "req",
     itemIndex: 0,

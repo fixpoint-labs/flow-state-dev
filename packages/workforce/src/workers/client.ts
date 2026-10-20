@@ -49,6 +49,10 @@ export type RosterEntry = {
   standard: boolean;
   /** What it is for, or `null`. */
   description: string | null;
+  /** Its display name, or `null` when it has none (a view shows its id). Only a standard worker has one. */
+  name: string | null;
+  /** Its team's display name, or `null` when the team has none or the worker has no team. */
+  teamName: string | null;
   /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
   forkedFrom: string | null;
 };
@@ -151,13 +155,21 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   const readRoster = async (id: string): Promise<RosterEntry[]> => {
     const [own, standard] = await Promise.all([listAll(id, WORKERS_RESOURCE), listAll(id, STANDARD_WORKERS_RESOURCE)]);
     const entry = (item: { topic: string; clientData?: unknown }, isStandard: boolean): RosterEntry => {
-      const data = (item.clientData ?? {}) as { flow?: unknown; description?: unknown; forkedFrom?: unknown };
+      const data = (item.clientData ?? {}) as {
+        flow?: unknown;
+        description?: unknown;
+        forkedFrom?: unknown;
+        name?: unknown;
+        teamName?: unknown;
+      };
       const topic = item.topic.slice(item.topic.lastIndexOf("/") + 1);
       return {
         id: topic,
         flow: String(data.flow),
         standard: isStandard,
         description: typeof data.description === "string" ? data.description : null,
+        name: isStandard && typeof data.name === "string" ? data.name : null,
+        teamName: isStandard && typeof data.teamName === "string" ? data.teamName : null,
         forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null
       };
     };

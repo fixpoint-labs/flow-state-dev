@@ -76,6 +76,8 @@ async function setup() {
     flowKind: "secret-flow",
     userId: "user_1",
     state: {},
+    journal: [],
+    version: 0,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -95,7 +97,7 @@ async function bodyOf(res: Response): Promise<{ text: string; json: any }> {
 describe("secret resource fields", () => {
   it("the stored record does hold the key (the reads below have something to leak)", async () => {
     const ctx = await setup();
-    expect(await ctx.stores.resourceState.get("session", SESSION, "keys/linear", "any")).toMatchObject({
+    expect(await ctx.stores.resourceState.get("session", SESSION, "keys/linear")).toMatchObject({
       state: { value: SENTINEL }
     });
   });

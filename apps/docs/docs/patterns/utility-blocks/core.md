@@ -40,8 +40,8 @@ Every utility that calls a model accepts a `model` override. Left alone, most as
 | Utility | Default model |
 |---------|---------------|
 | `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier`, `intentRouter` | `"intent/utility"` |
-| `decomposer` | `"openai/gpt-5.4-mini"` |
-| `sessionTitleGenerator` | `"openai/gpt-5-nano"` |
+| `decomposer` | `"openai/gpt-6-luna"` |
+| `sessionTitleGenerator` | `"openai/gpt-6-luna"` |
 
 `combiner`, `upsertResource`, and `keyedRouter` take no `model` — they run deterministic logic. `intentRouter` has no model of its own either; it passes `model` straight through to the classifier it wraps, which is where that default comes from. `cascadingRouter` takes no `model` either: each evaluator in its tree carries its own.
 
@@ -1218,7 +1218,7 @@ import { utility, sequencer } from "@flow-state-dev/core";
 
 const autoTitle = utility.sessionTitleGenerator({
   name: "auto-title",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   messageLimit: 4,       // recent messages to read (default: 4)
 });
 
@@ -1248,7 +1248,7 @@ The whole block is `transient: true`, so it produces no visible items in the str
 ```ts
 utility.sessionTitleGenerator({
   name: string,           // required — used as block name and for sub-block names
-  model?: string,         // model ID (default: "openai/gpt-5-nano")
+  model?: string,         // model ID (default: "openai/gpt-6-luna")
   messageLimit?: number,  // recent LLM messages to include (default: 4)
 });
 ```
