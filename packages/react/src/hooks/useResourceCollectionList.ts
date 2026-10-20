@@ -80,16 +80,9 @@ export function useResourceCollectionList<TClient = unknown>(
   const limit = options.limit;
   const topicPrefix = options.topicPrefix;
 
-  // The read identity. `wrap` is rebuilt exactly when the client, the session
-  // or the ref changes, and not on cache invalidation, so it names the
-  // collection being shown: a refetch keeps the rows on screen, a switch to
-  // another session does not.
+  // `wrap` changes with the client, the session and the ref, not with invalidation.
   const fence = useReadFence([wrap]);
 
-  // What has been read, stamped with the identity it was read under. Rows of
-  // an identity since left are never surfaced, even for the render between a
-  // switch and the new identity's first page (derived below, not reset in an
-  // effect).
   const [read, setRead] = useState<{
     identity: readonly unknown[];
     items: CollectionItemHandle<TClient>[];
@@ -110,8 +103,6 @@ export function useResourceCollectionList<TClient = unknown>(
 
   const fetchPage = useCallback(
     async (cursor: string | undefined, replace: boolean) => {
-      // Refused for an identity since left; otherwise the newest read wins,
-      // so a page that lands after a newer read began is not written.
       const stillCurrent = fence.begin();
       if (stillCurrent === null) return;
       const identity = fence.identity;
@@ -195,7 +186,6 @@ export function useResourceCollectionList<TClient = unknown>(
   return {
     items: surfaced,
     hasMore,
-    // Nothing read for the identity in play yet means a read is coming.
     isLoading: holdsCurrent ? isLoading : true,
     error,
     refetch,

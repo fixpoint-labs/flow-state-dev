@@ -1,16 +1,4 @@
 // @vitest-environment happy-dom
-/**
- * A collection read belongs to one identity: the transport (client), the
- * session, and the collection ref. Pages read under one identity must never be
- * served to another, and a response that lands after its identity has been
- * left must never be written where the new identity will read it.
- *
- * The hazard is silent: two sessions holding a same-named collection with the
- * same item count used to share one page cache, so switching session showed
- * the previous session's items and made no request at all. These tests drive
- * the real hook and the real resource client against a stubbed `fetch`, so a
- * cache that stops keying on identity fails here by serving the wrong rows.
- */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
