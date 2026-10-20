@@ -102,10 +102,18 @@ export function foldSequencerStateRequirements(
   let acc = initial;
   for (const child of children) {
     const requirement = (child.config as { sequencerStateSchema?: ZodTypeAny }).sequencerStateSchema;
-    if (requirement === undefined) continue;
-    acc = acc === undefined
-      ? requirement
-      : absorbSequencerStateRequirement(acc, requirement, ownerName, `block "${child.name}"`);
+    if (requirement !== undefined) {
+      acc = acc === undefined
+        ? requirement
+        : absorbSequencerStateRequirement(acc, requirement, ownerName, `block "${child.name}"`);
+    }
+    // A block-level `.rescue()` handler runs in the failing block's place,
+    // under the same `ctx.sequencer`. Read from `config.rescue`, not
+    // `childBlocks`, which also holds edges (a tool's wrapped block) that do not.
+    const rescue = child.config.rescue;
+    if (rescue !== undefined) {
+      acc = foldSequencerStateRequirements(acc, rescue.map((handler) => handler.block), ownerName);
+    }
   }
   return acc;
 }

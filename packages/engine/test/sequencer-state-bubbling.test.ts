@@ -125,6 +125,53 @@ describe("a child's sequencerStateSchema bubbles to the enclosing sequencer", ()
     expect(result.output).toBe(3);
   });
 
+  it("reaches the sequencer from a block-level rescue handler", async () => {
+    // The recovery block runs in the failing block's place, under the same `ctx.sequencer`.
+    const recovery = handler({
+      name: "recovery",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      sequencerStateSchema: z.object({ recovered: z.number().default(4) }),
+      execute: (_input, ctx) => ctx.sequencer?.state ?? null
+    });
+    const worker = handler({
+      name: "worker",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: () => {
+        throw new Error("worker failed");
+      }
+    });
+    const seq = sequencer({
+      name: "rescue-owner",
+      inputSchema: z.any(),
+      stateSchema: z.object({ label: z.string().default("x") })
+    }).step(worker.rescue([{ block: recovery }]));
+
+    const result = await run(flowOf("bubble-block-rescue", seq));
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ label: "x", recovered: 4 });
+  });
+
+  it("refuses a block-level rescue handler that conflicts with the sequencer", () => {
+    const recovery = handler({
+      name: "recovery-number",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      sequencerStateSchema: z.object({ label: z.number() }),
+      execute: (input) => input
+    });
+    const worker = handler({ name: "worker-plain", inputSchema: z.any(), outputSchema: z.any(), execute: (i) => i });
+    const parent = sequencer({
+      name: "rescue-conflict",
+      inputSchema: z.any(),
+      stateSchema: z.object({ label: z.string() })
+    });
+
+    expect(() => parent.step(worker.rescue([{ block: recovery }]))).toThrow(SequencerSchemaMismatchError);
+  });
+
   it("lands inside a wrapped object stateSchema and keeps the wrapper", async () => {
     // `z.object(...).default({})` built before bubbling existed; it must still
     // compose, and the `.default({})` must survive the added field.
