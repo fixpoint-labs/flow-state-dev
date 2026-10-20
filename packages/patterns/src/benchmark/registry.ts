@@ -11,7 +11,7 @@
  *     collection and returns a `TaskBoardHandle` rather than a synthesized
  *     answer, so benchmarking it alongside its consumers would double-count
  *     the same coordination work.
- *   - `event-actors`, `rlm`, `response-auditor`: not `goal → answer` shaped —
+ *   - `event-actors`, `response-auditor`: not `goal → answer` shaped —
  *     they don't map cleanly onto a single generic benchmark task and would
  *     need bespoke per-task glue.
  */

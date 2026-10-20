@@ -28,7 +28,7 @@ const resolvedControlTools = (list: unknown): GeneratorTool[] =>
 
 /** The task-board capability's own tool names, read off a fresh instance: never a count. */
 function taskToolNames(): string[] {
-  const capability = createTaskToolsCapability() as unknown as {
+  const capability = createTaskToolsCapability(async () => undefined) as unknown as {
     __presetDefs?: { tools?: { controlTools?: unknown } };
   };
   const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
@@ -235,7 +235,7 @@ describe("a worker files for its delegates that take a task (BR-1)", () => {
   }
 
   it("is refused, by core, when a second task-tools capability instance joins an `agent` turn (ER-32's control)", async () => {
-    const h = host({ agent: { uses: [() => [createTaskToolsCapability()]] } });
+    const h = host({ agent: { uses: [() => [createTaskToolsCapability(async () => undefined)]] } });
     try {
       const talk = await agentSession(h, "alice", "ana");
       const turn = await h.act("alice", talk, "run", { message: "what's on the board?" }, "agent");

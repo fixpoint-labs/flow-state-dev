@@ -16,10 +16,12 @@
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import type { GeneratorTool } from "@flow-state-dev/core";
-import { taskTools, DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
+import { createTaskToolsCapability } from "../../src/skills/task-tools-capability";
 import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { ticketForClaim, type Task } from "../../src/tasks";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
+
+const taskTools = createTaskToolsCapability(ownStateResolver);
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
@@ -69,7 +71,7 @@ function boardWithTwoClaimedTasks() {
 
 /** Stamp the worker scope as holding "mine" on the delegation board. */
 function holdMine() {
-  stampCurrentClaim(ticketForClaim(DELEGATION_BOARD_FIELD, inProgress("mine")));
+  stampCurrentClaim(ticketForClaim(BOARD_FIELD, inProgress("mine")));
 }
 
 describe("taskTools — a worker can only settle the task it holds", () => {
@@ -94,7 +96,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
 
     // Nothing was written. A refusal that still landed the payload would be
     // the defect wearing an error message.
-    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+    const board = selfState[BOARD_FIELD] as Record<string, Task>;
     expect(board.theirs?.status).toBe("in_progress");
     expect(board.theirs?.output).toBeUndefined();
   });
@@ -117,7 +119,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
 
       expect(result.ok).toBe(false);
       expect(result.error).toContain('you hold task "mine"');
-      const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+      const board = selfState[BOARD_FIELD] as Record<string, Task>;
       expect(board.theirs?.status).toBe("in_progress");
     },
   );
@@ -135,7 +137,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     )) as { ok: boolean };
 
     expect(result.ok).toBe(true);
-    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+    const board = selfState[BOARD_FIELD] as Record<string, Task>;
     expect(board.mine?.status).toBe("completed");
     expect(board.mine?.output).toBe("written by its holder");
   });
@@ -177,7 +179,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
       ),
     ).toEqual({ ok: true });
 
-    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+    const board = selfState[BOARD_FIELD] as Record<string, Task>;
     expect(board.theirs?.labels).toContain("triaged");
   });
 });

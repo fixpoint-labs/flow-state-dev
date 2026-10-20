@@ -21,8 +21,8 @@
  * Certifying the store cannot fix that. A brand, an arity probe, a mandatory
  * parameter — each verifies what the author *declared*, and a declaration is
  * precisely what a non-conforming author gets wrong. Worse, they only work
- * where the framework constructs the store through a boundary it owns, and
- * `dispatchAndExecuteBlock` is handed a ref directly as a plain option. So
+ * where the framework constructs the store through a boundary it owns, and a
+ * board's `collection` factory hands it a ref directly. So
  * containment moves here instead, to the two places the substrate actually asks
  * for an advisory write, where it can be held without the store's cooperation.
  *

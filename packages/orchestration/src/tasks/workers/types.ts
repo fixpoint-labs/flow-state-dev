@@ -12,15 +12,15 @@
  *     `task.assignee`).
  *
  * Worker output write-back is the pattern's responsibility, not the
- * worker's. Workers return their result; `dispatchAndExecute` (or any
+ * worker's. Workers return their result; the task board (or any
  * pattern) calls `collection.complete(taskId, output)` afterward.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /**
- * Input contract handed to every worker. The pattern's
- * `dispatchAndExecute` / board `packWorkerInput` packs the claimed
+ * Input contract handed to every worker. The board's
+ * `packWorkerInput` (or any pattern) packs the claimed
  * task's salient fields into this shape so workers don't depend on
  * the substrate's `Task` type directly.
  *

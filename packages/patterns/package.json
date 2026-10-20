@@ -32,10 +32,6 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
-    "./rlm": {
-      "types": "./dist/rlm/index.d.ts",
-      "default": "./src/rlm/index.ts"
-    },
     "./plan-and-execute": {
       "types": "./dist/plan-and-execute/index.d.ts",
       "default": "./src/plan-and-execute/index.ts"
@@ -78,10 +74,6 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "./rlm": {
-        "types": "./dist/rlm/index.d.ts",
-        "default": "./dist/rlm/index.js"
       },
       "./plan-and-execute": {
         "types": "./dist/plan-and-execute/index.d.ts",

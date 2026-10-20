@@ -55,8 +55,8 @@ block advertising a tool in its prompt that it cannot call.
 
 One capability may declare both, and the two shipped cases do:
 `createSkillsLibrary` registers the app catalog through `tools` and its own
-skill loader through `controlTools`; `taskTools` contributes the delegation
-board's eight tools entirely as controls. **This is why the exemption is
+skill loader through `controlTools`; `createTaskToolsCapability` contributes a
+task board's ten tools entirely as controls. **This is why the exemption is
 per-contribution rather than per-capability** — a capability-level flag would
 free the skills library's whole catalog registration along with its loader.
 

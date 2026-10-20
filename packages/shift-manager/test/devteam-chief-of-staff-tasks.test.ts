@@ -157,7 +157,7 @@ async function messages(lab: Lab, sessionId: string) {
 
 /** The task-board capability's own tool names, from a fresh instance: never a count. */
 function taskToolNames(): string[] {
-  const capability = createTaskToolsCapability() as unknown as {
+  const capability = createTaskToolsCapability(async () => undefined) as unknown as {
     __presetDefs?: { tools?: { controlTools?: unknown } };
   };
   const names = resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);
