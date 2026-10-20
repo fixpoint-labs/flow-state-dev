@@ -143,10 +143,10 @@ await sessions.deleteSession("sess_1");
 
 You can pass your own `sessionId` to `createSession` (see [Deriving the session id from your data](/docs/persistence/overview#deriving-the-session-id-from-your-data)). If you create a session under the id of one you deleted:
 
-- **What it shows.** If the same user, in the same organization, creates it, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. A new session created by anyone else shows none of them.
-- **What gets written to it.** Requests and background runs the deleted session left going write to the new session, whoever created it. Their state changes, journal entries, and any title, description, tags or metadata they set land there, and so can their resource writes.
+- **What it shows.** If it's created by the same user, in the same organization and tenant, for the same flow instance, the new session treats the deleted session's requests and background runs as its own: they show in its snapshot, its live stream and its background-work list. Any other new session under that id shows none of them.
+- **What gets written to it.** Requests and background runs the deleted session left running write to the new session, whoever created it. Their state changes, journal entries, and any title, description, tags or metadata they set land there. Their write to a resource lands once the new session has written that resource itself; before that, it's refused.
 
-Give a new session a new id.
+Give a new session a new id. If you derive ids from your data, include something that changes each time you recreate the session, such as a counter you bump on every delete, so the new session doesn't get the old id.
 
 **Listing sessions:**
 
