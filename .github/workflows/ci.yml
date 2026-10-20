@@ -337,16 +337,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Whole tree, every run: undeclared dependencies and imports that don't
-      # resolve. These are clean on main, so any finding is new.
       - name: Unresolved imports & unlisted dependencies
         run: pnpm fallow:ci
 
-      # PRs only: fails on unused files, exports or dependencies this PR
-      # introduces. Findings already on the base don't count, so the existing
-      # backlog never blocks a PR. New duplication and complexity are reported
-      # here without failing (see .fallowrc.json). `pnpm fallow` locally shows
-      # the whole backlog.
+      # Duplication and complexity stay warnings (.fallowrc.json).
       - name: New dead code
         if: github.event_name == 'pull_request'
         run: pnpm fallow:audit --base ${{ github.event.pull_request.base.sha }}
