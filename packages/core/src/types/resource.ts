@@ -480,52 +480,19 @@ export type AnyResourceRef =
   | import("./projected-resource-collection").ProjectedResourceCollectionRef<any>;
 
 /**
- * `ctx.resources`: the declared refs by accessor key, plus `get` and `list`.
- *
- * A block that declares resources must still be a `BlockContext`, so a
- * registry with declared refs has to be assignable to the open default
- * `ResourceRegistry<Record<string, AnyResourceRef>>`. Two parts of the type
- * make that hold, and each is load-bearing:
- *
- * - `list`'s element type is read through `infer`, not `TResources[keyof
- *   TResources]`. The indexed form makes `TResources` invariant, and
- *   TypeScript then refuses the assignment without looking further.
- * - A declared registry carries a string index signature typed `never`. The
- *   open registry has a `string` index signature, so without one of its own a
- *   declared registry's `get` and `list` would be checked against it as if
- *   they were resource refs, and fail. With it, the two index signatures are
- *   compared instead (`never` fits anything). The cost: an undeclared name
- *   reads as `never` rather than a missing property, so using it is still a
- *   type error but naming it alone is not. The open registry keeps its
- *   `AnyResourceRef` index signature unchanged.
+ * `ctx.resources`. A declared registry carries a `never` string index so it
+ * assigns to the open default: without one, `get` and `list` are checked
+ * against that default's `AnyResourceRef` index and fail. An undeclared name
+ * then reads as `never`. The switch is `keyof`: `TResources extends
+ * Record<string, …>` is true for a declared map too.
  */
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
   get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
-  list(): Array<ResourceRegistryValue<TResources>>;
+  list(): Array<TResources[keyof TResources]>;
 } & {
-  readonly [name: string]: TResources[OpenResourceKey<TResources>];
-};
-
-/**
- * The union of a registry's ref types, read covariantly (see `ResourceRegistry`).
- * The `extends AnyResourceRef` bound matters for an empty map: without it the
- * element type is `unknown`, and the registry no longer fits the open one.
- */
-type ResourceRegistryValue<TResources> =
-  TResources extends Record<string, infer TRef extends AnyResourceRef> ? TRef : never;
-
-/**
- * @internal The conditional is per key so that `TResources` stays covariant.
- *
- * `string` when `TResources` is the open record, `never` when it names its
- * keys — so indexing `TResources` by it gives `AnyResourceRef` or `never`.
- * The conditional sits on each key, not on `TResources`, which keeps
- * `TResources` covariant.
- */
-type OpenResourceKey<TResources> = keyof {
-  [K in keyof TResources as string extends K ? K : never]: unknown;
+  readonly [name: string]: string extends keyof TResources ? AnyResourceRef : never;
 };
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }

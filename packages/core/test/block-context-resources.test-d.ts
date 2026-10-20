@@ -107,7 +107,7 @@ handler({
   execute: (input, ctx) => {
     readsAnyCtx(ctx);
     readsOpenRegistry(ctx.resources);
-    expectTypeOf(ctx.resources.list()).toEqualTypeOf<AnyResourceRef[]>();
+    expectTypeOf(ctx.resources.list()).toEqualTypeOf<never[]>();
     return input;
   },
 });

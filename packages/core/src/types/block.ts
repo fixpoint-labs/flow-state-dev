@@ -827,20 +827,11 @@ export interface BlockContext<
 }
 
 /**
- * A permissive, variance-friendly alias for `BlockContext` — typed where it
- * matters (the session scope) and permissive everywhere else.
- *
- * Use this for helper functions that take a block's `ctx` as a parameter and
- * read only a few scopes. A handler that declares resources is assignable to a
- * plain `BlockContext`, but the full context still checks every other slot
- * against the parameter's type arguments; `LooseBlockContext` asks for the
- * session state shape and leaves the rest, including `resources`, permissive —
- * the helper accepts any block's ctx, and the call site retains its narrower
- * typing internally.
- *
- * When the helper actually needs typed resources, narrow per call site or
- * declare a stricter ctx shape inline. `LooseBlockContext` is for the
- * common case where the helper only touches `ctx.session`.
+ * Permissive alias for `BlockContext`: session state stays typed, every other
+ * slot does not. A resource-declaring ctx is already a plain `BlockContext`.
+ * Use this when a helper only reads `ctx.session` and the rest of the
+ * context's type arguments would still reject the call. Narrow at the call
+ * when the helper needs typed resources.
  */
 export type LooseBlockContext<
   TSessionState extends object = Record<string, unknown>,
