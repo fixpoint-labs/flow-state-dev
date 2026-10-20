@@ -73,6 +73,10 @@ handler({
     expectTypeOf(ctx.resources.missing).toBeNever();
     // @ts-expect-error reading through an undeclared name.
     void ctx.resources.missing.state;
+    // A key typed only as `string` reads as `never` too: the declared refs
+    // are reachable by literal name or `get`, not by an arbitrary string.
+    const k: string = "notes";
+    expectTypeOf(ctx.resources[k]).toBeNever();
     return input;
   },
 });
@@ -90,6 +94,20 @@ handler({
     expectTypeOf(ctx.resources.list()).toEqualTypeOf<
       Array<ResourceRef<any> | ResourceCollectionRef<any>>
     >();
+    return input;
+  },
+});
+
+/** An empty `resources` map is a declaration too, and passes the same way. */
+handler({
+  name: "declares-empty",
+  inputSchema: z.string(),
+  outputSchema: z.string(),
+  resources: {},
+  execute: (input, ctx) => {
+    readsAnyCtx(ctx);
+    readsOpenRegistry(ctx.resources);
+    expectTypeOf(ctx.resources.list()).toEqualTypeOf<AnyResourceRef[]>();
     return input;
   },
 });

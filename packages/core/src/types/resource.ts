@@ -508,11 +508,17 @@ export type ResourceRegistry<
   readonly [name: string]: TResources[OpenResourceKey<TResources>];
 };
 
-/** The union of a registry's ref types, read covariantly (see `ResourceRegistry`). */
+/**
+ * The union of a registry's ref types, read covariantly (see `ResourceRegistry`).
+ * The `extends AnyResourceRef` bound matters for an empty map: without it the
+ * element type is `unknown`, and the registry no longer fits the open one.
+ */
 type ResourceRegistryValue<TResources> =
-  TResources extends Record<string, infer TRef> ? TRef : never;
+  TResources extends Record<string, infer TRef extends AnyResourceRef> ? TRef : never;
 
 /**
+ * @internal The conditional is per key so that `TResources` stays covariant.
+ *
  * `string` when `TResources` is the open record, `never` when it names its
  * keys — so indexing `TResources` by it gives `AnyResourceRef` or `never`.
  * The conditional sits on each key, not on `TResources`, which keeps

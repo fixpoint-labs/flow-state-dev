@@ -164,7 +164,7 @@ export const noteWokenAnswer = handler({
   name: "split-note-answer",
   inputSchema: z.unknown(),
   execute: async (answer, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
+    const ctx: BlockContext = rawCtx;
     if (answer !== undefined && parentBindingOf(ctx) !== undefined) {
       await ctx.request.patchState({ [WOKEN_ANSWER_STATE]: answer } as never);
     }

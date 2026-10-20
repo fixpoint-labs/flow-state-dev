@@ -292,23 +292,21 @@ The `*Input` / `*Output` / `StateOf` helpers use `typeof` on your existing defin
 
 ### When to reach for `LooseBlockContext`
 
-The full `BlockContext<...>` is invariant on its `TResources` parameter. That means a handler whose `ctx.resources` is inferred as the narrow `ResourceRegistry<{ memos: ... }>` (from `resources: memoResources` in the block config) **can't be assigned** to a parameter typed `BlockContext<unknown, MyState>` (whose default `ResourceRegistry<Record<string, AnyResourceRef>>` isn't a supertype of the narrow inferred form).
-
-This bites whenever you pull `ctx` into a helper:
+A block that declares `resources` can pass its `ctx` to a helper typed `BlockContext`. Its declared refs keep their types inside the block. A full `BlockContext` parameter still checks every other slot of the context, though. For example, a block whose `uses` brings in a capability has a `ctx.targets` that a plain `BlockContext` won't accept:
 
 ```ts
-// Won't compile — variance trap on TResources
-async function publishMemo(ctx: BlockContext<unknown, MySessionState>, ...) {}
+async function publishMemo(ctx: BlockContext<Record<string, unknown>, MySessionState>, ...) {}
 
 handler({
   resources: { memos: memosCollection },
+  uses: [someCapability],
   execute: async (input, ctx) => {
-    await publishMemo(ctx, ...); // Error: TResources mismatch
+    await publishMemo(ctx, ...); // Error: ctx.targets doesn't match
   },
 });
 ```
 
-`LooseBlockContext<TSessionState>` solves it by leaving `resources` permissive (`any`):
+`LooseBlockContext<TSessionState>` asks only for the scopes a helper usually reads. It types the session state and leaves `resources` permissive (`any`):
 
 ```ts
 import type { LooseBlockContext } from "@flow-state-dev/core";
