@@ -99,7 +99,7 @@ It comes down to when a developer finds out: as they type, or when the app first
 
 - **The alias works end to end.** CONFIRMED by the spike: `pnpm typecheck` green in 76–79s,
   lint green through TS 6, Storybook and all 28 builds green
-  ([findings](spike/FINDINGS.md#compiler-api-consumers), [diff](spike/ts7-side-by-side.diff)).
+  ([findings](spike/FINDINGS.md#compiler-api-consumers)).
 - **Emitted JavaScript is unchanged on 7.** CONFIRMED: byte-identical. 17 of 376 core `.d.ts`
   files differ, only in member order.
 - **Workforce's code generator doesn't use the TS API.** CONFIRMED; the issue's concern didn't

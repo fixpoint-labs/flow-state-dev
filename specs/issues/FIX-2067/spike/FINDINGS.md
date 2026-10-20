@@ -2,13 +2,7 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · **Spike findings**
 
-Measurement spike, run 2026-10-20 on a local branch off `main` @ `364f5ba22`. Nothing from it was committed. Retained here as the spec's evidence:
-
-- [`ts6-probe.diff`](ts6-probe.diff): the probe state that is green on TS 6.0.3.
-- [`ts7-side-by-side.diff`](ts7-side-by-side.diff): the probe state that is green on TS 7.0.2 with the side-by-side alias (lockfile hunk removed).
-- [`timings.txt`](timings.txt): every timed run, with wall time and memory. Runs marked `rc≠0` were probes in progress, not results.
-
-The probe diffs are evidence, not the change to merge: they edit per-package pins that the implementation deletes instead, and use `as never` where the implementation annotates.
+Measurement spike, run 2026-10-20 on a local branch off `main` @ `364f5ba22`. Nothing from it was committed. Retained evidence is [`timings.txt`](timings.txt): every timed run, with wall time and memory. Runs marked `rc≠0` were probes in progress, not results.
 
 ## Machine
 4 vCPU (Intel Xeon @ 2.10GHz, `nproc`=4), 15 GiB RAM, no swap. Node 22.22.2, pnpm 10.4.1, turbo 2.9.x (default concurrency 10). Firecracker VM. Compare timings with each other, not as absolute numbers.
@@ -103,7 +97,7 @@ Validators/tools on 7 **without** the alias: `validate-test-typecheck` ✗ (Type
 | vitest / tsx | esbuild transpile | ✓ | ✓ (unaffected) | No |
 | fallow-type-aware (optional) | already pins `typescript@7.0.2` | n/a | n/a | No |
 
-**Side-by-side verified end-to-end** ([`ts7-side-by-side.diff`](ts7-side-by-side.diff)): root `"@typescript/native": "npm:typescript@7.0.2"` + `"typescript": "npm:@typescript/typescript6@6.0.2"`; per-package pins also set to the typescript6 alias. Results: root `.bin/tsc` = 7.0.2 and `tsc6` = 6.0; `require("typescript").version` = 6.0.3; inside a package, `pnpm exec tsc` falls through to the root's 7 (package `.bin` has only `tsc6`). **`scripts/typecheck.mjs` needs no change.** The full `pnpm typecheck` is green in ~77s. The probe edited per-package package.json pins; the real change could delete them and keep only the root.
+**Side-by-side verified end-to-end:** root `"@typescript/native": "npm:typescript@7.0.2"` + `"typescript": "npm:@typescript/typescript6@6.0.2"`; per-package pins also set to the typescript6 alias. Results: root `.bin/tsc` = 7.0.2 and `tsc6` = 6.0; `require("typescript").version` = 6.0.3; inside a package, `pnpm exec tsc` falls through to the root's 7 (package `.bin` has only `tsc6`). **`scripts/typecheck.mjs` needs no change.** The full `pnpm typecheck` is green in ~77s. The probe edited per-package package.json pins; the real change deletes them and keeps only the root.
 
 ## Recommendation
 **6 then 7, as two PRs close together, with 6 as the permanent JS-API layer, not a throwaway step.**
