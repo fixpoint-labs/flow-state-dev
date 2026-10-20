@@ -1,15 +1,15 @@
 /**
- * flow-state.dev — earthy/golden syntax themes.
+ * flow-state.dev — Paper and Night syntax themes.
  *
- * Replaces the default dracula palette (loud purple + pink) so code blocks
- * sit in the same golden/earthy register as the rest of the site
- * (brand accent #B27D40). Keywords lean amber-gold, strings a muted sage,
- * literals a warm copper — no high-saturation magenta.
+ * Code blocks take the Flow State brand inks that Shift Manager and the
+ * DevTool paint with: warm ink on a card surface, blueprint for keywords and
+ * types, green for strings, the brand red for literals. The highlighter yellow
+ * never appears; it is reserved for "a person must act".
  *
  * Light and dark share an identical token→scope mapping and differ only in
  * their color values, so both are built from a small palette via `buildTheme`.
- * The `background` here is the single source of truth for the code-block
- * surface in both modes (custom.css no longer overrides it).
+ * The background reads the design-system's `--card` token, so the code surface
+ * follows the page theme.
  */
 import type { PrismTheme } from "prism-react-renderer";
 
@@ -53,7 +53,7 @@ function buildTheme(p: Palette): PrismTheme {
         types: ["string", "char", "attr-value", "inserted", "regex"],
         style: { color: p.string },
       },
-      { types: ["function"], style: { color: p.function } },
+      { types: ["function"], style: { color: p.function, fontWeight: "500" } },
       { types: ["class-name"], style: { color: p.className } },
       {
         types: ["property", "variable", "attr-name"],
@@ -66,34 +66,34 @@ function buildTheme(p: Palette): PrismTheme {
   };
 }
 
-// Light-mode colors are tuned to clear WCAG AA (>= 4.5:1) against the
-// #faf8f4 code surface — code comments in particular carry explanatory text.
-export const earthyLight: PrismTheme = buildTheme({
-  background: "#faf8f4",
-  plain: "#3b352b",
-  comment: "#746a58",
-  punctuation: "#7a7060",
-  operator: "#6e6455",
-  keyword: "#9c6122",
-  literal: "#ab5730",
-  string: "#5e6e4a",
-  function: "#8f6330",
-  className: "#7a5a2a",
-  property: "#5f5847",
-  deleted: "#b04a3a",
+// Every foreground clears WCAG AA (>= 4.5:1) against its card surface;
+// comments in particular carry explanatory text.
+export const paperTheme: PrismTheme = buildTheme({
+  background: "var(--card)",
+  plain: "#1b1a15",
+  comment: "#6e6a5e",
+  punctuation: "#57544a",
+  operator: "#57544a",
+  keyword: "#2c4f8c",
+  literal: "#a83e28",
+  string: "#3d6b45",
+  function: "#1b1a15",
+  className: "#2c4f8c",
+  property: "#3d3a32",
+  deleted: "#a83e28",
 });
 
-export const earthyDark: PrismTheme = buildTheme({
-  background: "#0c0c14",
-  plain: "#e4ddd0",
-  comment: "#857c6a",
-  punctuation: "#9a9182",
-  operator: "#b8ae9c",
-  keyword: "#c79a5b",
-  literal: "#cb8e5e",
-  string: "#a3b18a",
-  function: "#e0b87a",
-  className: "#d9c18a",
-  property: "#dccdb4",
-  deleted: "#c56b5b",
+export const nightTheme: PrismTheme = buildTheme({
+  background: "var(--card)",
+  plain: "#ece7da",
+  comment: "#a6a08f",
+  punctuation: "#a6a08f",
+  operator: "#cbc5b5",
+  keyword: "#8fabe2",
+  literal: "#e27a5f",
+  string: "#8cc39a",
+  function: "#ece7da",
+  className: "#8fabe2",
+  property: "#cbc5b5",
+  deleted: "#e27a5f",
 });

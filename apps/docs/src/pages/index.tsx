@@ -40,31 +40,27 @@ export default defineFlow({
 
 /* ── Data ── */
 
-type BlockPrimitive = { name: string; kind: string; color: string; prop: string };
+type BlockPrimitive = { name: string; kind: string; prop: string };
 
 const blockPrimitives: BlockPrimitive[] = [
   {
     name: "Generator",
     kind: "LLM Calls",
-    color: "#8B5CF6",
     prop: "Streams tokens, runs tool loops, and injects whatever context you provide. The AI in your pipeline — composable like everything else.",
   },
   {
     name: "Handler",
     kind: "Deterministic Functions",
-    color: "#10B981",
     prop: "Pure logic with typed contracts. Validate, transform, update state. The clean boundary between AI and code — explicit by design.",
   },
   {
     name: "Sequencer",
     kind: "Orchestration",
-    color: "#3B82F6",
     prop: "Chains any block after any other. Sequential, parallel, looping, background workers. Compose the architecture you actually need.",
   },
   {
     name: "Router",
     kind: "Block Selection",
-    color: "#F59E0B",
     prop: "Evaluates conditions at runtime and dispatches to the right pipeline. Intent routing, mode switching, conditional flows.",
   },
 ];
@@ -260,7 +256,6 @@ function PrimitivesBreakdown() {
           <div
             key={b.name}
             className={styles.breakdownBlock}
-            style={{ "--block-color": b.color } as React.CSSProperties}
           >
             <span className={styles.breakdownBlockKind}>{b.kind}</span>
             <code className={styles.breakdownBlockName}>{b.name}</code>
