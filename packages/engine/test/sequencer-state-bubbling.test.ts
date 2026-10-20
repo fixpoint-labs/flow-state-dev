@@ -9,6 +9,7 @@ import {
   router,
   sequencer,
   SequencerSchemaMismatchError,
+  transientSlot,
   DEFAULT_ORG_ID
 } from "@flow-state-dev/core";
 import type { FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
@@ -194,6 +195,39 @@ describe("a child's sequencerStateSchema bubbles to the enclosing sequencer", ()
     const result = await run(flowOf("bubble-wrapped", seq));
     expect(result.error).toBeUndefined();
     expect(result.output).toEqual({ progress: 0, extra: "e" });
+  });
+
+  it("keeps a child's transient field off the stream under a wrapped stateSchema", async () => {
+    // The wrapper stays at the root of the joined schema; the transient mark
+    // must still be found through it, or the value reaches SSE and checkpoints.
+    const writeScratch = handler({
+      name: "write-scratch",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      sequencerStateSchema: z.object({ scratch: transientSlot(z.string().optional()) }),
+      execute: async (input, ctx) => {
+        await ctx.sequencer!.patchState({ scratch: "secret" });
+        return input;
+      }
+    });
+    const seq = sequencer({
+      name: "wrapped-transient-owner",
+      inputSchema: z.any(),
+      stateSchema: z.object({ visible: z.number().default(0) }).default({})
+    })
+      .step(writeScratch)
+      .step(reportState);
+
+    const result = await run(flowOf("bubble-wrapped-transient", seq));
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ visible: 0, scratch: "secret" });
+    const leaked = (result.items as Array<{ type: string }>).filter(
+      (item) =>
+        (item.type === "state_change" || item.type === "state_snapshot") &&
+        JSON.stringify(item).includes("secret")
+    );
+    expect(leaked).toEqual([]);
   });
 
   it("reads the fields of a wrapped object requirement", async () => {
