@@ -58,7 +58,7 @@ a waiting request and carries it on later.
 ## Tasks
 
 **A task is a piece of work on a board, a session's list of tasks.** Its **filer**, the session that
-filed it, plans it, sees how it ends, and can steer or cancel it. Its **assignee** does it and is
+filed it, plans it, sees how it ends, and can edit, steer or cancel it. Its **assignee** does it and is
 accountable. Its **brief** says what the work is.
 
 **A board's `mode` makes it a plan board or a delegation board,** and each session has one of
@@ -95,12 +95,12 @@ delegation board. The **dispatcher** block has its own `wait`, `false` by defaul
 the work's result comes back as the block's output, through a durable wait with a deadline. Inside a
 board, the board's mode decides.
 
-**Four settings, fixed at filing,** decide how a delegated task runs. A plan row uses only start and
+**Four settings, set at filing,** decide how a delegated task runs. A plan row uses only start and
 attempts.
 
 | Setting | Choices | Default |
 | -- | -- | -- |
-| Start | Now · after named tasks on the same board (its **dependencies**) · **held** until `updateTask` starts it · **held on questions** (see Inbox items) | Now |
+| Start | Now · after named tasks on the same board (its **dependencies**) · **held** until the filer releases it · **held on questions** (see Inbox items) | Now |
 | Session | New · the assignee's ongoing session for the filer's conversation · an earlier task's session (a **follow-up**) | New |
 | Result goes to | **The filer:** its waiting request if one waits on the task, otherwise its next request · the filer's conversation, under the assignee's name (routing uses this) | The filer |
 | Attempts | Failed runs before it fails | 2 |
@@ -131,9 +131,17 @@ retries or fails, suspended is waiting on a person. A worker block never settles
 returns or throws, and whoever ran it turns that into the row's ending, the plan board's drain for an
 inline row and the claim gate for a dispatched one.
 
-**The filer steers with `updateTask({ id, message })`,** as can the user typing in the task's
-session. The message **steers** a running task (the worker continues with it, using no attempt),
-answers one waiting on a person, and continues a finished one as a follow-up, with fresh attempts.
+**What `updateTask` does depends on how far the task has got.**
+
+| The task is | `updateTask` |
+| -- | -- |
+| Not started: pending or held | Edits it: goal, title, context, input, dependencies (same board, no cycles), priority, labels, metadata, attempts, and the assignee (one of the filer's delegates). `status: "held"` holds it; `status: "pending"` releases it. A task held on questions also needs its answers |
+| Started: running or waiting on a person | Edits nothing. `updateTask({ id, message })` **steers** a running task (the worker continues with it, using no attempt) or answers one waiting on a person |
+| Finished | Edits nothing. A message continues it as a follow-up in the same session, with fresh attempts |
+
+Typing in the task's session sends such a message. Reassigning a started task is cancel and refile.
+The mechanisms own the rest: other statuses, the record that a request waits on it, which task it
+follows up, attempts used, its run, data the server wrote, and its session and result.
 
 **Every ending of a delegated task reaches the filer once,** as the result setting says: to its
 waiting request if one waits, otherwise through `onTaskSettled`, which starts its next request.
@@ -269,7 +277,7 @@ author spreads into the flow definition.
 
 The model's seven tools: `addTask`, `updateTask`, `cancelTask`, `listTasks`, `readTask`,
 `sendMessage`, `waitForUser`. The task tools are also public actions a screen calls as the user:
-cancel a task, start a held one, answer its questions. Every worker gets `listDelegates`; only a configured coordinator gets
+cancel a task, release a held one, answer its questions. Every worker gets `listDelegates`; only a configured coordinator gets
 `addDelegate`, `removeDelegate`, `setFallback`.
 
 ## How it flows
@@ -320,7 +328,7 @@ A behavior none of these rules explains is a bug in the model.
 3. A request files tasks only for work its job needs: its task, or the user's message it answers.
    Anything else is a message to the filer above. Nothing leaves the roster: Alice's workers never
    reach Bob's researcher.
-4. A task has one filer, one accountable assignee, and four settings fixed at filing.
+4. A task has one filer, one accountable assignee, and four settings set at filing.
 5. A session holds at most one open task from the delegation board above it; another stays pending.
    Plan rows don't count.
 6. A task runs while tasks it filed are open, and is done when a request for it finishes with none
@@ -337,7 +345,7 @@ A behavior none of these rules explains is a bug in the model.
 11. Every stop for a person is one Inbox item: a suspended request, or a task held on questions.
     Only the user answers approvals and reviews.
 12. A suspension resumes once, answered, deadline or cancelled, unless its request is stopped. Its
-    task keeps its claim. A held task starts when its last question is answered.
+    task keeps its claim. A task held on questions starts no sooner than its last answer.
 13. Only the user changes delegates, except a coordinator configured to change its own.
 14. A board's `mode` is `plan`, the default, or `delegation`. A plan board's drain waits on every
     row, a delegation board's on none, and a board built to mix the two is refused when built.
@@ -347,6 +355,8 @@ A behavior none of these rules explains is a bug in the model.
 18. A worker block never settles its own row. It returns or throws; the drain settles an inline row,
     and the claim gate a dispatched one, even one a plan board waits on.
 19. A goal-seek loop needs a plan board, and is refused when built over a delegation board.
+20. `updateTask` edits a task only before it starts; after, it only delivers a message: a steer, an
+    answer or a follow-up.
 
 ## Vocabulary
 
@@ -371,7 +381,7 @@ rest.
 | Delegation board, `dispatch` | The board of tasks for delegates, whose drain never waits; the pass that drains it |
 | Dispatch, dispatcher | Start work in another session; the block that does it, waiting for the result only with `wait: true` |
 | Schedule | A row in a user's schedule list that files a task each time it fires |
-| Dependency, held, held on questions | A task on the same board that must end first; waiting for `updateTask`; waiting for the user's answers |
+| Dependency, held, held on questions | A task on the same board that must end first; waiting for the filer to release it; waiting for the user's answers |
 | Pending, running, waiting on a person | Not yet started; worked, or with filed tasks open; its request suspended |
 | Steer | A message a running task's worker continues with |
 | Follow-up, sibling | A task in an earlier task's session; a task filed beside another, for work its worker reported |
@@ -388,7 +398,7 @@ rest.
 ## Decisions
 
 The model above is the owner's, including: nothing settled by hand (seven tools, not eight); a
-deadline on every wait, a waited dispatch included; nested waits (rule 9); and twelve newly decided:
+deadline on every wait, a waited dispatch included; nested waits (rule 9); and thirteen newly decided:
 
 - [x] **Held on questions.** Questions known at filing reach the Inbox at once; mid-task stops stay
   suspensions.
@@ -405,6 +415,8 @@ deadline on every wait, a waited dispatch included; nested waits (rule 9); and t
 - [x] **A worker block never settles its own row (rule 18).** Whoever ran the work settles it.
 - [x] **A goal-seek loop needs a plan board (rule 19),** and refuses a delegation board when built.
 - [x] **Patterns are plan boards.** They keep their boards and don't change.
+- [x] **`updateTask` means one thing per phase (rule 20),** so there's no separate steer tool.
+  Reassigning a running task is cancel and refile.
 
 Open:
 
