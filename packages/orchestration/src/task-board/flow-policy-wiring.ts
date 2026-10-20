@@ -166,10 +166,10 @@ function claimRequestKey(ctx: WorkerClaimReader): string | undefined {
   return `${request.identity.id}\u0000${request.incarnation ?? ""}`;
 }
 
-/** The ticket stamped in this async chain, if it was stamped in `requestKey`'s request. */
-function claimInRequest(requestKey: string | undefined): TaskClaimTicket | undefined {
+/** This async chain's claim slot, if a ticket was stamped in it in `requestKey`'s request. */
+function slotInRequest(requestKey: string | undefined): ClaimSlot | undefined {
   const slot = workerClaimStore.getStore();
-  return slot !== undefined && slot.request === requestKey ? slot.ticket : undefined;
+  return slot?.ticket !== undefined && slot.request === requestKey ? slot : undefined;
 }
 
 /** Resolve a user-supplied `flowPolicy` value to a concrete `TaskFlowPolicy`. */
@@ -282,7 +282,7 @@ export function createInstallBoardFlowState(
         // Read taskId from the AsyncLocalStorage scope of the calling
         // worker — never from a shared bag field, which would race under
         // concurrency > 1.
-        const taskId = claimInRequest(drainRequest)?.taskId;
+        const taskId = slotInRequest(drainRequest)?.ticket?.taskId;
         ledger.append({
           collectionId,
           ...(taskId !== undefined ? { taskId } : {}),
@@ -299,7 +299,7 @@ export function createInstallBoardFlowState(
       // the in-progress task id so later cross-task hits can attribute
       // back via `sourceTask`. Same per-worker isolation via ALS.
       state[SLOT_CACHE_SOURCE_TASK_RESOLVER] = () => {
-        const taskId = claimInRequest(drainRequest)?.taskId;
+        const taskId = slotInRequest(drainRequest)?.ticket?.taskId;
         return taskId !== undefined ? { collectionId, taskId } : undefined;
       };
     },
@@ -408,8 +408,8 @@ export function stampCurrentClaim(
 
 /** A claim in this request whose stamp did not pass `taskTurn: false`. */
 export function claimServesTaskTurn(ctx: WorkerClaimReader): boolean {
-  const slot = workerClaimStore.getStore();
-  return claimInRequest(claimRequestKey(ctx)) !== undefined && slot?.taskTurn !== false;
+  const slot = slotInRequest(claimRequestKey(ctx));
+  return slot !== undefined && slot.taskTurn !== false;
 }
 
 /**
@@ -427,7 +427,7 @@ export function claimServesTaskTurn(ctx: WorkerClaimReader): boolean {
  * settling a task it never claimed.
  */
 export function currentWorkerClaim(ctx: WorkerClaimReader): TaskClaimTicket | undefined {
-  return claimInRequest(claimRequestKey(ctx));
+  return slotInRequest(claimRequestKey(ctx))?.ticket;
 }
 
 /**
