@@ -252,7 +252,8 @@ describe("useResourceCollectionList across a session switch", () => {
   });
 
   it("does not show the old session's prefetched or live rows before the new session's snapshot arrives", async () => {
-    const { pending } = stubListFetch({ hold: true });
+    // Held open, so the list shows only the snapshot's rows.
+    stubListFetch({ hold: true });
     const fromA = { count: 2, prefetched: [{ topic: "prefetched-a" }], live: { "live-a": { clientData: {} } } };
     const { result, rerender } = renderHook(
       ({ session }: { session: SessionView }) => useResourceCollectionList(session, REF),
