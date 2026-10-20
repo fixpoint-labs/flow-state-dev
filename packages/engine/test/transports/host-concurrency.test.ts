@@ -40,9 +40,9 @@ function buildHost(concurrency: ConcurrencyConfig) {
         run: {
           concurrency,
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "concur-run",
-            execute: async (input) => {
+            execute: async (input: { value: string }): Promise<{ ok: true }> => {
               const id = input.value;
               live.push(id);
               startOrder.push(id);

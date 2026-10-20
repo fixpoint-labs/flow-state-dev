@@ -23,7 +23,7 @@ import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
 import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
 import { Inbox } from "./surfaces/Inbox";
-import { JumpTo } from "./surfaces/JumpTo";
+import { JumpTo, MESSAGE_PREFIX } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { RosterView } from "./surfaces/Roster";
 import { WorkerSettingsView } from "./surfaces/WorkerSettings";
@@ -97,7 +97,7 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
   const { snapshot, refresh, clients } = useLab();
   const route = useRoute();
-  // Null is closed; "" opens Jump to, "> " opens it already in message mode.
+  // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
   const [jumping, setJumping] = useState<string | null>(null);
   const panels = usePanels(clients.userId);
   const { toggleNav, togglePanel } = panels;
@@ -107,8 +107,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        // Shift+⌘K goes straight to messaging the Shift Coordinator.
-        setJumping((j) => (j === null ? (e.shiftKey ? "> " : "") : null));
+        // Shift+⌘K goes straight to messaging the Shift Coordinator. Either chord closes an open palette; neither re-seeds it.
+        setJumping((j) => (j === null ? (e.shiftKey ? MESSAGE_PREFIX : "") : null));
         return;
       }
       // `[` and `]` toggle the sidebar and the right panel, except while typing,

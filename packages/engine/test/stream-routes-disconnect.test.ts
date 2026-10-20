@@ -38,6 +38,7 @@ describe("live tail whose caller aborts", () => {
         id: REQUEST_ID,
         flowKind: FLOW_KIND,
         actionName: "run",
+        source: "http",
         userId: "alice",
         sessionId: "sess_alice",
         status: "in_progress",

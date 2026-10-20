@@ -15,11 +15,12 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { WorkerDetail } from "../src/components/panels/WorkerDetail";
+import type { PanelItemSource } from "../src/components/panels/reads";
 
 afterEach(cleanup);
 
 /** A `getCollectionItemState` source that answers one fixed result. */
-function fakeSource(result: unknown) {
+function fakeSource(result: Awaited<ReturnType<PanelItemSource["getCollectionItemState"]>>) {
   return { getCollectionItemState: vi.fn(async () => result) };
 }
 
@@ -152,7 +153,9 @@ describe("WorkerDetail", () => {
     // the collection has no client projection configured. The item EXISTS;
     // it just can't be read through this surface. That is the distinct
     // "could not be read" state, not the "no such topic" state.
-    const source = fakeSource({ topic: "f", storageKey: "roster/f", hint: "no client.data configured" });
+    // The route's metadata keys are not on the client's `CollectionItemState` type.
+    const metadataOnly = { topic: "f", storageKey: "roster/f", hint: "no client.data configured" };
+    const source = fakeSource(metadataOnly);
     render(createElement(WorkerDetail, { sessionId: "s1", kind: "k", workerId: "f", resourceClient: source }));
 
     await waitFor(() => expect(document.querySelector('[data-state="error"]')).toBeTruthy());

@@ -18,7 +18,7 @@ The agent sees a tool with a `query` argument and an optional `limit`. Under the
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   episodic: true,
   semantic: true,
   tool: {

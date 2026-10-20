@@ -18,9 +18,9 @@ function define(kind: string, cardinality?: "singleton" | "collection") {
     actions: {
       run: {
         inputSchema: z.object({}),
-        block: handler<Record<string, never>, { marker: string }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ marker: kind })
+          execute: (_input: Record<string, never>): { marker: string } => ({ marker: kind })
         })
       }
     }
@@ -155,9 +155,9 @@ describe("flow registry config admission", () => {
       actions: {
         run: {
           inputSchema: z.object({}),
-          block: handler<Record<string, never>, { ok: true }>({
+          block: handler({
             name: "engineer-blueprint-run",
-            execute: () => ({ ok: true })
+            execute: (_input: Record<string, never>): { ok: true } => ({ ok: true })
           })
         }
       }
@@ -174,6 +174,7 @@ describe("flow registry config admission", () => {
     expect(registry.list()).toEqual([]);
 
     // Minted, it registers exactly as before.
+    // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
     registry.register(engineer({ config: { harness: "codex", model: "gpt-5.4" } }));
     expect(registry.get("engineer-blueprint")?.config).toEqual({
       harness: "codex",
@@ -212,9 +213,9 @@ describe("flow registry config admission", () => {
       actions: {
         run: {
           inputSchema: z.object({}),
-          block: handler<Record<string, never>, { ok: true }>({
+          block: handler({
             name: "digest-blueprint-run",
-            execute: () => ({ ok: true })
+            execute: (_input: Record<string, never>): { ok: true } => ({ ok: true })
           })
         }
       }

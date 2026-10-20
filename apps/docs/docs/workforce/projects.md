@@ -362,7 +362,7 @@ import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: { catalog: { ...projectCoordinatorTools } },
 });
 ```
@@ -419,13 +419,13 @@ Your coordinator can open a workstream for you when you ask for work none of you
 const workstreams = defineWorkstreamBlocks({
   installation,
   leadFlows: [agentLeads],
-  leadFit: { model: "openai/gpt-5.4-mini" },
+  leadFit: { model: "openai/gpt-6-luna" },
 });
 
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
       ...projectCoordinatorTools,
@@ -475,7 +475,7 @@ Your coordinator can change your workstreams in its project when you ask: rename
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
       ...projectCoordinatorTools,
@@ -529,7 +529,7 @@ const projects = defineProjectBlocks();
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
       ...projectCoordinatorTools,

@@ -8,6 +8,7 @@
  * text" bug: with the old hand-rolled reducer it failed (deltas were dropped).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { Content } from "@flow-state-dev/core/items";
 import { renderHook, act, cleanup } from "@testing-library/react";
 
 // Capture the callbacks handed to the transport so the test can drive events.
@@ -26,6 +27,11 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 });
 
 import { useRequestStream } from "../src/hooks/useRequestStream";
+
+function firstText(message: { content: readonly Content[] } | undefined): string | undefined {
+  const part = message?.content[0];
+  return part !== undefined && "text" in part ? part.text : undefined;
+}
 
 let seq = 0;
 function base() {
@@ -130,7 +136,7 @@ describe("useRequestStream (react)", () => {
     });
 
     // The deltas are visible before any item.done / terminal event.
-    expect(result.current.messages[0]?.content[0]?.text).toBe("Hello");
+    expect(firstText(result.current.messages[0])).toBe("Hello");
   });
 
   it("coalesces deltas on a RAF in the default flush mode", () => {
@@ -146,7 +152,7 @@ describe("useRequestStream (react)", () => {
       // RAF hasn't fired yet — nothing flushed to React.
       expect(result.current.items.length).toBe(0);
       act(() => { vi.runAllTimers(); });
-      expect(result.current.messages[0]?.content[0]?.text).toBe("Hi");
+      expect(firstText(result.current.messages[0])).toBe("Hi");
     } finally {
       vi.useRealTimers();
     }
@@ -163,7 +169,7 @@ describe("useRequestStream (react)", () => {
       feed(itemAdded(makeMessage("m", "")));
       feed(contentDelta("m", 0, "yo"));
     });
-    expect(result.current.messages[0]?.content[0]?.text).toBe("yo");
+    expect(firstText(result.current.messages[0])).toBe("yo");
   });
 
   it("accumulates reasoning summary content, not just message content", () => {

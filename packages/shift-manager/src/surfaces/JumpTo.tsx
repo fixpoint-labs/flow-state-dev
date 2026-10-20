@@ -22,8 +22,8 @@ type Entry = { group: "Views" | "Workers" | "Tasks" | "Resources"; label: string
 /** The most results drawn per group. */
 const PER_GROUP = 8;
 
-/** Typing this first turns the palette into a message to the Shift Coordinator. */
-const MESSAGE_PREFIX = "> ";
+/** Typing this first turns the palette into a message to the Shift Coordinator; Shift+⌘K opens the palette with it already typed. */
+export const MESSAGE_PREFIX = "> ";
 
 export function JumpTo({
   snapshot,

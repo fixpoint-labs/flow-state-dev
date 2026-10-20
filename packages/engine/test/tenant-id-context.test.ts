@@ -30,7 +30,7 @@ function buildCapturingFlow(capture: { tenantId?: string; sessionTenantId?: stri
   return defineFlow({
     kind: "tenant-flow",
     actions: { run: { inputSchema: z.object({}), block: probe } }
-  });
+  })();
 }
 
 async function drain(stream: ReadableStream<Uint8Array> | null): Promise<string> {

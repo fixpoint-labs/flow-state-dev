@@ -20,6 +20,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { driverPrograms } from "./typecheck-programs.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,8 +48,7 @@ if (!fs.existsSync(tscPath)) {
   process.exit(1);
 }
 
-const configs = ["tsconfig.json"];
-if (fs.existsSync(path.join(packageDir, "tsconfig.test.json"))) configs.push("tsconfig.test.json");
+const configs = driverPrograms((name) => fs.existsSync(path.join(packageDir, name)));
 
 // Run every config even after one fails, so one's errors never hide the other's.
 let failedStatus = 0;

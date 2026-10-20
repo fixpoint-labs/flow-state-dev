@@ -15,7 +15,13 @@ export interface ModelLookupEntry {
 }
 
 export const DEFAULT_MODEL_LOOKUP: ModelLookupEntry[] = [
-  // Anthropic — most-specific first
+  // Anthropic — most-specific first. 5.5 rows come in pairs: direct API `claude-opus-5-5`, Vercel gateway `claude-opus-5.5`.
+  { keyword: "claude-opus-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 4.0, completionPer1M: 20.0, cacheReadPer1M: 0.2 } },
+  { keyword: "claude-opus-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 4.0, completionPer1M: 20.0, cacheReadPer1M: 0.2 } },
+  { keyword: "claude-sonnet-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0, cacheReadPer1M: 0.1 } },
+  { keyword: "claude-sonnet-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 2.0, completionPer1M: 10.0, cacheReadPer1M: 0.1 } },
+  { keyword: "claude-haiku-5-5", charsPerToken: 4.0, pricing: { promptPer1M: 0.1, completionPer1M: 0.5 } },
+  { keyword: "claude-haiku-5.5", charsPerToken: 4.0, pricing: { promptPer1M: 0.1, completionPer1M: 0.5 } },
   { keyword: "claude-opus-4-6", charsPerToken: 4.0, pricing: { promptPer1M: 15.0, completionPer1M: 75.0 } },
   { keyword: "claude-opus-4", charsPerToken: 4.0, pricing: { promptPer1M: 15.0, completionPer1M: 75.0 } },
   { keyword: "claude-sonnet-4-6", charsPerToken: 4.0, pricing: { promptPer1M: 3.0, completionPer1M: 15.0 } },
@@ -33,6 +39,10 @@ export const DEFAULT_MODEL_LOOKUP: ModelLookupEntry[] = [
   // model — a wrong number rather than a missing one. Codex variants are priced
   // as the base model they are built on; if OpenAI diverges, correct it here and
   // every adapter reading this table is corrected at once.
+  { keyword: "gpt-6-astra", charsPerToken: 3.5, pricing: { promptPer1M: 10.0, completionPer1M: 50.0 } },
+  { keyword: "gpt-6.1-sol", charsPerToken: 3.5, pricing: { promptPer1M: 2.0, completionPer1M: 10.0, cacheReadPer1M: 0.1 } },
+  { keyword: "gpt-6-sol", charsPerToken: 3.5, pricing: { promptPer1M: 2.0, completionPer1M: 10.0 } },
+  { keyword: "gpt-6-luna", charsPerToken: 3.5, pricing: { promptPer1M: 0.1, completionPer1M: 0.5 } },
   { keyword: "gpt-5.4-codex-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.2, completionPer1M: 0.8 } },
   { keyword: "gpt-5.4-codex", charsPerToken: 3.5, pricing: { promptPer1M: 1.0, completionPer1M: 4.0 } },
   { keyword: "gpt-5-codex", charsPerToken: 3.5, pricing: { promptPer1M: 1.25, completionPer1M: 10.0 } },

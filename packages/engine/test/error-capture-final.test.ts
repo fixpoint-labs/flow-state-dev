@@ -5,6 +5,7 @@ import { z } from "zod";
 import { afterEach, describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction, type StoreRegistry } from "../src";
 import type { ErrorCaptureEvent } from "../src/errors/error-capture";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 
 /** Wait until `events` holds a final event, or give up after a short budget. */
 async function finalOf(events: ErrorCaptureEvent[]): Promise<ErrorCaptureEvent[]> {
@@ -15,7 +16,7 @@ async function finalOf(events: ErrorCaptureEvent[]): Promise<ErrorCaptureEvent[]
   return events.filter((e) => e.final === true);
 }
 
-async function run(flow: ReturnType<typeof defineFlow>, stores: StoreRegistry, events: ErrorCaptureEvent[]) {
+async function run(flow: FlowInstance, stores: StoreRegistry, events: ErrorCaptureEvent[]) {
   return runAction({
     orgId: DEFAULT_ORG_ID,
     flow,
@@ -53,7 +54,7 @@ describe("errorCapture final-failure event", () => {
           block: sequencer({ name: "root", inputSchema: z.any() }).step(handler({ name: "pass", execute: (i) => i })).step(leaf)
         }
       }
-    });
+    })();
 
     const result = await runAction({
       orgId: DEFAULT_ORG_ID,
@@ -110,7 +111,7 @@ describe("errorCapture final-failure event", () => {
           ])
         }
       }
-    });
+    })();
 
     const result = await run(flow, createInMemoryStores(), events);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -132,7 +133,7 @@ describe("errorCapture final-failure event", () => {
         return { ok: true };
       }
     });
-    const flow = defineFlow({ kind: "retry-flow", actions: { run: { inputSchema: z.any(), block: flaky } } });
+    const flow = defineFlow({ kind: "retry-flow", actions: { run: { inputSchema: z.any(), block: flaky } } })();
 
     const result = await run(flow, createInMemoryStores(), events);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -150,7 +151,7 @@ describe("errorCapture final-failure event", () => {
     const flow = defineFlow({
       kind: "setup-flow",
       actions: { run: { inputSchema: z.any(), block: handler({ name: "never", execute: () => ({}) }) } }
-    });
+    })();
 
     await expect(
       runAction({
@@ -194,7 +195,7 @@ describe("errorCapture final-failure event", () => {
           })
         }
       }
-    });
+    })();
 
     await run(flow, stores, events).catch(() => undefined);
 

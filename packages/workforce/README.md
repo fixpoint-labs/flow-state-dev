@@ -18,7 +18,7 @@ workforce/teams/engineering/workers/lead/WORKER.md
 ```md
 ---
 description: Holds the board.
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 ---
 You are the engineering lead. You break work into tasks and report what came back.
 ```
@@ -363,7 +363,7 @@ import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@f
 const workers: WorkerManifest[] = [
   {
     id: "engineering.lead",
-    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-6-luna" },
     body: "You are the engineering lead. You break work into tasks and report what came back.",
   },
   { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
@@ -642,7 +642,7 @@ import { AGENT_FLOW, createWorkerInstallation, defineAgentWorkerFlow, hireWorkfo
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -1043,7 +1043,7 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 
 export const answerQuestion = generator({
   name: "answer-question",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });
@@ -1538,7 +1538,7 @@ a workstream drops its delegate in that turn, so a later dispatch in the turn ne
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
 with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
-leadFlows, leadFit: { model: "openai/gpt-5.4-mini" } })`: `openWorkstreamTool` then makes one call
+leadFlows, leadFit: { model: "openai/gpt-6-luna" } })`: `openWorkstreamTool` then makes one call
 to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
 the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
 is written. The same call asks whether the title and objectives say what sort of work it is at all, and work
@@ -1965,7 +1965,7 @@ its workers send; `entries(turn)` already lets them receive. See
 
 ## Error Reporter
 
-A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task or delegated post on a conversation board that ended errored, a coordinator crash that best fit answered with "Nobody took this post" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
+A worker that turns each failure that stayed failed into one bug report, previews it to the operator, and files it to a tracker through a project's MCP servers. It takes a request that settled failed (the engine's `errorCapture` event marked `final`), a task or delegated post on a conversation board that ended errored (a cancelled one, a post whose run was stopped included, ends `cancelled` and is not reported; a user who cancelled because something went wrong describes it to the reporter instead), a coordinator crash that best fit answered with "Nobody took this post" (sent by the coordinator, since its request completes), and a problem a user describes in its conversation. User docs: [The Error Reporter](https://flow-state.dev/docs/workforce/error-reporter).
 
 ```ts
 import { createErrorReporter, defineErrorReporterFlow, defineErrorReporterIntakeFlow } from "@flow-state-dev/workforce";
@@ -2023,7 +2023,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
 | `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's ten task tools, present only while the session has a delegate that takes tasks), `actions` (the ten as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `messageWorker` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which also delivers worker messages, and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `delegatedPostEntry(turn)` | The `onDelegatedPost` task entry that makes a flow's workers delegates that take posts: `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } }`. It takes a post's task from the conversation's board, runs `turn` on it, and ends the task with the reply. At the round's deadline, while the turn is still running, it tells the coordinator so the round can close. The turn isn't stopped; a later answer lands once. |
-| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated run is cancelled, it tells the coordinator, which fails the post's task, so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
+| `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated run is cancelled, it tells the coordinator, which ends the post's task as cancelled (no Error Reporter report is owed), so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |
 | `coordinatorConfigSchema()`, `coordinatorRouteRecordSchema`, `COORDINATOR_FLOW`, `COORDINATOR_ROUTE` | A coordinator's configuration, its routing record, the flow's kind and the record's component name. |
 | `workerFlow(build, { standardOnly? })` | A worker flow built on its installation, for a flow in its own file: the installation calls `build(installation)` once. Goes in `workerFlows`, and is what `fsdev gen`'s `workerFlows` holds. |

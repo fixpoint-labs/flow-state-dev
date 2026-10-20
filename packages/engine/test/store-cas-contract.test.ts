@@ -29,8 +29,9 @@ import {
   type SessionStore
 } from "../src";
 import type { CASPersist } from "../src/stores/cas";
+import type { JsonObject } from "@flow-state-dev/core/types";
 
-function makeSession(id: string, version: number, state: Record<string, unknown> = {}): SessionRecord {
+function makeSession(id: string, version: number, state: JsonObject = {}): SessionRecord {
   const ts = Date.now();
   return {
     orgId: DEFAULT_ORG_ID,
@@ -45,7 +46,11 @@ function makeSession(id: string, version: number, state: Record<string, unknown>
   };
 }
 
-function makePersist(store: SessionStore, id: string, baseRecord: SessionRecord): CASPersist<Record<string, unknown>> {
+function makePersist<TState extends JsonObject>(
+  store: SessionStore,
+  id: string,
+  baseRecord: SessionRecord
+): CASPersist<TState> {
   return async (state, expectedVersion) => {
     const nextVersion = expectedVersion + 1;
     const nextRecord: SessionRecord = {
@@ -61,7 +66,8 @@ function makePersist(store: SessionStore, id: string, baseRecord: SessionRecord)
     const current = result.conflict.currentValue;
     return {
       ok: false,
-      currentState: current?.state,
+      // The store holds JSON; this session only ever stores TState.
+      currentState: current?.state as TState | undefined,
       currentVersion: result.conflict.currentVersion
     };
   };
@@ -140,7 +146,7 @@ describe.each([
 
     type State = { count: number };
     const container = createStateContainer<State>({ count: 0 }, 0);
-    const persist = makePersist(store, "s5", base);
+    const persist = makePersist<State>(store, "s5", base);
 
     // First writer completes normally.
     await runWithCAS({
@@ -176,7 +182,7 @@ describe.each([
     await store.set("s6", base, "any");
 
     type State = { count: number };
-    const persist = makePersist(store, "s6", base);
+    const persist = makePersist<State>(store, "s6", base);
 
     // Node A writes first.
     const containerA = createStateContainer<State>({ count: 0 }, 0);
@@ -190,8 +196,8 @@ describe.each([
     // Node B's cache is stale (version 0). Its first persist will conflict.
     const containerB = createStateContainer<State>({ count: 0 }, 0);
     let conflictSeen = false;
-    const persistWithProbe: CASPersist<State> = async (state, expectedVersion) => {
-      const result = await persist(state, expectedVersion);
+    const persistWithProbe: CASPersist<State> = async (state, expectedVersion, hint) => {
+      const result = await persist(state, expectedVersion, hint);
       if (!result.ok) conflictSeen = true;
       return result;
     };

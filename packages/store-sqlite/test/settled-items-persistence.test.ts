@@ -65,6 +65,7 @@ describe("a settled request's items on SQLite", () => {
     const response = createResponseEmitter({
       requestId,
       onEvent: (event) => {
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
         if (event.type !== "item.done" || event.item.type !== "block_trace") return;
         const pending = new Promise<void>((resolve) => setTimeout(resolve, 0));
         yielded.push(pending);
@@ -99,9 +100,10 @@ describe("a settled request's items on SQLite", () => {
 
     expect(atSettle?.status).toBe("completed");
     const root = (atSettle?.items ?? []).find(
-      (item): item is BlockTraceItem =>
-        item.type === "block_trace" && item.blockInstanceId === `${requestId}:root:0`
-    );
+      (item) =>
+        // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
+        item.type === "block_trace" && (item as BlockTraceItem).blockInstanceId === `${requestId}:root:0`
+    ) as BlockTraceItem | undefined;
     expect(root?.status).toBe("completed");
     expect(root?.output).toEqual({ kind: "inline", value: { outcome: "declined" } });
 

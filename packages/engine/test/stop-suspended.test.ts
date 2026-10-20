@@ -410,7 +410,7 @@ describe("stop a parked turn", () => {
     const flow = parkingFlow(seen);
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, "approve");
-    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted" }, ["suspended"], Date.now());
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
 
     expect((await stop(h, requestId)).status).toBe(204);
     await drain(h);
@@ -660,7 +660,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const { requestId, gate } = await park(h, flow, "approve");
     // The process died after the stop was recorded and before `suspended`
     // was written; recovery marked the turn interrupted.
-    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", abortRequested: true }, ["suspended"], Date.now());
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined, abortRequested: true }, ["suspended"], Date.now());
 
     await runTick(tickArgs(h));
     await drain(h);
@@ -673,7 +673,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const flow = parkingFlow(seen);
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, "wait");
-    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", abortRequested: true }, ["suspended"], Date.now());
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined, abortRequested: true }, ["suspended"], Date.now());
 
     await runTick(tickArgs(h));
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("stopped");
@@ -738,7 +738,7 @@ describe("the sweep re-drives a request left parked behind a resolved gate (BR-1
     const { requestId, gate } = await park(h, flow, "wait");
     // The turn ended without its gate resolving (a stop that ended it before
     // its replay reached the wait).
-    await h.stores.request.setFieldsIfStatus(requestId, { status: "aborted" }, ["suspended"], Date.now());
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "aborted", result: undefined }, ["suspended"], Date.now());
     // A deadline already past still gives the gate 1 ms to run, so a tick in
     // the same millisecond would find it not yet due.
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -900,7 +900,7 @@ describe("the sweep re-drives a gate a person resolved whose turn never continue
     const h = harness(flow);
     const { requestId, gate } = await park(h, flow, "approve");
     await h.provider.suspend({ ...gate, status: "approved", resolvedAt: Date.now(), resolvedBy: USER, resumeData: {} });
-    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted" }, ["suspended"], Date.now());
+    await h.stores.request.setFieldsIfStatus(requestId, { status: "interrupted", result: undefined }, ["suspended"], Date.now());
 
     await runTick(tickArgs(h));
     await drain(h);

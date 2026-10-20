@@ -76,8 +76,8 @@ export default defineBenchmark({
   patterns: ["supervisor", "parallel-tasks", "debate"],
   baseline: true,
   tasks,
-  model: "openai/gpt-5.4-mini",
-  judgeModel: "anthropic/claude-haiku-4-5",
+  model: "openai/gpt-6-luna",
+  judgeModel: "anthropic/claude-haiku-5-5",
   runs: 3,
 });
 ```

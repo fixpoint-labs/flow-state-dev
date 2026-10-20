@@ -183,7 +183,7 @@ import { z } from "zod";
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming
@@ -459,7 +459,7 @@ const researcher = generator({
   itemVisibility: { client: true, history: false },  // visible to the user for observability,
   agentName: "researcher",                            // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
 });
 ```
 

@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 type Provenance = { blockName: string; blockInstanceId: string; attempt?: number };
 
 function blockOutputs(items: OutputItem[]): BlockTraceItem[] {
+  // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
   return items.filter((i): i is BlockTraceItem => i.type === "block_trace");
 }
 

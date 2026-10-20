@@ -23,7 +23,7 @@ function makeApiCallError(statusCode: number | undefined, message: string): Erro
     isRetryable?: boolean;
   };
   error.name = "AI_APICallError";
-  (error as Record<symbol, unknown>)[AI_SDK_ERROR_MARKER] = true;
+  (error as unknown as Record<symbol, unknown>)[AI_SDK_ERROR_MARKER] = true;
   if (statusCode !== undefined) error.statusCode = statusCode;
   return error;
 }
@@ -105,7 +105,8 @@ describe("classifyProviderError against real AI SDK 7 errors", () => {
       statusCode: 429
     });
     const keyErr = new LoadAPIKeyError({ message: "missing key" });
-    const objErr = new NoObjectGeneratedError({ message: "no object" });
+    // Only the error's marker is under test, so the generation details it carries are left out.
+    const objErr = new NoObjectGeneratedError({ message: "no object" } as ConstructorParameters<typeof NoObjectGeneratedError>[0]);
 
     for (const err of [apiErr, keyErr, objErr]) {
       expect((err as unknown as Record<symbol, unknown>)[AI_SDK_ERROR_MARKER]).toBe(true);
