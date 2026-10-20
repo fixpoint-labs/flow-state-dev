@@ -131,17 +131,20 @@ retries or fails, suspended is waiting on a person. A worker block never settles
 returns or throws, and whoever ran it turns that into the row's ending, the plan board's drain for an
 inline row and the claim gate for a dispatched one.
 
-**What `updateTask` does depends on how far the task has got.**
+**`updateTask` gives each field one meaning and one rule.**
 
-| The task is | `updateTask` |
-| -- | -- |
-| Not started: pending or held | Edits it: goal, title, context, input, dependencies (same board, no cycles), priority, labels, metadata, attempts, and the assignee (one of the filer's delegates). `status: "held"` holds it; `status: "pending"` releases it. A task held on questions also needs its answers |
-| Started: running or waiting on a person | Edits nothing. `updateTask({ id, message })` **steers** a running task (the worker continues with it, using no attempt) or answers one waiting on a person |
-| Finished | Edits nothing. A message continues it as a follow-up in the same session, with fresh attempts |
+| Field | Means | Allowed |
+| -- | -- | -- |
+| `goal`, `title`, `context`, `input`, `deps` (same board, no cycles), `priority`, `labels`, `metadata`, `assignee` (one of the filer's delegates), `maxAttempts` | Change the task | Before it starts |
+| `status: "held"` / `"pending"` | Hold it, or release it. A task held on questions also needs its answers | Before it starts |
+| `status: "cancelled"` | Cancel it: stops its run, cancels its open tasks, closes its Inbox item | Until it finishes |
+| `message` | **Steer** it: before it starts it joins the brief; a running worker carries on with it, using no attempt; a question the filer may answer takes it as the answer | Until it finishes |
 
-Typing in the task's session sends such a message. Reassigning a started task is cancel and refile.
-The mechanisms own the rest: other statuses, the record that a request waits on it, which task it
-follows up, attempts used, its run, data the server wrote, and its session and result.
+A refusal names its rule: "goal can't change after a task starts; send a message instead". A cancel
+sent with a message or edits is refused. A finished task refuses everything: more work on it is a
+new task with the follow-up session setting. Typing in the task's session sends a message; reassigning a
+started task is cancel and refile. Never editable: other statuses, `wait`, `followUpOf`, attempts
+used, the run link, the sealed payload, and the session and result settings.
 
 **Every ending of a delegated task reaches the filer once,** as the result setting says: to its
 waiting request if one waits, otherwise through `onTaskSettled`, which starts its next request.
@@ -159,7 +162,8 @@ later touch.
 **A message is conversation with any worker on your roster,** delegate or not. Help bigger than the
 recipient's one request is a task.
 
-`sendMessage({ to, text, wait?, inReplyTo? })` **sends**, returning nothing, or **calls**
+`sendMessage({ to, text, wait?, inReplyTo? })` addresses a worker, `to: "writer"`, or a task,
+`to: { task: id }`. It **sends**, returning nothing, or **calls**
 (`wait: true`): the sender waits for the recipient's result until a deadline, host-set by default. A
 late result is kept under its **call id**, so a caller that waits again, or repeats the call, gets
 it.
@@ -170,7 +174,9 @@ To answer a send, the recipient sends with `inReplyTo`, landing in the session t
 original, or the sender's conversation if that session's task has ended.
 
 **Where it lands:** the recipient's conversation with this user, except that a message to the worker
-that filed your task lands in the session that filed it.
+that filed your task lands in the session that filed it. A message to a task lands in that task's
+session. The server resolves it, refusing a task the sender can't see (its own, one it filed, or one
+on a board it can read); there it is conversation only, for `receive`, and never steers.
 
 **Limits.** A busy recipient queues the message; a call into a waiting session is refused, so two
 waits never block each other. A request's **budget** is 6 messages per message a user types, 3 per
@@ -275,8 +281,8 @@ accept their inputs, probing their input schemas as it does for `respond`. A flo
 entries from a **factory**, a function returning the tools, actions, entries and session state its
 author spreads into the flow definition.
 
-The model's seven tools: `addTask`, `updateTask`, `cancelTask`, `listTasks`, `readTask`,
-`sendMessage`, `waitForUser`. The task tools are also public actions a screen calls as the user:
+The model's six tools: four task tools, `createTask`, `getTask`, `listTasks` and `updateTask`,
+plus `sendMessage` and `waitForUser`. The task tools are also public actions a screen calls as the user:
 cancel a task, release a held one, answer its questions. Every worker gets `listDelegates`; only a configured coordinator gets
 `addDelegate`, `removeDelegate`, `setFallback`.
 
@@ -294,7 +300,7 @@ cancel a task, release a held one, answer its questions. Every worker gets `list
 7. That request drains writer's plan board, waiting on the fact-check it dispatched, and finishes with
    nothing open. writer's task is done, and the draft lands in Alice's conversation with launch,
    under writer's name.
-8. Alice types "Make it half as long" in writer's finished task, and a follow-up runs.
+8. Alice tells launch "Make it half as long", and launch files writer a follow-up task.
 
 ```mermaid
 sequenceDiagram
@@ -313,7 +319,8 @@ sequenceDiagram
   researcher->>writer: result
   Note over writer: drains its plan board, waiting on a dispatched fact-check
   writer->>Alice: draft, under writer's name
-  Alice->>writer: make it half as long (follow-up)
+  Alice->>launch: make it half as long
+  launch->>writer: follow-up task
 ```
 
 *Three delegated tasks, one plan board, one call and one Inbox item carry the whole job.*
@@ -355,8 +362,9 @@ A behavior none of these rules explains is a bug in the model.
 18. A worker block never settles its own row. It returns or throws; the drain settles an inline row,
     and the claim gate a dispatched one, even one a plan board waits on.
 19. A goal-seek loop needs a plan board, and is refused when built over a delegation board.
-20. `updateTask` edits a task only before it starts; after, it only delivers a message: a steer, an
-    answer or a follow-up.
+20. Each `updateTask` field has one rule: edits, hold and release before a task starts; cancel and a
+    message until it finishes; nothing after. A follow-up is a new task.
+21. A message addresses a worker or a task the sender can see, never a raw session.
 
 ## Vocabulary
 
@@ -383,8 +391,8 @@ rest.
 | Schedule | A row in a user's schedule list that files a task each time it fires |
 | Dependency, held, held on questions | A task on the same board that must end first; waiting for the filer to release it; waiting for the user's answers |
 | Pending, running, waiting on a person | Not yet started; worked, or with filed tasks open; its request suspended |
-| Steer | A message a running task's worker continues with |
-| Follow-up, sibling | A task in an earlier task's session; a task filed beside another, for work its worker reported |
+| Steer | A message into an unfinished task: it joins the brief, redirects the worker, or answers |
+| Follow-up, sibling | A new task in an earlier task's session; a task filed beside another, for work its worker reported |
 | Claim, claim gate, task entry | The right to record a task's ending; the step that checks it and settles the row; the action a task runs through on its assignee's flow |
 | Debt, due time, durability sweeper | What a row owes; when it's due; the engine's pass that pays it |
 | Send, call, call id, budget | A message that returns nothing; one whose sender waits; the key a call's result is kept under; how many messages a request may still send |
@@ -397,8 +405,8 @@ rest.
 
 ## Decisions
 
-The model above is the owner's, including: nothing settled by hand (seven tools, not eight); a
-deadline on every wait, a waited dispatch included; nested waits (rule 9); and thirteen newly decided:
+The model above is the owner's, including: nothing settled by hand (no tool settles a task); a
+deadline on every wait, a waited dispatch included; nested waits (rule 9); and fourteen newly decided:
 
 - [x] **Held on questions.** Questions known at filing reach the Inbox at once; mid-task stops stay
   suspensions.
@@ -415,8 +423,11 @@ deadline on every wait, a waited dispatch included; nested waits (rule 9); and t
 - [x] **A worker block never settles its own row (rule 18).** Whoever ran the work settles it.
 - [x] **A goal-seek loop needs a plan board (rule 19),** and refuses a delegation board when built.
 - [x] **Patterns are plan boards.** They keep their boards and don't change.
-- [x] **`updateTask` means one thing per phase (rule 20),** so there's no separate steer tool.
-  Reassigning a running task is cancel and refile.
+- [x] **`sendMessage` addresses a worker or `{ task: id }` (rule 21).** A task's message lands in its
+  session, conversation only. `{ sessionId }` is deferred until a real need, such as a session with
+  no task: routing never trusts a caller's session id (BP-031).
+- [x] **Four task tools, one rule per field (rule 20).** `addTask` and `readTask` become `createTask`
+  and `getTask`; `cancelTask` folds into `updateTask`; no steer tool. Supersedes one meaning per phase.
 
 Open:
 
