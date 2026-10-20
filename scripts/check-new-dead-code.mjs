@@ -61,7 +61,10 @@ if (run("git", ["status", "--porcelain", "--untracked-files=no"]).stdout.trim())
   fail("the working tree has uncommitted changes; commit or stash them first");
 }
 
-const head = run("git", ["rev-parse", "HEAD"]).stdout.trim();
+// Return to the branch by name, so a local run doesn't leave HEAD detached.
+const head =
+  run("git", ["symbolic-ref", "-q", "--short", "HEAD"]).stdout.trim() ||
+  run("git", ["rev-parse", "HEAD"]).stdout.trim();
 const dir = mkdtempSync(join(tmpdir(), "fallow-dead-code-"));
 const config = join(dir, "fallowrc.json");
 const baseline = join(dir, "base.json");
