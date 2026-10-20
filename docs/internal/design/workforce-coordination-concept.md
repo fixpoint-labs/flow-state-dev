@@ -11,7 +11,8 @@ concept-doc skill's single-file shape on purpose, to keep the model readable.
 
 ## Base terms
 
-**A user is a person.** Everything below acts as one user, inside one org.
+**A user is a person.** Everything below acts as one user. Users can share an **org**, but nothing
+crosses rosters (rule 3). A **screen** is an app's UI, acting as the signed-in user.
 
 **A worker belongs to one user and acts as them.** It runs on the flow it names. A user's
 **roster** is all their workers; adding one is a **hire**.
@@ -21,10 +22,11 @@ where a user talks to one worker: one per worker per user, plus one per project 
 coordinates.
 
 **A request is one run of a worker in a session.** The server sets its **sender**: a user, another
-worker's session, or the board. It produces a **result**. A session runs one request at a time. A
-request **waits** until a task or a call ends. It is **suspended** when it stops for a person: it
-is stored, and **resumes** from the same step. That needs **durable execution**, a host that stores
-a waiting request and carries it on later.
+worker's session, or **the board** (the engine starting a request for a task). It produces a
+**result**. A session runs one request at a time. A request **waits** until a task, a call or a
+**condition** (an external signal, such as a webhook or a CI result) ends, or it **stops for a
+person**. Either way it is **suspended**: stored, and **resumed** from the same step. That needs
+**durable execution**, a host that stores a waiting request and carries it on later.
 
 ## The cast
 
@@ -34,9 +36,12 @@ a waiting request and carries it on later.
 | launch | Coordinator, routing by judgment. Delegates: writer, researcher, coder | Alice |
 | writer | Worker on the agent flow. Delegate: researcher | Alice |
 | researcher | Worker on the agent flow. No delegates | Alice |
-| coder | Worker on a coding flow that drives a harness | Alice |
+| coder | Worker on a coding flow that drives a **harness**, an external coding agent run as its own process | Alice |
 | Error Reporter | Worker that turns failures into bug reports | Alice |
 | Bob's researcher | Worker on the agent flow | Bob |
+
+The **agent flow** is the built-in worker flow: a worker that names no flow runs on it, with its
+worker file's text as instructions.
 
 ## The parts, in the order you meet them
 
@@ -53,30 +58,33 @@ a waiting request and carries it on later.
 | Message | The user's message log, and both sessions | One per send or call |
 | Inbox item | The suspended request's record, or the held task's row | One per open stop |
 | Routing state, delegates | The session's state | One per session |
-| Roles | The worker's configuration | One set per worker |
+| Roles, and whether a coordinator may change its own delegates | The worker's configuration | One set per worker |
 
 ## Tasks
 
 **A task is a piece of work on a board, a session's list of tasks.** Its **filer**, the session that
 filed it, plans it, sees how it ends, and can edit, steer or cancel it. Its **assignee** does it and is
-accountable. Its **brief** says what the work is.
+accountable. Its **brief** says what the work is. Every worker acts as its user, so each sees all
+that user's tasks.
 
 **A board's `mode` makes it a plan board or a delegation board,** and each session has one of
-each. To **drain** a board is to start its ready rows until none is left.
+each. To **drain** a board is to start its **ready** rows, those whose start setting is met and
+that rule 5 doesn't keep pending, until none is left.
 
 | | Plan board | Delegation board |
 | -- | -- | -- |
 | Holds | The work of the board's own session | Tasks for delegates |
 | `mode` | `"plan"`, the default: the drain waits on every row | `"delegation"`: the drain hands rows off and never waits |
-| Drained by | `respond` in a conversation, or any request working the session's task | `dispatch`, a short pass that starts what's ready and exits |
+| Drained by | The request working the session's task, or `respond` in a conversation | `dispatch`, a short pass that starts what's ready and exits |
 | A row runs | Inline, or dispatched to another session and waited on | In another session, through a **dispatcher** block |
 | An ending reaches | The drain, which carries on | The filer, as an event: `onTaskSettled` |
 
-Because a plan board's drain waits on every row, whatever wraps it, such as a goal-seek loop or a
-sequence, sees finished work. A **pattern** is a ready-made plan board, such as one that runs several
-rows at once; patterns are plan boards as they stand. A **goal-seek loop** drains a board, asks a
-judge whether the goal is met, and drains again if not, so it needs a plan board: over a delegation
-board its judge would rule while rows are still running.
+A row runs **inline** when the board's own request works it, with no dispatcher; its assignee is
+the board's own session. Because a plan board's drain waits on every row, whatever wraps it, such as
+a goal-seek loop or a sequence, sees finished work. A **pattern** is a ready-made plan board, such as
+one that runs several rows at once. A **goal-seek loop**, built with `goalSeekLoop`, drains a board,
+asks a judge whether the goal is met, and drains again if not, so it needs a plan board: over a
+delegation board its judge would rule while rows are still running.
 
 **writer's plan board** is outline, draft, fact-check, tighten. Its request writes the outline and
 draft inline, dispatches the fact-check to another session and waits on it, then tightens. The claim
@@ -85,15 +93,15 @@ then carries on.
 
 **writer's delegation board** holds one task: researcher, find adoption numbers. `dispatch` starts
 it in researcher's session and exits. It runs again on any filing, start, answer, retry or ending
-that makes a row startable, and on any **touch** (read or write) of the board. `dispatch` runs one
-at a time per session, rejecting a second call. Its last check for a startable row comes after its
-other work; a row startable later is a debt (below).
+that makes a row ready, and on any **touch** (read or write) of the board, one pass at a time per
+session, a second rejected. Its last check for a ready row comes after its other work; a row ready
+later is a debt (below).
 
 **A board never mixes the two, and one built wrong is refused when built:** a delegation board with
-an inline assignee, a plan board with a dispatcher that doesn't wait, or a goal-seek loop over a
-delegation board. The **dispatcher** block has its own `wait`, `false` by default; with `wait: true`
-the work's result comes back as the block's output, through a durable wait with a deadline. Inside a
-board, the board's mode decides.
+an inline row, a plan board with a dispatcher set to `wait: false`, a delegation board with one set
+to `wait: true`, or a goal-seek loop over a delegation board. The **dispatcher** block's own `wait`
+is `false` by default outside a board; with `wait: true`, the work's result comes back as its output,
+through a durable wait with a deadline. Inside a board, an unset `wait` follows the mode.
 
 **Four settings, set at filing,** decide how a delegated task runs. A plan row uses only start and
 attempts.
@@ -101,9 +109,13 @@ attempts.
 | Setting | Choices | Default |
 | -- | -- | -- |
 | Start | Now · after named tasks on the same board (its **dependencies**) · **held** until the filer releases it · **held on questions** (see Inbox items) | Now |
-| Session | New · the assignee's ongoing session for the filer's conversation · an earlier task's session (a **follow-up**) | New |
+| Session | New · the assignee's **ongoing session** for the filer's conversation, which routed tasks reuse · an earlier task's session (a **follow-up**) | New |
 | Result goes to | **The filer:** its waiting request if one waits on the task, otherwise its next request · the filer's conversation, under the assignee's name (routing uses this) | The filer |
-| Attempts | Failed runs before it fails | 2 |
+| Attempts | Tries in all (`maxAttempts`) | 2 (one retry) |
+
+A **task's session** is the one its assignee works it in. The settings naming the filer's
+conversation are refused from a filer that isn't one, and a request can't wait on a task whose result
+goes there.
 
 **A dependency never crosses boards;** crossing is a wait or a held task. writer filed "find
 adoption numbers" for researcher on its delegation board, and the plan row "write the stats
@@ -119,40 +131,55 @@ each time it fires. Alice's list of scheduled work reads her schedules and their
 times, not a board. A fire whose filing fails is dropped, not retried, and a crash loses a run whose work
 the schedule picks as it fires.
 
-A task stays **running** while tasks it filed are open, even when no request is working it (at most
-5 deep, 100 under one top task); rule 6 says how it ends. Every wait, on a task or a call, has a
-**deadline**: reaching it resumes the request, which waits again or carries on without the result.
+A task stays **running** while tasks it filed are open, even when no request is working it; rule 6
+says how it ends. A tree of tasks is at most 5 deep, with at most 100 under its **top task**, the one
+no task filed. Every wait, on a task, a call or a condition, has a **deadline**, the host's default
+unless the caller passes one. Reaching it resumes the request without the result, to wait again or,
+by default, carry on.
+
+**A task is done** when the request working it ends, background work included, with a result, and
+it isn't suspended, with no filed task open and no message queued for its session. **Background
+work**, such as saving to memory, runs on after a request returns its result. Suspended by
+`waitForUser`, the task is **waiting on a person**; any other suspension leaves it running.
 
 **The claim gate closes a dispatched task.** The request working a task holds its **claim**, the
-right to record how it ends. The board wraps the **task entry**, the action a task runs through on
-its assignee's flow, in the **claim gate**, which checks the claim before the entry runs and settles
-the row when it ends: completed is done (or running while tasks it filed are open), failed
-retries or fails, suspended is waiting on a person. A worker block never settles its own row: it
-returns or throws, and whoever ran it turns that into the row's ending, the plan board's drain for an
-inline row and the claim gate for a dispatched one.
+right to record how it ends. The board starts the **task entry**, `work`, inside the **claim gate**,
+as it does `onTaskSettled` and a queued message's `receive` (which keeps its own sender) when they
+work the session's task. The gate checks the claim before the entry runs, and settles the row by the
+rule above once the session's queue is empty. A worker block never settles its own row: a return is
+its result and a throw fails the attempt, recorded by the drain for an inline row and the claim gate
+for a dispatched one.
 
-**`updateTask` gives each field one meaning and one rule.**
+**A failed attempt is retried while attempts are left.** An **attempt** is one try at a task: every
+request that works it in that try, queued messages and resumes included. It fails when one of them
+throws or errors, including a question or review whose `waitForUser` deadline goes unhandled (an
+unhandled wait or call deadline just carries on); its open tasks are cancelled, nothing it returned
+is recorded, and the task goes back to pending in its session, or, with no attempts left, fails.
+
+**`updateTask` gives each field one meaning and one rule.** Only the task's filer and the user, from a
+screen, may call it on a task.
 
 | Field | Means | Allowed |
 | -- | -- | -- |
 | `goal`, `title`, `context`, `input`, `deps` (same board, no cycles), `priority`, `labels`, `metadata`, `assignee` (one of the filer's delegates), `maxAttempts` | Change the task | Before it starts |
-| `status: "held"` / `"pending"` | Hold it, or release it. A task held on questions also needs its answers | Before it starts |
-| `status: "cancelled"` | Cancel it: stops its run, cancels its open tasks, closes its Inbox item | Until it finishes |
-| `message` | **Steer** it: before it starts it joins the brief; a running worker carries on with it, using no attempt; a question the filer may answer takes it as the answer | Until it finishes |
+| `status: "held"` / `"pending"` | Hold it, or release it. A task held on questions is released by its last answer, not by this field | Before it starts |
+| `status: "cancelled"` | Cancel it: resolves its request's suspension as cancelled, or stops the request; cancels its open tasks; closes its Inbox item | Until it finishes |
+| `message` | **Steer** it: before it starts, it joins the brief; a running request takes it before its next model call, a suspended one when it resumes, or as the answer to a question the filer may answer. A coding run stops (see Inbox items). It uses no attempt and never cancels the task | Until it finishes |
 
 A refusal names its rule: "goal can't change after a task starts; send a message instead". A cancel
-sent with a message or edits is refused. A finished task refuses everything: more work on it is a
-new task with the follow-up session setting. Typing in the task's session sends a message; reassigning a
-started task is cancel and refile. Never editable: other statuses, `wait`, `followUpOf`, attempts
-used, the run link, the sealed payload, and the session and result settings.
+sent with a message or edits is refused. A finished task refuses everything, and its output never
+changes: its filer and dependents already used it. A correction or more tracked work is a follow-up
+task, which a screen can offer; one the user files keeps the original's filer, which hears its
+ending. A task view shows the latest finished follow-up's output as current, the original as
+history. Reassigning a started task is cancel and
+refile. Never editable: other statuses, `followUpOf` (the task a follow-up continues), attempts used,
+and the session and result settings.
 
-**Every ending of a delegated task reaches the filer once,** as the result setting says: to its
-waiting request if one waits, otherwise through `onTaskSettled`, which starts its next request.
-A failure is an ending like any other; writer messages Error Reporter when one is worth reporting.
+**Every ending of a delegated task, a failure included, reaches the filer once,** as the result
+setting says. writer messages Error Reporter when a failure is worth reporting.
 
 **A board pays what it owes.** A **debt** is what a row owes: an ending owed to the filer, a wait
-owed a resume, a task whose filed tasks have all ended owed
-its settle, or a startable row never started. Each carries a **due time** a few seconds out. The
+owed a resume, a task whose filed tasks have all ended owed its settle, or a ready row never started. Each carries a **due time** a few seconds out. The
 settling side pays at once, and `dispatch` and every touch resend. Behind both, the engine's
 **durability sweeper** wakes at the earliest due time and pays, so after a crash nothing waits on a
 later touch.
@@ -162,26 +189,35 @@ later touch.
 **A message is conversation with any worker on your roster,** delegate or not. Help bigger than the
 recipient's one request is a task.
 
-`sendMessage({ to, text, wait?, inReplyTo? })` addresses a worker, `to: "writer"`, or a task,
-`to: { task: id }`. It **sends**, returning nothing, or **calls**
-(`wait: true`): the sender waits for the recipient's result until a deadline, host-set by default. A
-late result is kept under its **call id**, so a caller that waits again, or repeats the call, gets
+`sendMessage({ to, text, wait?, deadline?, inReplyTo? })` addresses a worker, `to: "writer"`, or a
+task, `to: { task: id }`. It **sends**, returning nothing, or **calls** (`wait: true`): the sender
+waits for the recipient's result until its deadline, the host's default unless `deadline` is passed.
+A late result is kept under its **call id**, so a caller that waits again, or repeats the call, gets
 it.
 
 **The recipient's entry is `receive`.** Each message starts a new request carrying the text and,
 set by the server, the sender, whether it waits, and the budget. Only a call gets the result back.
-To answer a send, the recipient sends with `inReplyTo`, landing in the session that sent the
-original, or the sender's conversation if that session's task has ended.
+To answer a send, the recipient sends to its sender with `inReplyTo`, and the server lands the
+reply in the session that sent the original, whether or not that session's task has ended.
 
 **Where it lands:** the recipient's conversation with this user, except that a message to the worker
-that filed your task lands in the session that filed it. A message to a task lands in that task's
-session. The server resolves it, refusing a task the sender can't see (its own, one it filed, or one
-on a board it can read); there it is conversation only, for `receive`, and never steers.
+that filed your task lands in the session that filed it. A message to a task, any task of the
+user's, lands in that task's session; the server refuses any other. There it is conversation, for
+`receive`, and never steers: it doesn't change the brief or stop the request working the task.
 
-**Limits.** A busy recipient queues the message; a call into a waiting session is refused, so two
-waits never block each other. A request's **budget** is 6 messages per message a user types, 3 per
-request, shared by requests descending from it; one with none behind it, such as the board starting
-a held task, gets a fresh one.
+**A task's session outlives its task.** To an open task, a message runs as a `receive` request for
+the task after any request working it, in the same attempt, before the task settles; it doesn't
+change the task's output. To a finished task, it is conversation: `receive` handles it with the session's full history, and the task doesn't change. The user typing
+there steers an open task, as `updateTask({ message })` does; in a finished one, `respond` takes it
+as conversation.
+
+**Limits.** A session is **busy** while a request runs in it, and **waiting** while its request is
+suspended, on a wait or a stop for a person. A send to either is queued and runs after the current
+request ends. A call into a waiting session is refused, so two waits never block each other. A
+request's **budget** is how many messages it may still send: each message a user types funds 6,
+shared by every request descending from it through messages, calls and filed tasks, and no one
+request sends more than 3. A request with nothing behind it, such as the board starting a held task,
+gets a fresh 6. A message is paid when sent; one past the budget is refused.
 
 ## Inbox items
 
@@ -193,30 +229,32 @@ launch files coder's adoption-script task held on "Which CSV export should the s
 Alice answers, coder starts. Cancelling the task closes the item.
 
 **Midway, a request suspends** with `waitForUser({ kind, prompt, deadline? })`, where `kind` is
-approval, question or review. A suspension is not a wait, so a waited-on task may still stop for a
-person. If the request works a task, the claim gate marks it waiting on a person; it keeps its
-claim, and the resume carries on the same attempt.
+approval (yes or no), question (an answer in words) or review (accept the work or send it back).
+Without `deadline`, the host's default applies. A waited-on task may still stop for a person. If the request works a task, the claim gate
+marks it waiting on a person; it keeps its claim, and the resume carries on the same attempt.
 
-| A suspension resumes once | When | The block |
+| A stop for a person resumes once | When | The block |
 | -- | -- | -- |
 | Answered | The first answer, in the Inbox or the task's session | Carries on with it |
-| Deadline | No answer by then | Goes ahead, ends, or suspends again (a **check-in**). Unhandled, an approval counts as rejected and a question or review errors, using an attempt |
-| Cancelled | Its task is cancelled; the item goes away | Winds down; nothing it returns is recorded |
+| Deadline | No answer by then | Goes ahead, ends, or suspends again with a new deadline (a **check-in**), perhaps messaging its filer first. Unhandled, an approval counts as rejected and a question or review errors, using an attempt |
+| Cancelled | Its task is cancelled; the item closes | Winds down; nothing it returns is recorded |
 
-Only the user answers approvals and reviews; the filer may answer a question, unless the task is
-routed. Stopping a suspended request closes its item and cancels any task it works.
+Only the user answers held questions, approvals and reviews; the filer may also answer a question
+asked midway, by a steer, unless the task is routed. Apart from a cancel, only the user **stops** a
+request, from a screen. A stopped request ends with no result, running or suspended: its Inbox item
+closes if it had one, and any task it works is cancelled. A steer is never a stop.
 
-**A coding run can't pause midway,** because the coding agent runs as its own process. Its question
-ends the run, the coding flow's request suspends, and the answer starts the next run in the same
-coding session. A steer stops the run; the next run continues that coding session with the
-message.
+**A coding run can't pause midway,** because the harness runs as its own process. Its question ends
+the run, and the coding flow's request suspends with `waitForUser`. The answer starts the next run
+in the same **coding session**, the harness's own, using no attempt. A steer stops the harness run,
+not the request, and the next run continues the coding session with the message.
 
 ## Routing
 
 **Routing decides who takes a user's message to a coordinator.** It files **routed tasks** on the
 coordinator's delegation board: session = the delegate's ongoing session for this conversation,
-result = the conversation under the delegate's name, attempts = 1. The delegate remembers earlier
-routed tasks there.
+result = the conversation under the delegate's name, attempts = 1 (no retry). The delegate
+remembers earlier routed tasks there.
 
 | Policy | Who picks | Cost |
 | -- | -- | -- |
@@ -225,20 +263,29 @@ routed tasks there.
 | Round robin | The next delegate | None |
 | Everyone | Every delegate | None |
 
-**The fit check** picks a delegate for best fit, and vets the **lead** someone chose for a
-**workstream**, a piece of a project. With **rounds** (up to 3), the coordinator sees each answer and
-can send it back out. Messages to a coordinator get its own request, whatever its routing.
+**The fit check** picks a delegate for best fit, and vets the **lead** a worker picked when opening
+a **workstream**, a piece of a project. With **rounds** (up to 3), the coordinator sees each answer
+and can send it back out. Messages to a coordinator get its own request, whatever its routing.
+
+**Internal entries, which no user starts, carry the rest.** `routeOn` sends a round's answers back
+out, called only by the coordinator itself. `roundDeadline` wakes it when a round's
+deadline passes with a delegate still working, and closes every overdue round. A project's
+coordinator has one delegate per open workstream, its lead; `changeWorkstreamDelegate` adds or
+removes it as the workstream opens, is marked done, or reopens. `onWorkstreamOpened` is on the lead's
+flow: opening a workstream calls it to create the lead's session there, so only a flow with it can
+lead. The agent flow has it.
 
 ## Chain of command
 
 **Your delegates are your authority.** Each session's list starts from its worker's defaults; `all`
 means the whole roster, the worker itself included. Rule 13 says who changes it.
 
-**What a request can't file goes up as a message to the filer above, who decides.** For new work
-outside its task, the worker describes it and carries on, and the filer files a **sibling**, a new
-task beside the worker's. The filer's flow may spot a request for work with an **evaluator** (a block that
+**What a request can't file goes up as a message to the filer above, who decides.** That is its
+task's filer; a request working no task tells the user in its result. For new work outside its task,
+the worker messages its filer and carries on, and the filer files a **sibling**, a new task beside
+the worker's. The filer's flow may spot a request for work with an **evaluator** (a block that
 judges input) and file it held, for the user to approve. For work a worker needs but can't assign,
-the filer files it if it can, or messages its own filer. Either way, the result goes to whoever
+the filer files it too. A filer that can't messages its own filer, and the result goes to whoever
 filed the task, who passes it on in a follow-up.
 
 ```mermaid
@@ -270,11 +317,13 @@ a request.
 | Every worker | `respond`, `receive` | all |
 | Contributor (takes tasks) | `work` | researcher, coder |
 | Manager (files tasks) | `dispatch`, `onTaskSettled` | writer, which is also a contributor |
-| Coordinator (a manager that routes a user's messages) | Manager entries plus the routing entries: `onWorkstreamOpened`, `changeWorkstreamDelegate`, `routeOn`, `roundDeadline` | launch |
+| Coordinator (a manager that routes a user's messages) | Manager entries plus the routing entries: `routeOn`, `roundDeadline`, `changeWorkstreamDelegate` | launch |
 
-`respond`, the only public entry, takes a user's message; `receive`, another worker's; `work`, a
-task; `onTaskSettled`, a filed task's ending; `dispatch`, a pass over the delegation board.
-Working the session's task, `work` and `onTaskSettled` go through the claim gate and drain the plan board.
+`respond`, the only **public** entry (one a user starts), takes a user's message in a conversation
+or a finished task's session; `receive`, another worker's; `work`, a task; `onTaskSettled`, a filed
+task's ending; `dispatch`, a pass over the delegation board. Working the session's task, `work`,
+`onTaskSettled` and a queued message's `receive` go through the claim gate, and the first two drain
+the plan board; `respond` drains it only in a conversation.
 
 Roles combine. A worker declares its roles, and the hire checks that each one's entries exist and
 accept their inputs, probing their input schemas as it does for `respond`. A flow gets a role's
@@ -282,9 +331,10 @@ entries from a **factory**, a function returning the tools, actions, entries and
 author spreads into the flow definition.
 
 The model's six tools: four task tools, `createTask`, `getTask`, `listTasks` and `updateTask`,
-plus `sendMessage` and `waitForUser`. The task tools are also public actions a screen calls as the user:
-cancel a task, release a held one, answer its questions. Every worker gets `listDelegates`; only a configured coordinator gets
-`addDelegate`, `removeDelegate`, `setFallback`.
+plus `sendMessage` and `waitForUser`. The task tools are also public actions, not entries: a screen
+calls them as the user to cancel a task, release a held one or answer its questions. Apart from the
+six, every worker gets `listDelegates`; only a coordinator the user configured at hire to change its
+own delegates gets `addDelegate`, `removeDelegate` and `setFallback`.
 
 ## How it flows
 
@@ -300,7 +350,10 @@ cancel a task, release a held one, answer its questions. Every worker gets `list
 7. That request drains writer's plan board, waiting on the fact-check it dispatched, and finishes with
    nothing open. writer's task is done, and the draft lands in Alice's conversation with launch,
    under writer's name.
-8. Alice tells launch "Make it half as long", and launch files writer a follow-up task.
+8. Alice wants it half as long, tracked, so she files writer a follow-up task from the finished
+   task's session. launch's session is its filer, as it was the original's. It runs there, and its
+   output is the new version. Typing the ask there instead would be conversation, leaving the task
+   done.
 
 ```mermaid
 sequenceDiagram
@@ -319,115 +372,157 @@ sequenceDiagram
   researcher->>writer: result
   Note over writer: drains its plan board, waiting on a dispatched fact-check
   writer->>Alice: draft, under writer's name
-  Alice->>launch: make it half as long
-  launch->>writer: follow-up task
+  Alice->>writer: follow-up task: half as long
 ```
 
-*Three delegated tasks, one plan board, one call and one Inbox item carry the whole job.*
+*Three delegated tasks, one plan board, one call and one Inbox item carry the whole job.* The
+follow-up runs in writer's finished task's session.
 
 ## The rules
 
 A behavior none of these rules explains is a bug in the model.
 
 1. Every request acts as one user, with a server-set sender.
-2. Only a request the board started for a task holds its claim. The claim gate settles a
-   dispatched task; the drain, an inline plan row.
-3. A request files tasks only for work its job needs: its task, or the user's message it answers.
-   Anything else is a message to the filer above. Nothing leaves the roster: Alice's workers never
-   reach Bob's researcher.
-4. A task has one filer, one accountable assignee, and four settings set at filing.
+2. Only a request the claim gate admits for a task holds its claim: `work`, or `onTaskSettled` or a
+   queued `receive` working the session's task. A queued `receive` keeps its own sender; the gate,
+   not the sender, gives it the claim. The claim gate settles a dispatched task; the drain,
+   an inline plan row.
+3. A request files tasks only for work its job needs: its task, the user's message it answers, or a
+   sibling for work reported by the assignee of a task it filed. Anything else is a message to the
+   filer above, or, with no task, said to the user. Nothing leaves the roster: Alice's workers never reach Bob's researcher.
+4. A task has one filer, one accountable assignee, and four settings set at filing. A follow-up the
+   user files takes the original's filer.
 5. A session holds at most one open task from the delegation board above it; another stays pending.
    Plan rows don't count.
-6. A task runs while tasks it filed are open, and is done when a request for it finishes with none
-   open. Cancelling, retrying or failing it cancels its open tasks; failing or cancelling it cancels
-   its dependents.
+6. A task is done when its request ends, background work included, with a result, not suspended,
+   with no filed task open and no message queued. Only `waitForUser` makes it waiting on a person.
+   A steer is no ending. A failed attempt retries in the task's session while attempts are left.
+   Cancelling, retrying or failing a task cancels its open tasks; failing or cancelling it, its
+   dependents.
 7. Every ending of a delegated task, a failure included, reaches its filer once, as its result
    setting says: the waiting request, or `onTaskSettled`.
 8. Every debt has a due time. The settling side pays it, `dispatch` and every touch resend it, and
    the durability sweeper pays it when due.
-9. A request may wait on a task it filed or a call, even inside a waited-on task, up to 5 deep, each
-   wait with a deadline. A late call result is kept for a caller that waits again.
-10. A call returns the recipient's result; nothing is relayed or answered automatically. A call into
-    a waiting session is refused, as is a message past the budget.
-11. Every stop for a person is one Inbox item: a suspended request, or a task held on questions.
-    Only the user answers approvals and reviews.
-12. A suspension resumes once, answered, deadline or cancelled, unless its request is stopped. Its
-    task keeps its claim. A task held on questions starts no sooner than its last answer.
-13. Only the user changes delegates, except a coordinator configured to change its own.
+9. A request may wait on a task it filed, a call or a condition, even inside a waited-on task, up to
+   5 waits deep (apart from the tree's 5), each with a deadline, but never on a task whose result
+   goes to the conversation. A late call result is kept for a caller that waits again.
+10. A call returns the recipient's result; nothing is relayed or answered automatically. A send to a
+    busy or waiting session is queued; a call into a waiting session is refused, as is a message
+    past the budget.
+11. Every stop for a person is one Inbox item: a request suspended by `waitForUser`, or a task held
+    on questions. Only the user answers held questions, approvals and reviews; the filer may also
+    answer a question asked midway, unless the task is routed.
+12. A stop for a person resumes once: answered, deadline or cancelled; a user stopping its request
+    instead ends it and cancels its task. Its task keeps its claim. A task held on questions starts
+    no sooner than its last answer.
+13. Only the user changes delegates, except a coordinator the user configured at hire to change its
+    own.
 14. A board's `mode` is `plan`, the default, or `delegation`. A plan board's drain waits on every
     row, a delegation board's on none, and a board built to mix the two is refused when built.
 15. A hire is refused when a declared role lacks an entry, or an entry refuses its input.
 16. A dependency stays within one board. Crossing boards is a wait or a held task.
 17. `dispatch` runs one at a time per session; a second call is rejected.
-18. A worker block never settles its own row. It returns or throws; the drain settles an inline row,
-    and the claim gate a dispatched one, even one a plan board waits on.
-19. A goal-seek loop needs a plan board, and is refused when built over a delegation board.
+18. A worker block never settles its own row: it returns a result or throws, failing the attempt, and
+    the drain records that for an inline row, the claim gate for a dispatched one, even one a plan
+    board waits on.
+19. A goal-seek loop (`goalSeekLoop`) needs a plan board, and is refused when built over a
+    delegation board.
 20. Each `updateTask` field has one rule: edits, hold and release before a task starts; cancel and a
-    message until it finishes; nothing after. A follow-up is a new task.
-21. A message addresses a worker or a task the sender can see, never a raw session.
+    message until it finishes; nothing after, and its output never changes. A follow-up is a new
+    task, whose output is the new version.
+21. A message addresses a roster worker or any task of its user's, or replies with `inReplyTo`,
+    never a raw session; the server resolves the session. It never steers a task; to a finished one
+    it is conversation.
 
 ## Vocabulary
 
 One term, one thing. Retired: turn, line, post, park, reply, relay, reopen, blocked, kit (say
-factory), pieces (say the tasks it filed), self-assigned row (say plan row), chief of staff (say
-Shift Coordinator, as the docs and UI do), and dispatcher for anything but the block. The
+factory), pieces (say the tasks it filed), self-assigned row (say plan row), startable (say ready),
+run for a task (say attempt), chief of staff (say Shift Coordinator, as the docs and UI do), and
+dispatcher for anything but the block. The
 [retired-terms table](workforce-coordination-gaps.md#retired-terms-the-refactor-removes) has the
 rest.
 
 | Term | Means |
 | -- | -- |
 | User, worker, roster, hire | A person; an agent acting as one user; all of a user's workers; adding one |
+| Org, screen | A group users can share, rosters kept apart; an app's UI, acting as the signed-in user |
+| Agent flow | The built-in worker flow, for a worker that names none |
+| Harness, coding session | An external coding agent run as its own process; its own session, which its next run continues |
+| Shift Coordinator | The coordinator the Shift Manager app opens on: the user's point of contact, which hires workers, starts projects and hands out work. In the cast, launch plays this role |
 | Session, conversation | Where a worker works; where a user talks to one worker |
-| Request, sender, result | One run of a worker in a session; who it runs for; what it produces |
-| Wait, deadline | Holding a request until a task or a call ends; when a wait or suspension resumes unanswered |
-| Suspended, resume, check-in | Stopped for a person and stored; carrying on from the same step; a renewed deadline |
+| Request, sender, the board, result | One run of a worker in a session; who it runs for; the engine starting a request for a task; what it produces |
+| Wait, condition, deadline | Holding a request until a task, a call or a condition ends; an external signal, such as a webhook; when a wait or stop resumes unanswered |
+| Suspended, resume, check-in | Stored while it waits or stops for a person; carrying on from the same step; a renewed deadline |
+| Stop (a request) | End it from a screen, with no result; only the user does, apart from a cancel |
+| Busy, waiting (a session) | Running a request; holding a suspended one |
 | Durable execution | A host that stores a waiting request and carries it on later |
-| Task, filer, assignee, brief | Work on a board; the session that filed it; who does it; what it is |
+| Task, top task, filer, assignee, brief | Work on a board; one no task filed; the session that filed it; who does it; what it is |
+| Task's session, ongoing session | Where its assignee works it; a delegate's one session per conversation, for routed tasks |
 | Board, row, drain, touch | A session's list of tasks; a task on it; starting its ready rows until none is left; any read or write of it |
-| Plan board, pattern, goal-seek loop | The board of its own session's work, whose drain waits on every row; a ready-made plan board, such as one that runs several rows at once; a loop that drains a plan board and asks a judge whether to drain again |
-| Mode | The board setting, `plan` or `delegation`, that makes it one kind or the other |
+| Ready, inline | Start setting met, and rule 5 doesn't hold it; worked by the board's own request |
+| Plan board, pattern, goal-seek loop | The board of its own session's work, whose drain waits on every row; a ready-made plan board; a loop (`goalSeekLoop`) that drains a plan board until a judge says the goal is met |
+| Mode | A board's kind: `plan` or `delegation` |
 | Delegation board, `dispatch` | The board of tasks for delegates, whose drain never waits; the pass that drains it |
 | Dispatch, dispatcher | Start work in another session; the block that does it, waiting for the result only with `wait: true` |
 | Schedule | A row in a user's schedule list that files a task each time it fires |
 | Dependency, held, held on questions | A task on the same board that must end first; waiting for the filer to release it; waiting for the user's answers |
-| Pending, running, waiting on a person | Not yet started; worked, or with filed tasks open; its request suspended |
-| Steer | A message into an unfinished task: it joins the brief, redirects the worker, or answers |
+| Pending, running, waiting on a person | Not yet started; worked, waiting, or with filed tasks open; its request suspended by `waitForUser` |
+| Ending: done, failed, cancelled | With a result, nothing filed or queued open; out of attempts; cancelled |
+| Finished, open, settle | Ended; not ended; record a row's ending |
+| Attempt | One try at a task, every request that works it in that try; `maxAttempts` caps them |
+| Background work | Work a request started that runs on after it returns its result |
+| Steer | `updateTask({ message })` into an unfinished task, or the user typing in its session: it joins the brief, redirects the worker, or answers. A `sendMessage` never steers |
 | Follow-up, sibling | A new task in an earlier task's session; a task filed beside another, for work its worker reported |
-| Claim, claim gate, task entry | The right to record a task's ending; the step that checks it and settles the row; the action a task runs through on its assignee's flow |
+| Claim, claim gate, task entry | The right to record a task's ending; the step that checks it and settles the row; `work`, the action a task runs through |
 | Debt, due time, durability sweeper | What a row owes; when it's due; the engine's pass that pays it |
 | Send, call, call id, budget | A message that returns nothing; one whose sender waits; the key a call's result is kept under; how many messages a request may still send |
-| Inbox item | One stop for a person: a suspended request or a task held on questions |
+| Inbox item | One stop for a person: a request suspended by `waitForUser`, or a task held on questions |
+| Approval, question, review | `waitForUser`'s kinds: yes or no; an answer in words; the user accepts work or sends it back |
 | Delegate, coordinator | A worker a session may file tasks with; a worker that routes a user's messages |
 | Routed task, fit check, fallback, rounds | A task routing filed; the model call that picks a delegate or vets a lead; the delegate that takes a weak pick; sending answers back out |
-| Workstream, lead, evaluator | A piece of a project; the worker that runs it; a block that judges input |
-| Entry, role | A flow action that starts a request; contributor, manager or coordinator |
+| Project, workstream, lead, evaluator | A body of a user's work a coordinator runs, with its own conversation; a piece of a project; the worker that runs it; a block that judges input |
+| `routeOn` | A coordinator's internal entry that sends a round's answers back out |
+| `roundDeadline` | A coordinator's internal entry that closes every overdue round |
+| `changeWorkstreamDelegate` | A project coordinator's internal entry that adds or removes a workstream's lead as a delegate |
+| `onWorkstreamOpened` | A lead's internal entry that opening a workstream calls to create its session |
+| Entry, public, role | A flow action that starts a request; started or called by a user (`respond`, the task actions); contributor, manager or coordinator |
 | Factory, capability | A function returning what a flow spreads into its definition; a bundle of tools, context and resources a block uses |
 
 ## Decisions
 
 The model above is the owner's, including: nothing settled by hand (no tool settles a task); a
-deadline on every wait, a waited dispatch included; nested waits (rule 9); and fourteen newly decided:
+deadline on every wait and every stop for a person, a waited dispatch included; nested waits (rule
+9); and eighteen newly decided:
 
-- [x] **Held on questions.** Questions known at filing reach the Inbox at once; mid-task stops stay
+- [x] **Held on questions:** questions known at filing reach the Inbox at once; mid-task stops stay
   suspensions.
-- [x] **The worker contract.** Roles declared, their entries checked at hire.
-- [x] **The sweeper backs up what a board owes.** The fast paths stay; it pays any debt when due.
-- [x] **Dependencies stay within one board (rule 16).** Crossing boards is a wait or a held task.
+- [x] **The worker contract:** roles declared, their entries checked at hire (rule 15).
+- [x] **The sweeper backs up what a board owes (rule 8);** the fast paths stay.
+- [x] **Dependencies stay within one board (rule 16).**
 - [x] **Recurring work is a schedule** that files a task when it fires.
-- [x] **A failure is an ending.** The filer messages Error Reporter if it chooses.
+- [x] **A failure is an ending (rule 7);** the filer messages Error Reporter if it chooses.
 - [x] **Task tools are public actions,** called by screens as the user.
-- [x] **`dispatch` runs one at a time (rule 17).** The sweeper pays what its last check misses.
-- [x] **A board's `mode` is `plan` or `delegation` (rule 14),** `plan` by default. It supersedes a
-  board-level `wait: true | false`. No mixing, refused when built. `dispatcher({ wait })` stays,
-  `false` by default; inside a board, the board's mode decides.
-- [x] **A worker block never settles its own row (rule 18).** Whoever ran the work settles it.
-- [x] **A goal-seek loop needs a plan board (rule 19),** and refuses a delegation board when built.
-- [x] **Patterns are plan boards.** They keep their boards and don't change.
-- [x] **`sendMessage` addresses a worker or `{ task: id }` (rule 21).** A task's message lands in its
-  session, conversation only. `{ sessionId }` is deferred until a real need, such as a session with
-  no task: routing never trusts a caller's session id (BP-031).
+- [x] **`dispatch` runs one at a time (rule 17);** the sweeper pays what its last check misses.
+- [x] **A board's `mode` is `plan` or `delegation` (rule 14),** superseding a board-level `wait`.
+  `dispatcher({ wait })` stays, `false` outside a board; inside one, an unset `wait` follows the mode
+  and one set against it is refused when built.
+- [x] **A worker block never settles its own row (rule 18).**
+- [x] **A goal-seek loop needs a plan board (rule 19).**
+- [x] **Patterns are plan boards,** unchanged.
+- [x] **`sendMessage` addresses a worker or `{ task: id }` (rule 21).** `{ sessionId }` is deferred
+  until a real need, such as a session with no task: routing never trusts a caller's session id
+  (BP-031).
 - [x] **Four task tools, one rule per field (rule 20).** `addTask` and `readTask` become `createTask`
   and `getTask`; `cancelTask` folds into `updateTask`; no steer tool. Supersedes one meaning per phase.
+- [x] **When a task is done (rule 6).** Supersedes "a request finishing means done".
+- [x] **A task's session outlives its task (rule 21).**
+- [x] **A finished task's output never changes (rule 20);** corrections are follow-ups.
+- [x] **The cold read's calls.** A retry runs in the task's session (rule 6). Only the user stops a
+  request (rule 12). Typing in a task's session steers it while open; once finished, `respond` takes
+  it. `sendMessage` takes `deadline?`. A session stopped for a person is waiting (Messages, Limits).
+  Routed-task settings need a conversation filer (Tasks, session setting). Two limits of 5 (rule 9). Every worker
+  sees all its user's tasks, so `{ task }` may address any (rule 21).
 
 Open:
 
@@ -435,6 +530,8 @@ Open:
   takes its turn in line (FIX-2062), when a waiting session no longer blocks a call.
 - [ ] **Renames.** Recommend Shift Coordinator in code, plus the companion file's code renames. The
   old worker id just stops working; nothing outside the repo uses it.
+- [ ] **Default worker instructions.** Punted to its own issue: asked for more work after its task
+  finished, a worker tells the filer with `sendMessage`. Prompt content, not a mechanism.
 - [ ] **A separate entry for proposing work.** Punted. Found work rides on `sendMessage`, and the
   receiver classifies it. If that proves unreliable, add an optional hint, never authority.
 - [ ] **Whether a worker filer hears of its task's suspensions.** Recommend yes: a question starts
