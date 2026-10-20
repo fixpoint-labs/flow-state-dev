@@ -11,6 +11,7 @@ import {
   recent,
   markConsolidated,
 } from '../src/episodic-memory-helpers.js'
+import { partialRef } from './partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -19,25 +20,11 @@ import {
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
 ): ResourceRef<EpisodicMemoryState> {
-  let state: EpisodicMemoryState = {
+  return partialRef<EpisodicMemoryState>('episodicMemory', 'user', episodicMemoryStateSchema, {
     episodes: [],
     totalEncoded: 0,
     ...initialState,
-  }
-
-  return {
-    name: 'episodicMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (updates) => {
-      state = { ...state, ...updates } as EpisodicMemoryState
-    },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+  })
 }
 
 function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
@@ -50,6 +37,8 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     category: 'identity',
     context: { sessionId: 'test-session' },
     consolidated: false,
+    durability: 'persistent',
+    stale: false,
     ...overrides,
   }
 }
@@ -197,6 +186,8 @@ describe('memory/episodicMemory', () => {
         significance: 0.8,
         category: 'preference',
         context: { sessionId: 'sess-1' },
+        subject: 'user',
+        durability: 'persistent',
       }, 200)
 
       expect(result.id).toMatch(/^ep_[A-Za-z0-9]{6}$/)
@@ -233,6 +224,8 @@ describe('memory/episodicMemory', () => {
         significance: 0.7,
         category: 'identity',
         context: { sessionId: 'sess-1' },
+        subject: 'user',
+        durability: 'persistent',
       }, 200)
 
       await encode(ref, {
@@ -241,6 +234,8 @@ describe('memory/episodicMemory', () => {
         significance: 0.6,
         category: 'event',
         context: { sessionId: 'sess-1' },
+        subject: 'user',
+        durability: 'persistent',
       }, 200)
 
       expect(ref.state.totalEncoded).toBe(2)
@@ -262,6 +257,8 @@ describe('memory/episodicMemory', () => {
         significance: 0.8,
         category: 'identity',
         context: { sessionId: 'sess-1' },
+        subject: 'user',
+        durability: 'persistent',
       }, 2)
 
       expect(ref.state.episodes).toHaveLength(2)
@@ -285,6 +282,8 @@ describe('memory/episodicMemory', () => {
         significance: 0.8,
         category: 'identity',
         context: { sessionId: 'sess-1' },
+        subject: 'user',
+        durability: 'persistent',
       }, 2)
 
       expect(ref.state.episodes).toHaveLength(2)
@@ -305,6 +304,8 @@ describe('memory/episodicMemory', () => {
         significance: 0.9,
         category: 'identity',
         context: { sessionId: 'sess-1' },
+        subject: 'user',
+        durability: 'persistent',
       }, 1)
 
       expect(ref.state.episodes).toHaveLength(1)

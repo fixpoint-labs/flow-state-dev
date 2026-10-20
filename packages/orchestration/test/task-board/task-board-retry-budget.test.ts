@@ -149,7 +149,7 @@ describe("retry budget — where the knob comes from", () => {
       inputSchema: z.unknown(),
       outputSchema: z.object({ limit: z.number().nullable() }),
       execute: async (_input, ctx) => {
-        const accessor = (ctx.cap as Record<string, never>)[board.capability.name] as unknown as {
+        const accessor = (ctx.cap as Record<string, unknown>)[board.capability.name] as {
           tasks: () => Promise<TaskCollectionRef>;
         };
         const collection = await accessor.tasks();

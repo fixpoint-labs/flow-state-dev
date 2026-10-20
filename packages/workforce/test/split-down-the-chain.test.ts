@@ -11,6 +11,7 @@
  * the task tools do, and reads what it asserts back from the store.
  */
 import { describe, expect, it } from "vitest";
+import { chainEntryKey, DEFAULT_TASK_CHAIN_LIMIT } from "../src/conversation-board/chain";
 import { bootSplitHost, type SplitHost } from "./split-harness";
 
 /** The one row filed with `goal`. */
@@ -664,20 +665,13 @@ describe("how deep a chain goes (BR-20, BR-6)", () => {
 });
 
 describe("how many tasks one top task has under it (BR-21, BR-21a, BR-22, BR-22a)", () => {
-  /**
-   * A top split three boards deep that stays open: `hold` and the `fillers`
-   * wait unassigned on s1's board. The fillers are filed in s1's one turn,
-   * through the same guarded add the task tools use: as tool calls, each is a
-   * request that reads the whole board again, which grows the test with the
-   * square of the count.
-   */
-  async function openChain(h: SplitHost, fillers = 0) {
+  /** A top split three boards deep that stays open: `hold` waits unassigned on s1's board. */
+  async function openChain(h: SplitHost) {
     h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
     h.controls.plans.s1 = [
       { goal: "Book the venue", assignee: "eng.tasker" },
       { goal: "Run the event", assignee: "s2" },
-      { goal: "hold" },
-      ...Array.from({ length: fillers }, (_, i) => ({ goal: `filler ${i}` }))
+      { goal: "hold" }
     ];
     h.controls.plans.s2 = [{ goal: "Hire the band", assignee: "eng.tasker" }];
     const planner = await h.open("alice", "planner");
@@ -698,12 +692,19 @@ describe("how many tasks one top task has under it (BR-21, BR-21a, BR-22, BR-22a
   it("refuses the 101st, across three boards, finished pieces counted; of two filings at the 100th, exactly one lands", async () => {
     const h = bootSplitHost();
     try {
-      const { t1, t2 } = await openChain(h, 95);
-      // 99 under the top: two finished, one parked on its own, 96 waiting.
-      expect(h.controls.refusals).toEqual([]);
+      const { t1, t2 } = await openChain(h);
+      // Four under the top: two finished, one parked on its own, one waiting.
       expect((await one(h, "Book the venue")).status).toBe("completed");
       expect((await one(h, "Hire the band")).status).toBe("completed");
-      expect(Object.keys(await entriesOf(h))).toHaveLength(99);
+      expect(Object.keys(await entriesOf(h))).toHaveLength(4);
+      // The count reads this record, so the fillers are written here.
+      const [key, record] = Object.entries(await h.chains("alice"))[0]!;
+      const board = (await one(h, "hold")).partition;
+      const filler = Object.fromEntries(
+        Array.from({ length: DEFAULT_TASK_CHAIN_LIMIT - 5 }, (_, i) => [chainEntryKey(board, `filler-${i}`), { state: "added" as const, at: Date.now() }])
+      );
+      await h.writeChain("alice", key, { ...record, entries: { ...record.entries, ...filler } });
+      expect(Object.keys(await entriesOf(h))).toHaveLength(DEFAULT_TASK_CHAIN_LIMIT - 1);
 
       const both = await Promise.all([
         h.tool("alice", t1, "addTask", { goal: "racing one" }),

@@ -20,13 +20,13 @@ const SECRET = "scheduler-secret-do-not-share";
 // Event-only handler blocks. They carry the action core inline on their
 // schedule bindings (FIX-838) and are intentionally absent from `flow.actions`
 // — a scheduled handler has no caller-addressed surface.
-const generateInvoices = handler<{ topic?: string }, { ok: true }>({
+const generateInvoices = handler({
   name: "generate-invoices",
   inputSchema: z.object({ topic: z.string().optional() }),
   execute: () => ({ ok: true })
 });
 
-const sendDigest = handler<Record<string, never>, { ok: true }>({
+const sendDigest = handler({
   name: "send-digest",
   inputSchema: z.object({}),
   execute: () => ({ ok: true })

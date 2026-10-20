@@ -21,25 +21,12 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 /** Directory under `packages/` → the issue that removes the entry. */
 const LATER_IN_STACK = "FIX-1343: wired by a later PR in its stack";
 const DEFERRED = {
-  bullmq: LATER_IN_STACK,
   "claude-code": LATER_IN_STACK,
   cli: LATER_IN_STACK,
   codex: LATER_IN_STACK,
   cursor: LATER_IN_STACK,
   devtool: LATER_IN_STACK,
   "harness-manager": LATER_IN_STACK,
-  mcp: LATER_IN_STACK,
-  memory: LATER_IN_STACK,
-  next: LATER_IN_STACK,
-  node: LATER_IN_STACK,
-  orchestration: LATER_IN_STACK,
-  patterns: LATER_IN_STACK,
-  scheduled: LATER_IN_STACK,
-  "store-postgres": LATER_IN_STACK,
-  "store-sqlite": LATER_IN_STACK,
-  "thought-fabric-core": LATER_IN_STACK,
-  tools: LATER_IN_STACK,
-  vercel: LATER_IN_STACK,
   workforce: "FIX-2016: wired after the open PRs that rewrite its tests land",
 };
 

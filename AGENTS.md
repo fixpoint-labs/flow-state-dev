@@ -118,7 +118,7 @@ pnpm fsdev run kitchen-sink chat-agent -i '{"message":"now what?","mode":"ask"}'
 pnpm fsdev run kitchen-sink chat-agent -i '{...}' --seed-session ./fixtures/state.json
 
 # Override the model — useful for cheap iteration or to force a specific path
-pnpm fsdev run kitchen-sink chat-agent -i '{...}' --model openai/gpt-4o-mini
+pnpm fsdev run kitchen-sink chat-agent -i '{...}' --model openai/gpt-6-luna
 
 # Capture the full stream + result to a file you can grep/jq later
 pnpm fsdev run kitchen-sink chat-agent -i '{...}' --capture /tmp/run.json
@@ -239,7 +239,7 @@ This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or externa
 
 **Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
 
-**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires a provider key for the model the flow uses. `hello-chat` is wired to `openai/gpt-5-mini`, so `pnpm fsdev run hello-chat chat -i '{"message":"hi"}'` needs `OPENAI_API_KEY` (or an `AI_GATEWAY_API_KEY` that resolves OpenAI). There is no mock fallback in `createModelResolver` — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. For provider-free smoke tests, use `pnpm test` (mocks every generator) or write a flow that uses no generator blocks and run it through `fsdev run`.
+**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires a provider key for the model the flow uses. `hello-chat` is wired to `openai/gpt-6-luna`, so `pnpm fsdev run hello-chat chat -i '{"message":"hi"}'` needs `OPENAI_API_KEY` (or an `AI_GATEWAY_API_KEY` that resolves OpenAI). There is no mock fallback in `createModelResolver` — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. For provider-free smoke tests, use `pnpm test` (mocks every generator) or write a flow that uses no generator blocks and run it through `fsdev run`.
 
 **Docs site**: `cd apps/docs && npx docusaurus start --port 3000` (do not use `pnpm docs:dev` with extra `--` flags — argument forwarding breaks).
 

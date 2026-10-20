@@ -60,27 +60,29 @@ function createMockCollection(
     store.set(entry.name, entry);
   }
 
-  const makeRef = (entry: MockResourceEntry): ResourceRef<FileEntryState> => ({
-    path: entry.name,
-    scope: "session",
-    uri: `session/${entry.name}`,
-    state: entry.state,
-    patchState: vi.fn(async (updates: Partial<FileEntryState>) => {
-      entry.state = { ...entry.state, ...updates };
-    }),
-    setState: vi.fn(async (next: FileEntryState) => {
-      entry.state = next;
-    }),
-    updateState: vi.fn(async (updater) => {
-      entry.state = await updater(entry.state);
-    }),
-    readContent: vi.fn(async () => entry.content),
-    readContentRaw: vi.fn(async () => entry.content),
-    writeContent: vi.fn(async (content: string) => {
-      entry.content = content;
-    }),
-    config: { stateSchema: {} as any },
-  });
+  const makeRef = (entry: MockResourceEntry): ResourceRef<FileEntryState> =>
+    // Deliberate partial: only the ref methods the bash tool calls.
+    ({
+      path: entry.name,
+      scope: "session",
+      uri: `session/${entry.name}`,
+      state: entry.state,
+      patchState: vi.fn(async (updates: Partial<FileEntryState>) => {
+        entry.state = { ...entry.state, ...updates } as FileEntryState;
+      }),
+      setState: vi.fn(async (next: FileEntryState) => {
+        entry.state = next;
+      }),
+      updateState: vi.fn(async (updater) => {
+        entry.state = await updater(entry.state);
+      }),
+      readContent: vi.fn(async () => entry.content),
+      readContentRaw: vi.fn(async () => entry.content),
+      writeContent: vi.fn(async (content: string) => {
+        entry.content = content;
+      }),
+      config: { scope: "session", stateSchema: {} as any },
+    }) as unknown as ResourceRef<FileEntryState>;
 
   return {
     pattern: "files/*",
@@ -144,7 +146,8 @@ function createMockCollection(
 
     // Expose internals for assertions
     _store: store,
-  } as ResourceCollectionRef<FileEntryState> & { _store: Map<string, MockResourceEntry> };
+    // Deliberate partial: the bash tool never calls upsert.
+  } as unknown as ResourceCollectionRef<FileEntryState> & { _store: Map<string, MockResourceEntry> };
 }
 
 // ---------------------------------------------------------------------------
@@ -500,7 +503,14 @@ describe("adapters", () => {
   describe("upstash", () => {
     it("throws when resolving (placeholder)", async () => {
       const { resolveUpstashBox } = await import("../src/bash/adapters/upstash");
-      await expect(resolveUpstashBox()).rejects.toThrow("not yet implemented");
+      const client = {
+        id: "box_1",
+        exec: vi.fn(),
+        read: vi.fn(),
+        write: vi.fn(),
+        destroy: vi.fn(),
+      };
+      await expect(resolveUpstashBox({ client })).rejects.toThrow("not yet implemented");
     });
   });
 });

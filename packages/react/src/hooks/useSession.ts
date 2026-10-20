@@ -1228,6 +1228,21 @@ export function useSession(
 
           if (takeLiveItem(event.item, "own")) setItems(storeRef.current.getSorted());
         },
+        onItemUpdated: (event) => {
+          // Every patch comes before its item finishes, so on a finished copy
+          // it is older than it (a resumed stream replays from the start). An
+          // item the view doesn't hold, the filter's rejects among them, has
+          // nothing to patch.
+          const key = itemKey(event.requestId, event.itemId);
+          const held = storeRef.current.getById(key);
+          if (held === undefined || isFinished(held)) return;
+          if (!storeRef.current.applyItemPatch(key, event.patch)) return;
+          // The patched copy is live, like any copy `takeLiveItem` takes: a
+          // snapshot whose read began before it arrived doesn't take it away.
+          liveArrivalsRef.current += 1;
+          liveItemsRef.current.set(key, liveArrivalsRef.current);
+          setItems(storeRef.current.getSorted());
+        },
         onContentAdded: (event) => {
           const key = itemKey(event.requestId, event.itemId);
           // On a finished copy, a part it already has is older than it. A part

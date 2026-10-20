@@ -48,7 +48,7 @@ Generator blocks accept a `caching` field alongside `providerOptions`:
 ```ts
 generator({
   name: "assistant",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: LARGE_SYSTEM_PROMPT,
   caching: {
     enabled: true,           // default true

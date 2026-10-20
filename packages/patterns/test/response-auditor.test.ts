@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { testBlock, testItems } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
+import type { ComponentItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
   responseAuditor,
@@ -335,6 +336,7 @@ describe("response auditor pattern", () => {
     const result = await testBlock(auditor, { input });
     expect(result.error).toBeNull();
 
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const captureTraces = testItems(result.items).blockOutputs("capture-context");
     expect(captureTraces.length).toBeGreaterThan(0);
     for (const trace of captureTraces) {
@@ -355,13 +357,12 @@ describe("response auditor pattern", () => {
     });
 
     const cards = result.items.filter(
-      (item) =>
-        item.type === "component" &&
-        (item as { component?: string }).component === "audit-annotation",
+      (item): item is ComponentItem =>
+        item.type === "component" && item.component === "audit-annotation",
     );
     expect(cards).toHaveLength(1);
 
-    const data = (cards[0] as { data: { surfacedResults: unknown[] } }).data;
+    const data = cards[0]!.data as { surfacedResults: unknown[] };
     expect(data.surfacedResults).toHaveLength(1);
   });
 
@@ -376,9 +377,8 @@ describe("response auditor pattern", () => {
     });
 
     const cards = result.items.filter(
-      (item) =>
-        item.type === "component" &&
-        (item as { component?: string }).component === "audit-annotation",
+      (item): item is ComponentItem =>
+        item.type === "component" && item.component === "audit-annotation",
     );
     expect(cards).toHaveLength(0);
   });

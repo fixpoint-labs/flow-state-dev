@@ -18,7 +18,7 @@ export interface ModelIdentity {
   /**
    * The concrete model that actually executed the call. Prefers the
    * provider-reported model id (e.g. `gpt-5.5-2025-04-12`); falls back to
-   * the framework's winning candidate string (e.g. `openai/gpt-5.5`) when
+   * the framework's winning candidate string (e.g. `openai/gpt-6.1-sol`) when
    * the provider doesn't report one.
    */
   actual: string;
