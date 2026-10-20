@@ -778,6 +778,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
      needs no audit; list it as cleared by that spec. Two or more additions to one job always
      get the audit, because no single spec saw both.
 
+  4. **Records the count** for every job named in step 2 in the epic's ledger row as
+     `ways per job: <job> N→M`: ways before the epic, then after. Each job an audit ran on
+     takes its counts from that audit's surface map.
+
   The lessons PR body **lists every addition it considered and the job it named**, even when
   no audit ran. `job audit: none grew` alone can't be told from "didn't look", so it is only
   valid under that list. The job audit runs whether or not the grounding proposal below is

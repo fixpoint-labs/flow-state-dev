@@ -232,11 +232,11 @@ The incentive gradient of this workflow pulls toward producing a spec: that's th
 
 7. **Which methods already do this job?** Question 1 asks what serves *this request*; this one asks what serves *the job*. Name the job in a few words (deliver work, wait for a result, answer a question, report an ending) and list every public method, tool, action and entry that already does it, **across packages**, not only the one you are touching.
    - **How to find them.** Search by what the code does, not where it lives: `graft` for callers and similar signatures, then the job's nouns and verbs across `packages/` (for "wait for a result": `wait`, `park`, `resume`, `await`, `answer`). The package you are touching is the one place you can't stop.
-   - **Record the list in `SPEC.md → What's already here`**, with the closest entry named. "None" is a claim like any other (BP-003): it carries the searches that found nothing.
+   - **Record the list in `SPEC.md → What's already here`**, with the closest entry named and the count stated: *"this would be the Nth way to <job>."* "None" is a claim like any other (BP-003): it carries the searches that found nothing. Calling the job *new* is a claim too, and it needs the same searches. "Messaging is a new job" was how a seventh way to reach a worker got counted as the first.
 
    Then compare the change to the closest entry:
    - **It differs only by a flag, or only in what the caller does** → it is a parameter on that entry, not a new method or a new kind. Extend it, or fold both into one. Name it by the variable, not the scenario: `wait`, not `ask`.
-   - **It differs in what the recipient or the mechanism does** → it may earn its own name. Say what that difference is.
+   - **It differs in what the recipient or the mechanism does** → name the option on the closest entry that would carry that difference (a setting, a session to run in, a payload field), and show why that option can't work. Only then does it earn its own name. "The recipient behaves differently" is a setting until shown otherwise: a post "would start cold" was a reason to keep a separate entry, until a session-by-id option on the task was added a day later.
    - **Two existing entries already do the job the same way** → say so, and file the fold through `issue-manager` (it dedupes against existing issues): a job-scoped `audit-coherence` run, then the fold. Name the issue in `SPEC.md`'s debt table, *Leaves* row; a note with no issue has no owner once the spec merges.
 
 **The required output of this step: a verdict** — one of:
@@ -274,7 +274,7 @@ Keep it brief — the user shouldn't have to read a page to make a call. If the 
 - A new vocabulary term that becomes part of how users reason about the system (block kind, scope, item type, capability category)
 - An observability or lifecycle integration that needs framework-side hooks unavailable in user space
 - A composition with existing framework features that wouldn't work outside the framework's resolution path
-- A bug fix or correctness change — those don't go through this gate at all
+- A bug fix or correctness change — those don't go through this gate at all, **unless the fix adds a way to do a job something already does** (a verb, entry, tool or resume path). That isn't a bug ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a spec"), and question 7 applies
 
 **Signals to push back — toward *refine the substrate*, *build smaller*, or *don't build*:**
 
@@ -285,9 +285,9 @@ Keep it brief — the user shouldn't have to read a page to make a call. If the 
 - The spec's edge-case table has entries that exist only because of where the API lives, not because of what it does
 - "Defaults baked into the framework" is the main value delta over user-space wiring
 - The spec includes a provider/platform guard error code
-- Question 7 found an existing method the change differs from only by a flag or only on the caller's side
+- Question 7 found an existing entry the change differs from only by a flag or only on the caller's side, or one whose option would carry the difference
 
-If two or more signals fire, that is a strong vote for pushing back — and the first move to weigh is whether refining an existing primitive dissolves the request (tenet 2), before either adding surface or forcing a workaround.
+**Question 7's signal is enough on its own:** the verdict is *Refine the substrate* (extend the closest entry) unless the spec shows why its option can't work. For the others, two or more signals firing is a strong vote for pushing back — and the first move to weigh is whether refining an existing primitive dissolves the request (tenet 2), before either adding surface or forcing a workaround.
 
 ### Step 4: Synthesize and Draft Spec
 

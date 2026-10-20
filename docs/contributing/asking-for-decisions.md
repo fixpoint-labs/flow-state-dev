@@ -178,6 +178,25 @@ gap, or anything hard to reverse is news, not an engineering call.
 **Cap what survives at three, hardest first.** Past three, either the filters weren't applied or
 the artifact carries more product surface than one artifact should.
 
+## When approving adds a way to do a job
+
+A change that adds another way to do a job something already does (hand off work, wait for a
+result, answer a question, report an ending) is how a surface grows one reasonable approval at a
+time. Each such ask can state the cost honestly ("a second entry kind nobody needs") and still
+recommend building it, and nobody keeps the count. Two rules:
+
+- **The reduction is the default, and it is the engineer's call.** Extend the closest existing
+  entry with an option ([`issue-spec`](../../.agents/skills/issue-spec/SKILL.md) Step 3.5,
+  question 7). Under [`epic-em`](../../.agents/skills/epic-em/SKILL.md), make it and report it
+  in one line: the job, the count before and after, and what it folded into. Elsewhere it
+  surfaces as the Step 3.5 verdict.
+- **Keeping the extra way is always an ask.** It is never a ratified line, a debt row or an
+  engineering call, in any posture. The heading carries the count and the reduction:
+  *"Seventh way to hand off work: add it, or a setting on tasks?"* Recommend the reduction
+  unless you can show why the option can't work; that showing is the trade-off. This holds on
+  every surface that can add a way: a spec, a bug-route PR, and an implementation PR whose diff
+  adds one its spec didn't name. That PR's *What's asked of you* can't say "nothing new".
+
 ## When not to ask at all
 
 More cases the filters don't catch:

@@ -33,6 +33,10 @@ gates, not the gates.
 - **Never absorbable, whatever the test says** — an `INCONCLUSIVE` POC verdict, an epic
   `unsettled` claim, an epic-spec `openQuestions` entry. An evidence run that failed to settle a
   question is where it stops being an engineering call.
+- **Keeping another way to do a job** when the closest entry's option would carry it
+  ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
+  approving adds a way to do a job"). The reduction itself is yours: make it and report one
+  line with the job, the count before and after, and what it folded into.
 - **Material changes to approved direction** require renewed human approval on a new
   spec amendment PR. EM judgment never replaces that gate or the separate implementation merge gate.
 - **At the cap**, run **both** tests above against the resolution you are about to give, not
