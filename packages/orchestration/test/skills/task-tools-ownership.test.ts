@@ -21,7 +21,6 @@ import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { ticketForClaim, type Task } from "../../src/tasks";
 import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 
-/** The task tools over the test board on the host generator's own state. */
 const taskTools = createTaskToolsCapability(ownStateResolver);
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
