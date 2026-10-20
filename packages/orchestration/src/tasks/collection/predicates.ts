@@ -21,9 +21,7 @@ import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
  * `task-change` items targeting a different collection. Cheap: two
  * equality checks plus a single field read.
  *
- * Typed over `RuntimeItem` because the stream it filters carries trace rows
- * (`block_trace` and the rest) as well as public items. It is still a valid
- * `wakeOn` filter, which is typed over the public `OutputItem`.
+ * A `RuntimeItem` predicate is a valid `wakeOn` (that slot is `OutputItem`).
  *
  * @example
  *   .waitForCondition(

@@ -17,10 +17,6 @@
  *   `itemVisibility` falls back to `{ client: true, history: true }` —
  *   keeps handler emits like `ctx.emit.message("hi")` ergonomic.
  * - All other (structural) types resolve to `{ client: true, history: false }`.
- *
- * Takes a `RuntimeItem` rather than a public `OutputItem`: the trace rule above
- * only fires for a trace row, and the runtime buffers this is called over hold
- * them. A public `OutputItem` is a `RuntimeItem`, so public callers are unaffected.
  */
 import type { RuntimeItem } from "./internal";
 import type { ItemVisibility } from "./types";
