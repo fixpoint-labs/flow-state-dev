@@ -314,7 +314,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     resources: { [RESOURCE_KEY]: workspaceResource },
     execute: async (entry, ctx) => {
       const e = entry as { type: string; topic: string; body: unknown };
-      await spawnTasksFor(e, 1, ctx as unknown as BlockContext);
+      await spawnTasksFor(e, 1, ctx);
     },
   });
 
@@ -343,8 +343,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         const taskId = seqState?._taskId;
         if (!taskId) return;
 
-        const widerCtx = ctx as unknown as BlockContext;
-        const collection = await getCollection(widerCtx);
+        const collection = await getCollection(ctx);
         const task = collection.get(taskId);
         const depth =
           (task?.metadata as { depth?: number } | undefined)?.depth ?? 1;
@@ -410,7 +409,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         }
 
         if (inits.length > 0) {
-          const collectionForSpawn = await getCollection(widerCtx);
+          const collectionForSpawn = await getCollection(ctx);
           await collectionForSpawn.addTasks(inits);
         }
       },
