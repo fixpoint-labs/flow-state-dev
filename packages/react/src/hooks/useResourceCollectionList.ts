@@ -4,7 +4,7 @@
  * Manages the React state lifecycle for a paginated list view: loading,
  * error, accumulated pages via `loadMore`, and refetching on mutations.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CollectionItemHandle } from "@flow-state-dev/client";
 import {
   useResourceCollection,
@@ -80,16 +80,9 @@ export function useResourceCollectionList<TClient = unknown>(
   const limit = options.limit;
   const topicPrefix = options.topicPrefix;
 
-  // The read identity. `wrap` is rebuilt exactly when the client, the session
-  // or the ref changes, and not on cache invalidation, so it names the
-  // collection being shown: a refetch keeps the rows on screen, a switch to
-  // another session does not.
+  // `wrap` changes with the client, the session and the ref, not with invalidation.
   const fence = useReadFence([wrap]);
 
-  // What has been read, stamped with the identity it was read under. Rows of
-  // an identity since left are never surfaced, even for the render between a
-  // switch and the new identity's first page (derived below, not reset in an
-  // effect).
   const [read, setRead] = useState<{
     identity: readonly unknown[];
     items: CollectionItemHandle<TClient>[];
@@ -108,12 +101,16 @@ export function useResourceCollectionList<TClient = unknown>(
   const fetched = holdsCurrent ? read.fetched : false;
   const error = holdsCurrent ? read.error : undefined;
 
+  // The first-page read in flight, if any. Paging waits for it: an append
+  // would supersede it and keep the rows it was replacing.
+  const replacingRef = useRef<(() => boolean) | null>(null);
+
   const fetchPage = useCallback(
     async (cursor: string | undefined, replace: boolean) => {
-      // Refused for an identity since left; otherwise the newest read wins,
-      // so a page that lands after a newer read began is not written.
+      if (!replace && replacingRef.current?.() === true) return;
       const stillCurrent = fence.begin();
       if (stillCurrent === null) return;
+      if (replace) replacingRef.current = stillCurrent;
       const identity = fence.identity;
       setIsLoading(true);
       setRead((prev) => (prev === null || prev.error === undefined ? prev : { ...prev, error: undefined }));
@@ -144,6 +141,7 @@ export function useResourceCollectionList<TClient = unknown>(
             : { identity, items: [], nextCursor: undefined, fetched: false, error: failure }
         );
       } finally {
+        if (replacingRef.current === stillCurrent) replacingRef.current = null;
         if (stillCurrent()) setIsLoading(false);
       }
     },
@@ -195,7 +193,6 @@ export function useResourceCollectionList<TClient = unknown>(
   return {
     items: surfaced,
     hasMore,
-    // Nothing read for the identity in play yet means a read is coming.
     isLoading: holdsCurrent ? isLoading : true,
     error,
     refetch,

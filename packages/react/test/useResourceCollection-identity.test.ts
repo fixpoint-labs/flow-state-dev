@@ -1,16 +1,4 @@
 // @vitest-environment happy-dom
-/**
- * A collection read belongs to one identity: the transport (client), the
- * session, and the collection ref. Pages read under one identity must never be
- * served to another, and a response that lands after its identity has been
- * left must never be written where the new identity will read it.
- *
- * The hazard is silent: two sessions holding a same-named collection with the
- * same item count used to share one page cache, so switching session showed
- * the previous session's items and made no request at all. These tests drive
- * the real hook and the real resource client against a stubbed `fetch`, so a
- * cache that stops keying on identity fails here by serving the wrong rows.
- */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -38,6 +26,19 @@ function sessionView(sessionId: string | undefined, count = 1): SessionView {
     snapshot: sessionId === undefined
       ? null
       : { sessionId, flowKind: "test", clientData: {}, resources: { session: { [REF]: { count } } } }
+  } as unknown as SessionView;
+}
+
+/**
+ * The view `useSession` gives right after a switch: the new session's id, the
+ * old session's snapshot still in place until the new one is read. `entry` is
+ * that old snapshot's collection entry, so it can carry `prefetched` and `live`.
+ */
+function switchedView(sessionId: string, snapshotOf: string, entry: Record<string, unknown>): SessionView {
+  return {
+    sessionId,
+    resourceChanges: [],
+    snapshot: { sessionId: snapshotOf, flowKind: "test", clientData: {}, resources: { session: { [REF]: entry } } }
   } as unknown as SessionView;
 }
 
@@ -250,6 +251,43 @@ describe("useResourceCollectionList across a session switch", () => {
     expect(result.current.items.map((i) => i.topic)).toEqual(["from-a"]);
   });
 
+  it("does not show the old session's prefetched or live rows before the new session's snapshot arrives", async () => {
+    const { pending } = stubListFetch({ hold: true });
+    const fromA = { count: 2, prefetched: [{ topic: "prefetched-a" }], live: { "live-a": { clientData: {} } } };
+    const { result, rerender } = renderHook(
+      ({ session }: { session: SessionView }) => useResourceCollectionList(session, REF),
+      { wrapper, initialProps: { session: switchedView("session-a", "session-a", fromA) } }
+    );
+    expect(result.current.items.map((i) => i.topic)).toEqual(["prefetched-a", "live-a"]);
+
+    rerender({ session: switchedView("session-b", "session-a", fromA) });
+
+    expect(result.current.items).toEqual([]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it("loads the next page from the refreshed first page, not the one a refresh replaced", async () => {
+    const { pending } = stubListFetch({ hold: true });
+    const { result, rerender } = mountList();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await act(async () => {
+      pending[0]!.resolve({ items: [{ topic: "old-first" }], nextCursor: "old-cursor" });
+    });
+
+    // A change to the collection lands, so the first page is read again.
+    const changed = { ...sessionView("session-a"), resourceChanges: [{ resourcePath: `${REF}/x` }] };
+    rerender({ session: changed as unknown as SessionView });
+    await waitFor(() => expect(pending).toHaveLength(2));
+    // Paging while the refresh is still in flight must not discard it.
+    act(() => result.current.loadMore());
+    await act(async () => {
+      pending[1]!.resolve({ items: [{ topic: "new-first" }], nextCursor: "new-cursor" });
+    });
+
+    expect(result.current.items.map((i) => i.topic)).toEqual(["new-first"]);
+    expect(pending.map((p) => p.url.searchParams.get("cursor"))).toEqual([null, null]);
+  });
+
   it("shows the new session's items even when the old session's page lands last", async () => {
     const { pending } = stubListFetch({ hold: true });
     const { result, rerender } = mountList();
@@ -293,6 +331,70 @@ describe("useResourceCollectionItem across a session switch", () => {
       pending[1]!.resolve({ topic: "t1", clientData: { from: "b" } } as unknown as CollectionListPage);
     });
     expect(result.current.item?.clientData).toEqual({ from: "b" });
+  });
+
+  it("does not rebuild the old session's item from its live overlay after a switch", async () => {
+    stubListFetch({ hold: true });
+    baseUrl = "https://one.test";
+    const fromA = { count: 1, live: { t1: { clientData: { from: "a-live" } } } };
+    const { result, rerender } = renderHook(
+      ({ session }: { session: SessionView }) => useResourceCollectionItem(session, REF, "t1"),
+      { wrapper, initialProps: { session: switchedView("session-a", "session-a", fromA) } }
+    );
+    expect(result.current.item?.clientData).toEqual({ from: "a-live" });
+
+    rerender({ session: switchedView("session-b", "session-a", fromA) });
+
+    expect(result.current.item).toBeNull();
+  });
+
+  it("does not show the old session's error after a switch", async () => {
+    let fail = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => (fail ? Promise.resolve(new Response("boom", { status: 500 })) : new Promise<Response>(() => {})))
+    );
+    baseUrl = "https://one.test";
+    const renders: { sessionId: string | undefined; error: Error | undefined }[] = [];
+    const { result, rerender } = renderHook(
+      ({ session }: { session: SessionView }) => {
+        const view = useResourceCollectionItem(session, REF, "t1");
+        renders.push({ sessionId: session.sessionId, error: view.error });
+        return view;
+      },
+      { wrapper, initialProps: { session: sessionView("session-a") } }
+    );
+    await waitFor(() => expect(result.current.error).toBeDefined());
+
+    fail = false;
+    rerender({ session: sessionView("session-b") });
+
+    // Every render, not only the last: the switch's first render runs before any effect clears state.
+    expect(renders.filter((r) => r.sessionId === "session-b").map((r) => r.error)).toEqual(
+      renders.filter((r) => r.sessionId === "session-b").map(() => undefined)
+    );
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it("keeps the newest read when two refetches of the same item overlap", async () => {
+    const { pending } = stubListFetch({ hold: true });
+    baseUrl = "https://one.test";
+    const { result } = renderHook(
+      ({ session }: { session: SessionView }) => useResourceCollectionItem(session, REF, "t1"),
+      { wrapper, initialProps: { session: sessionView("session-a") } }
+    );
+    await waitFor(() => expect(pending).toHaveLength(1));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    await act(async () => {
+      pending[1]!.resolve({ topic: "t1", clientData: { read: "newer" } } as unknown as CollectionListPage);
+    });
+    await act(async () => {
+      pending[0]!.resolve({ topic: "t1", clientData: { read: "older" } } as unknown as CollectionListPage);
+    });
+
+    expect(result.current.item?.clientData).toEqual({ read: "newer" });
   });
 
   it("stops loading when the first read fails", async () => {

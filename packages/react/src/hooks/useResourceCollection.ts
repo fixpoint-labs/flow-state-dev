@@ -6,9 +6,7 @@
  * (`useResourceCollectionList`, `useResourceCollectionItem`).
  *
  * Caching lives per-instance: each hook call owns its own page cache keyed
- * by the normalized query, and that cache belongs to one read identity (the
- * client, the session and the collection ref). A change to any of them starts
- * a fresh cache, so one session's pages are never served for another. On
+ * by the normalized query, for the current client, session and collection. On
  * `resource_change` items observed in the session stream, entries for the
  * affected ref are invalidated; active subscribers refetch.
  */
@@ -53,7 +51,11 @@ export type CollectionListOptions = {
  * so existing untyped call sites are unchanged.
  */
 export type UseResourceCollectionResult<TClient = unknown> = {
-  /** Fetch a paginated page of items. Cached by normalized query. */
+  /**
+   * Fetch a paginated page of items. Cached by normalized query. A `list` kept
+   * from before a session, ref or client change still reads, uncached, for the
+   * identity it was made for.
+   */
   list: (options?: CollectionListOptions) => Promise<CollectionListPage>;
   /** Fetch a single item by topic. Returns `null` if not present. */
   get: (topic: string) => Promise<CollectionItemState | null>;
@@ -93,10 +95,6 @@ type CachedPage = {
   page: CollectionListPage;
 };
 
-/**
- * The page cache and the identity it belongs to. `owner` is the read fence of
- * that identity; a read built under any other fence starts a fresh cache.
- */
 type PageCache = {
   owner: ReadFence | null;
   pages: Map<string, CachedPage>;
@@ -122,11 +120,16 @@ function pathAffectsCollection(path: string, ref: string): boolean {
   return path === ref || path.startsWith(`${ref}/`);
 }
 
-/** Locate the snapshot entry for `ref` across all scopes. */
+/**
+ * Locate the snapshot entry for `ref` across all scopes. None while the view
+ * still holds the previous session's snapshot: `useSession` keeps it on a
+ * switch until the new session's snapshot is read.
+ */
 export function findCollectionEntry(
   session: SessionView,
   ref: string
 ): CollectionSnapshotEntry | undefined {
+  if (session.snapshot?.sessionId !== session.sessionId) return undefined;
   const resources = session.snapshot?.resources;
   if (!resources) return undefined;
   for (const scope of ["session", "user", "org"] as const) {
@@ -182,17 +185,11 @@ export function useResourceCollection<TClient = unknown>(
 
   const sessionId = session.sessionId;
 
-  // The read identity: transport, session and collection. The fence object is
-  // rebuilt whenever any of them changes, so it also names one stay on an
-  // identity: after A → B → A the cache from the first stay is not reused.
+  // The fence object names one stay: A → B → A does not reuse the first cache.
   const fence = useReadFence([client, sessionId, ref]);
 
-  // Per-instance page cache keyed by normalized query, owned by one identity
-  // stay. Held in a ref so it survives re-renders without participating in
-  // render diffing. It is replaced when a read of a new identity first touches
-  // it, not cleared from an effect: a child component's effect can call the
-  // new `list` before this hook's effects run, and must not find the previous
-  // session's pages there.
+  // Replaced on the first read under a new fence, not from an effect: a child
+  // effect can call `list` before this hook's effects run.
   const cacheRef = useRef<PageCache>({ owner: null, pages: new Map() });
   // Generation counter — bumped on invalidation. Captured before each list()
   // await, then compared after to discard stale write-backs from races
@@ -229,19 +226,14 @@ export function useResourceCollection<TClient = unknown>(
 
   const collectionEntry = useMemo(
     () => findCollectionEntry(session, ref),
-    [session.snapshot?.resources, ref]
+    [session.snapshot, session.sessionId, ref]
   );
 
-  // Snapshot refresh as a fallback invalidator. `resource_change` items are
-  // dropped by useSession's default filter, so the items-watching effect
-  // above misses them when the consumer isn't subscribed. useSession does
-  // call `refreshSnapshot()` at request completion when any resource changed
+  // Snapshot refresh as a fallback invalidator, behind the
+  // `session.resourceChanges` watcher above. useSession calls
+  // `refreshSnapshot()` at request completion when any resource changed
   // during streaming, which updates `count` (always emitted, FIX-427 §3.6).
-  // Invalidate whenever count moves so cached pages refetch on the next
-  // call. Conservative: a snapshot refresh that doesn't change count
-  // (e.g., update-in-place that leaves cardinality unchanged) won't trigger
-  // — but the items-watching path catches those when the resource_change
-  // is in the user's filter.
+  // Invalidate whenever count moves so cached pages refetch on the next call.
   const lastSeenCountRef = useRef<number | undefined>(collectionEntry?.count);
   useEffect(() => {
     const next = collectionEntry?.count;
@@ -256,9 +248,7 @@ export function useResourceCollection<TClient = unknown>(
       if (!sessionId) {
         return { items: [] };
       }
-      // A callback built for an identity since left (or after unmount) still
-      // answers for its own identity, but neither reads nor fills the cache:
-      // that belongs to the identity in play.
+      // Still answers for the identity it closed over. This cache belongs to the one in play.
       if (!fence.isCurrent()) {
         return client.listCollectionItems(sessionId, ref, options);
       }
@@ -270,12 +260,8 @@ export function useResourceCollection<TClient = unknown>(
       const cached = cache.pages.get(key);
       if (cached !== undefined) return cached.page;
 
-      // Snapshot the generation at request start. If invalidate() bumps it
-      // before the response lands (e.g., SSE resource_change while fetching),
-      // skip the write-back so we don't repopulate a cleared cache. The write
-      // goes to the cache captured above, never `cacheRef.current`: if the
-      // identity was left while this was in flight, that cache has been
-      // replaced and the late page lands nowhere a read can find it.
+      // Skip the write if invalidate() bumped generation. Write `cache`, not
+      // `cacheRef.current`: a switch replaces that ref while this is in flight.
       const startGen = generationRef.current;
       const page = await client.listCollectionItems(sessionId, ref, options);
       if (startGen === generationRef.current) {
