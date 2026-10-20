@@ -1,13 +1,6 @@
 /**
- * Sequencer state schema bubbling, end to end through `runAction`.
- *
- * The contract (docs/architecture/blocks.md → "Sequencer state schema
- * bubbling"): a block's `sequencerStateSchema` — and one a capability
- * contributes to a sequencer — joins the instance-state contract of the
- * sequencer `ctx.sequencer` resolves to, defaults applied; a sequencer-level
- * `stateSchema` that disagrees with it is refused when the flow is built.
- *
- * Provider-free: every block is a handler, so no model is involved.
+ * `sequencerStateSchema` joins the sequencer `ctx.sequencer` resolves to.
+ * Provider-free: every block is a handler.
  */
 import {
   defineCapability,
@@ -15,9 +8,9 @@ import {
   handler,
   router,
   sequencer,
-  SequencerSchemaMismatchError
+  SequencerSchemaMismatchError,
+  DEFAULT_ORG_ID
 } from "@flow-state-dev/core";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance, ResumeAction, SuspensionRecord } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -37,8 +30,14 @@ function run(flow: FlowInstance, input: unknown = {}) {
   });
 }
 
-function flowOf(kind: string, block: Parameters<typeof defineFlow>[0]["actions"][string]["block"]) {
-  return defineFlow({ kind, actions: { run: { inputSchema: z.any(), block } } })();
+function flowOf(
+  kind: string,
+  block: Parameters<typeof defineFlow>[0]["actions"][string]["block"],
+  id?: string
+) {
+  return defineFlow({ kind, actions: { run: { inputSchema: z.any(), block } } })(
+    id === undefined ? undefined : { id }
+  );
 }
 
 /** A block that reports the enclosing sequencer's whole state. */
@@ -69,16 +68,12 @@ describe("a child's sequencerStateSchema bubbles to the enclosing sequencer", ()
     const result = await run(flowOf("bubble-default", seq));
 
     expect(result.error).toBeUndefined();
-    // The sequencer's own default survives, and the child's default is there
-    // from the start, not only once someone writes it.
     expect(result.output).toEqual({ label: "x", progress: 0 });
   });
 
   it("passes through a sequencer that declares no state, to the one that does", async () => {
-    // A stateless sequencer is transparent to `ctx.sequencer` (first-party
-    // patterns rely on it: debate's per-speaker sub-sequencer, plan-and-
-    // execute's seed). Bubbling must not give it a container of its own, or
-    // the child's writes would land there instead of on the owner.
+    // A stateless sequencer stays transparent, so the write lands on the owner
+    // (debate's per-speaker sub-sequencer and plan-and-execute's seed rely on it).
     const bump = handler({
       name: "bump",
       inputSchema: z.any(),
@@ -147,7 +142,6 @@ describe("an incompatible sequencer stateSchema is refused at build time", () =>
       stateSchema: z.object({ progress: z.string() })
     });
 
-    // Refused while composing — before defineFlow, and long before any run.
     expect(() => parent.tap(needsNumber)).toThrow(SequencerSchemaMismatchError);
     expect(() => parent.tap(needsNumber)).toThrow(/"progress"/);
   });
@@ -214,11 +208,16 @@ describe("a capability's sequencerStateSchema is installed on the sequencer that
 describe("a checkpoint written before a field bubbled in still restores", () => {
   it("restores the saved fields and fills the new field from its default", async () => {
     const stores = createInMemoryStores();
-    const provider = createCheckpointDurabilityProvider({
-      checkpoints: stores.checkpoints,
-      suspensions: stores.suspensions,
-      leases: stores.leases
+    const provider = createCheckpointDurabilityProvider(stores);
+    const stateSchema = z.object({ label: z.string().default("fresh") });
+    const readProgress = handler({
+      name: "read-progress",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      sequencerStateSchema: z.object({ progress: z.number().default(5) }),
+      execute: (input) => input
     });
+    const owner = sequencer({ name: "durable-owner", inputSchema: z.any(), stateSchema, durable: true });
 
     const write = handler({
       name: "write",
@@ -238,21 +237,12 @@ describe("a checkpoint written before a field bubbled in still restores", () => 
         return input;
       }
     });
-    const stateSchema = z.object({ label: z.string().default("fresh") });
-
-    // v1 is the code that wrote the checkpoint: no block needs `progress`.
-    const v1 = defineFlow({
-      kind: "bubble-resume",
-      actions: {
-        run: {
-          inputSchema: z.any(),
-          block: sequencer({ name: "durable-owner", inputSchema: z.any(), stateSchema, durable: true })
-            .step(write)
-            .step(gate)
-            .step(reportState)
-        }
-      }
-    })({ id: "bubble-resume" });
+    // v1 wrote the checkpoint before any block required `progress`.
+    const v1 = flowOf(
+      "bubble-resume",
+      owner.step(write).step(gate).step(reportState),
+      "bubble-resume"
+    );
 
     const initial = await runAction({
       orgId: DEFAULT_ORG_ID,
@@ -267,28 +257,11 @@ describe("a checkpoint written before a field bubbled in still restores", () => 
     const [suspension] = await provider.listSuspended({ status: "pending" });
     expect(suspension).toBeDefined();
 
-    // v2 is deployed while the request is suspended: a new step bubbles
-    // `progress` (default 5) into the same sequencer.
-    const readProgress = handler({
-      name: "read-progress",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      sequencerStateSchema: z.object({ progress: z.number().default(5) }),
-      execute: (input) => input
-    });
-    const v2 = defineFlow({
-      kind: "bubble-resume",
-      actions: {
-        run: {
-          inputSchema: z.any(),
-          block: sequencer({ name: "durable-owner", inputSchema: z.any(), stateSchema, durable: true })
-            .step(write)
-            .step(gate)
-            .tap(readProgress)
-            .step(reportState)
-        }
-      }
-    })({ id: "bubble-resume" });
+    const v2 = flowOf(
+      "bubble-resume",
+      owner.step(write).step(gate).tap(readProgress).step(reportState),
+      "bubble-resume"
+    );
 
     const resumed = await resolve(v2, stores, provider, requestId, suspension!, "approve");
 

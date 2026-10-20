@@ -925,11 +925,7 @@ function runSequencerOperations(
           stateSchema
         );
 
-        // In resume mode, restore sequencer state from the checkpoint, over
-        // the fresh container's schema defaults: a checkpoint written before a
-        // field joined the schema (a new bubbled requirement, say) or without
-        // a transient slot keeps every saved value and gets the defaults for
-        // the rest (BP-030).
+        // Checkpoint over schema defaults, so a field the checkpoint lacks keeps its default (BP-030).
         if (resumeState !== undefined && resumeState.state !== undefined && ctx.sequencer !== undefined) {
           ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state } as any);
         }
@@ -1168,13 +1164,11 @@ function createSequencer<
   // the opt-out for tests and ephemeral fanouts.
   const durable = config.durable ?? true;
 
-  // Sequencer state bubbling (see `internal/sequencer-state.ts`): the children's
-  // `sequencerStateSchema` requirements land on this sequencer's `stateSchema`
-  // when it has one, and otherwise pass up as its own `sequencerStateSchema`.
-  // Recomputed from the unchanged `config` on every rebuild, and throws here,
-  // while the chain is composed, on a conflicting field.
-  const stateChildren = [...childBlocks, ...rescueHandlers.map((handler) => handler.block)];
-  const foldedState = foldSequencerStateRequirements(config.stateSchema, stateChildren, config.name);
+  // Children's sequencerStateSchema joins stateSchema, or passes up when this
+  // sequencer has none. Recomputed from the unchanged `config` on every
+  // rebuild, so nothing is folded twice.
+  const composedChildren = [...childBlocks, ...rescueHandlers.map((handler) => handler.block)];
+  const foldedState = foldSequencerStateRequirements(config.stateSchema, composedChildren, config.name);
   const stateSchema = config.stateSchema === undefined ? undefined : foldedState;
   const sequencerStateSchema = config.stateSchema === undefined ? foldedState : undefined;
 
@@ -1209,7 +1203,7 @@ function createSequencer<
     // block and may itself contain a board. It is listed here rather than in
     // `config.rescue` (which `buildBlock` folds in on its own) because a
     // sequencer keeps its handlers outside the config, in the operation loop.
-    childBlocks: [...childBlocks, ...rescueHandlers.map((handler) => handler.block)],
+    childBlocks: composedChildren,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -2522,12 +2516,9 @@ export function sequencer<
 
   // FIX-914 PR2: `resolveCapabilities` already merged any capability-
   // contributed own state (`ctx.self`) with the sequencer's own `stateSchema`
-  // declaration. A capability's `sequencerStateSchema` is state it needs from
-  // the sequencer that uses it, so it lands on this sequencer's state too —
-  // checked against the declared fields like a child's requirement. Runtime-
-  // only — sequencer capabilities aren't statically typed (see `SequencerCtx`'s
-  // hardcoded `TCapabilities = {}`), so this doesn't affect the `TStateSchema`
-  // generic.
+  // declaration. Runtime-only — sequencer capabilities aren't statically typed
+  // (see `SequencerCtx`'s hardcoded `TCapabilities = {}`), so this doesn't
+  // affect the `TStateSchema` generic.
   const capabilityRequirement = mergedSurface?.sequencerStateSchema;
   const stateSchema =
     capabilityRequirement === undefined

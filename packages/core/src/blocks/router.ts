@@ -240,9 +240,7 @@ export function router<
     extractDeclaredResources(config)
   );
 
-  // A route runs with the router's `ctx.sequencer`, so the state its routes
-  // need from that sequencer passes up as the router's own requirement (see
-  // `internal/sequencer-state.ts`). Conflicting routes are refused here.
+  // Routes share the router's `ctx.sequencer`, so their requirements pass up.
   const sequencerStateSchema = foldSequencerStateRequirements(
     config.sequencerStateSchema,
     config.routes ?? [],

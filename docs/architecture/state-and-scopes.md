@@ -475,7 +475,7 @@ Block-level state declarations bubble upward for compatibility checking. This en
 - Type safety preservation across sequencer steps
 - Recursive shadowing rules for nested sequencers
 
-For sequencer state this happens when the flow is built: a block's `sequencerStateSchema`, and a capability's on a sequencer's `uses`, joins the `stateSchema` of the nearest enclosing sequencer that has one (the sequencer `ctx.sequencer` resolves to), defaults applied. A sequencer without a `stateSchema` is transparent and passes the requirement up; one with a `stateSchema` absorbs it and shadows its descendants from the sequencers above. A field both declare must agree in kind, or composing the chain throws `SequencerSchemaMismatchError`. See [Sequencer state schema bubbling](./blocks.md#sequencer-state-schema-bubbling) for the rules.
+For sequencer state, see [Sequencer state schema bubbling](./blocks.md#sequencer-state-schema-bubbling).
 
 ## Resource Declaration Bubbling
 
