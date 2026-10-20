@@ -370,8 +370,7 @@ export const parkOnPieces = handler({
   inputSchema: z.unknown(),
   outputSchema: z.unknown(),
   resources: { ...conversationLedgerResources },
-  execute: async (answer, rawCtx) => {
-    const ctx: BlockContext = rawCtx;
+  execute: async (answer, ctx) => {
     const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
     const filerFlow = stringAt(ctx, FILING_FLOW_STATE_KEY);
     const taskFlow = stringAt(ctx, TASK_FLOW_STATE_KEY);
@@ -434,8 +433,7 @@ export const cancelPiecesBlock = handler({
   inputSchema: cancelPiecesInputSchema,
   outputSchema: z.object({}),
   resources: { ...conversationLedgerResources },
-  execute: async (input, rawCtx) => {
-    const ctx: BlockContext = rawCtx;
+  execute: async (input, ctx) => {
     const own = await ownConversationLedger(ctx);
     if (own !== undefined) await cancelOpenRows(ctx, own, `Its parent task "${input.taskId}" was ended from above.`, input.taskId);
     // The settle the fence would decline anyway: drop it.
