@@ -11,7 +11,7 @@
  * not what the host reports.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -261,6 +261,23 @@ describe("a fetch that can't happen starts from the local base", () => {
 
     expect(fetches()).toHaveLength(0);
     expect(git(repo, "rev-parse", "refs/heads/fsd/run-1")).toBe(localMain);
+  });
+
+  it("still refuses a remote whose URL carries a token, and the pin never saves the token", async () => {
+    const token = "ghp_secretsecretsecret";
+    git(repo, "config", "remote.origin.url", `https://x-access-token:${token}@github.com/acme/app.git`);
+    const localMain = git(repo, "rev-parse", "main");
+
+    const place = await provision("main");
+
+    expect(fetches()).toHaveLength(0);
+    expect(place.repo?.baseCommit).toBe(localMain);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]![0]);
+    expect(message).toContain("carries a password");
+    expect(message).not.toContain(token);
+    const pinned = readdirSync(join(root, ".fetch-pins")).filter((name) => name.endsWith(".json"));
+    expect(pinned.map((name) => readFileSync(join(root, ".fetch-pins", name), "utf8")).join("")).not.toContain(token);
   });
 
   it("falls back with a warning when the fetched tracking ref is locked and can't move", async () => {

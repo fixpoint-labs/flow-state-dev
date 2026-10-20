@@ -14,7 +14,9 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { withLockSync, type LockBounds } from "./lock";
+import { withoutCredential } from "./remotes";
 
 /**
  * How long a startup git query may take. Short: these are metadata reads
@@ -144,6 +146,12 @@ export function readFetchPins(repo: string): FetchPins {
 /** Where a host keeps the fetch settings it pinned, in its root. Dot-prefixed, so no place is named over it. */
 const FETCH_PINS_DIR = ".fetch-pins";
 
+/**
+ * How a host start waits for another start's pin write. A hold is one small
+ * read and write, so a holder still there after this long is gone.
+ */
+const PIN_LOCK_BOUNDS: LockBounds = { waitMs: 10_000, pollMs: 10, staleAfterMs: 10_000 };
+
 /** {@link FetchPins} as {@link pinFetchSettings} keeps them, and the file that holds them. */
 export interface KeptFetchPins extends FetchPins {
   /** The pin file in the host's root. Deleting it, then restarting the host, pins the config afresh. */
@@ -151,66 +159,87 @@ export interface KeptFetchPins extends FetchPins {
 }
 
 /**
- * The fetch settings of `repo`, pinned across restarts in the host's `root`,
- * which a run can't write. Each remote's URL and each branch's upstream is
- * pinned the first time a host start sees it, and that value wins from then
- * on: a run that rewrites the repository's shared config changes nothing the
- * next host fetches with. Credential helpers live outside the repository and
- * are read fresh. A pin file that can't be read pins nothing, with a warning,
- * and is left as it is for the person to look at.
+ * Pin `repo`'s remotes and upstreams in the host's `root`, where a run can't
+ * write, across restarts. First value wins; helpers stay live; an unreadable
+ * file pins nothing and is left alone. A URL is pinned without any credential
+ * in it, and the file is the operator's alone (`0600`, in a `0700` directory).
+ * Two hosts starting on one root merge under a lock, so neither drops the
+ * other's pins.
  */
 export function pinFetchSettings(root: string, repo: string): KeptFetchPins {
   const live = readFetchPins(repo);
   const dir = path.join(root, FETCH_PINS_DIR);
   const file = path.join(dir, `${createHash("sha256").update(repo).digest("hex").slice(0, 16)}.json`);
-  let kept: { remotes: Record<string, string>; upstreams: Record<string, PinnedUpstream> };
-  try {
-    kept = parsePins(readFileSync(file, "utf8"));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(
-        `[workspace] ${repo}: the fetch settings pinned in ${file} could not be read (${(error as Error).message}), ` +
-          `so nothing is fetched for it. To pin its current config, delete ${file} and restart the host.`,
-      );
-      return { remotes: new Map(), upstreams: new Map(), credentialHelpers: live.credentialHelpers, file };
-    }
-    kept = { remotes: {}, upstreams: {} };
-  }
-  let added = false;
-  for (const [name, url] of live.remotes) {
-    if (Object.hasOwn(kept.remotes, name)) continue;
-    kept.remotes[name] = url;
-    added = true;
-  }
-  for (const [ref, upstream] of live.upstreams) {
-    if (Object.hasOwn(kept.upstreams, ref)) continue;
-    kept.upstreams[ref] = upstream;
-    added = true;
-  }
-  if (added || !existsSync(file)) {
-    mkdirSync(dir, { recursive: true });
-    // Written whole and renamed into place, so a host never reads half a file.
-    const temporary = `${file}.${randomUUID()}`;
-    writeFileSync(temporary, `${JSON.stringify({ repo, ...kept }, null, 2)}\n`);
-    renameSync(temporary, file);
-  }
-  return {
-    remotes: new Map(Object.entries(kept.remotes)),
-    upstreams: new Map(Object.entries(kept.upstreams)),
-    credentialHelpers: live.credentialHelpers,
-    file,
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const unreadable = (why: string): KeptFetchPins => {
+    console.warn(
+      `[workspace] ${repo}: the fetch settings pinned in ${file} could not be read (${why}), ` +
+        `so nothing is fetched for it. To pin its current config, delete ${file} and restart the host.`,
+    );
+    return { remotes: new Map(), upstreams: new Map(), credentialHelpers: live.credentialHelpers, file };
   };
+  return withLockSync(
+    `${file}.lock`,
+    PIN_LOCK_BOUNDS,
+    () => {
+      let text: string | undefined;
+      try {
+        text = readFileSync(file, "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return unreadable((error as Error).message);
+      }
+      let kept: Pins;
+      try {
+        kept = text === undefined ? { remotes: new Map(), upstreams: new Map() } : parsePins(text, repo);
+      } catch (error) {
+        return unreadable((error as Error).message);
+      }
+      let added = text === undefined;
+      for (const [name, url] of live.remotes) {
+        if (kept.remotes.has(name)) continue;
+        kept.remotes.set(name, withoutCredential(url));
+        added = true;
+      }
+      for (const [ref, upstream] of live.upstreams) {
+        if (kept.upstreams.has(ref)) continue;
+        kept.upstreams.set(ref, upstream);
+        added = true;
+      }
+      if (added) {
+        // Written whole and renamed into place, so a host never reads half a file.
+        const temporary = `${file}.${randomUUID()}`;
+        const json = { repo, remotes: Object.fromEntries(kept.remotes), upstreams: Object.fromEntries(kept.upstreams) };
+        writeFileSync(temporary, `${JSON.stringify(json, null, 2)}\n`, { mode: 0o600 });
+        renameSync(temporary, file);
+      }
+      return { ...kept, credentialHelpers: live.credentialHelpers, file };
+    },
+    `the fetch pins in ${file}`,
+  );
 }
 
-/** A pin file's remotes and upstreams, or a throw naming what is wrong with it. */
-function parsePins(text: string): { remotes: Record<string, string>; upstreams: Record<string, PinnedUpstream> } {
-  const parsed = JSON.parse(text) as { remotes?: unknown; upstreams?: unknown };
+/** A pin file's contents. Maps, so a remote named `__proto__` is a key like any other. */
+interface Pins {
+  remotes: Map<string, string>;
+  upstreams: Map<string, PinnedUpstream>;
+}
+
+/** The pins in a file written for `repo`, or a throw naming what is wrong with it. */
+function parsePins(text: string, repo: string): Pins {
+  const parsed = JSON.parse(text) as unknown;
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
   const isUpstream = (value: unknown): value is PinnedUpstream =>
     isRecord(value) && typeof value.ref === "string" && typeof value.remoteName === "string" && typeof value.remoteRef === "string";
   if (!isRecord(parsed) || !isRecord(parsed.remotes) || !isRecord(parsed.upstreams)) throw new Error("not a pin file");
-  if (!Object.values(parsed.remotes).every((url) => typeof url === "string")) throw new Error("a remote's URL is not a string");
-  if (!Object.values(parsed.upstreams).every(isUpstream)) throw new Error("an upstream is malformed");
-  return { remotes: parsed.remotes as Record<string, string>, upstreams: parsed.upstreams as Record<string, PinnedUpstream> };
+  if (parsed.repo !== repo) throw new Error(`it pins ${JSON.stringify(parsed.repo)}, not this repository`);
+  const remotes = Object.entries(parsed.remotes);
+  const upstreams = Object.entries(parsed.upstreams);
+  if (!remotes.every(([, url]) => typeof url === "string")) throw new Error("a remote's URL is not a string");
+  if (!upstreams.every(([, upstream]) => isUpstream(upstream))) throw new Error("an upstream is malformed");
+  return {
+    remotes: new Map(remotes as Array<[string, string]>),
+    upstreams: new Map(upstreams as Array<[string, PinnedUpstream]>),
+  };
 }

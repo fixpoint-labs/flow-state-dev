@@ -85,7 +85,7 @@ import {
 import { createHostPlace } from "./host-place";
 import { acquireLock, HOST_LOCK_BOUNDS, releaseLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
-import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, type AllowedRemote } from "./remotes";
+import { allowedProtocols, checkRemote, checkRemoteShape, redactRemote, withoutCredential, type AllowedRemote } from "./remotes";
 import type { RepoRunSource, RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
 import { pinFetchSettings } from "./repository";
@@ -392,9 +392,6 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const root = resolve(options.root);
   const allow = options.remotes.allow;
   const localRepositories = new Set((options.localRepositories ?? []).map((path) => resolve(path)));
-  // Pinned in the root, where no run writes, the first time a host start sees
-  // each value: a listed repository's worktrees share its config, so a run
-  // could otherwise aim the next run's fetch, in this process or after a restart.
   const fetchPins = new Map([...localRepositories].map((path) => [path, pinFetchSettings(root, path)] as const));
   const provisionTimeoutMs = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
   const now = options.now ?? Date.now;
@@ -825,16 +822,14 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       await git(repo, ["for-each-ref", "--format=%(upstream)%0a%(upstream:remotename)%0a%(upstream:remoteref)", full], left())
     ).split("\n");
     const pins = fetchPins.get(repo);
-    // How the person accepts a change they made on purpose.
-    const refresh = pins === undefined ? "" : ` To pin the repository's current config, delete ${pins.file} and restart the host.`;
-    // The upstream pinned in the host's root, never the live config a run
-    // could have repointed. A branch with none pinned has no upstream here.
+    const acceptChange = pins === undefined ? "" : ` To pin the repository's current config, delete ${pins.file} and restart the host.`;
+    // Pinned upstream, not the live config. None pinned means no upstream here.
     const pinnedUpstream = pins?.upstreams.get(full);
     if (pinnedUpstream === undefined) {
       if (liveRef.startsWith("refs/remotes/") && liveRemote !== "" && liveRemote !== ".") {
         console.warn(
           `[workspace] ${repo}: "${base}" now tracks ${liveRef}, which it didn't when the host pinned its ` +
-            `fetch settings, so its upstream is neither fetched nor compared.${refresh}`,
+            `fetch settings, so its upstream is neither fetched nor compared.${acceptChange}`,
         );
       }
       return undefined;
@@ -843,12 +838,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     if (liveRef !== ref || liveRemote !== remoteName || liveRemoteRef !== remoteRef) {
       console.warn(
         `[workspace] ${repo}: "${base}" now tracks ${liveRef || "nothing"}, not ${ref} as pinned; ` +
-          `${ref} is used.${refresh}`,
+          `${ref} is used.${acceptChange}`,
       );
     }
 
-    // Never the tracking ref when nothing was fetched: every run shares it
-    // and can move it, so it says nothing this host can trust.
     const skip = (why: string, after = "") =>
       console.warn(`[workspace] ${repo}: ${why}, so the run starts from the local "${base}", not ${ref}.${after}`);
     const pinned = pins?.remotes.get(remoteName);
@@ -862,17 +855,19 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       skip(
         `its upstream was not fetched: remote "${remoteName}" (${redactRemote(url)}) was not there when the ` +
           `host pinned its fetch settings`,
-        refresh,
+        acceptChange,
       );
-    } else if (url !== undefined && url !== pinned) {
+    } else if (url !== undefined && withoutCredential(url) !== pinned) {
       skip(
         `its upstream was not fetched with your credentials: remote "${remoteName}" now points at ` +
           `"${redactRemote(url)}", not "${redactRemote(pinned!)}" as pinned`,
-        refresh,
+        acceptChange,
       );
     } else if (pinned !== undefined && url !== undefined) {
-      // The pinned URL, never the remote's name, is what git is handed.
-      const judged = checkRemoteShape(pinned);
+      // `url` is the pinned URL unless it carries a credential, which the pin
+      // drops and the judge refuses: the pinned URL, never the remote's name,
+      // is what git is handed.
+      const judged = checkRemoteShape(url);
       if ("reason" in judged) skip(`its upstream was not fetched: ${judged.message}`);
       else if (!/^refs\/heads\/[^\s:]+$/.test(remoteRef)) skip(`its upstream was not fetched: "${remoteRef}" is not a branch`);
       // A `url.<base>.insteadOf` added since would still rewrite the URL git is handed.
