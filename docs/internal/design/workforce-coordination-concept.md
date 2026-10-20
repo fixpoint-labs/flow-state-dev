@@ -40,7 +40,7 @@ a waiting request and carries it on later.
 
 ## The parts, in the order you meet them
 
-1. **Task.** A piece of work on one of a session's two boards: its plan or its delegation board.
+1. **Task.** A piece of work on one of a session's two boards: its plan board or its delegation board.
 2. **Message.** Conversation with any worker on your roster.
 3. **Inbox item.** The one way work stops for a person.
 4. **Routing.** How a coordinator hands a user's message to its delegates.
@@ -61,27 +61,39 @@ a waiting request and carries it on later.
 filed it, plans it, sees how it ends, and can steer or cancel it. Its **assignee** does it and is
 accountable. Its **brief** says what the work is.
 
-**Each session has two boards,** told apart by one setting, `wait`. To **drain** a board is to start
-its ready rows until none is left.
+**A board's `mode` makes it a plan board or a delegation board,** and each session has one of
+each. To **drain** a board is to start its ready rows until none is left.
 
-| | Plan | Delegation board |
+| | Plan board | Delegation board |
 | -- | -- | -- |
-| Holds | Work the worker does itself | Tasks for delegates |
-| `wait` | `true`: the drain waits on every row | `false`: the drain never waits |
+| Holds | The work of the board's own session | Tasks for delegates |
+| `mode` | `"plan"`, the default: the drain waits on every row | `"delegation"`: the drain hands rows off and never waits |
 | Drained by | `respond` in a conversation, or any request working the session's task | `dispatch`, a short pass that starts what's ready and exits |
-| A row runs | Inline, or in a **sub-agent** (a child session) | In another session, through a **dispatcher** block |
+| A row runs | Inline, or dispatched to another session and waited on | In another session, through a **dispatcher** block |
+| An ending reaches | The drain, which carries on | The filer, as an event: `onTaskSettled` |
 
-**writer's plan** is outline, draft, fact-check, tighten. Its request writes the outline and draft
-inline, dispatches the fact-check to a sub-agent, waits, then tightens. A **pattern**, a ready-made
-way to run a plan, may run several rows at once. The claim gate closes the sub-agent's row like any
-dispatched task; the drain gets the result because it is waiting.
+Because a plan board's drain waits on every row, whatever wraps it, such as a goal-seek loop or a
+sequence, sees finished work. A **pattern** is a ready-made plan board, such as one that runs several
+rows at once; patterns are plan boards as they stand. A **goal-seek loop** drains a board, asks a
+judge whether the goal is met, and drains again if not, so it needs a plan board: over a delegation
+board its judge would rule while rows are still running.
+
+**writer's plan board** is outline, draft, fact-check, tighten. Its request writes the outline and
+draft inline, dispatches the fact-check to another session and waits on it, then tightens. The claim
+gate around that session's task entry settles the fact-check's row; the drain waits until it has,
+then carries on.
 
 **writer's delegation board** holds one task: researcher, find adoption numbers. `dispatch` starts
 it in researcher's session and exits. It runs again on any filing, start, answer, retry or ending
-that makes a row startable, and on any **touch** (read or write) of the board. A delegation board
-with an inline assignee, or a dispatcher whose `wait` differs from its board's, is refused when
-built. `dispatch` runs one at a time per session, rejecting a second call. Its last check for a
-startable row comes after its other work; a row startable later is a debt (below).
+that makes a row startable, and on any **touch** (read or write) of the board. `dispatch` runs one
+at a time per session, rejecting a second call. Its last check for a startable row comes after its
+other work; a row startable later is a debt (below).
+
+**A board never mixes the two, and one built wrong is refused when built:** a delegation board with
+an inline assignee, a plan board with a dispatcher that doesn't wait, or a goal-seek loop over a
+delegation board. The **dispatcher** block has its own `wait`, `false` by default; with `wait: true`
+the work's result comes back as the block's output, through a durable wait with a deadline. Inside a
+board, the board's mode decides.
 
 **Four settings, fixed at filing,** decide how a delegated task runs. A plan row uses only start and
 attempts.
@@ -115,7 +127,9 @@ A task stays **running** while tasks it filed are open, even when no request is 
 right to record how it ends. The board wraps the **task entry**, the action a task runs through on
 its assignee's flow, in the **claim gate**, which checks the claim before the entry runs and settles
 the row when it ends: completed is done (or running while tasks it filed are open), failed
-retries or fails, suspended is waiting on a person.
+retries or fails, suspended is waiting on a person. A worker block never settles its own row: it
+returns or throws, and whoever ran it turns that into the row's ending, the plan board's drain for an
+inline row and the claim gate for a dispatched one.
 
 **The filer steers with `updateTask({ id, message })`,** as can the user typing in the task's
 session. The message **steers** a running task (the worker continues with it, using no attempt),
@@ -246,7 +260,7 @@ a request.
 
 `respond`, the only public entry, takes a user's message; `receive`, another worker's; `work`, a
 task; `onTaskSettled`, a filed task's ending; `dispatch`, a pass over the delegation board.
-Working the session's task, `work` and `onTaskSettled` go through the claim gate and drain the plan.
+Working the session's task, `work` and `onTaskSettled` go through the claim gate and drain the plan board.
 
 Roles combine. A worker declares its roles, and the hire checks that each one's entries exist and
 accept their inputs, probing their input schemas as it does for `respond`. A flow gets a role's
@@ -269,7 +283,7 @@ cancel a task, start a held one, answer its questions. Every worker gets `listDe
    the same request carries on.
 6. researcher finishes; the claim gate marks its task done, and `onTaskSettled` starts a request
    working writer's task.
-7. That request drains writer's plan, waiting on the fact-check's sub-agent, and finishes with
+7. That request drains writer's plan board, waiting on the fact-check it dispatched, and finishes with
    nothing open. writer's task is done, and the draft lands in Alice's conversation with launch,
    under writer's name.
 8. Alice types "Make it half as long" in writer's finished task, and a follow-up runs.
@@ -289,12 +303,12 @@ sequenceDiagram
   researcher->>Alice: Inbox: which region?
   Alice->>researcher: North America
   researcher->>writer: result
-  Note over writer: drains its plan, waiting on a sub-agent
+  Note over writer: drains its plan board, waiting on a dispatched fact-check
   writer->>Alice: draft, under writer's name
   Alice->>writer: make it half as long (follow-up)
 ```
 
-*Three delegated tasks, one plan, one call and one Inbox item carry the whole job.*
+*Three delegated tasks, one plan board, one call and one Inbox item carry the whole job.*
 
 ## The rules
 
@@ -325,11 +339,14 @@ A behavior none of these rules explains is a bug in the model.
 12. A suspension resumes once, answered, deadline or cancelled, unless its request is stopped. Its
     task keeps its claim. A held task starts when its last question is answered.
 13. Only the user changes delegates, except a coordinator configured to change its own.
-14. A plan's drain waits on every row, a delegation board's on none. Where a row runs is its
-    assignee's choice.
+14. A board's `mode` is `plan`, the default, or `delegation`. A plan board's drain waits on every
+    row, a delegation board's on none, and a board built to mix the two is refused when built.
 15. A hire is refused when a declared role lacks an entry, or an entry refuses its input.
 16. A dependency stays within one board. Crossing boards is a wait or a held task.
 17. `dispatch` runs one at a time per session; a second call is rejected.
+18. A worker block never settles its own row. It returns or throws; the drain settles an inline row,
+    and the claim gate a dispatched one, even one a plan board waits on.
+19. A goal-seek loop needs a plan board, and is refused when built over a delegation board.
 
 ## Vocabulary
 
@@ -349,9 +366,10 @@ rest.
 | Durable execution | A host that stores a waiting request and carries it on later |
 | Task, filer, assignee, brief | Work on a board; the session that filed it; who does it; what it is |
 | Board, row, drain, touch | A session's list of tasks; a task on it; starting its ready rows until none is left; any read or write of it |
-| Plan, sub-agent, pattern | The board of a worker's own work; a child session running one of its rows; a ready-made way to run a plan, such as several rows at once |
-| Delegation board, `dispatch` | The board of tasks for delegates; the pass that drains it |
-| Dispatch, dispatcher | Start work in another session; the block that does it |
+| Plan board, pattern, goal-seek loop | The board of its own session's work, whose drain waits on every row; a ready-made plan board, such as one that runs several rows at once; a loop that drains a plan board and asks a judge whether to drain again |
+| Mode | The board setting, `plan` or `delegation`, that makes it one kind or the other |
+| Delegation board, `dispatch` | The board of tasks for delegates, whose drain never waits; the pass that drains it |
+| Dispatch, dispatcher | Start work in another session; the block that does it, waiting for the result only with `wait: true` |
 | Schedule | A row in a user's schedule list that files a task each time it fires |
 | Dependency, held, held on questions | A task on the same board that must end first; waiting for `updateTask`; waiting for the user's answers |
 | Pending, running, waiting on a person | Not yet started; worked, or with filed tasks open; its request suspended |
@@ -370,7 +388,7 @@ rest.
 ## Decisions
 
 The model above is the owner's, including: nothing settled by hand (seven tools, not eight); a
-deadline on every wait, a waited dispatch included; nested waits (rule 9); and eight newly decided:
+deadline on every wait, a waited dispatch included; nested waits (rule 9); and twelve newly decided:
 
 - [x] **Held on questions.** Questions known at filing reach the Inbox at once; mid-task stops stay
   suspensions.
@@ -381,12 +399,17 @@ deadline on every wait, a waited dispatch included; nested waits (rule 9); and e
 - [x] **A failure is an ending.** The filer messages Error Reporter if it chooses.
 - [x] **Task tools are public actions,** called by screens as the user.
 - [x] **`dispatch` runs one at a time (rule 17).** The sweeper pays what its last check misses.
+- [x] **A board's `mode` is `plan` or `delegation` (rule 14),** `plan` by default. It supersedes a
+  board-level `wait: true | false`. No mixing, refused when built. `dispatcher({ wait })` stays,
+  `false` by default; inside a board, the board's mode decides.
+- [x] **A worker block never settles its own row (rule 18).** Whoever ran the work settles it.
+- [x] **A goal-seek loop needs a plan board (rule 19),** and refuses a delegation board when built.
+- [x] **Patterns are plan boards.** They keep their boards and don't change.
 
 Open:
 
 - [ ] **Refusing a call into a waiting session (rule 10).** Recommend revisiting once a resume
   takes its turn in line (FIX-2062), when a waiting session no longer blocks a call.
-- [ ] **Patterns' own task lists.** Recommend they become plans, drained in the request as now.
 - [ ] **Renames.** Recommend Shift Coordinator in code, plus the companion file's code renames. The
   old worker id just stops working; nothing outside the repo uses it.
 - [ ] **A separate entry for proposing work.** Punted. Found work rides on `sendMessage`, and the
