@@ -131,7 +131,7 @@ background work included.
 row's current one before the entry runs, and settles the row once rule 6 holds (rules 2, 6, 18).
 
 **A failed attempt is retried while attempts are left.** An **attempt** fails when one of its
-requests throws or errors, including a question or review whose `waitForUser` deadline goes unhandled
+requests throws or errors, its background work included, including a question or review whose `waitForUser` deadline goes unhandled
 (an unhandled wait or call deadline just carries on). Its open tasks are cancelled, nothing it
 returned is recorded, and the task goes back to pending in its session, or, with no attempts left,
 fails.
@@ -181,7 +181,8 @@ ended.
 that filed your task lands in the session that filed it, and one to a task in that task's session.
 It never changes the brief or stops the request working the task. To an open task, it runs as a
 `receive` request for the task after any request working it, in the same attempt, before the task
-settles, without changing the task's output; one that errors fails the attempt. To a finished task,
+settles, without changing the task's output; one that errors fails the attempt, its waiting caller gets the error at once, and the retry
+doesn't run it again. To a finished task,
 `receive` handles it with the session's full history. The user typing in a task's session answers
 its question, if its request waits on one; otherwise it steers it while open, as `updateTask({
 message })` does. Once finished, `respond` takes it as talk there.
@@ -190,7 +191,7 @@ message })` does. Once finished, `respond` takes it as talk there.
 call waits no longer than its deadline. Each
 message a user types funds a **budget** of 6 messages, shared by every request descending from it
 through messages, calls and filed tasks; no one request sends more than 3. A request with nothing
-behind it gets a fresh 6. A message is paid when sent. The
+behind it, such as a held task once it's released, gets a fresh 6. A message is paid when sent. The
 budget also caps how many queued messages can hold an open task from settling.
 
 ## Inbox items
@@ -211,7 +212,7 @@ person; it keeps its claim, and the resume carries on the same attempt.
 | -- | -- | -- |
 | Answered | The first answer, in the Inbox or the task's session | Carries on with it |
 | Deadline | No answer by then | **Handles** it: goes ahead without the answer, ends, or suspends again with a new deadline (a **check-in**), perhaps messaging its filer first. Unhandled, an approval counts as rejected and a question or review errors, using an attempt |
-| Cancelled | Its task is cancelled; the item closes | Resumes at once with `cancelled` and runs to its end; nothing it returns is recorded |
+| Cancelled | Its task is cancelled; the item closes | Resumes at once with `cancelled` and runs to its end: it may clean up and send messages, its writes to the task are refused, anything it creates is cancelled with it, and nothing it returns is recorded |
 
 **The filer hears its task's questions.** A question asked midway reaches the task's filer as a
 message from the task's session, for its `receive`. The filer may answer it by a steer (rule 11) or
@@ -503,13 +504,12 @@ waits (rule 9); and twenty-three newly decided:
 
 Open:
 
-- [ ] **A released held task's message budget:** fresh, or inherited from its filer's? Recommend
-  fresh, as story M-08 says.
-- [ ] **A queued message that errors while running for a task.** Recommend: a caller waiting on it
-  gets the error at once, and the retry doesn't run it again.
-- [ ] **An error in background work.** Recommend it fails the attempt.
-- [ ] **A cancelled block winding down.** Recommend it may clean up and send messages; its writes
-  to the cancelled task are refused, and anything it creates is cancelled with it.
+- [x] **A released held task's budget is fresh** → Messages, Limits.
+- [x] **A queued message that errors** fails the attempt; its caller gets the error at once, and the
+  retry doesn't run it again → Messages.
+- [x] **An error in background work fails the attempt** → Tasks, failed attempts.
+- [x] **A cancelled block may clean up and send messages;** its writes to the task are refused and
+  anything it creates is cancelled with it → Inbox items, Cancelled.
 - [ ] **Default worker instructions.** Punted to its own issue, as prompt content, not a mechanism:
   asked for more work after its task finished, a worker tells the filer with `sendMessage`.
 - [ ] **A separate entry for proposing work.** Punted: found work rides on `sendMessage`, and the
