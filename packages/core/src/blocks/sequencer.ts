@@ -2520,12 +2520,17 @@ export function sequencer<
   // (see `SequencerCtx`'s hardcoded `TCapabilities = {}`), so this doesn't
   // affect the `TStateSchema` generic.
   const capabilityRequirement = mergedSurface?.sequencerStateSchema;
+  // With no own stateSchema the requirement lands on an empty object, so a
+  // required field joins as optional like a child's would.
   const stateSchema =
     capabilityRequirement === undefined
       ? ownStateSchema
-      : ownStateSchema === undefined
-        ? capabilityRequirement
-        : absorbSequencerStateRequirement(ownStateSchema, capabilityRequirement, config.name, "its capabilities");
+      : absorbSequencerStateRequirement(
+          ownStateSchema ?? z.object({}),
+          capabilityRequirement,
+          config.name,
+          "its capabilities"
+        );
   const effectiveConfig = { ...config, stateSchema };
 
   // A sequencer has no direct `resources` config field — its OWN declarations

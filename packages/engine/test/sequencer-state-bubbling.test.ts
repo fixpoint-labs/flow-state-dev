@@ -233,6 +233,22 @@ describe("a capability's sequencerStateSchema is installed on the sequencer that
     expect(result.output).toEqual({ progress: 7 });
   });
 
+  it("keeps the capability's defaults when it also requires a field with no default", async () => {
+    // `current` starts absent until a block writes it; it must not cost `progress` its default.
+    const progressCap = defineCapability({
+      name: "progress-cap-required",
+      sequencerStateSchema: z.object({ current: z.string(), progress: z.number().default(7) })
+    });
+    const seq = sequencer({ name: "cap-required-owner", inputSchema: z.any(), uses: [progressCap] }).step(
+      reportState
+    );
+
+    const result = await run(flowOf("bubble-capability-required", seq));
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ progress: 7 });
+  });
+
   it("refuses a capability field that conflicts with the sequencer's own stateSchema", () => {
     const progressCap = defineCapability({
       name: "progress-cap-number",
