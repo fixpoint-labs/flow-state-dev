@@ -148,11 +148,6 @@ html[data-theme="dark"] {
   --ifm-badge-border-radius: 0;
   --ifm-alert-border-radius: 0;
   --ifm-breadcrumb-border-radius: 0;
-
-  /* Page-level tokens for src/pages. */
-  --fsd-accent: var(--info);
-  --fsd-surface-border: var(--border);
-  --fsd-text-muted: var(--muted-foreground);
 }
 
 /* ── Global base styles ── */
