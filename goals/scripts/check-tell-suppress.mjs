@@ -53,11 +53,11 @@ const FAILURE = /^(?:[\w$]*[Ff]ailures\.push|(?:[\w$]+\.)?fail)\s*\(/;
 const IF = /(?<![\w$.])if\s*\(/g;
 
 /**
- * The text with every comment and string literal blanked to spaces, newlines
- * kept, so line numbers hold and neither prose nor a quoted example is read as
- * code. A `'` or `"` string ends at its line's end at the latest, so a quote
- * inside a regex literal can't blank the rest of the file. A template
- * literal's `${...}` stays code.
+ * The text with every comment, string and regex literal blanked to spaces,
+ * newlines kept, so line numbers hold and neither prose nor a quoted example is
+ * read as code. A regex literal is read before quotes, so a quote inside one
+ * starts no string; a `'` or `"` string still ends at its line's end at the
+ * latest. A template literal's `${...}` stays code.
  */
 export function mask(text) {
   const out = text.split("");
@@ -79,6 +79,12 @@ export function mask(text) {
       const to = end < 0 ? text.length : end + 2;
       blank(i, to);
       i = to - 1;
+    } else if (c === "/" && regexMayStart(out, i)) {
+      const end = regexEnd(text, i);
+      if (end !== undefined) {
+        blank(i + 1, end);
+        i = end;
+      }
     } else if (c === '"' || c === "'") {
       let j = i + 1;
       while (j < text.length && text[j] !== c && text[j] !== "\n") j += text[j] === "\\" ? 2 : 1;
@@ -102,6 +108,41 @@ export function mask(text) {
     }
   }
   return out.join("");
+}
+
+/** Words after which a `/` begins a regex literal rather than a division. */
+const REGEX_AFTER_WORD = new Set(["return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw", "instanceof", "yield", "await"]);
+
+/**
+ * Whether the `/` at `at` can begin a regex literal, judged by the characters
+ * before it (already masked, so a closed string reads as its quote): a regex follows an
+ * operator, an opening bracket, a statement end or a keyword; a division
+ * follows a value.
+ */
+function regexMayStart(code, at) {
+  let k = at - 1;
+  while (k >= 0 && /\s/.test(code[k])) k--;
+  if (k < 0) return true;
+  const p = code[k];
+  if (/[\w$]/.test(p)) {
+    let w = k;
+    while (w > 0 && /[\w$]/.test(code[w - 1])) w--;
+    return REGEX_AFTER_WORD.has(code.slice(w, k + 1).join(""));
+  }
+  return !/[)\]"'`.]/.test(p);
+}
+
+/** The index of the `/` closing the regex literal opened at `at`, or undefined if its line ends first. */
+function regexEnd(text, at) {
+  let inClass = false;
+  for (let j = at + 1; j < text.length && text[j] !== "\n"; j++) {
+    const c = text[j];
+    if (c === "\\") j++;
+    else if (c === "[") inClass = true;
+    else if (c === "]") inClass = false;
+    else if (c === "/" && !inClass) return j;
+  }
+  return undefined;
 }
 
 /** The index just past the `)` that closes the `(` at `open`, or undefined. */

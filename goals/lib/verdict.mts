@@ -45,18 +45,14 @@ export interface TellOptions {
   emptyIs?: string;
 }
 
-/**
- * The evidence floor `runGoal` hands a goal body. Pass every list an assertion
- * grades through `tell.over` before grading it: `[].every(...)` is true and a
- * `length > 0 &&` guard skips the check, so an empty list would otherwise pass
- * an assertion that saw nothing.
- */
+/** Handed to the goal body. Floor each graded list with `over`; an empty read is CAN'T TELL. */
 export interface Tell {
   /**
    * Record that the assertion `name` reads `values`, and return `values`
    * unchanged. If it is empty (and `emptyIs` isn't set), the run reports
    * CAN'T TELL naming `name` instead of PASS. Calling it again with the same
-   * name adds to that name's count; any empty read of it is a can't-tell.
+   * name adds to that name's count; an empty read is a can't-tell unless
+   * that same call set `emptyIs`.
    */
   over<T>(name: string, values: readonly T[], options?: TellOptions): T[];
 }
@@ -64,7 +60,8 @@ export interface Tell {
 interface Reading {
   read: number;
   calls: number;
-  emptyCalls: number;
+  /** Empty reads whose own call did not set `emptyIs`. */
+  blindCalls: number;
   emptyIs?: string;
 }
 
@@ -73,11 +70,11 @@ function createTell(): { tell: Tell; readings: Map<string, Reading> } {
   const readings = new Map<string, Reading>();
   const tell: Tell = {
     over(name, values, options) {
-      const entry = readings.get(name) ?? { read: 0, calls: 0, emptyCalls: 0 };
+      const entry = readings.get(name) ?? { read: 0, calls: 0, blindCalls: 0 };
       entry.read += values.length;
       entry.calls += 1;
-      if (values.length === 0) entry.emptyCalls += 1;
       if (options?.emptyIs !== undefined) entry.emptyIs = options.emptyIs;
+      else if (values.length === 0) entry.blindCalls += 1;
       readings.set(name, entry);
       return [...values];
     },
@@ -89,8 +86,8 @@ function createTell(): { tell: Tell; readings: Map<string, Reading> } {
 function cantTellLines(readings: Map<string, Reading>): string[] {
   const lines: string[] = [];
   for (const [name, r] of readings) {
-    if (r.emptyCalls === 0 || r.emptyIs !== undefined) continue;
-    lines.push(r.calls === 1 ? `${name}: read 0` : `${name}: read 0 in ${r.emptyCalls} of ${r.calls} reads`);
+    if (r.blindCalls === 0) continue;
+    lines.push(r.calls === 1 ? `${name}: read 0` : `${name}: read 0 in ${r.blindCalls} of ${r.calls} reads`);
   }
   return lines;
 }
@@ -142,10 +139,6 @@ function cantTell(lines: string[]): never {
  * later leg's setup error (often caused by the earlier failure) would be
  * reported as the whole story. On a normal return the returned `failures` is
  * what counts, so a body that returns a copy or a literal list is unaffected.
- *
- * `main` also receives a {@link Tell}. Any `tell.over` that read nothing turns
- * a would-be PASS into CAN'T TELL; with failures as well, both print and the
- * verdict is FAIL. A PASS names what each `tell.over` read.
  */
 export async function runGoal(
   main: (failures: string[], tell: Tell) => GoalResult | Promise<GoalResult>,

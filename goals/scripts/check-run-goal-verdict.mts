@@ -97,7 +97,6 @@ const CASES: Record<string, Case> = {
     inOrder: ["CAN'T TELL —\n  - ordering · items' seq: read 0"],
     absent: ["PASS", "FAIL"],
   },
-  // A PASS names what each assertion read, so the evidence names only what was read.
   "a PASS names what each assertion read": {
     body: `async (failures, tell) => {
       tell.over("ordering · items' seq", [1, 2, 3]);
@@ -106,7 +105,6 @@ const CASES: Record<string, Case> = {
     exit: 0,
     inOrder: ["PASS — sequence non-decreasing · read: ordering · items' seq: 3"],
   },
-  // An absence claim: empty is the claim, and the reason prints in the PASS.
   "an empty read declared the claim passes with its reason": {
     body: `async (failures, tell) => {
       tell.over("leaks · sessions seen", ["s1", "s2"]);
@@ -117,7 +115,6 @@ const CASES: Record<string, Case> = {
     inOrder: ["PASS — no session leaks", "leaks · sessions seen: 2", "leaks · other users' sessions: 0, empty is the claim: no session leaks"],
     absent: ["CAN'T TELL"],
   },
-  // The same name read in a loop: one empty read is still a blind check.
   "one empty read among several of the same name is CAN'T TELL": {
     body: `async (failures, tell) => {
       for (const rows of [[1], [], [2]]) tell.over("b4 · task rows", rows);
@@ -127,7 +124,17 @@ const CASES: Record<string, Case> = {
     inOrder: ["b4 · task rows: read 0 in 1 of 3 reads"],
     absent: ["PASS"],
   },
-  // FAIL outranks CAN'T TELL; both print, the exit is FAIL's.
+  // emptyIs exempts the call that set it, not every read of the same name.
+  "an emptyIs on one read does not excuse another read of the name": {
+    body: `async (failures, tell) => {
+      tell.over("rows", []);
+      tell.over("rows", [], { emptyIs: "no matches expected here" });
+      return { failures, evidence: "rows graded" };
+    }`,
+    exit: 3,
+    inOrder: ["CAN'T TELL —\n  - rows: read 0 in 1 of 2 reads"],
+    absent: ["PASS"],
+  },
   "a failure beside a can't-tell is FAIL and prints both": {
     body: `async (failures, tell) => {
       tell.over("leg a · rows", []);

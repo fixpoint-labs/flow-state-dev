@@ -37,6 +37,14 @@ describe("the check refuses a length guard ahead of a failure", () => {
     ].join("\n");
     expect(lines(source)).toEqual([2]);
   });
+
+  it.each([
+    ["a quote", `const re = /'/; if (xs.length > 0 && !ok(xs)) failures.push("bad");`],
+    ["a quote in a class", `const re = /["/]/g; if (xs.length > 0 && !ok(xs)) failures.push("bad");`],
+    ["a backtick after return", "function f() { return /`/.test(s); } if (xs.length > 0 && !ok(xs)) failures.push(1);"],
+  ])("after a regex literal holding %s", (_what, source) => {
+    expect(lines(source)).toEqual([1]);
+  });
 });
 
 describe("the check leaves alone what only looks like it", () => {
@@ -49,6 +57,8 @@ describe("the check leaves alone what only looks like it", () => {
     ["the shape in a comment", '// if (xs.length > 0 && !ok) failures.push("x");'],
     ["the shape in a string", 'const example = "if (xs.length > 0 && !ok) failures.push(1)";'],
     ["the shape in a template literal", "const example = `if (xs.length > 0 && !ok) fail(${leg}, 1)`;"],
+    ["the shape in a regex literal", "const re = /if (xs.length > 0 && !ok) failures.push(1)/;"],
+    ["a division, not a regex", 'const half = total / 2; const s = "if (xs.length > 0 && !ok) fail(1)"; const q = n / 3;'],
   ])("%s", (_what, source) => {
     expect(lines(source)).toEqual([]);
   });

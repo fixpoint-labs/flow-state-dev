@@ -19,7 +19,6 @@ import {
   KITCHEN_SINK,
   DEFAULT_MODEL,
   answerText,
-  assistantMessages,
   goalTmpDir,
   loadFixture,
   readCapture,
@@ -65,11 +64,8 @@ await runGoal((failures, tell) => {
   //    Note: worker/block execution items are `type: "block_trace"` carrying an
   //    internal `BlockValueInternal` value — never unwrap those.
   const answer = answerText(capture);
-  // Floor what you grade: an empty list passes `every`, a loop and a
-  // `length > 0 &&` guard. With nothing read, `tell.over` makes the run say
-  // CAN'T TELL instead of PASS. Only when empty IS the claim ("no leaks"),
-  // pass `{ emptyIs: "<the reason>" }`. See README → Script techniques #5.
-  tell.over("answer · assistant messages", assistantMessages(capture.items));
+  // emptyIs only when empty is the claim. README → Script techniques #5.
+  tell.over("answer · text", [answer].filter((text) => text.length > 0));
   if (!answer.toLowerCase().includes(fixture.mustContain.toLowerCase())) {
     failures.push(
       `answer did not contain "${fixture.mustContain}": ${JSON.stringify(answer.slice(0, 200))}`,

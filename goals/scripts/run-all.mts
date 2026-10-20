@@ -214,9 +214,9 @@ for (const [index, goal] of runnable.entries()) {
   // Raising `maxBuffer` only moves the cliff. Inheriting removes it: the goal's
   // output streams straight to the terminal (better for a long sweep anyway),
   // and the verdict comes from the EXIT CODE, which `runGoal` already
-  // guarantees — 0 for PASS, 1 for FAIL. The PASS evidence line has by then
-  // already been printed by the goal itself, so nothing is lost by not
-  // re-capturing it here.
+  // guarantees — 0 for PASS, 1 for FAIL, CANT_TELL_EXIT for CAN'T TELL. The
+  // verdict line has by then already been printed by the goal itself, so
+  // nothing is lost by not re-capturing it here.
   const run = spawnSync("pnpm", ["tsx", join(goal.dir, "run.mts")], {
     cwd: GOALS_PACKAGE,
     stdio: ["ignore", "inherit", "inherit"],

@@ -314,8 +314,6 @@ export async function gradeRow5(options: {
       Object.entries(stored)
         .filter(([key]) => key.startsWith(prefix))
         .map(([, row]) => row);
-    // Step 4 compares the tab's worker rows with these by count, then walks
-    // these. With none stored, zero and zero would pass having read nothing.
     const storedSeats = options.tell.over("row 5 step 4 · the store's workers", under("inventory/workers/"));
 
     // Who works with whom: the coordinator's conversation lists exactly the

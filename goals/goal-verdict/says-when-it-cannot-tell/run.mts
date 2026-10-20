@@ -2,24 +2,7 @@
  * Goal check — a goal check that can't see says so.
  *
  * Model-free. See goal.md for the contract.
- *
- *   1. A real run: kitchen-sink's `requestApproval` suspends at its gate, and
- *      the items it persisted are read back from the request store
- *      (`harness.mts`).
- *   2. Two probe legs, each a goal of its own in a scratch goals tree, grade
- *      those items through the real `runGoal` and `tell.over`: the blind leg
- *      reads `seq`, which persisted items don't carry (a renamed field), and the
- *      sighted leg reads `itemIndex`, which they do.
- *   3. Each leg runs on its own, then `pnpm goal:all --root=<tree>` sweeps both.
- *
- * The check grades what each leg printed, its exit code, and how the sweep
- * counted it. Never the helper's return value: that passes while the run's
- * evidence string still lies.
- *
- * Control: `GOAL_CONTROL=length-guard` writes the blind leg in the shape this
- * rule replaces, `values.length > 0 && !ok`. It prints PASS, so this check
- * must FAIL on "the blind leg says CAN'T TELL" and "the sweep counts the blind
- * leg as CAN'T TELL".
+ * Control: `GOAL_CONTROL=length-guard` must FAIL the blind leg and the sweep.
  *
  * Run: pnpm tsx goals/goal-verdict/says-when-it-cannot-tell/run.mts
  */
@@ -40,10 +23,7 @@ const fixture = loadFixture<{ request: string }>(import.meta.url, "request.json"
 const BLIND = { dir: "blind-leg", field: "seq", name: "ordering · persisted items' seq" };
 const SIGHTED = { dir: "sighted-leg", field: "itemIndex", name: "ordering · persisted items' itemIndex" };
 
-/**
- * One probe leg's runner. `guarded` writes the grading in today's length-guard
- * shape instead of through `tell.over`: the control.
- */
+/** One probe leg. `guarded` is the length-guard control. */
 function legSource(leg: typeof BLIND, guarded: boolean): string {
   const raw = `items.map((i) => i[${JSON.stringify(leg.field)}]).filter((v): v is number => typeof v === "number")`;
   const read = guarded ? raw : `tell.over(${JSON.stringify(leg.name)}, ${raw})`;
