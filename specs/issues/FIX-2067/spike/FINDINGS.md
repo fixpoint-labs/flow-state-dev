@@ -105,7 +105,7 @@ Validators/tools on 7 **without** the alias: `validate-test-typecheck` ✗ (Type
 | vitest / tsx | esbuild transpile | ✓ | ✓ (unaffected) | No |
 | fallow-type-aware (optional) | already pins `typescript@7.0.2` | n/a | n/a | No |
 
-**Side-by-side verified end-to-end:** root `"@typescript/native": "npm:typescript@7.0.2"` + `"typescript": "npm:@typescript/typescript6@6.0.2"`; per-package pins also set to the typescript6 alias. Results: root `.bin/tsc` = 7.0.2 and `tsc6` = 6.0; `require("typescript").version` = 6.0.3; inside a package, `pnpm exec tsc` falls through to the root's 7 (package `.bin` has only `tsc6`). **`scripts/typecheck.mjs` needs no change.** The full `pnpm typecheck` is green in ~77s. The probe edited per-package package.json pins; the real change could delete them and keep only the root.
+**Side-by-side verified end-to-end:** root `"@typescript/native": "npm:typescript@7.0.2"` + `"typescript": "npm:@typescript/typescript6@6.0.2"`; per-package pins also set to the typescript6 alias. Results: root `.bin/tsc` = 7.0.2 and `tsc6` = 6.0; `require("typescript").version` = 6.0.3; inside a package, `pnpm exec tsc` falls through to the root's 7 (package `.bin` has only `tsc6`). **`scripts/typecheck.mjs` needs no change.** The full `pnpm typecheck` is green in ~77s. The probe edited per-package package.json pins; the real change deletes them and keeps only the root.
 
 ## Candidate follow-ups, not this issue
 
