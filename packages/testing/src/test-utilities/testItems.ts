@@ -4,15 +4,16 @@ import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
+ * Selectors that don't filter by type (`all`, `sideChain`, `main`, `byAgent`,
+ * `byVisibility`) return every matching row, trace rows included, so they are
+ * typed `RuntimeItem[]`.
  */
 export function testItems(items: readonly RuntimeItem[]) {
   const allItems = [...items].sort((left, right) => left.itemIndex - right.itemIndex);
-  // Public lists are typed OutputItem; blockOutputs reads the trace rows.
-  const listed = allItems as OutputItem[];
 
   return {
-    all(): OutputItem[] {
-      return listed;
+    all(): RuntimeItem[] {
+      return allItems;
     },
     byType<TType extends OutputItem["type"]>(
       type: TType
@@ -59,17 +60,17 @@ export function testItems(items: readonly RuntimeItem[]) {
         }
       );
     },
-    sideChain(): OutputItem[] {
-      return listed.filter((item) => item.provenance.phase === "sideChain");
+    sideChain(): RuntimeItem[] {
+      return allItems.filter((item) => item.provenance.phase === "sideChain");
     },
-    main(): OutputItem[] {
-      return listed.filter((item) => item.provenance.phase === "main");
+    main(): RuntimeItem[] {
+      return allItems.filter((item) => item.provenance.phase === "main");
     },
-    byAgent(agentName: string): OutputItem[] {
-      return listed.filter((item) => item.agentName === agentName);
+    byAgent(agentName: string): RuntimeItem[] {
+      return allItems.filter((item) => item.agentName === agentName);
     },
-    byVisibility(predicate: Partial<ItemVisibility>): OutputItem[] {
-      return listed.filter((item) => {
+    byVisibility(predicate: Partial<ItemVisibility>): RuntimeItem[] {
+      return allItems.filter((item) => {
         const vis = resolveItemVisibility(item);
         if (predicate.client !== undefined && vis.client !== predicate.client) return false;
         if (predicate.history !== undefined && vis.history !== predicate.history) return false;

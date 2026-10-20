@@ -13,6 +13,7 @@ These signatures return or pass `RuntimeItem`, which can break code that expects
 
 - `ResponseEmitterHandle.getItems()` and the `subscribeToItems` listener and filter (core).
 - `ResponseEmitter.getItems()`, `RequestRecord.items` and `RequestStore.persistItems` (engine).
+- The `testItems` selectors that don't filter by type: `all()`, `sideChain()`, `main()`, `byAgent()` and `byVisibility()` (testing). They return trace rows when given them.
 
 To upgrade, type arrays and callbacks that receive these values as `RuntimeItem`, imported from `@flow-state-dev/core`. Where code needs an `OutputItem`, filter out the trace rows with a type guard:
 
@@ -26,4 +27,6 @@ const isOutputItem = (item: RuntimeItem): item is OutputItem => !TRACE.has(item.
 const visible = emitter.getItems().filter(isOutputItem);
 ```
 
-`.waitForCondition` predicates and `wakeOn` filters keep their `OutputItem` types. These signatures accept `RuntimeItem` as well as `OutputItem`: `resolveItemVisibility` and `collapseToCanonicalLog` (contracts, re-exported by core), `RequestStreamStore.loadSnapshot` (client), `testItems` (testing), and the filter that `onTaskChangeFor` returns (orchestration). Existing callers need no change.
+`.waitForCondition` predicates and `wakeOn` filters keep their `OutputItem` types. These signatures accept `RuntimeItem` as well as `OutputItem`: `resolveItemVisibility` and `collapseToCanonicalLog` (contracts, re-exported by core), `testItems` (testing), and the filter that `onTaskChangeFor` returns (orchestration). Existing callers need no change.
+
+`RequestStreamStore` and `createRequestStreamStore` (client) take the row type as a parameter, defaulting to `OutputItem`, so existing stores are unchanged. A store seeded with trace rows is created as `createRequestStreamStore<RuntimeItem>()`, and its `getSorted()`, `getRaw()`, `getById()` and `getOwnedBy()` return `RuntimeItem`.
