@@ -35,6 +35,7 @@ a waiting request and carries it on later.
 | writer | Worker on the agent flow. Delegate: researcher | Alice |
 | researcher | Worker on the agent flow. No delegates | Alice |
 | coder | Worker on a coding flow that drives a harness | Alice |
+| Error Reporter | Worker that turns failures into bug reports | Alice |
 | Bob's researcher | Worker on the agent flow | Bob |
 
 ## The parts, in the order you meet them
@@ -79,7 +80,8 @@ dispatched task; the drain gets the result because it is waiting.
 it in researcher's session and exits. It runs again on any filing, start, answer, retry or ending
 that makes a row startable, and on any **touch** (read or write) of the board. A delegation board
 with an inline assignee, or a dispatcher whose `wait` differs from its board's, is refused when
-built.
+built. `dispatch` runs one at a time per session, rejecting a second call. Its last check for a
+startable row comes after its other work; a row startable later is a debt (below).
 
 **Four settings, fixed at filing,** decide how a delegated task runs. A plan row uses only start and
 attempts.
@@ -100,6 +102,11 @@ plan step is filed held, and the plan row that finishes the step releases it.
 delegate what stands alone, with its own attempts and cancel. Use a follow-up for work that needs an
 earlier task's memory, like writer asking researcher to shorten the stats.
 
+**Recurring work is a schedule:** a row in the user's schedule list that files an ordinary task
+each time it fires. Alice's list of scheduled work reads her schedules and their next fire
+times, not a board. A fire whose filing fails is dropped, not retried, and a crash loses a run whose work
+the schedule picks as it fires.
+
 A task stays **running** while tasks it filed are open, even when no request is working it (at most
 5 deep, 100 under one top task); rule 6 says how it ends. Every wait, on a task or a call, has a
 **deadline**: reaching it resumes the request, which waits again or carries on without the result.
@@ -116,9 +123,10 @@ answers one waiting on a person, and continues a finished one as a follow-up, wi
 
 **Every ending of a delegated task reaches the filer once,** as the result setting says: to its
 waiting request if one waits, otherwise through `onTaskSettled`, which starts its next request.
+A failure is an ending like any other; writer messages Error Reporter when one is worth reporting.
 
 **A board pays what it owes.** A **debt** is what a row owes: an ending owed to the filer, a wait
-owed a resume, an error report for a failed attempt, a task whose filed tasks have all ended owed
+owed a resume, a task whose filed tasks have all ended owed
 its settle, or a startable row never started. Each carries a **due time** a few seconds out. The
 settling side pays at once, and `dispatch` and every touch resend. Behind both, the engine's
 **durability sweeper** wakes at the earliest due time and pays, so after a crash nothing waits on a
@@ -172,7 +180,8 @@ routed. Stopping a suspended request closes its item and cancels any task it wor
 
 **A coding run can't pause midway,** because the coding agent runs as its own process. Its question
 ends the run, the coding flow's request suspends, and the answer starts the next run in the same
-coding session.
+coding session. A steer stops the run; the next run continues that coding session with the
+message.
 
 ## Routing
 
@@ -245,7 +254,8 @@ entries from a **factory**, a function returning the tools, actions, entries and
 author spreads into the flow definition.
 
 The model's seven tools: `addTask`, `updateTask`, `cancelTask`, `listTasks`, `readTask`,
-`sendMessage`, `waitForUser`. Every worker gets `listDelegates`; only a configured coordinator gets
+`sendMessage`, `waitForUser`. The task tools are also public actions a screen calls as the user:
+cancel a task, start a held one, answer its questions. Every worker gets `listDelegates`; only a configured coordinator gets
 `addDelegate`, `removeDelegate`, `setFallback`.
 
 ## How it flows
@@ -302,8 +312,8 @@ A behavior none of these rules explains is a bug in the model.
 6. A task runs while tasks it filed are open, and is done when a request for it finishes with none
    open. Cancelling, retrying or failing it cancels its open tasks; failing or cancelling it cancels
    its dependents.
-7. Every ending of a delegated task reaches its filer once, as its result setting says: the waiting
-   request, or `onTaskSettled`.
+7. Every ending of a delegated task, a failure included, reaches its filer once, as its result
+   setting says: the waiting request, or `onTaskSettled`.
 8. Every debt has a due time. The settling side pays it, `dispatch` and every touch resend it, and
    the durability sweeper pays it when due.
 9. A request may wait on a task it filed or a call, even inside a waited-on task, up to 5 deep, each
@@ -319,6 +329,7 @@ A behavior none of these rules explains is a bug in the model.
     assignee's choice.
 15. A hire is refused when a declared role lacks an entry, or an entry refuses its input.
 16. A dependency stays within one board. Crossing boards is a wait or a held task.
+17. `dispatch` runs one at a time per session; a second call is rejected.
 
 ## Vocabulary
 
@@ -341,6 +352,7 @@ rest.
 | Plan, sub-agent, pattern | The board of a worker's own work; a child session running one of its rows; a ready-made way to run a plan, such as several rows at once |
 | Delegation board, `dispatch` | The board of tasks for delegates; the pass that drains it |
 | Dispatch, dispatcher | Start work in another session; the block that does it |
+| Schedule | A row in a user's schedule list that files a task each time it fires |
 | Dependency, held, held on questions | A task on the same board that must end first; waiting for `updateTask`; waiting for the user's answers |
 | Pending, running, waiting on a person | Not yet started; worked, or with filed tasks open; its request suspended |
 | Steer | A message a running task's worker continues with |
@@ -358,13 +370,17 @@ rest.
 ## Decisions
 
 The model above is the owner's, including: nothing settled by hand (seven tools, not eight); a
-deadline on every wait, a waited dispatch included; nested waits (rule 9); and four newly decided:
+deadline on every wait, a waited dispatch included; nested waits (rule 9); and eight newly decided:
 
 - [x] **Held on questions.** Questions known at filing reach the Inbox at once; mid-task stops stay
   suspensions.
 - [x] **The worker contract.** Roles declared, their entries checked at hire.
 - [x] **The sweeper backs up what a board owes.** The fast paths stay; it pays any debt when due.
 - [x] **Dependencies stay within one board (rule 16).** Crossing boards is a wait or a held task.
+- [x] **Recurring work is a schedule** that files a task when it fires.
+- [x] **A failure is an ending.** The filer messages Error Reporter if it chooses.
+- [x] **Task tools are public actions,** called by screens as the user.
+- [x] **`dispatch` runs one at a time (rule 17).** The sweeper pays what its last check misses.
 
 Open:
 
