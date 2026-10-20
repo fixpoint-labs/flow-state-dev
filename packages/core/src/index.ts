@@ -21,6 +21,7 @@ export type {
 } from "./types/scope";
 export type { ScopeStateOps } from "./types/state";
 export type { ItemVisibility } from "./items/types";
+export type { RuntimeItem } from "./items";
 export {
   whenAnyItem,
   whenResourceChanged,

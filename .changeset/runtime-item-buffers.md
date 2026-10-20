@@ -14,7 +14,7 @@ These signatures now return or pass `RuntimeItem`, which can break code that exp
 - `ResponseEmitterHandle.getItems()` and the `subscribeToItems` listener and filter (core).
 - `ResponseEmitter.getItems()`, `RequestRecord.items` and `RequestStore.persistItems` (engine).
 
-To upgrade, type full-log arrays and callbacks as `RuntimeItem`, imported from `@flow-state-dev/core/items/internal`. If code needs an `OutputItem`, narrow by `type` first, for example by dropping `block_trace`, `router_decision`, `state_snapshot` and `generator_step` rows.
+To upgrade, type full-log arrays and callbacks as `RuntimeItem`, imported from `@flow-state-dev/core`. If code needs an `OutputItem`, narrow by `type` first, for example by dropping `block_trace`, `router_decision`, `state_snapshot` and `generator_step` rows.
 
 `.waitForCondition` predicates and `wakeOn` filters keep their `OutputItem` types.
 
