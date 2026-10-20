@@ -144,20 +144,15 @@ export function readFetchPins(repo: string): FetchPins {
 /** Where a host keeps the fetch settings it pinned, in its root. Dot-prefixed, so no place is named over it. */
 const FETCH_PINS_DIR = ".fetch-pins";
 
-/** {@link FetchPins} as {@link pinFetchSettings} keeps them, and the file that holds them. */
 export interface KeptFetchPins extends FetchPins {
   /** The pin file in the host's root. Deleting it, then restarting the host, pins the config afresh. */
   file: string;
 }
 
 /**
- * The fetch settings of `repo`, pinned across restarts in the host's `root`,
- * which a run can't write. Each remote's URL and each branch's upstream is
- * pinned the first time a host start sees it, and that value wins from then
- * on: a run that rewrites the repository's shared config changes nothing the
- * next host fetches with. Credential helpers live outside the repository and
- * are read fresh. A pin file that can't be read pins nothing, with a warning,
- * and is left as it is for the person to look at.
+ * Pin `repo`'s remotes and upstreams in the host's `root`, where a run can't
+ * write, across restarts. First value wins; helpers stay live; an unreadable
+ * file pins nothing and is left alone.
  */
 export function pinFetchSettings(root: string, repo: string): KeptFetchPins {
   const live = readFetchPins(repo);

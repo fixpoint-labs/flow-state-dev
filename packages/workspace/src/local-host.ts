@@ -392,9 +392,6 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   const root = resolve(options.root);
   const allow = options.remotes.allow;
   const localRepositories = new Set((options.localRepositories ?? []).map((path) => resolve(path)));
-  // Pinned in the root, where no run writes, the first time a host start sees
-  // each value: a listed repository's worktrees share its config, so a run
-  // could otherwise aim the next run's fetch, in this process or after a restart.
   const fetchPins = new Map([...localRepositories].map((path) => [path, pinFetchSettings(root, path)] as const));
   const provisionTimeoutMs = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
   const now = options.now ?? Date.now;
@@ -825,10 +822,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       await git(repo, ["for-each-ref", "--format=%(upstream)%0a%(upstream:remotename)%0a%(upstream:remoteref)", full], left())
     ).split("\n");
     const pins = fetchPins.get(repo);
-    // How the person accepts a change they made on purpose.
     const refresh = pins === undefined ? "" : ` To pin the repository's current config, delete ${pins.file} and restart the host.`;
-    // The upstream pinned in the host's root, never the live config a run
-    // could have repointed. A branch with none pinned has no upstream here.
+    // Pinned upstream, not the live config. None pinned means no upstream here.
     const pinnedUpstream = pins?.upstreams.get(full);
     if (pinnedUpstream === undefined) {
       if (liveRef.startsWith("refs/remotes/") && liveRemote !== "" && liveRemote !== ".") {
@@ -847,8 +842,6 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       );
     }
 
-    // Never the tracking ref when nothing was fetched: every run shares it
-    // and can move it, so it says nothing this host can trust.
     const skip = (why: string, after = "") =>
       console.warn(`[workspace] ${repo}: ${why}, so the run starts from the local "${base}", not ${ref}.${after}`);
     const pinned = pins?.remotes.get(remoteName);
