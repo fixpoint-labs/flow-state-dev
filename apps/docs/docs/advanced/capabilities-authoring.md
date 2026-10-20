@@ -335,11 +335,15 @@ When multiple capabilities (or a capability and a block) declare the same surfac
 |---------|---------------|---------------------|
 | Resource | Deduplicated silently | Error: resource conflict |
 | Target | Deduplicated silently | Error: target conflict |
-| State schema | Merged via Zod `.extend()` | Last-wins for matching keys |
+| Session, request, user, org state schema | Merged via Zod `.extend()` | Last-wins for matching keys |
+| Own state (`stateSchema`) | Deduplicated silently | Error: own-state conflict |
+| Sequencer state (`sequencerStateSchema`) | Deduplicated silently | Kinds must match, or `SequencerSchemaMismatchError` |
 | Context entries | Concatenated | N/A |
 | Tools | Both included | N/A |
 
 Resource deduplication uses reference equality. If two capabilities pass the same `defineResource()` reference, there's no conflict. If they create different resource objects for the same name, the framework throws at factory time.
+
+A `sequencerStateSchema` field can be declared by two capabilities on one sequencer, by a capability and the sequencer's own `stateSchema`, or by a capability and a block inside the sequencer. Each pair must agree on the field's kind, read under `.default()`, `.optional()` and `.nullable()`: `z.number()` and `z.number().default(0)` agree, `z.number()` and `z.string()` don't. A mismatch throws `SequencerSchemaMismatchError` when the sequencer is built or the block is added to it, and the message names the sequencer and the field. When the kinds agree, the later of two capabilities wins, and the sequencer's own `stateSchema` wins over a capability. A field with `.transform()` on either side can't be checked, so it's refused unless both sides reference the same schema.
 
 ## When to extract a capability
 
