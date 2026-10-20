@@ -14,6 +14,7 @@ import {
   getZodRecordValueType,
   compareZodSchemasStructurally,
   compareStateFieldKinds,
+  mapZodObjectRoot,
 } from "../src/helpers/zod-introspect";
 import { execSync } from "child_process";
 import { existsSync } from "fs";
@@ -305,6 +306,27 @@ describe("compareStateFieldKinds", () => {
   it("treats any and unknown as compatible with everything", () => {
     expect(compareStateFieldKinds(z.unknown(), z.number())).toBeNull();
     expect(compareStateFieldKinds(z.array(z.any()), z.array(z.number()))).toBeNull();
+  });
+});
+
+describe("mapZodObjectRoot", () => {
+  const addB = (object: ZodTypeAny) => (object as z.AnyZodObject).extend({ b: z.number().default(2) });
+
+  it("replaces the object under a default and a refinement, keeping both", () => {
+    const wrapped = z
+      .object({ a: z.number().default(1) })
+      .refine((value) => value.a > 0, "a must be positive")
+      .default({});
+    const mapped = mapZodObjectRoot(wrapped, addB)!;
+
+    expect(mapped.parse(undefined)).toEqual({ a: 1, b: 2 });
+    expect(mapped.safeParse({ a: -1 }).success).toBe(false);
+  });
+
+  it("returns the schema itself when the object is unchanged, and undefined for a non-object", () => {
+    const wrapped = z.object({ a: z.number() }).optional();
+    expect(mapZodObjectRoot(wrapped, (object) => object)).toBe(wrapped);
+    expect(mapZodObjectRoot(z.array(z.string()), addB)).toBeUndefined();
   });
 });
 

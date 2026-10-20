@@ -124,6 +124,51 @@ describe("a child's sequencerStateSchema bubbles to the enclosing sequencer", ()
     expect(result.error).toBeUndefined();
     expect(result.output).toBe(3);
   });
+
+  it("lands inside a wrapped object stateSchema and keeps the wrapper", async () => {
+    // `z.object(...).default({})` built before bubbling existed; it must still
+    // compose, and the `.default({})` must survive the added field.
+    const needsProgress = handler({
+      name: "needs-progress",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      sequencerStateSchema: z.object({ progress: z.number(), extra: z.string().default("e") }),
+      execute: (input) => input
+    });
+    const seq = sequencer({
+      name: "wrapped-owner",
+      inputSchema: z.any(),
+      stateSchema: z.object({ progress: z.number().default(0) }).default({})
+    })
+      .tap(needsProgress)
+      .step(reportState);
+
+    expect(seq.config.stateSchema!.parse(undefined)).toEqual({ progress: 0, extra: "e" });
+    const result = await run(flowOf("bubble-wrapped", seq));
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ progress: 0, extra: "e" });
+  });
+
+  it("reads the fields of a wrapped object requirement", async () => {
+    const wrappedRequirement = handler({
+      name: "wrapped-requirement",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      sequencerStateSchema: z.object({ visits: z.number().default(2) }).default({}),
+      execute: (input) => input
+    });
+    const seq = sequencer({
+      name: "wrapped-requirement-owner",
+      inputSchema: z.any(),
+      stateSchema: z.object({ label: z.string().default("x") })
+    })
+      .tap(wrappedRequirement)
+      .step(reportState);
+
+    const result = await run(flowOf("bubble-wrapped-requirement", seq));
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ label: "x", visits: 2 });
+  });
 });
 
 describe("an incompatible sequencer stateSchema is refused at build time", () => {

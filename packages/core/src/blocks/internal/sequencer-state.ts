@@ -6,7 +6,13 @@
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 import { SequencerSchemaMismatchError } from "../../errors/sequencer-output-schema-error";
-import { compareStateFieldKinds, getZodObjectShape, getZodTypeName } from "../../helpers/zod-introspect";
+import {
+  compareStateFieldKinds,
+  getZodObjectShape,
+  getZodTypeName,
+  mapZodObjectRoot,
+  unwrapToZodObject
+} from "../../helpers/zod-introspect";
 import { isTransientSlot, transientSlot } from "../../helpers/transient-slot";
 import type { BlockDefinition } from "../../types/block";
 
@@ -36,7 +42,8 @@ function conflict(
 }
 
 /**
- * Merge `requirement` into `base`. Returns `base` when nothing is added.
+ * Merge `requirement` into `base`. Returns `base` when nothing is added; a
+ * wrapper on `base` (`.default({})`, say) is kept around the extended object.
  * Throws when a shared field disagrees in kind, or either side is not a `z.object()`.
  *
  * @param source How the requirement is named in the error (`block "x"`).
@@ -48,8 +55,8 @@ export function absorbSequencerStateRequirement(
   source: string
 ): ZodTypeAny {
   if (base === requirement) return base;
-  const baseShape = getZodObjectShape(base);
-  const requiredShape = getZodObjectShape(requirement);
+  const baseShape = shapeOf(base);
+  const requiredShape = shapeOf(requirement);
   if (baseShape === undefined || requiredShape === undefined) {
     const reason = "both the sequencer's state schema and the block's sequencerStateSchema must be z.object() to merge";
     conflict(sequencerName, `cannot merge the state ${source} requires: ${reason}`, reason, base, requirement);
@@ -71,7 +78,13 @@ export function absorbSequencerStateRequirement(
   }
 
   if (Object.keys(added).length === 0) return base;
-  return (base as ZodObject<ZodRawShape>).extend(added);
+  return mapZodObjectRoot(base, (object) => (object as ZodObject<ZodRawShape>).extend(added))!;
+}
+
+/** The fields of an object schema, under any `.default()` / `.optional()` / effects wrapper. */
+function shapeOf(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined {
+  const object = unwrapToZodObject(schema);
+  return object === undefined ? undefined : getZodObjectShape(object);
 }
 
 /**

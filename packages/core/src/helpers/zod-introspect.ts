@@ -124,6 +124,28 @@ export function unwrapToZodObject(schema: ZodTypeAny): ZodTypeAny | undefined {
 }
 
 /**
+ * Rebuild `schema` with the `ZodObject` that {@link unwrapToZodObject} finds
+ * replaced by `map(object)`, keeping every wrapper above it (`.default()`,
+ * `.optional()`, effects). Returns `schema` itself when `map` returns the
+ * object unchanged, and `undefined` when the schema isn't object-shaped.
+ */
+export function mapZodObjectRoot(
+  schema: ZodTypeAny,
+  map: (object: ZodTypeAny) => ZodTypeAny
+): ZodTypeAny | undefined {
+  if (isZodObject(schema)) return map(schema);
+  const inner = getZodInnerType(schema);
+  if (inner === undefined) return undefined;
+  const mapped = mapZodObjectRoot(inner, map);
+  if (mapped === undefined) return undefined;
+  if (mapped === inner) return schema;
+  const def = (schema as any)._def;
+  const innerKey = def.innerType !== undefined ? "innerType" : "schema";
+  const Wrapper = schema.constructor as new (def: unknown) => ZodTypeAny;
+  return new Wrapper({ ...def, [innerKey]: mapped });
+}
+
+/**
  * A `ZodObject`'s unknown-key policy: `"strip"` (default — silently drops
  * unknown keys), `"strict"` (rejects them), or `"passthrough"` (keeps them).
  * `undefined` for non-objects. Lets callers tell a closed object (whose key set
