@@ -567,7 +567,11 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     const runsIn = new Map<string, string>();
     for (const c of convs) {
       const row = rows.find((t) => t.id === c.task);
-      if (row === undefined) continue;
+      // A filed task with no stored row is not skipped: b4 would grade nothing about it and stay green.
+      if (row === undefined) {
+        r.fail("b4", `task \`${c.task ?? "(no id)"}\` from \`${c.id}\` has no stored row, so its partition, session and outcome can't be told`);
+        continue;
+      }
       if (!row.partition.startsWith(c.id)) r.fail("b4", `task \`${row.id}\` from \`${c.id}\` sits in partition \`${row.partition}\`, not that conversation's`);
       // b4 grades partitioning, not coding: a scripted run can't write the code
       // word, so the coder's judge may refuse it. That refusal is the task's own
@@ -586,7 +590,10 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
     // board ended before the other's task did, or both ran side by side.
     const done = convs.map((c) => rows.find((t) => t.id === c.task)?.completedAt ?? Number.NaN);
     r.saw("b4", `tasks ${convs.map((c, i) => `\`${c.task}\` in \`${c.id}\` → ${rows.find((t) => t.id === c.task)?.status} after ${Math.round((done[i]! - t0) / 1000)} s in \`${runsIn.get(c.task ?? "")}\``).join("; ")}`);
-    if (done.every((d) => Number.isFinite(d)) && Math.abs(done[0]! - done[1]!) > 55_000) r.fail("b4", `the two tasks ended ${Math.round(Math.abs(done[0]! - done[1]!) / 1000)} s apart: one board's drain waited on the other's`);
+    // Without both end times the side-by-side claim reads nothing; that is not a pass.
+    const unended = convs.filter((_, i) => !Number.isFinite(done[i]!));
+    if (convs.length !== 2 || unended.length > 0) r.fail("b4", `can't tell whether the two boards ran side by side: ${convs.length} conversation(s), ${unended.length === 0 ? "every task ended" : `no recorded end for ${unended.map((c) => `\`${c.task ?? c.id}\``).join(", ")}`}`);
+    else if (Math.abs(done[0]! - done[1]!) > 55_000) r.fail("b4", `the two tasks ended ${Math.round(Math.abs(done[0]! - done[1]!) / 1000)} s apart: one board's drain waited on the other's`);
   }
 
   // ---- b5 · the EM adds tasks, and the result comes back up ----

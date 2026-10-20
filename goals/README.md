@@ -14,15 +14,15 @@ Goals accumulate. A goal written for one PR is a **regression check** a year lat
 
 Goals are named like behavioural specs. Two levels, both kebab-case:
 
-- **`describe`** — the feature or subject under test (`plan-and-execute`, `crash-recovery`, `suspension`). The first folder level.
-- **`it`** — the behaviour this goal proves, phrased to complete the sentence "it …" (`carries-original-data-to-workers`, `continues-under-same-request-id`, `does-not-retry-loop`). The second folder level, and the goal itself.
+- **`describe`** — the feature or subject under test (`suspension`, `crash-recovery`, `task-board`). The first folder level.
+- **`it`** — the behaviour this goal proves, phrased to complete the sentence "it …" (`resumes-after-a-cold-restart`, `continues-under-same-request-id`, `does-not-retry-loop`). The second folder level, and the goal itself.
 
 The issue number is **not** in the folder name — it ages out as a discovery key, and the point of the name is that someone looking for a goal to reuse can find it by what it proves. The issue lives in `goal.md`.
 
 ```
 goals/
-  plan-and-execute/                      # describe: the subject
-    carries-original-data-to-workers/    # it: the behaviour — this is the goal
+  suspension/                            # describe: the subject
+    resumes-after-a-cold-restart/        # it: the behaviour — this is the goal
       goal.md            # the spec + verdict log — the contract
       run.mts            # the runnable check (real model)
       fixtures/          # held-out inputs, seed corpora, expected snapshots
@@ -62,7 +62,19 @@ What separates a goal check from a dressed-up unit test:
    - **Take the latest snapshot of each item, not the first.** Streamed assistant text lands in later snapshots (`content.delta` is checkpointed into item snapshots, not the persisted event log), so the first `item_added` is often empty. `readCapture` reduces by `item.id` keeping the last — use it rather than filtering `item_added` yourself, which is the bug it exists to prevent.
    - **Assert on terminal/public output**, not trace internals. The action's final output and success flag are on `result`; worker/block execution items are `type: "block_trace"` with an internal `BlockValueInternal` value — don't unwrap those, prefer `result.output` or the public item that carries the value.
    - For non-flow goals, call the public API directly. Mock only true third-party services (payment, email) you genuinely can't call.
-5. **Print an explicit verdict.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0) or `FAIL —` with a bulleted list (exit 1), so a later reader (or agent) knows the result without re-deriving the criteria. Push each leg's failures into the list `runGoal` hands your body (`runGoal(async (failures) => { ... })`), not a local one: if a later leg throws, the verdict then lists the legs that already failed before the throw, instead of only the throw.
+5. **Print an explicit verdict, and say when you couldn't look.** `runGoal` does this: return `{ failures, evidence }` and it prints `PASS — <evidence>` (exit 0), `FAIL —` with a bulleted list (exit 1), or `CAN'T TELL —` naming each assertion that read nothing (exit 3), so a later reader (or agent) knows the result without re-deriving the criteria. Push each leg's failures into the list `runGoal` hands your body (`runGoal(async (failures, tell) => { ... })`), not a local one: if a later leg throws, the verdict then lists the legs that already failed before the throw, instead of only the throw.
+
+   **Floor every list an assertion grades with `tell.over(name, list)`**, from the same body. `[].every(...)` is true, a `for` over nothing pushes nothing, and a `xs.length > 0 &&` guard skips its own check, so a renamed field or a missing row otherwise passes as if it were graded. `tell.over` returns the list unchanged; if it is empty, the run reports `CAN'T TELL — <name>: read 0` instead of PASS. A PASS line ends `read: <name>: <count>` for each one, so the evidence names only what was read. FAIL outranks CAN'T TELL: a run with both prints both and exits 1.
+
+   ```ts
+   await runGoal(async (failures, tell) => {
+     const seqs = tell.over("ordering · persisted items' seq", items.map((i) => i.seq).filter(isNumber));
+     if (!nonDecreasing(seqs)) failures.push("ordering: not non-decreasing");
+     return { failures, evidence: "sequence non-decreasing" };
+   });
+   ```
+
+   When nothing is the right answer ("no session leaks"), floor the population you read with its own `tell.over`, and mark the filtered list once, with the reason: `tell.over("leaks · other users' sessions", found, { emptyIs: "the claim: no session leaks" })`. The reason prints in the PASS line, where a reviewer can challenge it. There is no other opt-out: a goal that can't be written to tell is fixed or retired.
 
 ## Proving a check can fail
 
@@ -80,6 +92,8 @@ GOAL_CONTROL=hollow-run pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-decla
 
 **When no control fits, mutate the code — and snapshot first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away. A commit is the easiest snapshot, but some workflows hold the first commit until a human approves the change — `git stash create` gives you a dangling snapshot commit without touching the tree or the shared stash stack, and copying the file aside works too. Snapshot, mutate, revert the one file, restore.
 
+**A check that read nothing can't fail either.** That is what `tell.over` is for (technique #5), and CI refuses the commonest way to hide it: `node goals/scripts/check-tell-suppress.mjs` fails on an `if` whose condition guards with `.length > 0 &&` (or `!== 0`, `>= 1`) and whose body opens with a failure. It refuses that one shape only: setup ahead of the failure, a vacuous `every` or a skipped loop gets past it, and `tell.over` catches those at run time. `--control` plants that shape and must see it refused. `goals/goal-verdict/says-when-it-cannot-tell` proves the verdict end to end on a real run.
+
 **Say when a leg has no isolating red state** — when the mutation that fails it also fails a neighbour. Put it in the **Verdict log** notes or **Anti-game**, so the next reader reads the co-failure as a known property rather than a leak.
 
 ## The shared library (`goals/lib`)
@@ -88,11 +102,11 @@ Every goal repeats the same scaffolding around the part that is actually its own
 
 | Module       | What it covers |
 | ------------ | -------------- |
-| `verdict`    | `runGoal` / `pass` / `fail` — the one PASS/FAIL format and exit protocol |
+| `verdict`    | `runGoal` / `pass` / `fail` / `tell.over` — the one PASS / FAIL / CAN'T TELL format and exit protocol (0 / 1 / 3); `pnpm --filter @flow-state-dev/goals check:run-goal-verdict` guards it |
 | `fixture`    | `loadFixture(import.meta.url, "x.json")`, `fixturePath`, `fixtureDir` |
 | `env`        | `intentFreeEnv` / `stripIntentOverrides` / `captureIntentOverrides` — the **prefix** strip of `FSDEV_INTENT_*` + `FSDEV_DEFAULT_MODEL` |
 | `paths`      | `KITCHEN_SINK` / `HELLO_CHAT` (repo-anchored, not `../../../`), `goalTmpDir`, `goalSessionId` |
-| `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText`, `assistantText`, `answerText`, `actualModel` |
+| `capture`    | `runFsdev` (input goes by `--input-file`, so quotes, apostrophes and newlines in fixtures are fine; `pnpm --filter @flow-state-dev/goals check:run-fsdev-input` guards it), `readCapture` (latest snapshot per id), `messageText`, `answerText` |
 | `driver`     | `runHarness` — run a sibling `harness.mts` inside an app |
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
@@ -134,7 +148,7 @@ pnpm goal:all suspension
 pnpm goal:all --list
 ```
 
-`goal:all` reads each `goal.md`'s **Model** field to tell model-free from model-backed, prints a per-goal PASS/FAIL summary, lists any goal that has a `goal.md` but no `run.mts`, and exits non-zero if anything failed.
+`goal:all` reads each `goal.md`'s **Model** field to tell model-free from model-backed, prints a per-goal PASS / FAIL / CAN'T TELL / TIMEOUT summary from each runner's exit code, lists any goal that has a `goal.md` but no `run.mts`, and exits non-zero unless everything passed. CAN'T TELL is not passed: the summary counts it apart, as `N can't tell`.
 
 **Typecheck.** `goals/` is a workspace package with a `typecheck` script, so `pnpm typecheck` at the root covers every `run.mts` and the library.
 
@@ -156,6 +170,15 @@ Reach for a new `goals/lib` helper only when a *third* goal needs the same scaff
 ## Retired
 
 A goal is retired when the rule it proved no longer exists, and the line says which rule replaced it. Its history stays in git.
+
+Retired by FIX-1183, when a goal that can't tell stopped counting as a pass. Each proved nothing another check doesn't:
+
+- `plan-and-execute/carries-original-data-to-workers`: it never had a runner, so it never told anything. The pattern's mocked specs stay in CI.
+- `chat-agent/answers-a-factual-question`: it graded whether the model knows a capital. The framework half, a kitchen-sink turn through `fsdev run` on a real model, is proven by every kitchen-sink goal that runs a turn, e.g. `cli-principal/runs-in-the-apps-organization`.
+- `suspension/resumes-and-completes-after-approval`: its whole signal (the approved output carries the request and the note; the request completes) is leg (b) of `suspension/resumes-after-a-cold-restart`, which proves it after a restart too.
+- `workforce-conventions/files-alone-produce-the-roster`: a loader call graded on the data it returns, with no model. `packages/workforce/test/read-workforce-directory.test.ts` proves the same reads in CI.
+- `workforce-conventions/documents-come-from-files-alone`: the same, for `resources/`; `packages/workforce/test/read-resources-directory.test.ts` proves those reads in CI.
+- `capability-config/resolver-reaches-generator`: build-time only. Its assertions moved to `packages/core/test/capability-config.test.ts` ("config reaches a generator's assembled context"), where CI runs them.
 
 Retired by FIX-1788, when workers became data on one copy per worker flow. Hiring writes a row in the hiring user's own scope and registers nothing, so there is no hired seat to pin, reload, repair or list:
 

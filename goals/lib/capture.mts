@@ -185,12 +185,12 @@ export function messageText(item: CapturedItem | undefined): string {
 }
 
 /** Every assistant (non-user) message item in the capture. */
-export function assistantMessages(items: CapturedItem[]): CapturedItem[] {
+function assistantMessages(items: CapturedItem[]): CapturedItem[] {
   return items.filter((item) => item.type === "message" && item.role !== "user");
 }
 
 /** The assistant messages' text, newline-joined. */
-export function assistantText(items: CapturedItem[]): string {
+function assistantText(items: CapturedItem[]): string {
   return assistantMessages(items).map(messageText).join("\n");
 }
 
@@ -201,12 +201,4 @@ export function assistantText(items: CapturedItem[]): string {
  */
 export function answerText(capture: ParsedCapture): string {
   return `${assistantText(capture.items)}\n${String(capture.result.output ?? "")}`.trim();
-}
-
-/** The model the assistant generator actually ran on, if the capture records it. */
-export function actualModel(items: CapturedItem[]): string {
-  const found = assistantMessages(items)
-    .map((message) => (message as { model?: { actual?: string } }).model?.actual)
-    .find(Boolean);
-  return found ?? "unknown";
 }

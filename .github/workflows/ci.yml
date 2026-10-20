@@ -317,6 +317,18 @@ jobs:
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 
+      # A goal that guards a check with `xs.length > 0 &&` skips it on an empty
+      # list and prints PASS having read nothing (FIX-1183). Goals floor the
+      # list with tell.over instead; the script header owns the one shape it
+      # refuses and the two it leaves alone.
+      - name: No goal hides an empty list behind a length guard
+        run: node goals/scripts/check-tell-suppress.mjs
+
+      # The plants must still be refused, and the look-alikes left alone, or
+      # the check above could pass because it stopped reading the shape.
+      - name: The length-guard check refuses its plants
+        run: node goals/scripts/check-tell-suppress.mjs --control
+
   fallow:
     name: Fallow (broken imports & new dead code)
     runs-on: ubuntu-latest
