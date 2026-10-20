@@ -55,7 +55,12 @@ function suppliedBackend(): ConcurrencyLeaseBackend {
  * approval and then runs a step that blocks; `work` blocks. Every blocking
  * step records itself live until the test releases it.
  */
-function buildHost(concurrency: ConcurrencyConfig, backend: Backend = "in-memory", tenantId?: string) {
+function buildHost(
+  concurrency: ConcurrencyConfig,
+  backend: Backend = "in-memory",
+  tenantId?: string,
+  heartbeatIntervalMs?: number
+) {
   const registry = createFlowRegistry();
   const stores = createInMemoryStores();
   const provider = createCheckpointDurabilityProvider(stores);
@@ -77,6 +82,7 @@ function buildHost(concurrency: ConcurrencyConfig, backend: Backend = "in-memory
   registry.register(
     defineFlow({
       kind: "chat",
+      ...(heartbeatIntervalMs !== undefined ? { request: { heartbeatIntervalMs } } : {}),
       actions: {
         transfer: {
           concurrency,
@@ -375,6 +381,27 @@ describe("a resumed request under other policies", () => {
     await other.finished;
   });
 
+  it("a resume waiting its turn keeps its active-request entry warm, so the stale sweep does not reap it", async () => {
+    const h = buildHost("queue", "in-memory", undefined, 20);
+    const { requestId, gate } = await h.park();
+    const work = await h.startWork();
+    expect((await approveViaRoute(h, requestId, gate)).status).toBe(202);
+
+    // Registered before the wait, then beaten while it lasts.
+    await until(async () => (await h.stores.activeRequests.get(requestId)) !== undefined);
+    const registeredAt = (await h.stores.activeRequests.get(requestId))!.lastHeartbeatAt;
+    await until(
+      async () => ((await h.stores.activeRequests.get(requestId))?.lastHeartbeatAt ?? 0) > registeredAt
+    );
+    expect(h.live.has("resumed")).toBe(false);
+
+    h.release("work");
+    await work.finished;
+    await until(() => h.live.has("resumed"));
+    h.release("resumed");
+    await until(async () => (await statusOf(h, requestId)) === "completed");
+  });
+
   it("a resume that cannot take its turn in time keeps the answer, frees the request, and is re-driven later", async () => {
     const h = buildHost("queue");
     const { requestId, gate } = await h.park();
@@ -396,8 +423,6 @@ describe("a resumed request under other policies", () => {
 
     expect(await outcome).toMatchObject({ name: "ConcurrencyQueueTimeoutError" });
     expect(h.live.has("resumed")).toBe(false);
-    // Not lost: the answer stays recorded, the request stays parked, and its
-    // lease is free for the sweep's re-drive.
     expect((await h.provider.loadSuspension(requestId, gate.suspensionId))?.status).toBe("approved");
     expect(await statusOf(h, requestId)).toBe("suspended");
     expect(await h.stores.leases.get(requestId)).toBeNull();

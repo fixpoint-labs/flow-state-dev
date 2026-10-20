@@ -47,12 +47,8 @@ export interface ContinueRequestOptions {
    */
   includeTrace?: boolean;
   /**
-   * When the continued run starts. Called once, after the live stream and the
-   * active-request entry exist, with the stored record, the flow that runs it
-   * and its organization, and a `start` that runs it (also stopped when the
-   * given `signal` fires). Resolves as the run does. Absent → the run starts at
-   * once. The host passes its concurrency turn here, so a continued request
-   * waits for its session like any other request (FIX-2062).
+   * Gates `start` once the live stream and the active-request entry exist.
+   * `start`'s signal also stops the run. Absent, the run starts at once.
    */
   startRun?: (
     run: { flow: FlowInstance; record: RequestRecord; orgId: string },
@@ -141,14 +137,14 @@ export async function continueRequest(
 
   const responseEmitter = options.responseEmitter ?? liveStream?.emitter;
 
-  // Re-register the heartbeat under the SAME id so the stale-request sweeper
-  // doesn't reap the continued run. Mirrors the field set the external-dispatch
   // A resume is an addressed execution, so the stored record must name its
   // organization before anything runs under it (BR-14). Refused here, above the
   // activeRequests register, so a legacy row is not re-advertised as in-flight
   // on its way to being refused.
   const orgId = requireAttributedOrg(record, "resuming this request");
 
+  // Re-register the heartbeat under the SAME id so the stale-request sweeper
+  // doesn't reap the continued run. Mirrors the field set the external-dispatch
   // branch of `dispatch` uses, sourced from the loaded record.
   const now = Date.now();
   await stores.activeRequests.register({
