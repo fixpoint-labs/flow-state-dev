@@ -240,7 +240,11 @@ export function compareZodSchemasStructurally(
   return null;
 }
 
-/** Unwrap `.default()` / `.optional()` / `.nullable()` / brand / `z.lazy()` and the other wrappers. */
+/**
+ * Unwrap `.default()` / `.optional()` / `.nullable()` / brand / `z.lazy()` and the other wrappers.
+ * Deeper than {@link unwrapToZodObject} (brand, lazy) because it compares a state field's kind;
+ * {@link compareZodSchemasStructurally} compares output schemas as written, wrappers included.
+ */
 function peelZodWrappers(schema: ZodTypeAny): ZodTypeAny {
   let current = schema;
   const seen = new Set<unknown>();

@@ -249,6 +249,31 @@ describe("an incompatible sequencer stateSchema is refused at build time", () =>
     expect(() => parent.step(inner)).toThrow(SequencerSchemaMismatchError);
   });
 
+  const needsString = handler({
+    name: "needs-string",
+    inputSchema: z.any(),
+    outputSchema: z.any(),
+    sequencerStateSchema: z.object({ progress: z.string() }),
+    execute: (input) => input
+  });
+
+  it("refuses two routes that require different kinds of the same field, when the router is built", () => {
+    expect(() =>
+      router({
+        name: "conflicting-routes",
+        inputSchema: z.any(),
+        routes: [needsNumber, needsString],
+        execute: () => needsNumber
+      })
+    ).toThrow(SequencerSchemaMismatchError);
+  });
+
+  it("refuses two siblings that disagree on a field inside a stateless sequencer", () => {
+    const relay = sequencer({ name: "sibling-relay", inputSchema: z.any() }).tap(needsNumber);
+
+    expect(() => relay.tap(needsString)).toThrow(SequencerSchemaMismatchError);
+  });
+
   it("accepts a compatible field whose parent side carries the default", async () => {
     // The docs' own example: the parent adds `.default(0)`, the child does not.
     const parent = sequencer({

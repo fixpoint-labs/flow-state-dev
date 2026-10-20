@@ -927,7 +927,7 @@ function runSequencerOperations(
 
         // Checkpoint over schema defaults, so a field the checkpoint lacks keeps its default (BP-030).
         if (resumeState !== undefined && resumeState.state !== undefined && ctx.sequencer !== undefined) {
-          ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state } as any);
+          ctx.sequencer.setState({ ...ctx.sequencer.state, ...resumeState.state });
         }
 
         for (let index = 0; index < operations.length; index += 1) {
