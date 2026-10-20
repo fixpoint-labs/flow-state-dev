@@ -102,7 +102,7 @@ export interface ShiftManagerTheme {
 export function readShiftManagerTheme(): ShiftManagerTheme {
   const css = readFileSync(repoPath("labs/design-system/shift-manager.css"), "utf8");
   const light = declarations(css, ":root");
-  const dark = declarations(css, ".dark");
+  const dark = declarations(css, ".dark, html[data-theme=dark]");
   const colours = (d: Record<string, string>) => Object.values(d).filter((v) => /^#[0-9a-f]{3,8}$/i.test(v));
   return {
     light: colours(light),

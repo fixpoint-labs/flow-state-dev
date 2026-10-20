@@ -1,56 +1,115 @@
 /* ══════════════════════════════════════════════════════════════
-   flow-state.dev — Editorial Monochrome Theme
-   High-contrast dark aesthetic with typography-driven hierarchy.
-   Single accent color (#B27D40) for brand identity and links.
+   flow-state.dev — the Flow State brand, as Shift Manager and the
+   DevTool wear it.
+
+   `@flow-state-dev/design-system` holds every value (day on `:root`,
+   night on `.dark` and on Docusaurus's `html[data-theme=dark]`) and
+   brings Space Grotesk and IBM Plex Mono with it; this file only points
+   Infima's `--ifm-*` variables at those tokens.
+
+   Rules the brand keeps: blueprint (`--info`) means interactive or
+   live, the highlighter (`--attention`) is reserved for "a person must
+   act" (here: text selection only), and corners are square.
    ══════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import "@flow-state-dev/design-system/shift-manager.css";
 
-/* ── Light mode tokens ── */
-:root {
-  --ifm-color-primary: #B27D40;
-  --ifm-color-primary-dark: #9A6D38;
-  --ifm-color-primary-darker: #865D31;
-  --ifm-color-primary-darkest: #724D29;
-  --ifm-color-primary-light: #C08F55;
-  --ifm-color-primary-lighter: #CEA16A;
-  --ifm-color-primary-lightest: #DCB37F;
-  --ifm-code-font-size: 95%;
-  --ifm-font-family-base: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', monospace;
-  --ifm-heading-font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --ifm-heading-font-weight: 700;
+/* Night's values come from the design system, whose night block matches
+   `html[data-theme=dark]` as well as `.dark`. This mapping sits on the same
+   selector so it recomputes from night's tokens and wins over Infima's own
+   dark block (same specificity, loaded earlier). */
+:root,
+html[data-theme="dark"] {
+  /* Blueprint drives links, active nav items and focus. */
+  --ifm-color-primary: var(--info);
+  --ifm-color-primary-dark: color-mix(in oklab, var(--info) 90%, var(--foreground));
+  --ifm-color-primary-darker: color-mix(in oklab, var(--info) 85%, var(--foreground));
+  --ifm-color-primary-darkest: color-mix(in oklab, var(--info) 70%, var(--foreground));
+  --ifm-color-primary-light: color-mix(in oklab, var(--info) 90%, var(--background));
+  --ifm-color-primary-lighter: color-mix(in oklab, var(--info) 85%, var(--background));
+  --ifm-color-primary-lightest: color-mix(in oklab, var(--info) 70%, var(--background));
+  --ifm-color-primary-contrast-background: color-mix(in oklab, var(--info) 10%, var(--card));
+  --ifm-color-primary-contrast-foreground: var(--foreground);
+
+  /* Admonitions: a tinted card with a coloured rule, never the highlighter. */
+  --ifm-color-secondary-dark: var(--border);
+  --ifm-color-secondary-contrast-background: var(--muted);
+  --ifm-color-secondary-contrast-foreground: var(--foreground);
+  --ifm-color-info: var(--info);
+  --ifm-color-info-dark: var(--info);
+  --ifm-color-info-contrast-background: color-mix(in oklab, var(--info) 10%, var(--card));
+  --ifm-color-info-contrast-foreground: var(--foreground);
+  --ifm-color-success: var(--foreground);
+  --ifm-color-success-dark: var(--foreground);
+  --ifm-color-success-contrast-background: var(--muted);
+  --ifm-color-success-contrast-foreground: var(--foreground);
+  --ifm-color-warning: var(--warning);
+  --ifm-color-warning-dark: var(--warning);
+  --ifm-color-warning-contrast-background: color-mix(in oklab, var(--warning) 10%, var(--card));
+  --ifm-color-warning-contrast-foreground: var(--foreground);
+  --ifm-color-danger: var(--destructive);
+  --ifm-color-danger-dark: var(--destructive);
+  --ifm-color-danger-contrast-background: color-mix(in oklab, var(--destructive) 10%, var(--card));
+  --ifm-color-danger-contrast-foreground: var(--foreground);
+  --ifm-alert-border-left-width: 3px;
+
+  /* Grounds and ink. Infima's grey scale becomes ink mixed into the page, so
+     every border and hover it draws stays in the warm neutrals. */
+  --ifm-color-emphasis-0: var(--background);
+  --ifm-color-emphasis-100: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --ifm-color-emphasis-200: color-mix(in oklab, var(--foreground) 12%, var(--background));
+  --ifm-color-emphasis-300: color-mix(in oklab, var(--foreground) 20%, var(--background));
+  --ifm-color-emphasis-400: color-mix(in oklab, var(--foreground) 30%, var(--background));
+  --ifm-color-emphasis-500: color-mix(in oklab, var(--foreground) 45%, var(--background));
+  --ifm-color-emphasis-600: color-mix(in oklab, var(--foreground) 60%, var(--background));
+  --ifm-color-emphasis-700: color-mix(in oklab, var(--foreground) 72%, var(--background));
+  --ifm-color-emphasis-800: color-mix(in oklab, var(--foreground) 85%, var(--background));
+  --ifm-color-emphasis-900: color-mix(in oklab, var(--foreground) 94%, var(--background));
+  --ifm-color-emphasis-1000: var(--foreground);
+  --ifm-background-color: var(--background);
+  --ifm-background-surface-color: var(--card);
+  --ifm-font-color-base: var(--foreground);
+  --ifm-font-color-secondary: var(--muted-foreground);
+  --ifm-heading-color: var(--foreground);
+  --ifm-color-content: var(--foreground);
+  --ifm-color-content-secondary: var(--muted-foreground);
+  --ifm-toc-border-color: var(--border);
+  --ifm-hr-background-color: var(--border);
+  --ifm-table-border-color: var(--border);
+  --ifm-table-stripe-background: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ifm-navbar-background-color: var(--background);
+  --ifm-navbar-link-color: var(--foreground);
+  --ifm-footer-background-color: var(--sidebar);
+  --ifm-footer-color: var(--muted-foreground);
+  --ifm-footer-link-color: var(--foreground);
+  --ifm-footer-title-color: var(--muted-foreground);
+  --ifm-menu-color: var(--muted-foreground);
+  --ifm-menu-color-active: var(--foreground);
+  --ifm-menu-color-background-active: color-mix(in oklab, var(--info) 10%, transparent);
+  --ifm-menu-color-background-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --ifm-code-background: var(--muted);
+  --ifm-dropdown-background-color: var(--popover);
+  --docusaurus-highlighted-code-line-bg: color-mix(in oklab, var(--info) 12%, transparent);
+  --docusaurus-collapse-button-bg-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
+
+  /* Type. */
+  --ifm-font-family-base: var(--font-sans);
+  --ifm-heading-font-family: var(--font-display);
+  --ifm-font-family-monospace: var(--font-mono);
+  --ifm-code-font-size: 92%;
+  --ifm-heading-font-weight: 600;
   --ifm-font-weight-bold: 600;
-  --docusaurus-highlighted-code-line-bg: rgba(178, 125, 64, 0.08);
   --ifm-line-height-base: 1.65;
 
-  /* custom tokens */
-  --fsd-accent: #B27D40;
-  --fsd-accent-glow: rgba(178, 125, 64, 0.15);
-  --fsd-surface-border: rgba(0, 0, 0, 0.08);
-  --fsd-text-muted: rgba(0, 0, 0, 0.55);
-}
-
-/* ── Dark mode tokens ── */
-[data-theme="dark"] {
-  --ifm-color-primary: #B27D40;
-  --ifm-color-primary-dark: #9A6D38;
-  --ifm-color-primary-darker: #865D31;
-  --ifm-color-primary-darkest: #724D29;
-  --ifm-color-primary-light: #C08F55;
-  --ifm-color-primary-lighter: #CEA16A;
-  --ifm-color-primary-lightest: #DCB37F;
-  --ifm-background-color: #08080c;
-  --ifm-background-surface-color: #0e0e14;
-  --ifm-navbar-background-color: rgba(8, 8, 12, 0.85);
-  --ifm-footer-background-color: #050508;
-  --docusaurus-highlighted-code-line-bg: rgba(178, 125, 64, 0.1);
-
-  /* custom tokens */
-  --fsd-accent: #B27D40;
-  --fsd-accent-glow: rgba(178, 125, 64, 0.12);
-  --fsd-surface-border: rgba(255, 255, 255, 0.06);
-  --fsd-text-muted: rgba(255, 255, 255, 0.45);
+  /* Square corners everywhere. */
+  --ifm-global-radius: 0;
+  --ifm-code-border-radius: 0;
+  --ifm-button-border-radius: 0;
+  --ifm-card-border-radius: 0;
+  --ifm-pagination-nav-border-radius: 0;
+  --ifm-badge-border-radius: 0;
+  --ifm-alert-border-radius: 0;
+  --ifm-breadcrumb-border-radius: 0;
 }
 
 /* ── Global base styles ── */
@@ -67,48 +126,50 @@ body {
 
 /* ── Navbar ── */
 
-[data-theme="dark"] .navbar {
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+.navbar {
+  box-shadow: none;
+  border-bottom: 1px solid var(--border);
 }
 
 .navbar__title {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   font-size: 0.9rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .navbar__link {
   font-weight: 500;
   font-size: 0.875rem;
-  letter-spacing: 0.01em;
 }
 
 /* ── Footer ── */
 
-[data-theme="dark"] .footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+.footer {
+  border-top: 1px solid var(--border);
 }
 
 .footer__title {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  opacity: 0.5;
 }
 
 .footer__link-item {
   font-size: 0.875rem;
-  font-weight: 400;
+}
+
+.footer__copyright {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 
 /* ── Docs page refinements ── */
 
 .markdown h1 {
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.03em;
 }
 
@@ -121,10 +182,20 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Code blocks — background is owned by the Prism theme (src/prismThemes.ts);
-   this rule only adds the surrounding border. */
-[data-theme="dark"] .prism-code {
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+/* Inline code: a paper chip with a hairline. */
+.markdown :not(pre) > code {
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+
+/* Code blocks: background is owned by the Prism theme (src/prismThemes.ts);
+   this adds the hairline the app draws around every panel. */
+.prism-code {
+  border: 1px solid var(--border);
+}
+
+.theme-code-block {
+  box-shadow: none;
 }
 
 /* Table of contents */
@@ -136,38 +207,64 @@ body {
 .menu__link {
   font-size: 0.875rem;
   font-weight: 400;
-  border-radius: 6px;
 }
 
 .menu__link--active:not(.menu__link--sublist) {
   font-weight: 600;
 }
 
-/* ── Scrollbar (dark mode) ── */
-
-[data-theme="dark"] ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Section labels in the sidebar read as the app's mono metadata. */
+.menu__list-item-collapsible > .menu__link--sublist,
+.menu__caret {
+  font-weight: 500;
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-track {
-  background: transparent;
+/* Admonitions: hairline box with the coloured rule on the left. */
+.alert {
+  box-shadow: none;
+  border: 1px solid var(--border);
+  border-left-width: var(--ifm-alert-border-left-width);
+  border-left-color: var(--ifm-alert-border-color);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+/* Cards, pagination, tabs */
+.pagination-nav__link {
+  border-color: var(--border);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
+.pagination-nav__link:hover {
+  border-color: var(--info);
 }
 
-/* ── Selection highlight ── */
+.pagination-nav__sublabel {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+}
+
+.tabs__item {
+  border-radius: 0;
+}
+
+/* Focus: a 2px blueprint halo. */
+:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbars: a thin thumb in the border colour on a clear track ── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ── Selection: the highlighter, ink on yellow ── */
 
 ::selection {
-  background: rgba(178, 125, 64, 0.2);
-  color: inherit;
+  background: var(--attention);
+  color: var(--attention-foreground);
 }
 
 /* ── Animations ── */
@@ -181,9 +278,4 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-@keyframes pulseGlow {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
 }

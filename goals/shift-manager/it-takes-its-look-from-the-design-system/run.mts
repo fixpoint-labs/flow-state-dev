@@ -91,7 +91,7 @@ const BACKGROUND = (() => {
     if (value === undefined || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error(`setup: shift-manager.css declares no #rrggbb --background (got ${value})`);
     return [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)) as Rgb;
   };
-  const both = { light: rgb(declarations(css, ":root")["--background"]), dark: rgb(declarations(css, ".dark")["--background"]) };
+  const both = { light: rgb(declarations(css, ":root")["--background"]), dark: rgb(declarations(css, ".dark, html[data-theme=dark]")["--background"]) };
   // Equal backgrounds would let a switch that did nothing pass.
   if (near(both.light, both.dark)) throw new Error(`setup: the light and dark --background are the same colour (${hex(both.light)})`);
   return both;

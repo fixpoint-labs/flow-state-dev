@@ -108,6 +108,9 @@ importers:
       '@docusaurus/preset-classic':
         specifier: ^3.7.0
         version: 3.9.2(@algolia/client-search@5.49.1)(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(lightningcss@1.32.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(search-insights@2.17.3)(typescript@5.7.3)
+      '@flow-state-dev/design-system':
+        specifier: workspace:*
+        version: link:../../labs/design-system
       '@mdx-js/react':
         specifier: ^3.0.0
         version: 3.1.1(@types/react@19.2.14)(react@19.2.4)
