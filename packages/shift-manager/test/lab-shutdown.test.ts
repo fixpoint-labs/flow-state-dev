@@ -1,46 +1,56 @@
-/**
- * A Lab's shutdown waits for the Error Reporter's run before its stores close.
- *
- * Every host stops a Lab through its `FlowState` (the configs export
- * `lab.state`, and `serve` disposes that). A failure that settles just before
- * shutdown starts a reporter run, and that run writes through the same stores.
- * When the stores closed under it, its last writes reached a closed SQLite
- * connection and surfaced as uncaught `database connection is not open`
- * errors, after the process had already reported a clean stop.
- *
- * The run is held at its first read of the intake session, so it is provably
- * still in flight when shutdown begins, whatever the machine's speed.
- */
 import { describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StoreAdapter, StoreRegistry } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
+import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
+import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { INTAKE_SESSION_ID } from "@flow-state-dev/workforce";
-import { errorReporterHarness, startHarness } from "../teams/devteam/harness.mts";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab } from "../teams/devteam/host.mts";
-import { CODER_FLOW } from "../teams/devteam/workforce/flows/workers/coder.mts";
-import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { harnessStub } from "../teams/devteam/harness-stub.mts";
+import { errorReporterHarness } from "../teams/devteam/harness.mts";
+import { LAB_ORG_ID, LAB_USER_ID, openLab } from "../teams/devteam/host.mts";
 
-/** What the wrapped stores saw, in order. */
-type Seen = { closed: boolean; writesAfterClose: string[]; intakeHeld: Promise<void>; release: () => void };
+type Seen = {
+  closed: boolean;
+  writesAfterClose: string[];
+  intakeHeld: Promise<void>;
+  release: () => void;
+  writeHeld: Promise<void>;
+  releaseWrite: () => void;
+};
 
 /**
- * SQLite stores that hold the next intake-session read until `release()`, and
- * record any request write that arrives after `dispose()` closed them.
+ * SQLite stores that hold the next intake-session read until `release()`, hold
+ * the next request write after `armWrite()` until `releaseWrite()`, and record
+ * any request write that arrives after `dispose()` closed them.
  */
-function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; arm: () => void } {
+function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; arm: () => void; armWrite: () => void } {
   const inner = sqliteStores({ filename });
   let armed = false;
+  let writeArmed = false;
   let reached!: () => void;
   let release!: () => void;
+  let writeReached!: () => void;
+  let releaseWrite!: () => void;
   const held = new Promise<void>((r) => (release = r));
+  const writeGate = new Promise<void>((r) => (releaseWrite = r));
   const seen: Seen = {
     closed: false,
     writesAfterClose: [],
     intakeHeld: new Promise<void>((r) => (reached = r)),
     release: () => release(),
+    writeHeld: new Promise<void>((r) => (writeReached = r)),
+    releaseWrite: () => releaseWrite(),
+  };
+  // A held write stays pending in the store, so the store's flush waits for it too.
+  let pending: Promise<void> = Promise.resolve();
+  const holdWrite = async () => {
+    if (!writeArmed) return pending;
+    writeArmed = false;
+    writeReached();
+    pending = writeGate;
+    await writeGate;
   };
   const adapter: StoreAdapter = {
     capabilities: inner.capabilities,
@@ -63,13 +73,19 @@ function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; a
         },
         request: {
           ...request,
-          persistItems: (requestId: string, items: Parameters<typeof request.persistItems>[1]) => {
+          persistItems: async (requestId: string, items: Parameters<typeof request.persistItems>[1]) => {
+            await holdWrite();
             if (seen.closed) seen.writesAfterClose.push(`items ${requestId}`);
             return request.persistItems(requestId, items);
           },
-          persistEvents: (requestId: string, events: Parameters<typeof request.persistEvents>[1]) => {
+          persistEvents: async (requestId: string, events: Parameters<typeof request.persistEvents>[1]) => {
+            await holdWrite();
             if (seen.closed) seen.writesAfterClose.push(`events ${requestId}`);
             return request.persistEvents(requestId, events);
+          },
+          flushEvents: async (requestId: string) => {
+            await pending;
+            return request.flushEvents(requestId);
           },
         },
       } as StoreRegistry;
@@ -79,7 +95,7 @@ function watchedStores(filename: string): { adapter: StoreAdapter; seen: Seen; a
       return inner.dispose?.();
     },
   };
-  return { adapter, seen, arm: () => (armed = true) };
+  return { adapter, seen, arm: () => (armed = true), armWrite: () => (writeArmed = true) };
 }
 
 /** Let pending callbacks and I/O run, `turns` times over. No wall-clock wait. */
@@ -87,26 +103,42 @@ async function yieldTurns(turns: number): Promise<void> {
   for (let i = 0; i < turns; i += 1) await new Promise<void>((r) => setImmediate(r));
 }
 
-/** A DevTeam Lab with an Error Reporter over watched stores, its intake run held mid-flight. */
-async function openWatchedLab() {
+/**
+ * A report harness that runs until its run is cancelled. On the abort it holds
+ * the run's next write, so the run's ending is provably still unwritten when
+ * the cancel lands.
+ */
+function runsUntilCancelled(armWrite: () => void) {
+  let reached!: () => void;
+  const started = new Promise<void>((r) => (reached = r));
+  const harness = (): HarnessBlock =>
+    handler({
+      name: "lab-shutdown-report-harness",
+      inputSchema: harnessRunInputSchema,
+      outputSchema: harnessRunHandleSchema,
+      execute: async (_input, ctx) => {
+        reached();
+        await new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve(), { once: true }));
+        armWrite();
+        throw new Error("cancelled");
+      },
+    }) as unknown as HarnessBlock;
+  return { harness, started };
+}
+
+async function openWatchedLab({ untilCancelled = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sm-lab-shutdown-"));
-  const { adapter, seen, arm } = watchedStores(join(dir, "lab.sqlite"));
-  const harness = await startHarness("stub", { value: "stub", log: () => {} });
-  const roster = await readDeclaredRoster(LAB_TREE);
-  const coder = roster.workers.find((w) => w.declared.flow === CODER_FLOW);
-  if (coder === undefined) throw new Error("the DevTeam tree declares no coder");
+  const { adapter, seen, arm, armWrite } = watchedStores(join(dir, "lab.sqlite"));
+  const report = untilCancelled ? runsUntilCancelled(armWrite) : undefined;
   const lab = await openLab({
     stores: adapter,
-    harness: harness.slot,
-    runTimeoutMs: harness.runTimeoutMs,
+    harness: harnessStub({}).slot,
     workspace: { root: join(dir, "runs"), remotes: { allow: ["file"] } },
-    coderWorkerId: coder.id,
-    errorReporter: { harness: errorReporterHarness, cwd: dir },
+    coderWorkerId: "eng.coder",
+    errorReporter: { harness: report?.harness ?? errorReporterHarness, cwd: dir },
     log: () => {},
   });
-  // A request in the Lab settles failed: the reporter's intake run starts,
-  // and is held mid-flight.
-  arm();
+  if (report === undefined) arm();
   lab.errorReporter!.capture({
     final: true,
     requestId: "req_failed_before_shutdown",
@@ -116,7 +148,7 @@ async function openWatchedLab() {
     orgId: LAB_ORG_ID,
     error: { message: "the judge gave no verdict" },
   });
-  await seen.intakeHeld;
+  await (report?.started ?? seen.intakeHeld);
   return { lab, seen };
 }
 
@@ -124,7 +156,6 @@ describe("a Lab's shutdown with an Error Reporter run in flight", () => {
   it("waits for the run to settle before the stores close, so nothing writes to a closed store", async () => {
     const { lab, seen } = await openWatchedLab();
 
-    // Shutdown the way every host does it: through the FlowState.
     const disposing = lab.state.dispose();
     await yieldTurns(50);
     expect(seen.closed, "the stores closed while the reporter's run was still in flight").toBe(false);
@@ -135,13 +166,26 @@ describe("a Lab's shutdown with an Error Reporter run in flight", () => {
     expect(seen.writesAfterClose).toEqual([]);
   }, 60_000);
 
-  // The wait is bounded: a run that never settles must not hold the process
-  // open. The held run is never released, so it can't write after the close.
   it("still closes the stores when the run never settles", async () => {
     const { lab, seen } = await openWatchedLab();
     const started = Date.now();
     await lab.state.dispose();
     expect(seen.closed).toBe(true);
     expect(Date.now() - started).toBeLessThan(20_000);
+  }, 60_000);
+
+  it("cancels a run that outlasts the wait, and closes the stores only after it writes its ending", async () => {
+    const { lab, seen } = await openWatchedLab({ untilCancelled: true });
+
+    const disposing = lab.state.dispose();
+    const cancelled = await Promise.race([seen.writeHeld.then(() => true), disposing.then(() => false)]);
+    expect(cancelled, "the stores closed without the run being cancelled").toBe(true);
+    await yieldTurns(50);
+    expect(seen.closed, "the stores closed before the cancelled run wrote its ending").toBe(false);
+
+    seen.releaseWrite();
+    await disposing;
+    expect(seen.closed).toBe(true);
+    expect(seen.writesAfterClose).toEqual([]);
   }, 60_000);
 });
