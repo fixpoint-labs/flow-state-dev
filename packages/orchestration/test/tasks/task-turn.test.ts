@@ -5,9 +5,16 @@
  */
 import { describe, expect, it } from "vitest";
 import { isTaskTurn, TASK_SESSION_TASK_KEY } from "../../src";
-import { currentWorkerClaim, openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import {
+  currentWorkerClaim,
+  openWorkerClaimScope,
+  stampCurrentClaim,
+  type WorkerClaimReader,
+} from "../../src/task-board/flow-policy-wiring";
 
-const ctxWith = (state: Record<string, unknown> | undefined) => ({ session: { state } });
+const ctxWith = (state: Record<string, unknown> | undefined): WorkerClaimReader & { session: { state: typeof state } } => ({
+  session: { state },
+});
 
 /** Run `fn` in an async scope of its own, so a stamped claim doesn't leak into the next test. */
 const isolated = <T>(fn: () => T): Promise<T> =>
