@@ -1631,7 +1631,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     door,
     ...(reporter === undefined ? {} : { errorReporter: reporter }),
 
-    // `state.dispose` settles the Error Reporter's runs before the stores close.
     dispose: () => state.dispose(),
   };
 }
@@ -1723,20 +1722,6 @@ async function settlesWithin(work: Promise<unknown>, ms: number): Promise<boolea
   }
 }
 
-/**
- * Settle the Error Reporter's runs before the Lab's stores close (FIX-2061).
- *
- * A run the reporter started is the Lab's own in-process work, which the
- * `FlowState` does not know about, so its `dispose()` would close the stores
- * with that run still writing. Its last writes then reached a closed SQLite
- * connection as uncaught errors.
- *
- * The reporter starts nothing more from here on. A run already going gets
- * {@link REPORTER_DRAIN_MS} to finish, and is then cancelled and given
- * {@link REPORTER_UNWIND_MS} to write its ending. Bounded, so a report run
- * that never settles cannot hold shutdown. A report it stops stays owed, and
- * the next start runs it again.
- */
 async function drainReporter(reporter: ErrorReporter, runs: AbortController): Promise<void> {
   reporter.dispose();
   if (await settlesWithin(reporter.idle(), REPORTER_DRAIN_MS)) return;
