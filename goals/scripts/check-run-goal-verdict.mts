@@ -145,6 +145,16 @@ const CASES: Record<string, Case> = {
     inOrder: ["FAIL —", "leg b: wrong answer", "CAN'T TELL: leg a · rows: read 0"],
     absent: ["PASS"],
   },
+  // A throw is a failure too: the can't-tell recorded before it still prints.
+  "a throw after a can't-tell is FAIL and prints both": {
+    body: `async (failures, tell) => {
+      tell.over("leg a · rows", []);
+      throw new Error("leg b setup broke");
+    }`,
+    exit: 1,
+    inOrder: ["FAIL —", "- leg b setup broke", "CAN'T TELL: leg a · rows: read 0"],
+    absent: ["PASS"],
+  },
 };
 
 const dir = mkdtempSync(join(tmpdir(), "run-goal-verdict-"));

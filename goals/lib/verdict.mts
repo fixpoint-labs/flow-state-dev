@@ -150,11 +150,11 @@ export async function runGoal(
     result = await main(graded, tell);
   } catch (err) {
     const thrown = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
-    return graded.length === 0 ? fail(thrown) : fail(graded, `then threw: ${thrown}`);
+    result = { failures: graded.length === 0 ? [thrown] : [...graded, `then threw: ${thrown}`], evidence: "" };
   }
   const blind = cantTellLines(readings);
   if (result.failures.length > 0) {
-    return blind.length === 0 ? fail(result.failures) : fail(result.failures, blind.map((l) => `CAN'T TELL: ${l}`));
+    return fail(result.failures, blind.map((l) => `CAN'T TELL: ${l}`));
   }
   if (blind.length > 0) return cantTell(blind);
   return pass(`${result.evidence}${readClause(readings)}`);
