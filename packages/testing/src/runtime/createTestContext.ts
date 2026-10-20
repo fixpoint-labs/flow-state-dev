@@ -76,11 +76,7 @@ export type TestContextRuntime = {
   userId: string;
   orgId?: string;
   flow: FlowInstance;
-  /**
-   * Every item the run emitted, in stream order. Trace rows (`block_trace`,
-   * `router_decision`, `state_snapshot`) are in the list though it is typed
-   * as the public `OutputItem`; `testItems(...).blockOutputs()` reads them.
-   */
+  /** Trace rows are in this list. `testItems().blockOutputs()` reads them. */
   getItems: () => OutputItem[];
 };
 

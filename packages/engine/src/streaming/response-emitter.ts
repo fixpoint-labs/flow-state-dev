@@ -193,22 +193,13 @@ function isTransientItemEvent(
   return false;
 }
 
-/**
- * The item an `item.added` / `item.done` wire event carries. The public event
- * types declare `OutputItem`, but the same events also carry the runtime's
- * trace rows to the DevTool and the events log. This narrows the type where an
- * item leaves the runtime buffer for the wire; it does not filter anything.
- */
+/** Wire events declare `OutputItem`; trace rows ride the same event. */
 function asWireItem(item: RuntimeItem): OutputItem {
   return item as OutputItem;
 }
 
 /**
  * Stateful request event emitter used by runtime execution and SSE transport.
- *
- * Its item buffer is the runtime log, so `getItems()` and `subscribeToItems`
- * are typed `RuntimeItem`: trace rows (`block_trace`, `router_decision`,
- * `state_snapshot`) are in it.
  */
 export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly requestId: string;

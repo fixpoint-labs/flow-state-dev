@@ -202,11 +202,9 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   metadata?: Record<string, unknown>;
   input?: unknown;
   /**
-   * Output items produced by this request, trace rows (`block_trace`,
-   * `router_decision`, `state_snapshot`) included: the record holds the
-   * runtime item log, not only the public `OutputItem` view. Adapters that
-   * store items separately may leave this `undefined` on `list()` results
-   * unless `RequestListOptions.withItems` is true.
+   * The request's item log, trace rows included. Adapters that store items
+   * separately may leave this `undefined` on `list()` results unless
+   * `RequestListOptions.withItems` is true.
    */
   items?: RuntimeItem[];
   interruptedAt?: number;

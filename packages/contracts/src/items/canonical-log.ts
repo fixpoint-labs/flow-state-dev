@@ -91,10 +91,6 @@ function suspensionLogicalId(item: RuntimeItem): string | undefined {
  * Order and identity of the surviving items are preserved. A request that never
  * suspended is returned unchanged (no resolved suspensions, no duplicate
  * traces).
- *
- * Accepts the runtime log (`RuntimeItem`, trace rows included) since Rules 2
- * and 3 read `block_trace` rows; the element type passes through, so a list of
- * public `OutputItem`s comes back as `OutputItem[]`.
  */
 export function collapseToCanonicalLog<T extends RuntimeItem>(items: readonly T[]): T[] {
   // Rule 1: logical path -> highest itemIndex of a RESOLVED suspension on it.

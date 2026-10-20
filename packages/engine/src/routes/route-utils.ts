@@ -735,10 +735,7 @@ export function snapshotItemsOf(
   itemTypes?: ReadonlySet<string>
 ): OutputItem[] {
   if (items === undefined) return [];
-  // A record holds the runtime log; this is where it becomes a public
-  // snapshot. Without `itemTypes` the visibility rule drops every trace row;
-  // a caller that names a trace type in `itemTypes` gets it, typed as the
-  // public item it travels as.
+  // Visibility drops trace rows unless `itemTypes` names one.
   return collapseToCanonicalLog(items).filter((item) =>
     itemTypes !== undefined ? itemTypes.has(item.type) : resolveItemVisibility(item).client
   ) as OutputItem[];
@@ -794,8 +791,7 @@ export function buildReplayEvents(record: RequestRecord, session?: SessionRecord
     // request's superseded run-1 emissions just like the GET history does. The
     // append-only event log (the primary replay source) is never collapsed.
     for (const runtimeItem of collapseToCanonicalLog(record.items)) {
-      // Trace rows travel on these events too (as they do live); the wire
-      // event types name the public item, so narrow the type here.
+      // Wire events name OutputItem; trace rows ride them.
       const item = runtimeItem as OutputItem;
       events.push({
         stream: "request",

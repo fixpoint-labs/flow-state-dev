@@ -2323,9 +2323,7 @@ function createSequencer<
             if (response === undefined) {
               throw new Error("waitForCondition requires a response emitter on the context");
             }
-            // The predicate and `wakeOn` are typed over the public `OutputItem`;
-            // the response buffer is the runtime log and also holds trace rows,
-            // which they receive unfiltered. Type-only narrowing.
+            // Predicates and wakeOn stay OutputItem; both receive trace rows unfiltered.
             const items = (): readonly OutputItem[] => response.getItems() as readonly OutputItem[];
             const wakeOn = options.wakeOn as
               | ((item: RuntimeItem, kind: "added" | "updated" | "done") => boolean)

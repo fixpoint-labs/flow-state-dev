@@ -67,8 +67,6 @@ describe("a settled request's items on SQLite", () => {
       requestId,
       onEvent: (event) => {
         if (event.type !== "item.done") return;
-        // The wire event types its item as the public `OutputItem`; trace rows
-        // ride the same event, so read it as the runtime item it is.
         const item = event.item as RuntimeItem;
         if (item.type !== "block_trace") return;
         const pending = new Promise<void>((resolve) => setTimeout(resolve, 0));

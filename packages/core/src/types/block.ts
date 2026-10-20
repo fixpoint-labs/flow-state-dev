@@ -121,10 +121,6 @@ export interface ResponseEmitterHandle {
    * Snapshot of every item emitted to this response so far, in stream order.
    * Used by sequencer ops (e.g. `.waitForCondition`) to evaluate predicates
    * over already-flushed items before subscribing for future ones.
-   *
-   * Typed `RuntimeItem`: the response buffer is the runtime log, so trace rows
-   * (`block_trace`, `router_decision`, `state_snapshot`) are in it alongside
-   * the public items.
    */
   getItems(): readonly RuntimeItem[];
   /**

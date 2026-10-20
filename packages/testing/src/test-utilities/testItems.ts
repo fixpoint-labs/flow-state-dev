@@ -4,14 +4,10 @@ import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
- *
- * Takes the runtime item log (`RuntimeItem[]`), trace rows included, since
- * `blockOutputs()` reads the `block_trace` rows. The helpers that return a
- * plain item list keep the public `OutputItem` type; trace rows are reached
- * through `blockOutputs()`.
  */
 export function testItems(items: readonly RuntimeItem[]) {
   const allItems = [...items].sort((left, right) => left.itemIndex - right.itemIndex);
+  // Public lists are typed OutputItem; blockOutputs reads the trace rows.
   const listed = allItems as OutputItem[];
 
   return {

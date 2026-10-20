@@ -43,11 +43,7 @@ export type ContentDeltaAccumulator = {
  * created with `keyOf`.
  */
 export type RequestStreamStore = {
-  /**
-   * Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched.
-   *
-   * Accepts a request's runtime item log, trace rows (`block_trace` and the rest) included, as the DevTool seeds it. The store keeps every item it is given, and its readers return them typed as the public `OutputItem`, the same type the stream's item events carry them under.
-   */
+  /** Replace all items with a pre-sorted snapshot. Rebuilds the ownership index. Leaves status/sequence/status-events untouched. */
   loadSnapshot(items: readonly RuntimeItem[]): void;
   /** Drop all items, sorted ids, ownership, pending deltas, and reset the status/sequence/status-event layer to a fresh stream. */
   clear(): void;
@@ -358,6 +354,7 @@ export function createRequestStreamStore(
       ownershipIndex = new Map<string, Set<string>>();
       deltaQueue.clear();
 
+      // Readers return OutputItem. Every row, trace rows included, is kept.
       for (const item of items as readonly OutputItem[]) {
         const key = keyOf(item);
         itemsById.set(key, item);
