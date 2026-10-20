@@ -317,12 +317,16 @@ jobs:
       - name: The vocabulary sweep reports its plant
         run: node goals/vocabulary/one-word-per-thing/sweep.mjs --control
 
-  knip:
-    name: Knip (unused files & broken imports)
+  fallow:
+    name: Fallow (broken imports & new dead code)
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The audit step checks out the PR's base commit to tell new findings
+          # from inherited ones.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -333,11 +337,28 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Gates on the high-signal categories only (undeclared deps, missing
-      # binaries, unresolved imports). The broader unused-files / unused-exports
-      # analysis is available locally via `pnpm knip` for dead-code hunting.
-      - name: Knip
-        run: pnpm knip:ci
+      # Whole tree, every run: undeclared dependencies and imports that don't
+      # resolve. These are clean on main, so any finding is new.
+      - name: Unresolved imports & unlisted dependencies
+        run: pnpm fallow:ci
+
+      # PRs only: fails on unused files, exports, types or dependencies this
+      # PR leaves anywhere in the tree, including an export in a file it never
+      # touched whose last caller it deleted. Findings already on the base
+      # don't count, so the existing backlog never blocks a PR. The checkout
+      # is the PR merged into its base branch's current tip, so the base is
+      # the merge's first parent (`HEAD^1`), not `pull_request.base.sha`,
+      # which goes stale as the base branch moves.
+      - name: New dead code
+        if: github.event_name == 'pull_request'
+        run: pnpm fallow:new-dead-code HEAD^1
+
+      # PRs only: new duplication and complexity in the changed files, reported
+      # without failing (see .fallowrc.json). `pnpm fallow` locally shows the
+      # whole backlog.
+      - name: New duplication & complexity
+        if: github.event_name == 'pull_request'
+        run: pnpm fallow:audit --base HEAD^1
 
   e2e:
     name: Kitchen-sink E2E (Playwright)
