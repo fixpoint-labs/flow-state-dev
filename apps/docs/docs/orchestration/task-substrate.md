@@ -369,7 +369,7 @@ Where a collection stores its tasks decides how long they live. `getOrCreateTask
 | `state` with `state: ctx.sequencer` (or another state ref) | On that state | As long as that state: one sequencer invocation for `ctx.sequencer`. |
 | `resource` | A resource collection declared with `defineTaskCollection` | Outlives the request: a user's task list, an org work pool that accepts tasks across sessions. |
 
-Any other `backing` value throws before anything is stored. That includes `"request"` and `"sequencer"`, which are task-board names, not `getOrCreateTaskCollection` ones. A [task board](./task-board.md#collection-backing) names its storage differently: its `collection` option takes `{ backing: "request" }`, `{ backing: "sequencer" }`, a `defineTaskCollection()` value, or a factory, and the first two resolve to `backing: "state"` here.
+Any other `backing` value throws before anything is stored, including `"request"` and `"sequencer"`. Those are [task board](./task-board.md#collection-backing) names; both resolve to `state` here.
 
 A sequencer's state is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, leave `state` out. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
 

@@ -14,25 +14,18 @@ import type { TaskCollectionResolver } from "../../src/skills/task-tools-capabil
 /** The own-state field these tests keep their board on. */
 export const BOARD_FIELD = "delegationBoard";
 
-/**
- * A resolver for the board on the host generator's own state, reached through
- * `ctx.parent`: each task tool runs as a child block, so `ctx.parent` (not
- * `ctx.self`, the per-call scope) is the generator. `undefined` when the parent
- * has no own state or no board field, so the tools answer `no_delegation_board`.
- */
+/** Host board on `ctx.parent`. No parent, or no field, means no board. */
 export const ownStateResolver: TaskCollectionResolver = async (ctx) => {
-  const parent = (ctx as { parent?: Partial<StateRef<Record<string, unknown>>> }).parent;
-  if (!parent || typeof parent.atomicState !== "function") return undefined;
+  const parent = (ctx as { parent?: StateRef<Record<string, unknown>> }).parent;
+  if (!parent) return undefined;
   const state = parent.state;
-  if (state === null || typeof state !== "object") return undefined;
-  if (!(BOARD_FIELD in state)) return undefined;
+  if (state == null || typeof state !== "object" || !(BOARD_FIELD in state)) return undefined;
   return getOrCreateTaskCollection({
     backing: "state",
-    state: parent as StateRef<Record<string, unknown>>,
+    state: parent,
     stateKey: BOARD_FIELD,
     collectionId: BOARD_FIELD,
     ctx,
-    changeVisibility: { client: true, history: false },
   });
 };
 

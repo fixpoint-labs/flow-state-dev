@@ -11,7 +11,6 @@ import {
 import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
 
-/** The task tools over the test board on the host generator's own state. */
 const taskTools = createTaskToolsCapability(ownStateResolver);
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
@@ -439,7 +438,7 @@ describe("taskTools — assignee validation with a roster", () => {
 
 describe("taskTools — no roster supplied (back-compat)", () => {
   it("addTask accepts any assignee, exactly as before roster validation", async () => {
-    // The standalone `taskTools` singleton knows no workers, so it has nothing
+    // A capability built without a roster knows no workers, so it has nothing
     // to validate against and must not start rejecting (BP-030).
     const { ctx } = buildCtx();
     const result = await runForTest(
