@@ -118,7 +118,8 @@ export function claudeCodeEnv(): Record<string, string> {
  * the run.
  *
  * No `maxTurns`: the SDK's default is no cap, and a real coding run takes
- * hundreds of turns, so a small cap ends it mid-task as `error_max_turns`.
+ * many turns, so a small cap ends it mid-task as `error_max_turns`. The run is
+ * bounded by the harness manager's run timeout instead.
  *
  * With `mcpTools`, the run is handed its project's MCP servers and nothing
  * else, and the block holds the project and key collections the resolver
@@ -154,6 +155,8 @@ export function errorReporterHarness({ cwd, mcpTools }: ErrorReporterHarnessFeed
     allowedTools: ["Read", "Grep", "Glob"],
     disallowedTools: ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
     permissionMode: "default",
+    // Kept: this harness is called straight from the Error Reporter flow, with no manager run timeout above it.
+    maxTurns: 40,
     systemPrompt:
       "You investigate failures in the code in your working directory and write bug reports about them. " +
       "Read and search the code; never change a file. Do what the prompt asks, then answer as it says.",
