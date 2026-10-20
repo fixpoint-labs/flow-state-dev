@@ -25,7 +25,7 @@ preserve review history, and later amendments use follow-up PRs from `main`.
 
 A retained POC records an experiment, not a supported API. Its instructions should name
 what it checks, how to run it explicitly, the observed result and its limits. Do not import
-it into production, make it a workspace package, or add it to default builds or test/lint/knip
+it into production, make it a workspace package, or add it to default builds or test/lint/fallow
 discovery. Retain authored sources and evidence, not dependencies, build output or secrets.
 Graduate useful behavior through the normal implementation path rather than copying
 experimental code into a package.
