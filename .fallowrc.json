@@ -22,20 +22,14 @@
     "packages/*/**/*.type-test.ts",
     "packages/cli/bin/*.ts",
     "packages/cli/test/fixtures/**/*.ts",
-    "packages/ui/stories/**/*.{ts,tsx}",
 
-    "apps/devtool/src/main.tsx",
-    "apps/devtool/vite.config.ts",
-    "apps/kitchen-sink/app/**/*.{ts,tsx}",
     "apps/kitchen-sink/flows/**/index.ts",
-    "apps/kitchen-sink/next.config.{js,mjs,ts}",
-    "apps/kitchen-sink/e2e/**/*.{test,spec}.ts",
-    "apps/docs/docusaurus.config.ts",
-    "apps/docs/sidebars.ts",
-    "apps/docs/src/**/*.{ts,tsx}",
+    // Docusaurus seeds the config, sidebars and pages, not this theme module.
+    "apps/docs/src/prismThemes.ts",
 
-    "examples/*/src/**/index.ts",
     "examples/*/test/**/*.{test,spec}.ts",
+    // Neither a package.json entry nor seeded by the Next plugin.
+    "examples/knowledge-base/src/okf/index.ts",
 
     "labs/knowledge-hub/src/index.ts",
     "labs/knowledge-hub/fsdev.config.ts",
@@ -48,13 +42,12 @@
     "plugins/flow-state-dev/test/**/*.test.mjs",
     "plugins/flow-state-dev/skills/install-fsd/detect/detect.mjs",
 
-    // Each goal's runnable check, run by `goals/scripts/run-all.mts` or by hand.
-    "goals/*/*/run.mts",
     "goals/scripts/*.mts"
   ],
 
-  // Goals load their own files by path (fixtures, labs, controls, legs, hosts:
-  // copied, spawned, or imported by URL), so no import edge reaches them. The
+  // Goals load their own files by path (the runnable check, fixtures, labs,
+  // controls, legs: copied, spawned, or imported by URL), so no import edge
+  // reaches them. The
   // goal-local glob needs a file below `goals/<describe>/<it>/`, which keeps
   // the shared `goals/lib` helpers analyzed like any module.
   "dynamicallyLoaded": [
@@ -97,8 +90,6 @@
     "complexity-cognitive": "warn",
     "complexity-crap": "warn"
   },
-
-  "audit": { "gate": "new-only" },
 
   "ignoreDependencies": [
     "@oh-my-pi/pi-coding-agent",
