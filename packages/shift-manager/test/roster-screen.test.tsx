@@ -449,7 +449,7 @@ describe("the sidebar (V4)", () => {
 describe("Jump to (V5)", () => {
   it("BR-17: a worker found in Jump to opens Roster", async () => {
     await open("/inbox");
-    act(() => fireEvent.click(screen.getByTestId("jump-to")));
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "eng.reviewer" } }));
     act(() => fireEvent.click(screen.getAllByTestId("jump-result")[0]!));
     expect(window.location.pathname).toBe("/roster");

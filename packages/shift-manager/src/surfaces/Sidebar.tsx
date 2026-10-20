@@ -1,7 +1,7 @@
 /**
- * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
- * Inbox, Tasks and Roster with their counts, Messages, Settings, PROJECTS, TEAMS, and a footer
- * (BR-6) with the on-shift count. A header above them all carries
+ * The sidebar (S5): in order, Shift Coordinator, Inbox, Tasks and Roster with
+ * their counts, Messages, PROJECTS, TEAMS, then Settings pinned above a footer
+ * (BR-6) with the ⌘K tip and the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
@@ -23,7 +23,7 @@
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
  * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
- * Roster, Settings and Jump to. Each icon names itself on hover and navigates as its
+ * Roster, Messages and Jump to, with Settings at the bottom. Each icon names itself on hover and navigates as its
  * entry does.
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
@@ -147,44 +147,6 @@ function Heading({ children, aside, testId }: { children: string; aside?: string
   );
 }
 
-/** The organization this user's sessions are bound to. One per Lab principal. */
-function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative" data-testid="org-switcher">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between border px-2 py-1.5 text-left text-sm"
-      >
-        <span className="truncate font-medium">{orgId}</span>
-        <Meta role="count" className="text-muted-foreground">▾</Meta>
-      </button>
-      {open ? (
-        <div role="menu" className="absolute inset-x-0 top-full z-10 mt-1 border bg-popover p-1 text-popover-foreground shadow">
-          <button
-            type="button"
-            role="menuitemradio"
-            aria-checked
-            className="w-full px-2 py-1.5 text-left text-sm hover:bg-accent"
-            onClick={() => {
-              setOpen(false);
-              onSwitch();
-            }}
-          >
-            {orgId}
-          </button>
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            The Lab binds you to one organization; it is the only one to switch to.
-          </p>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /** The control that collapses the sidebar to its rail, or expands it back (`[`). */
 function SidebarToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
@@ -264,7 +226,7 @@ function SidebarRail({
   waiting: boolean;
 }) {
   return (
-    <div className="flex w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
+    <div className="flex h-full w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
         <RailItem label="Shift Coordinator" active={route.level === "cos"} onClick={() => navigate({ level: "cos" })} testId="rail-cos">
@@ -289,11 +251,13 @@ function SidebarRail({
         <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} onClick={() => navigate({ level: "messages" })} testId="rail-messages">
           <NavIcon name="messages" />
         </RailItem>
-        <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
-          <NavIcon name="settings" />
-        </RailItem>
         <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
           <NavIcon name="jump" />
+        </RailItem>
+      </div>
+      <div className="mt-auto">
+        <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
+          <NavIcon name="settings" />
         </RailItem>
       </div>
     </div>
@@ -478,20 +442,7 @@ export function Sidebar({
             <SidebarHeader look={look} onToggle={onToggle} />
           )}
           <div className="flex-1 overflow-y-auto p-3">
-            {loaded === undefined ? null : <OrgSwitcher orgId={loaded.orgId} onSwitch={retry} />}
-            <button
-              type="button"
-              onClick={onJump}
-              data-testid="jump-to"
-              className="mt-2 flex w-full items-center justify-between border bg-secondary px-2 py-1.5 text-muted-foreground"
-            >
-              <Meta role="control">Jump to…</Meta>
-              <kbd className="border px-1">
-                <Meta role="count">⌘K</Meta>
-              </kbd>
-            </button>
-
-            <div className="mt-3 space-y-0.5">
+            <div className="space-y-0.5">
               <ChiefOfStaffEntry active={route.level === "cos"} />
               <NavItem
                 label="Inbox"
@@ -538,13 +489,6 @@ export function Sidebar({
                 active={route.level === "messages" || route.level === "session"}
                 onClick={() => navigate({ level: "messages" })}
                 testId="nav-messages"
-              />
-              <NavItem
-                label="Settings"
-                icon={<NavIcon name="settings" />}
-                active={route.level === "settings"}
-                onClick={() => navigate({ level: "settings" })}
-                testId="nav-settings"
               />
             </div>
 
@@ -597,11 +541,23 @@ export function Sidebar({
               ) : null}
             </div>
           </div>
+          <div className="px-3 pb-2">
+            <NavItem
+              label="Settings"
+              icon={<NavIcon name="settings" />}
+              active={route.level === "settings"}
+              onClick={() => navigate({ level: "settings" })}
+              testId="nav-settings"
+            />
+          </div>
           <footer
             className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
             data-testid="sidebar-footer"
             data-look="meta-meta"
           >
+            <p className="text-[10.5px]" data-testid="jump-tip">
+              <kbd>⌘K</kbd> to go to anything
+            </p>
             <p className="flex items-center gap-3">
               {counts === undefined ? null : (
                 <>
