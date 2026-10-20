@@ -698,10 +698,7 @@ describe("how many tasks one top task has under it (BR-21, BR-21a, BR-22, BR-22a
       expect((await one(h, "Hire the band")).status).toBe("completed");
       const real = await entriesOf(h);
       expect(Object.keys(real)).toHaveLength(4);
-      // Ninety-five more, written straight into the chain's record as filings
-      // that committed: the count is taken from this record alone, never from
-      // the boards' rows, so it reads them as it reads real ones. Filing them
-      // one by one through the tool only costs time.
+      // The count reads this record, so the fillers are written here.
       const [key, record] = Object.entries(await h.chains("alice"))[0]!;
       const board = (await one(h, "hold")).partition;
       const filler = Object.fromEntries(

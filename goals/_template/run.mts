@@ -65,10 +65,7 @@ await runGoal((failures, tell) => {
   //    Note: worker/block execution items are `type: "block_trace"` carrying an
   //    internal `BlockValueInternal` value — never unwrap those.
   const answer = answerText(capture);
-  // Floor what you grade: an empty list passes `every`, a loop and a
-  // `length > 0 &&` guard. With nothing read, `tell.over` makes the run say
-  // CAN'T TELL instead of PASS. Only when empty IS the claim ("no leaks"),
-  // pass `{ emptyIs: "<the reason>" }`. See README → Script techniques #5.
+  // emptyIs only when empty is the claim. README → Script techniques #5.
   tell.over("answer · assistant messages", assistantMessages(capture.items));
   if (!answer.toLowerCase().includes(fixture.mustContain.toLowerCase())) {
     failures.push(

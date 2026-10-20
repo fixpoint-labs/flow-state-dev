@@ -45,12 +45,7 @@ export interface TellOptions {
   emptyIs?: string;
 }
 
-/**
- * The evidence floor `runGoal` hands a goal body. Pass every list an assertion
- * grades through `tell.over` before grading it: `[].every(...)` is true and a
- * `length > 0 &&` guard skips the check, so an empty list would otherwise pass
- * an assertion that saw nothing.
- */
+/** Handed to the goal body. Floor each graded list with `over`; an empty read is CAN'T TELL. */
 export interface Tell {
   /**
    * Record that the assertion `name` reads `values`, and return `values`
@@ -142,10 +137,6 @@ function cantTell(lines: string[]): never {
  * later leg's setup error (often caused by the earlier failure) would be
  * reported as the whole story. On a normal return the returned `failures` is
  * what counts, so a body that returns a copy or a literal list is unaffected.
- *
- * `main` also receives a {@link Tell}. Any `tell.over` that read nothing turns
- * a would-be PASS into CAN'T TELL; with failures as well, both print and the
- * verdict is FAIL. A PASS names what each `tell.over` read.
  */
 export async function runGoal(
   main: (failures: string[], tell: Tell) => GoalResult | Promise<GoalResult>,

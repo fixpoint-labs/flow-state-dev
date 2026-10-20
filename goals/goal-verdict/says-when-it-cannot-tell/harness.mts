@@ -3,11 +3,6 @@
  * `apps/kitchen-sink` and run there by run.mts (via `runHarness`), so the app's
  * `@/*` aliases and `@flow-state-dev/*` both resolve.
  *
- * Dispatches kitchen-sink's model-free `requestApproval` action, which suspends
- * at its approval gate, and reports the items that request persisted on one
- * `__GOAL__<json>` line. run.mts owns everything else: these items are only the
- * real evidence its probe legs grade.
- *
  * Not typechecked by `goals/tsconfig.json` — its imports resolve against
  * apps/kitchen-sink, not against goals/. See goals/README.md → "Harnesses".
  */
