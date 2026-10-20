@@ -664,13 +664,20 @@ describe("how deep a chain goes (BR-20, BR-6)", () => {
 });
 
 describe("how many tasks one top task has under it (BR-21, BR-21a, BR-22, BR-22a)", () => {
-  /** A top split three boards deep that stays open: `hold` waits unassigned on s1's board. */
-  async function openChain(h: SplitHost) {
+  /**
+   * A top split three boards deep that stays open: `hold` and the `fillers`
+   * wait unassigned on s1's board. The fillers are filed in s1's one turn,
+   * through the same guarded add the task tools use: as tool calls, each is a
+   * request that reads the whole board again, which grows the test with the
+   * square of the count.
+   */
+  async function openChain(h: SplitHost, fillers = 0) {
     h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
     h.controls.plans.s1 = [
       { goal: "Book the venue", assignee: "eng.tasker" },
       { goal: "Run the event", assignee: "s2" },
-      { goal: "hold" }
+      { goal: "hold" },
+      ...Array.from({ length: fillers }, (_, i) => ({ goal: `filler ${i}` }))
     ];
     h.controls.plans.s2 = [{ goal: "Hire the band", assignee: "eng.tasker" }];
     const planner = await h.open("alice", "planner");
@@ -691,14 +698,11 @@ describe("how many tasks one top task has under it (BR-21, BR-21a, BR-22, BR-22a
   it("refuses the 101st, across three boards, finished pieces counted; of two filings at the 100th, exactly one lands", async () => {
     const h = bootSplitHost();
     try {
-      const { t1, t2 } = await openChain(h);
-      // Four under the top: two finished, one parked on its own, one waiting.
+      const { t1, t2 } = await openChain(h, 95);
+      // 99 under the top: two finished, one parked on its own, 96 waiting.
+      expect(h.controls.refusals).toEqual([]);
       expect((await one(h, "Book the venue")).status).toBe("completed");
       expect((await one(h, "Hire the band")).status).toBe("completed");
-      expect(Object.keys(await entriesOf(h))).toHaveLength(4);
-      for (let i = 0; i < 95; i += 1) {
-        expect((await h.tool("alice", t1, "addTask", { goal: `filler ${i}` })).ok, `filler ${i}`).toBe(true);
-      }
       expect(Object.keys(await entriesOf(h))).toHaveLength(99);
 
       const both = await Promise.all([
