@@ -27,8 +27,8 @@ The provider is imported statically and passed in `createModelResolver({ provide
 
 | provider    | static import                         | env var                        | `defaultModel`                |
 | ----------- | ------------------------------------- | ------------------------------ | ----------------------------- |
-| `openai`    | `import { openai } from "@ai-sdk/openai"` | `OPENAI_API_KEY`           | `openai/gpt-5.4-mini`         |
-| `anthropic` | `import { anthropic } from "@ai-sdk/anthropic"` | `ANTHROPIC_API_KEY`  | `anthropic/claude-sonnet-4-6` |
+| `openai`    | `import { openai } from "@ai-sdk/openai"` | `OPENAI_API_KEY`           | `openai/gpt-6-luna`         |
+| `anthropic` | `import { anthropic } from "@ai-sdk/anthropic"` | `ANTHROPIC_API_KEY`  | `anthropic/claude-sonnet-5-5` |
 | `google`    | `import { google } from "@ai-sdk/google"` | `GOOGLE_GENERATIVE_AI_API_KEY` | `google/gemini-2.5-flash` |
 
 ## Demo flow

@@ -10,14 +10,12 @@
 
 /** Gateway model strings shown in the kitchen-sink model selector. */
 export const KITCHEN_SINK_MODELS = [
-  "vercel:anthropic/claude-haiku-4.5",
-  "vercel:anthropic/claude-sonnet-5",
-  "vercel:anthropic/claude-opus-4.8",
-  "vercel:openai/gpt-5.4-nano",
-  "vercel:openai/gpt-5.4-mini",
-  "vercel:openai/gpt-5.6-luna",
-  "vercel:openai/gpt-5.6-terra",
-  "vercel:openai/gpt-5.6-sol",
+  "vercel:anthropic/claude-haiku-5.5",
+  "vercel:anthropic/claude-sonnet-5.5",
+  "vercel:anthropic/claude-opus-5.5",
+  "vercel:openai/gpt-6-luna",
+  "vercel:openai/gpt-6.1-sol",
+  "vercel:openai/gpt-6-astra",
   "vercel:google/gemini-2.5-pro",
   "vercel:zai/glm-5.2",
   "vercel:xiaomi/mimo-v2.5",
@@ -40,7 +38,7 @@ export type KitchenSinkModel = (typeof KITCHEN_SINK_MODELS)[number];
 
 /** Default model selection when a user has no stored preference. */
 export const DEFAULT_KITCHEN_SINK_MODEL: KitchenSinkModel =
-  "vercel:anthropic/claude-sonnet-5";
+  "vercel:anthropic/claude-sonnet-5.5";
 
 /** True when `value` is a current catalog model id. */
 export function isKitchenSinkModel(value: string): value is KitchenSinkModel {
@@ -76,36 +74,28 @@ export const MODEL_LABELS: Record<
   KitchenSinkModel,
   { label: string; description: string }
 > = {
-  "vercel:anthropic/claude-haiku-4.5": {
-    label: "Claude Haiku 4.5",
+  "vercel:anthropic/claude-haiku-5.5": {
+    label: "Claude Haiku 5.5",
     description: "Fast, low cost",
   },
-  "vercel:anthropic/claude-sonnet-5": {
-    label: "Claude Sonnet 5",
+  "vercel:anthropic/claude-sonnet-5.5": {
+    label: "Claude Sonnet 5.5",
     description: "Balanced default",
   },
-  "vercel:anthropic/claude-opus-4.8": {
-    label: "Claude Opus 4.8",
+  "vercel:anthropic/claude-opus-5.5": {
+    label: "Claude Opus 5.5",
     description: "Highest capability",
   },
-  "vercel:openai/gpt-5.4-nano": {
-    label: "GPT-5.4 Nano",
+  "vercel:openai/gpt-6-luna": {
+    label: "GPT-6 Luna",
     description: "Fast, low cost",
   },
-  "vercel:openai/gpt-5.4-mini": {
-    label: "GPT-5.4 Mini",
-    description: "Mid-tier",
-  },
-  "vercel:openai/gpt-5.6-luna": {
-    label: "GPT-5.6 Luna",
-    description: "Fast, low cost",
-  },
-  "vercel:openai/gpt-5.6-terra": {
-    label: "GPT-5.6 Terra",
+  "vercel:openai/gpt-6.1-sol": {
+    label: "GPT-6.1 Sol",
     description: "Balanced",
   },
-  "vercel:openai/gpt-5.6-sol": {
-    label: "GPT-5.6 Sol",
+  "vercel:openai/gpt-6-astra": {
+    label: "GPT-6 Astra",
     description: "Highest capability",
   },
   "vercel:google/gemini-2.5-pro": {

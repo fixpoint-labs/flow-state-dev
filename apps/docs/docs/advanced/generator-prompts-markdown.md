@@ -21,7 +21,7 @@ Keep prompts inline when they are short, when they need TypeScript-level logic t
 ---
 description: optional summary
 intent: chat                 # informational; exposed as config.intent
-model: openai/gpt-5.4-mini   # metadata only — does NOT set the generator's model
+model: openai/gpt-6-luna   # metadata only — does NOT set the generator's model
 caching: true                # true | false | { enabled, breakpoints, ttl }
 maxTokens: 1000
 temperature: 0.5
@@ -259,7 +259,7 @@ const pf = loadPromptFile("./analyst.prompt.md", import.meta.url, {
 
 export const analyst = generator({
   name: "analyst",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   ...definePromptFile(pf),
   tools: [searchTool],
   outputSchema: TradeProposalSchema,
@@ -271,7 +271,7 @@ export const analyst = generator({
 ```ts
 export const analyst = generator({
   name: "analyst",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: load("analyst.prompt.md"),
   tools: [searchTool],
   outputSchema: TradeProposalSchema,

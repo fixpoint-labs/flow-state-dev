@@ -180,7 +180,7 @@ export function <patternName>(config: <PatternName>Config) {
   // Declare each resource on the block that actually reads or writes it.
   const executor = config.executor ?? generator({
     name: `${name}-executor`,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "openai/gpt-6-luna",
     resources: { <resourceName>: <resourceName>Resource },
     ...(tools !== undefined ? { tools } : {}),
     ...(uses ? { uses: uses as any } : {}),

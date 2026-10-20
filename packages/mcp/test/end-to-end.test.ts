@@ -34,7 +34,7 @@ function buildRouter(adapter = createMcpTransportAdapter()) {
       actions: {
         recordPayment: {
           inputSchema: z.object({ amount: z.number() }),
-          block: handler<{ amount: number }, { ok: true; amount: number }>({
+          block: handler({
             name: "record-payment",
             execute: (input) => ({ ok: true, amount: input.amount })
           }),

@@ -18,7 +18,7 @@ workforce/teams/engineering/workers/lead/WORKER.md
 ```md
 ---
 description: Holds the board.
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 ---
 You are the engineering lead. You break work into tasks and report what came back.
 ```
@@ -363,7 +363,7 @@ import { createWorkerInstallation, hireWorkforce, type WorkerManifest } from "@f
 const workers: WorkerManifest[] = [
   {
     id: "engineering.lead",
-    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-5.4-mini" },
+    declared: { flow: "custom-agent", description: "Holds the board.", model: "openai/gpt-6-luna" },
     body: "You are the engineering lead. You break work into tasks and report what came back.",
   },
   { id: "engineering.intake", declared: { flow: "intake", description: "The front door." }, body: "" },
@@ -642,7 +642,7 @@ import { AGENT_FLOW, createWorkerInstallation, defineAgentWorkerFlow, hireWorkfo
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -1043,7 +1043,7 @@ import { generator, readResourceContentTool } from "@flow-state-dev/core";
 
 export const answerQuestion = generator({
   name: "answer-question",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Answer support questions. Check the team handbook before you answer.",
   tools: [readResourceContentTool()],
 });
@@ -1538,7 +1538,7 @@ a workstream drops its delegate in that turn, so a later dispatch in the turn ne
 
 `listLeads` returns every worker that can lead, whether or not it suits the work, and a coordinator
 with a single lead tends to pick it. To have the open refuse that pick, pass `defineWorkstreamBlocks({ installation,
-leadFlows, leadFit: { model: "openai/gpt-5.4-mini" } })`: `openWorkstreamTool` then makes one call
+leadFlows, leadFit: { model: "openai/gpt-6-luna" } })`: `openWorkstreamTool` then makes one call
 to that model asking whether the lead's description (as `listLeads` shows it) says it does the work in
 the workstream's title and objectives. If the answer is no, the open is refused with `lead-doesnt-fit` and nothing
 is written. The same call asks whether the title and objectives say what sort of work it is at all, and work

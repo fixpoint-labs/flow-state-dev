@@ -46,13 +46,13 @@ export function createMockSkillsCollection(
   const ref: ResourceCollectionRef & { _store: Map<string, MockEntry> } = {
     pattern,
     scope: "org" as const,
-    get(key) {
+    async get(key) {
       const k = typeof key === "string" ? key : "";
       const entry = store.get(prefixed(pattern, k));
       if (!entry) throw new Error(`Not found: ${k}`);
       return makeRef(entry);
     },
-    getOptional(key) {
+    async getOptional(key) {
       const k = typeof key === "string" ? key : "";
       const entry = store.get(prefixed(pattern, k));
       return entry ? makeRef(entry) : undefined;
@@ -109,7 +109,7 @@ export function createMockSkillsCollection(
     // would otherwise be handed the whole collection — `_meta` and every other
     // skill included — and a mock that hands back too much turns a destructive
     // bug into a passing test.
-    list(prefix?: string) {
+    async list(prefix?: string) {
       const full = prefix === undefined ? undefined : prefixed(pattern, prefix);
       return Array.from(store.values())
         .filter((entry) => full === undefined || entry.name.startsWith(full))
@@ -119,7 +119,7 @@ export function createMockSkillsCollection(
       const k = typeof key === "string" ? key : "";
       store.delete(prefixed(pattern, k));
     }) as never,
-    count() {
+    async count() {
       return store.size;
     },
     config: { pattern, stateSchema: {} as never } as never,

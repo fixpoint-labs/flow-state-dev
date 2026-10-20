@@ -253,7 +253,7 @@ describe("addTask's followUpOf (S4)", () => {
   it("allows wait beside followUpOf on dispatchTask, and refuses before anything is filed, so nothing parks (BR-22a)", async () => {
     const b = await board([row("root", { status: "in_progress", assignee: "researcher", attempts: 1 })]);
     // A host that can hold a wait, so dispatchTask carries wait.
-    const ctx = { ...b.ctx, requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } };
+    const ctx = { ...(b.ctx as object), requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } } as never;
     const tools = taskToolsForTurn(defaultOwnStateResolver, undefined, { resumesWaits: true, dispatches: true })(ctx);
     const dispatchTask = toolNamed(tools, "dispatchTask");
     expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
@@ -304,7 +304,7 @@ describe("parkOnQuestion off a task turn (BR-2)", () => {
     const person = turnCtx(b.ctx, "r-person");
     expect(await park.offered(person as never)).toBe(false);
     // A task id on input is not an input the tool reads.
-    const out = (await runForTest(park.tool, { question: "Which?", taskId: "t" } as never, person)) as any;
+    const out = (await runForTest(park.tool, { question: "Which?", taskId: "t" } as never, person as never)) as any;
     expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_a_task_turn/) });
     expect(b.get("t")!.status).toBe("in_progress");
   });

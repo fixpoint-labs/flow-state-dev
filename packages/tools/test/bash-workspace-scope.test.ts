@@ -11,7 +11,7 @@ import path from "node:path";
 import { runForTest } from "@flow-state-dev/testing";
 import type { CommandResult } from "../src/bash/types";
 
-const resolveSandbox = vi.fn(async () => ({
+const resolveSandbox = vi.fn(async (..._args: unknown[]) => ({
   sandbox: {
     async executeCommand(): Promise<CommandResult> {
       return { stdout: "", stderr: "", exitCode: 0 };
@@ -25,7 +25,7 @@ const resolveSandbox = vi.fn(async () => ({
 }));
 
 vi.mock("../src/bash/resolve-sandbox", () => ({
-  resolveSandbox: (...args: unknown[]) => resolveSandbox(...(args as [])),
+  resolveSandbox: (...args: unknown[]) => resolveSandbox(...args),
 }));
 
 /** A context carrying the identity fields the scopes key on. */

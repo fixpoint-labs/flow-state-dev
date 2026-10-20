@@ -140,7 +140,7 @@ describe("transitionDeclineReason — which condition fired", () => {
 
   it("reports terminal for a settled task", () => {
     for (const status of ["completed", "errored", "cancelled"] as const) {
-      expect(transitionDeclineReason(task(status), "cancelled", ADVISORY, BOARD)).toBe(
+      expect(transitionDeclineReason(task(status), "cancelled", ADVISORY, BOARD, NOW)).toBe(
         "terminal",
       );
     }
@@ -149,10 +149,10 @@ describe("transitionDeclineReason — which condition fired", () => {
   it("reports disallowed for a NONTERMINAL illegal move", () => {
     // The reason a two-reason contract could not describe this surface: these
     // declines are live today and are not about terminality at all.
-    expect(transitionDeclineReason(task("pending"), "errored", ADVISORY, BOARD)).toBe(
+    expect(transitionDeclineReason(task("pending"), "errored", ADVISORY, BOARD, NOW)).toBe(
       "disallowed",
     );
-    expect(transitionDeclineReason(task("blocked"), "errored", ADVISORY, BOARD)).toBe(
+    expect(transitionDeclineReason(task("blocked"), "errored", ADVISORY, BOARD, NOW)).toBe(
       "disallowed",
     );
   });
@@ -207,7 +207,7 @@ describe("transitionDeclineReason — which condition fired", () => {
   it("reports terminal when terminal AND disallowed both hold — fixed precedence", () => {
     // `completed → errored` is both. Leaving the order undefined is what lets
     // two implementers emit two different messages for one refusal.
-    expect(transitionDeclineReason(task("completed"), "errored", ADVISORY, BOARD)).toBe(
+    expect(transitionDeclineReason(task("completed"), "errored", ADVISORY, BOARD, NOW)).toBe(
       "terminal",
     );
   });

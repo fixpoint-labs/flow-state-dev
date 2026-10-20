@@ -110,7 +110,7 @@ Follow [`prototype`](../prototype/SKILL.md) → "Rules that apply to both" for t
   mechanism you're testing.
 - **Prefer model-free.** Most claims about composition, state, routing, and streaming need no
   model, and a model-free check is cheaper, faster, and less noisy. When the claim does need
-  one, `openai/gpt-5.4-mini` unless it's specifically about a stronger model.
+  one, `openai/gpt-6-luna` unless it's specifically about a stronger model.
 
 Keep it small. If the POC is growing past a couple of files, the claim was too broad — narrow
 it to the part that's actually disputed and say in the verdict what you narrowed to.

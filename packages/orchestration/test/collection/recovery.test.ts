@@ -195,7 +195,7 @@ describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_na
       topic: "billing",
     });
 
-    expect((await dispatcher.claim(backing.collection, "w2"))?.id).toBe("t");
+    expect((await dispatcher.claim(backing.collection, "w2", {} as never))?.id).toBe("t");
   });
 
   it("leaves a lapsed row OUTSIDE the narrowing alone — the stated cost, asserted", async () => {
@@ -216,7 +216,7 @@ describe.each(BACKINGS)("recovery — a caller's eligibility NARROWS (%s)", (_na
       topic: "shipping",
     });
 
-    expect(await dispatcher.claim(backing.collection, "w2")).toBeNull();
+    expect(await dispatcher.claim(backing.collection, "w2", {} as never)).toBeNull();
     expect(backing.collection.get("t")?.status).toBe("in_progress");
   });
 });

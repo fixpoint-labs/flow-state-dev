@@ -64,7 +64,7 @@ const analysisOutput = z.object({ findings: z.string() });
 
 export const marketAnalyst = generator({
   name: "market-analyst",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: analysisInput,
   outputSchema: analysisOutput,
   prompt:
@@ -80,7 +80,7 @@ Now the synthesizer. When a task declares dependencies, the board materializes t
 ```ts title="workers.ts"
 export const synthesizer = generator({
   name: "synthesizer",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: taskWorkerInputSchema.extend({
     input: z.object({ subject: z.string() }).optional(),
   }),

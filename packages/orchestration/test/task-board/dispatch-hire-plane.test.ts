@@ -49,7 +49,8 @@ function assigneeKind(ran: string[]) {
     outputSchema: z.object({ handled: z.string() }),
     execute: (input: TaskWorkerInput, ctx) => {
       const { userId, orgId } = ctx.session.identity;
-      ran.push(`${(ctx.flow as { id: string }).id} ${input.taskId} as ${userId}@${orgId}`);
+      // A probe: the public view hides the instance address by design; this reads it anyway.
+      ran.push(`${(ctx.flow as unknown as { id: string }).id} ${input.taskId} as ${userId}@${orgId}`);
       return { handled: input.taskId };
     },
   });

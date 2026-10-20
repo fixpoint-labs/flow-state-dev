@@ -54,7 +54,7 @@ const analyst = generator({
   name: "analyst",
   resources: { persona: analystPersona },
   inputSchema: z.object({ question: z.string() }),
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: async (_input, ctx) => (await ctx.resources.persona.readContent()) ?? "",
   user: (input) => input.question,
 });

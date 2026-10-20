@@ -10,6 +10,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
+import type { ComponentItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import {
   planAndExecute,
@@ -1296,9 +1297,9 @@ describe("plan-and-execute pattern", () => {
 
       expect(result.error).toBeNull();
       const metaItems = result.items.filter(
-        (it: any) =>
+        (it): it is ComponentItem =>
           it.type === "component" && it.component === "task-board-meta",
-      ) as Array<{ data: { status: string; collectionId: string } }>;
+      );
       // FIX-491: keyed component emissions upsert in place. The pattern
       // emits "planning" → "active" → "completed" against the same key, so
       // the persisted record collapses to the latest snapshot. Live SSE

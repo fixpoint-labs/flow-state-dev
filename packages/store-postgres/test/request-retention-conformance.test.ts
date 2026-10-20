@@ -55,6 +55,7 @@ describe("Postgres request delete order", () => {
       id: requestId,
       flowKind: "f",
       actionName: "run",
+      source: "http",
       userId: "u",
       status: "completed",
       startedAtMs: 1,

@@ -82,7 +82,7 @@ const enrichContext = handler({
 
 const respond = generator({
   name: "respond",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant. Use the provided context to give relevant answers.",
   inputSchema: z.object({ message: z.string(), context: z.string() }),
   context: (input) => input.context,
@@ -144,7 +144,7 @@ const createNote = handler({
 
 const agent = generator({
   name: "research-agent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "You are a research assistant. Search documentation and save notes as needed.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -173,7 +173,7 @@ const planSchema = z.object({
 // A planner that decides what to do
 const planner = generator({
   name: "planner",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "Break the user's request into concrete steps. Return a JSON plan.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: planSchema,
@@ -183,7 +183,7 @@ const planner = generator({
 // A worker that executes individual tasks
 const worker = generator({
   name: "worker",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Execute the assigned task. Use tools as needed.",
   inputSchema: z.object({ task: z.string(), tool: z.string() }),
   tools: [searchDocs, createNote, analyzeData],
@@ -193,7 +193,7 @@ const worker = generator({
 // A synthesizer that combines results
 const synthesizer = generator({
   name: "synthesizer",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "Combine the results from all completed tasks into a coherent response.",
   inputSchema: z.object({ results: z.array(z.unknown()) }),
   user: (input) => JSON.stringify(input.results),
@@ -276,7 +276,7 @@ const deepResearch = sequencer({ name: "deep-research" })
 // The framework runs the full pipeline and returns the result.
 const agent = generator({
   name: "agent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "You are a research assistant.",
   tools: [deepResearch, bookmark, analyzeData],
   // ...
@@ -290,7 +290,7 @@ The model doesn't know `deep-research` is a pipeline. It sees a tool with an inp
 ```ts
 const codeReviewer = generator({
   name: "code-reviewer",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "You are a code review specialist. Analyze the code for bugs and style issues.",
   inputSchema: z.object({ code: z.string(), language: z.string() }),
   outputSchema: z.object({ issues: z.array(z.string()), score: z.number() }),
@@ -298,7 +298,7 @@ const codeReviewer = generator({
 
 const securityAuditor = generator({
   name: "security-auditor",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "You are a security specialist. Check for vulnerabilities.",
   inputSchema: z.object({ code: z.string(), language: z.string() }),
   outputSchema: z.object({ vulnerabilities: z.array(z.string()), severity: z.string() }),
@@ -307,7 +307,7 @@ const securityAuditor = generator({
 // The coordinator uses specialist generators as tools
 const coordinator = generator({
   name: "coordinator",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "You coordinate code analysis. Delegate to specialists as needed.",
   tools: [codeReviewer, securityAuditor],
   // ...

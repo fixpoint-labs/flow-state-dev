@@ -59,7 +59,7 @@ Settings between the `---` fences, instructions below them:
 ---
 description: Holds the engineering board and breaks work into tasks.
 flow: custom-agent
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 tools: [board, search]
 resources:
   - teams/engineering/handbook
@@ -192,7 +192,7 @@ const lead = workers.find((worker) => worker.id === "engineering.lead")!;
 lead.declared;
 // { description: "Holds the engineering board and breaks work into tasks.",
 //   flow: "custom-agent",
-//   model: "openai/gpt-5.4-mini",
+//   model: "openai/gpt-6-luna",
 //   tools: ["board", "search"] }
 lead.body;     // "You are the engineering lead. …"
 ```
@@ -316,7 +316,7 @@ export const customAgentFlow = workerFlow((installation) =>
     kind: "custom-agent",
     configSchema: workerConfigSchema().extend({
       instructions: z.string(), // the contract's own is optional; this flow requires one
-      model: z.string().default("openai/gpt-5.4-mini"),
+      model: z.string().default("openai/gpt-6-luna"),
       tools: z.array(z.string()).default([]),
     }),
     session: installation.session(),          // the session's worker, checked when it is created
@@ -364,7 +364,7 @@ worker.config;
 //   workerSkills: [],
 //   workerTools: [],
 //   workerId: "engineering.lead",
-//   model: "openai/gpt-5.4-mini",
+//   model: "openai/gpt-6-luna",
 //   tools: ["board", "search"] }
 ```
 
@@ -594,7 +594,7 @@ export const customAgentFlow = workerFlow((installation) => {
     kind: "custom-agent",
     configSchema: workerConfigSchema().extend({
       instructions: z.string(),
-      model: z.string().default("openai/gpt-5.4-mini"),
+      model: z.string().default("openai/gpt-6-luna"),
       tools: z.array(z.string()).default([]),
     }),
     session: installation.session(),
@@ -693,7 +693,7 @@ export const requestTriageFlow = workerFlow((installation) => {
     kind: "request-triage",
     configSchema: workerConfigSchema().extend({
       instructions: z.string(),
-      model: z.string().default("openai/gpt-5.4-mini"),
+      model: z.string().default("openai/gpt-6-luna"),
       escalateAbove: z.number().default(3),
     }),
     session: installation.session(),

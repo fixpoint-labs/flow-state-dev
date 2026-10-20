@@ -46,7 +46,7 @@ import { tools } from "@flow-state-dev/tools";
 
 const researcher = generator({
   name: "researcher",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "Search for information and read relevant pages to answer questions.",
   tools: [
     tools.search(),

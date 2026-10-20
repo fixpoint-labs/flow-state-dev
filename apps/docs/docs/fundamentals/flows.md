@@ -129,7 +129,7 @@ const engineer = defineFlow({
 });
 
 export const alice = engineer({ id: "eng-alice", config: { harness: "claude-code", model: "opus" } });
-export const bob = engineer({ id: "eng-bob", config: { harness: "codex", model: "gpt-5.4" } });
+export const bob = engineer({ id: "eng-bob", config: { harness: "codex", model: "gpt-6.1-sol" } });
 ```
 
 One definition, one block graph, two registered copies that behave differently. A roster mints the
@@ -139,7 +139,7 @@ A copy carries only settings the definition declared. A key that isn't in the sc
 the copy is created, naming the flow, the id and the key:
 
 ```
-engineer({ id: "eng-carol", config: { harnes: "codex", model: "gpt-5.4" } })
+engineer({ id: "eng-carol", config: { harnes: "codex", model: "gpt-6.1-sol" } })
 // Flow "engineer" instance "eng-carol" has an invalid config bag:
 // "harnes" is not a declared setting.
 ```
