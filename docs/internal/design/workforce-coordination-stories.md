@@ -27,7 +27,7 @@ the mechanisms removed or reduced. *Phase* is the gaps file's phase.
 | T-05 | As a worker, I want to wait on a task I filed, even while I work a task myself, so that I can use its result in the same request. | writer's plan row waits on researcher's task and resumes with its result. · A request working a task is allowed to wait. · Waits nest 5 deep; a sixth is refused. | "Start a task and wait for it in the same turn" (refused on task turns). Turn | 1 |
 | T-06 | As a worker, I want a wait's deadline to resume me while the task keeps running, so that I can wait again or carry on without losing the work. | At the deadline, writer resumes with no result. · researcher's task is still running. · A second wait returns its result. | A wait's deadline cancelling the row. The fixed 30-second-to-one-hour wait timeout | 1 |
 | T-07 | As a manager worker, I want every ending of a task I filed to reach me exactly once, so that nothing I filed goes quiet. | A done, a failed and a cancelled task each reach writer once. · A waiting request gets the ending; otherwise one `onTaskSettled` request starts. · A flow without Workforce gets `onTaskSettled` too. | "Hear how a task ended" (line only, line plus woken turn, silent run-board). A cancel reaching the filer only when a request waits. Line. Workforce owning `onTaskSettled` | 1 |
-| T-08 | As a manager worker, I want a task to start now, after named tasks, or held until I start it, so that work runs in the order it needs. | "Chart it" starts only after "pull the CSV" ends. · A held task starts on `updateTask`, and not before. · A plan row that finishes a step can release a held delegated task. | "Block a task" (`blockTask`, the blocked status, `unblock` with no caller). "Write a task down without starting it" (`undispatched`) | 1 |
+| T-08 | As a manager worker, I want a task to start now, after named tasks, or held until I release it, so that work runs in the order it needs. | "Chart it" starts only after "pull the CSV" ends. · A held task starts on `updateTask({ status: "pending" })`, and not before. · `updateTask({ status: "held" })` holds a pending task. · A task held on questions doesn't start on release until its last answer. · Any other `status` is refused. · A plan row that finishes a step can release a held delegated task. | "Block a task" (`blockTask`, the blocked status, `unblock` with no caller). "Write a task down without starting it" (`undispatched`, readied only by `dispatchTask {taskId}`) | 1 |
 | T-09 | As a manager worker, I want a dependency on another board refused at filing, so that no task waits forever on a task it can't see. | `addTask` naming a task on another board is refused. · Crossing boards works through a wait or a held task. | A dependency id from another board that never resolves, leaving the row pending for good | 1 |
 | T-10 | As a manager worker, I want a failed or cancelled task to cancel its dependents, so that nothing waits on work that will never finish. | "Pull the CSV" fails, and "chart it" is cancelled. · writer hears both endings once. | A dependent waiting for a `completed` dependency and staying pending for good | 1 |
 | T-11 | As a manager worker, I want my task to stay running while the tasks it filed are open, so that I can break work up without settling it by hand. | writer files three tasks and ends its request; its task shows running with no request on it. · It is done when a request for it ends with none open. · The tasks it files go to delegates only. | "Split a task into pieces": split settle (`settleSplitTask`), a split's `{ answer, pieces }` result, the parent parking. Pieces reaching any roster worker | 1 |
@@ -36,13 +36,14 @@ the mechanisms removed or reduced. *Phase* is the gaps file's phase.
 | T-14 | As a manager worker, I want to choose where a task runs (a new session, the assignee's ongoing one, or an earlier task's), so that the assignee remembers what it needs. | A follow-up runs in the earlier task's session. · Filed while that task is open, it starts when that task ends. · An ongoing-session task runs in the delegate's session for this conversation. | "Follow-up task in the same session" (`followUpOf`, root must have finished). Five session kinds per worker ("Where talk lands") | 1 |
 | T-15 | As a manager worker, I want to set a task's attempts at filing, so that flaky work gets more tries and costly work fewer. | With attempts 3, the task fails after its third failed run. · The default is 2, and a routed task gets 1. | "Automatic second attempt" (fixed at 2, posts 1). "File a failed task again". "Retry a failed piece": piece retry (`retryOf`) | 1 |
 | T-16 | As a manager worker, I want a task's ending recorded only by the request working it, so that no one settles work by hand. | No tool completes or fails a task. · A filer that no longer wants a task cancels it. | "Filer completes or fails a task itself": removed task tool `failTask`, and `completeTask` | 1 |
-| T-17 | As a manager worker, I want a task's assignee and settings fixed at filing, so that every task has one accountable worker. | No tool changes a task's assignee. · Moving the work means cancelling and filing again. · `updateTask` carries a message, not field edits. | "Give a task to another delegate": removed task tool `assignTask`, `updateTask.assignee`, `dispatchTask {taskId, assignee}`. "Change a task's details" | 1 |
+| T-17 | As a filer, I want to edit a task until it starts, so that I can fix its brief or order without cancelling it. | On a pending or held task, `updateTask` changes `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata` and `maxAttempts`. · A `deps` entry on another board, or one that makes a cycle, is refused. · Any field edit on a running, waiting or finished task is refused. · The session and result settings, `wait`, `followUpOf`, attempts used, the run link and the sealed payload are never editable. | Today's `updateTask` patch (`priority`, `metadata`, `assignee`, a label, in any state). "Change a task's details" | 1 |
 | T-18 | As a worker, I want to read only the claim for the task my request works, so that I never record another task's ending. | Two requests working tasks side by side each read their own claim. · A request working no task reads none. | A claim read from a slot shared across requests | 0 |
 | T-19 | As a flow author, I want a board's `mode` to decide whether its drain waits, and a board built wrong refused when built, so that I find out before a task gets stuck. | A board's `mode` defaults to `"plan"`. · A `mode: "delegation"` board with an inline assignee is refused. · A `mode: "plan"` board with a dispatcher that doesn't wait is refused. | The assignee kind deciding whether a drain waits. "Board assignee that dispatches" as its own form | 1 |
-| T-20 | As a filer, I want one way to send a message into a task, so that steering, answering and continuing work the same. | `updateTask` on a running task steers it; no attempt is used. · On a task waiting on a person, it answers. · On a finished task, a follow-up runs with fresh attempts. | Reopen (`reopen*`, "Reopen a finished task by messaging its session"). Message door (`messageDoor`, `parkedForTurn`). Answer a task (`answerTask*`). J10 | 3 |
+| T-20 | As a filer, I want one way to send a message into a task once it starts, so that steering, answering and continuing work the same. | `updateTask({ id, message })` on a running task steers it; no attempt is used. · On a task waiting on a person, it answers. · On a finished task, a follow-up runs in the same session with fresh attempts. · A message on a task that hasn't started is refused; edit it instead. · The model has no separate steer tool. | Reopen (`reopen*`, "Reopen a finished task by messaging its session"). Message door (`messageDoor`, `parkedForTurn`). Answer a task (`answerTask*`). J10 | 3 |
 | T-21 | As a user, I want a steer to a running coding run to stop the run and continue the same coding session with my message, so that I can redirect it without losing its context. | The current coding run stops. · The next run starts in the same coding session, carrying the message. · No attempt is used. | "A person talks to a running coding run" (`harnessMessageDoor`, the row parked for a turn) | 3 |
 | T-22 | As a flow author, I want a worker block only to return or throw, and whoever ran it to settle its row, so that no worker settles its own work. | An inline row whose worker returns is done, and one whose worker throws is retried or failed, both settled by the plan board's drain. · A dispatched row is settled by the claim gate around the child's task entry. · On a plan board the drain waits until the gate settles the row, then carries on. · A worker block has no way to settle a row. | Nothing removed: the drain's recorders (`orchestration/src/task-board/index.ts`, header) and the claim gate (`orchestration/src/task-board/blocks/dispatch-row.ts`, header) already settle this way; the story pins it as a rule | 1 |
 | T-23 | As a flow author, I want a goal-seek loop over a delegation board refused when built, so that its judge never rules on work still in flight. | `goalSeekLoop` over a `mode: "delegation"` board is refused when built. · Over a plan board, the judge sees every row ended. · A `continue` never spends an iteration on rows running elsewhere. | `goalSeekLoop` not checking its board's assignees, so over a board that dispatches without waiting each `continue` exits at once, up to `maxIterations` | 1 |
+| T-24 | As a manager worker, I want to reassign a task only before it starts, so that a running task keeps one accountable worker. | `updateTask({ assignee })` moves a pending or held task to another of writer's delegates. · An assignee who isn't one of writer's delegates is refused. · On a running task it is refused; writer cancels it and files it again. | "Give a task to another delegate": removed task tool `assignTask` (any unfinished task, running included, on a board that doesn't dispatch), `dispatchTask {taskId, assignee}` | 1 |
 
 ## Messages
 
@@ -92,7 +93,7 @@ the mechanisms removed or reduced. *Phase* is the gaps file's phase.
 | C-02 | As a user, I want to be the only one who changes a worker's delegates, unless I set a coordinator to change its own, so that a worker can't widen its own reach. | writer calling `addDelegate` is refused. · launch, configured to change its own, succeeds. | "Manage a conversation's delegates" (any worker with `delegates:`). J5 | 1 |
 | C-03 | As a worker, I want to ask the filer above for work I can't file, by message, so that someone with the authority files it. | researcher messages writer, and writer messages launch. · launch files coder's task. · The script comes back down as follow-ups, to writer and then to researcher. | "Message another worker, when it asks for work" | 1, 4 |
 | C-04 | As a manager worker, I want work my assignee reports finding to become a sibling task I file, so that its task stays the job it was given. | researcher describes found work in a message and carries on. · writer files a sibling beside researcher's task. | Splits filing work outside the task from inside it | 1 |
-| C-05 | As a user, I want found work my worker spots to wait for my approval, so that nothing new starts without me. | writer's evaluator flags a request for work and files it held. · Alice starts it or cancels it. | New | 1 |
+| C-05 | As a user, I want found work my worker spots to wait for my approval, so that nothing new starts without me. | writer's evaluator flags a request for work and files it held. · Alice releases it or cancels it. | New | 1 |
 
 ## The worker contract
 
@@ -125,7 +126,7 @@ the mechanisms removed or reduced. *Phase* is the gaps file's phase.
 
 | ID | Story | Acceptance | Replaces | Phase |
 | -- | -- | -- | -- | -- |
-| U-01 | As a user, I want to cancel a task, start a held task, and answer held questions from a screen, so that I run my board without asking a worker. | A screen calls the public task actions with Alice's authority, and each has the tool's effect. · A call as another user is refused. · Identity comes from the server, never from the request body. | "An app drives the board through actions" (11 `<tool>_tasks` actions, no claim, the `no_delegation_board` answer). "Board capability and actions". Interrupt (J10) | 1 |
+| U-01 | As a user, I want to cancel a task, release a held task, and answer held questions from a screen, so that I run my board without asking a worker. | A screen calls the public task actions with Alice's authority, and each has the tool's effect. · A call as another user is refused. · Identity comes from the server, never from the request body. | "An app drives the board through actions" (11 `<tool>_tasks` actions, no claim, the `no_delegation_board` answer). "Board capability and actions". Interrupt (J10) | 1 |
 | U-02 | As a user, I want typing in a task's session to do what `updateTask` does, so that the composer has one meaning. | Alice's text steers writer's running task, answers it if it's waiting, or runs a follow-up if it has finished. | "A person chats with a worker" (a composer that reopens, steers or answers depending on the session) | 3 |
 
 ## Words and pruning
@@ -142,7 +143,8 @@ the mechanisms removed or reduced. *Phase* is the gaps file's phase.
 decisions have stories: recurring work (S-01 to S-03), error reports (F-04, F-05), steering a coding
 run (T-21), board controls on screens (U-01) and duplicate `dispatch` (F-03). So do the board
 decisions: `mode` (T-01, T-19), patterns as plan boards (T-03), who settles a row (T-22) and the
-goal-seek loop's plan board (T-23).
+goal-seek loop's plan board (T-23). So does `updateTask` by phase: edit before it starts (T-17),
+hold or release (T-08), steer or answer once started (T-20), and reassign before start only (T-24).
 
 <details>
 <summary><b>Gap row to story map</b>: each row of "where today's code differs", with its stories</summary>
@@ -165,6 +167,7 @@ goal-seek loop's plan board (T-23).
 | 1 | Delegates are authority; `all` | C-01, C-02 |
 | 1 | One open task per session | T-13 |
 | 1 | Start: now, after, or held | T-08 |
+| 1 | `updateTask` by phase; reassigning a running task is cancel and refile | T-08, T-17, T-24 |
 | 1 | A dependency stays within one board | T-09 |
 | 1 | Cancelling, retrying or failing cancels open tasks | T-12 |
 | 1 | A failed or cancelled dependency cancels dependents | T-10 |
@@ -178,7 +181,7 @@ goal-seek loop's plan board (T-23).
 | 2 | Stopping a suspended request closes its item and cancels its task | I-08 |
 | 2 | The claim survives a resume | I-05 |
 | 2 | A coding run's question suspends; the answer starts the next run | I-09 |
-| 3 | `updateTask` with a message, one rule by status | T-20, U-02 |
+| 3 | Once started, `updateTask` only delivers a message | T-20, U-02 |
 | 4 | A call awaits its result; a late result is kept under its call id | M-02 |
 | 4 | `receive`, no relay; anyone on the roster; landing rules | M-01, M-03, M-04, M-05, M-06, R-06 |
 | 4 | A server-set budget; call ids; a call into a waiting session refused | M-07, M-08 |
@@ -199,7 +202,7 @@ goal-seek loop's plan board (T-23).
 | Answer a task | T-20, I-03 |
 | Relay; reply | M-03; M-04 |
 | Blocked | T-08 |
-| Removed task tools | T-04, T-16, T-17, W-03 |
+| Removed task tools | T-04, T-16, T-24, W-03 |
 | Split settle; split cancel; piece retry | T-11; T-12; T-15 |
 | Own-state board | V-01 |
 | Chief of staff | V-03 |
