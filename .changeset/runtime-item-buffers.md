@@ -3,7 +3,7 @@
 "@flow-state-dev/engine": minor
 "@flow-state-dev/contracts": patch
 "@flow-state-dev/client": patch
-"@flow-state-dev/testing": patch
+"@flow-state-dev/testing": minor
 "@flow-state-dev/orchestration": patch
 ---
 
