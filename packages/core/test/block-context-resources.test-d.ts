@@ -69,14 +69,42 @@ handler({
     expectTypeOf(ctx.resources.get("notes")).toEqualTypeOf<ResourceRef<any>>();
     // @ts-expect-error `get` accepts only a declared name.
     ctx.resources.get("missing");
-    // An undeclared name reads as `never`, so any use of it is still an error.
-    expectTypeOf(ctx.resources.missing).toBeNever();
-    // @ts-expect-error reading through an undeclared name.
-    void ctx.resources.missing.state;
-    // A key typed only as `string` reads as `never` too: the declared refs
+    // @ts-expect-error an undeclared name is a missing property.
+    void ctx.resources.missing;
+    // A key typed only as `string` doesn't index it either: the declared refs
     // are reachable by literal name or `get`, not by an arbitrary string.
     const k: string = "notes";
-    expectTypeOf(ctx.resources[k]).toBeNever();
+    // @ts-expect-error no string index on a declared registry.
+    void ctx.resources[k];
+    return input;
+  },
+});
+
+/**
+ * An undeclared name is `undefined` at runtime, so handing it on must not
+ * compile: not as an argument, not in an assignment, not as a return value.
+ * Each is a place a typo would otherwise slip through to a runtime crash.
+ */
+declare function consumeRef(ref: ResourceRef<any>): void;
+declare function consumeAnyRef(ref: AnyResourceRef): void;
+handler({
+  name: "uses-undeclared",
+  inputSchema: z.string(),
+  outputSchema: z.string(),
+  resources: { notes },
+  execute: (input, ctx) => {
+    consumeRef(ctx.resources.notes);
+    // @ts-expect-error passing an undeclared name as an argument.
+    consumeRef(ctx.resources.missing);
+    // @ts-expect-error passing an undeclared name where any ref is accepted.
+    consumeAnyRef(ctx.resources.missing);
+    // @ts-expect-error assigning an undeclared name to a ref.
+    const assigned: ResourceRef<any> = ctx.resources.missing;
+    void assigned;
+    const returnsRef = (): ResourceRef<any> =>
+      // @ts-expect-error returning an undeclared name as a ref.
+      ctx.resources.missing;
+    void returnsRef;
     return input;
   },
 });

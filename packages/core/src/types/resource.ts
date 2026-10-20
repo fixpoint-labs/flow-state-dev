@@ -480,19 +480,19 @@ export type AnyResourceRef =
   | import("./projected-resource-collection").ProjectedResourceCollectionRef<any>;
 
 /**
- * `ctx.resources`. A declared registry carries a `never` string index so it
- * assigns to the open default: without one, `get` and `list` are checked
- * against that default's `AnyResourceRef` index and fail. An undeclared name
- * then reads as `never`. The switch is `keyof`: `TResources extends
- * Record<string, …>` is true for a declared map too.
+ * `ctx.resources`. A declared registry must assign to the open default, whose
+ * `AnyResourceRef` string index covers every key, `get` and `list` included.
+ * So `get` and `list` are also typed as a ref: that is what lets a declared
+ * registry pass with no index signature of its own. Any index signature here
+ * would have to read as a subtype of `AnyResourceRef`, and an undeclared name
+ * would then compile wherever a ref is accepted. Without one, an undeclared
+ * name is a missing-property error.
  */
 export type ResourceRegistry<
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
-  get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
-  list(): Array<TResources[keyof TResources]>;
-} & {
-  readonly [name: string]: string extends keyof TResources ? AnyResourceRef : never;
+  get: (<TKey extends keyof TResources>(name: TKey) => TResources[TKey]) & ResourceRef<any>;
+  list: (() => Array<TResources[keyof TResources]>) & ResourceRef<any>;
 };
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
