@@ -16,7 +16,7 @@ import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
 
 const chat = generator({
   name: "chat",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
   history: true,
   user: (input) => input.message,

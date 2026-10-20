@@ -192,7 +192,7 @@ import { system } from "@flow-state-dev/memory";
 import { boardTool, searchTool } from "./tools";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,

@@ -219,7 +219,7 @@ import { z } from "zod";
 
 const chat = generator({
   name: "chat",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: { limit: 8 },
@@ -243,7 +243,7 @@ Worker shape — `user` only, content derived from task state:
 ```ts
 const worker = generator({
   name: "worker",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Execute the assigned task.",
   itemVisibility: { client: true, history: false },
   user: (input, ctx) => `Task: ${input.description}\nWorkspace:\n${ctx.cap.workspace.summary()}`
@@ -263,7 +263,7 @@ import { generator } from "@flow-state-dev/core";
 
 generator({
   prompt: "You are a chat assistant.",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   history: { limit: 8 },
 });
 ```

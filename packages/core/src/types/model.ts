@@ -340,11 +340,11 @@ export type ModelResolver = ((
    *
    * @example
    * resolver.resolveId("intent/chat")
-   *   // → "anthropic/claude-sonnet-4-6"
+   *   // → "anthropic/claude-sonnet-5-5"
    * resolver.resolveId("intent/chat", { preferProvider: "openai" })
-   *   // → "openai/gpt-5.4" (reorders the intent before walking it)
-   * resolver.resolveId("anthropic/claude-sonnet-4-6")
-   *   // → "anthropic/claude-sonnet-4-6"
+   *   // → "openai/gpt-6.1-sol" (reorders the intent before walking it)
+   * resolver.resolveId("anthropic/claude-sonnet-5-5")
+   *   // → "anthropic/claude-sonnet-5-5"
    */
   resolveId(
     modelId: string,
@@ -371,7 +371,7 @@ export type ModelResolver = ((
   /**
    * The provider a model string's call reaches, classified against this
    * resolver's own `providers` and `gateways` maps: `"anthropic"` for
-   * `"vercel:anthropic/claude-sonnet-5"`, `"triage"` for `"triage:native"`.
+   * `"vercel:anthropic/claude-sonnet-5.5"`, `"triage"` for `"triage:native"`.
    * Returns `"unknown"` when the string names no provider. Optional: a
    * generator's model-array fallback uses it to label each entry, and falls
    * back to `extractProviderName`'s config-free guess when it is absent.

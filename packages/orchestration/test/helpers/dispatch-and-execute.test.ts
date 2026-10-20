@@ -16,6 +16,7 @@ import {
   MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
   type TaskDispatcher,
+  type TaskWorkerInput,
 } from "../../src/tasks";
 import {
   createCapturedChanges,
@@ -44,7 +45,7 @@ describe("dispatchAndExecuteBlock", () => {
       name: "worker",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: (input: { input?: { x: number } }) => ({ y: (input.input?.x ?? 0) * 2 }),
+      execute: (input: TaskWorkerInput<{ x: number }>) => ({ y: (input.input?.x ?? 0) * 2 }),
     });
 
     const result = await runForTest(
@@ -69,12 +70,12 @@ describe("dispatchAndExecuteBlock", () => {
       context: "Subdomains: a.example.com, b.example.com, c.example.com",
     });
 
-    let seen: { title?: string; context?: string; goal?: string } | undefined;
+    let seen: TaskWorkerInput | undefined;
     const worker = handler({
       name: "worker",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: (input: { title?: string; context?: string; goal?: string }) => {
+      execute: (input: TaskWorkerInput) => {
         seen = input;
         return { ok: true };
       },
@@ -173,7 +174,7 @@ describe("dispatchAndExecuteBlock", () => {
       name: "researcher",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: (input: { taskId: string }) => {
+      execute: (input: TaskWorkerInput) => {
         calls.push(`researcher:${input.taskId}`);
         return "research-result";
       },
@@ -182,7 +183,7 @@ describe("dispatchAndExecuteBlock", () => {
       name: "writer",
       inputSchema: z.any(),
       outputSchema: z.any(),
-      execute: (input: { taskId: string }) => {
+      execute: (input: TaskWorkerInput) => {
         calls.push(`writer:${input.taskId}`);
         return "write-result";
       },

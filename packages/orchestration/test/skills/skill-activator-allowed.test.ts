@@ -80,7 +80,7 @@ describe("allowed-scoped activator tiers", () => {
     // populates the catalog before the tiers run.
     const seed = createCatalogSeedStep({ collectionKey: "skills", initialSkills });
     await runForTest(seed, { message: "/known" }, ctx);
-    expect(c.getOptional("known/SKILL.md")).toBeDefined();
+    expect(await c.getOptional("known/SKILL.md")).toBeDefined();
 
     // Now the slash tier matches on the same turn, on the same (seeded) ctx.
     const after = await runForTest(slash, { message: "/known" }, ctx);

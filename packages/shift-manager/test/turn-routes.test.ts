@@ -12,7 +12,9 @@ const worker = (id: string, door: string | null = "message", flow = "coder"): Wo
   door,
   rules: false,
   team: id.split(".")[0]!,
+  teamName: id.split(".")[0]!,
   name: id.split(".")[1]!,
+  displayName: id,
 });
 
 const workers = [worker("eng.coder"), worker("eng.em", null, "em"), worker("ops.coder")];

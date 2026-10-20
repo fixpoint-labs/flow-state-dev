@@ -96,9 +96,9 @@ describe("check-interrupted: a caller's staleThresholdMs cannot tighten the host
         actions: {
           run: {
             inputSchema: z.object({}),
-            block: handler<Record<string, never>, { ok: true }>({
+            block: handler({
               name: "open-run",
-              execute: () => ({ ok: true } as const)
+              execute: (_input: Record<string, never>): { ok: true } => ({ ok: true } as const)
             })
           }
         }

@@ -6,8 +6,8 @@ import {
 
 describe("coalesceKitchenSinkModel", () => {
   it("returns catalog ids unchanged", () => {
-    expect(coalesceKitchenSinkModel("vercel:openai/gpt-5.6-luna")).toBe(
-      "vercel:openai/gpt-5.6-luna",
+    expect(coalesceKitchenSinkModel("vercel:openai/gpt-6-luna")).toBe(
+      "vercel:openai/gpt-6-luna",
     );
   });
 

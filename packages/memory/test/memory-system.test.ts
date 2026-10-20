@@ -35,7 +35,9 @@ import {
   prunePersist,
   memorySystemPrune,
 } from '../src/memory-system-blocks.js'
-import type { ConsolidationOutput, PruneOutput } from '../src/memory-system-blocks.js'
+import type { z } from 'zod'
+import type { consolidationPersistInputSchema, PruneOutput } from '../src/memory-system-blocks.js'
+import { partialRef } from './partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -44,69 +46,34 @@ import type { ConsolidationOutput, PruneOutput } from '../src/memory-system-bloc
 function createMockWmRef(
   initialState?: Partial<WorkingMemoryState>,
 ): ResourceRef<WorkingMemoryState> {
-  let state: WorkingMemoryState = {
+  return partialRef<WorkingMemoryState>('workingMemory', 'session', workingMemoryStateSchema, {
     entries: [],
     currentTurn: 0,
     ...initialState,
-  }
-
-  return {
-    name: 'workingMemory',
-    scope: 'session',
-    get state() { return state },
-    patchState: async (updates) => { state = { ...state, ...updates } as WorkingMemoryState },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceRef<WorkingMemoryState>
+  })
 }
 
 function createMockSysRef(
   initialState?: Partial<MemorySystemState>,
 ): ResourceRef<MemorySystemState> {
-  let state: MemorySystemState = {
+  return partialRef<MemorySystemState>('memorySystem', 'session', memorySystemStateSchema, {
     lastProcessedIndex: -1,
+    readMessages: null,
     episodicWritesSinceLastConsolidation: 0,
     evictedPersistentSinceLastConsolidation: 0,
     lastConsolidationTurn: 0,
     ...initialState,
-  }
-
-  return {
-    name: 'memorySystem',
-    scope: 'session',
-    get state() { return state },
-    patchState: async (updates) => { state = { ...state, ...updates } as MemorySystemState },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceRef<MemorySystemState>
+  })
 }
 
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
 ): ResourceRef<EpisodicMemoryState> {
-  let state: EpisodicMemoryState = {
+  return partialRef<EpisodicMemoryState>('episodicMemory', 'user', episodicMemoryStateSchema, {
     episodes: [],
     totalEncoded: 0,
     ...initialState,
-  }
-
-  return {
-    name: 'episodicMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (updates) => { state = { ...state, ...updates } as EpisodicMemoryState },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceRef<EpisodicMemoryState>
+  })
 }
 
 /**
@@ -136,24 +103,12 @@ function mergeResources(...groups: Array<Record<string, any> | undefined>) {
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
 ): ResourceRef<SemanticMemoryState> {
-  let state: SemanticMemoryState = {
+  return partialRef<SemanticMemoryState>('semanticMemory', 'user', semanticMemoryStateSchema, {
     facts: [],
     totalExtracted: 0,
     totalConsolidations: 0,
     ...initialState,
-  }
-
-  return {
-    name: 'semanticMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceRef<SemanticMemoryState>
+  })
 }
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
@@ -179,6 +134,8 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     category: 'identity',
     context: { sessionId: 'test-session' },
     consolidated: false,
+    durability: 'persistent',
+    stale: false,
     ...overrides,
   }
 }
@@ -1278,7 +1235,7 @@ describe('memory/memorySystem', () => {
       sysRef: ResourceRef<MemorySystemState>,
       semRef: ResourceRef<SemanticMemoryState>,
       epRef: ResourceRef<EpisodicMemoryState>,
-      input: ConsolidationOutput,
+      input: z.input<typeof consolidationPersistInputSchema>,
     ) {
       const block = consolidationPersist(semanticConfig)
       const ctx = {

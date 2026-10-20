@@ -50,12 +50,12 @@ function buildRegistry(): FlowRegistry {
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "queued-liveness-run",
             // Models a worker that has claimed the job and is still working:
             // it never returns on its own, so the entry stays registered and
             // the sweeper's view of it is the thing under test.
-            execute: () =>
+            execute: (_input: { value: string }): Promise<{ ok: true }> =>
               new Promise<{ ok: true }>((resolve) => {
                 releaseWorker = () => resolve({ ok: true });
               })

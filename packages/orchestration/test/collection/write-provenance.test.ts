@@ -26,6 +26,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { JsonObject } from "@flow-state-dev/core";
 import {
   beginTaskWrite,
   createResourceBackedTaskCollection,
@@ -850,7 +851,7 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
 
   it("resource-backed", async () => {
     let clock = 1000;
-    const resources = createFakeResourceCollection<Record<string, unknown>>(undefined, {
+    const resources = createFakeResourceCollection<JsonObject>(undefined, {
       onReplay: (state) => concurrent(state as unknown as Task) as unknown as typeof state,
     });
     // `addTask` goes through `create`, not `updateState`, so seeding through

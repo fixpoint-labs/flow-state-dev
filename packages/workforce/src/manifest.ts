@@ -72,6 +72,11 @@ export interface WorkerManifest {
    */
   teamInstructions?: string;
   /**
+   * Its team's display name, from the team's {@link TEAM_MD} `name:`. Absent
+   * when the file names none, on an org worker, and on a hand-built record.
+   */
+  teamName?: string;
+  /**
    * The packages this worker can reach — the org's library, its team's library,
    * and the ones in its own folder — in that order.
    *
@@ -109,6 +114,8 @@ export interface TeamManifest {
    * either reading it or not asking for it.
    */
   description: string;
+  /** Display name from the file's optional `name:` (e.g. "Engineering" for `eng`). Absent when the file names none. */
+  name?: string;
   /** Frontmatter exactly as written — keys as the file spelled them, values uninterpreted. */
   declared: Record<string, unknown>;
   /**

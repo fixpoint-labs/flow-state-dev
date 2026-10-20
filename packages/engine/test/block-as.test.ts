@@ -267,6 +267,7 @@ describe("a renamed copy carries one name on its execution path (BR-7)", () => {
     expect(run.status).toBe("completed");
     expect(run.result.output).toBe("A-final");
     expect(runs.after).toBe(1);
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const decision = run.items.find((i) => i.type === "router_decision") as
       | { routerName: string; provenance: { blockName: string } }
       | undefined;
@@ -367,6 +368,7 @@ describe("the original beside its copy (BR-8)", () => {
       ),
     );
     expect(byCall).toEqual({ c1: "notes.write", c2: "saveNote" });
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const traces = run.items.filter((i) => i.type === "block_trace") as Array<{ blockName: string; blockInstanceId: string }>;
     const originalRows = traces.filter((t) => t.blockName === "notes.write");
     const copyRows = traces.filter((t) => t.blockName === "saveNote");
@@ -433,6 +435,7 @@ describe("state, routes and lookups by the copy (BR-11, BR-12)", () => {
     expect(run.status).toBe("completed");
     expect(run.result.output).toBe("done");
     expect(runs.after).toBe(1);
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const decision = run.items.find((i) => i.type === "router_decision") as { selectedRoute: string } | undefined;
     expect(decision?.selectedRoute).toBe("fast");
     expect(run.names.has("orig-branch")).toBe(false);

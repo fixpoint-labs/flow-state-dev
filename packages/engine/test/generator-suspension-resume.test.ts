@@ -837,7 +837,7 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
       model,
       prompt: "p",
       tools: [gate],
-      itemVisibility: { history: false },
+      itemVisibility: { client: false, history: false },
     });
     const flow = defineFlow({
       kind: "gen-history-false",

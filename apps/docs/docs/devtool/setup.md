@@ -85,7 +85,7 @@ This flag is repeatable. When specified, the default `src/flows/` and `flows/` d
 During development you might want a faster or cheaper model. `--model` overrides the model for every generator that runs in the server's own process:
 
 ```bash
-fsdev dev --model openai/gpt-5.4-mini
+fsdev dev --model openai/gpt-6-luna
 ```
 
 Background work handed to a queue runs in another process, under that process's own model configuration. See [Model overrides](/docs/cli/overview#model-overrides).

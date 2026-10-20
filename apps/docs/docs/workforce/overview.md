@@ -47,7 +47,7 @@ A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/e
 ```md
 ---
 description: Holds the board.
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 ---
 You are the engineering lead. You break work into tasks and report what came back.
 ```
@@ -79,7 +79,7 @@ That worker file names no `flow:`, so it runs on the built-in worker flow, `agen
 
 A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each user keeps their own copy of a worker's skills. To talk to a worker, open a session that names it, as [Talking to a worker](./workers-on-disk.md#talking-to-a-worker) shows, and send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
-A `model:` such as `openai/gpt-5.4-mini` needs its provider's AI SDK package installed in your app: `@ai-sdk/openai` for an `OPENAI_API_KEY`, or `@ai-sdk/gateway` for the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Without it, the turn fails with an error naming the package to install. Use zod 3 (`zod@^3.25.76`): with zod 4 installed beside a provider package, flow definitions fail at startup. [Setting up models](../getting-started/setting-up-models.md#choose-a-provider) lists every provider.
+A `model:` such as `openai/gpt-6-luna` needs its provider's AI SDK package installed in your app: `@ai-sdk/openai` for an `OPENAI_API_KEY`, or `@ai-sdk/gateway` for the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Without it, the turn fails with an error naming the package to install. Use zod 3 (`zod@^3.25.76`): with zod 4 installed beside a provider package, flow definitions fail at startup. [Setting up models](../getting-started/setting-up-models.md#choose-a-provider) lists every provider.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 

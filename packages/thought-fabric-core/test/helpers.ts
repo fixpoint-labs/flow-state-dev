@@ -2,13 +2,13 @@ import type { BlockContext, ScopeStateOps } from '@flow-state-dev/core/types'
 
 function createStateOps<TState extends object>(): ScopeStateOps<TState> {
   return {
-    patchState: async () => undefined,
-    setState: async () => undefined,
-    incState: async () => undefined,
-    pushState: async () => undefined,
-    setStateRecord: async () => undefined,
-    deleteStateRecord: async () => undefined,
-    atomicState: async () => undefined
+    patchState: async () => true,
+    setState: async () => true,
+    incState: async () => true,
+    pushState: async () => true,
+    setStateRecord: async () => true,
+    deleteStateRecord: async () => true,
+    atomicState: async () => true
   }
 }
 

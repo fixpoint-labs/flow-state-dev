@@ -66,6 +66,7 @@ async function seedTurn(
     flowKind: owner.flowKind ?? "chat",
     ...(owner.flowId === undefined ? {} : { flowId: owner.flowId }),
     actionName: "run",
+    source: "http",
     userId: owner.userId ?? "alice",
     orgId: DEFAULT_ORG_ID,
     sessionId: SESSION,

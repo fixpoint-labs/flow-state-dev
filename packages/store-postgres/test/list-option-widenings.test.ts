@@ -169,14 +169,15 @@ describe("Postgres list-option widenings", () => {
       "nulled",
       session("nulled", {
         parentSessionId: "p",
-        ...({ orgId: null, tenantId: null } as Partial<SessionRecord>)
+        // A stored row can hold null; the type only admits string | undefined.
+        ...({ orgId: null, tenantId: null } as unknown as Partial<SessionRecord>)
       }),
       "any"
     );
     await s.request.set(
       "r_nulled",
       request("r_nulled", {
-        ...({ orgId: null, tenantId: null } as Partial<RequestRecord>)
+        ...({ orgId: null, tenantId: null } as unknown as Partial<RequestRecord>)
       }),
       "any"
     );

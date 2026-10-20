@@ -31,8 +31,10 @@ vi.mock("../src/lib/workforce", () => {
   const workforce = {
     roster: async () => [
       { id: "chief-of-staff", flow: "coordinator", standard: true, description: null },
-      { id: "eng.em", flow: "em", standard: true, description: null },
-      { id: "licenses", flow: "agent", standard: false, description: "Audits licenses." },
+      { id: "eng.em", flow: "em", standard: true, description: null, name: "Engineering Manager" },
+      { id: "licenses", flow: "agent", standard: false, description: "Audits licenses.", name: null },
+      { id: "eng.reviewer", flow: "agent", standard: true, description: null, name: "Reviewer" },
+      { id: "ops.reviewer", flow: "agent", standard: true, description: null, name: "Reviewer" },
     ],
   };
   return { useWorkforce: () => workforce };
@@ -84,7 +86,15 @@ describe("the delegates panel (BR-33)", () => {
     expect(calls).toEqual(["list coordinator s1"]);
     expect(screen.getAllByTestId("cos-delegate").map((li) => li.getAttribute("data-worker"))).toEqual(["eng.em"]);
     const options = [...(screen.getByTestId("cos-delegate-pick") as HTMLSelectElement).options].map((o) => o.value);
-    expect(options).toEqual(["", "licenses"]);
+    expect(options).toEqual(["", "licenses", "eng.reviewer", "ops.reviewer"]);
+  });
+
+  it("names delegates and choices by display name, with the id only where two share a name", async () => {
+    render(<DelegatesPanel worker={cos} sessionId="s1" />);
+    await settle();
+    expect(screen.getAllByTestId("cos-delegate").map((li) => li.textContent)).toEqual(["Engineering Managerremove"]);
+    const labels = [...(screen.getByTestId("cos-delegate-pick") as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(labels).toEqual(["Add from your roster…", "licenses", "Reviewer (eng.reviewer)", "Reviewer (ops.reviewer)"]);
   });
 
   it("adds one from the roster and removes one, each through the coordinator's action on this conversation", async () => {

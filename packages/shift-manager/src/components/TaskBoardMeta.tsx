@@ -6,12 +6,14 @@
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
+import { ERROR_REPORTER_FLOW } from "@flow-state-dev/workforce/browser";
 import { SessionItemsProvider, useSessionItems } from "./flow-state/session-items-context";
 import { TaskPlan } from "./flow-state/task-plan";
 import { extractTaskPlanState, TASK_CHANGE_COMPONENT } from "./flow-state/task-plan-state";
 import { isOpen, TASKS_POLL_MS } from "./TasksPanel";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import { columnFor, readStatus } from "../lib/columns";
+import { useConversationSession } from "../lib/conversation";
 import { readConversationTasks, type ConversationTask } from "../lib/conversation-tasks";
 import { workerLabel } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -137,7 +139,7 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
   const status = readStatus(task.status);
   const name = task.title || task.goal;
   return (
-    <div className="flex items-center gap-2.5 border px-3 py-2 text-sm" data-testid="task-card" data-task-id={task.id} data-status={status}>
+    <div className="flex flex-wrap items-center gap-2.5 border px-3 py-2 text-sm" data-testid="task-card" data-task-id={task.id} data-status={status}>
       <StateSquare state={STATE_OF_COLUMN[columnFor(status)]} />
       <div className="min-w-0 flex-1">
         <p className="truncate">{name}</p>
@@ -155,6 +157,39 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
       >
         Open
       </button>
+      {status === "cancelled" ? <CancelledNote taskId={task.id} /> : null}
     </div>
+  );
+}
+
+/**
+ * Under a cancelled task: a cancel isn't reported, so a user who cancelled
+ * because something went wrong tells the Error Reporter, naming the task.
+ * Drawn only when the Lab's inventory has an Error Reporter.
+ */
+function CancelledNote({ taskId }: { taskId: string }) {
+  const { snapshot } = useLab();
+  const loaded = snapshot !== undefined && "inventory" in snapshot ? snapshot : undefined;
+  const reporter = loaded?.inventory?.ok ? loaded.inventory.value.workers.find((worker) => worker.kind === ERROR_REPORTER_FLOW) : undefined;
+  const sessionId = useConversationSession(reporter, loaded?.sessions ?? []);
+  if (reporter === undefined) return null;
+  const name = reporter.name || "the Error Reporter";
+  return (
+    <p className="basis-full text-xs text-muted-foreground" data-testid="task-cancelled-note">
+      Cancelled because something went wrong? Tell{" "}
+      {sessionId === null ? (
+        name
+      ) : (
+        <button
+          type="button"
+          className="underline hover:text-foreground"
+          data-testid="task-cancelled-report"
+          onClick={() => navigate({ level: "session", sessionId })}
+        >
+          {name}
+        </button>
+      )}{" "}
+      what happened, and name this task ({taskId}).
+    </p>
   );
 }

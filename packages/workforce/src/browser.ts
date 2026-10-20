@@ -56,6 +56,8 @@ export {
   type WorkstreamEntry
 } from "./projects/workstream-entry";
 export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coordinator/coordinator-keys";
+/** The Error Reporter's flow: an app finds the worker a user tells about a problem by it. */
+export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
 export { MESSAGE_WORKER_TOOL, WORKER_MESSAGE_ENTRY } from "./messages/keys";
 export {
   WORKER_MESSAGES_PATTERN,

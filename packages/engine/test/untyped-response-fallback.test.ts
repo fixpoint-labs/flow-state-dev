@@ -13,6 +13,7 @@ import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createInMemoryStores,
@@ -62,7 +63,8 @@ describe("untyped response fallback", () => {
       userId: "user_untyped",
       modelResolver: createMockModelResolver({}),
       stores: createInMemoryStores(),
-      response: untypedResponse
+      // Deliberately partial: a JS caller can hand over an emit-only response.
+      response: untypedResponse as unknown as ResponseEmitterHandle
     });
 
     await executeBlock({ block, input: { x: 1 }, ctx });

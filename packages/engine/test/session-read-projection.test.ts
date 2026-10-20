@@ -32,9 +32,9 @@ function makeFlow(kind: string, client?: { expose: Array<"visible" | "secret"> }
     actions: {
       run: {
         inputSchema: z.object({}),
-        block: handler<Record<string, never>, { ok: boolean }>({
+        block: handler({
           name: `${kind}-run`,
-          execute: () => ({ ok: true })
+          execute: (_input: Record<string, never>): { ok: boolean } => ({ ok: true })
         })
       }
     }
@@ -165,7 +165,7 @@ describe("session routes send only what the flow exposes", () => {
         actions: {
           run: {
             inputSchema: z.object({}),
-            block: handler<Record<string, never>, { ok: boolean }>({ name: "bound-run", execute: () => ({ ok: true }) })
+            block: handler({ name: "bound-run", execute: (_input: Record<string, never>): { ok: boolean } => ({ ok: true }) })
           }
         }
       })({ id: "bound" })

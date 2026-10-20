@@ -147,6 +147,7 @@ describe("router branch resume across a cold restart (SQLite)", () => {
 
     // The decision anchor persisted with the suspended record.
     const suspendedRecord = await storesA.request.get(requestId);
+    // @ts-expect-error — source bug FIX-2054: trace rows sit outside OutputItem.
     const decision = (suspendedRecord!.items ?? []).find((i) => i.type === "router_decision") as any;
     expect(decision?.selectedRoute).toBe("branchA");
 
