@@ -436,4 +436,32 @@ describe("a resumed request under other policies", () => {
     await until(async () => (await statusOf(h, requestId)) === "completed");
     expect(h.overlapped).toBe(false);
   });
+
+  it("a resume that times out releases only its own lease, never one another process took after it lapsed", async () => {
+    const h = buildHost("queue");
+    const { requestId, gate } = await h.park();
+    await h.startWork();
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const resumed = await resumeUnderLease(
+      { provider: h.provider, continueRequest: h.host.continueRequest },
+      { requestId, holder: "resume", admit: async () => ({ suspension: gate }), action: "approve" }
+    );
+    expect(resumed.ok).toBe(true);
+    const outcome = (resumed as { handle: { finished: Promise<unknown> } }).handle.finished.catch(
+      (e: unknown) => e
+    );
+
+    // The resume's lease lapses while it waits, and another process takes a
+    // new one on the same request.
+    const own = (await h.stores.leases.get(requestId))!;
+    await h.stores.leases.release(requestId, own.leaseId);
+    const newer = (await h.stores.leases.acquire(requestId, { holder: "other-process", durationMs: 60_000 }))!;
+
+    await vi.advanceTimersByTimeAsync(QUEUE_WAIT_TIMEOUT_MS + 1_000);
+    vi.useRealTimers();
+
+    expect(await outcome).toMatchObject({ name: "ConcurrencyQueueTimeoutError" });
+    expect((await h.stores.leases.get(requestId))?.leaseId).toBe(newer.leaseId);
+  });
 });

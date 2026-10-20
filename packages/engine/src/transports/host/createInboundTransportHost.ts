@@ -1410,12 +1410,14 @@ export function createInboundTransportHost(
    * not blocked on its own place. The key is the stored record's. An external
    * dispatcher with no shared backend skips arbitration, as `dispatch` does.
    * The run stops if a shared backend can no longer keep the place. A wait
-   * that ends before the run starts releases the resume lease; the answer
-   * stays on the parked request for the sweep.
+   * that ends before the run starts releases the caller's lease (`leaseId`),
+   * never one another process took after it lapsed; the answer stays on the
+   * parked request for the sweep.
    */
   const startContinuationInTurn = async (
     { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
-    start: (signal?: AbortSignal) => Promise<ExecutionResult>
+    start: (signal?: AbortSignal) => Promise<ExecutionResult>,
+    leaseId: string | undefined
   ): Promise<ExecutionResult> => {
     const decision =
       isExternalDispatcher && !arbitratesExternalDispatch
@@ -1465,11 +1467,9 @@ export function createInboundTransportHost(
           "[flow-state] a continued request did not get its turn in its session; it stays parked with its resolution recorded, and the durability sweep continues it",
           { requestId: record.id, key: decision.key, error: summarizeForLog(error) }
         );
-        try {
-          const lease = await stores.leases.get(record.id);
-          if (lease !== null) await stores.leases.release(record.id, lease.leaseId);
-        } catch {
+        if (leaseId !== undefined) {
           // The lease lapses on its own. The wait error is rethrown below.
+          await stores.leases.release(record.id, leaseId).catch(() => {});
         }
       }
       throw error;
@@ -1490,7 +1490,7 @@ export function createInboundTransportHost(
       stores,
       flowRegistry: registry,
       runtimeConfig,
-      startRun: startContinuationInTurn
+      startRun: (run, start) => startContinuationInTurn(run, start, opts.leaseId)
     });
 
     // Keep the serverless function alive until the resumed run finishes, exactly
