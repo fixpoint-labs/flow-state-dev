@@ -2,13 +2,15 @@
 
 [Spec](../SPEC.md) · [Decisions](../DECISIONS.md) · **Spike findings**
 
-Measurement spike, run 2026-10-20 on a local branch off `main` @ `364f5ba22`. Nothing from it was committed. Retained here as the spec's evidence:
+Measurement spike, run 2026-10-20 on a local branch off `main` @ `364f5ba22`. The branch was never pushed, and its probe diffs are not retained: they mostly replayed per-package pins the implementation deletes. **The break lists and the alias recipe below are the reproducible record**, with [`timings.txt`](timings.txt) holding every timed run (runs marked `rc≠0` were probes in progress, not results). Phasing and the open forks are in [DECISIONS.md](../DECISIONS.md#open).
 
-- [`ts6-probe.diff`](ts6-probe.diff): the probe state that is green on TS 6.0.3.
-- [`ts7-side-by-side.diff`](ts7-side-by-side.diff): the probe state that is green on TS 7.0.2 with the side-by-side alias (lockfile hunk removed).
-- [`timings.txt`](timings.txt): every timed run, with wall time and memory. Runs marked `rc≠0` were probes in progress, not results.
+The one hunk an implementer needs, the root `package.json` alias pair:
 
-The probe diffs are evidence, not the change to merge: they edit per-package pins that the implementation deletes instead, and use `as never` where the implementation annotates.
+```diff
+- "typescript": "^5.7.3",
++ "@typescript/native": "npm:typescript@^7.0.2",
++ "typescript": "npm:@typescript/typescript6@^6.0.2",
+```
 
 ## Machine
 4 vCPU (Intel Xeon @ 2.10GHz, `nproc`=4), 15 GiB RAM, no swap. Node 22.22.2, pnpm 10.4.1, turbo 2.9.x (default concurrency 10). Firecracker VM. Compare timings with each other, not as absolute numbers.
@@ -103,29 +105,14 @@ Validators/tools on 7 **without** the alias: `validate-test-typecheck` ✗ (Type
 | vitest / tsx | esbuild transpile | ✓ | ✓ (unaffected) | No |
 | fallow-type-aware (optional) | already pins `typescript@7.0.2` | n/a | n/a | No |
 
-**Side-by-side verified end-to-end** ([`ts7-side-by-side.diff`](ts7-side-by-side.diff)): root `"@typescript/native": "npm:typescript@7.0.2"` + `"typescript": "npm:@typescript/typescript6@6.0.2"`; per-package pins also set to the typescript6 alias. Results: root `.bin/tsc` = 7.0.2 and `tsc6` = 6.0; `require("typescript").version` = 6.0.3; inside a package, `pnpm exec tsc` falls through to the root's 7 (package `.bin` has only `tsc6`). **`scripts/typecheck.mjs` needs no change.** The full `pnpm typecheck` is green in ~77s. The probe edited per-package package.json pins; the real change could delete them and keep only the root.
+**Side-by-side verified end-to-end:** root `"@typescript/native": "npm:typescript@7.0.2"` + `"typescript": "npm:@typescript/typescript6@6.0.2"`; per-package pins also set to the typescript6 alias. Results: root `.bin/tsc` = 7.0.2 and `tsc6` = 6.0; `require("typescript").version` = 6.0.3; inside a package, `pnpm exec tsc` falls through to the root's 7 (package `.bin` has only `tsc6`). **`scripts/typecheck.mjs` needs no change.** The full `pnpm typecheck` is green in ~77s. The probe edited per-package package.json pins; the real change could delete them and keep only the root.
 
-## Recommendation
-**6 then 7, as two PRs close together, with 6 as the permanent JS-API layer, not a throwaway step.**
+## Candidate follow-ups, not this issue
 
-1. **PR 1 (on 6.0):** the config migration 6.1–6.6 (+ inline the docs tsconfig, which 7 needs anyway), delete the 7 engine FIX-2053 directives, fix the core `defineResource` exclusion types (divergence A) so 5.7/6/7 all reject, annotate the 6 goals sites (divergence B), and turn on `stableTypeOrdering: true` in base so 6 behaves like 7 where it can. Collapse the per-package pins so the repo stops running two TS versions. Every one of these changes is required by 7 anyway, so the step costs no extra fixing; it buys a green, lintable checkpoint (~7% faster typecheck).
-2. **PR 2 (flip to 7):** swap root devDeps to the alias pair. That is the whole switch: `typescript-eslint`, both validators, the goals guard and the orchestration test keep running on the 6 API through `typescript`, while `tsc` becomes native 7. Optionally add `--checkers 1` in typecheck.mjs (and the 15 direct `tsc` scripts). Expect ~3.6× faster typecheck (≈212s → ≈59s warm; ≈312s → ≈77s for full `pnpm typecheck` on this box).
-
-The "6" in "6 then 7" doesn't go away. Until TS 7.1 ships an API *and* typescript-eslint supports it, `typescript` must resolve to 6. So the end state is 6 API + 7 CLI either way.
-
-**What would change my mind:**
-- If a single PR is acceptable to reviewers, going straight to 7 is equally sound: the change set is the same, PR 1 is just a checkpoint. I'd stay with two because divergence A (6 and 7 disagree) is easier to judge with a green 6 to compare against.
-- If the divergence A core type fix turns out bigger than a type tweak (e.g. it breaks valid `defineResource` call sites), PR 1 should land with the 3 core directives deleted plus a tracked issue. That gives up the type guard temporarily, so it's a product call.
-- If CI runners have ≤2 cores or tight memory, re-measure; `--concurrency=2` was 71s / 1.0 GB here.
-- "6 only for now" makes sense only if the 7 speedup doesn't matter. It's the largest single typecheck win available (3.6×) and the extra cost is two dependency lines.
-
-## Newer TS features worth adopting (5.8–7, excluding `strict` and `using`)
-1. **`stableTypeOrdering` (6.0)** in base during the transition. It reproduces divergence B on 6 and makes `.d.ts` ordering match 7, so the published-typings churn happens once.
-2. **`--checkers` (7.0)**: `--checkers 1` was 11% faster under turbo on 4 cores; `--concurrency 4` halved peak memory. Put the flag in `scripts/typecheck.mjs` and the 15 direct `tsc` scripts, or make it a CI-only knob.
-3. **`erasableSyntaxOnly` (5.8)**: the packages have 0 enums, 0 namespaces, 8 constructor parameter properties, so adoption is nearly free. It keeps the source runnable under Node's native type-stripping, so `.mts` goals and scripts could drop `tsx`.
-4. **`tsc -b --builders` (7.0)**: packages are already `composite` with `references`. A single parallel `tsc -b` might replace turbo's 28 sequential-ish `^build` tasks that every typecheck waits on. Not measured; worth a follow-up spike.
-5. **`rewriteRelativeImportExtensions` (5.7)** could eventually replace `scripts/add-esm-extensions.mjs`, but only after a codemod to `.ts` specifiers (899 in core alone) and directory-import rewrites. Note it; don't do it now.
-6. (`isolatedDeclarations`: skip for now. TS2883 hints at inferred-type portability debt, but annotating every exported factory return type is a large, separate effort.)
+- `tsc -b --builders` (7.0) in place of turbo's `^build` fan-out. Not measured.
+- `erasableSyntaxOnly` (5.8): 0 enums, 0 namespaces, 8 parameter properties in the packages.
+- `rewriteRelativeImportExtensions` (5.7) to replace `scripts/add-esm-extensions.mjs`, after a `.ts`-specifier codemod.
+- `--checkers` / `--concurrency` tuning (7.0): `--checkers 1` was 11% faster here, `--concurrency 4` halved peak memory.
 
 ## Probe edits made in the spike worktree (uncommitted)
 `tsconfig.base.json` (no baseUrl, `./` paths), 9 package tsconfigs (`types: ["node"]`, workforce's included; spike-only, not committed), shift-manager/ui-test paths, docs tsconfig inlined, kitchen-sink/hello-chat `noUncheckedSideEffectImports:false`, routing example `declaration(Map):false`, 7 engine directives deleted, 6 goals `.catch(() => [] as never)`, package.json pins and lockfile. `packages/workforce/src/codegen/typescript-module.ts` was read, never edited.
