@@ -137,7 +137,6 @@ function TaskCard({ task, boardRef }: { task: Pick<ConversationTask, "id" | "goa
   const status = readStatus(task.status);
   const name = task.title || task.goal;
   return (
-    // One quiet line per task, no box: the name, then who and where it stands, then a link that shows on hover.
     <div className="group/task flex items-center gap-2 py-0.5 text-sm" data-testid="task-card" data-task-id={task.id} data-status={status}>
       <StateSquare state={STATE_OF_COLUMN[columnFor(status)]} />
       <span className="min-w-0 truncate">{name}</span>

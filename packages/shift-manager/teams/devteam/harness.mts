@@ -117,8 +117,7 @@ export function claudeCodeEnv(): Record<string, string> {
  * it, since the key reaches the run's tools through the Lab's connection, not
  * the run.
  *
- * No `maxTurns`: the SDK's default is no cap, and a real coding run takes
- * hundreds of turns, so a small cap ends it mid-task as `error_max_turns`.
+ * No `maxTurns`: the SDK default is no cap, and a small cap ends a run as `error_max_turns`.
  *
  * With `mcpTools`, the run is handed its project's MCP servers and nothing
  * else, and the block holds the project and key collections the resolver

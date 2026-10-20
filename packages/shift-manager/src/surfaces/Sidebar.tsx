@@ -21,10 +21,7 @@
  * TEAMS says what its counts are; and the
  * footer ends its counts with the user's initials (v2:52-113, 1173-1188).
  *
- * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
- * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
- * Roster, Settings and Jump to. Each icon names itself on hover and navigates as its
- * entry does.
+ * Collapsed, it is a 48px rail, Settings last.
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { themeLabel, type ThemeLook } from "../lib/theme";

@@ -97,8 +97,7 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
   const { snapshot, refresh, clients } = useLab();
   const route = useRoute();
-  // Null is closed; "" opens Jump to, "> " opens it already in message mode.
-  const [jumping, setJumping] = useState<string | null>(null);
+  const [jumpQuery, setJumpQuery] = useState<string | null>(null);
   const panels = usePanels(clients.userId);
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
@@ -107,8 +106,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        // Shift+⌘K goes straight to messaging the Shift Coordinator.
-        setJumping((j) => (j === null ? (e.shiftKey ? "> " : "") : null));
+        setJumpQuery((q) => (q === null ? (e.shiftKey ? "> " : "") : null));
         return;
       }
       // `[` and `]` toggle the sidebar and the right panel, except while typing,
@@ -139,7 +137,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   );
   return (
     <div className="flex h-dvh min-h-0 min-w-[900px]" data-testid="shell">
-      <Sidebar route={route} gaps={gaps} onJump={() => setJumping("")} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
+      <Sidebar route={route} gaps={gaps} onJump={() => setJumpQuery("")} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.
         <TaskProvider
@@ -154,7 +152,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       ) : (
         levels
       )}
-      {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
+      {jumpQuery !== null ? <JumpTo snapshot={snapshot} gaps={gaps} initialQuery={jumpQuery} onClose={() => setJumpQuery(null)} /> : null}
     </div>
   );
 }
