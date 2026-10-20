@@ -307,6 +307,23 @@ describe("compareStateFieldKinds", () => {
     expect(compareStateFieldKinds(z.unknown(), z.number())).toBeNull();
     expect(compareStateFieldKinds(z.array(z.any()), z.array(z.number()))).toBeNull();
   });
+
+  it("refuses a transform on either side, whose output kind it cannot read", () => {
+    // `.transform(String)` starts the child with a string where it asked for a
+    // number; the input kind matching says nothing about what the child gets.
+    expect(compareStateFieldKinds(z.number().default(1).transform(String), z.number())).toMatch(/transform/);
+    expect(compareStateFieldKinds(z.string().transform(Number), z.number())).toMatch(/transform/);
+    expect(compareStateFieldKinds(z.array(z.string().transform(Number)), z.array(z.number()))).toMatch(
+      /transform/
+    );
+  });
+
+  it("still sees through a refinement, a preprocess, and one schema shared by both sides", () => {
+    expect(compareStateFieldKinds(z.number().refine((n) => n >= 0).default(0), z.number())).toBeNull();
+    expect(compareStateFieldKinds(z.preprocess((value) => Number(value), z.number()), z.number())).toBeNull();
+    const shared = z.string().transform(Number);
+    expect(compareStateFieldKinds(shared, shared)).toBeNull();
+  });
 });
 
 describe("mapZodObjectRoot", () => {
