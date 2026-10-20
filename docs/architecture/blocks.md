@@ -77,11 +77,15 @@ If multiple ancestors match and precedence cannot resolve, runtime throws `Ambig
 
 ### Sequencer state schema bubbling
 
-Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/org schemas:
+Handler, generator, evaluator, and router blocks can declare `sequencerStateSchema`. It is applied when the flow is built (`blocks/internal/sequencer-state.ts`):
 
-- block-level `sequencerStateSchema` declares what state shape a block requires
-- when composed inside a sequencer, that schema bubbles up to the enclosing sequencer's instance-state contract
-- sequencer-level `stateSchema` may be declared directly; when both are present they must be structurally compatible
+- block-level `sequencerStateSchema` declares what state shape a block requires from the sequencer `ctx.sequencer` resolves to — the nearest enclosing sequencer that has a `stateSchema`
+- when composed inside a sequencer (`.step()`, `.tap()`, branch and fan-out arms, chain-level and block-level `.rescue()` handlers, and through a router's routes), that schema bubbles up to that sequencer's instance-state contract: a field the sequencer does not declare is added with its default, so it is in the initial state; a field with no default that does not accept `undefined` is added as optional. A wrapper around the sequencer's `z.object()` (`.default({})`, `.optional()`, a refinement) is kept around the extended object
+- a sequencer with no `stateSchema` stays transparent to `ctx.sequencer`: it holds no state and passes its children's requirements up as its own `sequencerStateSchema`, to the next sequencer that has one. When no enclosing sequencer has a `stateSchema`, the requirement has nowhere to land and `ctx.sequencer` is `undefined`
+- sequencer-level `stateSchema` may be declared directly; when both declare a field they must be structurally compatible — the same kind under `.default()` / `.optional()` / `.nullable()` / a refinement, and the same element kind for an array (`z.any()` / `z.unknown()` match anything; nested shapes are not compared). A `.transform()` on either side is refused, since its output kind is not in the schema, unless both sides use the same schema. An incompatible pair throws `SequencerSchemaMismatchError` while the chain is composed, before `defineFlow` and before any run. Two children that disagree on a field are refused the same way
+- a capability's `sequencerStateSchema` (valid only on a sequencer's `uses`) lands on that sequencer's state under the same rules, including on a sequencer that declares no `stateSchema` of its own. Two capabilities that require different kinds of one field are refused; when they agree, the later one's declaration is kept
+- a generator's tools do not bubble: a tool is not composition, so a tool that needs sequencer state relies on the sequencer declaring it
+- on resume, a restored checkpoint is laid over the schema defaults, so a field added since the checkpoint was written starts at its default
 
 ```ts
 const updateProgress = handler({
@@ -95,7 +99,6 @@ const updateProgress = handler({
 const research = sequencer({
   name: "research",
   stateSchema: z.object({ progress: z.number().default(0) }),
-  defaultState: { progress: 0 },
 }).tap(updateProgress);
 ```
 
