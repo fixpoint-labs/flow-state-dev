@@ -3,40 +3,40 @@
   <desc id="desc">A project is runtime data, addressed by its visibility and its id. A shared project, such as visibility shared, id apollo, lives in the organization: everyone in it lists and reads the project, and its members open workstreams in it. A private project, such as visibility private, id notes, lives with its creator: nobody else lists, opens or reads it. Each workstream is one entry on the project with one owner. In the example, alice owns checkout and docs and bob owns payments. Everyone who reads the project reads every entry; only its owner writes it. Each user talks to a project through their own project coordinator, which hands work only to that user's open workstreams: alice's to checkout, since docs is done, and bob's to payments.</desc>
   <defs>
     <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
+      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
+              --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
+              --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e;
+              --no:#a83e28; }
       @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
+        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
+                --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
+                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777;
+                --no:#e27a5f; } }
       .bg { fill: var(--bg); }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .shared { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.75; }
-      .private { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.75; }
-      .out { fill: var(--box); stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 5 4; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.2; }
+      .shared { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.4; }
+      .private { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.4; }
+      .out { fill: var(--box); stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 5 4; }
+      .title { font: 600 20px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 600 14px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .code { font: 12px 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink-2); }
+      .muted { font: 12px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
     </style>
   </defs>
-  <rect x="0" y="0" width="880" height="520" rx="16" class="bg"/>
+  <rect x="0" y="0" width="880" height="520" rx="0" class="bg"/>
 
   <text x="28" y="36" class="title">A project is shared with the organization, or private to you</text>
   <text x="28" y="58" class="muted">Runtime data, not a file. Its address is its visibility and its id.</text>
 
-  <rect x="40" y="86" width="390" height="140" rx="12" class="shared"/>
+  <rect x="40" y="86" width="390" height="140" rx="0" class="shared"/>
   <text x="56" y="116" class="h">Shared project</text>
   <text x="56" y="138" class="code">{ visibility: "shared", id: "apollo" }</text>
   <text x="56" y="166" class="p">Everyone in the organization lists and reads it,</text>
   <text x="56" y="186" class="p">and every workstream in it</text>
   <text x="56" y="210" class="muted">Its members open workstreams in it</text>
 
-  <rect x="450" y="86" width="390" height="140" rx="12" class="private"/>
+  <rect x="450" y="86" width="390" height="140" rx="0" class="private"/>
   <text x="466" y="116" class="h">Private project</text>
   <text x="466" y="138" class="code">{ visibility: "private", id: "notes" }</text>
   <text x="466" y="166" class="p">Only you list, open or read it,</text>
@@ -45,24 +45,24 @@
 
   <text x="40" y="262" class="h">Workstreams in apollo: one entry each, one owner each</text>
 
-  <rect x="40" y="278" width="250" height="92" rx="10" class="box"/>
+  <rect x="40" y="278" width="250" height="92" rx="0" class="box"/>
   <text x="56" y="304" class="h">checkout</text>
   <text x="56" y="328" class="p">owner alice · lead eng-lead</text>
   <text x="56" y="350" class="muted">status: on-track</text>
 
-  <rect x="315" y="278" width="250" height="92" rx="10" class="box"/>
+  <rect x="315" y="278" width="250" height="92" rx="0" class="box"/>
   <text x="331" y="304" class="h">payments</text>
   <text x="331" y="328" class="p">owner bob · lead pay-lead</text>
   <text x="331" y="350" class="muted">status: at-risk</text>
 
-  <rect x="590" y="278" width="250" height="92" rx="10" class="box"/>
+  <rect x="590" y="278" width="250" height="92" rx="0" class="box"/>
   <text x="606" y="304" class="h">docs</text>
   <text x="606" y="328" class="p">owner alice · lead writer</text>
   <text x="606" y="350" class="muted">status: done</text>
 
   <text x="40" y="398" class="p">Everyone who reads the project reads every entry. Only its owner writes it, from any flow.</text>
 
-  <rect x="40" y="420" width="800" height="62" rx="10" class="out"/>
+  <rect x="40" y="420" width="800" height="62" rx="0" class="out"/>
   <text x="56" y="446" class="p">Each user talks to a project through their own project coordinator.</text>
   <text x="56" y="468" class="p">Alice's hands work only to her open workstreams, here checkout. Bob's only to payments.</text>
 </svg>
