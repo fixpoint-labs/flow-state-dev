@@ -10,6 +10,7 @@
  * whichever backend is underneath.
  *
  *   - `resolve` derives the effective policy + key for a dispatch (pure).
+ *   - `continuationDecision` maps `reject` and `defer` onto the queue budget.
  *   - `admit` takes the dispatch's place before any request record or live
  *     stream is created: for `reject` it claims the key only if it is free and
  *     refuses with `ConcurrencyRejectedError` otherwise (so the dropped caller
@@ -210,6 +211,17 @@ function resolveKey(key: ConcurrencyKey, envelope: DispatchEnvelope): string | u
   return key(ctx);
 }
 
+
+/**
+ * The place a continuation waits for. `reject` and `defer` use the queue
+ * budget: the request was already admitted, and an unbounded defer wait
+ * would outlast its resume lease.
+ */
+export function continuationDecision(decision: ResolvedDecision): ResolvedDecision {
+  if (decision.key === undefined) return decision;
+  if (decision.policy === "allow" || decision.policy === "hold") return decision;
+  return { policy: "queue", key: decision.key };
+}
 
 /** Whether a value returned by `admit` is still pending. */
 export function isPendingAdmission(

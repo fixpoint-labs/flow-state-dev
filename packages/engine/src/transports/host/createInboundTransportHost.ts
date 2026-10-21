@@ -13,7 +13,7 @@
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { SessionCreateRefusedError } from "../../context/session-birth";
 import type { FlowRegistry } from "../../registry/flow-registry";
-import type { SessionRecord, StoreRegistry } from "../../stores/types";
+import type { RequestRecord, SessionRecord, StoreRegistry } from "../../stores/types";
 import type { ExecutionResult } from "../../execution/types";
 import type { RuntimeConfig } from "../../runtime-config";
 import { createLiveRequestStream } from "../../streaming/live-stream";
@@ -59,6 +59,7 @@ import {
   PrincipalResolutionError
 } from "../errors";
 import {
+  continuationDecision,
   createConcurrencyArbiter,
   isPendingAdmission,
   type ConcurrencyAdmission,
@@ -1403,6 +1404,80 @@ export function createInboundTransportHost(
     };
   };
 
+  /**
+   * Wait for this continuation's place inside `finished`, after the handle
+   * returns, so a run that continues another request in its own session is
+   * not blocked on its own place. The key is the stored record's. An external
+   * dispatcher with no shared backend skips arbitration, as `dispatch` does.
+   * The run stops if a shared backend can no longer keep the place. A wait
+   * that ends before the run starts releases the caller's lease (`leaseId`),
+   * never one another process took after it lapsed; the answer stays on the
+   * parked request for the sweep.
+   */
+  const startContinuationInTurn = async (
+    { flow, record, orgId }: { flow: FlowInstance; record: RequestRecord; orgId: string },
+    start: (signal?: AbortSignal) => Promise<ExecutionResult>,
+    leaseId: string | undefined
+  ): Promise<ExecutionResult> => {
+    const decision =
+      isExternalDispatcher && !arbitratesExternalDispatch
+        ? { policy: "allow" as const, key: undefined }
+        : continuationDecision(
+            arbiter.resolve(flow, record.actionName, {
+              requestId: record.id,
+              flowKind: record.flowKind,
+              actionName: record.actionName,
+              input: record.input,
+              userId: record.userId,
+              sessionId: record.sessionId,
+              orgId,
+              tenantId: record.tenantId,
+              source: record.source,
+              metadata: record.metadata
+            })
+          );
+    if (decision.key === undefined || decision.policy === "allow") return start();
+    let started = false;
+    // The active-request entry is registered before this wait, so it is kept
+    // warm until the run's own heartbeat takes over, as a queued dispatch's is.
+    const heartbeatMs = resolveQueuedHeartbeatMs(flow.request?.heartbeatIntervalMs);
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const stopHeartbeat = (): void => {
+      if (heartbeat !== undefined) clearInterval(heartbeat);
+      heartbeat = undefined;
+    };
+    if (heartbeatMs > 0) {
+      heartbeat = setInterval(() => {
+        stores.activeRequests.heartbeat(record.id).catch(() => {});
+      }, heartbeatMs);
+      (heartbeat as { unref?: () => void }).unref?.();
+    }
+    try {
+      const admission = await arbiter.admit(decision, record.id);
+      return await admission.run(() => {
+        started = true;
+        stopHeartbeat();
+        return start(admission.lost);
+      });
+    } catch (error) {
+      if (!started) {
+        logSafely(
+          runtimeConfig.logger,
+          "warn",
+          "[flow-state] a continued request did not get its turn in its session; it stays parked with its resolution recorded, and the durability sweep continues it",
+          { requestId: record.id, key: decision.key, error: summarizeForLog(error) }
+        );
+        if (leaseId !== undefined) {
+          // The lease lapses on its own. The wait error is rethrown below.
+          await stores.leases.release(record.id, leaseId).catch(() => {});
+        }
+      }
+      throw error;
+    } finally {
+      stopHeartbeat();
+    }
+  };
+
   const continueRequest = async (
     opts: HostContinueRequestOptions
   ): Promise<ContinueRequestResult> => {
@@ -1414,7 +1489,8 @@ export function createInboundTransportHost(
       includeTrace: opts.includeTrace,
       stores,
       flowRegistry: registry,
-      runtimeConfig
+      runtimeConfig,
+      startRun: (run, start) => startContinuationInTurn(run, start, opts.leaseId)
     });
 
     // Keep the serverless function alive until the resumed run finishes, exactly
