@@ -1,5 +1,5 @@
 /**
- * `taskToolActions` — a durable board's ten task tools, as flow actions.
+ * `taskToolActions` — a durable board's nine task tools, as flow actions.
  *
  * What the actions are for is changing a task from OUTSIDE the request that
  * filed it: a person in the DevTool cancelling a stuck row, or bumping a
@@ -35,7 +35,6 @@ const TOOLS = [
   "assignTask",
   "completeTask",
   "failTask",
-  "blockTask",
   "cancelTask",
   "updateTask",
   "listTasks",
@@ -157,7 +156,7 @@ async function host(options: { declareResource?: boolean } = {}) {
 }
 
 describe("taskToolActions — the set", () => {
-  it("names the ten tools for the board, and nothing else", async () => {
+  it("names the nine tools for the board, and nothing else", async () => {
     const h = await host();
     try {
       const names = Object.keys(taskToolActions(h.board)).sort();
@@ -229,7 +228,7 @@ describe("taskToolActions — each verb on a row an earlier request filed", () =
     }
   });
 
-  it("updates, assigns and blocks", async () => {
+  it("updates, assigns, holds and releases", async () => {
     const h = await host();
     try {
       const a = await h.file("a");
@@ -239,8 +238,10 @@ describe("taskToolActions — each verb on a row an earlier request filed", () =
       expect((await h.act(`assignTask_${h.id}`, { taskId: a, assignee: "someone" })).output).toEqual({ ok: true });
       expect((await h.row(a))?.assignee).toBe("someone");
 
-      expect((await h.act(`blockTask_${h.id}`, { taskId: a, reason: "waiting" })).output).toEqual({ ok: true });
-      expect((await h.row(a))?.status).toBe("blocked");
+      expect((await h.act(`updateTask_${h.id}`, { taskId: a, patch: { status: "held" } })).output).toEqual({ ok: true });
+      expect((await h.row(a))?.status).toBe("held");
+      expect((await h.act(`updateTask_${h.id}`, { taskId: a, patch: { status: "pending" } })).output).toEqual({ ok: true });
+      expect((await h.row(a))?.status).toBe("pending");
     } finally {
       await h.dispose();
     }
@@ -340,15 +341,15 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
     }
   });
 
-  it("refuses to block a row a worker holds, and leaves the worker's claim standing", async () => {
-    // `blockTask` is not one of the moves that can take a row from its worker:
-    // on an in-progress row it is an illegal transition, so nothing changes.
+  it("refuses to hold a row a worker holds, and leaves the worker's claim standing", async () => {
+    // A hold is not one of the moves that can take a row from its worker: a
+    // started row can't be held (FIX-2080), so nothing changes.
     const h = await host();
     try {
       const taskId = await h.file();
       const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
-      const blocked = await h.act(`blockTask_${h.id}`, { taskId, reason: "waiting on a person" });
-      expect(blocked.output).toMatchObject({ ok: false, error: expect.stringMatching(/^illegal_status_transition/) });
+      const held = await h.act(`updateTask_${h.id}`, { taskId, patch: { status: "held" } });
+      expect(held.output).toMatchObject({ ok: false, error: expect.stringMatching(/\(started\).*can't be held/) });
       expect((await h.row(taskId))?.status).toBe("in_progress");
       expect((await h.act("settleAsWorker", { taskId, claim })).output).toEqual({ outcome: "recorded" });
     } finally {

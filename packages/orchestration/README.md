@@ -27,7 +27,7 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
-`pending | in_progress | blocked | parked | completed | errored | cancelled`.
+`pending | in_progress | held | parked | completed | errored | cancelled`.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -39,8 +39,8 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                            ├─→ errored
          │                            ├─→ pending    (unpark)
          │                            └─→ cancelled
-         ├─→ blocked ─┬─→ pending               (unblock)
-         │            └─→ cancelled
+         ├─→ held ─┬─→ pending                  (release)
+         │         └─→ cancelled
          └─→ cancelled
 ```
 
@@ -167,13 +167,12 @@ Removals reconcile when you resolve. A task the running request removed (an expl
 from the next resolution onward. A ref you are already holding keeps reporting such
 a task until it resolves again.
 
-Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
+Every lifecycle transition — `complete`, `fail`, `awaitReview`,
 `unpark`, `reopen`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
-one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
-and no other, and `unpark` on a `parked` task and no other. Like `cancel`, `unpark`
+one edge runs only from that edge's source status: `unpark` runs on a `parked` task and no other. Like `cancel`, `unpark`
 declines without options: `disallowed` for a live task, `terminal` once settled, and a
 second answer to an already-queued task is refused. `reopen` runs on a finished task
 (`completed`, `errored` or `cancelled`) and no other, and declines without options:
@@ -670,7 +669,7 @@ state on the task.
 A board that dispatches anything fixes a task's assignee while an attempt holds it:
 the worker name is what a running row is routed by, so `setAssignee` on an
 `in_progress` or `parked` task declines with reason `immutable-assignee`. A pending
-or blocked task can still change hands, and a parked one can once `unpark` has
+or held task can still change hands, and a parked one can once `unpark` has
 ended its attempt. The rule belongs to the collection rather than
 the board, so a second board over the same `defineTaskCollection` value declines too.
 
@@ -779,8 +778,8 @@ refused when it loads; give the work to workers on a task board instead.
 
 ### Task tools
 
-`taskTools` are the ten tools a model uses to plan on a task board: `addTask`,
-`assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
+`taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
+`assignTask`, `completeTask`, `failTask`, `cancelTask`, `updateTask`,
 `listTasks`, `readTask`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
 `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
@@ -827,11 +826,13 @@ task's current status does not permit is a recoverable tool result too, not a
 throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
-the ten tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
-`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
-`session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`. `dispatchTask`
+`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
+`task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
+(`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
+`TaskFilingRule`). `dispatchTask`
 adds its own (`assignee_required`, `task_not_dispatchable`, `dispatch_target_required`,
 `dispatch_target_ambiguous`, `dispatch_ref_takes_no_task_fields`, and the `wait_*`
 codes when it [waits](#waiting-for-a-tasks-answer)). A
@@ -957,16 +958,14 @@ the answer reaches the session that asked.
 
 #### Following up on a finished task
 
-`addTask` and `dispatchTask` take `followUpOf` to file new work on a finished task: the follow-up
-is a new task, with the same worker, that runs in the finished task's session. It
+`addTask` and `dispatchTask` take `followUpOf` to file new work on a task: the follow-up
+is a new task, with the same worker, that runs in that task's session. It
 keeps that worker: `assignTask` and `updateTask` won't move it
 (`follow_up_takes_no_assignee`). Both tools refuse an `assignee` beside it
-(`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
-(`follow_up_of_unfinished`), and a session that still has an unfinished task
-(`session_has_unfinished_task`), all before anything is filed. The finished task
-itself never changes. If two follow-ups of the same task are filed at once, the second
-gets `session_has_unfinished_task` (follow up once that one
-finishes) or `task_id_taken` (file it again).
+(`follow_up_takes_no_assignee`) and a task that never ran with a worker
+(`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
+waits until that task ends, then runs. The task it follows never changes. If two
+follow-ups of the same task are filed at once, the second gets `task_id_taken` (file it again).
 
 ### skillsManifestSource
 

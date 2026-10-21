@@ -53,6 +53,7 @@ import { sessionIdOfFiling } from "./filing-session";
 import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
+import { isPostRow } from "../coordinator/delegated-post";
 import { taskMessage } from "./task-message";
 
 // A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
@@ -288,14 +289,21 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     const partition = filingPartitionOf(ctx);
     const flowKind = filingFlowOf(ctx);
     // A session that names no filing conversation owes no notice.
-    if (taskId === undefined || partition === undefined || flowKind === undefined) return 0;
+    if (partition === undefined || flowKind === undefined) return 0;
     const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return 0;
     const address = { session: { from: true }, flowKind, from: `${name}-tell` } as const;
+    const sessionId = ctx.session.identity.id;
     // The session's task and its follow-ups (FIX-1817): each runs here, so
-    // each ending this session recorded is told from here.
+    // each ending this session recorded is told from here. In the delegate's
+    // ongoing session, which works no one task, each task that ran here
+    // (FIX-2080). A post row's ending is its own entry's to tell.
     let sent = 0;
-    const own = ref.list().filter((task) => (task.followUpOf ?? task.id) === taskId);
+    const own = ref
+      .list()
+      .filter((task) =>
+        taskId !== undefined ? (task.followUpOf ?? task.id) === taskId : task.run?.sessionId === sessionId && !isPostRow(task)
+      );
     // What an errored ending owes the Error Reporter goes out first, from here (FIX-1983).
     await sendOwedReports(ctx, ref, own, { boardId: CONVERSATION_LEDGER_ID, partition }, `${name}-report`);
     for (const row of own) {

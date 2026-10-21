@@ -32,7 +32,26 @@ export {
   matchesFilter,
   type TaskInit,
   type TaskFilter,
+  type TaskSessionSetting,
+  type TaskResultSetting,
 } from "./schema/task-init";
+
+// Filing settings and dependencies (FIX-2080): what a board refuses at filing,
+// and the edit a filing takes until it starts.
+export {
+  TaskFilingRefusedError,
+  assertDepsFileable,
+  assertFilingCallerContext,
+  assertFilingSettings,
+  assertFollowUpHasRun,
+  assertUniqueIds,
+  type TaskFilingCallerContext,
+  type TaskFilingRule,
+  type TaskSettingsSupport,
+} from "./collection/filing";
+export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } from "./collection/internal";
+// The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
+export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";
 
 // The ownership token a task write presents (FIX-981). `ticketNamesTask` is the
 // guard's own identity rule and stays module-internal — a caller mints a ticket
@@ -134,6 +153,7 @@ export {
   hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
   type DefineTaskCollectionOptions,
+  type DeclaredFiledCascade,
 } from "./collection/define-task-collection";
 // A ledger kept per partition (`defineTaskCollection({ partitionBy })`).
 export type { TaskPartitionContext, TaskPartitionFn } from "./collection/partition";

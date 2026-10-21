@@ -100,7 +100,7 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
   });
 
   it("queued is every row in the QUEUED column, blocked ones included", () => {
-    expect(["pending", "blocked", "mystery", "in_progress", "parked", "errored"].filter((s) => isQueued(row("x", s)))).toEqual(["pending", "blocked", "mystery"]);
+    expect(["pending", "held", "mystery", "in_progress", "parked", "errored"].filter((s) => isQueued(row("x", s)))).toEqual(["pending", "held", "mystery"]);
   });
 
   it("the summary counts what is in flight (not queued, not done), the asks, the shift and the streams in flight", () => {

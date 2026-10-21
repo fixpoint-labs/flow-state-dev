@@ -348,13 +348,13 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 }
 
 for (const [backing, build] of Object.entries(BACKINGS)) {
-  describe(`dispatchAndWait on a recorded row, on the ${backing} backing (FIX-1875)`, () => {
-    it("marks a recorded row waited-on and dispatched in one write, then parks on it (BR-17)", async () => {
+  describe(`dispatchAndWait on a held row, on the ${backing} backing (FIX-1875)`, () => {
+    it("marks a held row waited-on and released in one write, then parks on it (BR-17)", async () => {
       const board = await build();
-      await board.addTask({ id: "task_rec", goal: "Which region?", assignee: "researcher", undispatched: true });
+      await board.addTask({ id: "task_rec", goal: "Which region?", assignee: "researcher", held: true });
       await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, { taskId: "task_rec" })).rejects.toThrow("parked");
       const row = board.get("task_rec")!;
-      expect(row.undispatched).toBeUndefined();
+      expect(row.status).toBe("pending");
       expect(row.dispatchCall).toBe(LOGICAL_ID);
       expect(row.wait?.gateId.startsWith("ask:waits:task_rec#")).toBe(true);
       expect(board.list()).toHaveLength(1);
@@ -362,7 +362,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
 
     it("replays into the same wait after a crash between the ready write and the filing's record (BR-15)", async () => {
       const board = await build();
-      await board.addTask({ id: "task_rec", goal: "Which region?", assignee: "researcher", undispatched: true });
+      await board.addTask({ id: "task_rec", goal: "Which region?", assignee: "researcher", held: true });
       let died = false;
       const dying = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
         dispatch: async (...args: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>) => {
@@ -393,3 +393,43 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
     });
   });
 }
+
+/**
+ * A task whose result goes to the conversation is never waited on (FIX-2080,
+ * T-32): the conversation hears its result, so a turn parked on it would
+ * race the conversation for it. Refused before anything is filed or written,
+ * on today's wait.
+ */
+describe("dispatchAndWait on a conversation-result task (FIX-2080)", () => {
+  async function conversationBoard(): Promise<TaskCollectionRef> {
+    const declared = defineTaskCollection({ id: "waits", scope: "user", settings: { resultTo: ["filer", "conversation"] } });
+    const store = Object.assign(createFakeResourceCollection<JsonObject>("waits/**"), { config: declared });
+    return getOrCreateTaskCollection({
+      ctx: boardCtx(),
+      backing: "resource",
+      collectionId: "waits",
+      collection: store as ResourceCollectionRef<JsonObject>,
+      now: boardClock
+    });
+  }
+
+  it("refuses a wait on a held conversation-result row, releasing nothing", async () => {
+    const board = await conversationBoard();
+    await board.addTask({ id: "t", goal: "Summarize the conversation", assignee: "researcher", held: true, resultTo: "conversation" });
+    const result = await dispatchAndWait(turnCtx(new Map(), "park"), board, { taskId: "t" });
+    expect(result).toMatchObject({ ok: false, error: "wait_on_conversation_result" });
+    expect(board.get("t")).toMatchObject({ status: "held" });
+    expect(board.get("t")?.wait).toBeUndefined();
+  });
+
+  it("refuses a wait on a new conversation-result task, filing nothing", async () => {
+    const board = await conversationBoard();
+    const result = await dispatchAndWait(turnCtx(new Map(), "park"), board, {
+      goal: "Summarize the conversation",
+      assignee: "researcher",
+      resultTo: "conversation"
+    });
+    expect(result).toMatchObject({ ok: false, error: "wait_on_conversation_result" });
+    expect(board.list()).toHaveLength(0);
+  });
+});

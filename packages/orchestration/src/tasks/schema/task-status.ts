@@ -12,7 +12,7 @@ import { z } from "zod";
 export const taskStatusSchema = z.enum([
   "pending",
   "in_progress",
-  "blocked",
+  "held",
   "parked",
   "completed",
   "errored",
@@ -29,6 +29,13 @@ export type TaskStatus = z.infer<typeof taskStatusSchema>;
 const LEGACY_PARKED_STATUS = "awaiting_review";
 
 /**
+ * The member `held` replaced (FIX-2080 D1). A row stored before then still
+ * carries it; it reads as `held`, the same "filed, not started, until someone
+ * says go". The cast-read half is the retired-shape map (`./retired-shapes`).
+ */
+const LEGACY_BLOCKED_STATUS = "blocked";
+
+/**
  * The status as it is read back off a **persisted** row: `taskStatusSchema`,
  * plus the legacy member mapped forward.
  *
@@ -42,7 +49,8 @@ const LEGACY_PARKED_STATUS = "awaiting_review";
  * The mapping is a **fixed point**, which is what makes it safe to use on a
  * persisted schema at all: `assertStableResourceState` re-parses any value a
  * schema rewrote and rejects the write if the second parse moves it again.
- * Parsing `parked` yields `parked`, so the second parse is a no-op.
+ * Parsing `parked` yields `parked`, so the second parse is a no-op; the same
+ * holds for `blocked`, which reads as `held` (FIX-2080).
  *
  * This covers the parse paths only. A **task collection instance is never
  * parsed on read** — the engine skips collection configs when it normalizes
@@ -54,7 +62,8 @@ const LEGACY_PARKED_STATUS = "awaiting_review";
  * everything a caller writes or a type is derived from.
  */
 export const persistedTaskStatusSchema = z.preprocess(
-  (value) => (value === LEGACY_PARKED_STATUS ? "parked" : value),
+  (value) =>
+    value === LEGACY_PARKED_STATUS ? "parked" : value === LEGACY_BLOCKED_STATUS ? "held" : value,
   taskStatusSchema
 );
 
@@ -84,10 +93,15 @@ export function isTerminalStatus(status: TaskStatus): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
+/**
+ * `held` sits beside `pending`, before any start (FIX-2080 D1): a held row
+ * starts only once it is released back to `pending`, and may be cancelled.
+ * Nothing after a start reaches it.
+ */
 const ALLOWED_TRANSITIONS: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
-  pending: ["in_progress", "blocked", "cancelled"],
+  pending: ["in_progress", "held", "cancelled"],
   in_progress: ["completed", "errored", "parked", "pending", "cancelled"],
-  blocked: ["pending", "cancelled"],
+  held: ["pending", "cancelled"],
   parked: ["pending", "completed", "cancelled", "errored"],
   completed: [],
   errored: [],

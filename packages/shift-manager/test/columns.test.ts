@@ -8,14 +8,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { taskStatusSchema } from "@flow-state-dev/orchestration/tasks";
-import { COLUMNS, columnFor, isBlocked, isDone } from "../src/lib/columns";
+import { COLUMNS, columnFor, isHeld, isDone } from "../src/lib/columns";
 import { openRows, workerFor, type LoadedSnapshot, type Roster } from "../src/lib/derive";
 import { toBoardRow, toWorker, type BoardRow } from "../src/lib/reads";
 
 /** Where BR-12 puts each shipped status. */
 const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
   pending: "QUEUED",
-  blocked: "QUEUED",
+  held: "QUEUED",
   in_progress: "RUNNING",
   parked: "NEEDS YOU",
   errored: "NEEDS YOU",
@@ -38,8 +38,8 @@ describe("BR-12: a row's column", () => {
     expect(columnFor("awaiting_review")).toBe("NEEDS YOU");
   });
 
-  it("tags blocked, and nothing else, in QUEUED", () => {
-    expect(taskStatusSchema.options.filter(isBlocked)).toEqual(["blocked"]);
+  it("tags held, and nothing else, in QUEUED", () => {
+    expect(taskStatusSchema.options.filter(isHeld)).toEqual(["held"]);
   });
 
   it("IN REVIEW holds no shipped status", () => {
@@ -81,6 +81,6 @@ describe("BR-15: Tasks leaves done rows out, and a parked row with no ask is sti
     const snapshot = {
       boards: { s_1: { ok: true, value: { refs: ["s_1.tasks"], rows } } },
     } as unknown as LoadedSnapshot;
-    expect(openRows(snapshot).map((r) => r.status).sort()).toEqual(["blocked", "errored", "in_progress", "parked", "pending"]);
+    expect(openRows(snapshot).map((r) => r.status).sort()).toEqual(["errored", "held", "in_progress", "parked", "pending"]);
   });
 });

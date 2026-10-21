@@ -19,8 +19,10 @@
  *   telling it to do the work or answer (`PLAN_ANSWERING_STATE`). A task it
  *   files for a delegate is dispatched as usual.
  *
- * Until FIX-2080 lands, a failed attempt's open steps stay open and the next
- * attempt adopts them; that issue's cascade is what will cancel them.
+ * A failed attempt's open steps stay open and the next attempt adopts them.
+ * The task-ending cascade (FIX-2080) doesn't reach them: a request that
+ * crashes mid-step records no ending, so its step stays `in_progress` until
+ * its lease runs out. Ending or adopting that step is a follow-up.
  */
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
@@ -102,9 +104,9 @@ export function isSteppingTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_STEPPING_STATE] === true;
 }
 
-/** A step the drain would work now: open, and not recorded-but-not-dispatched. */
+/** A step the drain would work now: open. A step is never held (FIX-2080): its filing refuses `held`, and so does a hold. */
 function isWorkable(row: Task): boolean {
-  return (row.status === "pending" || row.status === "in_progress") && row.undispatched !== true;
+  return row.status === "pending" || row.status === "in_progress";
 }
 
 /** The longest output or error a step's ending shows the answering turn, in characters of its JSON. */

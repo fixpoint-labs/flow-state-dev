@@ -394,21 +394,22 @@ const backings: Array<[string, BackingFactory]> = [
 ];
 
 /**
- * One correlated, committed write on a `pending`/`blocked` task.
+ * One correlated, committed write on a task that never settles.
  *
- * `pending → blocked → pending` is the only round trip that can be repeated
- * indefinitely without settling the task, which is what filling and then
- * overflowing the log needs.
+ * `in_progress → parked → pending` (with a claim before each park) is a round
+ * trip that can be repeated indefinitely without settling the task, which is
+ * what filling and then overflowing the log needs. The claim mints no
+ * receipt; the park and the unpark each carry the caller's token.
  */
-function correlatedWrite(
+async function correlatedWrite(
   collection: TaskCollectionRef,
   id: string,
-  blocked: boolean,
+  parked: boolean,
   write: TaskWriteToken
 ): Promise<unknown> {
-  return blocked
-    ? collection.unblock(id, { write })
-    : collection.block(id, "parked", { write });
+  if (parked) return collection.unpark(id, undefined, { write });
+  await collection.claim("w");
+  return collection.awaitReview(id, "parked", { write });
 }
 
 /** The provenance a task is carrying right now. */
@@ -580,8 +581,6 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     await step("setAssignee", () => collection.setAssignee("t", "someone"), true);
     await step("awaitReview", () => collection.awaitReview("t", "look"), true);
     await step("unpark", () => collection.unpark("t"), true);
-    await step("block", () => collection.block("t", "waiting"), true);
-    await step("unblock", () => collection.unblock("t"), true);
     await step("claim (2nd)", () => collection.claim("w"), true);
     await step("fail (soft, re-pends)", () => collection.fail("t", "boom"), true);
     await step("claim (3rd)", () => collection.claim("w"), true);

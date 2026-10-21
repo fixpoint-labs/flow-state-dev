@@ -231,30 +231,28 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
   });
 
   /**
-   * `unblock` owns ONE edge: `blocked → pending`.
+   * `release` owns ONE edge: `held → pending` (FIX-2080).
    *
    * The status table maps status to status, not verb to edge, so it also calls
    * `in_progress → pending` and `parked → pending` legal — those are
    * `reclaim`'s and `unpark`'s edges, and both of those verbs clear
-   * the lease and the coordinate. `unblock` clears neither, and correctly so:
-   * `blocked` is reachable only from `pending`, and every path into `pending`
-   * already clears both, so a genuinely blocked row holds neither field.
+   * the lease and the coordinate. `release` clears neither, and correctly so:
+   * `held` is reachable only from `pending` before a start, and every path
+   * into `pending` already clears both, so a held row holds neither field.
    *
-   * Without the source guard, `unblock` on a claimed row is a `reclaim`
-   * spelled wrong — it re-pends the task while leaving the previous attempt's
+   * Without the guard, `release` on a claimed row is a `reclaim` spelled
+   * wrong — it re-pends the task while leaving the previous attempt's
    * session and request ids on it, and a later reader takes that stale
    * coordinate for the current execution. The lease leaks the same way, which
    * is why both are asserted here.
    */
-  it("refuses to unblock a claimed task, writing nothing", async () => {
+  it("refuses to release a claimed task, writing nothing", async () => {
     const { collection } = await makeBacking();
     const [task] = await collection.addTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
     const leaseBefore = collection.get(task.id)?.leaseUntil;
 
-    await expect(collection.unblock(task.id)).rejects.toThrow(
-      IllegalTaskTransitionError
-    );
+    expect(await collection.release(task.id)).toMatchObject({ outcome: "declined", reason: "started" });
 
     // Nothing moved, and neither field was stranded onto a pending row.
     expect(collection.get(task.id)?.status).toBe("in_progress");
@@ -265,43 +263,27 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
     expect(collection.get(task.id)?.leaseUntil).toBe(leaseBefore);
   });
 
-  it("refuses to unblock a task parked for review, writing nothing", async () => {
+  it("refuses to release a task parked for review, writing nothing", async () => {
     const { collection } = await makeBacking();
     const [task] = await collection.addTasks([{ goal: "do a thing" }]);
     await collection.claim("worker-1");
     await collection.awaitReview(task.id, "please look");
 
-    await expect(collection.unblock(task.id)).rejects.toThrow(
-      IllegalTaskTransitionError
-    );
+    expect(await collection.release(task.id)).toMatchObject({ outcome: "declined", reason: "started" });
 
     expect(collection.get(task.id)?.status).toBe("parked");
   });
 
-  it("still unblocks a genuinely blocked task, which carries neither field", async () => {
+  it("still releases a held task, which carries neither field", async () => {
     // The control. A guard that refused everything would pass the two above.
     const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
-    await collection.block(task.id, "deps not ready");
+    const [task] = await collection.addTasks([{ goal: "do a thing", held: true }]);
 
-    await collection.unblock(task.id);
+    expect(await collection.release(task.id)).toEqual({ outcome: "recorded" });
 
     expect(collection.get(task.id)?.status).toBe("pending");
     expect(collection.get(task.id)?.claimedBy).toBeUndefined();
     expect(collection.get(task.id)?.leaseUntil).toBeUndefined();
-  });
-
-  it("declines rather than throws when the caller made the unblock advisory", async () => {
-    // An advisory write must never throw for a refused transition — it reports.
-    const { collection } = await makeBacking();
-    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
-    await collection.claim("worker-1");
-
-    expect(await collection.unblock(task.id, { ifAllowed: true })).toMatchObject({
-      outcome: "declined",
-      reason: "disallowed",
-    });
-    expect(collection.get(task.id)?.status).toBe("in_progress");
   });
 });
 

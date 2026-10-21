@@ -490,7 +490,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
         userId,
       );
       if (followUp !== "completed") throw new Error(`${name}: filing the follow-up ended ${followUp}`);
-      if (!(await waitForRow(api, (s) => s === "pending" || s === "blocked", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
+      if (!(await waitForRow(api, (s) => s === "pending" || s === "held", userId))) throw new Error(`${name}: the follow-up is not queued on the board`);
       workstream = { project, id: WORKSTREAM, session, lead };
     }
 

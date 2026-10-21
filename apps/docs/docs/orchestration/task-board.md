@@ -120,13 +120,13 @@ Both checks ignore tasks sitting in `parked` when the board sets [`onReview: "ex
 The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
 - `"all-completed"` — every task reached `completed` (or the board started empty).
-- `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
+- `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `held` waiting on a release.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"dispatched"` — every task still outstanding is running in a dispatch run. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with an [assignee that dispatches](#assignees-that-dispatch) reports it, and `counts.in_progress` is how many are still running.
   Older logs report `"handed-off"` for the same thing.
 - `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"dispatched"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.parked` is how many tasks are parked. [Picking it back up](#picking-it-back-up) is how the work restarts.
 
-Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, was moved to `blocked`, or is `pending` behind a dep that will never complete. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
+Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` when a task `errored`, was `cancelled`, or is `held`. Answering the review would not clear any of those. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. In the other direction, a parked task outranks a dispatch: both let the drain go, and the one that owes a person an answer is the one you need to see. A refused retry outranks all of them.
 
 ```ts
 // On the final task-board-meta item:
@@ -143,7 +143,7 @@ Order matters when a board ends up in more than one of these states at once. `"b
       completed: 2,
       errored: 0,
       cancelled: 0,
-      blocked: 0,
+      held: 0,
       parked: 0,
       in_progress: 0,
       pending: 0,
@@ -192,7 +192,7 @@ That is the right default when the answer arrives in seconds. It is the wrong on
 
 `counts.parked` does not tell that board apart from one that hit a real failure. A parked task and a failed task can sit on the same board, and when they do `blocked-by-failures` is the accurate answer: the failure is there, and answering the review will not clear it. A check that sees `parked` above zero and reads no further has just missed the errored task beside it.
 
-So read the whole of `counts`, and know what it still cannot settle. A board whose only outstanding work is a question for a person has `parked` above zero with `errored`, `cancelled`, and `blocked` all at zero. Past that the counts run out: a task queued behind the parked one and a task queued behind a dep that will never complete are both plain `pending`, and a task in `in_progress` may be running elsewhere or may have been abandoned when its worker died. Separating those means reading the tasks, not the counts — `listTasks` through [the board's capability](#commanding-the-board-with-its-capability), then checking what each pending task's `deps` are waiting for.
+So read the whole of `counts`, and know what it still cannot settle. A board whose only outstanding work is a question for a person has `parked` above zero with `errored`, `cancelled`, and `held` all at zero. Past that the counts run out: a task queued behind the parked one is plain `pending`, and a task in `in_progress` may be running elsewhere or may have been abandoned when its worker died. Separating those means reading the tasks, not the counts — `listTasks` through [the board's capability](#commanding-the-board-with-its-capability), then checking what each pending task's `deps` are waiting for.
 
 `onReview: "exit"` says the board should not wait:
 
@@ -232,7 +232,7 @@ The step returns whether the answer was accepted, and drains only when it was:
 | --- | --- | --- |
 | `parked` | `{ outcome: "recorded" }` | yes |
 | `pending` (already answered and queued) | `{ outcome: "declined", reason: "disallowed", status: "pending" }` | no |
-| `in_progress` or `blocked` | `{ outcome: "declined", reason: "disallowed", status }` | no |
+| `in_progress` or `held` | `{ outcome: "declined", reason: "disallowed", status }` | no |
 | `completed`, `errored`, or `cancelled` | `{ outcome: "declined", reason: "terminal", status }` | no |
 
 A refused answer writes nothing. One park takes one answer: the first accepted answer is the one the worker sees, and a second delivery for the same question is refused rather than replacing it. To change an answer, wait for the worker to park again.
@@ -259,23 +259,11 @@ The task lifecycle is the same under either setting. A parked task sits in `park
 
 The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 
-## Cascade-skipping dep-blocked tasks
+## When a dependency fails
 
-`"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.drain`:
+A task that fails for good, or is cancelled, takes its open dependents with it. The collection cancels every task that depends on it, then every task that depends on those, and labels each one `skipped` with `causedBy` naming the task that ended. There is nothing to wire: every board does this, whichever backing it runs on.
 
-```ts
-import { sequencer } from "@flow-state-dev/core";
-import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
-
-const board = taskBoard({ name: "research", collection: { collectionId: "research" }, workers });
-const cascadeSkip = createCascadeSkipDependents({ name: "research" });
-
-sequencer({ name: "research-run" })
-  .step(board.drain)
-  .tap(cascadeSkip); // transitively cancels pendings whose deps errored
-```
-
-It walks the dependency graph from every `errored` task, cancelling each pending whose deps include a failed task, and repeats to a fixed point so multi-level chains (`a → b → c`) drain in one pass. Cancelled tasks are stamped with a `"skipped"` label. It resolves the board's request-backed collection from `name`, so `name` must match the board's `collectionId` and the board must be on the default request backing. `planAndExecute` and `supervisor` wire this in for you.
+The cascade is paid in the same call as the ending. If the process dies between the two, the debt is on the stored row, and the board's next drain pays it before it claims anything. A task that is retried owes nothing yet, because the retry may still succeed.
 
 ## Dispatcher modes
 
@@ -287,7 +275,7 @@ The dispatcher decides which `pending` task gets claimed next. No dispatcher cla
 
 Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance: one of the three that `@flow-state-dev/orchestration` exports, or your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
-Dependency cycles are not rejected at add time. Avoiding them is the caller's responsibility when you build the `deps` graph passed to `addTask`/`addTasks` or `initialTasks`. A board that declares a `deps` cycle still runs, but those tasks never become claimable: the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
+A dependency the board could never satisfy is refused when it is filed: an id that names no task on the board, a dependency that has already failed or been cancelled, or `deps` that loop back to the task. The add throws a `TaskFilingRefusedError` and files nothing; in an `addTasks` batch or `initialTasks`, the ids in the same batch count. See [Task substrate → Dependencies are checked when you file](./task-substrate.md#dependencies-are-checked-when-you-file).
 
 ## Worker registry
 
@@ -571,7 +559,7 @@ An entry with `from` that a board in the same flow also dispatches to is refused
 
 `defineFlow()` throws for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board dispatches to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards dispatching to the same entry, for an entry with `from` that a board in the same flow also dispatches to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a dispatched worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
 
-A board that dispatches tasks fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or blocked task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
+A board that dispatches tasks fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or held task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
 
 ### What the drain reports
 
@@ -954,7 +942,7 @@ defineFlow({
 });
 ```
 
-The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos`, `listTasks_todos`, `readTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `cancelTask_todos`, `updateTask_todos`, `listTasks_todos`, `readTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
 
 Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. An `addTask`, `assignTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
 

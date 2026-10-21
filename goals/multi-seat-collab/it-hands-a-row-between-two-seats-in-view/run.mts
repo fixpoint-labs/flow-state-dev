@@ -73,7 +73,7 @@ const EXPECTED: Record<string, readonly string[]> = {
  * `TaskStatus`, written out. **Pinned** — a later widening (for *handed-off*,
  * *notified* or *waiting on you*) must fail here rather than pass.
  */
-const TASK_STATUSES = ["pending", "in_progress", "blocked", "parked", "completed", "errored", "cancelled"];
+const TASK_STATUSES = ["pending", "in_progress", "held", "parked", "completed", "errored", "cancelled"];
 
 /** How long a second person's delivery gets to land before it is judged not to have. */
 const SECOND_PRINCIPAL_WINDOW_MS = 3_000;

@@ -113,7 +113,7 @@ describe("a post row on the board (BR-21)", () => {
     expect(await write("assignTask", { assignee: "eng.lead" })).toMatch(/immutable-assignee/);
     expect(await write("completeTask", { output: "a forged answer" })).toMatch(/disallowed/);
     expect(await write("failTask", { error: "x" })).toMatch(/disallowed/);
-    expect(await write("blockTask", {})).toMatch(/disallowed/);
+    expect(await write("updateTask", { patch: { status: "held" } })).toMatch(/disallowed|started/);
     expect(JSON.parse(await write("cancelTask", {}))).toEqual({ ok: true });
 
     // The coder finishes after the cancel: its settle is refused, so nothing lands.

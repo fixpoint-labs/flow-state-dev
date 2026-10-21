@@ -42,3 +42,10 @@ export const PIECE_OF = "pieceOf";
  * Only the board writes it; a caller's filing or patch never reaches it.
  */
 export const RETRY_OF = "retryOf";
+
+/**
+ * The metadata key on a task's row naming the session that filed work for it
+ * and that session's flow (FIX-2080): where the filed half of its cascade is
+ * sent. Server-written by the first piece's filing (`./cascade`).
+ */
+export const FILED_MARKER = "filedFrom";

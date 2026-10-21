@@ -94,7 +94,7 @@ describe("BR-1 to BR-5: the one status rule", () => {
   });
 
   it("BR-3: queued, blocked, errored and finished alone are off shift, and hold no slot", () => {
-    const rows = ["pending", "blocked", "errored", "completed", "cancelled"].map((s) => row(s, s, "coder"));
+    const rows = ["pending", "held", "errored", "completed", "cancelled"].map((s) => row(s, s, "coder"));
     const state = workerStates(snapshotOf([coder], rows)).workers.get("eng.coder")!;
     expect(state).toMatchObject({ status: "off shift", held: [] });
   });

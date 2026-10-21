@@ -66,12 +66,12 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                            ├─→ errored
          │                            ├─→ pending    (unpark)
          │                            └─→ cancelled
-         ├─→ blocked ─┬─→ pending               (unblock)
-         │            └─→ cancelled
+         ├─→ held ─┬─→ pending                  (release)
+         │         └─→ cancelled
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there, every write treats it as final except one: `reopen` puts a finished task back in `pending` ([below](#putting-a-finished-task-back-in-the-queue)). A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `blocked`, and `parked` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there, every write treats it as final except one: `reopen` puts a finished task back in `pending` ([below](#putting-a-finished-task-back-in-the-queue)). A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `held`, and `parked` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
 
 Any other move not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
@@ -99,6 +99,41 @@ allowedTransitionsFrom("in_progress"); // ["completed", "errored", "parked", "pe
 
 Set `maxAttempts` and, while `attempts < maxAttempts`, a call to `fail` is a *soft* fail: the task flips back to `pending`, the error is captured on `feedback`, and the next claim increments `attempts` for a fresh run. Leave `maxAttempts` unset and `fail` is a *hard* fail: the task goes straight to terminal `errored` with the error on `task.error`. Single-attempt is the default.
 
+### Holding a task until someone releases it
+
+A *held* task is filed but won't start. No claim takes it, whatever its `deps`, until something releases it. File one held with `addTask({ ..., held: true })`, or hold a pending one later with `hold(id)`. `release(id)` puts it back in `pending`, and from there it starts like any other task once its `deps` have finished.
+
+A held task keeps a board from finishing: nothing will start it, so a [task board](./task-board.md#termination-onidle-modes)'s drain reports it with the failures, as `"blocked-by-failures"`. Release it, or cancel it, to let the board finish.
+
+### Changing a filing before it starts
+
+Until a task first starts, three of the things it was filed with can still change: whether it is held, its `deps`, and its `maxAttempts`. `patchSettings(id, patch)` changes any of them in one write. `hold` and `release` are the same write under their own names. A release on its own is never refused this way: leaving `held` is how a task starts again.
+
+```ts
+await tasks.patchSettings("draft", { deps: ["outline", "sources"], maxAttempts: 3 });
+// { outcome: "recorded" }
+// once it has started, even if a retry put it back in pending:
+// { outcome: "declined", reason: "started", status: "pending" }
+```
+
+Once a worker has claimed the task, the answer is `started`. A retry that returns the task to `pending` doesn't make it unstarted again, because the attempts it already used are part of the record. New `deps` are checked like a filing's, below.
+
+### Dependencies are checked when you file
+
+`addTask`, `addTasks` and `patchSettings` refuse a dependency the board could never satisfy, and file nothing. Each refusal throws a `TaskFilingRefusedError` whose `rule` names what was wrong:
+
+- `dependency_not_on_board`: the id names no task on this board. To wait on work somewhere else, wait on it, or file the task held and release it when the other work is done.
+- `dependency_ended`: the dependency has already failed or been cancelled, so the task could never start.
+- `dependency_loop`: the dependencies lead back to the task itself.
+
+In an `addTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
+
+### When a task ends badly, its dependents end too
+
+When a task fails for good or is cancelled, every open task that depends on it is cancelled, and then every open task that depends on those, down the chain. Each one is labelled `skipped`, its `error` says which dependency ended (`dep draft failed`, `dep draft was cancelled`), and `causedBy` holds the id of the task whose ending started the cascade.
+
+The ending's own write records that the cascade is owed, and the same call pays it right after. If the process dies between the two, the debt stays on the stored row, and the next touch of the board pays it: a task board's drain, or `payOwedCascades()` when you drive the collection yourself. A touch also reads the stored tasks and cancels any unstarted task whose dependency has failed or been cancelled, which catches a dependent another process filed while the dependency was ending. A task that completes, or is retried, owes nothing to its dependents. A retried dependency may still succeed.
+
 ## TaskCollection
 
 A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is compare-and-set, so two workers claiming at the same moment do not both win the same task — see [what a durable board guarantees](#what-a-durable-board-guarantees-about-ownership) for the scope of that. You get a `TaskCollectionRef` from `getOrCreateTaskCollection`, which needs the block context and a backing choice.
@@ -106,8 +141,8 @@ A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is co
 The mutation surface:
 
 - **Create** — `addTask`, `addTasks`.
-- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `block` / `unblock`, `awaitReview` / `unpark`, `cancel`, `reopen`, `reclaim` (reset stale leases back to `pending`).
-- **Mutate** — `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
+- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `awaitReview` / `unpark`, `cancel`, `reopen`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
+- **Mutate** — `patchSettings` (until the task starts), `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
 
 A task board handles expired leases for you — see [the lease](#the-lease). `reclaim` is there for the case where you want to reset leases yourself, on your own schedule.
@@ -196,12 +231,12 @@ A legal status transition is necessary but not sufficient. A verb that owns a si
 
 | Returning a task to `pending` from | Call |
 |------------------------------------|------|
-| `blocked` | `unblock(id)` |
+| `held` | `release(id)` |
 | `parked` | `unpark(id, feedback?)` |
 | `in_progress`, once its lease has expired | `reclaim()` |
 | `completed`, `errored` or `cancelled` | `reopen(id)` |
 
-`unblock` runs on a blocked task and refuses every other status, raising the same `IllegalTaskTransitionError` an illegal transition raises, or declining with reason `disallowed` when you passed `ifAllowed`. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `unpark`, which clears its lease on the way. `unpark` runs on a parked task and refuses every other status whether or not you pass options: `{ outcome: "declined", reason: "disallowed", status }` for a live task, `reason: "terminal"` for a settled one, and nothing written either way. A task that has already been answered is `pending`, so a second answer is refused and the first stands. To re-queue and run the answered task in one request, use the board's `unparkAndDrain` step; see [Task board](./task-board.md#picking-it-back-up).
+`release` on a task that isn't held reports `unchanged` and writes nothing. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `unpark`, which clears its lease on the way. `unpark` runs on a parked task and refuses every other status whether or not you pass options: `{ outcome: "declined", reason: "disallowed", status }` for a live task, `reason: "terminal"` for a settled one, and nothing written either way. A task that has already been answered is `pending`, so a second answer is refused and the first stands. To re-queue and run the answered task in one request, use the board's `unparkAndDrain` step; see [Task board](./task-board.md#picking-it-back-up).
 
 #### Putting a finished task back in the queue
 
@@ -263,12 +298,13 @@ type TaskWriteOutcome =
 
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
-- `immutable-assignee` — the board dispatches work to a dispatch run, and an attempt still holds the task (*in progress* or *parked*): the run was addressed by its assignee, and a parked attempt can still settle. A pending or blocked task can still be reassigned; `unpark` a parked one first.
+- `immutable-assignee` — the board dispatches work to a dispatch run, and an attempt still holds the task (*in progress* or *parked*): the run was addressed by its assignee, and a parked attempt can still settle. A pending or held task can still be reassigned; `unpark` a parked one first.
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
 - `parked` — you passed `refuseWhenParked` and the task is sitting in `parked`. This is not a lost claim: nobody took the task from you, and a person is deciding what happens to it. The two ask for opposite responses, which is why they are separate reasons — `lost-claim` means re-claim the task and redo the work, `parked` means do neither, because the work is done.
-- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it, or its lease ran out while it was still `in_progress`.
+- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed or re-queued while you were working on it, or its lease ran out while it was still `in_progress`.
+- `started` — a `hold` or a `patchSettings` on a task that has already started. What a task was filed with is fixed once it runs.
 
 When more than one condition applies, `reason` reports the first that holds in that order: `immutable-assignee`, then `terminal`, then `not-my-task`, then `disallowed`, then `parked`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
@@ -495,7 +531,8 @@ Every mutation that changes a field emits a `task-change` component item onto th
   collectionId: "research-plan",
   taskId: "draft",
   kind: "completed",         // added | claimed | completed | errored | retried |
-                             // blocked | unblocked | review_requested | resumed |
+                             // held | released | settings_changed |
+                             // review_requested | resumed |
                              // cancelled | label_changed | metadata_changed |
                              // priority_changed | assignee_changed |
                              // run_linked | reopened

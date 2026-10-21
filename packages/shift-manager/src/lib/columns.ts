@@ -39,9 +39,9 @@ export function columnFor(stored: string): Column {
   }
 }
 
-/** Whether the row carries the *blocked* tag in QUEUED. */
-export function isBlocked(stored: string): boolean {
-  return stored === "blocked";
+/** Whether the row carries the *held* tag in QUEUED: filed, and not to start until released. */
+export function isHeld(stored: string): boolean {
+  return stored === "held";
 }
 
 /** Whether a row is done: Tasks leaves these out (BR-15). */

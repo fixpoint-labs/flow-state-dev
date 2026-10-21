@@ -1,9 +1,9 @@
 /**
  * `taskTools` capability — the model's surface onto a task board.
  *
- * Ten handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
- * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`/`readTask`/
- * `answerTask`) let a model assign work, mark a task complete, answer a task's
+ * Nine handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
+ * `failTask`/`cancelTask`/`updateTask`/`listTasks`/`readTask`/`answerTask`)
+ * let a model assign work, mark a task complete, answer a task's
  * question, or query the board. `readTask` returns one task whole, with what it
  * came back with; `listTasks` lists without results. A task turn's own question park, `parkOnQuestion`, is
  * built apart from them (`createParkOnQuestion`): it acts on the row the
@@ -16,18 +16,18 @@
  * ## Dispatching (FIX-1875)
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
- * a conversation's board), an eleventh tool, `dispatchTask`, starts work now: a
+ * a conversation's board), a tenth tool, `dispatchTask`, starts work now: a
  * new row (`goal`, with `addTask`'s fields and checks, through the same code),
- * or a row recorded earlier (`taskId`), readied by the collection's one
+ * or a row held earlier (`taskId`), released by the collection's one
  * conditional `dispatch` write. With `wait`, the turn parks on it until the
  * task ends. Exactly one of `goal` and `taskId`, and no owner it can resolve is
  * refused (`assignee_required`), each before anything is written.
  *
- * On such a board `addTask` **records** a row and doesn't start it: the row is
- * filed with `Task.undispatched`, which the board's start test and the
- * substrate's claim admission both read, and its result says
- * `status: "recorded"`. `assignTask` only changes the owner, so a recorded row
- * stays recorded. Nothing but `dispatchTask` readies it.
+ * On such a board `addTask` **holds** a row and doesn't start it: the row is
+ * filed `held` (FIX-2080), which no claim admits, and its result says
+ * `status: "held"`. `assignTask` only changes the owner, so a held row stays
+ * held. `dispatchTask` with its `taskId`, or `updateTask` with
+ * `patch.status: "pending"`, releases it.
  *
  * Board resolution goes through the resolver the caller passes (FIX-918). With
  * no board resolvable, every tool returns
@@ -75,6 +75,7 @@ import {
   isTransitionAllowed,
   taskSchema,
   TaskCapExceededError,
+  TaskFilingRefusedError,
   TaskWriteRefusedError,
   type Task,
   type TaskClaimTicket,
@@ -250,7 +251,6 @@ function statusChangingTools(
 ): Array<{ name: string; target: TaskStatus }> {
   const named = (base: string): string => `${base}${suffix}`;
   return [
-    { name: named("blockTask"), target: "blocked" },
     { name: named("cancelTask"), target: "cancelled" },
     { name: named("completeTask"), target: "completed" },
     // `failTask` routes on the retry budget at call time: budget left soft-fails
@@ -275,7 +275,7 @@ function listCalls(names: string[]): string {
  * The one renderer for "this task is finished, so your write was refused"
  * (FIX-976, Decision 6).
  *
- * Four tools now report this — `blockTask` and `completeTask`/`failTask` via a
+ * Four tools now report this — `completeTask`/`failTask` via a
  * refused transition, `assignTask`/`cancelTask`/`updateTask` via a declined
  * write — and they must not drift into four ways of saying the same thing. One
  * sentence shape, one `snake_case` prefix convention (the one
@@ -306,6 +306,8 @@ const terminalWriteToolError = (options: {
 const STATUS_CLAUSE = "Its status will not change again.";
 /** The `clause` for a write that would have changed who the task is assigned to. */
 const ASSIGNEE_CLAUSE = "Its assignee will not change.";
+/** The `clause` for a hold refused on a task that has started (FIX-2080). */
+const HOLD_CLAUSE = "It has started, so it can't be held; cancel it instead.";
 
 /**
  * Turn a refused transition into the recoverable result shape the rest of this
@@ -328,8 +330,8 @@ const ASSIGNEE_CLAUSE = "Its assignee will not change.";
  * **There is no same-status filter, deliberately.** The rule is "would this call
  * succeed", not "does it change the status". A budgeted `failTask` on a
  * `pending` task targets `pending` yet still writes `feedback`, clears
- * `error`/`leaseUntil`, and emits a `retried` change; `blockTask` on an
- * already-`blocked` task updates the reason. Both are real work and stay listed.
+ * `error`/`leaseUntil`, and emits a `retried` change. That is real work and
+ * stays listed.
  *
  * A non-terminal source always yields at least `cancelTask` (every non-terminal
  * status permits `cancelled`), so the action list is never empty — terminal
@@ -523,9 +525,12 @@ const followUpAssigneeError = (followUpOf: string) => ({
 /**
  * Check a follow-up against the board it is filed on (FIX-1817 BR-20 to
  * BR-25): the named task is on this board (its partition, so another
- * conversation's or user's task is unknown here), it has finished, and the
- * session it ran in has no unfinished task. Answers the root, the first task
- * of the chain, and the worker that root ran on.
+ * conversation's or user's task is unknown here), and its root ran with a
+ * worker, so there is a session to follow up in. A session still busy with
+ * another task doesn't refuse it: the follow-up waits, and starts in that
+ * session once the open task ends (FIX-2080, the board's one-open-task start
+ * test). Answers the root, the first task of the chain, and the worker that
+ * root ran on.
  */
 function resolveFollowUp(
   collection: TaskCollectionRef,
@@ -538,14 +543,6 @@ function resolveFollowUp(
       error: `task_not_found: there is no task "${followUpOf}" on this board to follow up.`,
     };
   }
-  if (!isTerminalStatus(named.status)) {
-    return {
-      ok: false as const,
-      error:
-        `follow_up_of_unfinished: task "${followUpOf}" is ${named.status}. A follow-up names ` +
-        `a finished task. Nothing was filed.`,
-    };
-  }
   const root = named.followUpOf ?? named.id;
   const rootTask = collection.get(root);
   // A follow-up runs in the session its root task ran in, with that worker:
@@ -555,18 +552,13 @@ function resolveFollowUp(
     return {
       ok: false as const,
       error:
-        `follow_up_of_unfinished: task "${followUpOf}" never ran with a worker, so there is ` +
+        `follow_up_of_unrun: task "${followUpOf}" never ran with a worker, so there is ` +
         `no session to follow up in. File a new task instead. Nothing was filed.`,
     };
   }
-  const busy = collection
-    .list()
-    .find((task) => (task.followUpOf ?? task.id) === root && !isTerminalStatus(task.status));
-  if (busy !== undefined) return followUpBusyError(busy.id, busy.status, followUpOf);
   // The follow-up's id is the root's, with the lowest number no row holds.
-  // Two follow-ups filed at once both pass the scan above and pick the same
-  // id, and the ledger's insert takes one id once: the check and the insert
-  // are one atomic write, and the loser is refused naming the winner.
+  // Two follow-ups filed at once pick the same id, and the ledger's insert
+  // takes one id once: the loser is refused, and files again.
   let number = 1;
   while (collection.get(`${root}-f${number}`) !== undefined) number += 1;
   return { root, assignee: rootTask.assignee, id: `${root}-f${number}` };
@@ -595,28 +587,11 @@ const awaitingAnswerError = (taskId: string) => ({
     `with its worker, in the session that filed it. Reassign it after that run starts. Nothing was written.`,
 });
 
-/** `addTask`'s refusal for a follow-up whose session still has an unfinished task. */
-const followUpBusyError = (id: string, status: string, followUpOf: string) => ({
-  ok: false as const,
-  error:
-    `session_has_unfinished_task: task "${id}" is still ${status} in the session ` +
-    `"${followUpOf}" ran in, and a session works one task at a time. Follow up once it ` +
-    `finishes. Nothing was filed.`,
-});
-
 /**
  * What a follow-up's add answers when its id was taken by a row filed at the
- * same moment: the session is busy when that row is an unfinished follow-up
- * of the same root (the race this id exists to settle); anything else is an
- * id clash, and the follow-up can simply be filed again.
+ * same moment: the follow-up can simply be filed again, under the next id.
  */
-function followUpTakenError(err: unknown, collection: TaskCollectionRef, id: string, root: string, followUpOf: string) {
-  const winner = ((err as { currentValue?: unknown } | null)?.currentValue ?? collection.get(id)) as
-    | Partial<Task>
-    | undefined;
-  if (winner?.followUpOf === root && (winner.status === undefined || !isTerminalStatus(winner.status))) {
-    return followUpBusyError(id, winner.status ?? "pending", followUpOf);
-  }
+function followUpTakenError(id: string) {
   return {
     ok: false as const,
     error: `task_id_taken: another task took the id "${id}" at the same moment. File the follow-up again. Nothing was filed.`,
@@ -790,9 +765,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting, taskTurnInstead } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
-   * The ten names, optionally board-qualified.
+   * The nine names, optionally board-qualified.
    *
-   * A generator asserts its tool names are unique, and these ten are fixed
+   * A generator asserts its tool names are unique, and these nine are fixed
    * strings, so composing two boards' capabilities into one block collides on
    * every one of them. A suffix is what makes a second board addressable at
    * all; without one the surface is single-board by construction.
@@ -909,10 +884,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "not run it. The board may bound how many tasks wait at once and how many it may hold " +
     "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
     "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.";
-  // FIX-1875 BR-23: on a board that dispatches, recording is all addTask does.
+  // FIX-1875 BR-23: on a board that dispatches, holding is all addTask does (FIX-2080).
   const addTaskRecordsDescription =
-    " On this board the task stays recorded and doesn't start, even with an assignee, until " +
-    "you dispatch it: call dispatchTask with its taskId. To start work now, call dispatchTask " +
+    " On this board the task is held and doesn't start, even with an assignee, until " +
+    "you release it: call dispatchTask with its taskId. To start work now, call dispatchTask " +
     "instead of addTask.";
   const addTaskFields = {
     goal: z.string(),
@@ -937,8 +912,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .string()
       .optional()
       .describe(
-        "The id of a finished task this one follows up. It runs in that task's session, " +
-          "with its worker, so leave assignee unset.",
+        "The id of a task this one follows up. It runs in that task's session, with its " +
+          "worker, so leave assignee unset; if that session is still working a task, it starts " +
+          "once that task ends.",
       ),
   };
   type NewTaskInput = z.infer<z.ZodObject<typeof addTaskFields>>;
@@ -1038,9 +1014,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    * throw propagates.
    */
   async function fileNewTask<T>(
-    collection: TaskCollectionRef,
     followUp: FollowUp | undefined,
-    followUpOf: string | undefined,
     write: () => Promise<T>,
   ): Promise<T | { ok: false; error: string }> {
     try {
@@ -1049,13 +1023,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // A creation cap (FIX-931) is a soft error the model can act on — drain
       // to free enqueue slots, or stop planning at the lifetime ceiling.
       if (err instanceof TaskCapExceededError) return capError(err);
+      // A filing the board can't run as asked (FIX-2080): a dependency on
+      // another board, one already ended, a loop, or a setting this board
+      // can't honour. The message names the rule.
+      if (err instanceof TaskFilingRefusedError) return { ok: false as const, error: err.message };
       // A wrapping ref's own rule refused the filing (FIX-2076).
       if (err instanceof TaskWriteRefusedError) return refusedError(err);
-      // A follow-up's id was taken by one filed at the same moment: that
-      // one holds the session now (see `resolveFollowUp`).
-      if (followUp !== undefined && isTakenTaskId(err)) {
-        return followUpTakenError(err, collection, followUp.id, followUp.root, followUpOf!);
-      }
+      // A follow-up's id was taken by one filed at the same moment.
+      if (followUp !== undefined && isTakenTaskId(err)) return followUpTakenError(followUp.id);
       throw err;
     }
   }
@@ -1070,9 +1045,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(result.taskId !== undefined ? { taskId: result.taskId } : {}),
         };
 
-  /** What a recorded row's result says, so a caller that skipped the description sees it (BR-27). */
-  const recordedNote = (taskId: string) =>
-    `Recorded, not started. Call dispatchTask with taskId "${taskId}" when it should start.`;
+  /** What a held row's result says, so a caller that skipped the description sees it (BR-27). */
+  const heldNote = (taskId: string) =>
+    `Held, not started. Call dispatchTask with taskId "${taskId}" when it should start.`;
 
   const addTask = defineTool({
     name: named("addTask"),
@@ -1084,7 +1059,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       z.object({
         ok: z.literal(true),
         taskId: z.string(),
-        status: z.literal("recorded").optional(),
+        status: z.literal("held").optional(),
         note: z.string().optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
@@ -1112,15 +1087,15 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (!collection) return noBoardError;
       const checked = await checkNewTask(ctx, collection, input, false);
       if ("error" in checked) return checked;
-      return fileNewTask(collection, checked.followUp, input.followUpOf, async () => {
+      return fileNewTask(checked.followUp, async () => {
         if (!dispatches) {
           const task = await collection.addTask(checked.init);
           return { ok: true as const, taskId: task.id };
         }
-        // FIX-1875 D1: on a board that starts a ready row at once, the row is
-        // filed not dispatched, so recording it starts nothing.
-        const task = await collection.addTask({ ...checked.init, undispatched: true });
-        return { ok: true as const, taskId: task.id, status: "recorded" as const, note: recordedNote(task.id) };
+        // FIX-1875 D1, FIX-2080: on a board that starts a ready row at once,
+        // the row is filed held, so writing it down starts nothing.
+        const task = await collection.addTask({ ...checked.init, held: true });
+        return { ok: true as const, taskId: task.id, status: "held" as const, note: heldNote(task.id) };
       });
     },
   });
@@ -1132,7 +1107,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   const dispatchDescription =
     "Start a task on another worker now. Give goal to start a new task, with the same " +
-    "fields addTask takes, or taskId to start a task recorded earlier on this board. " +
+    "fields addTask takes, or taskId to start a task held earlier on this board. " +
     "assignee names the worker; leave it unset only when there is a single worker to " +
     "give it to. Returns the task id at once, without waiting for the task to run, and " +
     "you hear when it ends. Use addTask only to write a task down for later.";
@@ -1150,7 +1125,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     taskId: z
       .string()
       .optional()
-      .describe("A task recorded earlier on this board that hasn't started, to start instead of a new one."),
+      .describe("A task held earlier on this board that hasn't started, to start instead of a new one."),
   };
   const dispatchPostFields = {
     post: z
@@ -1181,7 +1156,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   };
   /** The fields a post takes: everything else describes a task, which a post isn't. */
   const POST_FIELDS = new Set(["post", "assignee", "target"]);
-  /** The fields only a new task takes, refused beside `taskId` (BR-13): change a recorded task with updateTask first. */
+  /** The fields only a new task takes, refused beside `taskId` (BR-13): change a held task with updateTask first. */
   const NEW_TASK_ONLY = ["title", "deps", "priority", "input", "metadata", "followUpOf"] as const;
 
   /**
@@ -1304,14 +1279,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ok: false as const,
           error:
             "dispatch_target_required: give goal to start a new task, or taskId to start one " +
-            "recorded earlier. Nothing was filed.",
+            "held earlier. Nothing was filed.",
         };
       }
       if (hasGoal && hasRef) {
         return {
           ok: false as const,
           error:
-            "dispatch_target_ambiguous: give goal for a new task or taskId for a recorded one, " +
+            "dispatch_target_ambiguous: give goal for a new task or taskId for a held one, " +
             "not both. Nothing was filed.",
         };
       }
@@ -1402,7 +1377,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const owner = await decideOnce(ctx, true, "owner", async () => (await ownerFor(ctx, checked.init.assignee)) ?? null);
       if (owner === null) return assigneeRequiredError;
       const init: TaskInit = { ...checked.init, assignee: owner };
-      return fileNewTask(collection, checked.followUp, input.followUpOf, async () =>
+      return fileNewTask(checked.followUp, async () =>
         input.wait === true ? waitAnswer(await dispatchAndWait(ctx, collection, init, timeout)) : fileReady(ctx, collection, init),
       );
     },
@@ -1414,7 +1389,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "Reassign an existing task to a different worker. A task that has already " +
       "finished cannot be reassigned — you get told so rather than a silent success." +
       (dispatches
-        ? " This only changes who owns it: a recorded task stays recorded until you call " +
+        ? " This only changes who owns it: a held task stays held until you call " +
           "dispatchTask with its taskId."
         : ""),
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
@@ -1448,17 +1423,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       ),
   });
 
-  const blockTask = defineTool({
-    name: named("blockTask"),
-    description: "Block a task pending an external condition.",
-    inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
-    outputSchema: okOrError,
-    execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c, claim) =>
-        c.block(input.taskId, input.reason, claimGuard(claim)),
-      ),
-  });
-
   const cancelTask = defineTool({
     name: named("cancelTask"),
     description:
@@ -1476,7 +1440,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   const updateTask = defineTool({
     name: named("updateTask"),
     description:
-      "Patch a task's mutable fields (priority, metadata, assignee, labels). All patch fields are optional.",
+      "Patch a task's mutable fields (priority, metadata, assignee, labels). All patch fields are optional. " +
+      "status holds a task that hasn't started (\"held\": it won't start until released) or releases " +
+      "a held one (\"pending\"); a task that has started can't be held.",
     inputSchema: z.object({
       taskId: z.string(),
       patch: z.object({
@@ -1485,6 +1451,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         assignee: z.string().optional(),
         addLabel: z.string().optional(),
         removeLabel: z.string().optional(),
+        status: z
+          .enum(["held", "pending"])
+          .optional()
+          .describe("Before the task starts: \"held\" to hold it, \"pending\" to release it."),
       }),
     }),
     outputSchema: okOrError,
@@ -1504,6 +1474,15 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           //
           // Nullable on purpose: a pre-widening custom ref returns nothing, and
           // that is carried past rather than read as a decline (BP-030).
+          // A hold runs first (FIX-2080): it declines on a task that has
+          // started, before anything else is written. A release runs last:
+          // it is what lets the task start, so everything else lands on the
+          // held task first, and a refused reassignment leaves it held rather
+          // than started under the worker it was meant to leave.
+          if (patch.status === "held") {
+            const outcome: TaskWriteOutcome | undefined = await c.hold(input.taskId);
+            if (outcome != null && outcome.outcome === "declined") return outcome;
+          }
           if (patch.assignee !== undefined) {
             const outcome: TaskWriteOutcome | undefined = await c.setAssignee(
               input.taskId,
@@ -1515,13 +1494,19 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
           if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
           if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
+          if (patch.status === "pending") {
+            const outcome: TaskWriteOutcome | undefined = await c.release(input.taskId);
+            if (outcome != null && outcome.outcome === "declined") return outcome;
+          }
         },
         {
           // A patch that doesn't touch `assignee` leaves this undefined, so the
           // gate stays inert for a priority/label-only update.
           assignee: input.patch.assignee,
-          // Only the assignee write can decline here, so the clause names it.
-          declineClause: ASSIGNEE_CLAUSE,
+          // The hold and the assignee write can decline here; the clause names
+          // what didn't change. A hold refused beside a reassignment wrote
+          // nothing either, so the assignee's clause holds for both.
+          declineClause: input.patch.status === "held" && input.patch.assignee === undefined ? HOLD_CLAUSE : ASSIGNEE_CLAUSE,
         },
       ),
   });
@@ -1532,7 +1517,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "List tasks on your delegation board, optionally filtered by status or assignee.",
     inputSchema: z.object({
       status: z
-        .enum(["pending", "in_progress", "parked", "completed", "errored", "cancelled", "blocked"])
+        .enum(["pending", "in_progress", "held", "parked", "completed", "errored", "cancelled"])
         .optional(),
       assignee: z.string().optional(),
     }),
@@ -1694,14 +1679,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     },
   });
 
-  const tools = [addTask, assignTask, completeTask, failTask, blockTask, cancelTask, updateTask, listTasks, readTask, answerTask];
-  // `dispatchTask` follows the ten, so a board that doesn't dispatch keeps
-  // exactly its ten, in their order.
+  const tools = [addTask, assignTask, completeTask, failTask, cancelTask, updateTask, listTasks, readTask, answerTask];
+  // `dispatchTask` follows the nine, so a board that doesn't dispatch keeps
+  // exactly its nine, in their order.
   return dispatches ? [...tools, dispatchTask] : tools;
 }
 
 /**
- * Build the ten `taskTools` handler tools directly (for pushing into a
+ * Build the nine `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  *
  * @param roster Optional roster of the board's workers, fixed or read per call
@@ -1824,7 +1809,7 @@ export interface DispatchPostForm {
 /**
  * The task tools as a turn gets them: a list of the same names per kind of
  * turn (waiting or not, routing a post or not), each built once, and the one
- * the turn can use. The ten, and `dispatchTask` on a board
+ * the turn can use. The nine, and `dispatchTask` on a board
  * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
  * `timeoutMs` only on a board that also resumes waits (`options.resumesWaits`)
  * and a host that can hold and bound one ({@link canHoldWait}). `addTask`
@@ -1872,11 +1857,11 @@ export function taskToolsForTurn(
 
 
 // ---------------------------------------------------------------------------
-// The ten tools as flow actions
+// The nine tools as flow actions
 // ---------------------------------------------------------------------------
 
 /**
- * The qualifier that makes one board's ten task tools distinct from
+ * The qualifier that makes one board's nine task tools distinct from
  * another's: the board's collection id with every character a provider does
  * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
  * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
@@ -1901,7 +1886,7 @@ export interface TaskToolActionsBoard {
 }
 
 /**
- * A durable board's ten task tools as a flow `actions` map, named
+ * A durable board's nine task tools as a flow `actions` map, named
  * `<tool>_<suffix>` ({@link taskToolSuffix}). Spread it into `defineFlow`'s
  * `actions` to let a caller — a person in the DevTool, an app's own screen —
  * change a task from outside the run that works it.

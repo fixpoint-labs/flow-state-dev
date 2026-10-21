@@ -80,7 +80,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
-| **Task** | orchestration | One unit of work: a goal, a status (`pending`, `in_progress`, `blocked`, `parked`, `completed`, `errored` or `cancelled`), dependencies, an optional assignee, input and output. See [Task substrate](./orchestration/task-substrate.md). | None |
+| **Task** | orchestration | One unit of work: a goal, a status (`pending`, `in_progress`, `held`, `parked`, `completed`, `errored` or `cancelled`), dependencies, an optional assignee, input and output. See [Task substrate](./orchestration/task-substrate.md). | None |
 | **Task collection** | orchestration | Where tasks are kept, with one API (add, claim, complete, fail, park) whichever store backs it. | State, or a resource collection |
 | **Task board** | orchestration | `taskBoard()`: drains a task collection with a pool of workers, holding back tasks whose dependencies aren't done. See [Task board](./orchestration/task-board.md). | Sequencer, task collection, capability |
 | **Board worker** | orchestration | A block that runs one claimed task. | Block |

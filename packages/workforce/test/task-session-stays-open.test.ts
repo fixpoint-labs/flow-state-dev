@@ -137,7 +137,7 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
-  it("a follow-up recorded with addTask waits, and dispatched by its id runs in the root task's session", async () => {
+  it("a follow-up held with addTask waits, and dispatched by its id runs in the root task's session", async () => {
     const h = plain();
     try {
       const conv = await h.conversation("alice", "lead");
@@ -146,9 +146,9 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
       const recorded = await h.act("alice", conv, "addTask_tasks", { goal: "Now open the PR", followUpOf: root.taskId });
       expect(recorded.error, messageOf(recorded.error)).toBeUndefined();
       const followUp = recorded.output as { ok: boolean; taskId?: string; status?: string };
-      expect(followUp).toMatchObject({ ok: true, status: "recorded" });
+      expect(followUp).toMatchObject({ ok: true, status: "held" });
       await h.settled();
-      // Recorded: nothing ran.
+      // Held: nothing ran.
       expect(h.runs.map((run) => run.message)).toEqual(["Draft the plan"]);
 
       expect(await file(h, conv, { taskId: followUp.taskId })).toMatchObject({ ok: true, taskId: followUp.taskId });
@@ -188,17 +188,25 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
     }
   });
 
-  it("refuses a follow-up while an earlier one is unfinished, naming it (BR-25)", async () => {
+  it("files a follow-up while an earlier one runs: it waits, then runs after it in the same session (FIX-2080)", async () => {
     const h = plain();
     try {
       const conv = await h.conversation("alice", "lead");
       const root = await file(h, conv, { goal: "Draft the plan", assignee: "eng.tasker" });
       await h.settled();
       const slow = await file(h, conv, { goal: "[slow:400] Now open the PR", followUpOf: root.taskId });
-      const refused = await file(h, conv, { goal: "And tag it", followUpOf: root.taskId });
-      expect(refused).toMatchObject({ ok: false, error: expect.stringContaining(`task "${slow.taskId}"`) });
+      const waiting = await file(h, conv, { goal: "And tag it", followUpOf: root.taskId });
+      expect(waiting).toMatchObject({ ok: true });
+      // Filed while the session works another task: it doesn't start yet.
+      const early = (await h.rows("alice")).find((r) => r.id === waiting.taskId)!;
+      expect(early).toMatchObject({ status: "pending", attempts: 0 });
       await h.settled();
-      expect((await h.rows("alice")).some((r) => r.goal === "And tag it")).toBe(false);
+      // Then it runs, after the one before it, in the root task's session.
+      expect(h.runs.map((run) => run.message)).toEqual(["Draft the plan", "[slow:400] Now open the PR", "And tag it"]);
+      expect(new Set(h.runs.map((run) => run.sessionId)).size).toBe(1);
+      const rows = await h.rows("alice");
+      expect(rows.find((r) => r.id === slow.taskId)?.status).toBe("completed");
+      expect(rows.find((r) => r.id === waiting.taskId)?.status).toBe("completed");
     } finally {
       await h.dispose();
     }
@@ -444,7 +452,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       await h.act("alice", conv, "run", { message: "TOOLS-check" });
       const turn = seen.filter((s) => s.input.includes("TOOLS-check"));
       expect(turn.length).toBeGreaterThan(0);
-      const tools = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
+      const tools = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
       for (const t of turn) {
         for (const name of tools) expect(t.names.filter((n) => n === name), name).toHaveLength(1);
         expect(t.names).not.toContain("parkOnQuestion");

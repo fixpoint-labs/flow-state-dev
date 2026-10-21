@@ -76,10 +76,10 @@ const turnCtx = (base: object, requestId: string) => ({
 });
 
 describe("answerTask (S2)", () => {
-  it("is one of the task tools, beside the other nine", () => {
+  it("is one of the task tools, beside the other eight", () => {
     const names = buildTaskToolsList(ownStateResolver).map((t) => (t as any).config.name);
     expect(names.filter((n: string) => n === "answerTask")).toHaveLength(1);
-    expect(names).toHaveLength(10);
+    expect(names).toHaveLength(9);
   });
 
   it("re-queues a task parked on a question with the answer, counted as a re-entry (BR-6, BR-8)", async () => {
@@ -99,7 +99,7 @@ describe("answerTask (S2)", () => {
   it.each([
     ["pending", {}],
     ["in_progress", { attempts: 1 }],
-    ["blocked", {}]
+    ["held", {}]
   ] as const)("declines a %s task, naming why, and writes nothing (BR-10)", async (status, extra) => {
     const b = await board([row("t", { status, ...extra })]);
     const before = JSON.stringify(b.get("t"));
@@ -196,20 +196,32 @@ describe("addTask's followUpOf (S4)", () => {
     expect(b.get(out.taskId)).toMatchObject({ followUpOf: "root", assignee: "researcher" });
   });
 
-  it.each(["pending", "in_progress", "parked", "blocked"] as const)(
-    "refuses a %s task, naming its status, and stores nothing (BR-21)",
+  it.each(["pending", "held"] as const)(
+    "refuses a %s task that never ran: there is no session to follow up in, and nothing is stored (BR-21)",
     async (status) => {
       const b = await board([row("root", { status, assignee: "researcher" })]);
       const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
-      expect(out).toMatchObject({ ok: false, error: expect.stringMatching(new RegExp(`^follow_up_of_unfinished: .*${status}`)) });
+      expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun: task "root" never ran/) });
       expect(b.ref.list()).toHaveLength(1);
+    }
+  );
+
+  it.each(["in_progress", "parked"] as const)(
+    "files a follow-up of a %s task that runs in its session: it waits for that task to end (FIX-2080)",
+    async (status) => {
+      const b = await board([
+        row("root", { status, assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),
+      ]);
+      const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
+      expect(out).toMatchObject({ ok: true, taskId: "root-f1" });
+      expect(b.get("root-f1")).toMatchObject({ followUpOf: "root", assignee: "researcher", status: "pending" });
     }
   );
 
   it("refuses a follow-up of a task cancelled before it ever ran, filing nothing", async () => {
     const b = await board([row("root", { status: "cancelled", assignee: "researcher" })]);
     const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished: task "root" never ran/) });
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun: task "root" never ran/) });
     expect(b.ref.list()).toHaveLength(1);
   });
 
@@ -256,13 +268,13 @@ describe("addTask's followUpOf (S4)", () => {
     const dispatchTask = toolNamed(tools, "dispatchTask");
     expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
     const unfinished = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
-    expect(unfinished).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished/) });
+    expect(unfinished).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun/) });
     const assigned = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", assignee: "x", wait: true }, ctx)) as any;
     expect(assigned).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee/) });
     expect(b.ref.list()).toHaveLength(1);
   });
 
-  it("accepts one of two follow-ups filed at once, and refuses the other naming it (BR-25, concurrent)", async () => {
+  it("accepts one of two follow-ups filed at once under one id, and asks the other to file again (BR-25, concurrent)", async () => {
     // A durable ledger: its insert takes an id once, as the stores do.
     const ref = await createResourceBackedTaskCollection({
       collectionId: "tasks",
@@ -278,18 +290,19 @@ describe("addTask's followUpOf (S4)", () => {
     const refused = [one, two].filter((r) => r.ok === false);
     expect(accepted).toHaveLength(1);
     expect(refused).toHaveLength(1);
-    expect(refused[0].error).toMatch(new RegExp(`^session_has_unfinished_task: task "${accepted[0].taskId}"`));
+    expect(refused[0].error).toMatch(new RegExp(`^task_id_taken: .*"${accepted[0].taskId}"`));
     expect(ref.list().filter((t) => t.followUpOf === "root")).toHaveLength(1);
   });
 
-  it("refuses while the session has an unfinished task, naming it (BR-25)", async () => {
+  it("files a follow-up while the session has an unfinished task: it waits, never refused (FIX-2080)", async () => {
     const b = await board([
       row("root", { status: "completed", assignee: "researcher", attempts: 1, run: { sessionId: "s-root", requestId: "r-root", attempt: 1 } }),
       row("f1", { status: "in_progress", assignee: "researcher", attempts: 1, followUpOf: "root" })
     ]);
     const out = await b.call("addTask", { goal: "more", followUpOf: "root" });
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^session_has_unfinished_task: task "f1"/) });
-    expect(b.ref.list()).toHaveLength(2);
+    expect(out).toMatchObject({ ok: true, taskId: "root-f1" });
+    expect(b.get("root-f1")).toMatchObject({ followUpOf: "root", status: "pending" });
+    expect(b.ref.list()).toHaveLength(3);
   });
 });
 

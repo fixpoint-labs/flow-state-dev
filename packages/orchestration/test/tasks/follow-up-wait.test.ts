@@ -104,7 +104,7 @@ describe("a waiting follow-up keeps its own id", () => {
       const rows = (await act(state, flow, "list")).output as Row[];
       expect(rows.filter((r) => r.followUpOf === "root")).toHaveLength(1);
       const results = seen.slice(1).map((s) => toolResults(s.messages)).join(" | ");
-      expect(results).toContain('session_has_unfinished_task: task \\"root-f1\\"');
+      expect(results).toContain('task_id_taken: another task took the id \\"root-f1\\"');
     } finally {
       await state.dispose();
     }
@@ -120,7 +120,7 @@ describe("a waiting follow-up keeps its own id", () => {
       const rows = (await act(state, flow, "list")).output as Row[];
       expect(rows.filter((r) => r.followUpOf === "root")).toHaveLength(1);
       const results = seen.slice(2).map((s) => toolResults(s.messages)).join(" | ");
-      expect(results).toContain('session_has_unfinished_task: task \\"root-f1\\"');
+      expect(results).toContain('task_id_taken: another task took the id \\"root-f1\\"');
     } finally {
       await state.dispose();
     }

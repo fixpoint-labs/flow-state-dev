@@ -73,7 +73,7 @@ const run = (tool: GeneratorTool, input: Record<string, unknown>, ctx: BlockCont
 describe("dispatchTask with a named owner, racing a reassign (BR-25)", () => {
   it("a dispatch naming the row's own owner still writes it, so a reassign landing after the read doesn't stand", async () => {
     const collection = await board();
-    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.a", undispatched: true });
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.a", held: true });
     // assignTask(B) commits after dispatchTask read the row as A's, and before its write.
     const racing = Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
       dispatch: async (...args: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>) => {
@@ -87,12 +87,12 @@ describe("dispatchTask with a named owner, racing a reassign (BR-25)", () => {
     expect(result).toEqual({ ok: true, taskId: "task_rec" });
     // The dispatch is the later write, so its owner stands.
     expect(collection.get("task_rec")).toMatchObject({ assignee: "eng.a" });
-    expect(collection.get("task_rec")?.undispatched).toBeUndefined();
+    expect(collection.get("task_rec")?.status).toBe("pending");
   });
 
   it("a dispatch that names nobody keeps the row's owner, whoever set it last", async () => {
     const collection = await board();
-    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.a", undispatched: true });
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.a", held: true });
     const racing = Object.assign(Object.create(Object.getPrototypeOf(collection)), collection, {
       dispatch: async (...args: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>) => {
         await collection.setAssignee("task_rec", "eng.b");
@@ -159,7 +159,7 @@ describe("dispatchTask replayed after the team changed (BR-15)", () => {
 
   it("a recorded row dispatched to a named delegate who has since left answers as the first call did", async () => {
     const collection = await board();
-    await collection.addTask({ id: "task_rec", goal: "Audit licenses", undispatched: true });
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", held: true });
     const dying = dyingOnce(collection, "dispatch");
     const t = team(["eng.a", "eng.b"]);
     const memo = new Map<string, unknown>();
@@ -242,7 +242,7 @@ describe("dispatchTask title", () => {
 
   it("refuses a title beside taskId: it describes a new task, not one already recorded", async () => {
     const collection = await board();
-    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", undispatched: true });
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", held: true });
     const t = team(["eng.coder"]);
     const result = await run(dispatchTool(collection, t.roster), { taskId: "task_rec", title: "Audit" }, turnCtx(new Map()));
     expect(result.ok).toBe(false);
@@ -254,7 +254,7 @@ describe("dispatchTask title", () => {
 
   it("still points to updateTask for fields it can change, when a title comes with them", async () => {
     const collection = await board();
-    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", undispatched: true });
+    await collection.addTask({ id: "task_rec", goal: "Audit licenses", assignee: "eng.coder", held: true });
     const t = team(["eng.coder"]);
     const result = await run(dispatchTool(collection, t.roster), { taskId: "task_rec", title: "Audit", priority: 2 }, turnCtx(new Map()));
     expect(result.error).toContain("updateTask");

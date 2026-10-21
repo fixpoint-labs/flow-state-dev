@@ -482,7 +482,7 @@ import { BoardColumns } from "@flow-state-dev/react";
 
 `boardRef` is the key the session's flow declares that board's ledger under. Like the roster's ref it is one path segment.
 
-The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `blocked`, `parked`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
+The columns are the task statuses, in the order work moves through them: `pending`, `in_progress`, `held`, `parked`, `completed`, `errored`, `cancelled`. The package exports that list as `BOARD_STATUS_COLUMNS`. A row whose status the component does not recognise gets a column of its own at the end rather than vanishing.
 
 A board with no rows renders an empty state rather than a spinner.
 

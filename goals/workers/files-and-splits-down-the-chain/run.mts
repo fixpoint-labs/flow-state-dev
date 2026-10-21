@@ -45,7 +45,7 @@ const SCRIPTED_LEGS = new Set(["a", "b", "c", "d"]);
 /** The app's own chain cap on leg d's second Lab. */
 const APP_CAP = 3;
 /** The task tools (the pinned eight, and `answerTask`): none may be on the turn of a worker with no task-taking delegate. */
-const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
+const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
 const say = (s: string) => console.error(`[split ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 

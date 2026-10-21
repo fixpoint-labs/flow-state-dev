@@ -143,13 +143,13 @@ describe.each(BACKINGS)("an answered question (%s)", (_name, makeBacking) => {
     expect(await tasks.setAssignee("t", "a")).toMatchObject({ outcome: "unchanged" });
   });
 
-  it("keeps the fence while an answered row is blocked before it runs again", async () => {
+  it("keeps the fence on an answered row, which can't be held: it has started", async () => {
     const tasks = await makeBacking();
     await tasks.addTask({ id: "t", goal: "t", maxAttempts: 2, assignee: "a" });
     await claimThenAsk(tasks);
     await tasks.unpark("t", "eu-west", { answer: true });
-    await tasks.block("t", "hold on");
-    expect((tasks.get("t") as Task)).toMatchObject({ status: "blocked", answered: true });
+    expect(await tasks.hold("t")).toMatchObject({ outcome: "declined", reason: "started" });
+    expect((tasks.get("t") as Task)).toMatchObject({ status: "pending", answered: true });
     expect(await tasks.setAssignee("t", "b")).toMatchObject({ outcome: "declined", reason: "awaiting-answer" });
     expect((tasks.get("t") as Task).assignee).toBe("a");
   });
