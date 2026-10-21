@@ -109,7 +109,9 @@ when none is left.
 - **A message to a task** (`sendMessage`, FIX-2070) is conversation and never a steer.
 - **A follow-up's session and filing** as FIX-2080 sets them: `followUpOf`, the earlier task's
   session, one open task per session.
-- **Who may call `updateTask`**: the filer, and the user from a screen (FIX-2081).
+- **Who may call `updateTask`**: the filer, and the user from a screen (FIX-2081); and the
+  assignee, for the `output` checkpoint on its own running task only ([FIX-2081 D3](../FIX-2081/DECISIONS.md#d3)).
+  The assignee never sends a `message` to its own task.
 - **Stop-and-continue for coding runs** ([FIX-1690's fork](../FIX-1690/DECISIONS.md#open--live-delivery-mid-step-or-stop-and-continue-for-every-harness-first)): no harness takes a line mid-step.
 
 ## What's already here, and the debt

@@ -149,5 +149,7 @@ discarding one.
 - **Draft** — framed as rule 20's `message` row and fixed output: one steer write kept on the
   task, taken before the next model call or by one more turn, ending a coding run but not its
   request; reopen and the coding door go, and a follow-up carries the correction.
+- **Cross-spec** — `updateTask`'s callers add the assignee, for FIX-2081's `output` checkpoint
+  row only, settled on the epic thread.
 
 Open: none.
