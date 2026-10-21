@@ -15,6 +15,7 @@ import {
 } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
@@ -78,6 +79,13 @@ const seatWork = handler({
   },
 });
 
+/** Each flow here hands rows out, so it hears each ending; this goal grades the seat, not the notice. */
+const heard = {
+  onTaskSettled: taskSettledEntry({
+    block: handler({ name: "goal-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => ({}) }),
+  }),
+};
+
 const workerFlowName = defineFlow({
   kind: "seat",
   cardinality: "collection",
@@ -98,6 +106,7 @@ const workerFlowName = defineFlow({
     },
   },
   task: { actions: { work: { block: seatWork } } },
+  internal: { actions: heard },
   authentication: verified,
 });
 
@@ -124,6 +133,7 @@ const orgBoard = taskBoard({
 const boardFlow = defineFlow({
   kind: "board",
   actions: { start: { block: orgBoard.drain } },
+  internal: { actions: heard },
   authentication: verified,
 });
 
