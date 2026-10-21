@@ -141,6 +141,12 @@ describe("the DEFERRED list", () => {
       "tools",
       "memory",
       "thought-fabric-core",
+      "claude-code",
+      "cli",
+      "codex",
+      "cursor",
+      "devtool",
+      "harness-manager",
     ]) {
       expect(deferred, dir).not.toHaveProperty(dir);
     }

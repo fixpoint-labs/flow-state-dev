@@ -925,8 +925,8 @@ importers:
         specifier: ^4.19.4
         version: 4.21.0
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/client:
     dependencies:
@@ -24618,7 +24618,8 @@ snapshots:
 
   zod@3.25.76: {}
 
-  zod@4.3.6: {}
+  zod@4.3.6:
+    optional: true
 
   zustand@4.5.7(@types/react@19.2.14)(react@19.2.4):
     dependencies:
