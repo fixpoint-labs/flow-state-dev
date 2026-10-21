@@ -1,8 +1,7 @@
 /**
  * Type-level tests pinning the public `BlockContext` boundary (FIX-999).
  *
- * `pnpm typecheck` compiles this file, and the package's `test/` files too, so
- * a wrong assertion here or in a test fails it. Vitest does not check types.
+ * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  *
  * What they pin down, and why it is worth a file:
  *

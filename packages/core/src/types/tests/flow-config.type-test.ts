@@ -9,8 +9,7 @@
  *   annotation and no flow named — so the block stays portable and its type
  *   has an actual check behind it.
  *
- * `pnpm typecheck` compiles this file, and the package's `test/` files too, so
- * a wrong assertion here or in a test fails it.
+ * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  */
 import { z } from "zod";
 import { defineFlow } from "../../flow/defineFlow";

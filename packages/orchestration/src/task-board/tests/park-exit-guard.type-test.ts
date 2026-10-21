@@ -1,8 +1,7 @@
 /**
  * Type-level test for the park-exit verdict's adjacency guard (FIX-1238).
  *
- * `pnpm typecheck` compiles this file, and the package's `test/` files too, so
- * a wrong assertion here or in a test fails it.
+ * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  *
  * What it pins down: `boardExitsConnector` still has teeth. The connector is the
  * only thing making the drain's completion tap reject a step wired in front of
