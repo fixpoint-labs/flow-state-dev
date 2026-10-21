@@ -251,6 +251,16 @@ describe("a failure or a cancel names the dependents it cancelled (FIX-2078 D2)"
     row({ id: "d4", status: "cancelled", causedBy: "other", filer } as Partial<Task>)
   ];
 
+  it("names a dependent filed after the upgrade by a cause filed before it, by the board's filer rule (BP-030)", () => {
+    // The cause predates `Task.filer`; its board's legacy rule reads the conversation.
+    const legacy = row({ id: "old", status: "errored", error: "boom" } as Partial<Task>);
+    const later = row({ id: "new", status: "cancelled", causedBy: "old", filer } as Partial<Task>);
+    const filerOf = (task: Task) => task.filer?.sessionId ?? "conversation";
+    expect(cancelledDependents(legacy, [legacy, later], filerOf)).toEqual(["new"]);
+    const written = recordEnding(legacy, { kind: "errored", error: "boom" });
+    expect(owedNotices(written, "tasks", [written, later], filerOf)[0]?.cancelled).toEqual(["new"]);
+  });
+
   it("lists only the cancels its ending caused that share its filer", () => {
     expect(cancelledDependents(failed, rows)).toEqual(["d1"]);
     const written = recordEnding(failed, { kind: "errored", error: "boom" });

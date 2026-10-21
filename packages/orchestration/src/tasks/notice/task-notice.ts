@@ -81,6 +81,16 @@ export const NOTICE_DUE_MS = 2_000;
 /** The marker each owed notice is kept under, in the row's metadata. */
 const OWED_PREFIX = "noticeOwed:";
 
+/**
+ * Where a pass records that it sent an owed notice again: when, and how many
+ * times. Kept beside the marker, never in it, so a resend can't bring back a
+ * marker its entry cleared meanwhile.
+ */
+const RESENT_PREFIX = "noticeResent:";
+
+/** The longest a pass waits between two resends of one notice: 5 minutes. */
+export const NOTICE_RESEND_CAP_MS = 300_000;
+
 /** What a marker holds: enough to rebuild the notice from the row it is on. */
 interface OwedMarker {
   readonly attempt: number;
@@ -160,14 +170,20 @@ function isMarker(key: string, value: unknown): value is OwedMarker {
  * @param boardId The ledger it is on.
  * @param rows The board's rows, to name a failure's or a cancel's cancelled
  *   dependents (FIX-2078 D2). Omitted, the notice names none.
+ * @param filerOf The board's filer resolver (see {@link cancelledDependents}).
  */
-export function owedNotices(row: Task, boardId: string, rows?: readonly Task[]): TaskNotice[] {
+export function owedNotices(
+  row: Task,
+  boardId: string,
+  rows?: readonly Task[],
+  filerOf?: (row: Task) => string | undefined
+): TaskNotice[] {
   const notices: TaskNotice[] = [];
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
     if (!isMarker(key, value)) continue;
     const cancelled =
       rows !== undefined && (value.ending === "errored" || value.ending === "cancelled")
-        ? cancelledDependents(row, rows)
+        ? cancelledDependents(row, rows, filerOf)
         : [];
     notices.push({
       boardId,
@@ -192,24 +208,64 @@ export function noticeDueAt(row: Task): number | undefined {
   let due: number | undefined;
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
     if (!isMarker(key, value)) continue;
-    const at = value.due ?? 0;
+    const at = nextSendAt(row, value);
     due = due === undefined ? at : Math.min(due, at);
   }
   return due;
 }
 
+/** A notice's resend record, when a pass has sent it again. */
+function resentOf(row: Task, attempt: number, ending: NoticeEnding): { at: number; n: number } | undefined {
+  const value = (row.metadata ?? {})[`${RESENT_PREFIX}${attempt}:${ending}`] as { at?: unknown; n?: unknown } | null | undefined;
+  return value != null && typeof value.at === "number" && typeof value.n === "number" ? { at: value.at, n: value.n } : undefined;
+}
+
+/**
+ * When a marker's notice is next sent: its due time, or, once a pass has sent
+ * it again `n` times, the last resend plus `NOTICE_DUE_MS · 2^n`, at most
+ * {@link NOTICE_RESEND_CAP_MS}. A copy sent within that gap is taken to be on
+ * its way.
+ */
+function nextSendAt(row: Task, marker: OwedMarker): number {
+  const resent = resentOf(row, marker.attempt, marker.ending);
+  if (resent === undefined) return marker.due ?? 0;
+  return resent.at + Math.min(NOTICE_DUE_MS * 2 ** resent.n, NOTICE_RESEND_CAP_MS);
+}
+
+/**
+ * When `notice` first fell due, and when it is next sent (see `nextSendAt`).
+ * `undefined` when `row` no longer owes it. Its age counts from `due`.
+ */
+export function noticeTimes(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): { due: number; next: number } | undefined {
+  const key = markerKey(notice.attempt, notice.ending);
+  const value = (row.metadata ?? {})[key];
+  if (!isMarker(key, value)) return undefined;
+  return { due: value.due ?? 0, next: nextSendAt(row, value) };
+}
+
+/** The metadata patch that records one more resend of `notice` at `now`. */
+export function resentRecord(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">, now: number): Record<string, unknown> {
+  const n = (resentOf(row, notice.attempt, notice.ending)?.n ?? 0) + 1;
+  return { [`${RESENT_PREFIX}${notice.attempt}:${notice.ending}`]: { at: now, n } };
+}
+
 /**
  * The dependents `row`'s ending cancelled that share its filer, by id: the
  * rows whose cascaded cancel names it (`causedBy`), filed by the same session.
+ *
+ * @param filerOf Who filed a row, by the same rule the cascade decided "shares
+ *   the filer" by, when it owed the dependent no notice of its own: the board's
+ *   delivery resolver, which reads a row filed before `Task.filer` by its
+ *   legacy filer (BP-030). Default: `Task.filer` alone.
  */
-export function cancelledDependents(row: Task, rows: readonly Task[]): string[] {
+export function cancelledDependents(
+  row: Task,
+  rows: readonly Task[],
+  filerOf: (row: Task) => string | undefined = (task) => task.filer?.sessionId
+): string[] {
+  const filer = filerOf(row);
   return rows
-    .filter(
-      (other) =>
-        other.status === "cancelled" &&
-        other.causedBy === row.id &&
-        other.filer?.sessionId === row.filer?.sessionId
-    )
+    .filter((other) => other.status === "cancelled" && other.causedBy === row.id && filerOf(other) === filer)
     .map((other) => other.id);
 }
 
@@ -299,13 +355,21 @@ export function noticeText(
   }
 }
 
+/** The metadata key a notice settled undeliverable is recorded under, on its row. */
+export const UNDELIVERABLE_PREFIX = "noticeUndeliverable:";
+
 /**
- * Metadata a caller hands in, without any notice marker: a filing or a patch
- * can't forge a debt or clear one. `undefined` stays `undefined`.
+ * Metadata a caller hands in, without any notice marker or undeliverable
+ * record: a filing or a patch can't forge a debt, clear one, or mark one
+ * settled (BP-031). `undefined` stays `undefined`.
  */
 export function withoutNoticeMarkers(
   metadata: Readonly<Record<string, unknown>> | undefined
 ): Record<string, unknown> | undefined {
   if (metadata === undefined) return undefined;
-  return Object.fromEntries(Object.entries(metadata).filter(([key]) => !key.startsWith(OWED_PREFIX)));
+  return Object.fromEntries(
+    Object.entries(metadata).filter(
+      ([key]) => !key.startsWith(OWED_PREFIX) && !key.startsWith(UNDELIVERABLE_PREFIX) && !key.startsWith(RESENT_PREFIX)
+    )
+  );
 }

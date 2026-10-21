@@ -31,7 +31,7 @@ import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { clearNotice, NOTICE_DUE_MS, noticeDueAt, owedNotices, type TaskNotice } from "./task-notice";
+import { clearNotice, NOTICE_DUE_MS, noticeDueAt, noticeTimes, owedNotices, resentRecord, type TaskNotice } from "./task-notice";
 import { TASK_SETTLED_ENTRY, undeliverableRecord, type DeclaredDelivery } from "./delivery";
 
 /** The default most a debt may stay outstanding past its due time, when the host names none: 24 hours. */
@@ -57,6 +57,12 @@ export interface PayBoardDebtsOptions {
    * the repairs before it already sent what was past due.
    */
   readonly resend?: boolean;
+  /**
+   * The session that filed a row, as the board's delivery resolves it (a row
+   * filed before `Task.filer` by its legacy filer). Names a notice's cancelled
+   * dependents by the same rule the cascade suppressed their notices by.
+   */
+  readonly filerOf?: (row: Task) => string | undefined;
 }
 
 function log(message: string, detail: Record<string, unknown>): void {
@@ -99,15 +105,21 @@ export async function payBoardDebts(
   for (const row of rows) {
     const due = noticeDueAt(row);
     if (due === undefined || due > now || options.resend === false) continue;
-    for (const notice of owedNotices(row, ref.collectionId, rows)) {
-      if (tooOld(due)) {
-        const detail = `it was still owed ${Math.round((now - due) / 1000)} s past its due time`;
+    for (const notice of owedNotices(row, ref.collectionId, rows, options.filerOf)) {
+      const times = noticeTimes(row, notice);
+      if (times === undefined) continue;
+      if (tooOld(times.due)) {
+        const detail = `it was still owed ${Math.round((now - times.due) / 1000)} s past its due time`;
         log("a notice past the maximum debt age was settled undeliverable", { taskId: row.id, ending: notice.ending });
         await ref.patchMetadata(row.id, { ...clearNotice(notice), ...undeliverableRecord(notice, detail, now) });
         await options.onUndeliverable?.(ctx, row, notice, detail);
         continue;
       }
+      // Sent again lately: that copy is taken to be on its way.
+      if (times.next > now) continue;
       try {
+        // Recorded before the send, so a send that hangs still backs off.
+        await ref.patchMetadata(row.id, resentRecord(row, notice, now));
         await dispatchThroughSeam(ctx, {
           type: "internal",
           action: options.noticeEntry?.(row) ?? TASK_SETTLED_ENTRY,
@@ -162,7 +174,8 @@ async function stampLegacyNotices(ref: TaskCollectionRef, now: number): Promise<
 /**
  * After a pass: move the session's wake for `entry` to `nextDue`, or clear it
  * when nothing is outstanding, conditional on the version the pass read at its
- * start (`RequestHost.wakes`). A no-op on a host that keeps no wakes.
+ * start (`RequestHost.wakes`). A pass that read none owes one at `nextDue`. A
+ * no-op on a host that keeps no wakes.
  */
 export async function settlePassWake(
   ctx: BlockContext,
@@ -171,7 +184,17 @@ export async function settlePassWake(
   nextDue: number | undefined
 ): Promise<void> {
   const wakes = ctx.requestHost?.wakes;
-  if (wakes === undefined || read === undefined) return;
+  if (wakes === undefined) return;
+  if (read === undefined) {
+    // A pass that started with no wake to move still leaves its next debt one.
+    if (nextDue === undefined) return;
+    try {
+      await wakes.owe({ entry, dueAt: nextDue });
+    } catch (error) {
+      log("a pass's next debt got no wake", { entry, error: (error as Error).message });
+    }
+    return;
+  }
   try {
     await wakes.settle(entry, read, nextDue ?? null);
   } catch (error) {

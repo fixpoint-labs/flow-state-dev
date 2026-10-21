@@ -110,4 +110,15 @@ describe("RequestHost.wakes", () => {
     await wakes.owe({ entry: "runTaskBoard", dueAt: 1_001_000 });
     expect(heard).toEqual([1_002_000]);
   });
+
+  it("tells the listener the due time the wake keeps, so a later owe never delays the sweeper", async () => {
+    const { stores, wakes } = await setup();
+    const heard: number[] = [];
+    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_001_000 });
+    const stop = onWakeOwed(stores.wakes!, (dueAt) => heard.push(dueAt));
+    // Coalesced: the earlier due time still governs.
+    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_009_000 });
+    stop();
+    expect(heard).toEqual([1_001_000]);
+  });
 });

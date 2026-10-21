@@ -25,7 +25,7 @@
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext, DispatchOutcome, SessionTarget } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
-import { clearNotice, NOTICE_DUE_MS, owedNotices, type TaskNotice } from "./task-notice";
+import { clearNotice, NOTICE_DUE_MS, owedNotices, UNDELIVERABLE_PREFIX, type TaskNotice } from "./task-notice";
 
 /** The internal entry a notice arrives on in the filer's session, unless a board names another. Pinned. */
 export const TASK_SETTLED_ENTRY = "onTaskSettled";
@@ -62,12 +62,18 @@ export interface DeclaredDelivery {
   readonly onUndeliverable?: (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => Promise<void>;
 }
 
-/** The metadata key a notice settled undeliverable is recorded under, on its row. */
-const UNDELIVERABLE_PREFIX = "noticeUndeliverable:";
-
 /** The record of a notice settled undeliverable: when, and why. */
 export function undeliverableRecord(notice: Pick<TaskNotice, "attempt" | "ending">, detail: string, at: number): Record<string, unknown> {
   return { [`${UNDELIVERABLE_PREFIX}${notice.attempt}:${notice.ending}`]: { at, detail } };
+}
+
+/**
+ * Who filed a row on a ledger with `declared` delivery: `Task.filer`, or for a
+ * row filed before it, the ledger's legacy filer at `partition` (BP-030). The
+ * one rule a cascade's notice suppression and a notice's naming both use.
+ */
+export function filerResolver(declared: DeclaredDelivery, partition: string | undefined): (row: Task) => string | undefined {
+  return (row) => row.filer?.sessionId ?? declared.legacyFiler?.(row, partition);
 }
 
 /** What a backing runs around an ending's write, bound to the running request. */
@@ -94,8 +100,7 @@ export function createDelivery(
   board: { readonly collectionId: string; readonly partition?: string }
 ): DeliveryHooks {
   const passEntry = declared.passEntry ?? TASK_SETTLED_ENTRY;
-  const filerOf = (row: Task): string | undefined =>
-    row.filer?.sessionId ?? declared.legacyFiler?.(row, board.partition);
+  const filerOf = filerResolver(declared, board.partition);
   const addressOf = (filer: string): NoticeAddress | undefined =>
     declared.address !== undefined ? declared.address(ctx, filer) : { session: { id: filer } };
 
@@ -134,16 +139,21 @@ export function createDelivery(
       if (filer === undefined || wakes === undefined) return;
       try {
         await wakes.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS, sessionId: filer });
-      } catch {
-        // The fast path still runs; a wake that couldn't be written leaves the
-        // debt to the filer's next pass.
+      } catch (error) {
+        // The fast path still runs; a debt with no wake waits for the filer's
+        // next pass, so say so.
+        console.warn("[orchestration] an ending's wake couldn't be written: its debt waits for the filer's next pass", {
+          boardId: board.collectionId,
+          taskId: row.id,
+          error: (error as Error).message
+        });
       }
     },
 
     async afterEnding(row, rows, patchMetadata) {
       try {
         const filer = filerOf(row);
-        const notices = owedNotices(row, board.collectionId, rows);
+        const notices = owedNotices(row, board.collectionId, rows, filerOf);
         if (filer === undefined) {
           for (const notice of notices) await settleUndeliverable(row, notice, "no session is known to have filed it", patchMetadata);
           return;
@@ -154,8 +164,8 @@ export function createDelivery(
         // started, by the filer's pass.
         const runsPass =
           row.resumeOwed === true || (row.status === "pending" && declared.passEntry !== undefined && row.attempts > 0);
-        // Inside the filer's own pass that trigger is refused (one pass at a
-        // time), and the pass's own repairs, after its drain, pay it.
+        // Inside the filer's own pass that trigger waits its turn (one pass at
+        // a time), and runs once the running pass ends.
         if (runsPass) await send(address, passEntry, {});
         const entry = declared.noticeEntry?.(row) ?? TASK_SETTLED_ENTRY;
         for (const notice of notices) {

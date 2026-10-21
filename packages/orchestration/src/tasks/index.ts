@@ -187,6 +187,7 @@ export {
   TASK_SETTLED_ENTRY,
   markDelegating,
   undeliverableRecord,
+  filerResolver,
   type DeclaredDelivery,
   type NoticeAddress,
 } from "./notice/delivery";

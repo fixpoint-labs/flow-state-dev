@@ -84,6 +84,7 @@ import {
   type TaskStatus,
   type TaskTransitionOptions,
   type TaskWriteOutcome,
+  withoutNoticeMarkers,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -1013,7 +1014,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.deps !== undefined ? { deps: input.deps } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        // A caller's metadata never carries a notice marker (BP-031).
+        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
       },
       followUp,
     };
@@ -1507,7 +1509,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             if (outcome != null && outcome.outcome === "declined") return outcome;
           }
           if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
-          if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
+          // Nor can a patch forge, clear or settle one (BP-031).
+          if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, withoutNoticeMarkers(patch.metadata)!);
           if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
           if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
           if (patch.status === "pending") {

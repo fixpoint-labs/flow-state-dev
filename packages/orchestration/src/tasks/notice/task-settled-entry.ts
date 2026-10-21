@@ -26,7 +26,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { clearNotice, isNoticeOwed, type TaskNotice } from "./task-notice";
-import { TASK_SETTLED_ENTRY } from "./delivery";
+import { filerResolver, TASK_SETTLED_ENTRY } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
 
 /** A notice, as `onTaskSettled` and a flow's block take it. */
@@ -87,7 +87,8 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
         for (const { ref, delivery } of await delegatingBoardsOf(ctx)) {
           const debts = await payBoardDebts(ctx, ref, {
             ...(delivery.noticeEntry !== undefined ? { noticeEntry: delivery.noticeEntry } : {}),
-            ...(delivery.onUndeliverable !== undefined ? { onUndeliverable: delivery.onUndeliverable } : {})
+            ...(delivery.onUndeliverable !== undefined ? { onUndeliverable: delivery.onUndeliverable } : {}),
+            filerOf: filerResolver(delivery, ref.partition)
           });
           if (debts.nextDue !== undefined) nextDue = nextDue === undefined ? debts.nextDue : Math.min(nextDue, debts.nextDue);
         }

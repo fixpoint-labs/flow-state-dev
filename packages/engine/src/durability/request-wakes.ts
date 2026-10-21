@@ -154,7 +154,7 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
       const sessionId = spec.sessionId ?? identity.sessionId;
       const flowKind = await flowOf(sessionId);
       if (flowKind === undefined) return false;
-      await store.owe({
+      const record = await store.owe({
         ...keyOf(sessionId, spec.entry),
         flowKind,
         userId: identity.userId,
@@ -162,7 +162,8 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
         dueAt: spec.dueAt,
         landBy: now() + inputs.fenceMs
       });
-      noteWakeOwed(store, spec.dueAt);
+      // The due time the wake keeps after coalescing, not the one asked for.
+      noteWakeOwed(store, record.dueAt);
       return true;
     },
 

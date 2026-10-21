@@ -93,6 +93,7 @@ import {
   isTerminalStatus,
   NOTICE_DUE_MS,
   noticeDueAt,
+  filerResolver,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -1064,6 +1065,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const debts = await payBoardDebts(ctx, ref, {
       noticeEntry: delivery.noticeEntry!,
       onUndeliverable: delivery.onUndeliverable!,
+      filerOf: filerResolver(delivery, ref.partition),
       resend
     });
     const rows = ref.list();

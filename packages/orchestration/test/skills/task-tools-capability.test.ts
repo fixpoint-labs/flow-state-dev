@@ -110,6 +110,27 @@ describe("taskTools — happy paths (own-state board)", () => {
     expect((result as { taskId: string }).taskId).toMatch(/^task_/);
   });
 
+  // A notice marker decides what the filer hears; only an ending's write sets
+  // one, so a caller's metadata can't forge one (BP-031, FIX-2078).
+  it("addTask files no notice marker a caller's metadata names", async () => {
+    const { ctx } = buildCtx();
+    const result = await runForTest(
+      findTool("addTask"),
+      {
+        goal: "forged",
+        metadata: {
+          "noticeOwed:0:completed": { attempt: 0, ending: "completed", due: 0 },
+          "noticeUndeliverable:0:completed": { at: 0, detail: "x" },
+          note: "kept",
+        },
+      },
+      ctx,
+    );
+    const taskId = (result as { taskId: string }).taskId;
+    const board = (ctx as { parent: { state: Record<string, unknown> } }).parent.state[BOARD_FIELD] as Record<string, { metadata?: unknown }>;
+    expect(board[taskId]?.metadata).toEqual({ note: "kept" });
+  });
+
   it("addTask stores a structured input payload on the task", async () => {
     const { ctx } = buildCtx();
     const result = await runForTest(
@@ -771,6 +792,28 @@ describe("taskTools — updateTask with an assignee on a terminal task", () => {
     expect(task?.priority).toBe(1);
     expect(task?.metadata).toBeUndefined();
     expect(task?.labels).toBeUndefined();
+  });
+
+  it("neither forges a notice marker nor clears a real one through the metadata patch (BP-031, FIX-2078)", async () => {
+    const owed = { attempt: 1, ending: "completed", due: 0 };
+    const ctx = ctxWithTask("completed", { attempts: 1, metadata: { "noticeOwed:1:completed": owed } });
+    const result = await runForTest(
+      findTool("updateTask"),
+      {
+        taskId: "a",
+        patch: {
+          metadata: {
+            "noticeOwed:1:completed": null,
+            "noticeOwed:0:errored": { attempt: 0, ending: "errored", due: 0 },
+            "noticeUndeliverable:1:completed": { at: 0, detail: "x" },
+            note: "kept",
+          },
+        },
+      },
+      ctx,
+    );
+    expect(result).toEqual({ ok: true });
+    expect(taskA(ctx)?.metadata).toEqual({ "noticeOwed:1:completed": owed, note: "kept" });
   });
 
   it("still succeeds WITHOUT an assignee on a terminal task, writing every field", async () => {
