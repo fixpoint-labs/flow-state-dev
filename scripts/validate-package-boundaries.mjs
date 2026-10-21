@@ -236,16 +236,24 @@ for (const cycle of cycles) {
 }
 
 // One compiler: only the members that import the TypeScript API declare it, at the root's range.
+// The root's range is an npm alias (`typescript` is TS 6 for its JS API; `tsc` comes from the root's
+// `@typescript/native`, TS 7), so an alias under any other key is checked by the package it installs.
 const TYPESCRIPT_IMPORTERS = new Set(["packages/orchestration/package.json", "goals/package.json"]);
 const rootTypescript = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).devDependencies?.typescript;
+/** True for `typescript` and the `@typescript/*` compiler packages (not `@typescript-eslint/*`). */
+const isCompilerPackage = (name) => name === "typescript" || name.startsWith("@typescript/");
+/** The package an `npm:<name>@<range>` alias installs, or null for a plain range. */
+const aliasTarget = (range) => (/^npm:(@?[^@]+)/.exec(range) ?? [])[1] ?? null;
 for (const manifestPath of workspaceManifests(rootDir)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestPath), "utf8"));
   for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
     for (const [name, range] of Object.entries(manifest[field] ?? {})) {
-      if (name.startsWith("@typescript/") || (name === "typescript" && !TYPESCRIPT_IMPORTERS.has(manifestPath))) {
-        errors.push(`${manifestPath}: declares ${name} in ${field}; the compiler is declared only at the root`);
-      } else if (name === "typescript" && range !== rootTypescript) {
-        errors.push(`${manifestPath}: declares typescript ${range} in ${field}; it must match the root's ${rootTypescript}`);
+      if (name === "typescript" && TYPESCRIPT_IMPORTERS.has(manifestPath)) {
+        if (range !== rootTypescript) {
+          errors.push(`${manifestPath}: declares typescript ${range} in ${field}; it must match the root's ${rootTypescript}`);
+        }
+      } else if (isCompilerPackage(name) || isCompilerPackage(aliasTarget(String(range)) ?? "")) {
+        errors.push(`${manifestPath}: declares ${name} (${range}) in ${field}; the compiler is declared only at the root`);
       }
     }
   }
