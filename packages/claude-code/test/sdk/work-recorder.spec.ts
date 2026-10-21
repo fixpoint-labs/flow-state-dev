@@ -732,7 +732,7 @@ describe("createWorkRecorder — plan items", () => {
     recorder.observe(created("5", "Create the file"));
     recorder.observe(moved("5", "in_progress"));
     await recorder.flush();
-    recorder.observe({ kind: "plan_item_observed", itemId: "5", outcome: "failed" });
+    recorder.observe({ kind: "plan_item_observed", callId: "call:move:5:rejected", itemId: "5", outcome: "failed" });
     await recorder.stop();
 
     expect(plan.rows.get(`${RUN}/5`)).toMatchObject({
@@ -983,6 +983,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     const { gaps, recorder } = harness();
     recorder.observe({
       kind: "work_gap_observed",
+      subject: "file",
       reason: "a file mutation arrived with no path to record it under",
     });
     await recorder.stop();

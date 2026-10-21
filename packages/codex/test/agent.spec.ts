@@ -639,3 +639,48 @@ describe("codexAgent — a thread Codex no longer has", () => {
     expect(harnessFailureKind(await failureOf(spawnFailed, "thr_gone"))).toBeNull();
   });
 });
+
+describe("codexAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to a fresh thread and a resumed one alike", async () => {
+    const { resolve, rec } = scripted(OK_STREAM);
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // continues a thread, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "thr_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = codexAgent({
+      ...GATE_OFF,
+      resolveCodexClient: resolve,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+      thread: { approvalPolicy: "never" },
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(rec.started[0]).toMatchObject({ model: "model-for-run-1", approvalPolicy: "never" });
+    expect(rec.resumed[0]).toMatchObject({ id: "thr_saved", options: { model: "model-for-run-2", approvalPolicy: "never" } });
+  });
+
+  it("names no model when the resolver has none, so Codex runs its own default", async () => {
+    for (const none of [null, undefined, ""]) {
+      const { resolve, rec } = scripted(OK_STREAM);
+      const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve, model: () => none });
+      await testBlock(block, { input: { prompt: "go" } });
+      expect(rec.started[0]).not.toHaveProperty("model");
+    }
+  });
+
+  it("prices the run against the model it resolved", async () => {
+    const { resolve } = scripted(OK_STREAM);
+    const block = codexAgent({ ...GATE_OFF, resolveCodexClient: resolve, model: async () => "gpt-5.4-codex" });
+    const { output } = await testBlock(block, { input: { prompt: "go" } });
+    expect((output as CodexAgentHandle).cost).not.toBeNull();
+  });
+
+  it("refuses `model` beside `thread.model` when the block is built: one owner per value", () => {
+    expect(() => codexAgent({ ...GATE_OFF, model: "a", thread: { model: "b" } })).toThrow(CodexAgentConfigError);
+    expect(() => codexAgent({ ...GATE_OFF, model: () => "a", thread: { model: "b" } })).toThrow(/cannot be set together/);
+  });
+});

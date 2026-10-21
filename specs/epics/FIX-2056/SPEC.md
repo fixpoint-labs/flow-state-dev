@@ -6,7 +6,7 @@
 
 | A team that… | Today | After this epic |
 |---|---|---|
-| **builds a worker that hands out work** | Eleven task tools; can't wait inside a task | Four tools; it waits on what it filed and hears every ending once |
+| **builds a worker that hands out work** | Eleven task tools; can't wait inside a task | Five tools; it waits on what it filed and hears every ending once |
 | **runs a coordinator** | Routed work is a post a user can't list, steer or cancel | Routed work is a task in the user's list |
 | **builds a goal-seek loop** | Its judge can rule on work still running | A wrong board is refused when built |
 | **runs Workforce on a host that restarts** | A finished task waits for the next touch of the board | The sweeper pays every debt when due |
@@ -30,7 +30,7 @@ The scope is every phase 1 and phase 3 row of
 | Is it the right goal? | |
 |---|---|
 | **Smaller, and rejected** | Posts become tasks alone: FIX-2058 would build on a gate that lets a waiting task run twice |
-| **Not done if** | An ending is recorded outside the gate or the drain · a fifth task tool is exported, deprecated ones included, `answerTask` aside ([D2](DECISIONS.md#d2), [(e)](DECISIONS.md#e)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
+| **Not done if** | An ending is recorded outside the gate or the drain · a sixth task tool is exported, deprecated ones included, `answerTask` and `parkOnQuestion` until FIX-2058 and, until FIX-2082 and FIX-2083, `dispatchTask` aside ([D2](DECISIONS.md#d2), [(e)](DECISIONS.md#e)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -56,7 +56,7 @@ flowchart LR
 
 ## What's in the box
 
-![In the box: one task with two board modes, one completion rule and four filing settings; four task tools; one ending path and swept debts. Composed in by the app, replaced in one line, and not built here below a fence](figures/end-state.svg)
+![In the box: one task with two board modes, one completion rule and four filing settings; five task tools; one ending path and swept debts. Composed in by the app, replaced in one line, and not built here below a fence](figures/end-state.svg)
 
 The fence holds the work that stands on the task; this set builds none of it ([D2](DECISIONS.md#d2)).
 
@@ -69,10 +69,10 @@ The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 | Issue | Delivers | Blocked by |
 |---|---|---|
 | [FIX-2076](https://linear.app/fixpoint-labs/issue/FIX-2076) · board modes | Plan and delegation boards; wrong boards refused | — |
-| [FIX-2077](https://linear.app/fixpoint-labs/issue/FIX-2077) · when a task is done | Rule 6 at the claim gate, after background work; a wait leaves a task running | FIX-2080 |
+| [FIX-2077](https://linear.app/fixpoint-labs/issue/FIX-2077) · when a task is done | Rule 6 at the claim gate, after background work; a wait leaves a task running | FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2078](https://linear.app/fixpoint-labs/issue/FIX-2078) · endings and debts | Every ending to its filer once; due times and the sweeper | — |
 | [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) · filing settings | Start, session, result, attempts; cascades; the one read for retired rows ([D3](DECISIONS.md#d3)) | — |
-| [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · four tools | Four task tools, one rule per field; delegates as authority | FIX-2080 |
+| [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · five tools | Five task tools, one rule per field; delegates as authority | FIX-2076, FIX-2080 |
 | [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait; 5 deep, 100 under a top task | FIX-2076, FIX-2077, FIX-2081 |
 | [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2084](https://linear.app/fixpoint-labs/issue/FIX-2084) · worker contract | Roles checked at hire; `respond` and `dispatch` | FIX-2078, FIX-2083 |
@@ -93,12 +93,15 @@ flowchart LR
   B -->|"the settle rule"| W["FIX-2082 · waits"]
   B -->|"a steer is no ending"| S["FIX-2086 · steer and follow-up"]
   M["FIX-2076 · board modes"] -->|"a plan board's drain waits"| W
-  L -->|"held, settings"| T["FIX-2081 · four tools"]
+  L -->|"held, settings"| T["FIX-2081 · five tools"]
+  M -->|"plan rows"| T
+  T -->|"reportProgress, filedByTask"| B
   T -->|"getTask"| W
   T -->|"updateTask"| S
   T -->|"createTask, delegates"| R["FIX-2083 · routed tasks"]
   L -->|"session, result, attempts"| R
-  E["FIX-2078 · endings and debts"] -->|"result to the conversation"| R
+  E["FIX-2078 · endings and debts"] -->|"the sweeper recovers a lost wait"| B
+  E -->|"result to the conversation"| R
   R -->|"no post entry"| K["FIX-2084 · worker contract"]
   E -->|"onTaskSettled, dispatch"| K
   H["FIX-2085 · schedules"]
@@ -121,7 +124,7 @@ every child blocks the closure, left off. The longest chain is four.
 | Already here | What the set does with it |
 |---|---|
 | The concept docs; FIX-1047's claim (#3521); FIX-2057's prune (#3541); FIX-2062's resume in turn (#3538) | **Builds on.** A removal needs a second route to its job, not zero callers (tenet 3) |
-| [#3102](https://github.com/fixpoint-labs/flow-state-dev/pull/3102)'s PD-3, PR-1 and PR-2: FIX-1870's, through `dispatchTask` | **Re-homed.** PR-1 and PD-3 to FIX-2083, PR-2 to FIX-2081 (`createTask`, then `getTask`'s wait). #3102 is amended at approval |
+| [#3102](https://github.com/fixpoint-labs/flow-state-dev/pull/3102)'s PD-3, PR-1 and PR-2: FIX-1870's, through `dispatchTask` | **Re-homed.** PR-1 and PD-3 to FIX-2083, PR-2 to FIX-2081 and FIX-2082 (`createTask`, riding `dispatchTask`'s wait until `getTask`'s, per [FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)). #3102 is amended at approval |
 | [FIX-1870 D1](../FIX-1870/DECISIONS.md#d1) and [its review notes](../FIX-1870/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them): `dispatchTask` waits, one deep, and a timeout cancels | **Superseded.** `getTask` waits, 5 deep, and a deadline cancels nothing |
 | [FIX-1870 D2](../FIX-1870/DECISIONS.md#d2): a post that needs an answer is a task | **Kept and finished** by FIX-2083 |
 | [FIX-1872 D1](../../issues/FIX-1872/DECISIONS.md#d1): a post row on the delegate's own entry | **Superseded.** Session and result are filing settings |

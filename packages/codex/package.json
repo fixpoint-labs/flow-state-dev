@@ -67,7 +67,6 @@
     "@flow-state-dev/testing": "workspace:*",
     "@openai/codex-sdk": "0.152.1",
     "@types/node": "^22.0.0",
-    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "scripts": {
