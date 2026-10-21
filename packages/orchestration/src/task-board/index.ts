@@ -894,7 +894,10 @@ export function taskBoard<
 
   // A drain is a touch of the board (FIX-2080 D2): a cascade an ending still
   // owes past its due time (a crash between the ending and its cascade) is
-  // paid here, before anything is claimed.
+  // paid here, once the workers are done. Not before the first claim: this
+  // step resolves the collection again, and a resource-backed board's
+  // resolution reads the store, which would hold back every start behind it.
+  // A row behind a dead dependency isn't claimable meanwhile.
   const payOwedCascades = handler({
     name: `${name}-pay-owed-cascades`,
     transient: true,
@@ -1308,7 +1311,6 @@ export function taskBoard<
     .tap(installFlowState)
     .tap(boardMetaActive)
     .tap(seedBlock)
-    .tap(payOwedCascades)
     .forEach(
       () => Array.from({ length: concurrency }, (_, i) => i),
       (workerId: number) => makeWorker(workerId),
@@ -1351,6 +1353,7 @@ export function taskBoard<
     // the drain tests catch the unconditional one, and an `any`-typed insert on
     // a board configuration those tests do not exercise is still silent.
     .tap(boardExitsConnector, boardMetaCompleted)
+    .tap(payOwedCascades)
     // FIX-963: the run fails here if this drain saved a result it could not
     // announce. Deliberately AFTER the exits tap — the adjacency above is a
     // compile-checked rule, and inserting between the two would replace the
