@@ -157,11 +157,18 @@ const board = taskBoard({ /* … the board whose rows the manager works */ });
 
 defineFlow({
   kind: "coder",
-  internal: { actions: { resume: { block: board.drain } } },
+  internal: {
+    actions: {
+      resume: { block: board.drain },
+      onTaskSettled: taskSettledEntry({ block: onEnding }), // hears each task end; see the task board page
+    },
+  },
   actions: { message: manager.messageDoor({ drain: "resume" }) },
   task: { actions: { work: { block: manager } } },
 });
 ```
+
+`onTaskSettled` is the entry every flow holding a board that hands tasks out declares: see [Hearing how a task ended](./task-board.md#hearing-how-a-task-ended).
 
 If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its flow kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
 

@@ -8,7 +8,7 @@ flow-state.dev stores three categories of data: **scope state** (session, user, 
 
 ## Store adapters
 
-You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, and traces. The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
+You declare stores on `createFlowState` as a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. Every adapter below backs the required `primary` slot — the catch-all state store for sessions, requests, users, orgs, checkpoints, content, traces, and [wakes](../advanced/durable-execution.md#wakes). The `blobs`, `queue`, and `scheduler` slots exist in the type but are forward-compatible: no backing store ships for them in Phase 1, so declaring them is a no-op.
 
 | Adapter | Persistence | When to use |
 |---------|------------|-------------|
@@ -267,6 +267,10 @@ A custom store also has to honor session parentage. A session can belong to anot
 | `{ parentOf: sessionId }` | Only that session's children |
 
 Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an omitted `tenantId` behaves in the same object. A store that ignores the field hands back child sessions to a caller that asked for top-level ones, and nothing in the type system catches it — the field is optional. Treat a parent id of `null` the same as an absent one, and conjoin `parentage` with the other filters rather than letting it widen past them.
+
+### Wakes
+
+`StoreRegistry.wakes` is optional. A store without one still loads, and its host logs once at start that it keeps no wakes. A task board on that host sends each notice once, when the task ends, and doesn't send a lost one again. To keep wakes, implement `WakeStore` from `@flow-state-dev/engine` and check it with `createWakeStoreConformanceTests({ name, createStore })` from `@flow-state-dev/engine/testing`. The SQLite and Postgres adapters create their `wakes` table when they open, unless you pass `skipSchemaInit` and run the schema step yourself.
 
 ### Deleting requests
 

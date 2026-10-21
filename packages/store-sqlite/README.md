@@ -91,6 +91,7 @@ Everything this adapter stores survives a process restart, including resource st
 | Resource state (single + collection instances) | Yes | `resource_state` |
 | Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
 | Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
+| Wakes (when a session's pending work falls due) | Yes | `wakes` |
 
 ### Resource state carries a version, and deletes leave a row behind
 
@@ -147,6 +148,8 @@ Two more serve the session stream (`GET /api/flows/sessions/:sessionId/stream`),
 | `idx_sessions_parent_tenant_owner_updated (parent_session_id, tenant_id, user_id, org_id, updated_at)` | One parent's runs, newest-updated first. |
 
 Each read uses its index and sorts nothing, whether or not the caller is bound to a tenant.
+
+The `wakes` table holds one row per session and internal entry, with an index on `due_at`. It is created on open like every other table. The durability sweeper reads it to [run work that falls due in a session](https://flow-state.dev/docs/advanced/durable-execution#wakes), such as a task board's notice that was lost in a crash. `createSQLiteWakeStore(db)` builds the store on its own.
 
 ## Individual Store Constructors
 

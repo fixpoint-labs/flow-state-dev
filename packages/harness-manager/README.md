@@ -257,7 +257,14 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 ```ts
 defineFlow({
   kind: "coder",
-  internal: { actions: { resume: { block: board.drain } } },
+  internal: {
+    actions: {
+      resume: { block: board.drain },
+      // Required of a flow holding a board that hands rows out (`taskSettledEntry`
+      // from @flow-state-dev/orchestration): where the filer hears each task end.
+      onTaskSettled: taskSettledEntry({ block: onEnding }),
+    },
+  },
   actions: { message: manager.messageDoor({ drain: "resume" }) },
   task: { actions: { work: { block: manager } } },
 });
