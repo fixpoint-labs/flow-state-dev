@@ -99,7 +99,7 @@ failures, whatever their shape, and a dropped connection is not a cancel.
 - **A request's own status.** Background work never drives it ([D2](DECISIONS.md#d2)).
 - **`.waitForSideChain({ failOnError })`.** `true` still fails the request, and that throw is the
   sequencer's, so a `.rescue` can still catch it. The default still lets the pipeline continue; in
-  a task, the failure it drained still fails the attempt (recommended in [D3](DECISIONS.md#d3), open).
+  a task, the failure it drained still fails the attempt ([D3](DECISIONS.md#d3)).
 - **A suspended request** does not drain, as today. A step that failed or was still running has no
   completed trace, so the resume reruns it; the rerun's outcome is the one handed on.
 
@@ -137,10 +137,10 @@ handed to an existing seam. If wrong: a list in the pool nobody else reads.
 2. **[D2](DECISIONS.md#d2) · The request stays completed; only the attempt fails.** If wrong: a
    person reading a task's session sees "completed" beside a task that retried.
 
-3. **[D3](DECISIONS.md#d3) · Open: does a failure a plain `.waitForSideChain()` drained still fail
-   the attempt?** Recommended yes. If wrong either way: a wait added only for ordering silently
-   exempts the step it waits on, or a failure an author waited on fails a task they meant to keep.
+3. **[D3](DECISIONS.md#d3) · A failure a plain `.waitForSideChain()` drained still fails the
+   attempt.** If wrong: a failure an author waited on fails a task they meant to keep.
 
-**Open: D3.** Number 1 is the one to weigh: it changes a promise the Workforce docs make today.
+Signed off by the owner, all three as recommended
+([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6317557785)).
 
 Improvement · `engine` + `orchestration` + `workforce` docs · small · ships after FIX-2077 · epic [FIX-2056](../../epics/FIX-2056/SPEC.md)

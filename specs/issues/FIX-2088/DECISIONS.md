@@ -3,7 +3,8 @@
 [Spec](SPEC.md) · **Decisions**
 
 The concept already ruled that an error in background work fails the attempt. These three say what
-that costs, and where it stops. D3 is open.
+that costs, and where it stops. The owner signed off on all three, as recommended
+([sign-off](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6317557785)).
 
 ## The tree
 
@@ -13,8 +14,8 @@ flowchart TD
   D1 -.->|"rejected"| X1["exempt Workforce's after-answer step · the rule's most common case would be its exception"]
   I --> D2["D2 · the request stays completed · only the attempt fails"]
   D2 -.->|"rejected"| X2["end the request as failed · its success hooks already ran"]
-  I --> D3["D3 · open · a plain .waitForSideChain() still hands its failures on · recommended"]
-  D3 -.->|"recommended against"| X3["the wait exempts them · a wait added for ordering hides the step it waits on"]
+  I --> D3["D3 · a plain .waitForSideChain() still hands its failures on"]
+  D3 -.->|"rejected"| X3["the wait exempts them · a wait added for ordering hides the step it waits on"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -55,19 +56,18 @@ as a session view with no task panel. Then the request record gains a "backgroun
 flag beside its status, not a different status.
 
 <a name="d3"></a>
-## D3 · Open: a failure a plain `.waitForSideChain()` drained still fails the attempt
-
-**The fork:** when a worker waits on its background step with the default `.waitForSideChain()`,
-and the step failed, does the task's attempt still fail?
+## D3 · A failure a plain `.waitForSideChain()` drained still fails the attempt
 
 | | |
 |---|---|
-| **In plain terms** | The default wait lets the pipeline carry on past a failed step and logs it. The docs recommend that wait as an ordering barrier, *"wait for persistence before reading state below"*. Today the failure is gone once the wait drains it |
-| **Recommended: yes** | The pipeline still continues past the wait, as documented; in a task, the failure the wait drained still reaches the gate and fails the attempt. `failOnError: true` is unchanged: its throw is the sequencer's, so a `.rescue` can still catch it. The pool keeps a failure when a default wait drains it, as it does at the request's drains |
-| **Instead of** | Treating the wait as handling the failure. That needs no code, but the wait hands the author nothing to handle: it returns its input and logs. A wait added only for ordering would silently exempt the very step it waits on, and "every background error fails the attempt" would carry an exception nobody chose |
-| **The price** | A user-visible docs promise changes for a task: the control-flow page says the default lets errors be *"recorded silently"*; in a task it now fails the attempt. The default value does not change, and nothing changes in a conversation. A worker that wants the step best-effort catches inside it, as [D1](#d1) says |
-| **What would change my mind** | Teams that use the default wait specifically to mean "I accept this step failing". Then the wait exempts its failures and the docs say so |
-| **If wrong** | Recommending yes wrongly: a task an author meant to tolerate a failed step retries it, recoverable by a `try`/`catch` in the step. Choosing no wrongly: a task whose persistence step failed reads as done, the harm this issue exists to remove |
+| **Instead of** | Treating the default wait as handling the failure. That needs no code, but the wait hands the author nothing to handle: it returns its input and logs. A wait added only for ordering would silently exempt the very step it waits on, and "every background error fails the attempt" would carry an exception nobody chose |
+| **Because** | The default wait lets the pipeline carry on past a failed step and logs it, and the docs recommend it as an ordering barrier, *"wait for persistence before reading state below"*. Today the failure is gone once the wait drains it. Here the pipeline still continues past the wait, as documented; in a task, the failure the wait drained still reaches the gate and fails the attempt. The pool keeps a failure when a default wait drains it, as it does at the request's drains |
+| **Locks in** | A user-visible docs promise changes for a task: the control-flow page says the default lets errors be *"recorded silently"*; in a task it now fails the attempt. The default value does not change, and nothing changes in a conversation. `failOnError: true` is unchanged: its throw is the sequencer's, so a `.rescue` can still catch it. A worker that wants the step best-effort catches inside it, as [D1](#d1) says. Leg j covers it |
+
+It comes down to the wait's job: it orders steps, and ordering is no reason to hide a failure.
+
+**What would change my mind:** teams that use the default wait specifically to mean "I accept
+this step failing". Then the wait exempts its failures and the docs say so.
 
 ## Decided, not asked
 
@@ -128,6 +128,9 @@ and the step failed, does the task's attempt still fail?
 - **Review round 2** — goal legs for a queued message, an `onTaskSettled` turn, a resume and a
   default wait; a failure before a suspension is decided by the resume's rerun; the default
   `.waitForSideChain()` question raised as D3.
+- **Sign-off** — the owner accepted D1 and D2 and answered D3 yes, all as recommended
+  ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6317557785)).
+  D3 moved from open to decided.
 
 ## Notes from review
 
@@ -142,5 +145,3 @@ and the step failed, does the task's attempt still fail?
 These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
 discarding one. A note that turns out to reveal a design problem is a spec blind spot: surface it
 and fold it back.
-
-**Open: [D3](#d3).**
