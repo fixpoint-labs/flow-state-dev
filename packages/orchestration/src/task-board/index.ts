@@ -149,13 +149,13 @@ import {
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import {
   assertDispatchBoardSupported,
-  dispatchedTaskPredicate,
   resolveWorkerSlots,
   type DispatchingAssignee,
   type TaskAssignee,
   type TaskAssigneeRegistry,
 } from "./dispatch-assignee";
 import { boardExitsConnector } from "./exits-connector";
+import { assertBoardModeSupported, runsElsewhereFor, type TaskBoardMode } from "./board-mode";
 import { createTaskGate } from "./task-entry";
 import { createRowDispatch } from "./blocks/dispatch-row";
 import { recordBoardResolver } from "./board-resolver";
@@ -272,7 +272,6 @@ export type { TaskBoardOnReview } from "./park-exit";
 export {
   assertDispatchEntrySupported,
   assertDispatchBoardSupported,
-  dispatchedTaskPredicate,
   isTaskDispatcher,
   resolveWorkerSlot,
   resolveWorkerSlots,
@@ -285,6 +284,8 @@ export type {
   TaskAssigneeRegistry,
 } from "./dispatch-assignee";
 export type { TaskSessionPolicy } from "@flow-state-dev/core/types";
+export { assertBoardModeSupported } from "./board-mode";
+export type { TaskBoardMode } from "./board-mode";
 export {
   StaleTaskClaimError,
   UnknownTaskLedgerError,
@@ -381,6 +382,24 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   boardId?: string;
 
   /**
+   * Whether the drain waits on its rows (FIX-2076). The author's choice,
+   * checked against the assignees when the board is built:
+   *
+   * - `"plan"` (**default**): every row runs in the drain, and the drain waits
+   *   on every one. Every assignee is a block that runs inline. A dispatcher
+   *   assignee is refused, because the drain can't wait on a row another
+   *   session runs.
+   * - `"delegation"`: every row is handed to another session through a
+   *   `dispatcher({ action, session })` assignee, and the drain waits on none
+   *   of them; the session that works a row settles it. An assignee that runs
+   *   inline is refused, and so is a board with no dispatcher.
+   *
+   * `goalSeekLoop` refuses a delegation board: its judge would rule while the
+   * rows still run.
+   */
+  mode?: TaskBoardMode;
+
+  /**
    * Where the collection lives — a once-chosen internal detail. Optional; an
    * omitted collection is request-backed with `collectionId` = `name`. One of:
    *
@@ -407,12 +426,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    *
-   * A registry value may also be a `dispatcher({ action, session })` block — a
-   * **assignee that dispatches**: the stamped address is `type: "task"`, the row is
-   * dispatched to the `task` entry the dispatcher names, and the flow that
-   * declares that entry owns the worker.
-   * The board runs the dispatch through its own claim gate, so the child
-   * settles the same row this drain claimed.
+   * On a `mode: "delegation"` board, a registry value is a
+   * `dispatcher({ action, session })` block — an **assignee that dispatches**:
+   * the stamped address is `type: "task"`, the row is dispatched to the `task`
+   * entry the dispatcher names, and the flow that declares that entry owns the
+   * worker. The board runs the dispatch through its own claim gate, so the
+   * child settles the same row this drain claimed.
    */
   workers: TaskWorker<TInput, TOutput> | TaskAssigneeRegistry;
 
@@ -654,6 +673,18 @@ export interface TaskBoardHandle<
    */
   backing: TaskBoardBacking;
   /**
+   * The board's declared mode (FIX-2076): `"plan"`, whose drain runs and waits
+   * on every row, or `"delegation"`, whose drain hands every row off and waits
+   * on none. A consumer that needs every row ended when the drain returns,
+   * such as `goalSeekLoop`, refuses a delegation board on this.
+   */
+  mode: TaskBoardMode;
+  /**
+   * The board's `onReview` (FIX-1234). On `"exit"` the drain can return with a
+   * row still parked, which `goalSeekLoop` refuses at construction.
+   */
+  onReview: TaskBoardOnReview;
+  /**
    * The board's declared `boardId`, or `undefined` when it declared none.
    * Always present on a board with a dispatcher assignee — that is what
    * `assertDispatchBoardSupported` enforces.
@@ -735,6 +766,7 @@ export function taskBoard<
   const {
     name,
     boardId,
+    mode = "plan",
     collection: collectionConfig,
     workers: workersConfig,
     defaultWorker: defaultWorkerConfig,
@@ -816,6 +848,20 @@ export function taskBoard<
     dispatchers,
   });
 
+  // FIX-2076: the declared mode against the assignees. After the dispatch
+  // refusals, so a board that can't dispatch at all is told that first.
+  assertBoardModeSupported({
+    name,
+    mode,
+    dispatchers,
+    inline: inlineAssignees,
+    uniformInline:
+      typeof (workersConfig as { run?: unknown }).run === "function" &&
+      !dispatchers.some((assignee) => assignee.kind === "uniform"),
+    floorInline:
+      defaultWorker !== undefined && !dispatchers.some((assignee) => assignee.kind === "floor"),
+  });
+
   // Seed-inspectability for construction-time guards (FIX-910): an initial task
   // without a stable id is re-added on every drain re-entry, so a multi-drain
   // consumer must be able to reject such a board. Derived from the top-level
@@ -847,12 +893,13 @@ export function taskBoard<
     collectionId,
   });
 
-  // One predicate, built once and handed to EVERY consumer (FIX-982). Building
-  // it per call site is how the wake test and the exit check drifted apart
-  // before; the completion meta is the third reader (FIX-1074), and it has to
-  // agree with the other two — a board that exited because its work is running
-  // elsewhere must not then report that exit as a failure.
-  const runsElsewhere = dispatchedTaskPredicate(dispatchers, inlineAssignees);
+  // One predicate, built once from the declared mode and handed to EVERY
+  // consumer (FIX-982, FIX-2076). Building it per call site is how the wake
+  // test and the exit check drifted apart before; the completion meta is the
+  // third reader (FIX-1074), and it has to agree with the other two — a board
+  // that exited because its work is running elsewhere must not then report
+  // that exit as a failure. A plan board passes none: it waits on every row.
+  const runsElsewhere = runsElsewhereFor(mode);
 
   // FIX-1234: the second exclusion, threaded to the exit check and the wake
   // predicate from here — the same discipline `runsElsewhere` follows, and for
@@ -1373,6 +1420,8 @@ export function taskBoard<
     collectionId,
     capability,
     backing,
+    mode,
+    onReview,
     ...(boardId !== undefined ? { boardId } : {}),
     dispatchers,
     hasIdlessInitialTasks,

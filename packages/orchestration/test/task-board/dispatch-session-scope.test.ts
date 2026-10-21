@@ -29,6 +29,7 @@ function boardFor(collection: ReturnType<typeof defineTaskCollection>) {
   return taskBoard({
     name: "briefs",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection,
     workers: {
       brief: dispatcher({

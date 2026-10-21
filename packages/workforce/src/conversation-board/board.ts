@@ -415,6 +415,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   const board = taskBoard({
     name: "conversation-tasks",
     boardId: CONVERSATION_LEDGER_ID,
+    // Every row goes to a delegate's session; the run doesn't wait on one.
+    mode: "delegation",
     collection: conversationLedger,
     workers: {},
     defaultWorker: dispatchToDelegate as never,

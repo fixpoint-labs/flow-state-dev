@@ -131,6 +131,7 @@ function buildFlow(options: {
   const board = taskBoard({
     name: `${options.kind}-board`,
     boardId: `${options.kind}-board`,
+    mode: "delegation",
     // Durable and user-scoped. A dispatching board must be durable (its rows
     // outlive the claiming request), and user scope is what makes the same
     // ledger reachable from inside the child session — a session-scoped one

@@ -212,6 +212,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
   const board = taskBoard({
     name: "background-work",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: backgroundWorkLedger,
     // Not the default (`"skip"`), and deliberately. `onError` decides what a
     // worker failure does to the run executing it — and for a dispatched worker

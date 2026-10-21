@@ -584,6 +584,8 @@ export function conductorFlow(options: ConductorFlowOptions) {
   const board = taskBoard({
     name: boardId,
     boardId,
+    // Every row is handed to the manager in a session of its own.
+    mode: "delegation",
     collection: tasks,
     // ONE issue at a time, stated rather than inherited. The substrate's default
     // is 4, so a single drain would launch four handed-off coding runs at once —
