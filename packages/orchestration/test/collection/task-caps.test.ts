@@ -219,7 +219,6 @@ describe("task caps — construction-time validation", () => {
   });
 });
 
-// The rule that a cap passed with `backing: "resource"` does NOT COMPILE is
-// asserted at the type level, in
-// `src/tasks/collection/tests/task-caps.type-test.ts`, which `pnpm typecheck`
-// compiles along with this file.
+// A cap passed with `backing: "resource"` does not compile. Asserted in
+// `src/tasks/collection/tests/task-caps.type-test.ts`. `pnpm typecheck`
+// compiles that file and this one.

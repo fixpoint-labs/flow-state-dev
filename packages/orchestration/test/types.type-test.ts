@@ -1,7 +1,6 @@
 /**
  * Type-level tests — verify generic propagation through the public API.
- * Vitest does not collect this file; `pnpm typecheck` compiles it, so a wrong
- * assertion here fails typecheck.
+ * Vitest does not collect this file; `pnpm typecheck` compiles it.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
