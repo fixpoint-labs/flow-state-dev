@@ -1210,7 +1210,11 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
   // must not be able to change the answer, and a failure inside it — a capture
   // call that times out, say — is not a conversation failure.
-  const run = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+  const answeredRun = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+  // On an installation, every turn runs with its plan (FIX-2076 D1, D2): a
+  // step the worker files for itself is worked after the turn, in the same
+  // request, one turn of `answeredRun` each, and the worker answers once more.
+  const run = board !== undefined ? board.planned(answeredRun) : answeredRun;
 
   // On an installation the copy declares every document a worker may be
   // granted, and each turn's model reaches only its worker's: the

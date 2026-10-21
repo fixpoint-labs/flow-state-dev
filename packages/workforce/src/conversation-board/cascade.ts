@@ -57,7 +57,7 @@ function filedMarkerOf(row: Pick<Task, "metadata"> | undefined): FiledMarker | u
  * stamp and the piece's add leaves a marker with nothing to cancel, which
  * costs a no-op; the reverse order could leave a piece no cascade reaches.
  */
-export async function markFiled(ctx: BlockContext, taskId: string, ledgerAt: LedgerAt): Promise<void> {
+export async function stampFiledMarker(ctx: BlockContext, taskId: string, ledgerAt: LedgerAt): Promise<void> {
   const above = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
   if (typeof above !== "string") return;
   const ref = await ledgerAt(ctx, above);

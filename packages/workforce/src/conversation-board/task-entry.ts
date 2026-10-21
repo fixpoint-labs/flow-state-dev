@@ -54,17 +54,10 @@ import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
 import { isPostRow } from "../coordinator/delegated-post";
+import { taskMessage } from "./task-message";
 
-/**
- * A task as a worker reads it: the title when there is one, the goal, the
- * task's context, and its structured input as JSON when it carries any.
- */
-export function taskMessage(task: TaskWorkerInput): string {
-  const lines = [task.title === undefined ? task.goal : `${task.title}\n\n${task.goal}`];
-  if (task.context !== undefined && task.context.trim().length > 0) lines.push(`Context:\n${task.context}`);
-  if (hasInput(task.input)) lines.push(`Input:\n${JSON.stringify(task.input, null, 2)}`);
-  return lines.join("\n\n");
-}
+// A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
+export { taskMessage } from "./task-message";
 
 /**
  * What a task turn says (FIX-1817): the answer to the worker's question on
@@ -87,12 +80,6 @@ export function taskTurnMessage(task: TaskWorkerInput): string {
 export const REOPENED_TURN =
   "The user wrote to you about this task after you finished it; their message is just above. Pick the task up again from there.";
 
-/** True for a task input worth showing: present, and not an empty object. */
-function hasInput(input: unknown): boolean {
-  if (input === undefined || input === null) return false;
-  if (typeof input === "object" && !Array.isArray(input)) return Object.keys(input).length > 0;
-  return true;
-}
 
 /**
  * The partition a task session's tasks are on: the conversation it was opened

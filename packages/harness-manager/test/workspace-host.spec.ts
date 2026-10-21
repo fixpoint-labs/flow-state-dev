@@ -192,6 +192,7 @@ function lab(options: {
   const board = taskBoard({
     name: "host-board",
     boardId: "host-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     onReview: "exit",

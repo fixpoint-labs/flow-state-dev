@@ -1,6 +1,6 @@
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
-import { nightTheme, paperTheme } from "./src/prismThemes";
+import { inkTheme } from "./src/prismThemes";
 
 const config: Config = {
   title: "flow-state.dev",
@@ -47,6 +47,34 @@ const config: Config = {
         },
         theme: {
           customCss: "./src/css/custom.css",
+        },
+        // Diagrams are SVGs imported into MDX and inlined through SVGR, so
+        // they read the page's tokens and fonts (see src/components/Figure).
+        // `cleanupIds` would shorten every id to "a", "b"…, which collide
+        // between two figures on one page; `prefixIds` prefixes each id with
+        // its file's name instead. Class names are left alone: they are the
+        // page's drawing classes. `descProp` lets a figure pass its long
+        // description as the SVG's <desc>. Any <title> is stripped, as the
+        // brand lint requires: the figure's caption names the drawing.
+        svgr: {
+          svgrConfig: {
+            descProp: true,
+            svgoConfig: {
+              plugins: [
+                {
+                  name: "preset-default",
+                  params: {
+                    overrides: {
+                      removeTitle: true,
+                      removeViewBox: false,
+                      cleanupIds: false,
+                    },
+                  },
+                },
+                { name: "prefixIds", params: { prefixClassNames: false } },
+              ],
+            },
+          },
         },
       } satisfies Preset.Options,
     ],
@@ -184,12 +212,12 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
-      theme: paperTheme,
-      darkTheme: nightTheme,
+      theme: inkTheme,
+      darkTheme: inkTheme,
       additionalLanguages: ["bash", "json"],
     },
     colorMode: {
-      defaultMode: "dark",
+      defaultMode: "light",
       respectPrefersColorScheme: true,
     },
   } satisfies Preset.ThemeConfig,

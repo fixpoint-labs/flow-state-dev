@@ -27,6 +27,8 @@
     "apps/kitchen-sink/flows/**/index.ts",
     // Docusaurus seeds the config, sidebars and pages, not this theme module.
     "apps/docs/src/prismThemes.ts",
+    // MDX pages import these; no plugin follows an import out of a .md file.
+    "apps/docs/src/components/**/index.tsx",
 
     "examples/*/test/**/*.{test,spec}.ts",
     // Neither a package.json entry nor seeded by the Next plugin.
@@ -68,6 +70,8 @@
     "specs/**",
     "plugins/flow-state-dev/skills/install-fsd/templates/**",
     "scripts/packed-install/fixtures/**",
+    // Files the docs brand lint reads to prove each rule can fail.
+    "apps/docs/scripts/brand-lint-fixtures/**",
     "goals/_template/**",
     "goals/*/*/harness*.mts",
     "goals/*/*/host/**"

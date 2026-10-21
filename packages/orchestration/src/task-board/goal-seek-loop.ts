@@ -287,6 +287,23 @@ export function goalSeekLoop(config: GoalSeekLoopConfig): SequencerDefinition<an
         `Use the default request backing or a defineTaskCollection resource.`,
     );
   }
+  // FIX-2076: the judge rules on the board as the drain left it, so every row
+  // must have ended when the drain returns. Two boards' drains can return with
+  // one still running or parked.
+  if (board.mode === "delegation") {
+    throw new Error(
+      `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", a delegation board: ` +
+        `its drain returns while the rows it handed to other sessions still run, so the judge ` +
+        `would rule on unfinished work. Loop over a plan board, whose drain waits on every row.`,
+    );
+  }
+  if (board.onReview === "exit") {
+    throw new Error(
+      `[goalSeekLoop] "${name}" can't loop over "${board.capability.name}", whose onReview: "exit" ` +
+        `lets its drain return with a row still parked for review, so the judge would rule on ` +
+        `unfinished work. Use the default onReview: "hold".`,
+    );
+  }
   if (maxIterations > 1 && board.hasIdlessInitialTasks) {
     throw new Error(
       `[goalSeekLoop] "${name}" cannot loop (maxIterations > 1) over a board whose ` +

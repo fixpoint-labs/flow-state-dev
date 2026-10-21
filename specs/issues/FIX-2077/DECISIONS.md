@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping the lease and renewing it up to the wait's deadline |
 | **Because** | A lease means "a live worker holds this". A waiting task has no live worker: its request is stored, and after a restart nothing renews anything. So the row records what it waits on (`waitingOn`) and drops its lease, and the reclaim, which only takes rows whose lease has run out, leaves it alone. A wait on filed tasks has no deadline to renew to at all |
-| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with a filed task open or a message queued: both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes) stays running until its wait's own deadline or FIX-2078's sweeper ends it, so this ships with or after FIX-2078 |
+| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with [filed work still holding it](#filed-work-holding), or a message queued: both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes, or a queued message whose request a restart dropped) stays running until its wait's own deadline or FIX-2078's sweeper pays it, so this ships with or after FIX-2078 |
 
 ![D1: how a waiting task keeps its claim. No lease, the row records what it waits on, chosen, beside renewing the lease to the wait's deadline. Decides it: a server restart while the task waits. The price: a lost wait has no lease backstop](figures/d1-claim-without-lease.svg)
 
@@ -39,7 +39,7 @@ to move it off a worker pool being retired. Then a row with `waitingOn` keeps a 
 | | |
 |---|---|
 | **Instead of** | Keeping [FIX-1802](../FIX-1802/DECISIONS.md#d3)'s rule: the output is `{ answer, pieces }`, and a piece that failed for good fails the task unless the next turn files it again |
-| **Because** | Rule 6 is one rule for every task: done when a request for it ends with a result and nothing open. A second rule for tasks that filed tasks is the second answer for done the epic's POC refuted. Every piece's ending, a failure included, already reaches the worker's turn ([rule 7](../../../docs/internal/design/workforce-coordination-concept.md#the-rules)), so that turn decides what a failed piece means, and the retry marker goes |
+| **Because** | Rule 6 is one rule for every task: done when a request for it ends with a result, no [filed work still holding it](#filed-work-holding) and nothing queued. A second rule for tasks that filed tasks is the second answer for done the epic's POC refuted. Every piece's ending, a failure included, already reaches the worker's turn ([rule 7](../../../docs/internal/design/workforce-coordination-concept.md#the-rules)), so that turn decides what a failed piece means, and the retry marker goes |
 | **Locks in** | The output of a task that split is its latest `reportProgress` checkpoint, else its worker's last answer ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3)), and a failed piece fails the task only if the worker's turn throws. A worker that ignores a failed piece completes its task without saying so; the changeset says that. A filer that read `.pieces` reads the pieces' rows. In the repo only the split's own tests, its goal (`goals/workforce/split-to-roster/`), the workforce README and the *Delegating work* page read it, all rewritten here. Teams outside the repo rewrite at upgrade |
 
 ![D3: a split task ends as its worker's last request ends, chosen, beside keeping answer-and-pieces and the automatic failure rule. Decides it: one rule for done. The price: filers reading pieces rewrite](figures/d3-last-request.svg)
@@ -55,6 +55,15 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   of every request it admitted for a dispatched task. Today's other writers of done go: the split
   settle here, `completeTask`/`failTask` in FIX-2081, a wait's cancel in FIX-2082. FIX-2078 calls
   the same function when a filed task ends.
+- <a name="filed-work-holding"></a>**Rule 6's "nothing it filed is open" means no filed work still
+  holding the parent.** *Filed work still holding the parent* is a filed row that isn't terminal,
+  or a filed row whose ending is still owed to the parent's session (`owedNotices` /
+  `isNoticeOwed` on `@flow-state-dev/orchestration/tasks`); after FIX-2082
+  ([#3597](https://github.com/fixpoint-labs/flow-state-dev/pull/3597)), also a lapsed wait slot its
+  request has not read. One predicate, in `orchestration`, with no Workforce read: lift
+  `holdsSettle` (`split.ts`) into orchestration. So when the last piece ends during a request for
+  the parent, that request's check leaves it running, and the turn the piece's ending wakes
+  decides it, as D3 assumes.
 - **Where it runs: after the engine's last drain.** The engine drains background work, runs
   `onFinished`, then drains what `onFinished` and `onErrored` started
   (`engine/src/execution/runAction.ts`: `drainRequestSideChainPool` at `:2447`, `onFinished` at
@@ -128,6 +137,9 @@ For the implementer, recorded verbatim, not baked into the design.
   than a parallel Workforce module (matches epic POC census)."
 - *Cursor, DECISIONS.md:88:* "If epic schedule allows two implementation PRs, phase A (settle move
   + holds + predicate) vs phase B (D3 output contract) reduces blast radius."
+- *Cursor, review of amendment (3):* rule 6 now runs the owed check for every filed child on every
+  terminal request; use a boolean "any owed" check with an early exit (not `owedNotices`' sorted
+  list), over a bounded `filedByTask` scan.
 
 ## How it got here
 
@@ -153,5 +165,8 @@ For the implementer, recorded verbatim, not baked into the design.
   rest of this spec: the split row, the message row and *Not done if*, leg b, the filer's diff and
   the docs line, D3's *Locks in* and figure, and the epic's split-output migration row. No change
   to the approach.
+- **Amendment, after merge (3)** — from the epic's cross-spec audit (F2), after the original
+  review in [#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592): rule 6 counts
+  [filed work still holding the parent](#filed-work-holding). No change to the approach.
 
 Open: none.

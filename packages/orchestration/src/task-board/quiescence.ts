@@ -35,9 +35,9 @@
  * question.
  *
  * So the classifier now takes `runsElsewhere` and both of its counting arms
- * honour it. It is supplied by the board from its own dispatcher assignees,
- * and is `undefined` for every board that declares none — an inline board's
- * `in_progress` row still holds the drain open, unchanged and deliberately so.
+ * honour it. It is supplied by the board from its declared mode (FIX-2076),
+ * and is `undefined` for a plan board — whose `in_progress` row still holds
+ * the drain open, unchanged and deliberately so.
  *
  * **The exclusion holds only while the row's lease does.** `runsElsewhere` says
  * where a row's work belongs; the lease says whether anyone is on it, and a

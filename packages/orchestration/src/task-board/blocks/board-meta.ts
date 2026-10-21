@@ -102,8 +102,8 @@ export interface BoardMetaCompletedOptions extends BoardMetaOptions {
    * the board hands its exit question, and for the same reason it has to be the
    * same one. See {@link isDispatched}.
    *
-   * Absent for every board with no dispatcher assignee, which is what keeps
-   * the reason this block reports bit-for-bit what it was for those boards.
+   * Absent for a plan board (FIX-2076), which is what keeps the reason this
+   * block reports bit-for-bit what it was for those boards.
    */
   runsElsewhere?: RunsElsewhere;
 }
@@ -235,7 +235,7 @@ function hasRowGoingNowhere(
   // an ABANDONED row — a worker died, the lease lapsed, and nothing is coming
   // back for it until a later drain reclaims it. `isDispatched` alone would miss
   // a row another drain's live worker is holding, because that predicate needs
-  // `runsElsewhere` and an inline board declares none; the row would be called
+  // `runsElsewhere` and a plan board passes none; the row would be called
   // stuck while it is being actively worked. The live lease answers for both,
   // which is why this reads it directly instead of asking where the work was
   // routed.

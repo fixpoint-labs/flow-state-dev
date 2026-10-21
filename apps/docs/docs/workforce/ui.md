@@ -5,6 +5,9 @@ sidebar_position: 13
 description: Render a roster, its coordinators and its boards with components from @flow-state-dev/react.
 ---
 
+import Figure from "@site/src/components/Figure";
+import UiReadSourcesDrawing from "./ui-read-sources.svg";
+
 # Workforce components
 
 `@flow-state-dev/react` ships the screens a workforce needs. Most of it is one component: a navigator that browses your flows. Beside it sit the roster and a board, drawn as columns or as a list. You import them; there is nothing to copy into your app.
@@ -131,7 +134,7 @@ No component draws the [messages your workers send each other](./messaging-worke
 
 ## Where each component reads from
 
-![Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function](./ui-read-sources.svg)
+<Figure svg={UiReadSourcesDrawing} caption="Three places a component reads" description={"Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function"} />
 
 What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton flow kind, or one instance of a collection flow kind, so opening a collection flow kind's own row reads nothing and a roster of two hundred workers costs one request to draw.
 

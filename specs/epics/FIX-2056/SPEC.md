@@ -53,6 +53,10 @@ flowchart LR
 | **Control that must fail** | Leg b with sweeper payment off; on today's `main`, leg a and the sweep |
 
 **Lead measure:** in-scope rows whose story acceptance check passes on `main`, of 31. **0 today.**
+Four rows hold a half other epics own, which does not gate the closure ([D2](DECISIONS.md#d2)), as
+[(f)](DECISIONS.md#f) carves out its row's Error Reporter half: *waiting on a person*, and answering
+a question by public action or by `updateTask`'s message (FIX-2058); `sendMessage` among the
+model's tools (FIX-2070).
 
 ## What's in the box
 
@@ -74,13 +78,15 @@ The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 | [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) · filing settings | Start, session, result, attempts; cascades; the one read for retired rows ([D3](DECISIONS.md#d3)) | — |
 | [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · five tools | Five task tools, one rule per field; delegates as authority | FIX-2076, FIX-2080 |
 | [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait; 5 deep, 100 under a top task | FIX-2076, FIX-2077, FIX-2081 |
-| [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2078, FIX-2080, FIX-2081 |
+| [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2077, FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2084](https://linear.app/fixpoint-labs/issue/FIX-2084) · worker contract | Roles checked at hire; `respond` and `dispatch` | FIX-2078, FIX-2083 |
 | [FIX-2085](https://linear.app/fixpoint-labs/issue/FIX-2085) · schedules | A schedule files an ordinary task | — |
 | [FIX-2086](https://linear.app/fixpoint-labs/issue/FIX-2086) · steer and follow-up | `updateTask({ message })`; finished output never changes | FIX-2077, FIX-2081 |
+| [FIX-2088](https://linear.app/fixpoint-labs/issue/FIX-2088) · background errors | A task's background error fails its attempt, through the gate's one check | FIX-2077 |
+| [FIX-2090](https://linear.app/fixpoint-labs/issue/FIX-2090) · refused runs | A refused harness-manager run ends its task through the one ending path | FIX-2080 |
 | [FIX-2087](https://linear.app/fixpoint-labs/issue/FIX-2087) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
-Ten and a closure; the POC moved the waited dispatch to FIX-2082
+Twelve and a closure; the POC moved the waited dispatch to FIX-2082
 ([why](DECISIONS.md#what-the-end-state-poc-showed)). Engine prerequisites:
 [seams](DECISIONS.md#coordination-seams).
 
@@ -92,6 +98,8 @@ flowchart LR
   L["FIX-2080 · filing settings"] -->|"the read for retired rows"| B["FIX-2077 · when a task is done"]
   B -->|"the settle rule"| W["FIX-2082 · waits"]
   B -->|"a steer is no ending"| S["FIX-2086 · steer and follow-up"]
+  B -->|"the seam after the last drain"| G["FIX-2088 · background errors"]
+  L -->|"endingOf"| N["FIX-2090 · refused runs"]
   M["FIX-2076 · board modes"] -->|"a plan board's drain waits"| W
   L -->|"held, settings"| T["FIX-2081 · five tools"]
   M -->|"plan rows"| T
@@ -99,6 +107,7 @@ flowchart LR
   T -->|"getTask"| W
   T -->|"updateTask"| S
   T -->|"createTask, delegates"| R["FIX-2083 · routed tasks"]
+  B -->|"a routed task stays open while its filed work runs"| R
   L -->|"session, result, attempts"| R
   L -->|"dependents cancelled, with their cause"| E["FIX-2078 · endings and debts"]
   E -->|"the sweeper recovers a lost wait"| B
@@ -109,7 +118,7 @@ flowchart LR
 ```
 
 An edge is what one issue hands the next. FIX-2076, FIX-2080 and FIX-2085 start at once;
-every child blocks the closure, left off. The longest chain is four.
+every child blocks the closure, left off. The longest chain is five (FIX-2080, FIX-2081, FIX-2077, FIX-2083, FIX-2084).
 
 ## What stays as it is
 
@@ -156,4 +165,4 @@ release · [(f) keep Shift Manager's error route](DECISIONS.md#f) · [(a) one ep
 
 **Open, the owner's:** none.
 
-Epic · 10 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest
+Epic · 12 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest

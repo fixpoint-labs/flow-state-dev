@@ -90,6 +90,7 @@ describe("task dispatch — the off state (BP-030 / BP-035)", () => {
       taskBoard({
         name: "old-block-shape",
         boardId: "old-block-shape",
+        mode: "delegation",
         collection: durable,
         workers: { summarize: { block: worker("summarize-2c"), session: "per-task" } as never },
       })
@@ -112,9 +113,9 @@ describe("task dispatch — the off state (BP-030 / BP-035)", () => {
     const board = taskBoard({
       name: "unwrap-board",
       boardId: "unwrap-board",
+      mode: "delegation",
       collection: durable,
       workers: {
-        summarize: worker("summarize-3"),
         implement: assignee("implement"),
       },
     });
@@ -163,6 +164,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
       taskBoard({
         name: "request-backed",
         boardId: "request-backed",
+        mode: "delegation",
         workers: { implement: assignee("implement") },
       })
     ).toThrow(/request-backed collection|must be durable/);
@@ -173,6 +175,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
       taskBoard({
         name: "seq-backed",
         boardId: "seq-backed",
+        mode: "delegation",
         collection: { backing: "sequencer", collectionId: "seq-backed" },
         workers: { implement: assignee("implement") },
       })
@@ -186,6 +189,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
       taskBoard({
         name: "factory-backed",
         boardId: "factory-backed",
+        mode: "delegation",
         collection: () => ({}) as unknown as TaskCollectionRef,
         workers: { implement: assignee("implement") },
       })
@@ -201,6 +205,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
     const board = taskBoard({
       name: "session-state",
       boardId: "session-state",
+      mode: "delegation",
       collection: durable,
       workers: { implement: assignee("implement") },
     });
@@ -228,6 +233,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
     const board = taskBoard({
       name: "cap-session",
       boardId: "cap-session",
+      mode: "delegation",
       collection: durable,
       workers: { implement: assignee("implement") },
     });
@@ -240,36 +246,13 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
     ).toThrow(/via capability "memo"/);
   });
 
-  it("does NOT refuse sessionStateSchema on an INLINE worker of a dispatching board", () => {
-    // The collision is a property of running in the child session a dispatched
-    // assignee may share with other rows, which an inline worker never joins.
-    // Refusing it would be a guard firing on a condition it does not actually
-    // test.
-    const board = taskBoard({
-      name: "mixed-board",
-      boardId: "mixed-board",
-      collection: durable,
-      workers: {
-        summarize: worker("sum-session", { sessionStateSchema: z.object({ topic: z.string() }) }),
-        implement: assignee("implement"),
-      },
-    });
-    expect(() =>
-      defineFlow({
-        kind: "mixed-board",
-        actions: { run: { block: board.drain } },
-        task: { actions: { implement: { block: worker("impl-mixed") } } },
-      })
-    ).not.toThrow();
-  });
-
   it("accepts a durable dispatched board with a boardId", () => {
     const board = taskBoard({
       name: "good-board",
       boardId: "good-board",
+      mode: "delegation",
       collection: durable,
       workers: {
-        summarize: worker("sum-good"),
         implement: assignee("implement"),
       },
     });
@@ -288,6 +271,7 @@ describe("task dispatch — the uniform and floor assignees", () => {
       taskBoard({
         name: "uniform-dispatch",
         boardId: "uniform-dispatch",
+        mode: "delegation",
         collection: durable,
         workers: assignee("uniform-impl"),
       })
@@ -300,8 +284,9 @@ describe("task dispatch — the uniform and floor assignees", () => {
     const board = taskBoard({
       name: "floor-dispatch",
       boardId: "floor-dispatch",
+      mode: "delegation",
       collection: durable,
-      workers: { summarize: worker("sum-floor") },
+      workers: {},
       defaultWorker: assignee("floor-impl"),
     });
     expect(board.dispatchers.map((s) => [s.kind, s.label])).toEqual([["floor", "floor"]]);
@@ -329,6 +314,7 @@ describe("task dispatch — a session-scoped ledger is refused at construction",
       taskBoard({
         name: "session-dispatch",
         boardId: "session-dispatch",
+        mode: "delegation",
         collection: sessionScoped,
         workers: { implement: assignee("implement") },
       })
@@ -340,6 +326,7 @@ describe("task dispatch — a session-scoped ledger is refused at construction",
       taskBoard({
         name: "session-dispatch-named",
         boardId: "session-dispatch-named",
+        mode: "delegation",
         collection: sessionScoped,
         workers: { implement: assignee("implement") },
       })
@@ -351,6 +338,7 @@ describe("task dispatch — a session-scoped ledger is refused at construction",
       taskBoard({
         name: "session-dispatch-fix",
         boardId: "session-dispatch-fix",
+        mode: "delegation",
         collection: sessionScoped,
         workers: { implement: assignee("implement") },
       })
@@ -378,6 +366,7 @@ describe("task dispatch — a session-scoped ledger is refused at construction",
       taskBoard({
         name: "user-dispatch",
         boardId: "user-dispatch",
+        mode: "delegation",
         collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
         workers: { implement: assignee("implement") },
       })
@@ -391,6 +380,7 @@ describe("the session-schema refusal sees composed children", () => {
     const board = taskBoard({
       name: kind,
       boardId: kind,
+      mode: "delegation",
       collection: durable,
       workers: { implement: assignee("implement") },
     });

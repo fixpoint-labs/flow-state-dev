@@ -61,6 +61,32 @@ export interface TaskSettingsSupport {
   readonly resultTo?: readonly TaskResultSetting[];
 }
 
+/** Where a filing comes from, as the board that takes it knows it. */
+export interface TaskFilingCallerContext {
+  /** The filing comes from a task's own session, which files pieces of that task. */
+  readonly fromTaskSession: boolean;
+}
+
+/**
+ * Refuse a setting the filing's caller may not ask for (FIX-2080): a task's
+ * session files pieces of its task, heard by that task, so it asks neither
+ * for the delegate's ongoing session nor for a result sent to the
+ * conversation. Only a conversation chooses those.
+ *
+ * @throws {TaskFilingRefusedError} with rule `setting_not_from_task_session`.
+ */
+export function assertFilingCallerContext(init: TaskInit, context: TaskFilingCallerContext): void {
+  if (!context.fromTaskSession || (init.session !== "ongoing" && init.resultTo !== "conversation")) return;
+  const setting = init.session === "ongoing" ? `session "ongoing"` : `resultTo "conversation"`;
+  throw new TaskFilingRefusedError({
+    rule: "setting_not_from_task_session",
+    ...(init.id !== undefined ? { taskId: init.id } : {}),
+    detail:
+      `a task's session can't file with ${setting}: only a conversation chooses the delegate's ongoing ` +
+      `session or sends a result to the conversation. Nothing was written.`,
+  });
+}
+
 const DEFAULT_SESSIONS: readonly TaskSessionSetting[] = ["new"];
 const DEFAULT_RESULTS: readonly TaskResultSetting[] = ["filer"];
 
