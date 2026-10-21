@@ -54,6 +54,11 @@ which owns the setting (round 1's second look recommends this split): then this 
 refusal and makes a drain wait on a dispatched row from any board (legs a, b, c, e), and FIX-2080
 decides `session: "new"` on a worker's own step, against its own default of `"new"`.
 
+**The new session's slot** (decided by the coordinator, assuming the owner accepts D2; it drops out
+with D2 if the owner rejects it): a plan row filed `session: "new"` **does** hold its new
+session's one open-task slot once started and until it ends, because it is that session's open task.
+FIX-2080's *"plan rows never"* covers rows run inline in the filing session.
+
 ## Decided, not asked
 
 - **The convergence point.** One gate, core's wait gate, which every wait parks on, and one depth
