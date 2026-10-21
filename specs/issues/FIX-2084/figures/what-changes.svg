@@ -1,0 +1,66 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: the hire checks a worker flow's configuration, one door of any name, and attribution; a role's entries arrive through pieces the flow opts into, and a missed one shows up mid-task, when a filed task's ending never arrives or a task fails at the claim gate. After: the flow declares its roles; the hire checks respond for every worker and, for each declared role, its entries by name, section, factory mark and input schema; each role's entries come from its factory; a missing or refusing entry, or a piece of a role's factory on a flow that does not declare that role, refuses the hire before any worker runs, and the board pass is named dispatch."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .bad   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-code { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="446" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="32" y="52" width="414" height="70" rx="5"/>
+    <text class="t-lbl" x="48" y="72">THE HIRE CHECKS</text>
+    <text class="t-b" x="48" y="92">configuration · one door, any name · attribution</text>
+    <text class="t-s" x="48" y="110">a role's entries are not checked</text>
+    <rect class="n-box" x="32" y="138" width="414" height="88" rx="5"/>
+    <text class="t-lbl" x="48" y="158">A MANAGER WIRES BY HAND</text>
+    <text class="t-b" x="48" y="178">tools · messages · actions · resources</text>
+    <text class="t-b" x="48" y="196">session state · entries(turn)</text>
+    <text class="t-s" x="48" y="214">board pass: runTaskBoard · door: run or message</text>
+    <path class="arrow" d="M239 226 V250"/>
+    <rect class="bad" x="32" y="252" width="414" height="116" rx="5"/>
+    <text class="t-lbl" x="48" y="272">A MISSED PIECE</text>
+    <text class="t-gone" x="48" y="294">hired, then found mid-task</text>
+    <text class="t-s" x="48" y="316">a filed task's ending never arrives</text>
+    <text class="t-s" x="48" y="334">a work entry refuses its task at the claim gate</text>
+    <text class="t-s" x="48" y="352">a work entry nobody declared takes tasks</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="16" width="446" height="368" rx="6"/>
+    <text class="t-lbl" x="494" y="38">AFTER</text>
+    <rect class="n-box" x="494" y="52" width="414" height="70" rx="5"/>
+    <text class="t-lbl" x="510" y="72">THE FLOW DECLARES</text>
+    <text class="t-b" x="510" y="92">roles: contributor · manager · coordinator</text>
+    <text class="t-s" x="510" y="110">each role's entries from its factory</text>
+    <rect class="ok" x="494" y="138" width="414" height="88" rx="5"/>
+    <text class="t-lbl" x="510" y="158">THE HIRE CHECKS, BY NAME, MARK AND INPUT</text>
+    <text class="t-b" x="510" y="178">every worker · respond, and contributor · work</text>
+    <text class="t-b" x="510" y="196">manager · dispatch and onTaskSettled</text>
+    <text class="t-s" x="510" y="214">coordinator · a manager's, plus its three routing entries</text>
+    <path class="arrow" d="M701 226 V250"/>
+    <rect class="ok" x="494" y="252" width="414" height="116" rx="5"/>
+    <text class="t-lbl" x="510" y="272">A MISSED PIECE</text>
+    <text class="t-code" x="510" y="294">refused at hire, nothing runs</text>
+    <text class="t-s" x="510" y="316">the problem names the flow, the role and the entry</text>
+    <text class="t-s" x="510" y="334">and the factory that brings it</text>
+    <text class="t-s" x="510" y="352">a factory piece whose role is undeclared: refused too</text>
+  </g>
+</svg>
