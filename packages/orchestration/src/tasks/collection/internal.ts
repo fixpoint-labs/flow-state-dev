@@ -323,7 +323,7 @@ export interface TaskSettingsPatch {
 export { hasStarted };
 
 /** Why a settings edit is refused on `task` before anything is checked: it has started. */
-export function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
   return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
 }
 

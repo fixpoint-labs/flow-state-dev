@@ -124,7 +124,7 @@ export function delegateDefaultsOf(config: Readonly<Record<string, unknown>>): D
 }
 
 /** Whether the running turn's worker may change its own delegates: a coordinator set so at hire (FIX-2081). */
-export function managesOwnDelegates(config: Readonly<Record<string, unknown>>): boolean {
+function managesOwnDelegates(config: Readonly<Record<string, unknown>>): boolean {
   return config.managesOwnDelegates === true;
 }
 

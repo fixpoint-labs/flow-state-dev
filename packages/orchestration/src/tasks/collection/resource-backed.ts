@@ -128,7 +128,6 @@ import {
   assigneeChangeDecline,
   dispatchWrite,
   settingsWrite,
-  settingsDecline,
   settingsChangeKind,
   type TaskSettingsPatch,
   parkPatch,
