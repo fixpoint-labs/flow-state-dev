@@ -41,3 +41,5 @@ second moves FIX-2080's behaviour rows into this table.
 |---|---|---|
 | `updateTask` on a started or finished task | Refused, naming the field and the state; a started task takes only a cancel, and a message steer once FIX-2086 lands | FIX-2081 |
 | Reassigning a running task | Refused: cancel it and file it again | FIX-2081 |
+| `updateTask({ message })` on an open task | Steers it: uses no attempt and never cancels | FIX-2086 |
+| A line typed in a finished task's session | Talk: the task doesn't change | FIX-2086 |

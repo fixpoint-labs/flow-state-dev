@@ -118,10 +118,10 @@ It comes down to a filer's model reading a corrected task: screens-only shows it
   read a harness-manager collection: a one-off harness-manager upgrade step writes each as an
   untaken steer on its row, from the turn's person, keyed by the turn's id so a replay adds nothing
   (BP-030). After that step the `turns` reader goes.
-- **Behaviour lines.** Two rows go in the epic's Changed table (migration.md, added by FIX-2081):
-  `updateTask({ message })` on an open task steers it, using no attempt and never cancelling; a
-  line typed in a finished task's session is talk, and the task doesn't change. Whichever of
-  #3596 and this PR merges second writes them there.
+- **Behaviour lines.** Two rows are in the epic's Changed table (migration.md, added by
+  [FIX-2081](../FIX-2081/SPEC.md)): `updateTask({ message })` on an open task steers it, using no
+  attempt and never cancelling; a line typed in a finished task's session is talk, and the task
+  doesn't change.
 - **A taken steer shows in the task's session** as a line from its sender, so the session reads
   as the worker was told.
 - **No POC and no checker.** The premises are read from code and cited; nothing rests on a count.
