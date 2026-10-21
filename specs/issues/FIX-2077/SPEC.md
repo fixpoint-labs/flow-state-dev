@@ -6,18 +6,18 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **files a task whose worker leaves background work running** | Hears "done" while that work still writes | Hears "done" once, after it ends |
+| **files a task whose worker leaves background work running** | Hears "done" while that work still writes | Hears "done" once, after it ends, including work the flow's own end hooks start |
 | **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no piece open, with that answer ([D3](DECISIONS.md#d3)) |
 | **messages a worker whose task is running** | The message runs after the task settled | It runs for the task before it settles; the output is unchanged |
 | **has a task whose request waits on a webhook, a call or a task** | Its claim lapses in two minutes and the task runs again | It shows running and keeps its claim, across a restart too ([D1](DECISIONS.md#d1)) |
-| **has a task that stops to ask a person** | The same lapse: it runs again with the question open | It keeps its claim; it shows running until FIX-2058 ([D2](DECISIONS.md#d2)) |
+| **has a task that stops to ask a person** | The same lapse: it runs again with the question open | It keeps its claim; it shows running until FIX-2058 ([decided](DECISIONS.md#person-stop)) |
 | **maintains the framework** | Three code paths decide that a task is complete | One rule, checked in one place |
 
 ## The goal, and how we'll know it's met
 
 **A dispatched task is settled once, by the claim gate, only when its work is over: its request
-and that request's background work have ended, nothing it filed is open, and nothing is queued
-for it. A task that waits is never run twice.**
+and all that request's background work have ended, nothing it filed is open, and nothing is
+queued for it. A task that waits is never run twice.**
 
 | Is it the right goal? | |
 |---|---|
@@ -28,26 +28,25 @@ for it. A task that waits is never run twice.**
 
 ```mermaid
 flowchart LR
-  A["a real engine · durable store · a session board"] --> L1["leg a · background work outlives the return"]
-  A --> L2["leg b · the task files two pieces"]
+  A["a real engine · durable store · a session board"] --> L1["leg a · background work, and work an end hook starts"]
+  A --> L2["leg b · two pieces · the last ends just after a check"]
   A --> L3["leg c · a message queued mid-task"]
-  A --> L4["leg d · a wait, then a lapse, then the resume"]
+  A --> L4["leg d · a wait and a person's stop · a lapse · the resume"]
   L1 --> R["rows read through the collection · notices the filer heard"]
   L2 --> R
   L3 --> R
   L4 --> R
-  R -->|"one ending each · after all the work · attempts 1"| P["PASS · goal met"]
-  C["control · settle at the entry's last step"] -.-> L1
-  R -.->|"under the control"| F["must FAIL · settled before background end"]
+  R -->|"one ending each · after all the work · attempt 1"| P["PASS · goal met"]
+  R -.->|"control · settle at the entry's last step"| F["must FAIL legs a and c"]
 ```
 
-The check reads the rows and the filer's notices, not the gate's calls. The dashed path is the same
-run with today's settle point, and it must fail.
+The check reads the rows and the filer's notices, not the gate's calls. The dashed path is the same run with today's
+settle point, and it must fail.
 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/settles-when-its-work-is-over/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Each leg: one ending, heard once by the filer. a: settled after the side chain's last write. b: running while a piece is open, then done with the last turn's answer. c: the message's request ends before the settle; output is `work`'s. d: still running on attempt 1 after a reclaim past the lease; done after the resume |
+| **Signal** | Each leg: one ending, heard once by the filer. a: settled after the last write of the side chain the action starts and of the one the flow's `onFinished` starts. b: running while a piece is open; the last piece ends after a request's check ran and before its notice is admitted; settled once with the last turn's answer, no running row left. c: the message's request ends before the settle; output is `work`'s. d: a wait and a person's stop each still running on attempt 1 after a reclaim past the lease; done after the resume |
 | **Input** | Deterministic workers on the Workforce session board. A different delay, piece count or suspension reason must pass too |
 | **Anti-game** | No assertions on recorder calls or a stubbed gate: rows through the collection, notices as the filer got them |
 | **Control that must fail** | `GOAL_CONTROL=settle-at-return` must FAIL leg a on *settled after the side chain's last write* and leg c on *the message's request ends before the settle*. Today's `main` must also FAIL legs b and d |
@@ -80,22 +79,24 @@ the same. No new page.
 
 ```mermaid
 flowchart LR
-  W["a request for the task · work, onTaskSettled, a queued message, a resume"] --> E["engine drains its background work"]
-  E --> O["request end · onFinished"]
-  O --> G["claim gate · the one rule-6 check"]
+  W["a request for the task · work, onTaskSettled, a queued message, a resume"] --> E["engine drains background work · onFinished · drains what the end hooks started"]
+  E --> G["claim gate · the one rule-6 check"]
   G -->|"done"| S["settle the row once"]
-  G -->|"a filed task open or a message queued"| H["keep it running · the next request re-checks"]
+  G -->|"a filed task open or a message queued"| H["record the hold · drop the lease · the next request re-checks"]
   W -->|"suspends"| K["record the hold · keep the claim · no lease"]
 ```
 
-Every request for the task ends at the same check. One that suspends records the hold instead.
+Every request for the task ends at the same check, after the engine's last drain. A request that
+suspends, or ends with work still open, records the hold instead.
 
 ## What stays as it is
 
-- **Inline plan rows.** The drain still settles them (FIX-2076 owns when their background counts).
+- **Inline plan rows.** The drain records each row when its worker returns (FIX-2076). Its
+  background work belongs to the parent task's request, so it holds the parent's settle, not the row's.
 - **Failures.** A request that throws fails the attempt where it does today; retries are unchanged.
 - **Who a piece can go to.** Any worker on the roster that takes tasks (delegates as authority is FIX-2081's).
-- **A worker's review park** (`awaitReview`), and `answerTask`, until FIX-2058.
+- **A worker's review park** (`awaitReview`), and `answerTask`, until FIX-2058. A held row is not a
+  review park, and this issue changes neither.
 
 ## What's already here, and the debt
 
@@ -103,21 +104,22 @@ Every request for the task ends at the same check. One that suspends records the
 |---|---|
 | The claim gate around a task entry (`task-board/task-entry.ts`) | **Extends.** It admits every request for the task and settles at the request's end |
 | The recorders the gate and the inline drain share | **Builds on.** The inline drain keeps them as they are |
-| The request's end: background drained, then `onFinished`, on every terminal path | **Builds on.** No new engine hook; composed with an author's `onFinished` |
-| Lease renewal, and the reclaim that skips a row with no lease | **Builds on.** A waiting row drops its lease, so the reclaim leaves it alone |
+| The request's end: drain, `onFinished`, then a second drain for what the end hooks started, on every terminal path | **Extends.** The gate's check runs after that second drain, through a seam for framework packages. Not a flow-author hook ([decided](DECISIONS.md#decided-not-asked)) |
+| Lease renewal, and the reclaim that skips a row with no lease | **Builds on.** A held row drops its lease, so the reclaim leaves it alone. A board counts it as dispatched, as it does a live lease today |
 | The message entry, deferred behind the task's turn | **Builds on.** Admitted for the task; FIX-2070 renames it `receive` |
 | Whatever else decides a task is done | **Three today** (the epic POC's census of every `complete`/`fail`/settle write in `orchestration` and `workforce`): the gate's recorders, `completeTask`/`failTask`, the split settle. The settle goes here, the tools in FIX-2081, a wait's cancel in FIX-2082 |
 | [FIX-1802 D3](../FIX-1802/DECISIONS.md#d3) and its BR-16: a failed piece fails the parent unless re-filed | **Superseded.** The worker's last request decides ([D3](DECISIONS.md#d3)) |
-| [FIX-1802](../FIX-1802/DECISIONS.md) S4: the park, the parent binding, the settle and its replay | **Superseded.** The task stays running; the end of the next request for it settles it. Parked rows in flight are read through FIX-2080's map |
+| [FIX-1802](../FIX-1802/DECISIONS.md) S4: the park, the parent binding, the settle, its replay and the cancel that reaches the pieces | **Superseded.** The task stays running; the end of the next request for it settles it. FIX-2080's cascade cancels its pieces. Parked rows in flight are read through FIX-2080's map |
 | The epic's [ER-2](../../epics/FIX-2056/DECISIONS.md#who-owns-what) and [D3](../../epics/FIX-2056/DECISIONS.md#d3) | **Kept.** This issue owns ER-2 and turns on the parked-split entry of D3's map |
 
 | The debt | |
 |---|---|
-| **Removes** | The split park, its parent binding and its settle entry (`settleSplitTask`) · the `{ answer, pieces }` output · the automatic piece-failure rule and the retry marker · the settle at the entry's last step |
-| **Adds** | A hold on a running row: what its request waits on (a person, or anything else). Permanent by design: it is how a task keeps its claim with no live worker. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
-| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded wait is paid only by the sweeper (FIX-2078) · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
+| **Removes** | The split park, its parent binding and its settle entry (`settleSplitTask`) · its cancel cascade (FIX-2080's replaces it) · the `{ answer, pieces }` output · the automatic piece-failure rule and the retry marker · the settle at the entry's last step |
+| **Adds** | A hold on a running row: what keeps it open (a person, filed tasks, or another wait). It outlives the review park, which FIX-2058 retires. One engine seam after the last drain. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
+| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded hold is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch goes: a crash between the last piece ending and its notice strands the parent until FIX-2078 · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
 
-**Net: down.** A park, a settle entry, an output shape and a failure rule go; one hold field arrives.
+**Net: down.** A park, a settle entry, a cascade, an output shape and a failure rule go; one hold
+field and one engine seam arrive.
 
 ## Sign off
 
@@ -126,15 +128,14 @@ work, and never run twice for waiting. If wrong: FIX-2082 and FIX-2086 build on 
 moves.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** the split park and its settle go; a
-hold field on a running row arrives. If wrong: a field nobody reads after FIX-2058.
+hold field and an engine seam arrive. If wrong: a field nobody reads after FIX-2058.
 
 1. **[D1](DECISIONS.md#d1) · A waiting task keeps its claim with no lease.** If wrong: a task whose
    wait is lost stays running until the sweeper pays it.
-2. **[D2](DECISIONS.md#d2) · A task stopped for a person keeps its claim now, before FIX-2058
-   shows it.** If wrong: for one release, a person's question reads as "running".
-3. **[D3](DECISIONS.md#d3) · A task that split ends as its worker's last request ends.** If wrong:
-   filers outside the repo reading `.pieces` rewrite at upgrade.
+2. **[D3](DECISIONS.md#d3) · A task that split ends as its worker's last request ends.** If wrong:
+   filers outside the repo reading `.pieces` rewrite at upgrade. In the repo only the split's own
+   tests, goal and docs read it.
 
-**Open: none.** Number 3 is the one to weigh: it changes an output people read.
+**Open: none.** Number 2 is the one to weigh: it changes an output people read.
 
-Improvement · `orchestration` + `workforce` · medium · epic [FIX-2056](../../epics/FIX-2056/SPEC.md)
+Improvement · `orchestration` + `workforce` + `engine` · medium · epic [FIX-2056](../../epics/FIX-2056/SPEC.md)
