@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The concept already ruled that an error in background work fails the attempt. These two say what
-that costs, and where it stops.
+The concept already ruled that an error in background work fails the attempt. These three say what
+that costs, and where it stops. D3 is open.
 
 ## The tree
 
@@ -13,6 +13,8 @@ flowchart TD
   D1 -.->|"rejected"| X1["exempt Workforce's after-answer step · the rule's most common case would be its exception"]
   I --> D2["D2 · the request stays completed · only the attempt fails"]
   D2 -.->|"rejected"| X2["end the request as failed · its success hooks already ran"]
+  I --> D3["D3 · open · a plain .waitForSideChain() still hands its failures on · recommended"]
+  D3 -.->|"recommended against"| X3["the wait exempts them · a wait added for ordering hides the step it waits on"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -52,7 +54,31 @@ It comes down to the success hooks: they ran before the last drain, so the reque
 as a session view with no task panel. Then the request record gains a "background work failed"
 flag beside its status, not a different status.
 
+<a name="d3"></a>
+## D3 · Open: a failure a plain `.waitForSideChain()` drained still fails the attempt
+
+**The fork:** when a worker waits on its background step with the default `.waitForSideChain()`,
+and the step failed, does the task's attempt still fail?
+
+| | |
+|---|---|
+| **In plain terms** | The default wait lets the pipeline carry on past a failed step and logs it. The docs recommend that wait as an ordering barrier, *"wait for persistence before reading state below"*. Today the failure is gone once the wait drains it |
+| **Recommended: yes** | The pipeline still continues past the wait, as documented; in a task, the failure the wait drained still reaches the gate and fails the attempt. `failOnError: true` is unchanged: its throw is the sequencer's, so a `.rescue` can still catch it. The pool keeps a failure when a default wait drains it, as it does at the request's drains |
+| **Instead of** | Treating the wait as handling the failure. That needs no code, but the wait hands the author nothing to handle: it returns its input and logs. A wait added only for ordering would silently exempt the very step it waits on, and "every background error fails the attempt" would carry an exception nobody chose |
+| **The price** | A user-visible docs promise changes for a task: the control-flow page says the default lets errors be *"recorded silently"*; in a task it now fails the attempt. The default value does not change, and nothing changes in a conversation. A worker that wants the step best-effort catches inside it, as [D1](#d1) says |
+| **What would change my mind** | Teams that use the default wait specifically to mean "I accept this step failing". Then the wait exempts its failures and the docs say so |
+| **If wrong** | Recommending yes wrongly: a task an author meant to tolerate a failed step retries it, recoverable by a `try`/`catch` in the step. Choosing no wrongly: a task whose persistence step failed reads as done, the harm this issue exists to remove |
+
 ## Decided, not asked
+
+- **A suspension keeps no failure of its own; the resume's rerun decides.** A suspended request
+  does not drain, and its pool ends with it. A step that failed, or was still running, has no
+  completed trace, and the resume rebuilds the control flow and reruns every step without one
+  ([memoization and replay](../../../apps/docs/docs/advanced/block-memoization-and-replay.md)). The
+  rerun lands in the resumed request's pool, so its failure reaches the seam like any other. A
+  rerun that succeeds clears it: the step's last run in the attempt is its outcome, and failing the
+  attempt then would redo work already done. Carrying the earlier failure would need a durable
+  record across the suspension for no change in outcome. Leg i covers both reruns.
 
 - **The convergence point.** The engine's one drain helper collects the failures on all five
   drains (`engine/src/execution/runAction.ts`: success path `:2447`, `:2518`, `:2641`; error path
@@ -99,6 +125,9 @@ flag beside its status, not a different status.
   request's existing pool instead of a new field on the request; D1's price now names success
   hooks running twice, because a reviewer showed a retry follows a request whose `onCompleted`
   committed.
+- **Review round 2** — goal legs for a queued message, an `onTaskSettled` turn, a resume and a
+  default wait; a failure before a suspension is decided by the resume's rerun; the default
+  `.waitForSideChain()` question raised as D3.
 
 ## Notes from review
 
@@ -114,4 +143,4 @@ These are inputs, not instructions. Adopt, adapt, or discard; you owe no justifi
 discarding one. A note that turns out to reveal a design problem is a spec blind spot: surface it
 and fold it back.
 
-**Open: none.**
+**Open: [D3](#d3).**

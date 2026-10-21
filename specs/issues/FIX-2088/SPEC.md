@@ -23,7 +23,7 @@ never hears "done" for it.**
 | **The real need** | *"A task whose background work broke is not reported as done"* (the issue), and the concept's rule: an attempt fails when one of its requests errors, *"its background work included"* ([Tasks, failed attempts](../../../docs/internal/design/workforce-coordination-concept.md)) |
 | **Smaller, and rejected** | "Only the `work` request's own background work counts." A failed step in a queued message, an `onTaskSettled` turn, a resume, or work the flow's `onFinished` starts would still end as done |
 | **Bigger, and not this issue's** | What a message's waiting caller hears when its request's background work fails (FIX-2070). Notices reaching the filer when nothing touches the board (FIX-2078) |
-| **Not done if** | The check passes only for work started in `work` · a retry records attempt 1's output · a cancel reads as a failure · an error after a dropped connection is hidden · a conversation turn's behaviour changes · the failure only reaches a log |
+| **Not done if** | The check passes only for work started in `work` · a failure before a suspension is lost when its rerun fails too · a retry records attempt 1's output · a cancel reads as a failure · an error after a dropped connection is hidden · a conversation turn's behaviour changes · the failure only reaches a log |
 
 ```mermaid
 flowchart LR
@@ -33,14 +33,22 @@ flowchart LR
   A --> L4["leg d · the same flow as a plain request"]
   A --> L5["leg e · a cancel · one step stops on it · one throws anyway"]
   A --> L6["leg f · a dropped connection · then the step throws"]
+  A --> L7["leg g · a queued message's request · its step throws once"]
+  A --> L8["leg h · an onTaskSettled turn · its step always throws"]
+  A --> L9["leg i · the step fails · the request suspends · the resume reruns it"]
+  A --> L10["leg j · a plain .waitForSideChain() drains the failure"]
   L1 --> R["rows read through the collection · notices the filer heard"]
   L2 --> R
   L3 --> R
   L4 --> R
   L5 --> R
   L6 --> R
-  R -->|"a and f retried · b and c failed · d completed · e cancelled"| P["PASS · goal met"]
-  R -.->|"control · the gate is told of no failures"| F["must FAIL legs a b c f"]
+  L7 --> R
+  L8 --> R
+  L9 --> R
+  L10 --> R
+  R -->|"a f g retried · b c h j failed · i per rerun · d completed · e cancelled"| P["PASS · goal met"]
+  R -.->|"control · the gate is told of no failures"| F["must FAIL legs a b c f g h i j"]
 ```
 
 The check reads task rows and what the filer heard. The dashed path drops the failures before the
@@ -49,10 +57,10 @@ gate, and must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/background-error-fails-the-attempt/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: done on attempt 2 with attempt 2's output; attempt 1's output nowhere on the row; the filer heard one ending. b: failed after 1 attempt; its error names the background step; one failure notice. c: as b. d: the request completes and no task row exists. e: cancelled, not failed, not re-pended, both for a step that settles on the abort and for one that throws after it. f: as a |
+| **Signal** | a: done on attempt 2 with attempt 2's output; attempt 1's output nowhere on the row; the filer heard one ending. b: failed after 1 attempt; its error names the background step; one failure notice. c: as b. d: the request completes and no task row exists. e: cancelled, not failed, not re-pended, both for a step that settles on the abort and for one that throws after it. f, g: as a. h: as b. i: the rerun throws, as b; the rerun succeeds, done on attempt 1 with no failure recorded. j: as b, the pipeline having continued past the wait ([D3](DECISIONS.md#d3)) |
 | **Input** | Deterministic workers on the Workforce session board. A step from `.forEachSideChain`, or one started in `onCompleted`, must pass too |
 | **Anti-game** | No assertions on the seam's input, on log lines or on a stubbed gate: rows through the collection, notices as the filer got them |
-| **Control that must fail** | `GOAL_CONTROL=drop-background-failures` must FAIL legs a and f on *done on attempt 2* and legs b and c on *failed after 1 attempt*; leg d must still pass, which proves the control is narrow. Today's `main` must also FAIL legs a and b |
+| **Control that must fail** | `GOAL_CONTROL=drop-background-failures` must FAIL legs a, f and g on *done on attempt 2* and legs b, c, h, j and i's throwing rerun on *failed after 1 attempt*; leg d and i's clean rerun must still pass, which proves the control is narrow. Today's `main` must also FAIL legs a and b |
 
 ## What changes
 
@@ -89,16 +97,18 @@ failures, whatever their shape, and a dropped connection is not a cancel.
 - **Conversation turns and every other request** with no task: background failures stay logged
   and drop out, as `docs/architecture/execution-and-errors.md` says.
 - **A request's own status.** Background work never drives it ([D2](DECISIONS.md#d2)).
-- **`.waitForSideChain({ failOnError })`.** `true` still fails the request; a failure a
-  `.waitForSideChain` already handled is that sequencer's, not background work.
-- **A suspended request** does not drain, as today.
+- **`.waitForSideChain({ failOnError })`.** `true` still fails the request, and that throw is the
+  sequencer's, so a `.rescue` can still catch it. The default still lets the pipeline continue; in
+  a task, the failure it drained still fails the attempt (recommended in [D3](DECISIONS.md#d3), open).
+- **A suspended request** does not drain, as today. A step that failed or was still running has no
+  completed trace, so the resume reruns it; the rerun's outcome is the one handed on.
 
 ## What's already here, and the debt
 
 | Already here | What this does with it |
 |---|---|
 | The engine's drain helper, which collects every background failure and logs it (`drainRequestSideChainPool`) | **Extends.** The request's background-work pool, which already holds every step, keeps their failures across drains as well as logging them |
-| [FIX-2077](../FIX-2077/SPEC.md)'s engine seam after the last drain, and its one rule-6 check ([#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592), in review) | **Extends.** The seam also carries the failures; the check fails the attempt on any |
+| [FIX-2077](../FIX-2077/SPEC.md)'s engine seam after the last drain, and its one rule-6 check ([#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592), merged) | **Extends.** The seam also carries the failures; the check fails the attempt on any |
 | The gate's failure write on a throw (`recordError`, which re-pends or fails the row) | **Builds on.** The one way to fail an attempt; background failures go through it |
 | Whatever else fails an attempt | **Three today:** the recorders' failure write (the gate's and the inline drain's), `failTask` (FIX-2081 removes it), and the split settle (FIX-2077 removes it). `.waitForSideChain({ failOnError: true })` fails the request, which reaches the first. Searched `.fail(`, `failTask`, `recordError`, `failOnError` across `orchestration`, `workforce`, `engine`. This adds none |
 | Workforce's `afterAnswer` promise: *"a failure in it does not fail the turn"* | **Amended** for a task ([D1](DECISIONS.md#d1)); kept for a conversation |
@@ -127,6 +137,10 @@ handed to an existing seam. If wrong: a list in the pool nobody else reads.
 2. **[D2](DECISIONS.md#d2) · The request stays completed; only the attempt fails.** If wrong: a
    person reading a task's session sees "completed" beside a task that retried.
 
-**Open: none.** Number 1 is the one to weigh: it changes a promise the Workforce docs make today.
+3. **[D3](DECISIONS.md#d3) · Open: does a failure a plain `.waitForSideChain()` drained still fail
+   the attempt?** Recommended yes. If wrong either way: a wait added only for ordering silently
+   exempts the step it waits on, or a failure an author waited on fails a task they meant to keep.
+
+**Open: D3.** Number 1 is the one to weigh: it changes a promise the Workforce docs make today.
 
 Improvement · `engine` + `orchestration` + `workforce` docs · small · ships after FIX-2077 · epic [FIX-2056](../../epics/FIX-2056/SPEC.md)
