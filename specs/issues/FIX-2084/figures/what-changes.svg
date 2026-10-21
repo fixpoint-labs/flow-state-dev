@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: the hire checks a worker flow's configuration, one door of any name, and attribution; a role's entries arrive through pieces the flow opts into, and a missed one shows up mid-task, when a filed task's ending never arrives or a task fails at the claim gate. After: the flow declares its roles; the hire checks respond for every worker and, for each declared role, its entries by name, section and input schema; each role's entries come from its factory; a missing or refusing entry, or an entry of a role the flow does not declare, refuses the hire before any worker runs, and the board pass is named dispatch."
+<svg viewBox="0 0 940 400" role="img" aria-label="Two panels. Today: the hire checks a worker flow's configuration, one door of any name, and attribution; a role's entries arrive through pieces the flow opts into, and a missed one shows up mid-task, when a filed task's ending never arrives or a task fails at the claim gate. After: the flow declares its roles; the hire checks respond for every worker and, for each declared role, its entries by name, section, factory mark and input schema; each role's entries come from its factory; a missing or refusing entry, or a piece of a role's factory on a flow that does not declare that role, refuses the hire before any worker runs, and the board pass is named dispatch."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -51,7 +51,7 @@
     <text class="t-b" x="510" y="92">roles: contributor · manager · coordinator</text>
     <text class="t-s" x="510" y="110">each role's entries from its factory</text>
     <rect class="ok" x="494" y="138" width="414" height="88" rx="5"/>
-    <text class="t-lbl" x="510" y="158">THE HIRE CHECKS, BY NAME AND INPUT</text>
+    <text class="t-lbl" x="510" y="158">THE HIRE CHECKS, BY NAME, MARK AND INPUT</text>
     <text class="t-b" x="510" y="178">every worker · respond, and contributor · work</text>
     <text class="t-b" x="510" y="196">manager · dispatch and onTaskSettled</text>
     <text class="t-s" x="510" y="214">coordinator · a manager's, plus its three routing entries</text>
@@ -61,6 +61,6 @@
     <text class="t-code" x="510" y="294">refused at hire, nothing runs</text>
     <text class="t-s" x="510" y="316">the problem names the flow, the role and the entry</text>
     <text class="t-s" x="510" y="334">and the factory that brings it</text>
-    <text class="t-s" x="510" y="352">an entry no declared role needs is refused too</text>
+    <text class="t-s" x="510" y="352">a factory piece whose role is undeclared: refused too</text>
   </g>
 </svg>

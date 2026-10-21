@@ -12,7 +12,7 @@ stories W-01, W-02 and W-04. These two carry it out.
 flowchart TD
   I["FIX-2084"] --> D1["D1 · roles are declared with the worker flow"]
   D1 -.->|"rejected"| X1["a roles key in each worker's file · a second grant beside delegates"]
-  D1 -.->|"rejected"| X2["roles read off the entries a flow has · a half-wired flow is just not a manager"]
+  D1 -.->|"rejected"| X2["roles read off the entries a flow has · rule 15 says declared, and the mark does the catching"]
   I --> D2["D2 · every entry found by name · the door is respond"]
   D2 -.->|"rejected"| X3["the door found by shape · only the built-ins renamed"]
 ```
@@ -25,8 +25,8 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | A `roles:` key in each `WORKER.md`, as the concept's parts table places it (*Stored: the worker's configuration*) · roles read off whichever entries a flow happens to have |
-| **Because** | A role's entries live on the flow, so the flow is where a role is true or false. A worker's file could only narrow its flow, and what narrowing would carry, whether the worker files, its delegate list decides: [FIX-1802 D1](../FIX-1802/DECISIONS.md#d1) rejected a filing flag beside delegates because the two could disagree. Reading roles off the entries present declares nothing: a half-wired manager is just not one, found mid-task. 164 worker files stay as they are |
-| **Locks in** | `roles` on `workerFlow(build, { roles })` and on a `workerFlows` entry (`{ flow, roles }`), a public option. Omitted, a flow has no role beyond every worker's. The check runs both ways: a declared role missing an entry is refused, and so is an entry of a role the flow doesn't declare. The built-ins declare theirs: agent, contributor and manager; coordinator, all three. The concept's parts-table row moves to *the worker flow's registration*; *whether a coordinator may change its own delegates* stays worker configuration (rule 13) |
+| **Because** | A role's entries live on the flow, so the flow is where a role is true or false. A worker's file could only narrow its flow, and what narrowing would carry, whether the worker files, its delegate list decides: [FIX-1802 D1](../FIX-1802/DECISIONS.md#d1) rejected a filing flag beside delegates because the two could disagree. Reading roles off the entries present would catch a half-wired flow, but not a manager kit spread with none of its entries, the W-01 failure; only the factory's mark catches that, declared or not. The concept's rule 15, the owner's call, says roles are declared, so they stay declared. 164 worker files stay as they are |
+| **Locks in** | `roles` on `workerFlow(build, { roles })` and on a `workerFlows` entry (`{ flow, roles }`), a public option. Omitted, a flow has no role beyond every worker's. The check runs both ways: a declared role missing an entry is refused, and so is a piece of a role's factory on a flow that doesn't declare that role (its entries; for a manager, also the kit's actions and resources). Both ways read the factory's mark, not a bare name: a declared role's entry must carry it, and a flow's own unmarked `dispatch` or `work` is its own action, never a role's. The built-ins declare theirs: agent, contributor and manager; coordinator, all three. The concept's parts-table row moves to *the worker flow's registration*; *whether a coordinator may change its own delegates* stays worker configuration (rule 13) |
 
 **What would change my mind:** an app that needs two workers on one flow to differ by role in a
 way their delegate lists can't say. Then a worker's file narrows its flow's roles, never widens
@@ -62,16 +62,21 @@ It comes down to rule 15: every other entry is found by name, and a door found b
 - **Probe inputs come from the framework's own schemas**: core's task envelope for `work`,
   FIX-2078's notice for `onTaskSettled`, `{}` for `dispatch`, `{ message }` for `respond`. A test
   keeps each parsing against its source, as for `CONTRACT_PROBE_BAG`. A probe runs no block.
-- **The contributor check keeps the conversation-task mark**: a `work` gated by another binding
-  refuses a conversation's tasks at the claim gate, which no probe can see.
+- **The contributor check reads the conversation-task mark at hire**: a declared contributor's
+  `work` must be `workerTaskEntry`'s, so a `work` gated by another binding is refused at hire,
+  not at the claim gate. The manager's factory gets the same kind of mark.
 - **The delegate check reads the declared role**; the hire guarantees the entry behind it. A
   delegate list on a flow that isn't a manager stays accepted (FIX-1802 D1).
 - **Requests in flight at upgrade.** A request running under `run` or `runTaskBoard` isn't
   recovered after the rename: the loss the epic accepted for durable keys. No task row names
-  either entry. A lost pass is re-run by the next ending, touch or wake. If a release carried
-  FIX-2078's wakes, the host's start renames their entry once, beside FIX-2078's backfill.
+  either entry. A lost pass is re-run by the next ending, touch or wake. FIX-2078 is unreleased; if a
+  release carries it before this, a wake naming the old pass is lost the same way and the
+  sweeper (rule 8) re-runs what the board owes. No migration code.
 - **Shift Manager**: EM's and coder's `message` become `respond`, behaviour unchanged; each
   declares the roles its entries give it after FIX-2083.
+- **What this takes from FIX-2078 and FIX-2083**, neither on `main`: their specs as reviewed
+  (#3594, #3598). FIX-2078 brings the `onTaskSettled` factory and the board pass this names
+  `dispatch`; FIX-2083 removes posts, so `onDelegatedPost` and the post ending leave the table.
 - **Changesets**: workforce, minor; migration rows for the door and `roles`. No POC and no
   checker: premises read from `main` at `96404d25`, and the spec rests on no count.
 
@@ -82,6 +87,7 @@ It comes down to rule 15: every other entry is found by name, and a door found b
 | Rename `defineSessionBoard` and `workerTaskEntry` to role names | A rename with no behaviour; FIX-2071's retired-terms pass owns names |
 | Run each entry once with a probe input | Writes state and needs a session; rule 15 says probe the schema, as the door check does |
 | Keep `run` and `runTaskBoard` as hidden aliases for requests in flight | [(e)](../../epics/FIX-2056/DECISIONS.md#e): no aliases; the loss is one reply turn at the upgrade moment |
+| Check one way: only a declared role's entries | Hires a manager kit spread with neither its entries nor `roles`, the W-01 failure |
 | Refuse every public action but `respond` | Polices a flow's own screens (EM's `file`, `ask`); the concept's line is about where a user's message arrives |
 
 ## Settled
@@ -92,12 +98,28 @@ door search, the doors in the repo, request recovery by action name) were read f
 
 ## Notes from review
 
-None yet.
+Recorded for the implementer, verbatim; not baked into the design.
+
+- *Second look, PR #3599:* "**Collapse door detection to one function.** `worker-door.ts` (`isDoor`, `workerDoorOf`) and `doorProblem` in `worker-flow-contract.ts:195-211` each define "door" (the latter re-runs `workerDoorOf` once per action to count doors). D2 makes the door a name lookup, so both should reduce to "action `respond` exists, is public, declares `userMessage`, accepts `{ message }`". The spec lists "the door found by shape" under *Removes*; name `worker-door.ts` and `doorProblem` as the places it goes, so the implementer doesn't leave two definitions."
+- *Second look, PR #3599:* "**The role table is the right deep module.** [...] Make it the only place that knows entry names. `ledger.ts:74`, `coordinator-flow.ts:1127` (`"run"` literal) and `TASK_SETTLED_ENTRY` (`notice-delivery.ts:25`) are separate string constants today, and a grep finds about 45 non-test references to `run` / `runTaskBoard`. Have them import from the table, so the rename is one edit and a future `receive` (FIX-2070) is a row."
+- *Second look, PR #3599:* "**Separate the two changes' risk.** The `roles` check is additive and the `run` → `respond` rename is breaking and public. [...] If the PR split is open to the implementer, landing the rename first shrinks the blast radius. If they stay together, say why."
+- *Second look, PR #3599:* "The probe-input table (`work`, `onTaskSettled`, `dispatch`, `respond`) duplicates schemas that live elsewhere, and a test keeps them in step. Preferring each factory to *export* its own input schema, and the table to reference it, makes that test unnecessary. The spec can note this as the implementer's call."
+- *Cursor, PR #3599:* "`coordinator` duplicates the full manager kit plus three entries. If the implementation table is copy-pasted rows, consider documenting coordinator as **manager +** `routeOn` / `roundDeadline` / `changeWorkstreamDelegate` so the registry doesn't imply a third independent factory hierarchy."
+- *Cursor, PR #3599:* "if `workerFlowProblems` stays WeakMap-cached, include resolved `roles` (or full registration) in the cache key so two `{ flow, roles }` entries do not share a verdict."
+- *Cursor, PR #3599:* "Central role table + four consumers: Good DRY target; keep the table minimal and extensible for FIX-2070 `receive` without over-fitting prose to exactly four roles today."
+- *Cursor, PR #3599:* "This section + mermaid largely repeats DECISIONS "convergence point" and `what-changes.svg`. [...] a single canonical hire-check section (DECISIONS) with SPEC linking here would reduce drift."
+
 
 ## How it got here
 
 - **Draft** — framed as rule 15 on the contract the hire already runs: roles declared with the
   worker flow, each role's entries found by name and probed, `respond` and `dispatch` as the
   names, building on FIX-2078's `onTaskSettled` factory and FIX-2083's routed tasks.
+- **Review round 1** — the reverse check reads each role factory's mark instead of bare names,
+  and covers a manager kit spread with no entries, because Codex showed an optional `roles`
+  alone hires that flow and the second look showed bare names collide with a flow's own
+  `dispatch` or `work`. The goal's *one factory per role* narrowed to the entries; the
+  conditional wake rename dropped. Roles stay declared (rule 15) against the architect's lean
+  to infer them.
 
 Open: none.

@@ -4,15 +4,16 @@
 
 **Depends on:** FIX-2078 (the `onTaskSettled` factory and the one pass at a time this renames
 `dispatch`) and FIX-2083 (posts gone, so a contributor's one entry is `work`). Review now; build
-after both merge.
+after both merge. Neither is on `main`: this assumes their specs as reviewed (#3594, #3598), and
+nothing else of them.
 
 ## Six people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
 | **writes a worker flow that files tasks** | Spreads nine fields into six places; a missed `entries(turn)` files tasks whose endings never arrive | Declares `roles: ["manager"]`; a miss is refused at hire, naming the entry and the field to spread |
-| **gives a worker flow its own `work`** | A `work` refusing the task's envelope fails at the claim gate, mid-task | Refused at hire |
-| **adds a `work` entry and doesn't say so** | Takes tasks once named a delegate | Refused until it declares `contributor` ([D1](DECISIONS.md#d1)) |
+| **gives a worker flow its own `work`** | A `work` refusing the task's envelope, or gated by another board, fails at the claim gate, mid-task | Refused at hire, naming `workerTaskEntry` |
+| **spreads a role's factory and doesn't say so** | Takes tasks once named a delegate; a manager kit spread without its entries files tasks whose endings never arrive | Refused until it declares the role ([D1](DECISIONS.md#d1)) |
 | **sends a user's message by action name** | `run` on the agent and coordinator, `message` on Shift Manager's EM | `respond` on every worker ([D2](DECISIONS.md#d2)); apps reading `door` change nothing |
 | **reads a trace of a board pass** | Sees `runTaskBoard` | Sees `dispatch` |
 | **upgrades a host mid-reply** | — | That one turn isn't recovered; the user resends it |
@@ -20,20 +21,21 @@ after both merge.
 ## The goal, and how we'll know it's met
 
 **A worker flow that can't do what its roles promise is refused when it is hired, by a check
-that names the role, the entry and the fix; each role's whole kit comes from one factory; and
+that names the role, the entry and the fix; each role's entries come from its one factory, whose
+mark the hire reads; and
 every worker takes a user's message on `respond` and runs its delegation board on `dispatch`,
 with no `run` or `runTaskBoard` left on any worker flow.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | *"A broken worker is refused at hire, not mid-task"* (W-01) · *"I spread one thing per role into my flow"* (W-02) · *"entries named for what starts them"* (W-04) · rule 15 of the [concept](../../../docs/internal/design/workforce-coordination-concept.md#the-rules) |
+| **The real need** | *"A broken worker is refused at hire, not mid-task"* (W-01) · *"I spread one thing per role into my flow"* (W-02, met for the entries) · *"entries named for what starts them"* (W-04) · rule 15 of the [concept](../../../docs/internal/design/workforce-coordination-concept.md#the-rules) |
 | **Smaller, and rejected** | The two renames alone: a flow missing an entry is still found mid-task. Or checking names without probing inputs: a `work` that refuses the envelope still fails at the claim gate |
-| **Bigger, and not this issue's** | `receive` in the check (FIX-2070) · routed tasks (FIX-2083) · one `dispatch` at a time (FIX-2078) · the kit and chief-of-staff renames (FIX-2071) |
-| **Not done if** | A declared role missing an entry, an entry refusing its input, or an entry of an undeclared role is hired · a task reaches a flow that doesn't declare `contributor` · a manager wires an entry outside its factory · a repo worker flow keeps `run` or `runTaskBoard` · an app reading `door` breaks · a hire path (boot, reload, runtime) skips the check |
+| **Bigger, and not this issue's** | A manager's whole kit in one spread, the rest of W-02 · `receive` in the check (FIX-2070) · routed tasks (FIX-2083) · one `dispatch` at a time (FIX-2078) · the kit and chief-of-staff renames (FIX-2071) |
+| **Not done if** | A declared role missing an entry, an entry refusing its input, or a piece of a role's factory on a flow that doesn't declare the role is hired · a task reaches a flow that doesn't declare `contributor` · a manager wires an entry outside its factory · a repo worker flow keeps `run` or `runTaskBoard` · an app reading `door` breaks · a hire path (boot, reload, runtime) skips the check |
 
 ```mermaid
 flowchart LR
-  A["hireWorkforce · real engine · deterministic turns"] --> L1["leg a · five broken flows"]
+  A["hireWorkforce · real engine · deterministic turns"] --> L1["leg a · six broken flows"]
   A --> L2["leg b · a flow built from factories alone"]
   A --> L3["leg c · the repo's worker flows"]
   L1 --> R["the hire's refusal · the inventory · the engine's request store"]
@@ -50,7 +52,7 @@ must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/workers/roles-checked-at-hire/` · no model · run by the implementer · verdict in the implementation PR |
-| **Signal** | a: five flows with one fault each (contributor without `work`; `work` refusing the task envelope; manager without `onTaskSettled`; undeclared `work`; door named `run`), each refused with one problem naming flow, role and entry; nothing hired. b: a flow wired only from the two factories plus `respond` is hired as both; a task it files starts through `dispatch` and its ending arrives on `onTaskSettled`. c: agent, coordinator and Shift Manager's devteam host hire; every worker flow has `respond`, no `run`; every manager `dispatch`, no `runTaskBoard` |
+| **Signal** | a: six flows with one fault each (contributor without `work`; a `work` not built by `workerTaskEntry`; manager without `onTaskSettled`; a `workerTaskEntry` with `contributor` undeclared; the manager kit spread with neither its entries nor `roles`; door named `run`), each refused with one problem naming flow, role and entry; nothing hired. b: a flow wired only from the two factories plus `respond` is hired as both; a task it files starts through `dispatch` and its ending arrives on `onTaskSettled`. c: agent, coordinator and Shift Manager's devteam host hire; every worker flow has `respond`, no `run`; every manager `dispatch`, no `runTaskBoard` |
 | **Anti-game** | Refusals from `hireWorkforce`, not `workerFlowProblems`; leg c reads registered action maps, not source; leg b reads the engine's request store |
 | **Control that must fail** | `GOAL_CONTROL=no-role-check` must FAIL leg a on *each broken flow refused*. Today's `main` must FAIL all three legs |
 
@@ -101,16 +103,18 @@ flowchart LR
   R --> C["contributor · work, a task entry, takes the task envelope"]
   R --> M["manager · dispatch and onTaskSettled, internal"]
   R --> K["coordinator · a manager's, plus routeOn, roundDeadline, changeWorkstreamDelegate"]
-  E --> P["each entry found by name and section · its input schema probed"]
+  E --> P["each entry found by name and section · carrying its factory's mark · its input schema probed"]
   C --> P
   M --> P
   K --> P
-  P -->|"all present and accepting · no entry of an undeclared role"| H["hired"]
+  P -->|"all present and accepting · no factory piece of an undeclared role"| H["hired"]
   P -->|"any miss"| X["refused · flow, role, entry and the factory that brings it"]
 ```
 
 One table of roles and their entries, in Workforce, is read by the hire, by
-`workerFlowProblems` and by the delegate check. Nothing else lists a role's entries.
+`workerFlowProblems` and by the delegate check. Nothing else lists a role's entries. Both
+directions read the factory's mark, not a bare name: a flow's own unmarked `dispatch` or `work`
+is its own action.
 
 ## What stays as it is
 
@@ -135,26 +139,31 @@ One table of roles and their entries, in Workforce, is read by the hire, by
 | The debt | |
 |---|---|
 | **Removes** | The door found by shape · the `run` and `runTaskBoard` names · a missing role entry found mid-task |
-| **Adds** | `roles` on a worker flow's registration, permanent by design · one probe input per role entry, kept in step with its source schema by a test · a one-off rename of FIX-2078's wakes at host start, only if a release carried them |
+| **Adds** | `roles` on a worker flow's registration, permanent by design · a mark on what each role's factory builds, beside the contributor's that exists · one probe input per role entry, kept in step with its source schema by a test |
 | **Leaves** | Nothing new |
 
 **Net: flat.** One public option arrives; two names change; one failure class goes.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met):** a broken worker refused at hire, one
-factory per role, `respond` and `dispatch` everywhere. If wrong: FIX-2070 adds `receive` to a
+**[The goal](#the-goal-and-how-well-know-its-met):** a broken worker refused at hire, each
+role's entries from its factory, `respond` and `dispatch` everywhere. A manager's whole kit in
+one spread is not here. If wrong: FIX-2070 adds `receive` to a
 check that doesn't exist.
 
 **[The debt](#whats-already-here-and-the-debt), flat:** `roles` arrives, two names change.
 If wrong: one option every worker flow outside the repo adds.
 
 1. **[D1](DECISIONS.md#d1) · Roles are declared with the worker flow, not in each worker's
-   file.** If wrong: two workers on one flow can't differ by role.
+   file, and a factory's piece on a flow that doesn't declare its role is refused.** If wrong:
+   two workers on one flow can't differ by role.
 2. **[D2](DECISIONS.md#d2) · The hire finds every entry by name, the door included: every
    worker flow's door is `respond`.** If wrong: teams outside the repo rename a door for a
    constant they didn't need.
 
-**Open: none.** D1 is the one to weigh: it amends the concept's parts table.
+**Open: none.** D1 is the one to weigh: it amends the concept's parts table, and a reviewer
+leaned to reading roles off the entries instead. Kept declared because rule 15, your call in the
+concept, says declared. The factory's mark, needed either way, is what catches a kit spread with
+no entries.
 
 Feature · `workforce` + `shift-manager` + goals · medium · epic [FIX-2056](../../epics/FIX-2056/SPEC.md)
