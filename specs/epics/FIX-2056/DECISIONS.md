@@ -71,7 +71,7 @@ It comes down to a user's open task in a persistent store: read, it survives the
 
 ## Who owns what
 
-![Who owns what: six rules by eleven issues and the closure, each rule with one owner](figures/ownership.svg)
+![Who owns what: six rules by twelve issues and the closure, each rule with one owner](figures/ownership.svg)
 
 A *uses* cell is a place a child must not re-decide. Board modes and delegates are FIX-2076's and
 FIX-2081's own scope.

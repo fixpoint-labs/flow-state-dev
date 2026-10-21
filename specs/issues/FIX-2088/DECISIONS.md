@@ -4,7 +4,9 @@
 
 The concept already ruled that an error in background work fails the attempt. These three say what
 that costs, and where it stops. The owner signed off on all three, as recommended
-([sign-off](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6317557785)).
+([sign-off](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6317557785)),
+and on 2026-10-21 amended D1 with one carve-out: a task whose result goes back into a conversation
+keeps its answer when its memory capture fails ([amendment](#d1-amendment)).
 
 ## The tree
 
@@ -12,6 +14,7 @@ that costs, and where it stops. The owner signed off on all three, as recommende
 flowchart TD
   I["FIX-2088"] --> D1["D1 · every background error fails the attempt · memory capture included"]
   D1 -.->|"rejected"| X1["exempt Workforce's after-answer step · the rule's most common case would be its exception"]
+  D1 -->|"owner amendment · 2026-10-21"| A1["except a task whose result goes to the conversation · one attempt, so a failed capture is logged"]
   I --> D2["D2 · the request stays completed · only the attempt fails"]
   D2 -.->|"rejected"| X2["end the request as failed · its success hooks already ran"]
   I --> D3["D3 · a plain .waitForSideChain() still hands its failures on"]
@@ -27,7 +30,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Exempting Workforce's after-answer step (`afterAnswer`), whose docs promise today that *"a failure in it does not fail the turn"* and *"a capture that fails is not a failed conversation"* |
 | **Because** | The concept's rule names no exception, and its own example of background work is saving to memory. Memory capture is the background work most workers run, so exempting it would make the rule's common case its exception, and a missed capture would stay visible only in a log. One rule for every step also keeps the gate from asking *which* step failed |
-| **Locks in** | In a task, a capture that fails re-runs the whole task, and with no attempts left fails a task whose answer was fine. The retry runs the worker's tools and its `onCompleted` again, as any retry does: a request's run-once guard dedupes within a request, not across attempts. What is new is that a retry can now follow a request whose success hooks already committed, so their effects can happen twice. The `afterAnswer` docs change from "never fails the turn" to "never fails a conversation turn; in a task it fails the attempt". In a conversation nothing changes. A worker that wants capture best-effort catches its own error inside the step: no new setting |
+| **Locks in** | In a task, a capture that fails re-runs the whole task, and with no attempts left fails a task whose answer was fine. The retry runs the worker's tools and its `onCompleted` again, as any retry does: a request's run-once guard dedupes within a request, not across attempts. What is new is that a retry can now follow a request whose success hooks already committed, so their effects can happen twice. The `afterAnswer` docs change from "never fails the turn" to "never fails a conversation turn; in a task it fails the attempt". In a conversation nothing changes, and neither does it in a task whose result goes to the conversation ([amendment](#d1-amendment)). A worker that wants capture best-effort catches its own error inside the step: no new setting |
 
 ![D1: what a background error does to a task. Fail the attempt for every step, chosen, beside exempting the after-answer memory step. Decides it: one rule, whose common case is memory. The price: a flaky capture re-runs the task](figures/d1-every-step.svg)
 
@@ -37,6 +40,32 @@ It comes down to one rule: exempting memory capture exempts the case the rule is
 in `onCompleted` that can't stand running twice, so that
 retries cost more than a missed memory. Then Workforce catches the after-answer step's errors
 itself, one line in Workforce and no framework setting, and the docs keep their promise.
+
+<a name="d1-amendment"></a>
+### Owner amendment, 2026-10-21 · a task whose result goes to the conversation keeps its answer
+
+**The rule.** For a task whose result goes back into a conversation (`resultTo: "conversation"`,
+which FIX-2080 gives exactly one attempt), a failed after-answer memory capture is logged and does
+not fail the task: the task ends with its answer, as a conversation turn does today. Every other
+task keeps D1: a failed capture fails the attempt, and the task runs again while attempts are left.
+
+**Why.** After FIX-2083, every message a coordinator routes to a delegate is such a task. With one
+attempt, failing it retries nothing: a delegate's right answer would become a failure line, and the
+person would have to ask again. D1 was priced as "a flaky capture re-runs whole tasks", which a
+one-attempt task never does. This is the remedy D1's *What would change my mind* already named.
+
+**Scope.** Only Workforce's after-answer capture, and only on such a task. Any other background
+step in it still fails the attempt, as D1 and [D3](#d3) say. The carve-out is one line in
+Workforce, which reads the task row's result setting, never session state, so ER-2 holds. The
+framework's rule, the gate and the engine do not change. FIX-2083 cites this rule; it lives here.
+
+**What would change my mind:** delegates whose later answers depend on what they saved, so a
+silently missed save makes them wrong later; or evidence that capture failures are rare enough that
+one uniform rule is worth an occasional lost answer. Removing the carve-out is the one line.
+
+Approved by the owner on 2026-10-21 at 17:15Z, as the cross-spec audit's F1 recommended
+([audit comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6320916666)).
+Leg k covers both halves.
 
 <a name="d2"></a>
 ## D2 · The request stays completed; only the attempt fails
@@ -131,6 +160,10 @@ this step failing". Then the wait exempts its failures and the docs say so.
 - **Sign-off** — the owner accepted D1 and D2 and answered D3 yes, all as recommended
   ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3602#issuecomment-6317557785)).
   D3 moved from open to decided.
+- **Owner amendment (2026-10-21)** — the cross-spec audit (F1) found that, with FIX-2083, a routed
+  message is a one-attempt task whose result goes to the conversation, so D1 would drop a delegate's
+  right answer over a failed capture. The owner approved a carve-out for such tasks
+  ([D1's amendment](#d1-amendment)); leg k added.
 
 ## Notes from review
 
