@@ -92,10 +92,20 @@ things today (two README examples it cites no longer hold, so they are left out)
 
 ## Where today's code differs
 
-Paths are relative to `packages/`. Each phase is one epic. Phase 0 blocks nothing; 2 needs 1; 3
-needs 1 and 2; 4 runs beside 2 and 3; 5 goes last. Phase 2 also needs two fixes that apply to every
-suspension, not only these: a resume taking its turn in the session (FIX-2062), and durable
-execution by default on file-backed hosts (FIX-2063). Replay of a request suspended across a
+Paths are relative to `packages/`. The phases are filed as these Linear issues:
+
+| Phase | Issue | Needs |
+| -- | -- | -- |
+| 0 · Land | FIX-1047 | Nothing |
+| 0 · Prune | Nothing the repo doesn't use, with its README and docs entries | FIX-2057 removed the own-state board, `dispatchAndExecuteBlock`, and the classifier and event claim orders. Left (FIX-2072): `fifoDispatcher`, a copy of the default claim order (`orchestration/src/tasks/dispatchers/fifo.ts`); Drain Pool, docs only (`apps/docs/docs/patterns/overview.md:69`); the docs give `getOrCreateTaskCollection` three backings, `request`, `sequencer` and `resource` (`apps/docs/docs/orchestration/task-substrate.md:362-372`), while the code takes `state` and `resource`. `rlm` and `eng.reviewer` stay on purpose (a planned demo, `patterns/src/rlm/index.ts:13-15`; a goal's control, `goals/devforce-lab/it-wakes-the-seat-a-file-declared/goal.md:73`) |
+| 1 · One task, and 3 · Into a task | FIX-2056 (one epic) | FIX-1047. Its phase 3 parts that touch suspensions wait on FIX-2058 |
+| 2 · One Inbox | FIX-2058 | FIX-2056, FIX-2063 (durable execution by default); FIX-2062 (a resume takes its turn) is done |
+| 4 · Messages | FIX-2070 | FIX-2056. Runs beside FIX-2058 |
+| 5 · Words | FIX-2071 | FIX-2058 and FIX-2070 |
+
+Punted to their own issues: default worker instructions (FIX-2073) and the concept-doc skill's
+companion-file note (FIX-2075). FIX-1870, the `dispatchTask` epic, is closed as superseded by
+FIX-2056. Replay of a request suspended across a
 deploy is a known risk, deferred.
 
 | Phase | Target | Today |
