@@ -332,6 +332,13 @@ export const taskSchema = z.object({
    * named no source: a cascade, a substrate write-back, an older row.
    */
   cancelledVia: z.enum(["tool", "action"]).optional(),
+  /**
+   * The row was stored `blocked` and read as `held` at the read boundary
+   * (FIX-2080, BP-030). Set only there. Such a row may have started before
+   * it was blocked, and a release alone is how it runs again; no current
+   * path holds a row that has started (FIX-2081).
+   */
+  heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
   feedback: z.string().optional(),
 

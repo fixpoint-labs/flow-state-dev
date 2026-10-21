@@ -275,6 +275,12 @@ export function dispatchWrite(
   if (task.status !== "held") {
     return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
   }
+  // A dispatch releases, so it takes the field table's rule for a release,
+  // with the same one exception for a legacy blocked row; a reassignment is
+  // never allowed once the row has started.
+  if (hasStarted(task) && (task.heldFromBlocked !== true || options.assignee !== undefined)) {
+    return { decline: "started" };
+  }
   if (options.wait !== undefined && task.wait != null) return { decline: "disallowed" };
   if (options.assignee !== undefined) {
     const refused = assigneeChangeDecline(task, options.assignee);
@@ -323,13 +329,14 @@ export interface TaskSettingsPatch {
 export { hasStarted };
 
 /**
- * A release and nothing else, on a held row. Never refused as started:
- * leaving `held` is how a row starts again, and a row stored `blocked` after
- * a retry reads as held with attempts already spent (BP-030). Editing what it
- * was filed with is refused by the field table.
+ * A release and nothing else, of a row stored `blocked` before FIX-2080
+ * (`heldFromBlocked`, set only at the read boundary). Such a row may have
+ * started before it was blocked, and a release is how it runs again
+ * (BP-030). No current path holds a started row, so any other started held
+ * row keeps the field table's rule: no release. Field edits stay locked.
  */
-function releaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
-  return task.status === "held" && patch.held === false && patchFields(patch).length === 1;
+function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
+  return task.status === "held" && task.heldFromBlocked === true && patch.held === false && patchFields(patch).length === 1;
 }
 
 /**
@@ -377,7 +384,7 @@ export function settingsWrite(
       detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
     });
   }
-  const locked = releaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
+  const locked = legacyReleaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
   const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };

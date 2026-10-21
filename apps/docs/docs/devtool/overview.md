@@ -154,7 +154,7 @@ A note is not an error. A failure with no retries left writes the task's `error`
 
 ### Changing a task from its row
 
-An open row lists the flow's actions that take a `taskId`. Pick one and its form opens in the row with the task's id filled in and locked. Run it and the DevTool sends the action the same way the action bar would, in the session you're looking at. The row updates when the task changes.
+An open row lists the flow's actions that take a `taskId`, and the board's own `getTask` and `updateTask`, which name the task `id`. Pick one and its form opens in the row with the task's id filled in and locked. Run it and the DevTool sends the action the same way the action bar would, in the session you're looking at. The row updates when the task changes.
 
 If the task can't move that way, say you cancel a task that already finished, the action refuses and the row shows why in the action's own words. Nothing is written. The row shows the request's outcome:
 

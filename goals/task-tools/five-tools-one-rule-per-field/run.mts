@@ -93,12 +93,12 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "edit-any-state": [
     {
       module: "packages/orchestration/src/skills/task-tools-capability.ts",
-      from: String.raw`      const locked = releaseOnly \|\| ownRule \? \[\] : lockedFields\(current, edits\);`,
-      to: "      const locked: TaskEditField[] = []; void releaseOnly; void ownRule;"
+      from: String.raw`      const locked = ownRule \? \[\] : lockedFields\(current, edits\);`,
+      to: "      const locked: TaskEditField[] = []; void ownRule;"
     },
     {
       module: "packages/orchestration/src/tasks/collection/internal.ts",
-      from: String.raw`  const locked = releaseOnly\(task, patch\) \? \[\] : lockedFields\(task, patchFields\(patch\)\);\n  if \(locked\.length > 0\) return \{ decline: "started" \};\n  const declined = settingsDecline\(task\);\n  if \(declined !== undefined\) return \{ decline: declined \};`,
+      from: String.raw`  const locked = legacyReleaseOnly\(task, patch\) \? \[\] : lockedFields\(task, patchFields\(patch\)\);\n  if \(locked\.length > 0\) return \{ decline: "started" \};\n  const declined = settingsDecline\(task\);\n  if \(declined !== undefined\) return \{ decline: declined \};`,
       to: "  void lockedFields; void settingsDecline;"
     },
     {
