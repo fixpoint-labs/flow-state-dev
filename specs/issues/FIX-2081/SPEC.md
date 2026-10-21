@@ -79,8 +79,8 @@ its claim holds, so it takes no `id`; once the task finishes it is refused ([D3]
 
 | Field | Means |
 | -- | -- |
-| `statusNote` | A one-line progress note for task views. It never changes the task's status: done stays rule 6, and a worker never settles its own row (rule 18) |
-| `output` | A checkpoint of the result so far, read by `getTask` and `listTasks` as progress. Wakes no waiter. A non-empty final result replaces it; an empty or missing one leaves it as the output. A failed attempt or a reclaimed lease keeps it |
+| `statusNote` | A one-line progress note for task views; any request holding the claim may set it, a queued `receive` included. It never changes the task's status: done stays rule 6, and a worker never settles its own row (rule 18) |
+| `output` | A checkpoint of the result so far, read by `getTask` and `listTasks` as progress; only a `work` or `onTaskSettled` request sets it, so a message never changes the output. Wakes no waiter. At the end, the final result replaces it unless it is missing (`undefined`) or the empty string; any other value, `null`, `false`, `0`, `{}` and `[]` included, replaces it. A failed attempt or a reclaimed lease keeps it |
 
 ```diff
   # WORKER.md of a coordinator
