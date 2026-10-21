@@ -44,7 +44,7 @@ added. None does today: the schedule index is the only one, and it fails both co
 |---|---|
 | **Instead of** | A notice for every cancel: the filer's own, and each dependent a failure cancelled, each waking a judgment turn |
 | **Because** | Rule 7 says *once*. The filer's own cancel already returned to it as its call's result, and a dependent a failure cancelled is part of that failure. In a judgment conversation each notice is a model turn: a failure with five dependents would wake the coordinator six times. The epic's leg c expects one failure notice |
-| **Locks in** | A cancel owes a notice unless the filer's own session made it. A failure's notice names the dependents it cancelled that share its filer, and those owe none. A dependent another session filed owes that filer a notice of its own. A user's cancel from a screen, or one cascaded from above the filer, owes one. Who cancelled, and who filed, are read from the server (BP-031) |
+| **Locks in** | A cancel owes a notice unless the filer's own session made it. A failure's notice names the dependents it cancelled that share its filer, read from the cause FIX-2080 writes on each cascaded cancel, and those owe none. A dependent another session filed owes that filer a notice of its own. A user's cancel from a screen, or one cascaded from above the filer, owes one. Who cancelled, and who filed, are read from the server (BP-031) |
 
 ![D2: an ending the filer knows of reaches it inside what told it, chosen, beside a notice per cancel. Decides it: a failure that cancels five dependents. The price: a dependent's cancel is read from the failure's notice](figures/d2-known-endings.svg)
 
@@ -100,6 +100,14 @@ that caused it. Then each cancel gets its notice, and turns are batched instead.
   | A ready row not started | the write + 2 s | c (starts within 5 s) |
   | A claimed row whose lease may lapse (FIX-1884) | the lease's end | e |
   | A final failure's error report | rides its ending | d |
+  | A cascade owed (FIX-2080): a task's open filed tasks, a failed or cancelled row's dependents | the write + 2 s | d |
+
+  The cascade owed is the debt of FIX-2080's D2
+  ([#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)): orchestration's own
+  ending recorder writes it in the ending's write, and the ending's own pass pays it at once.
+  This issue gives it the wake, written before the ending, so that wake is the backstop that
+  pays it on time after a crash. It is one debt with no resend of its own: until this issue
+  lands, a touch pays it only once past due; after, it follows the rule for every debt below.
 
 - **Order against FIX-2077.** This issue removes the replay of owed endings on a touch and
   replaces it with the wake. If FIX-2077 lands first, it keeps that replay and removes only the
@@ -176,5 +184,10 @@ From spec review, round 1 ([#3594](https://github.com/fixpoint-labs/flow-state-d
 - **Round 2** — D1 now locks in the wake store's place on the registry (one optional key) and how
   a host detects it, which round 1 had left to the implementer. The order against FIX-2077 on
   removing replay-on-touch waits on #3592 agreeing that this issue removes it.
+- **Round 3** — FIX-2080's cascade became one of this issue's debts: the debt table gained
+  *a cascade owed*, recorded by FIX-2080 with the ending and paid on time by this issue's wake,
+  with no resend of its own. FIX-2080 now blocks this issue, since D2 and leg d read its cascade
+  and the cause it records. Because the architect found that FIX-2080's interim touch payment
+  would bring back the unconditional resend this issue removes.
 
 Open: none.

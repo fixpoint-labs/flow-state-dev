@@ -2,8 +2,11 @@
 
 **Spec** · [Decisions](DECISIONS.md)
 
-**Depends on:** nothing to start. A parent's settle runs FIX-2077's rule-6 check once FIX-2077
-lands, today's split settle until then; FIX-2077 keeps the replay on a touch, which this removes.
+**Blocked by:** [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) (spec
+[#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)). It records the cascade owed
+with the ending and writes each cascaded cancel's cause, which D2 and leg d read; this issue's
+wake pays that debt on time. A parent's settle runs FIX-2077's rule-6 check once FIX-2077 lands, today's split settle
+until then; FIX-2077 keeps the replay on a touch, which this removes.
 
 ## Six people, before and after
 
