@@ -45,8 +45,6 @@ flowchart LR
   L2 -.->|"under the control"| F["must FAIL · writer never hears"]
 ```
 
-Without the sweeper leg b must fail.
-
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's (FIX-2087), real model, on one `main` commit after every other child merges |
@@ -66,8 +64,7 @@ The fence holds the work that stands on the task; this set builds none of it ([D
 
 ## The set · as of 2026-10-21
 
-The reviewed snapshot; live state is Linear. All on the spec route, all Backlog; each issue's gap rows
-are in its Linear description.
+The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 
 | Issue | Delivers | Blocked by |
 |---|---|---|
@@ -76,15 +73,16 @@ are in its Linear description.
 | [FIX-2078](https://linear.app/fixpoint-labs/issue/FIX-2078) · endings and debts | Every ending to its filer once; due times and the sweeper | — |
 | [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) · filing settings | Start, session, result, attempts; cascades; the one read for retired rows ([D3](DECISIONS.md#d3)) | — |
 | [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · four tools | Four task tools, one rule per field; delegates as authority | FIX-2080 |
-| [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait, 5 deep | FIX-2076, FIX-2077, FIX-2081 |
+| [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait; 5 deep, 100 under a top task | FIX-2076, FIX-2077, FIX-2081 |
 | [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2084](https://linear.app/fixpoint-labs/issue/FIX-2084) · worker contract | Roles checked at hire; `respond` and `dispatch` | FIX-2078, FIX-2083 |
 | [FIX-2085](https://linear.app/fixpoint-labs/issue/FIX-2085) · schedules | A schedule files an ordinary task | — |
 | [FIX-2086](https://linear.app/fixpoint-labs/issue/FIX-2086) · steer and follow-up | `updateTask({ message })`; finished output never changes | FIX-2077, FIX-2081 |
 | [FIX-2087](https://linear.app/fixpoint-labs/issue/FIX-2087) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
-Ten and a closure. In review FIX-2079 merged into FIX-2078, and the POC moved the waited dispatch to
-FIX-2082 ([why](DECISIONS.md#what-the-end-state-poc-showed)). FIX-2085 has no blocker and costs no schedule.
+Ten and a closure; the POC moved the waited dispatch to FIX-2082
+([why](DECISIONS.md#what-the-end-state-poc-showed)). Engine prerequisites:
+[seams](DECISIONS.md#coordination-seams).
 
 ## How the issues flow into each other
 
@@ -115,13 +113,14 @@ every child blocks the closure, left off. The longest chain is four.
 - **The agent flow**, and `chief-of-staff` until FIX-2071; **messages** until FIX-2070; **parks and
   `answerTask`** until FIX-2058.
 - **`dispatcher()`** stays the transport a row runs through, not a row of its own.
-- **Not children:** FIX-2072, FIX-2073, FIX-2075, FIX-2063, FIX-1024 ([why](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
+- **Not children:** FIX-2072, FIX-2073, FIX-2075, FIX-2063, FIX-1024, FIX-1637 ([why](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 
 ## What's already here, and the debt
 
 | Already here | What the set does with it |
 |---|---|
-| The concept docs; FIX-1047's claim (#3521); FIX-2057's prune | **Builds on.** The gaps file's "not on main" is stale since 2026-10-20 |
+| The concept docs; FIX-1047's claim (#3521); FIX-2057's prune (#3541); FIX-2062's resume in turn (#3538) | **Builds on.** A removal needs a second route to its job, not zero callers (tenet 3) |
+| [#3102](https://github.com/fixpoint-labs/flow-state-dev/pull/3102)'s PD-3, PR-1 and PR-2: FIX-1870's, through `dispatchTask` | **Re-homed.** PR-1 and PD-3 to FIX-2083, PR-2 to FIX-2081 (`createTask`, then `getTask`'s wait). #3102 is amended at approval |
 | [FIX-1870 D1](../FIX-1870/DECISIONS.md#d1) and [its review notes](../FIX-1870/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them): `dispatchTask` waits, one deep, and a timeout cancels | **Superseded.** `getTask` waits, 5 deep, and a deadline cancels nothing |
 | [FIX-1870 D2](../FIX-1870/DECISIONS.md#d2): a post that needs an answer is a task | **Kept and finished** by FIX-2083 |
 | [FIX-1872 D1](../../issues/FIX-1872/DECISIONS.md#d1): a post row on the delegate's own entry | **Superseded.** Session and result are filing settings |
@@ -129,7 +128,7 @@ every child blocks the closure, left off. The longest chain is four.
 
 | The debt | |
 |---|---|
-| **Removes** | Posts · six task tools · `settleSplitTask` · reopen · blocked · the automatic error routes · `afterRun`'s resends · the stopgap · a second fit call |
+| **Removes** | Posts · six task tools · `settleSplitTask` · reopen · blocked · the automatic error routes ([f](DECISIONS.md#open)) · `afterRun`'s resends · the stopgap · a second fit call |
 | **Adds** | A board `mode` · `getTask`'s wait · four filing settings · the role check at hire · scheduled tasks · one read for retired rows until FIX-2071 ([D3](DECISIONS.md#d3)) |
 
 **Net: down.** Six task tools and a row kind leave; one setting per job arrives.
@@ -146,6 +145,6 @@ failure. **[The debt](#whats-already-here-and-the-debt):** net down.
 3. **[D3](DECISIONS.md#d3) · A retired row in flight at upgrade is read, not dropped, through one
    map.** If wrong: one read nobody needed.
 
-**Open: none.**
+**Open, the owner's:** [(e) deprecate or break](DECISIONS.md#open) · [(f) the automatic error route](DECISIONS.md#open).
 
 Epic · 10 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest

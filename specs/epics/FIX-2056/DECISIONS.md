@@ -40,9 +40,9 @@ It comes down to `updateTask`: folded, it is rewritten once; split, twice.
 
 | | |
 |---|---|
-| **Instead of** | The gaps file's line "its phase 3 parts that touch suspensions wait on FIX-2058" |
-| **Because** | FIX-2058 is blocked by this epic, so a child blocked by FIX-2058 is a cycle: the epic can never wrap. The parts that touch suspensions are two, a steer that answers a question and marking a task *waiting on a person*, and both are FIX-2058's objective |
-| **Locks in** | FIX-2077 tells a person's stop from a wait, so a wait leaves the task running; FIX-2058 marks the person's stop and owns the answer. Until it lands, `answerTask` is a fifth task tool the closure's sweep allows. No child waits on FIX-2070 either: work that needs `receive` is its. The coordinator checks both at each refresh |
+| **Instead of** | Phase 3's parts that touch suspensions blocked by FIX-2058, as the gaps file and the epic issue said until this PR |
+| **Because** | FIX-2058 is blocked by this epic, so a child blocked by FIX-2058 is a cycle: the epic can never wrap. Both suspension parts, a steer that answers a question and marking a task *waiting on a person*, are FIX-2058's objective |
+| **Locks in** | FIX-2077 tells a person's stop from a wait, so a wait leaves the task running; FIX-2058 marks the person's stop and owns the answer. Until it lands, `answerTask` is a fifth task tool the closure's sweep allows. No child waits on FIX-2070 either: work that needs `receive` is its |
 
 **What would change my mind:** FIX-2058's blocker narrowed to the children it needs (FIX-2077 and
 FIX-2081). Then the answer by steer can stay in FIX-2086.
@@ -88,40 +88,53 @@ FIX-2081's own scope.
 | Seam | Owner, then who else touches it |
 |---|---|
 | The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait and FIX-2086's `message` land after it |
-| The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end (`engine/src/execution/runAction.ts`, after the side-chain pool drains) | FIX-2077 owns the predicate and where it runs. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
-| The wait (`tasks/helpers/wait-for-response.ts`) | FIX-2082 owns it, for `getTask` and a plan board's drain alike. FIX-2076 only sets which boards wait |
-| `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice and replaces resends with due times; FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
+| The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: the request's `onFinished`, run after background work drains on every terminal path (`engine/src/execution/runAction.ts:2447`→`:2630`, `:2773`→`:2918`). No engine hook needed. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
+| The wait (`tasks/helpers/wait-for-response.ts`) and its limits | FIX-2082 owns it and its limits: 5 waits deep; a tree 5 deep, 100 under its top task. FIX-2076 only sets which boards wait. A board's dispatch rides the row's wait. A bare `dispatcher({ wait: true })` has no row, and the engine awaits acceptance only (`core/src/blocks/dispatcher.ts:169-171`, `engine/src/context/dispatch-operation.ts:273-280`): FIX-2082 adds an engine wait that returns the result |
+| The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts |
+| `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times and removes the automatic error routes ([f](#open)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
 | The collection read (`tasks/collection/`) | FIX-2080 owns the map; the retiring children turn entries on |
 | Queued messages | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
-| A task stopped for a person | FIX-2077 tells it from a wait; FIX-2058 marks it and owns the answer |
 
 ## Decided in review, recorded so no child reopens them
 
-- **The epic issue's three open questions are answered by the concept.** A delegate may wait on
-  work it hands off (rule 9), except a task whose result goes to the conversation. Result into the
-  conversation is a filing setting, not a task kind. Rows in flight: [D3](#d3).
+- **The concept answers the epic issue's three questions.** A delegate may wait on work it hands
+  off (rule 9), unless its result goes to the conversation, a filing setting, not a task kind.
+  Rows in flight: [D3](#d3).
 - **The attempts setting is FIX-2080's**; FIX-2083 only uses it (attempts 1).
 - **FIX-1024 is not a child.** FIX-2077 reads the claim at the gate; if its spec collapses the two
   copies, it closes FIX-1024.
 - **Overlapping bugs are related, not re-parented:** FIX-1884 and FIX-1700 close with FIX-2078,
   FIX-1659 with FIX-2081. FIX-1870 is superseded and stays canceled.
-- **Round 1 (cursor review):** FIX-2079 merged into FIX-2078, one ending-path owner. D3 is one map,
-  not four reads. The rules cut to six. Kept: the closure issue (every epic ends in one), the
-  31-row lead measure (a countable measure, each child citing its rows) and FIX-2085 (no blocker).
+- **Kept in round 1:** the closure issue (every epic ends in one), the 31-row lead measure (each
+  child cites its rows) and FIX-2085 (no blocker). The rules cut to six.
 - **One answer for done**, from the POC below: no seam keeps its own test.
+- **Round 2 (architect):** FIX-2062 (#3538) is built on: every resume waits its session's turn.
+  FIX-1637, the keep-alive docs epic, is related: its guide picks up FIX-2085's schedules and
+  FIX-2082's waits.
 
 ## What the end-state POC showed
 
-- **Built:** [`poc/claim-gate-seam/`](poc/claim-gate-seam/): today's claim gate on the real engine (four legs), and a model of FIX-2076, FIX-2077 and FIX-2082 merged, with one, two and today's answers to "is this task done?" over six scenarios.
+- **Built:** [`poc/claim-gate-seam/`](poc/claim-gate-seam/): today's claim gate on the real engine, and a model of FIX-2076, FIX-2077 and FIX-2082 merged with one, two and today's answers to "done", over six scenarios.
 - **See it:** `bash specs/epics/FIX-2056/poc/claim-gate-seam/run.sh` (7 pass on `c179030c`).
 - **Showed:** **one answer.** Rule 6 at the gate is the only "done" needed; a drain with its own answer moves past a running row in four of six scenarios. Today the gate settles about 300 ms before background work ends and with a filed task open.
-- **Changed:** the waited dispatch moved from FIX-2076 to FIX-2082, one wait with one owner (FIX-2082 now blocked by FIX-2076), and FIX-2077's check runs after the engine drains background work, not at the entry's last step.
+- **Changed:** the waited dispatch moved from FIX-2076 to FIX-2082 (FIX-2082 now blocked by FIX-2076), and FIX-2077's check runs after the engine drains background work, not at the entry's last step.
 
 ## How it got here
 
-- **Concept merged (2026-10-21)** — #3534; the owner decided the model.
-- **Spec written (2026-10-21)** — the 31 rows split into eleven issues and a closure. D2 removes a cycle.
-- **Review round 1 (2026-10-21)** — FIX-2079 merged into FIX-2078; D3 became one map in FIX-2080.
-- **POC** — the waited dispatch moved to FIX-2082, because the run showed two answers to "done" let a drain move past a running row.
+- **2026-10-21** — #3534 merged the model; the spec split 31 rows into ten issues and a closure.
+- **Round 1** — FIX-2079 merged into FIX-2078; D3 became one map in FIX-2080.
+- **POC** — the waited dispatch moved to FIX-2082.
+- **Round 2** — sources agree with D2; engine prerequisites named; (e), (f) opened.
 
-**Open: none.**
+<a name="open"></a>
+## Open · pending the owner's answer
+
+**(e) · Old task APIs: warn for a release, then remove, or remove now?** Teams outside the repo
+calling them break at upgrade. Warning keeps both shapes a release, which the closure's tool sweep
+must allow; removing now makes them rewrite at once. Replacements and owners:
+[`migration.md`](migration.md). **Pending.**
+
+**(f) · Shift Manager's automatic error route: drop it, or keep it?** Every failed request reaches
+the Error Reporter today (`errorCapture`, `packages/shift-manager/teams/devteam/host.mts:1194`).
+Dropped, it hears only what a filer sends, and hosts wiring `errorCapture` get a migration line;
+kept, failures arrive twice, an exception to ER-3. FIX-2078 owns it. **Pending.**
