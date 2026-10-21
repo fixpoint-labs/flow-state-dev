@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A line written into the task's session, which only the request running now reads, as a user's line reaches a task today |
 | **Because** | A steer "joins the brief" (the concept's table), and a brief outlives an attempt: if the attempt that took a steer fails, the retry must not redo the task as first filed. Session history can't carry that: a retry may start before the line is read, retention evicts old items, and history can't tell a kept line from a refused one, which is why the coding door keeps its own `turns` collection today. On the row, `getTask` shows what the task was told |
-| **Locks in** | `steers` on the task row: server-written, append-only, each with its sender and the attempt that took it, readable through `getTask`. The coding door's `turns` collection folds into it: its writes go, and a turn no attempt took at upgrade reads as a steer ([Upgrade](#decided-not-asked)). At most 20 per task; the 21st is refused, naming the rule (cancel and refile, or a follow-up). A retry's brief carries every steer, taken or not |
+| **Locks in** | `steers` on the task row: server-written, append-only, each with its sender and the attempt that took it, readable through `getTask`. The coding door's `turns` collection folds into it: its writes go, and a one-off upgrade step writes each turn no attempt took as a steer ([Upgrade](#decided-not-asked)). At most 20 per task; the 21st is refused, naming the rule (cancel and refile, or a follow-up). A retry's brief carries every steer, taken or not |
 
 ![D1: where a steer is kept. On the task, every later attempt reads it, chosen, beside a line only the running request sees. Decides it: a retry after a steer; kept on the task, the retry has it; a session line is lost. The price: the brief grows with each steer, capped at 20. A tie: what the person sees in the session. Locks in: steers on the row, the turns collection goes. Flips if steers must not survive a retry](figures/d1-steer-on-the-task.svg)
 
@@ -43,7 +43,7 @@ so a retry starts from the original brief. Then a steer is kept per attempt, as 
 |---|---|
 | **Instead of** | Settling the task when its request ends, with a late steer recorded as untaken |
 | **Because** | The filer was told the steer was accepted. A request that made its last model call before the steer landed, or one with no model call at all, never takes it, and a task settled over it silently ignores the redirect. The concept's rule 6 already keeps a task open for a queued message; an untaken steer is the same kind of owed work. The row knows it, so `orchestration` decides it with no Workforce read |
-| **Locks in** | Rule 6 (FIX-2077's predicate) gains *no steer untaken by this attempt*, read from the row. The gate admits one more `work` turn, same attempt, with the steer as its message, and re-checks. A steer to a task with no request on it (waiting on its filed tasks) starts that turn now. The output is that turn's answer, as for any last turn. Each extra turn takes at least one steer no earlier turn took, so the 20-steer cap holds a task to at most 20 extra turns. A steer is not a message and is not paid from the message budget; the cap is its limit, as the budget is a queued message's |
+| **Locks in** | Rule 6 (FIX-2077's predicate) gains *no steer untaken by this attempt*, read from the row. The gate admits one more `work` turn, same attempt, with the steer as its message, and re-checks. A steer to a task with no request on it (waiting on its filed tasks) starts that turn now. The output follows FIX-2081's D3, as for any last turn: the latest checkpoint, else the answer. The extra turn's brief says a prior checkpoint stands unless it reports a new one. The owed turn is a debt on FIX-2078's wake, due at write + 2 s: the wake is written before the steer write when no request runs, or before the gate's not-done write. Its entry starts the same-attempt `work` request, uncharged; until that request is admitted the row is running, its `waitingOn` names the steer, and it holds no lease. Each extra turn takes at least one steer no earlier turn took, so the 20-steer cap holds a task to at most 20 extra turns. A steer is not a message and is not paid from the message budget; the cap is its limit, as the budget is a queued message's |
 
 ![D2: a steer that arrives after the last model call. One more turn before it settles, chosen, beside settle anyway with the steer recorded untaken. Decides it: whether a redirect the filer was told was accepted is acted on. The price: one more model turn, and the task finishes later. A tie: no attempt is used either way. Locks in: rule 6 reads untaken steers. Flips if late steers are mostly noise](figures/d2-late-steer-turn.svg)
 
@@ -59,8 +59,8 @@ task settles.
 | | |
 |---|---|
 | **Instead of** | Showing the follow-up's output as current only on screens, with `getTask` returning the original alone |
-| **Because** | The epic's [ER-5](../../epics/FIX-2056/DECISIONS.md#who-owns-what): the four tools are the one task surface for models and screens. A filer's model reading writer's task should see the version Alice sees, not one she replaced. Computed at read from `followUpOf`, nothing is stored, so the original's output never changes |
-| **Locks in** | The task view adds `current`: the latest follow-up in the chain that **completed**. One that errored or was cancelled is skipped, and `current` is absent when none completed, so a model and a screen read the same thing. On `getTask` and the screen action reading one task it is `{ id, output }`, the output cut to `READ_OUTPUT_LIMIT` with `outputCut` set, the projection `readTask` applies today (BP-042). `listTasks` stays result-free: a row carries `current: { id }` only. `output` stays the row's own. A dependent still reads the output of the task it named, as delivered |
+| **Because** | The epic's [ER-5](../../epics/FIX-2056/DECISIONS.md#who-owns-what): the task tools are the one task surface for models and screens. A filer's model reading writer's task should see the version Alice sees, not one she replaced. Computed at read from `followUpOf`, nothing is stored, so the original's output never changes |
+| **Locks in** | The task view adds `current`: the latest follow-up in the chain that **completed**, narrower than the concept's *latest finished* (the implementation PR amends concept :153, T-31 and the gaps row to "completed"). One that errored or was cancelled is skipped, and `current` is absent when none completed, so a model and a screen read the same thing. On `getTask` and the screen action reading one task it is `{ id, output }`, the output cut to `READ_OUTPUT_LIMIT` with `outputCut` set, the projection `readTask` applies today (BP-042). `listTasks` stays result-free: a row carries `current: { id }` only and carries no output (FIX-2081's list rows show `statusNote` only). `output` stays the row's own. A dependent still reads the output of the task it named, as delivered |
 
 ![D3: what a task view calls current. The latest completed follow-up, for models and screens, chosen, beside screens only. Decides it: a filer's model reading the task Alice corrected. The price: one more field on every task read. A tie: the original output is never changed either way. Locks in: current on the task view, dependents unchanged. Flips if filers must never see a version they did not file](figures/d3-current-for-everyone.svg)
 
@@ -72,13 +72,19 @@ It comes down to a filer's model reading a corrected task: screens-only shows it
 ## Decided, not asked
 
 - **One write, one reader per path.** The convergence point is a collection verb in
-  `orchestration`, `steer`, on both backings, its status check inside the write, as FIX-2081's
-  guarded patch: refused once finished. Every writer passes it: `updateTask({ message })` from a
+  `orchestration`, `steer`, on both backings, its status check inside the write: refused once
+  finished. It reads `message`'s rule from FIX-2081's field table, through the guarded patch
+  FIX-2080 adds; its own additions are the append-only write and the 20-steer cap. A combined call
+  (`updateTask({ id, goal, message })`) runs every check, the cap included, before any write, then
+  the patch, then the steer, so it never half-applies. Every writer passes it: `updateTask({ message })` from a
   tool or a screen action (FIX-2081's block), and a line typed in an open task's session. Readers:
   the brief a worker is handed (`taskMessage`, the worker input), a context entry re-read before
   each model step, and the harness manager's prompt. Each read marks the steers it took for the
   current attempt, keeping the rule `turns` has today: a steer already taken by this attempt still
   counts as its own, so a step that re-runs after a crash reads it again rather than losing it.
+- **A plan row:** an inline plan row refuses `message`, naming the move ("steer the task this
+  step belongs to"); that task's steers are read before every model call of the request running
+  the step. A dispatched plan row (FIX-2082) takes a steer like any task.
 - **A steer is no ending** (rule 6): it records nothing through `endingOf`, changes no status and no
   claim, uses no attempt and never cancels.
 - **A coding run:** the manager watches its row while the harness step runs, and a new steer aborts
@@ -92,22 +98,30 @@ It comes down to a filer's model reading a corrected task: screens-only shows it
   [`codex/agent.ts:270-286`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/codex/src/agent.ts#L270-L286)).
   A harness that can't confirm its process exited is not aborted: the steer waits for that step's
   own end and the next step takes it, or D2's extra turn does.
-- **A line in a task's session** goes to the flow's own door (`run`, `respond` after FIX-2084).
-  In an open task's session the door writes the steer as the user; in a finished one it is a
-  reply with the session's history and the task is unchanged (M-10). The router that reopened goes;
-  Shift Manager's composer still calls the door it calls today.
+- **A line in a task's session** goes to the flow's own door (`run`, the coder's `message`;
+  `respond` after FIX-2084). In an open task's session the door writes the steer as the user; in a
+  finished one it is talk with the session's history and the task is unchanged (M-10). For the
+  coder that talk is one run resuming the task's coding session, outside any attempt
+  ([What changes](SPEC.md#what-changes)). The door finds the session's task from server state, the
+  row whose run link names the session, as the coding door does today. The router that reopened
+  goes; Shift Manager's composer still calls the door it calls today, now the replacement.
 - **A follow-up the user files takes the original's filer** (rule 4), so its ending goes where the
-  original's went. A screen files it with `createTask` and `followUpOf`.
+  original's went: FIX-2078's server-written filer fields copy the original's. A screen files it with `createTask` and `followUpOf`.
 - **The refusal** on a finished task names the rule and the move: "a finished task takes no
   message; file a follow-up".
-- **Upgrade (ER-6).** FIX-2080's reopened-row entry is turned on here: a reopened row in flight
-  reads as pending with one steer pointing at the session's latest line, so its attempt still
-  picks the task up. Its output is replaced once, by that attempt, the last time. A row parked
-  for a turn at upgrade (a door that crashed between the park and the re-queue) reads as pending,
-  not charged: a sixth entry in the same map. A turn the coding door kept that no attempt took
-  (`turns/**`, neither delivered nor withdrawn) reads as an untaken steer on its row, from the
-  turn's person, keyed by the turn's id so a replay adds nothing: a seventh entry (BP-030). Writes
-  to `turns/**` stop at upgrade; its reader stays, read-only, until the map goes.
+- **Upgrade (ER-6).** FIX-2080 builds the map's entries; this issue adds steers to two of them.
+  Its reopened-row entry: a reopened row in flight reads as pending with one steer pointing at the
+  session's latest line, so its attempt still picks the task up. Its output is replaced once, by
+  that attempt, the last time. Its parked-for-a-turn entry (a door that crashed between the park
+  and the re-queue) reads as pending, not charged. A turn the coding door kept that no attempt took
+  (`turns/**`, neither delivered nor withdrawn) is not a map entry, since `orchestration` can't
+  read a harness-manager collection: a one-off harness-manager upgrade step writes each as an
+  untaken steer on its row, from the turn's person, keyed by the turn's id so a replay adds nothing
+  (BP-030). After that step the `turns` reader goes.
+- **Behaviour lines.** Two rows go in the epic's Changed table (migration.md, added by FIX-2081):
+  `updateTask({ message })` on an open task steers it, using no attempt and never cancelling; a
+  line typed in a finished task's session is talk, and the task doesn't change. Whichever of
+  #3596 and this PR merges second writes them there.
 - **A taken steer shows in the task's session** as a line from its sender, so the session reads
   as the worker was told.
 - **No POC and no checker.** The premises are read from code and cited; nothing rests on a count.
@@ -158,5 +172,9 @@ discarding one.
 - **Codex, round 1** (factual, no round) — `current` follows `readTask`'s bounded output and
   `listTasks` stays result-free; `current` names completed follow-ups only; an untaken legacy
   turn reads as a steer at upgrade. The epic's migration lines gain the removed door exports.
+- **Cross-spec audit** — the coder keeps a replacement door; a late steer's output and its owed
+  turn follow FIX-2081's D3 and FIX-2078's debts; FIX-2080 builds every map entry, and untaken
+  coding turns move by a harness-manager upgrade step; migration rows for the reopen and turn-park
+  fields.
 
 Open: none.

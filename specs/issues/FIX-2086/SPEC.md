@@ -49,9 +49,10 @@ path drops a steer that arrives after the last model call, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-tools/steer-and-follow-up/` · no model: scripted turns on the real Workforce flows and a fake harness that resumes by session id · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: a steer before start is in the first call's brief; to a running request, in its next call and not the one before; to a suspended one, in the first call after the resume; to a task waiting on its filed tasks, a turn starts with it. Each: `attempts` unchanged, no ending, status unchanged. b: a steer after the last call gets one more turn before the settle; the task settles once, after it. c: the harness step ends, the next run resumes the same coding session with the message, in the same request, attempt 1. d: `updateTask({ message })` on a finished task is refused naming the rule; a follow-up runs in its session; the original's output reads byte-identical; `getTask` shows the follow-up's output as current. e: a line in an open task's session is a steer; in a finished one, a reply, and the row is unchanged |
+| **Signal** | a: a steer before start is in the first call's brief; to a running request, in its next call and not the one before; to a suspended one, in the first call after the resume; to a task waiting on its filed tasks, a turn starts with it. Each: `attempts` unchanged, no ending, status unchanged. b: a steer after the last call gets one more turn before the settle; the task settles once, after it. Variant: the worker checkpointed before the steer; where the steer turn checkpoints, its checkpoint is the output, and where it doesn't, the earlier one stands. c: the harness step ends, the next run resumes the same coding session with the message, in the same request, attempt 1. d: `updateTask({ message })` on a finished task is refused naming the rule; a follow-up runs in its session; the original's output reads byte-identical; `getTask` shows the follow-up's output as current. e: a line in an open task's session is a steer; in a finished one, a reply, and the row is unchanged |
 | **Input** | Deterministic workers. Another step count, steer count or arrival point must pass too |
 | **Anti-game** | Model input as the scripted model received it; rows through `getTask`, not the collection |
+| **Goals this rewrites** | `goals/coordinators/task-session-stays-open` leg b and `goals/hand-offs/survives-a-restart-and-runs-once` `j:still-answers` / `j:reopened` assert reopen. The implementation PR rewrites them: a line in the finished session is talk that still names the ticket with the row unchanged, and more work is a follow-up (a steer while the task is open). The intent kept is that a finished task's session still knows its work |
 | **Control that must fail** | `GOAL_CONTROL=drop-late-steer` must FAIL leg b on *one more turn before the settle*. `GOAL_CONTROL=reopen` must FAIL leg d on *byte-identical*. Today's `main` also fails legs a, c and e |
 
 ## What changes
@@ -73,11 +74,21 @@ Four ways in become one steer kept on the task; a finished task takes a follow-u
 
 ```diff
   defineFlow({
-    kind: "coder",
--   actions: { message: harnessMessageDoor({ boards }) },
-    task: { actions: { work: { block: manager } } },
+    kind: CODER_FLOW,
+    actions: {
+-     message: harnessMessageDoor({ name: "coder", boards }),
++     message: coderDoor,   // `respond` once FIX-2084 renames the door
+    },
+    task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name, block: byTask }) } },
   })
 ```
+
+The coder keeps a door under whatever name it has when this lands. In an open task's session it
+writes the steer as the user. In a finished one it is talk (M-10): one run resumes the task's
+coding session with the line, outside any attempt, and its answer is a reply in the session; the
+row, its output and its attempts don't change. A harness that confirmed no coding session refuses
+it, by name, as today. The door finds the session's task from server state, the row whose run link
+names the session, never from the message ([ER-2](../../epics/FIX-2056/DECISIONS.md#who-owns-what), BP-031).
 
 **Docs:** update *Orchestration → Task board* (the `message` row of the field table, follow-ups as
 the correction, the current output), *Task substrate* (remove *Putting a finished task back in the
@@ -128,8 +139,8 @@ when none is left.
 
 | The debt | |
 |---|---|
-| **Removes** | `reopen`, its patch, the `reopened` mark and change kind, the reopened turn · `messageDoor`, `harnessMessageDoor` and its schemas and types, `reopenIn`, the park for a turn and writes to the `turns` collection ([migration lines](../../epics/FIX-2056/migration.md)) · the reply that runs beside an open task |
-| **Adds** | `steers` on the task, with a taken mark per attempt, written through one collection verb · `current` on the task view ([D3](DECISIONS.md#d3)) · rule 6's untaken-steer input · map entries for a row parked for a turn and for a turn no attempt took, removed with the map no earlier than FIX-2071 |
+| **Removes** | `reopen`, its patch, the `reopened` mark and change kind, the reopened turn · `messageDoor`, `harnessMessageDoor` and its schemas and types, `reopenIn`, the park for a turn and the `turns` collection, once its upgrade step has run ([migration lines](../../epics/FIX-2056/migration.md)) · the reply that runs beside an open task |
+| **Adds** | `steers` on the task, with a taken mark per attempt, written through one collection verb · `current` on the task view ([D3](DECISIONS.md#d3)) · rule 6's untaken-steer input · steers on FIX-2080's reopened-row and parked-for-a-turn map entries · a one-off harness-manager upgrade step that writes each turn no attempt took as a steer |
 | **Leaves** | Answering a question by a steer (FIX-2058) · a worker flow with no model call takes a steer only as its next turn, by design ([D2](DECISIONS.md#d2)) |
 
 **Net: down.** A verb, two doors, a collection, a park and a side reply go; a collection verb, one
