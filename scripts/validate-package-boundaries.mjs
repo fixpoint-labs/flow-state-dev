@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { workspaceManifests } from "./workspace-members.mjs";
 
 const rootDir = process.cwd();
 const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite", "store-postgres", "orchestration", "patterns", "workforce"];
@@ -232,6 +233,23 @@ for (const pkg of packages) {
 const cycles = detectCycles(graph);
 for (const cycle of cycles) {
   errors.push(`circular dependency detected: ${cycle.join(" -> ")}`);
+}
+
+// One compiler: `tsc` comes from the root. A workspace member may declare
+// `typescript` only because it imports it, and then at the root's exact
+// range; `@typescript/*` never.
+const rootTypescript = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).devDependencies?.typescript;
+for (const manifestPath of workspaceManifests(rootDir)) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestPath), "utf8"));
+  for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const [name, range] of Object.entries(manifest[field] ?? {})) {
+      if (name.startsWith("@typescript/")) {
+        errors.push(`${manifestPath}: declares ${name} in ${field}; the compiler is declared only at the root`);
+      } else if (name === "typescript" && range !== rootTypescript) {
+        errors.push(`${manifestPath}: declares typescript ${range} in ${field}; only the root's ${rootTypescript} is allowed`);
+      }
+    }
+  }
 }
 
 if (errors.length > 0) {

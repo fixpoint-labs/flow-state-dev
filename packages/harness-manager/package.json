@@ -69,7 +69,6 @@
   "devDependencies": {
     "@flow-state-dev/engine": "workspace:*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "scripts": {

@@ -214,15 +214,16 @@ describe("validateClientProjection", () => {
 
 describe("defineResource client projection validation", () => {
   it("rejects `expose` + `data`", () => {
+    // Only the runtime refuses this pair. The typed `s` keeps the call compiling on
+    // every TS version: inside expect(() => …) an untyped one defeats inference.
     expect(() =>
-      // @ts-expect-error — invalid on purpose: the type refuses `expose` with `data` too.
       defineResource({
         ref: "memo",
         scope: "session",
         stateSchema,
         client: {
           expose: ["title"],
-          data: (s) => ({ title: s.title }),
+          data: (s: z.infer<typeof stateSchema>) => ({ title: s.title }),
         },
       })
     ).toThrow(/at most one/);

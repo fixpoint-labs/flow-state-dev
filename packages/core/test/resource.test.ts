@@ -55,22 +55,22 @@ describe("defineResource", () => {
   });
 
   it("throws when render is used with contentTemplate", () => {
-    // @ts-expect-error — invalid on purpose: the type refuses render with a template too.
+    // Only the runtime refuses this pair. The typed `c` keeps the call compiling on
+    // every TS version: inside expect(() => …) an untyped one defeats inference.
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({}),
       contentTemplate: stubTemplate,
-      render: (c) => c,
+      render: (c: string) => c,
     })).toThrow("rejects render with contentTemplate");
   });
 
   it("throws when render is used with contentTemplateRef", () => {
-    // @ts-expect-error — invalid on purpose: the type refuses render with a template ref too.
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({}),
       contentTemplateRef: "templates/analyst",
-      render: (c) => c,
+      render: (c: string) => c,
     })).toThrow("rejects render with contentTemplate");
   });
 
