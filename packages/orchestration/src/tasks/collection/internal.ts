@@ -1194,6 +1194,24 @@ export function completionPatch(task: Task, output: unknown, completedAt: number
   };
 }
 
+/**
+ * The patch a cancel writes. `via` is how it was made, when the caller says
+ * (FIX-2081): server-set, never input.
+ */
+export function cancelPatch(
+  reason: string | undefined,
+  via: Task["cancelledVia"],
+  completedAt: number,
+): Partial<Task> {
+  return {
+    ...(reason !== undefined ? { error: reason } : {}),
+    completedAt,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    ...(via !== undefined ? { cancelledVia: via } : {}),
+  };
+}
+
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */
 export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
   return { run: { sessionId: run.sessionId, requestId: run.requestId, attempt: run.attempt } };
