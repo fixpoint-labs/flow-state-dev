@@ -306,8 +306,15 @@ export function hasStarted(task: Task): boolean {
   return task.startedAt != null || task.attempts > 0;
 }
 
-/** Why a settings edit is refused on `task` before anything is checked: it has started. */
-export function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+/**
+ * Why a settings edit is refused on `task` before anything is checked: it has
+ * started. A release alone is never refused for that: leaving `held` is how a
+ * row starts again, and a row stored `blocked` after a retry reads as held
+ * with attempts already spent (BP-030). Editing what it was filed with is.
+ */
+export function settingsDecline(task: Task, patch: TaskSettingsPatch): TaskWriteDeclineReason | undefined {
+  const releaseOnly = task.status === "held" && patch.held === false && patch.deps === undefined && patch.maxAttempts === undefined;
+  if (releaseOnly) return undefined;
   return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
 }
 
@@ -329,7 +336,7 @@ export function settingsWrite(
   patch: TaskSettingsPatch,
   lookup: (id: string) => Task | undefined,
 ): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
-  const declined = settingsDecline(task);
+  const declined = settingsDecline(task, patch);
   if (declined !== undefined) return { decline: declined };
   const update: Partial<Task> = {};
   if (patch.held === true && task.status === "pending") update.status = "held";

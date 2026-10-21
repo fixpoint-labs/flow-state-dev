@@ -642,7 +642,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       id,
       (prev, next) => settingsChangeKind(prev.status, next.status),
       (task) => {
-        const declined = settingsDecline(task as Task);
+        const declined = settingsDecline(task as Task, settings);
         if (declined !== undefined) throw new WriteDeclined(declined, task.status);
         const decided = settingsWrite(task as Task, settings, lookupRow);
         if (decided === undefined) return undefined;

@@ -500,7 +500,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       },
       {
         declineOnTerminal: true,
-        decline: (task) => settingsDecline(task as Task),
+        decline: (task) => settingsDecline(task as Task, settings),
       }
     );
   }

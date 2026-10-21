@@ -30,10 +30,11 @@ describe("the retired-shape map", () => {
     expect(withRetiredShapes(current)).toBe(current);
   });
 
-  it("blocked: reads as held, with the block's reason as its note", () => {
-    const read = withRetiredShapes({ ...row, status: "blocked", error: "waiting on legal" });
-    expect(read).toMatchObject({ status: "held", feedback: "waiting on legal" });
+  it("blocked: reads as held, with the block's reason kept apart from what a worker reads", () => {
+    const read = withRetiredShapes({ ...row, status: "blocked", error: "waiting on legal", metadata: { team: "a" } });
+    expect(read).toMatchObject({ status: "held", metadata: { team: "a", heldReason: "waiting on legal" } });
     expect(read).not.toHaveProperty("error");
+    expect(read).not.toHaveProperty("feedback");
     // A fixed point: read again, unchanged.
     expect(withRetiredShapes(read)).toBe(read);
   });
