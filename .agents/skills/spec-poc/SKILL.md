@@ -148,8 +148,8 @@ Use **`specs/issues/<ISSUE-ID>/poc/<experiment>/`** or
 stay under that same spec. Do not move unrelated historical root POCs.
 
 These experiments are not workspace packages or production modules. Keep them out of
-production imports, package exports, default builds, test/lint discovery, and knip's
-production scan. Exclusions must target retained `poc/` subtrees, not hide production code.
+production imports, package exports, default builds, test/lint discovery, and fallow's
+scan. Exclusions must target retained `poc/` subtrees, not hide production code.
 Keep generated dependencies and secrets out of git; do not add workspace membership,
 package manifests, or root execution scripts for a POC.
 

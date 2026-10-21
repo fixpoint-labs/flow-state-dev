@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
@@ -130,7 +130,7 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
  */
 export function withHeldItems<T extends RequestRecord>(
   value: T,
-  held: OutputItem[] | undefined
+  held: RuntimeItem[] | undefined
 ): T {
   if (value.items !== undefined || held === undefined) return value;
   return { ...value, items: held };
@@ -144,11 +144,11 @@ export function withHeldItems<T extends RequestRecord>(
  * items on the record (in-memory, filesystem); the SQL adapters do the same
  * with an UPSERT.
  */
-export function mergeItemsById(
-  prior: readonly OutputItem[],
-  next: readonly OutputItem[]
-): OutputItem[] {
-  const byId = new Map<string, OutputItem>();
+export function mergeItemsById<TItem extends RuntimeItem>(
+  prior: readonly TItem[],
+  next: readonly TItem[]
+): TItem[] {
+  const byId = new Map<string, TItem>();
   for (const item of prior) byId.set(item.id, item);
   for (const item of next) byId.set(item.id, item);
   return [...byId.values()];

@@ -23,7 +23,7 @@ const stores = inMemoryStores();
 
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: stores } },
   durabilityProvider: createCheckpointDurabilityProvider(stores),
 });
@@ -106,7 +106,8 @@ On the React side, `useSuspensions(session)` derives pending and resolved suspen
 | Field | Type | Description |
 |---|---|---|
 | `reason` | `"human_approval" \| "human_input" \| "external_event" \| string` | Machine-readable category for the suspension |
-| `message` | `string` | Human-readable description, emitted in the `SuspensionItem` |
+| `title` | `string` | Optional short heading for the suspension, a few words. A UI that lists or heads pending suspensions can show this and put `message` underneath as the body. Leave it out when `message` is already one short line |
+| `message` | `string` | Human-readable description, emitted in the `SuspensionItem`. With a `title`, it's the body and may be markdown |
 | `data` | `Record<string, unknown>` | Arbitrary metadata attached to the suspension record |
 | `resumeSchema` | `Record<string, unknown>` | JSON Schema describing the expected resume payload shape |
 | `timeoutMs` | `number` | Optional expiry. Once this duration passes unanswered, the sweeper marks the suspension `expired`. If the suspension allows `reject` (an approval), the request then carries on as if it had been rejected: see [Retention and cleanup](#retention-and-cleanup). |
@@ -302,7 +303,7 @@ Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic 
 ```ts
 export const flowstate = createFlowState({
   flows: { contentReview },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: stores } },
   durabilityProvider: createCheckpointDurabilityProvider(stores),
   durabilityRetention: {

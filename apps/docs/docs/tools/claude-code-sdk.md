@@ -53,7 +53,7 @@ import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk
 
 const orchestrator = generator({
   name: "orchestrator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [createClaudeCodeAgentCapability()],
 });
 ```
@@ -672,7 +672,7 @@ const workspace = createWorkspaceAgentCapability({
 
 generator({
   name: "coder",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Use the workspace agent to make the change.",
   uses: [workspace],
 });

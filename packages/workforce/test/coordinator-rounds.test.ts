@@ -42,7 +42,7 @@ import {
 } from "../src/coordinator/coordinator-rounds";
 import type { RoundPost, RoundRows } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
-import { bootHost, messageOf, standardWorkers } from "./coordinator-harness";
+import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 
@@ -174,20 +174,6 @@ describe("everyone (V3)", () => {
     expect(messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
   });
 });
-
-/**
- * Every request settled, read again after a grace period, until nothing new
- * starts: answers that go back out run in requests of their own.
- */
-async function quiet(host: Host) {
-  let seen = -1;
-  for (;;) {
-    const settled = await host.settled();
-    if (settled.length === seen) return settled;
-    seen = settled.length;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-}
 
 /** The delegates' lines in the conversation, oldest first. */
 async function answers(host: Host, sessionId: string) {
@@ -571,7 +557,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     await quiet(host);
 
     const cancelled = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
-    expect(cancelled).toMatchObject({ status: "errored", error: "its run was cancelled" });
+    expect(cancelled).toMatchObject({ status: "cancelled", error: "its run was cancelled" });
     expect(passedToCoder(host, "status?")).toHaveLength(1);
     expect((await host.sessionState(id)).openRounds).toEqual([]);
   });

@@ -5,8 +5,10 @@
  *
  * It is a backstop for clear misfits, not a router: it answers yes unless the
  * description says the lead handles a different sort of work, so a lead whose
- * description is broad passes. Picking the best lead stays with whoever calls
- * `listLeads`.
+ * description is broad passes. Work that doesn't say what sort it is, such as
+ * a bare name, can't be a clear misfit, so it passes whatever the judge makes
+ * of the lead: the judge says whether the work says, and only work that does
+ * is refused. Picking the best lead stays with whoever calls `listLeads`.
  *
  * A check that can't answer lets the open through, so a model outage never
  * stops a workstream opening, and says why in the open's record (`leadFit`),
@@ -46,8 +48,11 @@ export type LeadFitRecord = z.infer<typeof leadFitRecordSchema>;
 
 export const leadFitStateSchema = z.object({ [LEAD_FIT_STATE]: leadFitRecordSchema.optional() });
 
+/** The judge's answer: whether the work says what sort it is, and whether the lead fits it. */
+const answerSchema = z.object({ says: z.boolean(), fits: z.boolean() });
+
 /** The judge's answer, or why it gave none. */
-const judgedSchema = z.union([z.object({ fits: z.boolean() }), z.object({ unanswered: z.string() })]);
+const judgedSchema = z.union([answerSchema, z.object({ unanswered: z.string() })]);
 
 type Judged = z.infer<typeof judgedSchema>;
 
@@ -73,7 +78,7 @@ export function defineLeadFitCheck(model: string) {
     name: "workstream-lead-fit",
     model,
     inputSchema: leadFitCaseSchema,
-    outputSchema: z.object({ fits: z.boolean() }),
+    outputSchema: answerSchema,
     itemVisibility: { client: false, history: false },
     repair: { coerce: false },
     // A backstop for clear misfits, not a router: don't tighten it into picking the best lead.
@@ -81,6 +86,7 @@ export function defineLeadFitCheck(model: string) {
       [
         "You check whether a worker is the right one to lead a workstream.",
         "A lead never does the work itself: it hands the work to the workers under it. So judge only what sort of work this is.",
+        'Answer `says: false` when the work doesn\'t say what sort of work it is, such as a bare name or "the requested work", and `says: true` when it does.',
         "Answer `fits: true` when the work, such as a feature, research or planning, is the sort the worker's description says it leads or handles.",
         "Answer `fits: false` only when its description says it handles a different sort of work."
       ].join("\n"),
@@ -100,7 +106,7 @@ export function defineLeadFitCheck(model: string) {
         await ctx.request.patchState({ [LEAD_FIT_STATE]: { checked: false, why: `unanswered: ${judged.unanswered}` } });
         return {};
       }
-      if (!judged.fits) {
+      if (judged.says && !judged.fits) {
         const fitCase = leadFitCaseSchema.parse(ctx.parent?.input);
         throw new ProjectRefusedError(
           "lead-doesnt-fit",

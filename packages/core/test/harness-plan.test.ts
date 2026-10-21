@@ -66,7 +66,10 @@ function fakeCollection(options: { failOnWrite?: number } = {}) {
 function placesOf(plan: ReturnType<typeof fakeCollection>, namespace: string) {
   return [...plan.rows.entries()]
     .filter(([key]) => key.startsWith(`${namespace}/`))
-    .map(([key, state]) => ({ place: Number(key.slice(namespace.length + 1)), ...state }))
+    .map(([key, state]): { place: number; [field: string]: unknown } => ({
+      place: Number(key.slice(namespace.length + 1)),
+      ...state,
+    }))
     .sort((a, b) => a.place - b.place);
 }
 

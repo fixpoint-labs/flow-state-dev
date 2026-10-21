@@ -638,10 +638,9 @@ describe("BoardList · the stream carries the read's credential, to the read's o
     });
 
     render(
-      createElement(
-        FlowProvider,
-        { baseUrl: "https://provider.example" },
-        createElement(BoardList, {
+      createElement(FlowProvider, {
+        baseUrl: "https://provider.example",
+        children: createElement(BoardList, {
           sessionId: SESSION,
           boardRef: BOARD,
           resourceClient: fixedSource([card("t-1", "pending")]),
@@ -649,7 +648,7 @@ describe("BoardList · the stream carries the read's credential, to the read's o
           baseUrl: "https://boards.example",
           live: true
         })
-      )
+      })
     );
     await waitFor(() => expect(urls.some((url) => url.includes("/stream"))).toBe(true));
     const stream = new URL(urls.find((url) => url.includes("/stream"))!);
@@ -671,17 +670,16 @@ describe("BoardList · the stream carries the read's credential, to the read's o
     });
 
     render(
-      createElement(
-        FlowProvider,
-        { baseUrl: "https://provider.example" },
-        createElement(BoardList, {
+      createElement(FlowProvider, {
+        baseUrl: "https://provider.example",
+        children: createElement(BoardList, {
           sessionId: SESSION,
           boardRef: BOARD,
           fetcher: hostFetch,
           baseUrl: "https://boards.example",
           live: true
         })
-      )
+      })
     );
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
     await waitFor(() => expect(hostFetch).toHaveBeenCalledTimes(2));

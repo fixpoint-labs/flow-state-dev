@@ -176,7 +176,8 @@ describe("router branch suspends → resume continues the same branch (FIX-814)"
     const other = handler({
       name: "other",
       inputSchema: z.any(),
-      outputSchema: z.any(),
+      // Matches its sibling route's output schema: a router's routes share one.
+      outputSchema: z.unknown(),
       execute: async () => "other"
     });
 
@@ -344,7 +345,8 @@ describe("router decision cannot be honored on resume (FIX-814)", () => {
     const branchB = handler({
       name: "branchB",
       inputSchema: z.any(),
-      outputSchema: z.any(),
+      // Matches its sibling route's output schema: a router's routes share one.
+      outputSchema: z.unknown(),
       execute: async () => {
         runs.b += 1;
         return "B";

@@ -114,8 +114,8 @@ import {
 } from "../projects/project-coordinator";
 import { isTerminalStatus } from "@flow-state-dev/orchestration/tasks";
 import { conversationLedgerAt } from "../conversation-board/ledger";
-import { sendOwedNotices } from "../conversation-board/notice-delivery";
-import { defineSessionBoard } from "../conversation-board/session-board";
+import { sendPostCancelled } from "../conversation-board/notice-delivery";
+import { defineSessionBoard, WORKER_MESSAGE_SERVER_OWNED, workerMessageStateShape } from "../conversation-board/session-board";
 import { workerTaskEntry } from "../conversation-board/task-entry";
 import {
   CONVERSATION_BOARD_SERVER_OWNED,
@@ -125,11 +125,13 @@ import {
   type PostEnding
 } from "../conversation-board/task-settled";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
+import { reportRescuedFailure } from "../error-reporter/rescued";
 import { workerConfigOf } from "../workers/verified-worker";
 import type { RosterWorker, WorkerInstallation } from "../workers/installation";
 import {
   coordinatorConfigProblems,
   coordinatorConfigSchema,
+  coordinatorRunsOwnTurn,
   type CoordinatorConfig,
   type CoordinatorRouting
 } from "./coordinator-config";
@@ -1119,6 +1121,13 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
         none: why,
         ...(post.fit === undefined ? {} : { fit: post.fit })
       });
+      // The request completes on this answer, so no final failure is sent for it: the crash is reported here.
+      await reportRescuedFailure(ctx as never, {
+        flowKind: COORDINATOR_FLOW,
+        actionName: post.round === 0 ? "run" : ROUTE_ON_ACTION,
+        blockName: COORDINATOR_JUDGMENT,
+        error
+      });
       // A user's post is answered in the conversation; answers going back out aren't.
       if (post.round === 0) ctx.emit.message(`Nobody took this post: ${why}.`);
       return { unplaced: why };
@@ -1550,12 +1559,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     .step(postEnded)
     .tapIf(hasRouteOns, sendOn);
 
-  /**
-   * A delegate's run on one of this conversation's posts was cancelled: end
-   * its row under the claim the delegate sent, and send the ending it then
-   * owes here, as the board's replay would. The claim fences the write: a row
-   * already ended, or claimed again since, declines it, and nothing changes.
-   */
+  /** The user stopped a delegate's run on a post: cancel its row under the delegate's claim (so no report is owed) and send its ending, as the board's cancel does. */
   const postCancelled = handler({
     name: "coordinator-post-cancelled",
     inputSchema: postCancelledSchema,
@@ -1565,14 +1569,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
       const ref = await conversationLedgerAt(ctx as never, await filingSessionIdOf(ctx.session));
       const row = ref?.get(cancelled.taskId);
       if (ref === undefined || row === undefined || postRowOf(row) === undefined) return {};
-      const outcome = await ref.fail(cancelled.taskId, "its run was cancelled", {
-        claim: cancelled.claim,
-        ifAllowed: true,
-        noRetry: true
-      });
+      const outcome = await ref.cancel(cancelled.taskId, "its run was cancelled", { claim: cancelled.claim, ifAllowed: true });
       const ended = ref.get(cancelled.taskId);
-      if (outcome.outcome !== "declined" && ended !== undefined) {
-        await sendOwedNotices(ctx as never, ended, { session: { id: ctx.session.identity.id }, from: "coordinator-post-cancelled" });
+      if (outcome.outcome !== "declined" && ended?.status === "cancelled") {
+        await sendPostCancelled(ctx as never, ended, { session: { id: ctx.session.identity.id }, from: "coordinator-post-cancelled" });
       }
       return {};
     }
@@ -1590,7 +1590,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     turn.run,
     (ctx) => {
       const { routing } = workerConfigOf(ctx) as unknown as CoordinatorConfig;
-      return routing === "judgment" || routing === "best-fit" ? "judgment" : "fixed";
+      return coordinatorRunsOwnTurn(routing) ? "judgment" : "fixed";
     },
     onPostEnded
   );
@@ -1603,8 +1603,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     // turn's worker on this flow before anything reads a setting.
     ...turn.bound,
     session: {
-      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape }),
-      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED],
+      ...installation.session({ ...coordinatorStateShape, ...conversationBoardStateShape, ...workerMessageStateShape }),
+      serverOwned: [...COORDINATOR_SERVER_OWNED, ...CONVERSATION_BOARD_SERVER_OWNED, ...WORKER_MESSAGE_SERVER_OWNED],
       // Every answer, routing and pass-on writes this one record at once; a pass-on that
       // runs out of retries fails after its round has closed, and its answers are lost.
       cas: { maxRetries: 8 }

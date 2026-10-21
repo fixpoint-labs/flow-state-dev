@@ -347,7 +347,9 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
     const queued = store.open.filter((r) => isQueued(r.status)).length;
     if (one("tasksQueued") !== String(queued)) fail("content", `the Queued toggle counts ${one("tasksQueued") ?? "nothing"}, the store holds ${queued} queued row(s) (v2:1383, audit K4)`);
     const heads = (texts.tasksColumns ?? []).map((c) => c.text);
-    if (flying.length > 0 && JSON.stringify(heads) !== JSON.stringify(COLUMNS)) fail("content", `Tasks' columns are ${list(heads)}, v2's are ${list(COLUMNS)} (v2:662, audit K5)`);
+    // The table, and its column heads, draw whenever a row is open, queued ones included; with none, there is no table.
+    const wantHeads = store.open.length > 0 ? COLUMNS : [];
+    if (JSON.stringify(heads) !== JSON.stringify(wantHeads)) fail("content", `Tasks' columns are ${list(heads)}, with ${store.open.length} open row(s) they should be ${list(wantHeads)} (v2:662, audit K5)`);
     const rows = texts.tasksRows ?? [];
     const shown = rows.map((r) => r.data.taskId ?? "").sort();
     const wanted = flying.map((r) => r.id).sort();

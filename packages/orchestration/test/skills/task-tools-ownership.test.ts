@@ -16,10 +16,16 @@
 import { describe, expect, it } from "vitest";
 import { runForTest } from "@flow-state-dev/testing";
 import type { GeneratorTool } from "@flow-state-dev/core";
-import { taskTools, DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
-import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import { createTaskToolsCapability } from "../../src/skills/task-tools-capability";
+import {
+  openWorkerClaimScope,
+  stampCurrentClaim,
+  type WorkerClaimReader,
+} from "../../src/task-board/flow-policy-wiring";
 import { ticketForClaim, type Task } from "../../src/tasks";
-import { buildDelegationCtx } from "./delegation-ctx";
+import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
+
+const taskTools = createTaskToolsCapability(ownStateResolver);
 
 /** The capability's tool list as a turn with no ask host gets it: the list is chosen per turn (FIX-1816). */
 const resolvedControlTools = (list: unknown): GeneratorTool[] =>
@@ -68,14 +74,15 @@ function boardWithTwoClaimedTasks() {
 }
 
 /** Stamp the worker scope as holding "mine" on the delegation board. */
-function holdMine() {
-  stampCurrentClaim(ticketForClaim(DELEGATION_BOARD_FIELD, inProgress("mine")));
+function holdMine(ctx: WorkerClaimReader) {
+  openWorkerClaimScope();
+  stampCurrentClaim(ticketForClaim(BOARD_FIELD, inProgress("mine")), ctx);
 }
 
 describe("taskTools — a worker can only settle the task it holds", () => {
   it("refuses completeTask on a sibling's task and names the one the caller holds", async () => {
     const { ctx, selfState } = boardWithTwoClaimedTasks();
-    holdMine();
+    holdMine(ctx);
 
     const result = (await runForTest(
       findTool("completeTask"),
@@ -94,7 +101,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
 
     // Nothing was written. A refusal that still landed the payload would be
     // the defect wearing an error message.
-    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+    const board = selfState[BOARD_FIELD] as Record<string, Task>;
     expect(board.theirs?.status).toBe("in_progress");
     expect(board.theirs?.output).toBeUndefined();
   });
@@ -107,7 +114,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
       // a token at all, and `cancelTask` hard-coded its guards and dropped the
       // caller's.
       const { ctx, selfState } = boardWithTwoClaimedTasks();
-      holdMine();
+      holdMine(ctx);
 
       const result = (await runForTest(
         findTool(toolName),
@@ -117,7 +124,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
 
       expect(result.ok).toBe(false);
       expect(result.error).toContain('you hold task "mine"');
-      const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+      const board = selfState[BOARD_FIELD] as Record<string, Task>;
       expect(board.theirs?.status).toBe("in_progress");
     },
   );
@@ -126,7 +133,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     // The control. A fence that refused everything would satisfy every
     // assertion above while breaking every board that works today.
     const { ctx, selfState } = boardWithTwoClaimedTasks();
-    holdMine();
+    holdMine(ctx);
 
     const result = (await runForTest(
       findTool("completeTask"),
@@ -135,7 +142,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     )) as { ok: boolean };
 
     expect(result.ok).toBe(true);
-    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+    const board = selfState[BOARD_FIELD] as Record<string, Task>;
     expect(board.mine?.status).toBe("completed");
     expect(board.mine?.output).toBe("written by its holder");
   });
@@ -148,7 +155,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
       self: false,
       preTasks: { mine: { ...inProgress("mine"), attempts: 2 } as Task },
     });
-    holdMine(); // still holding attempt 1
+    holdMine(ctx); // still holding attempt 1
 
     const result = (await runForTest(
       findTool("completeTask"),
@@ -167,7 +174,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     // relabel tasks they never claimed (a failure-category audit, a cascade's
     // `skipped` marker). "Fixing" these would break them.
     const { ctx, selfState } = boardWithTwoClaimedTasks();
-    holdMine();
+    holdMine(ctx);
 
     expect(
       await runForTest(
@@ -177,7 +184,7 @@ describe("taskTools — a worker can only settle the task it holds", () => {
       ),
     ).toEqual({ ok: true });
 
-    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, Task>;
+    const board = selfState[BOARD_FIELD] as Record<string, Task>;
     expect(board.theirs?.labels).toContain("triaged");
   });
 });

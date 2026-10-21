@@ -13,6 +13,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { BlockTraceItem } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { createResponseEmitter, runAction } from "@flow-state-dev/engine";
 import type { RequestRecord } from "@flow-state-dev/engine";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -65,7 +66,9 @@ describe("a settled request's items on SQLite", () => {
     const response = createResponseEmitter({
       requestId,
       onEvent: (event) => {
-        if (event.type !== "item.done" || event.item.type !== "block_trace") return;
+        if (event.type !== "item.done") return;
+        const item = event.item as RuntimeItem;
+        if (item.type !== "block_trace") return;
         const pending = new Promise<void>((resolve) => setTimeout(resolve, 0));
         yielded.push(pending);
         return pending;
@@ -99,9 +102,9 @@ describe("a settled request's items on SQLite", () => {
 
     expect(atSettle?.status).toBe("completed");
     const root = (atSettle?.items ?? []).find(
-      (item): item is BlockTraceItem =>
-        item.type === "block_trace" && item.blockInstanceId === `${requestId}:root:0`
-    );
+      (item) =>
+        item.type === "block_trace" && (item as BlockTraceItem).blockInstanceId === `${requestId}:root:0`
+    ) as BlockTraceItem | undefined;
     expect(root?.status).toBe("completed");
     expect(root?.output).toEqual({ kind: "inline", value: { outcome: "declined" } });
 

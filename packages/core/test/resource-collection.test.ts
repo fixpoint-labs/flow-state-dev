@@ -30,8 +30,8 @@ describe("defineResourceCollection", () => {
 
     // The framework injects `edges` so writes aren't silently stripped on
     // persist; parsing a bare instance yields an empty edge array.
-    expect("edges" in (coll.stateSchema as z.ZodObject<z.ZodRawShape>).shape).toBe(true);
-    const parsed = coll.stateSchema.parse({ label: "x" }) as { edges: unknown[] };
+    expect("edges" in (coll.stateSchema as unknown as z.ZodObject<z.ZodRawShape>).shape).toBe(true);
+    const parsed = coll.stateSchema.parse({ label: "x" }) as unknown as { edges: unknown[] };
     expect(parsed.edges).toEqual([]);
   });
 
@@ -41,7 +41,7 @@ describe("defineResourceCollection", () => {
       scope: "user",
       stateSchema: z.object({ label: z.string().default("") }),
     });
-    expect("edges" in (coll.stateSchema as z.ZodObject<z.ZodRawShape>).shape).toBe(false);
+    expect("edges" in (coll.stateSchema as unknown as z.ZodObject<z.ZodRawShape>).shape).toBe(false);
   });
 
   it("creates a collection with single-level wildcard pattern", () => {
@@ -83,9 +83,9 @@ describe("defineResourceCollection", () => {
 
   it("requires an explicit scope", () => {
     expect(() =>
+      // @ts-expect-error: scope is required
       defineResourceCollection({
         pattern: "files/*",
-        // @ts-expect-error: scope is required
         stateSchema: z.object({}),
       })
     ).toThrow("requires an explicit scope");

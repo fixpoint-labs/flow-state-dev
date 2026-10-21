@@ -24,7 +24,7 @@
  *   waits     each worker's waits-on entries are exactly its parked rows and asks
  *   summary   the counts at the top equal the store's, for the workers shown
  *   sidebar   the Roster entry's and the footer's counts equal the store's
- *   TEAMS     one row per team, Staff first, a square per seat with its status
+ *   TEAMS     one row per team, General first, a square per worker with its status
  *   filter    a TEAMS row opens Roster for exactly that team
  *
  * Controls rebuild Shift Manager with `src/lib/derive.ts` swapped for a module
@@ -70,7 +70,7 @@ const SCRATCH = goalTmpDir("shift-manager-roster");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 
 /** The group a seat with no team sits in, as the design names it. */
-const STAFF = "Staff";
+const GENERAL = "_general";
 /** The collection Workforce keeps every conversation's board in, as a flow's manifest publishes it. */
 const CONVERSATION_LEDGER = "tasks";
 const STATUSES = ["on shift", "off shift"] as const;
@@ -269,7 +269,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
     const myAsks = asks.filter((a) => a.seat === id);
     return {
       id,
-      team: id.includes(".") ? id.slice(0, id.indexOf(".")) : STAFF,
+      team: id.includes(".") ? id.slice(0, id.indexOf(".")) : GENERAL,
       status: running.length > 0 || parked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
       held: [...running, ...parked].map((r) => r.key),
       waits: [...parked.map((r) => r.id), ...myAsks.map((a) => a.id)],
@@ -279,7 +279,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
   const teams = [...new Set(workers.map((w) => w.team))];
   return {
     workers,
-    teams: [...teams.filter((t) => t === STAFF), ...teams.filter((t) => t !== STAFF)],
+    teams: [...teams.filter((t) => t === GENERAL), ...teams.filter((t) => t !== GENERAL)],
     asks: asks.length,
     signature: JSON.stringify([rows.map((r) => [r.key, r.status, r.assignee]).sort(), asks.map((a) => a.id).sort(), [...seats].sort()]),
     unmatched,
@@ -371,7 +371,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
     if (queuedStored !== built("queued")) fail("store", `${queuedStored} queued row(s), the spread built ${built("queued")}`);
     if (store.asks !== built("ask")) fail("store", `${store.asks} pending ask(s), the spread built ${built("ask")}`);
     if (store.unmatched.length > 0) fail("store", `rows whose assignee names no single seat: ${store.unmatched.join(", ")}`);
-    if (!store.teams.includes(STAFF) || store.teams.length < 3) fail("store", `the inventory's groups are [${store.teams.join(", ")}]; the check needs Staff and two teams`);
+    if (!store.teams.includes(GENERAL) || store.teams.length < 3) fail("store", `the inventory's groups are [${store.teams.join(", ")}]; the check needs General and two teams`);
     for (const status of STATUSES) if (!store.workers.some((w) => w.status === status)) fail("store", `no worker is ${status}, so that group goes ungraded`);
 
     // ---- sidebar ---------------------------------------------------------------

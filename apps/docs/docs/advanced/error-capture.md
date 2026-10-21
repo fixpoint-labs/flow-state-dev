@@ -53,8 +53,33 @@ The callback is read-only. Its return value is ignored, and the runtime calls it
 | `attempt` | `number?` | 0-indexed retry attempt, set only under a retry policy. |
 | `scope` | `"block" \| "request" \| "sideChain" \| "resource"?` | Where the error originated. |
 | `transient` | `boolean?` | `true` for high-frequency transient blocks (poll loops). |
+| `final` | `true?` | Set on the one extra event a request sends when it settles failed. See below. |
 
 The runtime fires the callback once per failed block, identified by the leaf block where the failure actually happened. A failure deep in a nested sequencer reports the inner block, not the outer container. When a block runs under a retry policy, each failed attempt fires once, distinguished by `attempt`; a block that recovers on a later attempt still reports the attempts that failed. Filter these out in your adapter if you only want terminal failures (see below).
+
+## The final event
+
+A request that ends `failed` sends one more event once it has settled. It carries `final: true` and `scope: "request"`, the request's IDs, and, when a block threw, that leaf block's identity. It is sent after rescues and retries have run and after the request's failed status is recorded. A request that a retry or a rescue saved never sends one.
+
+So each failing request reaches your callback at least twice: once per failed block, and once more as the final event. Pick the view you want:
+
+```ts
+// One event per failed request: the request really failed.
+errorCapture: (event) => {
+  if (!event.final) return;
+  myErrorService.report(event.error, { requestId: event.requestId });
+},
+```
+
+```ts
+// Every failing block, including attempts a retry later fixed. Skip the summary.
+errorCapture: (event) => {
+  if (event.final) return;
+  myErrorService.report(event.error, { requestId: event.requestId, block: event.blockName });
+},
+```
+
+If you forward both, your service sees the same failure twice for every request that ends failed.
 
 ## Choosing which errors to capture
 
@@ -76,6 +101,8 @@ A reasonable default is to treat `retryable: false` as an error and `retryable: 
 import * as Sentry from "@sentry/node";
 
 errorCapture: (event) => {
+  // Every block failure is forwarded below; the request's final event would repeat one of them.
+  if (event.final) return;
   Sentry.captureException(event.error, {
     level: event.error.retryable ? "warning" : "error",
     user: { id: event.userId },

@@ -34,7 +34,7 @@ import { z } from "zod";
 
 const summarizeDocument = generator({
   name: "summarize-document",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({ documentId: z.string() }),
   prompt: "Summarize the document.",
 });
@@ -140,7 +140,7 @@ block.
 A task board worker can start a job the same way: a `dispatcher({ action, session
 })` under `workers` sends each claimed row to one of the flow's `task.actions`
 entries, and that run lands in the same listings. See [Task board →
-Workers that dispatch](../orchestration/task-board.md#assignees-that-dispatch).
+Assignees that dispatch](../orchestration/task-board.md#assignees-that-dispatch).
 
 ### Starting a job on another flow
 
@@ -440,7 +440,7 @@ bag:
 
 `type` and `action` are the entry the run executes, `from` names the block that
 sent it and the session it was running in, `key` is the session key the run
-was derived from, and `taskId` the board row on a task dispatch. `key` is absent
+was derived from, and `taskId` the board row on a dispatched task. `key` is absent
 when the dispatcher delivered into an existing session by `id`, and `taskId` is
 absent on an internal dispatch.
 

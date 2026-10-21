@@ -75,6 +75,17 @@ export const workerInventoryRowSchema = z.object({
    */
   door: z.string().nullable().default(null),
   /**
+   * The worker's display name (its `WORKER.md` `name:`), for people only; ids
+   * stay the wiring. `null` when it names none, and on a row written before
+   * the field (BP-023, BP-030): a view shows the id instead.
+   */
+  name: z.string().nullable().default(null),
+  /**
+   * Its team's display name (the team's `TEAM.md` `name:`). `null` when the
+   * team names none, on an org worker, and on a row written before the field.
+   */
+  teamName: z.string().nullable().default(null),
+  /**
    * Whether the worker keeps standing rules: its worker flow declares the
    * standing rules action. Read off the flow's actions rather than its name, so
    * an app's own `agent` that leaves the action out says so. Defaulted so a row
@@ -128,7 +139,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "hired", "incarnation"] as const;
+const WORKER_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "rules", "name", "teamName", "hired", "incarnation"] as const;
 
 /**
  * The worker inventory — one row per registered worker, at `inventory/workers/*`.

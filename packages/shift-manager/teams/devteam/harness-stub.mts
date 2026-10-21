@@ -68,6 +68,8 @@ export interface HarnessStubOptions {
    * with what it found in its working folder.
    */
   finalMessage?: string | null | ((run: StubRun) => string | null);
+  /** The handle's `status` per run, overriding {@link status}. */
+  statusOf?: (run: StubRun) => HarnessRunStatus;
   /** The handle's `outcome` word per run, overriding {@link outcome}. */
   outcomeOf?: (run: StubRun) => HarnessRunOutcome | null;
   /**
@@ -170,7 +172,7 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
 
           return {
             source: "devforce-lab/stub",
-            status: options.status ?? ("completed" as const),
+            status: options.statusOf?.(run) ?? options.status ?? ("completed" as const),
             sessionId: `sess_stub_${sessions}`,
             url: null,
             dispatchedAt: Date.now(),

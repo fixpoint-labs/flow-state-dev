@@ -10,14 +10,14 @@
  * opt-in by the deploying team.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { StoreRegistry } from "../stores/types";
+import type { SessionRecord, StoreRegistry } from "../stores/types";
 import type {
   SuspensionFilter,
   SuspensionStatus
 } from "@flow-state-dev/core/types";
 import { TERMINAL_SUSPENSION_STATUSES } from "@flow-state-dev/core/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-import { jsonResponse, loadTenantSession } from "./route-utils";
+import { jsonResponse, loadCheckedSession } from "./route-utils";
 import {
   buildDebugCollectionItems,
   buildDebugResourceTree,
@@ -42,6 +42,8 @@ export interface DebugRouteContext {
   debug: ResolvedDebugConfig;
   /** Tenant id from the request header (FIX-682); namespaces session lookups. */
   tenantId?: string;
+  /** Session the route guard checked (`RouteAuthResult.session`). */
+  checkedSession?: SessionRecord | null;
 }
 
 const DEFAULT_COUNT_LIMIT = 1000;
@@ -158,7 +160,8 @@ export async function handleDebugListResources(
     sessionId: route.sessionId,
     ctx: { registry: ctx.registry, stores: ctx.stores },
     countLimit: ctx.debug.countLimit,
-    tenantId: ctx.tenantId
+    tenantId: ctx.tenantId,
+    checkedSession: ctx.checkedSession
   });
   if (tree === null) {
     return jsonResponse(404, { error: "session_not_found" });
@@ -194,7 +197,12 @@ export async function handleDebugListSuspensions(
   // name it, rather than listed as having no suspensions. The route guard
   // answers another user's session with this same not-found, so an unused id
   // and a session that is not the caller's read alike.
-  const session = await loadTenantSession(ctx.stores.session, route.sessionId, ctx.tenantId);
+  const session = await loadCheckedSession(
+    ctx.stores.session,
+    route.sessionId,
+    ctx.tenantId,
+    ctx.checkedSession
+  );
   if (session === undefined) return jsonResponse(404, { error: "session_not_found" });
   const params = new URL(request.url).searchParams;
   const filter: SuspensionFilter = { sessionId: route.sessionId };
@@ -241,7 +249,8 @@ export async function handleDebugListCollectionItems(
     cursor,
     topicFilter: topic,
     ctx: { registry: ctx.registry, stores: ctx.stores },
-    tenantId: ctx.tenantId
+    tenantId: ctx.tenantId,
+    checkedSession: ctx.checkedSession
   });
   if (result.ok) return jsonResponse(200, result.data);
   if (result.kind === "session_not_found") {
@@ -274,7 +283,8 @@ export async function handleDebugGetResourceContent(
     ref: route.ref,
     topic: null,
     ctx: { registry: ctx.registry, stores: ctx.stores },
-    tenantId: ctx.tenantId
+    tenantId: ctx.tenantId,
+    checkedSession: ctx.checkedSession
   });
   return contentResponse(result, route.ref, null);
 }
@@ -294,7 +304,8 @@ export async function handleDebugGetCollectionItemContent(
     ref: route.ref,
     topic: route.topic,
     ctx: { registry: ctx.registry, stores: ctx.stores },
-    tenantId: ctx.tenantId
+    tenantId: ctx.tenantId,
+    checkedSession: ctx.checkedSession
   });
   return contentResponse(result, route.ref, route.topic);
 }

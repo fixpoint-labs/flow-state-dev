@@ -31,7 +31,7 @@ fsdev run market-intel-agent runStrategy \
   --session sess_abc123
 
 # Override the model for generators run in this process
-fsdev run my-agent chat -i '{"message": "hi"}' --model gpt-5
+fsdev run my-agent chat -i '{"message": "hi"}' --model gpt-6.1-sol
 
 # Seed session state before execution
 fsdev run support-triage triageTicket \
@@ -144,7 +144,7 @@ Starts an HTTP server serving both the flow API and the DevTool UI. Discovers fl
 fsdev dev
 
 # Custom port, model override
-fsdev dev --port 3000 --model openai/gpt-5.4-mini
+fsdev dev --port 3000 --model openai/gpt-6-luna
 
 # Specific flow directory, no browser
 fsdev dev --flow-dir ./my-flows --no-open
@@ -242,7 +242,7 @@ fsdev block ./src/flows/my-app/blocks/counter.ts \
 # Override model for a generator block
 fsdev block ./src/blocks/summarizer.ts \
   -i '{"text": "..."}' \
-  -m gpt-5
+  -m gpt-6.1-sol
 ```
 
 Options:
@@ -359,8 +359,8 @@ fsdev benchmark ./benchmark.ts \
 # Cross-model: run the patterns on Haiku and compare them against pure Haiku
 # AND pure Sonnet ("does a Haiku swarm beat raw Sonnet?")
 fsdev benchmark ./benchmark.ts \
-  --model anthropic/claude-haiku-4-5 \
-  --baseline-model anthropic/claude-sonnet-4-6
+  --model anthropic/claude-haiku-5-5 \
+  --baseline-model anthropic/claude-sonnet-5-5
 ```
 
 `--baseline-model` adds a pure single-generator baseline on that model; the run model is always included as the same-model baseline (the delta reference). The other baselines appear as their own rows, so you read whether the patterns beat them from the absolute scores.
@@ -456,7 +456,7 @@ import chatFlow from "./src/flows/chat/flow";
 
 export default createFlowState({
   flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```

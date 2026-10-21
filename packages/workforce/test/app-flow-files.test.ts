@@ -19,7 +19,7 @@ const resolvedControlTools = (list: unknown): GeneratorTool[] =>
   (typeof list === "function" ? list({}) : (list ?? [])) as GeneratorTool[];
 
 const TASK_TOOLS = (() => {
-  const capability = createTaskToolsCapability() as unknown as {
+  const capability = createTaskToolsCapability(async () => undefined) as unknown as {
     __presetDefs?: { tools?: { controlTools?: unknown } };
   };
   return resolvedControlTools(capability.__presetDefs?.tools?.controlTools).map((tool) => tool.config?.name ?? tool.name);

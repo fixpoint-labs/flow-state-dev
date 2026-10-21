@@ -373,7 +373,7 @@ async function expand(page: import("playwright").Page): Promise<void> {
 // The run
 // ---------------------------------------------------------------------------
 
-await runGoal(async (failures) => {
+await runGoal(async (failures, tell) => {
   const scratch = goalTmpDir("design-system");
   const registryDir = join(scratch, "r");
   const host = join(scratch, "host");
@@ -526,8 +526,10 @@ await runGoal(async (failures) => {
     const exactly = (set: Rgb[], rgb: Rgb) => set.some((c) => c.every((v, i) => Math.abs(v - rgb[i]!) <= 1));
     const where = (s: Sample) => `${s.part} (${s.component}) ${s.el} ${s.prop}`;
 
+    // Every loop below grades what the browser sampled, so each pass's samples
+    // are floored: zero sampled colours, fonts or corners is CAN'T TELL, not PASS.
     for (const [pass, read] of Object.entries(reads)) {
-      for (const part of read.parts) {
+      for (const part of tell.over(`${pass} · parts`, read.parts)) {
         if (part.elements === 0) failures.push(`${pass}: ${part.name} rendered nothing`);
       }
     }
@@ -536,7 +538,7 @@ await runGoal(async (failures) => {
     for (const pass of ["neutral-light", "neutral-dark"]) {
       const read = reads[pass]!;
       const allowed = setOf(read, [...oracles.defaults, ...oracles.chromeFallbacks]);
-      for (const s of read.colours) {
+      for (const s of tell.over(`a:neutral [${pass}] · colours sampled`, read.colours)) {
         const c = parseColour(s.value);
         if (c && !any(allowed, c.rgb)) failures.push(`a:neutral [${pass}] ${where(s)} → ${hex(c.rgb)} is not a registry default`);
       }
@@ -565,17 +567,17 @@ await runGoal(async (failures) => {
           return probe !== null && probe.every((x, i) => Math.abs(x - rgb[i]!) <= 1);
         }) ?? "?";
       const theme = setOf(read, oracles.theme[variant]);
-      for (const s of read.colours) {
+      for (const s of tell.over(`b:themed [${variant}] · colours sampled`, read.colours)) {
         const c = parseColour(s.value);
         if (!c) continue;
         if (exactly(forbidden, c.rgb)) bFails.push(`b:themed [${variant}] ${where(s)} → ${hex(c.rgb)} is a registry default or palette colour (${named(c.rgb)})`);
         else if (!any(theme, c.rgb)) bFails.push(`b:themed [${variant}] ${where(s)} → ${hex(c.rgb)} is not a Shift Manager value`);
       }
-      for (const s of read.fonts) {
+      for (const s of tell.over(`b:themed [${variant}] · fonts sampled`, read.fonts)) {
         const first = s.value.split(",")[0]!.trim().replace(/^["']|["']$/g, "");
         if (!oracles.theme.families.includes(first)) bFails.push(`b:themed [${variant}] ${where(s)} → font ${first}`);
       }
-      for (const s of read.radii) {
+      for (const s of tell.over(`b:themed [${variant}] · corners sampled`, read.radii)) {
         if (parseFloat(s.value) < 1000) bFails.push(`b:themed [${variant}] ${where(s)} → corner ${s.value}`);
       }
     }

@@ -2,7 +2,7 @@
 title: Delegating work
 sidebar_position: 3.6
 sidebar_label: Delegating work
-description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for its own."
+description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for any worker on your roster that takes tasks."
 ---
 
 # Delegating work
@@ -12,6 +12,8 @@ A worker can hand work to other workers on your roster. The workers it hands wor
 There are two ways to hand something over. A [coordinator](./coordinators.md) passes a question on as a **post**, and the delegate answers it. Work that has to be done, like a change made, a report written or a run that takes an hour, goes as a **task**: the worker files it on a board, for one of its delegates. The delegate works it in a new session of its own, a **task session**, and the worker that filed it hears how it ended.
 
 A worker files tasks when one of its delegates can take a task. There's no switch to flip. Who the worker hands work to decides it.
+
+To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-or-delegate).
 
 ## Giving a worker the task tools
 
@@ -33,6 +35,8 @@ A worker whose delegates only take posts, like a coordinator that routes questio
 ```json
 { "ok": false, "error": "no_delegation_board" }
 ```
+
+In a task session the rule is wider: a worker working a task can hand pieces to any worker on the roster that takes tasks, delegates or not. See [Splitting a task](#splitting-a-task).
 
 Add a delegate that takes tasks partway through a conversation and the tools are there on the next call; remove the last one and they're gone.
 
@@ -61,9 +65,9 @@ export const emFlow = workerFlow((installation) => {
 
   const answer = generator({
     name: "em-answer",
-    model: "openai/gpt-5.4-mini",
+    model: "openai/gpt-6-luna",
     inputSchema: messageInput,
-    uses: [board.tools],
+    uses: [board.tools, board.messages],
     prompt: "You lead the feature. File the work for your delegates; never do it yourself.",
     user: (input) => input.message,
   });
@@ -93,11 +97,12 @@ What the kit gives you, and where each piece goes:
 | Field | Put it in |
 |-------|-----------|
 | `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
+| `messages` | The same `uses`. It carries `messageWorker`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
 | `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
-| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends. |
+| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. |
 | `files(ctx)` | Read it when you need to know whether the running session files now. |
 | `taskDelegates(ctx)` | The session's delegates as a task sees them: `available` (worker id to flow) and `unavailable` (worker id to why). |
 
@@ -142,14 +147,29 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it, as long as it has delegates of its own that take tasks. It files the pieces on its own task session's board, for its own delegates, and its task waits until every piece has ended. Then the task completes with what the pieces returned, or fails naming the pieces that failed for good, and the session above hears it.
+A worker given a task can split it into pieces. It can hand a piece to any worker on your roster that takes tasks, not only its own delegates, so a task that needs something another worker knows can get it from that worker. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
+
+The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
+
+```json
+{
+  "answer": "The codename is Bluebird.",
+  "pieces": [
+    { "taskId": "task_8f2…", "goal": "Ask the archivist for the codename", "assignee": "archivist", "status": "completed", "output": "Bluebird" }
+  ]
+}
+```
+
+If the worker didn't get a turn after the last piece ended (after a server restart, for example), the output is `{ pieces }` with no `answer`, so treat `answer` as optional. A task with a piece that failed for good fails, naming it. Only the session that filed the task hears it end; it doesn't hear each piece.
 
 ```text
 your conversation ── task ──▶ lead's task session ── pieces ──▶ two task sessions
-        ◀── "completed, with both results" ──┘
+        ◀── "completed, with lead's answer" ──┘
 ```
 
-Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can dispatch the work again, for the same delegate or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
+A worker on a task can't wait for a piece inside its turn: `dispatchTask` with `wait` is refused there. It files the piece without `wait` and ends its turn, and the piece's ending wakes it.
+
+When a piece fails for good, the turn its ending woke can dispatch the work again, to the same worker or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
 
 Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
 
@@ -176,5 +196,6 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 ## Related pages
 
 - [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.
+- [Messaging other workers](./messaging-workers.md): asking another worker something without filing a task.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.
 - [Task board](../orchestration/task-board.md): the board and the task tools underneath.

@@ -47,6 +47,12 @@ export interface SuspensionRecord {
   userId: string;
 
   reason: SuspensionReason;
+  /**
+   * The suspension's short heading; `message` is then its body. Absent when the
+   * suspension gave none, including every record persisted before it existed:
+   * a reader falls back to `message` (BP-030).
+   */
+  title?: string;
   message: string;
   data?: Record<string, unknown>;
   /**

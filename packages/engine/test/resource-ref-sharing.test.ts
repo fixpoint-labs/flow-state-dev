@@ -5,6 +5,7 @@
  * identity owns persistence.
  */
 import { describe, expect, it } from "vitest";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
@@ -23,7 +24,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       name: "writer",
       resources: { a: sharedRef },
       execute: async (_input, ctx) => {
-        await ctx.resources.a.setState({ count: 7 });
+        await (ctx.resources.a as ResourceRef<{ count: number }>).setState({ count: 7 });
         return { wrote: true };
       }
     });
@@ -33,7 +34,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       name: "reader",
       resources: { b: sharedRef },
       execute: async (_input, ctx) => {
-        return { seen: (ctx.resources.b.state as { count: number }).count };
+        return { seen: (ctx.resources.b as ResourceRef<{ count: number }>).state.count };
       }
     });
 
@@ -57,7 +58,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       userId: "user_fix591",
       stores
     });
-    await writeCtx.resources.a.setState({ count: 7 });
+    await (writeCtx.resources.a as ResourceRef<{ count: number }>).setState({ count: 7 });
 
     const readCtx = await createExecutionContext({
     orgId: DEFAULT_ORG_ID,
@@ -69,7 +70,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       stores
     });
 
-    expect((readCtx.resources.b.state as { count: number }).count).toBe(7);
+    expect((readCtx.resources.b as ResourceRef<{ count: number }>).state.count).toBe(7);
   });
 
   it("aliases on different accessors converge on one persisted slot", async () => {
@@ -104,11 +105,11 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
       stores
     });
 
-    await ctx.resources.primary.setState({ value: "hello" });
-    expect((ctx.resources.alias.state as { value: string }).value).toBe("hello");
+    await (ctx.resources.primary as ResourceRef<{ value: string }>).setState({ value: "hello" });
+    expect((ctx.resources.alias as ResourceRef<{ value: string }>).state.value).toBe("hello");
 
-    await ctx.resources.alias.setState({ value: "world" });
-    expect((ctx.resources.primary.state as { value: string }).value).toBe("world");
+    await (ctx.resources.alias as ResourceRef<{ value: string }>).setState({ value: "world" });
+    expect((ctx.resources.primary as ResourceRef<{ value: string }>).state.value).toBe("world");
 
     // Resource state lives in the ResourceStateStore (FIX-689); aliases dedup
     // to exactly one storage slot holding the latest written value.

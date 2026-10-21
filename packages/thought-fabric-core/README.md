@@ -162,7 +162,7 @@ const securityEngineer = perspective({
 // Analyze content through the perspective's lens
 const analysis = perspectiveAnalyze({
   perspective: securityEngineer,
-  model: 'openai/gpt-5.5',
+  model: 'openai/gpt-6.1-sol',
 })
 
 const result = await analysis.run(
@@ -217,13 +217,13 @@ const securityEngineer = perspective({ ... })
 // Bundle: pre-configured blocks + capability + helpers
 const sec = system(securityEngineer, {
   positionScope: 'user', // positions persist across sessions for the user
-  model: 'openai/gpt-5.5',
+  model: 'openai/gpt-6.1-sol',
 })
 
 // Declarative capability use: auto-installs resources, context, and helpers
 const chat = generator({
   name: 'chat',
-  model: 'openai/gpt-5.5',
+  model: 'openai/gpt-6.1-sol',
   uses: [sec.capability],
   user: (input) => input,
   // Gets static framing + accumulated observations/positions injected as context,

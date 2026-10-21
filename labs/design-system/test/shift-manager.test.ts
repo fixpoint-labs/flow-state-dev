@@ -16,7 +16,7 @@ import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, fencedHits, findThemeValues
 
 const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
-const dark = rule(css, ".dark");
+const dark = rule(css, ".dark, html[data-theme=dark]");
 /** Evening sets only what differs from day; everything else it reads from day. */
 const eveningOverrides = rule(css, ':root[data-theme=evening]');
 const evening = { ...light, ...eveningOverrides };

@@ -647,15 +647,15 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
       throw new Error(`Generator "${blockName}" model array cannot be empty`);
     }
     const { createFallbackModel } = await import("../models/fallbackModel");
-    const { parseModelString } = await import("../models/providerDetection");
-    const entries = modelValue.map((modelStr) => {
-      const parsed = parseModelString(modelStr);
-      return {
-        modelId: modelStr,
-        providerName: parsed.provider ?? "unknown",
-        model: ctx.resolveModel(modelStr, blockName, callOptions),
-      };
-    });
+    const { extractProviderName } = await import("../models/providerDetection");
+    // providerOf classifies against the app's maps; extractProviderName is the guess when the hook is absent.
+    const providerOf = (modelStr: string) =>
+      ctx.resolveModel.providerOf?.(modelStr) ?? extractProviderName(modelStr);
+    const entries = modelValue.map((modelStr) => ({
+      modelId: modelStr,
+      model: ctx.resolveModel(modelStr, blockName, callOptions),
+      providerName: providerOf(modelStr),
+    }));
     const fallback = createFallbackModel({
       groupName: `${blockName}-fallback`,
       models: entries,

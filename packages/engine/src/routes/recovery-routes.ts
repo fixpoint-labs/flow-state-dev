@@ -259,7 +259,11 @@ export async function handleContinueRequest(
     // the DevTool's per-row Continue needs `block_trace`/`router_decision`/
     // `state_snapshot` from the resumed portion for its Trace tab.
     const includeTrace = new URL(request.url).searchParams.get("include") === "trace";
-    const handle = await ctx.host.continueRequest({ requestId: route.requestId, includeTrace });
+    const handle = await ctx.host.continueRequest({
+      requestId: route.requestId,
+      includeTrace,
+      leaseId: lease.leaseId
+    });
 
     const accept = request.headers.get("accept") ?? "";
     if (accept.includes("text/event-stream") && handle.liveStream !== null) {

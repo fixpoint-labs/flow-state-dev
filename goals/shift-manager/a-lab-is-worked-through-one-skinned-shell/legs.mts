@@ -102,6 +102,9 @@ function readableDocuments(root: string): string[] {
 
 // ---- a3 / b's reach: every surface, by clicking from the first screen ---------
 
+/** The name typed into Jump to: the id, or Shift Coordinator for `chief-of-staff`, bare or after a team dot (apps/docs/docs/workforce/shift-coordinator.md). */
+const shownName = (id: string) => (id.slice(id.indexOf(".") + 1) === "chief-of-staff" ? "Shift Coordinator" : id);
+
 /**
  * Walk every surface ER-1 names, by clicking from the first screen, and grade
  * each against the store. `reach` failures go to `signals.reach`, seat-list
@@ -137,7 +140,7 @@ export async function walkSurfaces(
   // Jump to: a worker, a task and a declared document.
   const docs = readableDocuments(tree.root);
   const targets: Array<{ group: string; query: string; lands: string }> = [
-    { group: "Workers", query: store.seats[0] ?? "", lands: "[data-testid=roster]" },
+    { group: "Workers", query: shownName(store.seats[0] ?? ""), lands: "[data-testid=roster]" },
     ...(rows[0] === undefined ? [] : [{ group: "Tasks", query: rows[0].title.slice(0, 24), lands: `[data-testid=task-frame][data-task-id="${rows[0].id}"]` }]),
     ...(docs[0] === undefined ? [] : [{ group: "Resources", query: docs[0].split(/[/\\]/).at(-1)!.replace(/\.md$/, ""), lands: "[data-testid=resource]" }]),
   ];
@@ -193,12 +196,12 @@ export async function walkSurfaces(
 
   // TEAMS: one row per team, a square per seat, and each row opens Roster for it.
   const teamRows = await attr(page, "team", "data-team");
-  const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))];
+  const wantTeams = [...new Set(store.seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "_general")))];
   if (!same(teamRows, wantTeams)) teams(`TEAMS rows: ${diff(wantTeams, teamRows)}`);
   const squares = await attr(page, "worker", "data-worker-id");
   if (!same(squares, store.seats)) teams(`TEAMS squares: ${diff(store.seats, squares)}`);
   for (const team of teamRows) {
-    const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
+    const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "_general") === team);
     const under = (await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) => els.map((e) => e.getAttribute("data-worker-id") ?? ""))) as string[];
     if (!same(under, want)) teams(`team ${team}'s squares: ${diff(want, under)}`);
     await page.locator(`[data-testid=team][data-team="${team}"]`).click();

@@ -18,7 +18,7 @@ import { workingMemoryCapability as memoryCapability } from "@flow-state-dev/mem
 const assistant = generator({
   name: "assistant",
   uses: [memoryCapability],
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: (input) => input.message,
 });
 
@@ -44,7 +44,7 @@ List the capability in `uses`:
 generator({
   name: "assistant",
   uses: [memoryCapability],
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: (input) => input.message,
 });
 ```
@@ -150,7 +150,7 @@ A generator's `tools:` is the complete list of tools the model may call. Declare
 ```ts
 const support = generator({
   name: "support",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Answer the customer's question.",
   tools: [lookupOrder],
   // Memory's context still arrives. Its recall tool does not.

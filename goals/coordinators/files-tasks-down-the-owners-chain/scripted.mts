@@ -184,8 +184,9 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const t2 = await act(alice, "coordinator", c2, "addTask_tasks", { goal: `[slow:${SLOW_MS}] Draft the ${words.t2} brief` });
     const t1 = await act(alice, "coordinator", c1, "dispatchTask_tasks", { goal: `Tidy the ${words.t1} list`, assignee: "desk.alpha" });
     await quiet();
-    // The first conversation names the second's task by its id.
+    // Assign, then dispatch: an assign only records (FIX-1875).
     const reach = await act(alice, "coordinator", c1, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.alpha" });
+    const reachRun = await act(alice, "coordinator", c1, "dispatchTask_tasks", { taskId: taskIdOf(t2) ?? "none" });
     await quiet();
     // The second assigns its own task and dispatches it, and it runs for a while.
     const assign = await act(alice, "coordinator", c2, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.beta" });
@@ -209,7 +210,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       finds[`${label}@c1`] = await find(alice, { worker, taskId, filingSessionId: filing.c1 });
       finds[`${label}@c2`] = await find(alice, { worker, taskId, filingSessionId: filing.c2 });
     }
-    out.c = { c1, c2, filing, words, ids, filed: { t1, t2, t3 }, reach, assign, quietAt, list1, list2, finds };
+    out.c = { c1, c2, filing, words, ids, filed: { t1, t2, t3 }, reach, reachRun, assign, quietAt, list1, list2, finds };
   }
 
   // d: Bob reaches into Alice's conversation, and names her worker on his own.

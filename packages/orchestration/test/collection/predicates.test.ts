@@ -5,7 +5,7 @@
  * reject every other item type or sibling collection.
  */
 import { describe, expect, it } from "vitest";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockTraceItem, OutputItem } from "@flow-state-dev/core/items";
 import { onTaskChangeFor } from "../../src/tasks/collection/predicates";
 import { TASK_CHANGE_COMPONENT_TYPE } from "../../src/tasks/collection/get-or-create";
 
@@ -81,9 +81,10 @@ describe("onTaskChangeFor", () => {
         provenance: { blockName: "test", blockInstanceId: "test_1", phase: "main" },
         ts: 1,
         transient: true,
-        traceEvent: "started",
+        blockName: "test",
+        blockInstanceId: "test_1",
         blockKind: "handler"
-      } as OutputItem)
+      } satisfies BlockTraceItem)
     ).toBe(false);
   });
 });

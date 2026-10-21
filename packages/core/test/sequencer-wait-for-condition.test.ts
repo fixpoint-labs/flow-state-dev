@@ -58,7 +58,7 @@ function makeItem(over: Partial<OutputItem> & { type: OutputItem["type"] }): Out
     id: `i_${Math.random().toString(36).slice(2)}`,
     ts: Date.now(),
     itemIndex: 0,
-    status: "done",
+    status: "completed",
     ...over
   } as OutputItem;
 }
@@ -116,18 +116,18 @@ describe("sequencer .waitForCondition", () => {
     const ctx = makeCtx(fake);
 
     const seq = sequencer({ name: "wfc-update" }).waitForCondition(
-      (items) => items.some((i) => i.status === "done" && i.type === "message"),
+      (items) => items.some((i) => i.status === "completed" && i.type === "message"),
       { timeoutMs: 1000 }
     );
 
     const pending = runForTest(seq, undefined, ctx);
     await Promise.resolve();
 
-    // Push an in-progress item — predicate stays false (status !== "done").
+    // Push an in-progress item — predicate stays false (status !== "completed").
     const live = makeItem({ type: "message", status: "in_progress" } as Partial<OutputItem> & { type: OutputItem["type"] });
     fake.pushItem(live);
     // Mutate in place and fire an "updated" event.
-    (live as { status: string }).status = "done";
+    (live as { status: string }).status = "completed";
     fake.triggerUpdate(live);
 
     const out = await pending;
@@ -299,7 +299,7 @@ describe("sequencer .waitForCondition", () => {
       expect(evaluations).toEqual([0]);
 
       // Filter-out item — listener (and thus predicate) must not fire.
-      fake.pushItem(makeItem({ type: "block_trace" } as Partial<OutputItem> & { type: OutputItem["type"] }));
+      fake.pushItem(makeItem({ type: "block_trace" } as unknown as Partial<OutputItem> & { type: OutputItem["type"] }));
       expect(evaluations).toEqual([0]);
 
       // Filter-in item — listener fires, predicate re-evaluates and matches.

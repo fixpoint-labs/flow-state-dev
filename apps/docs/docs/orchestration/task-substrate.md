@@ -359,19 +359,21 @@ A `false` says your write changed nothing. It does not say why. If you need to k
 
 The task board uses this on its own result writes: a write that landed but could not be announced is reported rather than passed over. See [When the board cannot record a result](./task-board#when-the-board-cannot-record-a-result).
 
-## The three backings
+## Backings
 
-Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over any of three backings, so your pattern code doesn't change when the storage does.
+Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over either of two backings, so your pattern code doesn't change when the storage does.
 
-| Backing | Lifetime | Reach for it when |
-|---------|----------|-------------------|
-| `request` (task-board default) | The whole request, across block boundaries | Most work: an outer loop re-enters the same board, or a sibling step adds tasks before the drain. |
-| `sequencer` | One board invocation | A pattern decomposes work and drains it within a single sequencer run and wants per-call storage. |
-| `resource` | Outlives the request | A durable queue: a user's task list, an org work pool that accepts tasks across sessions. Declare it with `defineTaskCollection`. |
+| Backing | Where the tasks live | Lifetime |
+|---------|----------------------|----------|
+| `state`, no `state` field | On the request (`ctx.request`) | The whole request, across block boundaries. This is where a default task board keeps them. |
+| `state` with `state: ctx.sequencer` (or another state ref) | On that state | As long as that state: one sequencer invocation for `ctx.sequencer`. |
+| `resource` | A resource collection declared with `defineTaskCollection` | Outlives the request: a user's task list, an org work pool that accepts tasks across sessions. |
 
-The sequencer backing is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, use `request`. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
+`getOrCreateTaskCollection` accepts only `"state"` and `"resource"`. Any other value throws before anything is stored, including the [task board](./task-board.md#collection-backing) names `"request"` and `"sequencer"`. A board's request backing is `state` with no `state` field, and its sequencer backing is `state` set to the board sequencer's own state.
 
-All three backings agree on freshness *within* a request: two resolutions of the same collection read the same tasks, so a task added through one is visible through the other right away. `resource` is the only backing where the question reaches past the request, and there the guarantee stops. A request already running can't rely on seeing a write made by another request. A later request reads it.
+A sequencer's state is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, leave `state` out. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
+
+Both backings agree on freshness *within* a request: two resolutions of the same collection read the same tasks, so a task added through one is visible through the other right away. `resource` is the only backing where the question reaches past the request, and there the guarantee stops. A request already running can't rely on seeing a write made by another request. A later request reads it.
 
 ```ts
 // Durable, resource-backed queue that outlives the request.
@@ -383,9 +385,9 @@ const collection = await getOrCreateTaskCollection({
 });
 ```
 
-The sequencer backing expects the sequencer's state schema to hold a `Record<string, Task>` at its state key (default `"tasks"`).
+A state ref you pass must hold a `Record<string, Task>` at its state key (default `"tasks"`) in its state schema.
 
-`getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous in all three cases.
+`getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous on both.
 
 ### The lease
 
@@ -461,7 +463,7 @@ This is not exactly-once dispatch. A lease that runs out sends the task back to 
 
 ## Dispatchers
 
-A dispatcher decides which ready task gets claimed next. Five ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
+A dispatcher decides which ready task gets claimed next. Three ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
 
 A custom `eligibility` predicate **narrows** the substrate's candidates. Claimability is the substrate's to decide: dependencies satisfied, and either never started or abandoned by a worker that stopped renewing. Your predicate selects among the tasks that already pass it.
 
@@ -480,24 +482,8 @@ An abandoned task your predicate filters out is not taken back by *this* dispatc
 | `fifoDispatcher` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
 | `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
 | `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
-| `classifierDispatcher({ classify })` | The id your `classify` callback returns, or nothing when it returns `null` | Claimable (pending or abandoned), all `deps` completed, then narrowed to the id you chose. |
-| `eventDispatcher({ topicFor, topic })` | First matching task in `createdAt` order | Claimable (pending or abandoned), all `deps` completed, `topicFor(task) === topic`. |
 
 `fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
-
-The classifier and event dispatchers are factories because they take config. The classifier sees only the claimable set, calls your callback to choose one id, then narrows the claim to that id, so if a parallel worker already took it, the compare-and-set still arbitrates:
-
-```ts
-import { classifierDispatcher } from "@flow-state-dev/orchestration";
-
-const urgencyFirst = classifierDispatcher({
-  async classify(candidates) {
-    // Prefer whatever is tagged urgent; otherwise take the first ready task.
-    const urgent = candidates.find((task) => task.labels?.includes("urgent"));
-    return (urgent ?? candidates[0]).id;
-  },
-});
-```
 
 ## task-change items
 

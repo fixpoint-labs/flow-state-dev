@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import type { LabClients } from "../src/lib/connection";
-import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
+import { GENERAL_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type ConversationBoards, type LabSnapshot, type Section } from "../src/lib/reads";
 
 let fixture: LabSnapshot;
 /** What the user's roster read answers: their own workers and the standard ones. */
@@ -92,7 +92,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Roster (V3)", () => {
-  it("groups every worker, on shift, off shift, with Staff's worker in it", async () => {
+  it("groups every worker, on shift, off shift, with General's worker in it", async () => {
     await open("/roster");
     const page = await screen.findByTestId("roster");
     expect(attrs(within(page).getAllByTestId("roster-group"), "data-status")).toEqual(["on shift", "off shift"]);
@@ -108,12 +108,12 @@ describe("Roster (V3)", () => {
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^3 on shift · 2 off shift · 3 waiting on you/);
   });
 
-  it("names the chief-of-staff worker Shift Coordinator, keeping its id, and every other worker by its own name", async () => {
+  it("names the chief-of-staff worker Shift Coordinator, keeping its id, and a worker with no display name by its id", async () => {
     await open("/roster");
     const page = await screen.findByTestId("roster");
     const row = (id: string) => within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-worker-id") === id)!;
     expect(row("chief-of-staff").querySelector(".font-medium")!.textContent).toBe("Shift Coordinator");
-    expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("coder");
+    expect(row("eng.coder").querySelector(".font-medium")!.textContent).toBe("eng.coder");
     // The id is wire data; nothing a user reads on the screen says chief of staff.
     expect(document.body.textContent).not.toMatch(/chief[ -]of[ -]staff/i);
   });
@@ -198,7 +198,7 @@ describe("Roster (V3)", () => {
     expect(attrs(within(page).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["ops.asker", "ops.idle"]);
     expect(within(page).getByTestId("roster-title").textContent).toMatch(/ops$/);
     expect(within(page).getByTestId("roster-summary").textContent).toMatch(/^1 on shift · 1 off shift · 1 waiting on you/);
-    act(() => fireEvent.click(within(page).getAllByTestId("roster-team-option").find((o) => o.getAttribute("data-team") === STAFF_TEAM)!));
+    act(() => fireEvent.click(within(page).getAllByTestId("roster-team-option").find((o) => o.getAttribute("data-team") === GENERAL_TEAM)!));
     expect(attrs(within(screen.getByTestId("roster")).getAllByTestId("roster-worker"), "data-worker-id")).toEqual(["chief-of-staff"]);
   });
 
@@ -305,7 +305,8 @@ describe("Tasks (BR-14)", () => {
     const cell = (id: string, testId: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId(testId).textContent;
     expect(cell("E-1", "task-row-id")).toBe("E-1");
     expect(cell("E-1", "task-row-stream")).toBe("#s_eng");
-    expect(cell("E-1", "task-row-worker")).toBe("coder");
+    // No display name on this row, so the worker reads as its id.
+    expect(cell("E-1", "task-row-worker")).toBe("eng.coder");
     expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
     // E-2 is parked: it waits on you, so its clock isn't running.
     expect(cell("E-2", "task-row-time")).toBe("—");
@@ -370,15 +371,15 @@ describe("the sidebar (V4)", () => {
     expect(screen.getByTestId("sidebar").textContent).not.toMatch(/on call/i);
   });
 
-  it("TEAMS is one row per team, Staff first, with a square per worker and its on-shift count; no worker list", async () => {
+  it("TEAMS is one row per team, General first, with a square per worker and its on-shift count; no worker list", async () => {
     await open("/inbox");
     const teams = screen.getAllByTestId("team");
-    expect(attrs(teams, "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+    expect(attrs(teams, "data-team")).toEqual([GENERAL_TEAM, "eng", "ops"]);
     expect(teams.map((t) => within(t).getByTestId("team-on-shift").textContent)).toEqual(["0/1", "2/2", "1/2"]);
     const eng = teams[1]!;
     expect(within(eng).getAllByTestId("worker").map((w) => [w.getAttribute("data-worker-id"), w.getAttribute("data-status"), w.getAttribute("title")])).toEqual([
-      ["eng.coder", "on shift", "coder · on shift"],
-      ["eng.reviewer", "on shift", "reviewer · on shift"],
+      ["eng.coder", "on shift", "eng.coder · on shift"],
+      ["eng.reviewer", "on shift", "eng.reviewer · on shift"],
     ]);
     expect(screen.queryByTestId("worker-flow")).toBeNull();
   });
@@ -401,7 +402,7 @@ describe("the sidebar (V4)", () => {
     // The inventory alone has no row for either: they show only once the roster read lands.
     await waitFor(() => expect(screen.getByTestId("teams").querySelector('[data-worker-id="amber-1f2e"]')).not.toBeNull());
     const teams = screen.getAllByTestId("team");
-    expect(attrs(teams, "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+    expect(attrs(teams, "data-team")).toEqual([GENERAL_TEAM, "eng", "ops"]);
     expect(attrs(within(teams[0]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["chief-of-staff", "amber-1f2e"]);
     // A standard worker the inventory already has is drawn once.
     expect(attrs(within(teams[1]!).getAllByTestId("worker"), "data-worker-id")).toEqual(["eng.coder", "eng.reviewer", "eng.mine"]);
@@ -423,7 +424,7 @@ describe("the sidebar (V4)", () => {
     };
     await open("/inbox");
     expect((await screen.findByTestId("teams-own-failure")).textContent).toContain("roster offline");
-    expect(attrs(screen.getAllByTestId("team"), "data-team")).toEqual([STAFF_TEAM, "eng", "ops"]);
+    expect(attrs(screen.getAllByTestId("team"), "data-team")).toEqual([GENERAL_TEAM, "eng", "ops"]);
   });
 
   it("Roster and TEAMS share one roster read per snapshot", async () => {
@@ -448,7 +449,7 @@ describe("the sidebar (V4)", () => {
 describe("Jump to (V5)", () => {
   it("BR-17: a worker found in Jump to opens Roster", async () => {
     await open("/inbox");
-    act(() => fireEvent.click(screen.getByTestId("jump-to")));
+    act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
     act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "eng.reviewer" } }));
     act(() => fireEvent.click(screen.getAllByTestId("jump-result")[0]!));
     expect(window.location.pathname).toBe("/roster");

@@ -39,7 +39,7 @@ async function createCtx(
     userId: "user_cap",
     // Explicit resolver bypasses env-driven intent wiring (mirrors the
     // execution-internals harness).
-    modelResolver: (modelId) => ({ modelId, async generate() { return { text: "ok" }; } }),
+    modelResolver: Object.assign((modelId: string) => ({ modelId, async generate() { return { text: "ok" }; } }), { resolveId: (id: string) => id }),
     stores,
     response,
     errorCapture
@@ -172,7 +172,7 @@ describe("errorCapture wiring", () => {
     const flow = defineFlow({
       kind: "e2e-capture-flow",
       actions: { run: { inputSchema: z.any(), block: failing } }
-    });
+    })();
 
     await runAction({
     orgId: DEFAULT_ORG_ID,
@@ -190,9 +190,12 @@ describe("errorCapture wiring", () => {
       }
     });
 
-    expect(events).toHaveLength(1);
+    // The leaf's block event, then the request's final-failure event (FIX-1983).
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({ final: true, scope: "request", blockName: "boom" });
     // runAction owns the requestId, so just assert it is threaded through.
     expect(events[0]!.requestId).toBeTruthy();
+    expect(events[0]!.final).toBeUndefined();
     expect(events[0]).toMatchObject({
       flowKind: "e2e-capture-flow",
       actionName: "run",

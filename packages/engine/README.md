@@ -14,7 +14,7 @@ import myFlow from "./flows/my-flow";
 
 export const flowstate = createFlowState({
   flows: { myFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: { default: "openai/gpt-6-luna" },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
@@ -150,6 +150,8 @@ createFlowState({
 });
 ```
 
+A request that settles `failed` sends one more event, marked `final: true` with `scope: "request"`. It comes after rescues and retries had their chance and after the failed record is written, so a failure a retry healed never gets one. Use it when you want one event per failed request (filing a bug, paging someone). If you forward every block failure, as above, skip it with `if (event.final) return;` so the same failure isn't sent twice.
+
 See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture) for the full event shape and filtering guidance.
 
 ### Connection resilience
@@ -262,10 +264,12 @@ in-process dispatcher gates the run there (and, over a shared lease backend,
 the host takes an external run's place before enqueueing; see below), so every
 transport inherits the
 same behavior and adapters only map the outcome to their native response.
-When a `reject` policy drops a competing request, `host.dispatch` throws
-`ConcurrencyRejectedError` synchronously over the default in-memory backend
-(through `accepted` over a shared one; see below), carrying the contended `key` and the
-`inFlightRequestId`); the HTTP adapter maps it to 409, fire-and-forget
+When a `reject` policy drops a competing request, the handle `host.dispatch`
+returns refuses through `accepted` (and `finished`) with
+`ConcurrencyRejectedError`, carrying the contended `key` and the
+`inFlightRequestId`. The place is taken only after the caller's ownership of
+the session has been checked, on every backend, so a caller who does not own a
+session never holds its key; the HTTP adapter maps it to 409, fire-and-forget
 webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
 error. A `queue` policy that waits past its budget rejects the request's
 `finished` with `ConcurrencyQueueTimeoutError` (it surfaces through the request
@@ -616,9 +620,9 @@ Adapters must implement all of these options:
 
 Every path that creates a session (the create route, an action to a session
 id that does not exist yet, a webhook delivery, `fsdev run`, and a dispatch
-into a child session) creates it from an initial state: the create body's
-`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()`'s
-`{ key, state }` session names. The flow's session `stateSchema` parses it. A
+that creates its session) creates it from an initial state: the create body's
+`state`, `fsdev run --seed-session`, or the `state` a `dispatcher()` session
+target names. The flow's session `stateSchema` parses it. A
 flow that binds its sessions (a top-level `.readonly()` field or a
 `createCheck`) refuses a state the schema refuses; any other flow keeps it as
 sent, for its actions to validate when they run. `session.serverOwned`
@@ -627,6 +631,14 @@ names fields a caller may not seed. Most flows need nothing more. The optional
 or on what exists in the store: it receives the verified caller and the parsed
 state, and accepts or refuses the create. A turn on an existing session never
 calls it.
+
+A dispatch creates a session through one of two targets. `{ key }` derives a
+child session of the dispatching one from the key: it creates the child, from
+`state` when the target names one, or adopts the child already on that key.
+`{ id, state }` creates a top-level session at that id when none exists,
+judged by the target flow's `createCheck` (`create-refused` when it refuses),
+and delivers into the session when it does exist. An `{ id }` target without `state` never creates:
+an unknown id is refused as `session-not-found`.
 
 A top-level `stateSchema` field declared `.readonly()` is set when the session
 is created and never changes: a run's write that changes it throws
@@ -1088,7 +1100,7 @@ createFlowState({
 });
 ```
 
-Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`; a wait gate past its deadline is resumed with `wait_timed_out` instead), re-drives a request left `suspended` or `interrupted` behind a gate that is already resolved (a wait's recorded outcome continues it, a `stopped` gate ends it `aborted`, an `expired` approval continues it as a rejection marked `expired`; under the request's lease), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. The next tick runs at the earlier of `sweepIntervalMs` and the earliest pending wait deadline, never sooner than a second; a wait parked in this process brings it forward.
+Each tick takes a single-holder sentinel lease (co-located hosts serialize), enforces suspension expiry (`pending` past `expiresAt` → `expired`; a wait gate past its deadline is resumed with `wait_timed_out` instead), re-drives a request left `suspended` or `interrupted` behind a gate that is already resolved (a wait's recorded outcome continues it, a `stopped` gate ends it `aborted`, an `expired` approval continues it as a rejection marked `expired`, and a gate a person approved, rejected, submitted or skipped continues it with that answer; under the request's lease), prunes resolved suspensions and expired leases past their windows, and prunes orphaned checkpoints. The next tick runs at the earlier of `sweepIntervalMs` and the earliest pending wait deadline, never sooner than a second; a wait parked in this process brings it forward.
 
 **Stopping a suspended request.** The abort route and `ctx.session.stopRequest` also stop a `suspended` request when the host has durable execution: the stop resolves its pending gate `stopped` through the gate's single pending state. A wait gate continues the request with a stop outcome, so the parked call (`parkOnWait` throws `WaitStoppedError`) can end the task it waits on and end its turn; any other gate continues the request with the stop recorded, so it ends `aborted` through its own lifecycle (its `onFinished` hook runs) without running past the gate. A stop that finds the gate already resolved answers `409` on the route and `"already-resolved"` from `stopRequest`. Checkpoints of `in_progress` or `suspended` requests are never age-pruned — they are the resume points an active or paused run needs.
 

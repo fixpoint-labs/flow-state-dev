@@ -130,6 +130,8 @@ async function setupCtx(opts: {
     userId,
     orgId: DEFAULT_ORG_ID,
     state: {},
+    journal: [],
+    version: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -649,6 +651,8 @@ describe("client projection shapes (FIX-580)", () => {
       flowKind: "projection-flow",
       userId: "user_1",
       state: {},
+      journal: [],
+      version: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

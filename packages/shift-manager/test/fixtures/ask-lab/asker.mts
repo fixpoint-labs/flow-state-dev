@@ -42,7 +42,8 @@ import { z } from "zod";
 /** The worker flow a `WORKER.md` names in its `flow:` line. */
 export const ASKER_FLOW = "asker";
 
-const askSchema = z.object({ what: z.string().min(1) });
+/** `detail`: the ask is titled `Approve: <what>`, with `detail` (markdown) as its body. */
+const askSchema = z.object({ what: z.string().min(1), detail: z.string().optional() });
 
 const decisionSchema = z.object({ what: z.string(), approved: z.boolean() });
 
@@ -99,7 +100,11 @@ const gate = handler({
   outputSchema: decisionSchema,
   execute: async (input, ctx) => {
     try {
-      await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.what}` });
+      await ctx.suspend!(
+        input.detail === undefined
+          ? { reason: "human_approval", message: `Approve: ${input.what}` }
+          : { reason: "human_approval", title: `Approve: ${input.what}`, message: input.detail },
+      );
       return { what: input.what, approved: true };
     } catch (error) {
       if (error instanceof SuspensionRejectedError) return { what: input.what, approved: false };

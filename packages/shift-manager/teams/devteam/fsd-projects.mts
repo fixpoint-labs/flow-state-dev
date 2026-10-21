@@ -1,7 +1,8 @@
 /**
  * What the `fsd` profile (`fsd.fsdev.config.mts`) opens its Lab with: its two
- * projects and the MCP servers it offers them. A leaf, so a check can open a
- * Lab the same way without serving the profile.
+ * projects, the MCP servers it offers them, and the brief and commit style its
+ * coders read. A
+ * leaf, so a check can open a Lab the same way without serving the profile.
  */
 import type { CreateProjectInput, ProjectMcpServers } from "@flow-state-dev/workforce";
 import { REPOSITORY } from "./fsd-checkouts.mts";
@@ -17,6 +18,35 @@ const OTHER_USERS = [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)]
  */
 export const FSD_MCP_SERVERS: ProjectMcpServers = {
   linear: { url: "https://mcp.linear.app/mcp", seedEnv: "LINEAR_MCP_API_KEY" },
+};
+
+/** The ref of the brief every worker on the coder flow reads, in DevTeam's tree. */
+export const CODER_BRIEF = "teams/eng/feature-brief";
+
+/** Passed as `openLab`'s `documents`: bodies that replace the tree's, by ref. */
+export const FSD_DOCUMENTS: Readonly<Record<string, string>> = {
+  [CODER_BRIEF]: [
+    "# Working in this repository",
+    "",
+    "You work in a checkout of the flow-state-dev repository. The task you are",
+    "handed is the whole job: do what it asks and nothing else.",
+    "",
+    "Read AGENTS.md and CLAUDE.md at the repository root before you change",
+    "anything, and follow them. Keep the change to what the task needs.",
+  ].join("\n"),
+};
+
+/** Passed as `openLab`'s `skills`: skill text that replaces the tree's, by name. */
+export const FSD_SKILLS: Readonly<Record<string, string>> = {
+  "commit-style": [
+    "---",
+    "name: commit-style",
+    "description: How a commit message is written in this repository.",
+    "---",
+    "",
+    "Write the commit message the way this repository's AGENTS.md and recent",
+    "history on main do. Name what changed and why; add no marker line.",
+  ].join("\n"),
 };
 
 /** The two projects a fresh open shows. Both name Linear, so their coding runs can read an issue. */

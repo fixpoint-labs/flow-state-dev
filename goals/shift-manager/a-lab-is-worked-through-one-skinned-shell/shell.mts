@@ -207,7 +207,7 @@ export async function readTree(root: string): Promise<Tree> {
   return {
     root,
     seats,
-    teams: [...new Set(seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))],
+    teams: [...new Set(seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "_general")))],
   };
 }
 

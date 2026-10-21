@@ -40,7 +40,6 @@
       "@flow-state-dev/scheduled/testing": ["packages/scheduled/src/testing.ts"],
       "@flow-state-dev/fsdev": ["packages/cli/src/index.ts"],
       "@flow-state-dev/patterns": ["packages/patterns/src/index.ts"],
-      "@flow-state-dev/patterns/rlm": ["packages/patterns/src/rlm/index.ts"],
       "@flow-state-dev/orchestration": ["packages/orchestration/src/index.ts"],
       "@flow-state-dev/orchestration/tasks": ["packages/orchestration/src/tasks/index.ts"],
       "@flow-state-dev/orchestration/task-board": ["packages/orchestration/src/task-board/index.ts"],

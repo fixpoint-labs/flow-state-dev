@@ -172,7 +172,7 @@ describe("selectModel", () => {
     const ctx = { flag: true } as unknown as BlockContext;
 
     const resolve = selectModel("intent/utility", {
-      when: (i, c) => (i as typeof input).flag && (c as typeof ctx).flag,
+      when: (i, c) => (i as typeof input).flag && (c as unknown as typeof input).flag,
       use: "flagged-model",
     });
     expect(await resolve(input, ctx)).toBe("flagged-model");

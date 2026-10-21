@@ -1,11 +1,11 @@
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
-import { earthyDark, earthyLight } from "./src/prismThemes";
+import { nightTheme, paperTheme } from "./src/prismThemes";
 
 const config: Config = {
   title: "flow-state.dev",
   tagline: "Composable AI workflows for TypeScript. Blocks in. Streaming out.",
-  favicon: "img/favicon.ico",
+  favicon: "img/mark-paper.svg",
 
   url: "https://flow-state.dev",
   baseUrl: "/",
@@ -120,7 +120,8 @@ const config: Config = {
       title: "flow-state.dev",
       logo: {
         alt: "flow-state.dev logo",
-        src: "img/mark-color.svg"
+        src: "img/mark-paper.svg",
+        srcDark: "img/mark-night.svg",
       },
       items: [
         {
@@ -144,7 +145,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: "dark",
+      style: "light",
       links: [
         {
           title: "Docs",
@@ -183,8 +184,8 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
-      theme: earthyLight,
-      darkTheme: earthyDark,
+      theme: paperTheme,
+      darkTheme: nightTheme,
       additionalLanguages: ["bash", "json"],
     },
     colorMode: {

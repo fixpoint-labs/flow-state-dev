@@ -62,6 +62,7 @@ packages/store-<name>/
     stores.test.ts              # Comprehensive test suite
   package.json
   tsconfig.json
+  tsconfig.test.json            # Typechecks src + tests (no emit)
   README.md
 ```
 
@@ -100,6 +101,8 @@ packages/store-<name>/
   }
 }
 ```
+
+Add `tsconfig.test.json` by copying `packages/core/tsconfig.test.json`. `scripts/typecheck.mjs` runs it after `tsconfig.json`.
 
 ### Step 4: Write the Factory
 

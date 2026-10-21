@@ -119,6 +119,7 @@ describe("V1 · a flow registered after construction is served by the SAME route
     // non-empty check validates an instance id, and this is the check that
     // says so.
     const worker = deskClerk({ id: "acme.support.ada", config: { desk: "back-left" } });
+    // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
     flowstate.register(worker);
 
     const during = await router.POST(...answerRequest("acme.support.ada"));
@@ -144,6 +145,7 @@ describe("V1 · a flow registered after construction is served by the SAME route
 
     expect(flowstate.meta.flowKeys).toEqual(["resident"]);
 
+    // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
     flowstate.register(deskClerk({ id: "acme.support.ada" }));
     expect(flowstate.meta.flowKeys).toContain("acme.support.ada");
 
@@ -158,9 +160,11 @@ describe("V2 · the registry's admission contract survives unregister", () => {
   it("refuses a duplicate id and leaves the registry byte-identical", () => {
     const registry = createFlowRegistry();
     const first = deskClerk({ id: "acme.support.ada", config: { desk: "front" } });
+    // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
     registry.register(first);
 
     expect(() =>
+      // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
       registry.register(deskClerk({ id: "acme.support.ada", config: { desk: "back" } }))
     ).toThrow(FlowIdentityConflictError);
 

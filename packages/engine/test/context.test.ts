@@ -1,6 +1,6 @@
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
+import type { ModelResolver, GeneratorModel, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -22,9 +22,9 @@ function createStubModelResolver(): ModelResolver {
 }
 
 function createFlow() {
-  const block = handler<{ value: string }, { ok: boolean }>({
+  const block = handler({
     name: "ctx-handler",
-    execute: () => ({ ok: true })
+    execute: (_input: { value: string }): { ok: boolean } => ({ ok: true })
   });
 
   return defineFlow({
@@ -120,9 +120,9 @@ describe("createExecutionContext", () => {
     // Both messages from the single prior request fit the 64-token budget,
     // so both are returned. (Under the old per-message budgeting this would
     // have returned only one — see FIX-608.)
-    const block = handler<{ value: string }, { ok: boolean }>({
+    const block = handler({
       name: "ctx-handler",
-      execute: async (_input, ctx) => {
+      execute: async (_input: { value: string }, ctx): Promise<{ ok: boolean }> => {
         ctx.resolveModel("openai/gpt-4o-mini", "ctx-handler");
         return { ok: true };
       }
@@ -240,9 +240,10 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    await ctx.resources.soul.patchState({ values: ["Honesty"], tone: "Calm" });
-    await expect(ctx.resources.soul.readContent()).resolves.toContain("Tone: Calm");
-    await expect(ctx.resources.soul.readContentRaw()).resolves.toContain("{{tone}}");
+    const soul = ctx.resources.soul as ResourceRef<{ values: string[]; tone: string }>;
+    await soul.patchState({ values: ["Honesty"], tone: "Calm" });
+    await expect(soul.readContent()).resolves.toContain("Tone: Calm");
+    await expect(soul.readContentRaw()).resolves.toContain("{{tone}}");
   });
 
   it("returns null from readContent when no resource content is defined", async () => {
@@ -273,14 +274,15 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    await expect(ctx.resources.notes.readContent()).resolves.toBeNull();
-    await expect(ctx.resources.notes.readContentRaw()).resolves.toBeNull();
+    const notes = ctx.resources.notes as ResourceRef<{ value: string }>;
+    await expect(notes.readContent()).resolves.toBeNull();
+    await expect(notes.readContentRaw()).resolves.toBeNull();
   });
 
   it("throws when writeContent is called on a read-only resource", async () => {
-    const block = handler<{ msg: string }, { ok: boolean }>({
+    const block = handler({
       name: "readonly-content-handler",
-      execute: () => ({ ok: true })
+      execute: (_input: { msg: string }): { ok: boolean } => ({ ok: true })
     });
 
     const flow = defineFlow({
@@ -316,7 +318,7 @@ describe("createExecutionContext", () => {
     });
 
     await expect(
-      ctx.resources.readme.writeContent("new content")
+      (ctx.resources.readme as ResourceRef<Record<string, never>>).writeContent("new content")
     ).rejects.toThrow("read-only");
   });
 
@@ -342,8 +344,8 @@ describe("createExecutionContext", () => {
     })();
 
     const stores = createInMemoryStores();
-    const open = (requestId: string) =>
-      createExecutionContext({
+    const open = async (requestId: string) => {
+      const ctx = await createExecutionContext({
         orgId: DEFAULT_ORG_ID,
         flow,
         actionName: "run",
@@ -352,25 +354,27 @@ describe("createExecutionContext", () => {
         userId: "user_content_lww",
         stores
       });
+      return ctx.resources.notes as ResourceRef<Record<string, never>>;
+    };
 
     // A holds "draft" — read from the store, or its own write. B (a separate
     // request on the same session) then overwrites it with "edited".
-    if (how === "read") await (await open("req_content_lww_seed")).resources.notes.writeContent("draft");
+    if (how === "read") await (await open("req_content_lww_seed")).writeContent("draft");
     const writerA = await open("req_content_lww_a");
     if (how === "read") {
-      await expect(writerA.resources.notes.readContent()).resolves.toBe("draft");
+      await expect(writerA.readContent()).resolves.toBe("draft");
     } else {
-      await writerA.resources.notes.writeContent("draft");
+      await writerA.writeContent("draft");
     }
     const writerB = await open("req_content_lww_b");
-    await expect(writerB.resources.notes.readContent()).resolves.toBe("draft");
-    await writerB.resources.notes.writeContent("edited");
+    await expect(writerB.readContent()).resolves.toBe("draft");
+    await writerB.writeContent("edited");
 
     // A deliberately writes "draft" again — the latest write, so it must win.
-    await writerA.resources.notes.writeContent("draft");
+    await writerA.writeContent("draft");
 
     const reader = await open("req_content_lww_reader");
-    await expect(reader.resources.notes.readContent()).resolves.toBe("draft");
+    await expect(reader.readContent()).resolves.toBe("draft");
   });
 
   it("replays block_tool_output items using the stored alias for tool-call/tool-result toolName", async () => {
@@ -578,9 +582,9 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
     turns: TurnSpec[],
     opts?: { tokenCounter?: any }
   ) {
-    const block = handler<{ value: string }, { ok: boolean }>({
+    const block = handler({
       name: "ctx-handler",
-      execute: async (_input, ctx) => {
+      execute: async (_input: { value: string }, ctx): Promise<{ ok: boolean }> => {
         ctx.resolveModel("openai/gpt-4o-mini", "ctx-handler");
         return { ok: true };
       }

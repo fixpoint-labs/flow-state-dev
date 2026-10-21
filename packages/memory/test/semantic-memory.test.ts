@@ -14,6 +14,7 @@ import {
   allFacts,
   query,
 } from '../src/semantic-memory-helpers.js'
+import { partialRef } from './partial-ref.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -22,24 +23,12 @@ import {
 function createMockSemRef(
   initialState?: Partial<SemanticMemoryState>,
 ): ResourceRef<SemanticMemoryState> {
-  let state: SemanticMemoryState = {
+  return partialRef<SemanticMemoryState>('semanticMemory', 'user', semanticMemoryStateSchema, {
     facts: [],
     totalExtracted: 0,
     totalConsolidations: 0,
     ...initialState,
-  }
-
-  return {
-    name: 'semanticMemory',
-    scope: 'user',
-    get state() { return state },
-    patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
-    setState: async (next) => { state = next },
-    updateState: async (fn) => { state = await fn(state) },
-    readContent: async () => JSON.stringify(state),
-    writeContent: async () => {},
-    config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceRef<SemanticMemoryState>
+  })
 }
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {

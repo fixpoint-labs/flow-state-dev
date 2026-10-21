@@ -75,3 +75,22 @@ export async function sendOwedNotices(
   }
   return sent;
 }
+
+/**
+ * Send a cancelled post row's ending to `address`. A cancel of a row nobody
+ * waits on owes no notice, so without this its round closes only at its
+ * deadline. A send that fails leaves that to the deadline.
+ */
+export async function sendPostCancelled(ctx: BlockContext, row: Task, address: NoticeAddress): Promise<void> {
+  try {
+    await dispatchThroughSeam(ctx, {
+      type: "internal",
+      action: POST_SETTLED_ENTRY,
+      session: address.session,
+      payload: { boardId: CONVERSATION_LEDGER_ID, taskId: row.id, attempt: row.attempts, ending: "cancelled" },
+      from: address.from
+    });
+  } catch {
+    // Its round closes at its deadline.
+  }
+}

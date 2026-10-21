@@ -14,6 +14,7 @@
  * dispatched, so the sender's request carries it and no child runs.
  */
 import { describe, expect, it } from "vitest";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -90,7 +91,7 @@ async function boot(kind: string) {
 /** The `fsdev run` call shape: runtime config SPREAD, not passed by reference. */
 function run(
   runtime: FlowStateRuntime,
-  flow: ReturnType<typeof messagingFlow>,
+  flow: FlowInstance,
   actionName: string,
   input: unknown,
   sessionId = "s_parent"

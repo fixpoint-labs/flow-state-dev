@@ -103,7 +103,7 @@ describe("buildBlock", () => {
 
   it("connectInput preserves declaredResources", () => {
     const resources = {
-      session: { myResource: { stateSchema: z.object({ x: z.number() }) } }
+      myResource: defineResource({ scope: "session", stateSchema: z.object({ x: z.number() }) })
     };
     const block = buildBlock({
       kind: "handler",
@@ -122,7 +122,7 @@ describe("buildBlock", () => {
 
   it("connectOutput preserves declaredResources", () => {
     const resources = {
-      session: { myResource: { stateSchema: z.object({ x: z.number() }) } }
+      myResource: defineResource({ scope: "session", stateSchema: z.object({ x: z.number() }) })
     };
     const block = buildBlock({
       kind: "handler",

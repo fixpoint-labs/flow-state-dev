@@ -205,12 +205,12 @@ describe("request finalization", () => {
       sessionId: "sess_finalization",
       stores,
       runtimeConfig: {
-        modelResolver: () => ({
+        modelResolver: Object.assign(() => ({
           modelId: "openai/gpt-5-mini",
           async generate() {
             return { text: "ok", usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 } };
           }
-        })
+        }), { resolveId: (id: string) => id })
       }
     });
 

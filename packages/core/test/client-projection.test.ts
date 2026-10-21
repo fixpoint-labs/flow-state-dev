@@ -215,6 +215,7 @@ describe("validateClientProjection", () => {
 describe("defineResource client projection validation", () => {
   it("rejects `expose` + `data`", () => {
     expect(() =>
+      // @ts-expect-error — invalid on purpose: the type refuses `expose` with `data` too.
       defineResource({
         ref: "memo",
         scope: "session",

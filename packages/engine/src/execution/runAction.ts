@@ -1,7 +1,7 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem, StatusItem } from "@flow-state-dev/core/items";
 import { checkSessionCreate } from "../context/session-birth";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
@@ -42,6 +42,7 @@ import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
+import { safeCaptureError, toFinalErrorCaptureEvent } from "../errors/error-capture";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
@@ -382,7 +383,7 @@ function parseActionInput(action: ActionCore, input: unknown): unknown {
  * over as it is when nothing in it is left out, since a running request calls
  * this per streamed delta.
  */
-function itemsForPersistedRecord(items: OutputItem[]): OutputItem[] {
+function itemsForPersistedRecord(items: RuntimeItem[]): RuntimeItem[] {
   const clean = !items.some(
     (item) =>
       item.transient === true ||
@@ -396,7 +397,7 @@ function itemsForPersistedRecord(items: OutputItem[]): OutputItem[] {
  * persistence. Ephemeral content is streamed to the client in real time
  * but should not be stored, since it may contain large binary payloads.
  */
-function stripEphemeralContent(items: OutputItem[]): OutputItem[] {
+function stripEphemeralContent(items: RuntimeItem[]): RuntimeItem[] {
   return items.map((item) => {
     if (item.type !== "message") {
       return item;
@@ -444,7 +445,7 @@ async function settleFreshRequestSetupFailure(options: {
   source: string;
   metadata?: Record<string, unknown>;
   input: unknown;
-  emittedItems: readonly OutputItem[];
+  emittedItems: readonly RuntimeItem[];
   response: {
     emitItemAdded: (item: ErrorItem) => Promise<unknown>;
     emitItemDone: (item: ErrorItem) => Promise<unknown>;
@@ -1056,12 +1057,12 @@ async function runActionAttempt<
   // between resume and completion keeps the whole log. Assigned once replay mode
   // is determined below; until then `itemsToPersist()` is the live items as-is.
   let isReplayMode = false;
-  let priorItemsForMerge: readonly OutputItem[] = [];
-  const itemsToPersist = (): OutputItem[] =>
+  let priorItemsForMerge: readonly RuntimeItem[] = [];
+  const itemsToPersist = (): RuntimeItem[] =>
     isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
   // What a running request's incremental persists write: the log its record
   // will hold when it settles (FIX-1735).
-  const persistableItems = (): OutputItem[] => itemsForPersistedRecord(itemsToPersist());
+  const persistableItems = (): RuntimeItem[] => itemsForPersistedRecord(itemsToPersist());
 
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
@@ -1882,11 +1883,11 @@ async function runActionAttempt<
   let ctx: ExecutionContext;
   try {
     if (isReplayMode && priorRecord !== undefined) {
-      const priorItems = (priorRecord.items ?? []) as RuntimeItem[];
+      const priorItems = priorRecord.items ?? [];
       // The full prior log (pre-suspension items + the `suspension` item) that
       // every persist must preserve under the merge — assigned before any item
       // is emitted so incremental persists never truncate it.
-      priorItemsForMerge = priorItems as readonly OutputItem[];
+      priorItemsForMerge = priorItems;
       replayLog = buildReplayLog(priorItems);
       // Crash-recovery continuation (FIX-811) replays with NO resumeContext: it
       // re-enters an `interrupted` request, injects its completed blocks from
@@ -2078,6 +2079,22 @@ async function runActionAttempt<
         error: setupError,
         logger
       });
+      // FIX-1983: the final-failure event, only when the failed write landed.
+      const errorCapture = options.runtimeConfig.errorCapture;
+      if (terminalRecordIncarnation !== undefined && errorCapture !== undefined) {
+        void safeCaptureError(
+          errorCapture,
+          toFinalErrorCaptureEvent(normalizeError(setupError, { scope: "request" }), {
+            requestId,
+            flowKind: options.flow.kind,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            orgId: options.orgId
+          }),
+          logger
+        );
+      }
     }
     throw setupError;
   }
@@ -2235,6 +2252,7 @@ async function runActionAttempt<
             sessionId: options.sessionId,
             userId: options.userId,
             reason: suspendError.reason,
+            ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
             message: suspendError.message,
             data: suspendError.data,
             resumeSchema: suspendError.resumeSchema,
@@ -2270,6 +2288,7 @@ async function runActionAttempt<
           suspensionId: suspendError.suspensionId,
           suspensionStatus: "pending",
           reason: suspendError.reason,
+          ...(suspendError.title === undefined ? {} : { title: suspendError.title }),
           message: suspendError.message,
           data: suspendError.data,
           resumeSchema: suspendError.resumeSchema,
@@ -2875,6 +2894,11 @@ async function runActionAttempt<
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
+
+      // FIX-1983: the request's one final-failure event, as soon as the failed
+      // record is written, so a status event that throws can't lose it. Only a
+      // request this run settled sends it.
+      if (terminalRecordIncarnation !== undefined) ctx._captureFinalError?.(error);
 
       await response.emitRequestStatus("failed");
 

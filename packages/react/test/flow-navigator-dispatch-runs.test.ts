@@ -12,7 +12,7 @@
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import type { FlowListEntry, SessionSummary } from "@flow-state-dev/client";
+import type { FlowListEntry, SessionClient, SessionSummary } from "@flow-state-dev/client";
 import { FlowNavigator } from "../src/components/flow-navigator/FlowNavigator";
 import { arrangeSessionRows } from "../src/components/flow-navigator/dispatch-runs";
 
@@ -83,7 +83,7 @@ describe("arrangeSessionRows", () => {
 });
 
 function server(rows: SessionSummary[]) {
-  const listSessions = vi.fn(async () => rows);
+  const listSessions = vi.fn<SessionClient["listSessions"]>(async () => rows);
   return {
     listSessions,
     client: { listFlows: vi.fn(async (): Promise<FlowListEntry[]> => [

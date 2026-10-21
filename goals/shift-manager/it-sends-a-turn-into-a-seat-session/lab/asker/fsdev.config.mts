@@ -33,7 +33,7 @@ const USER_ID = "u_turn_goal";
  * The model best fit's one evaluator call would run on. `desk.front` routes
  * to everyone and never makes that call, but the flow names no default.
  */
-const ROUTE_MODEL = "vercel/openai/gpt-5.4-mini";
+const ROUTE_MODEL = "vercel:openai/gpt-5.4-mini";
 
 /** The flow the inventory's seat rows are written from: the Lab's own, carrying the writer. */
 const INVENTORY_WRITER_FLOW = "inventory-writer";

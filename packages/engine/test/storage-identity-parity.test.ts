@@ -28,9 +28,9 @@ import { createExecutionContext, createInMemoryStores } from "../src";
 const bodySchema = z.object({ body: z.string() });
 
 function flowWith(resources: Record<string, unknown>) {
-  const block = handler<Record<string, never>, { ok: boolean }>({
+  const block = handler({
     name: "parity-handler",
-    execute: () => ({ ok: true })
+    execute: (_input: Record<string, never>): { ok: boolean } => ({ ok: true })
   });
   return defineFlow({
     kind: "storage-identity-parity",

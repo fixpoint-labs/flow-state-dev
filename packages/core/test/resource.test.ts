@@ -55,6 +55,7 @@ describe("defineResource", () => {
   });
 
   it("throws when render is used with contentTemplate", () => {
+    // @ts-expect-error — invalid on purpose: the type refuses render with a template too.
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({}),
@@ -64,6 +65,7 @@ describe("defineResource", () => {
   });
 
   it("throws when render is used with contentTemplateRef", () => {
+    // @ts-expect-error — invalid on purpose: the type refuses render with a template ref too.
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({}),

@@ -76,8 +76,8 @@ export default defineBenchmark({
   patterns: ["supervisor", "parallel-tasks", "debate"],
   baseline: true,
   tasks,
-  model: "openai/gpt-5.4-mini",
-  judgeModel: "anthropic/claude-haiku-4-5",
+  model: "openai/gpt-6-luna",
+  judgeModel: "anthropic/claude-haiku-5-5",
   runs: 3,
 });
 ```
@@ -104,7 +104,7 @@ fsdev benchmark ./benchmark.ts --category reasoning --runs 1
 fsdev benchmark ./benchmark.ts --patterns supervisor,debate
 
 # a free-tier model for a zero-cost dry run
-fsdev benchmark ./benchmark.ts --model openrouter/meta-llama/llama-3.1-70b-instruct
+fsdev benchmark ./benchmark.ts --model openrouter:meta-llama/llama-3.1-70b-instruct
 ```
 
 ## 5. Read the scorecard

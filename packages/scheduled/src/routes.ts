@@ -249,8 +249,7 @@ export async function handleDispatch(
     });
   }
 
-  // A host whose arbiter spans processes refuses a `reject` here, through
-  // `accepted`, rather than from `dispatch`. Either way the fire was not
+  // A `reject` refusal arrives here, through `accepted`. The fire was not
   // admitted, so it is not recorded: a retry of it must still run.
   try {
     await handle.accepted;

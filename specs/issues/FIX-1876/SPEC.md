@@ -43,7 +43,7 @@ control removes exactly what its leg depends on.
 
 | How we verify | |
 |---|---|
-| **Goal check** | Leg 1: the sweep, [`poc/vocabulary-sweep/sweep.mjs`](poc/vocabulary-sweep/sweep.mjs), moved to `goals/vocabulary/one-word-per-thing/` with a `goal.md`. Leg 2: an integration scenario that parks a wait with the old marks written by hand into a durable store (SQLite), starts the new build on that store, and resumes it |
+| **Goal check** | Leg 1: the sweep, [`poc/vocabulary-sweep/sweep.mjs`](../../../goals/vocabulary/one-word-per-thing/goal.md), moved to `goals/vocabulary/one-word-per-thing/` with a `goal.md`. Leg 2: an integration scenario that parks a wait with the old marks written by hand into a durable store (SQLite), starts the new build on that store, and resumes it |
 | **Signal** | Leg 1: `OPEN 0` and `0 with no rule`. Leg 2: the turn ends with the colleague's answer, the board holds one row, and the public resume route answers not-found for the old gate |
 | **Input** | Leg 1: every git-tracked file under `packages`, `apps`, `docs/architecture`, `.changeset`, `goals`. Leg 2: a row with `ask`, a suspension with reason `"ask"`, the `fsd.ask.*` run-once entries and an owed notice with `asked: true`, exactly as today's build writes them |
 | **Anti-game** | No keep-list entry without a reason. No file excluded except by a named rule. A line that names a retired name on purpose (a legacy reader, or a refusal of the old name) carries `retired-name-refusal` on that line, the one marker FIX-1875's sweep also uses. Leg 2 writes the old marks, never the new ones |

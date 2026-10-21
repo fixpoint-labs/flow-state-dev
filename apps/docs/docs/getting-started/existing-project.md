@@ -101,8 +101,8 @@ Pick one. The import, the `providers` key, the env var, and `defaultModel` have 
 
 | Provider | Package | Environment variable | `defaultModel` |
 | --- | --- | --- | --- |
-| OpenAI | `@ai-sdk/openai` | `OPENAI_API_KEY` | `openai/gpt-5.4-mini` |
-| Anthropic | `@ai-sdk/anthropic` | `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-4-6` |
+| OpenAI | `@ai-sdk/openai` | `OPENAI_API_KEY` | `openai/gpt-6-luna` |
+| Anthropic | `@ai-sdk/anthropic` | `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-5-5` |
 | Google | `@ai-sdk/google` | `GOOGLE_GENERATIVE_AI_API_KEY` | `google/gemini-2.5-flash` |
 
 ### Config
@@ -119,8 +119,8 @@ import hello from "./flows/hello/flow.mts";
 
 const modelResolver = createModelResolver({
   providers: { openai },
-  defaultModel: "openai/gpt-5.4-mini",
-  intents: { chat: ["openai/gpt-5.4-mini"] },
+  defaultModel: "openai/gpt-6-luna",
+  intents: { chat: ["openai/gpt-6-luna"] },
 });
 
 export default createFlowState({

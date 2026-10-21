@@ -73,7 +73,7 @@ const agent = defineAgentWorkerFlow({ installation });
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
 });
 
 flowRegistry.registerMany(hireWorkforce(installation));
@@ -85,7 +85,7 @@ flowRegistry.registerMany(hireWorkforce(installation));
 | --- | --- |
 | `installation` | The installation the coordinator and its delegates belong to. Required. |
 | `delegateFlows` | The flows a post can be delivered to. Each must declare the delegated-post entry: the built-in `agent` does, and a flow of your own does once you [add it](#making-your-own-flow-a-delegate). A flow without it throws here. Required. |
-| `routeModel` | The model behind `best-fit`'s call: a model id your resolver knows (its provider package must be installed; see [Setting up models](../getting-started/setting-up-models.md#choose-a-provider)), or an evaluation model. Best fit asks it as an evaluation model first, and, when that call fails on a model id, once more as a language model, which is how `openai/gpt-5.4-mini` still routes through a gateway that serves it only as a language model. One value for the flow, shared by every coordinator on it. Required, even when none of them routes by best fit; then it is never called. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; a language model and the other evaluation models don't, so under a floor their delegate picks are never used. A pick of the coordinator itself is used at any confidence. |
+| `routeModel` | The model behind `best-fit`'s call: a model id your resolver knows (its provider package must be installed; see [Setting up models](../getting-started/setting-up-models.md#choose-a-provider)), or an evaluation model. Best fit asks it as an evaluation model first, and, when that call fails on a model id, once more as a language model, which is how `openai/gpt-6-luna` still routes through a gateway that serves it only as a language model. One value for the flow, shared by every coordinator on it. Required, even when none of them routes by best fit; then it is never called. Use `typesafe-ai/jev` if any coordinator sets `minConfidence:`. Jev reports how sure it is; a language model and the other evaluation models don't, so under a floor their delegate picks are never used. A pick of the coordinator itself is used at any confidence. |
 | `agent` | What the coordinator's own turn is built with: the options you'd give `defineAgentWorkerFlow`, such as `catalog` and `uses`. A coordinator's `tools:` line is read against this catalog. Left out, the built-in's defaults. |
 | `roundDeadlineMs` | How long a round waits for its answers. Five minutes by default. A value that isn't a positive whole number of milliseconds throws. |
 
@@ -106,7 +106,7 @@ const help = createClient({ flowKind: session.flowKind, userId, baseUrl, fetcher
 await help.sendAction("run", { message: "My laptop won't charge." }, { sessionId: session.id });
 ```
 
-`ensureWorkerSession` returns your most recent session with the coordinator, or starts one if you have none.
+`ensureWorkerSession` returns your conversation with the coordinator, or starts it if you have none. Other workers' [messages](./messaging-workers.md) to the coordinator land in that same conversation.
 
 Say best fit picks `support.devices`. Its answer lands in the conversation as a message whose `agentName` is `support.devices`, the delegate's worker id. Replies from the coordinator's own turn carry an `agentName` that starts with `coordinator-judgment`, exported as `COORDINATOR_JUDGMENT`. The `Nobody took this post` message the coordinator writes when no one takes a post carries no `agentName`.
 
@@ -308,7 +308,7 @@ With `rounds: 0`, the default, a delegate's answer lands in the conversation and
 - `everyone` waits for the round to close, then hands each delegate the other delegates' answers from it in one delivery. A delegate with no other answer to get is skipped.
 - `judgment` waits for the round to close, then runs the coordinator's turn once with the round's answers. Its dispatches in that turn go out in the next round.
 
-A round closes when every delegate in it has answered or failed, or at its deadline: five minutes, unless you set `roundDeadlineMs`. A delegate whose turn fails ends its [task](#how-a-post-is-tracked) at once, so the round doesn't wait on it. One whose run is cancelled does the same when its flow sets [`delegatedPostOnFinished`](#making-your-own-flow-a-delegate), as the built-in `agent` flow does. One still working at the deadline keeps working; the round closes without it, and its answer lands once when it comes, going no further. A delegate that never reports at all, because its process stopped, holds its round until the conversation's next activity after the deadline: a post, an answer, or another delegate's report.
+A round closes when every delegate in it has answered or failed, or at its deadline: five minutes, unless you set `roundDeadlineMs`. A delegate whose turn fails ends its [task](#how-a-post-is-tracked) at once, so the round doesn't wait on it. One whose run is cancelled ends its task as cancelled, at once, when its flow sets [`delegatedPostOnFinished`](#making-your-own-flow-a-delegate), as the built-in `agent` flow does. One still working at the deadline keeps working; the round closes without it, and its answer lands once when it comes, going no further. A delegate that never reports at all, because its process stopped, holds its round until the conversation's next activity after the deadline: a post, an answer, or another delegate's report.
 
 A conversation keeps at most 50 rounds open. A post past that is still delivered, but its round isn't opened: its answers land and go no further, and its routing record carries a `note` saying so.
 
@@ -558,7 +558,7 @@ const loadWorker = handler({
 const researchAnswer = generator({
   name: "research-answer",
   inputSchema,
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   history: delegatedPostHistory,
   prompt: (_input, ctx) => {
     const { instructions } = workerConfigOf(ctx);

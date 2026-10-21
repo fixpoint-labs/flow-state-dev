@@ -29,11 +29,8 @@
  * `status: "recorded"`. `assignTask` only changes the owner, so a recorded row
  * stays recorded. Nothing but `dispatchTask` readies it.
  *
- * Board resolution goes through an injectable resolver (FIX-918). The default
- * reads the host generator's own-state board via `ctx.parent` (each handler
- * runs as a child block, so `ctx.parent` — not `ctx.self`, which is the
- * per-call scope — reaches the generator's ledger). An injected resolver
- * targets a shared board instead. With no board resolvable, every tool returns
+ * Board resolution goes through the resolver the caller passes (FIX-918). With
+ * no board resolvable, every tool returns
  * `{ ok: false, error: "no_delegation_board" }` rather than throwing.
  *
  * ## Ownership (FIX-981)
@@ -48,9 +45,9 @@
  * gap.** The seam has exactly one stamp site — the board's worker body — so
  * "no ticket presented" and "not a claimed worker" are the same condition and
  * cannot drift apart. A coordinator settling a task it never claimed is not a
- * stale owner and is not guarded; failing closed there would break the shipped
- * default `taskTools` instance, which a coordinator holds against its own board
- * with no claim of any kind.
+ * stale owner and is not guarded; failing closed there would break a
+ * coordinator that holds these tools against its own board with no claim of
+ * any kind.
  *
  * `assignTask` and `updateTask` present nothing, deliberately: they travel the
  * patch path, not the transition path, and a live block relabelling tasks it
@@ -68,11 +65,10 @@
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
-import type { ActionConfig, BlockContext, StateRef } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
-  getOrCreateTaskCollection,
   IllegalTaskTransitionError,
   ticketForClaim,
   isTerminalStatus,
@@ -87,7 +83,6 @@ import {
   type TaskTransitionOptions,
   type TaskWriteOutcome,
 } from "../tasks";
-import { withMigratedWait } from "../tasks/schema/task";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
 // the task-board's public API to advertise it.
@@ -112,70 +107,10 @@ import {
   type DispatchAndWaitResult,
 } from "../tasks/helpers/wait-for-response";
 
-/**
- * Own-state field the default resolver's board lives on. A host generator that
- * wants an own-state board declares
- * `stateSchema: { [DELEGATION_BOARD_FIELD]: delegationBoardSchema }`, and each
- * tool declares it via `parentStateSchema` so `ctx.parent` carries the state
- * ops.
- */
-export const DELEGATION_BOARD_FIELD = "delegationBoard";
-
-/**
- * Change-stream visibility for the own-state board. The `task-change` items
- * drive the client's live plan UI but never re-enter the executive's LLM
- * history — the task tools' return values already carry that signal.
- */
-const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as const;
-
-/**
- * Schema for the delegation board field (a `Record<taskId, Task>`). Defaults to
- * `{}` so the engine's empty-parse own-state seeding (`stateSchema.safeParse({})`)
- * creates the board — without the default the host state initializes to `{}`,
- * the field is absent, and the first task tool call reports `no_delegation_board`.
- */
-export const delegationBoardSchema = z.record(z.string(), z.preprocess(withMigratedWait, taskSchema)).default({});
-
 /** Resolves the live TaskCollection a `taskTools` handler mutates. */
 export type TaskCollectionResolver = (
   ctx: BlockContext,
 ) => Promise<TaskCollectionRef | undefined>;
-
-// ---------------------------------------------------------------------------
-// Default resolver — the host generator's own-state board via `ctx.parent`
-// ---------------------------------------------------------------------------
-
-/**
- * Read the host generator's delegation board from `ctx.parent`. Returns
- * `undefined` (→ `no_delegation_board`) when the parent declares no own state
- * or no board field, so a stray `taskTools`-only consumer degrades gracefully.
- *
- * NOT capped (FIX-931). This builds a bare collection with no creation caps, so
- * a board reached only through this fallback is unbounded. That is deliberate —
- * it has no construction site to take cap options from — but it means the caps
- * are a property of the surface that BUILT the board, not of `taskTools`. A
- * caller that wants a bounded board passes its own capped resolver instead; see
- * the note on the `taskTools` singleton below.
- */
-export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
-  const parent = (
-    ctx as {
-      parent?: Partial<StateRef<Record<string, unknown>>>;
-    }
-  ).parent;
-  if (!parent || typeof parent.atomicState !== "function") return undefined;
-  const state = parent.state;
-  if (state === null || typeof state !== "object") return undefined;
-  if (!(DELEGATION_BOARD_FIELD in state)) return undefined;
-  return getOrCreateTaskCollection({
-    backing: "state",
-    state: parent as StateRef<Record<string, unknown>>,
-    stateKey: DELEGATION_BOARD_FIELD,
-    collectionId: DELEGATION_BOARD_FIELD,
-    ctx,
-    changeVisibility: DELEGATION_BOARD_VISIBILITY,
-  });
-};
 
 // ---------------------------------------------------------------------------
 // Shared error contract
@@ -261,8 +196,7 @@ const unknownAssigneeError = (assignee: string, roster: AssigneeRoster) => ({
  * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
  *   default worker (its floor, FIX-940). Reaching the floor by *intent* stays
  *   open; only reaching it by *accident* (a typo) is closed.
- * - **No roster.** The standalone `taskTools` singleton, and any caller that
- *   passes none, supply none — there is nothing to validate against, so
+ * - **No roster.** A caller that passes none supplies none — there is nothing to validate against, so
  *   validation is inert and every assignee is accepted as before (BP-030:
  *   tolerate the old, roster-less shape).
  *
@@ -501,8 +435,6 @@ const okOrError = z.union([
   z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
 ]);
 
-const parentStateSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
-
 /**
  * The options a status-changing tool passes to the substrate (FIX-981).
  *
@@ -721,7 +653,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
     if (!isTaskTurn(ctx)) return undefined;
     const ledger = await options.resolve(ctx);
     if (ledger === undefined) return undefined;
-    const stamped = currentWorkerClaim();
+    const stamped = currentWorkerClaim(ctx);
     if (stamped !== undefined) {
       if (stamped.collectionId !== ledger.collectionId || stamped.partition !== ledger.partition) return undefined;
       return { claim: stamped, ledger, row: ledger.get(stamped.taskId) };
@@ -764,7 +696,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
         return {
           ok: false as const,
           error:
-            `asked_task: task "${claim.taskId}" was handed to you by a turn that is waiting ` +
+            `waited_on_task: task "${claim.taskId}" was dispatched to you by a turn that is waiting ` +
             `for it. Answer with what you have, or fail it.`,
         };
       }
@@ -799,7 +731,7 @@ export function createParkOnQuestion(options: ParkOnQuestionOptions) {
 
 // ---------------------------------------------------------------------------
 // Tool factory — closes over the resolver so a capability instance targets a
-// specific board (own-state default or an injected shared board).
+// specific board.
 // ---------------------------------------------------------------------------
 
 /** How {@link buildTaskTools} builds one board's tools. */
@@ -839,10 +771,12 @@ interface BuildTaskToolsOptions {
    * Only the per-turn list sets it, on a turn the form says is routing one.
    */
   readonly posting?: DispatchPostForm;
+  /** What a task turn is told to do instead of waiting ({@link TaskToolsOptions.taskTurnInstead}). */
+  readonly taskTurnInstead?: string;
 }
 
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
-  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting } = options;
+  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting, taskTurnInstead } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
    * The ten names, optionally board-qualified.
@@ -908,7 +842,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     if (bad) return bad;
     // Read once, so the ticket the write presented is the ticket the refusal is
     // rendered against even if the scope somehow changed mid-call.
-    const claim = claimless ? undefined : currentWorkerClaim();
+    const claim = claimless ? undefined : currentWorkerClaim(ctx);
     try {
       // Typed as nullable at this boundary on purpose (BP-030): a custom
       // `TaskCollectionRef` written before the widening — or one reached through
@@ -1140,7 +1074,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
-    parentStateSchema,
     execute: async (raw, ctx) => {
       const input = raw as NewTaskInput & Record<string, unknown>;
       const retired = RETIRED_WAIT_FIELDS.filter((field) => input[field] !== undefined);
@@ -1194,7 +1127,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "bounds the wait, from 30000 (30 seconds) to 3600000 (an hour), five minutes when " +
     "unset, and is only valid with wait. Errors: wait_timed_out (it didn't end in time; it " +
     "is cancelled), wait_task_failed, wait_task_cancelled, wait_already_pending, " +
-    "wait_unavailable (you are working a task yourself, so you can't wait), " +
+    `wait_unavailable (you are working a task yourself, so you can't wait${taskTurnInstead === undefined ? "" : `: ${taskTurnInstead}`}), ` +
     "wait_timeout_out_of_range.";
   const dispatchFields = {
     ...addTaskFields,
@@ -1298,7 +1231,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
-    parentStateSchema,
     execute: async (raw, ctx) => {
       const input = raw as DispatchInput;
       // Read before anything else, and before the schema could have dropped
@@ -1376,7 +1308,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             "Set wait: true, or drop timeoutMs. Nothing was filed.",
         };
       }
-      const timeout = typeof input.timeoutMs === "number" ? { timeoutMs: input.timeoutMs } : {};
+      const timeout = {
+        ...(typeof input.timeoutMs === "number" ? { timeoutMs: input.timeoutMs } : {}),
+        ...(taskTurnInstead !== undefined ? { taskTurnInstead } : {}),
+      };
 
       if (hasRef) {
         const taskId = input.taskId!;
@@ -1462,7 +1397,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         : ""),
     inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee), {
         assignee: input.assignee,
@@ -1475,7 +1409,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     description: "Mark a task complete with its output.",
     inputSchema: z.object({ taskId: z.string(), output: z.unknown() }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.complete(input.taskId, input.output, claimGuard(claim)),
@@ -1487,7 +1420,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     description: "Mark a task failed with an error message.",
     inputSchema: z.object({ taskId: z.string(), error: z.string() }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.fail(input.taskId, input.error, claimGuard(claim)),
@@ -1499,7 +1431,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     description: "Block a task pending an external condition.",
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.block(input.taskId, input.reason, claimGuard(claim)),
@@ -1514,7 +1445,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "silent success.",
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
         c.cancel(input.taskId, input.reason, claimGuard(claim)),
@@ -1536,7 +1466,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }),
     }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: (input, ctx) =>
       withTask(
         ctx,
@@ -1607,7 +1536,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
-    parentStateSchema,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -1666,7 +1594,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
-    parentStateSchema,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -1703,7 +1630,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "A task that isn't waiting on a question, or one already answered, is turned away.",
     inputSchema: z.object({ taskId: z.string(), answer: z.string() }),
     outputSchema: okOrError,
-    parentStateSchema,
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
@@ -1755,7 +1681,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 /**
  * Build the ten `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
- * Defaults to the own-state board resolver.
  *
  * @param roster Optional roster of the board's workers, fixed or read per call
  *   from the running context ({@link AssigneeRosterSource}). Supply it and
@@ -1763,7 +1688,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
  *   Omit it and assignment is unvalidated, as before.
  */
 export function buildTaskToolsList(
-  resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
+  resolveCollection: TaskCollectionResolver,
   roster?: AssigneeRosterSource,
   nameSuffix?: string,
 ) {
@@ -1779,11 +1704,10 @@ export function buildTaskToolsList(
 
 /**
  * Build the `taskTools` capability. Ten tools registered under one capability
- * so consumers wire it via `uses: [taskTools]`.
+ * so consumers wire it via `uses: [createTaskToolsCapability(resolver)]`.
  *
- * @param resolveCollection Optional board resolver. Defaults to the host
- *   generator's own-state board via `ctx.parent`. Pass a resolver targeting a
- *   shared board instead (or a drain board for a fan-out worker).
+ * @param resolveCollection The board resolver: a shared board, or a drain
+ *   board for a fan-out worker.
  * @param roster Optional roster for assignee validation, fixed or read per call
  *   from the running context ({@link AssigneeRosterSource}). Supply it so a
  *   fan-out worker enqueuing follow-up tasks mid-drain is held to the same
@@ -1793,7 +1717,7 @@ export function buildTaskToolsList(
  *   may offer `wait` ({@link TaskToolsOptions}).
  */
 export function createTaskToolsCapability(
-  resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
+  resolveCollection: TaskCollectionResolver,
   roster?: AssigneeRosterSource,
   options: TaskToolsOptions = {},
 ): DefinedCapability {
@@ -1846,6 +1770,13 @@ export interface TaskToolsOptions {
    * Has no effect without `dispatches`.
    */
   readonly posts?: DispatchPostForm;
+  /**
+   * What a task turn that asks `dispatchTask` to wait is told to do instead,
+   * in the `wait_unavailable` refusal and the tool's description: for a layer
+   * that wakes a task turn's task when a task it dispatched ends. Omitted, it
+   * is told to hand the task over without waiting.
+   */
+  readonly taskTurnInstead?: string;
 }
 
 /**
@@ -1888,6 +1819,7 @@ export function taskToolsForTurn(
   const base: BuildTaskToolsOptions = {
     ...(roster !== undefined ? { roster } : {}),
     dispatches: options.dispatches === true,
+    ...(options.taskTurnInstead !== undefined ? { taskTurnInstead: options.taskTurnInstead } : {}),
   };
   const posts = options.dispatches === true ? options.posts : undefined;
   // Only `dispatchTask` waits, so a board without it has no waiting list.
@@ -1916,18 +1848,6 @@ export function taskToolsForTurn(
     );
 }
 
-/**
- * Default instance for direct `uses: [taskTools]` wiring (own-state board).
- *
- * **This instance is UNCAPPED** (FIX-931). It closes over
- * `defaultOwnStateResolver`, which builds a bare collection with no creation
- * caps, so a board reached this way has no `maxEnqueuedTasks` /
- * `maxTotalTasks` ceiling. The caps come from the site that constructs the
- * collection, and wiring this capability by hand has no such site. If you want a bounded board here, build the collection yourself with
- * `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and pass a
- * resolver for it to `createTaskToolsCapability`.
- */
-export const taskTools = createTaskToolsCapability();
 
 // ---------------------------------------------------------------------------
 // The ten tools as flow actions

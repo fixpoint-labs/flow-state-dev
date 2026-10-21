@@ -104,7 +104,7 @@ function probeFlow(kind: string, seen: Seen) {
     kind,
     actions: { run: { inputSchema: z.object({}), block: probe } },
     request: { heartbeatIntervalMs: 10_000 }
-  });
+  })();
 }
 
 /** A row accepted into an external queue and never claimed. */
@@ -137,7 +137,7 @@ describe("liveness is not advertised on a runtime-only init (FIX-999)", () => {
   it("the premise: nothing sweeps when only getRuntime() is called", async () => {
     vi.useFakeTimers();
     const seen: Seen = {};
-    const flow = probeFlow("runtime-only-premise", seen)();
+    const flow = probeFlow("runtime-only-premise", seen);
     const adapter = sharedInMemoryStores();
 
     const state = createFlowState({
@@ -162,7 +162,7 @@ describe("liveness is not advertised on a runtime-only init (FIX-999)", () => {
 
   it("refuses the liveness verb on the worker/runtime-only path", async () => {
     const seen: Seen = {};
-    const flow = probeFlow("runtime-only-gate", seen)();
+    const flow = probeFlow("runtime-only-gate", seen);
     const adapter = sharedInMemoryStores();
 
     const state = createFlowState({

@@ -23,16 +23,18 @@ import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
 import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
 import { Inbox } from "./surfaces/Inbox";
-import { JumpTo } from "./surfaces/JumpTo";
+import { JumpTo, MESSAGE_PREFIX } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { RosterView } from "./surfaces/Roster";
-import { RulesView } from "./surfaces/Rules";
+import { WorkerSettingsView } from "./surfaces/WorkerSettings";
 import { SettingsView } from "./surfaces/Settings";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
 import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
+import { Messages } from "./surfaces/Messages";
+import { SessionView } from "./surfaces/SessionView";
 import { isTyping, usePanels } from "./lib/panels";
 
 /**
@@ -95,7 +97,8 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
 function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ThemeLook | undefined }) {
   const { snapshot, refresh, clients } = useLab();
   const route = useRoute();
-  const [jumping, setJumping] = useState(false);
+  // Null is closed; "" opens Jump to, MESSAGE_PREFIX opens it already in message mode.
+  const [jumping, setJumping] = useState<string | null>(null);
   const panels = usePanels(clients.userId);
   const { toggleNav, togglePanel } = panels;
   const hasPanel = PANEL_NAMES[route.level] !== undefined;
@@ -104,7 +107,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setJumping((j) => !j);
+        // Shift+⌘K goes straight to messaging the Shift Coordinator. Either chord closes an open palette; neither re-seeds it.
+        setJumping((j) => (j === null ? (e.shiftKey ? MESSAGE_PREFIX : "") : null));
         return;
       }
       // `[` and `]` toggle the sidebar and the right panel, except while typing,
@@ -130,12 +134,12 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       <main className="min-w-0 flex-1 overflow-hidden" data-testid="centre" data-level={route.level}>
         <Centre snapshot={snapshot} route={route} gaps={gaps} look={look} devtoolUrl={devtoolUrl} />
       </main>
-      <Panel snapshot={snapshot} route={route} gaps={gaps} devtoolUrl={devtoolUrl} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
+      <Panel snapshot={snapshot} route={route} gaps={gaps} open={panels.panelOpen} overlay={panels.overlay} onToggle={togglePanel} />
     </>
   );
   return (
     <div className="flex h-dvh min-h-0 min-w-[900px]" data-testid="shell">
-      <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
+      <Sidebar route={route} gaps={gaps} onJump={() => setJumping("")} look={look} collapsed={panels.navCollapsed} onToggle={toggleNav} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.
         <TaskProvider
@@ -150,7 +154,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
       ) : (
         levels
       )}
-      {jumping ? <JumpTo snapshot={snapshot} gaps={gaps} onClose={() => setJumping(false)} /> : null}
+      {jumping !== null ? <JumpTo snapshot={snapshot} gaps={gaps} initialQuery={jumping} onClose={() => setJumping(null)} /> : null}
     </div>
   );
 }
@@ -167,12 +171,16 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
       return <TaskFrame tab={route.tab} gaps={gaps} />;
+    case "messages":
+      return <Messages snapshot={snapshot} />;
+    case "session":
+      return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
     case "resource":
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} route={route} gaps={gaps} />;
-    case "rules":
-      return <RulesView snapshot={snapshot} workerId={route.worker} devtoolUrl={devtoolUrl} />;
+    case "worker-settings":
+      return <WorkerSettingsView snapshot={snapshot} workerId={route.worker} devtoolUrl={devtoolUrl} />;
     case "settings":
       return <SettingsView />;
   }
@@ -199,7 +207,6 @@ function Panel({
   snapshot,
   route,
   gaps,
-  devtoolUrl,
   open,
   overlay,
   onToggle,
@@ -207,14 +214,13 @@ function Panel({
   snapshot: LoadedSnapshot;
   route: Route;
   gaps: Gaps;
-  devtoolUrl: string | undefined;
   open: boolean;
   overlay: boolean;
   onToggle: () => void;
 }) {
   let content = null;
   if (route.level === "cos") {
-    content = <ChiefOfStaffPanel snapshot={snapshot} devtoolUrl={devtoolUrl} />;
+    content = <ChiefOfStaffPanel snapshot={snapshot} />;
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }

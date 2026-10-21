@@ -51,16 +51,16 @@ import chatFlow from "@/flows/hello-chat/flow";
 export const flowstate = createFlowState({
   flows: { chatFlow },
   models: {
-    default: "openai/gpt-5.4-mini",
+    default: "openai/gpt-6-luna",
     intents: {
       utility: [
-        "anthropic/claude-haiku-4-5",
-        "openai/gpt-5.4-mini",
+        "anthropic/claude-haiku-5-5",
+        "openai/gpt-6-luna",
         "google/gemini-3.1-flash-lite",
       ],
       chat: [
-        "anthropic/claude-sonnet-4-6",
-        "openai/gpt-5.5",
+        "anthropic/claude-sonnet-5-5",
+        "openai/gpt-6.1-sol",
         "google/gemini-3.1-pro",
       ],
     },
@@ -79,7 +79,7 @@ const chat = generator({ name: "chat", model: "intent/chat", /* ... */ });
 
 ### How a candidate gets picked
 
-The framework walks the list in order and takes the first candidate you can actually serve — one whose provider has a working key *and* an installed SDK package. Everything else is skipped. With only `ANTHROPIC_API_KEY` set, `intent/chat` above resolves to `claude-sonnet-4-6`; with only `OPENAI_API_KEY` it resolves to `gpt-5.5`; with only `GOOGLE_GENERATIVE_AI_API_KEY`, to `gemini-3.1-pro`. A gateway key covers all three at once. If a model fails at runtime, it retries, then moves to the next candidate. Your block code doesn't change in any of these cases.
+The framework walks the list in order and takes the first candidate you can actually serve — one whose provider has a working key *and* an installed SDK package. Everything else is skipped. With only `ANTHROPIC_API_KEY` set, `intent/chat` above resolves to `claude-sonnet-5-5`; with only `OPENAI_API_KEY` it resolves to `gpt-6.1-sol`; with only `GOOGLE_GENERATIVE_AI_API_KEY`, to `gemini-3.1-pro`. A gateway key covers all three at once. If a model fails at runtime, it retries, then moves to the next candidate. Your block code doesn't change in any of these cases.
 
 `default` is what an intent falls back to when none of its candidates are reachable, and what a generator gets if it names an intent you never declared. Declaring any intent makes `default` required, and it has to name a model directly rather than another intent. Both rules are checked when the runtime is built, so a mistake surfaces at startup rather than mid-request.
 
@@ -103,12 +103,12 @@ import { generator } from "@flow-state-dev/core";
 
 const chat = generator({
   name: "chat",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   prompt: "...",
 });
 ```
 
-The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`). Match the provider to the key you set, and the generator will run.
+The format is `provider/model-id`, or `gateway:provider/model-id` to name the gateway that serves it (`"vercel:openai/gpt-6.1-sol"`). Match the provider to the key you set, and the generator will run.
 
 This is the right call when a block genuinely needs one specific model — an eval pinned to a known baseline, or a block that depends on a quirk of a particular model. It pins that block to one provider, so it fails if that provider is unreachable, and it's a string you'll have to revisit when the model is superseded.
 

@@ -67,6 +67,20 @@ export function redactRemote(remote: string): string {
 }
 
 /**
+ * The remote with any credential in it removed, so it can be written down:
+ * userinfo that holds a password, or any userinfo in an `http(s)://` URL,
+ * where a token is spelled as the user. Other userinfo (`ssh://git@`) names an
+ * account, not a secret, and is kept. Unchanged when it holds none. Every
+ * remote this changes fails `checkRemoteShape`, so nothing fetched loses
+ * anything here.
+ */
+export function withoutCredential(remote: string): string {
+  const userinfo = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)@/i.exec(remote);
+  if (userinfo === null) return remote;
+  return userinfo[2]!.includes(":") || /^https?$/i.test(userinfo[1]!) ? redactRemote(remote) : remote;
+}
+
+/**
  * A remote that passed the shape rules, before any allowlist is asked: what
  * git would be handed, and the host it names (`null` for `file://`). A
  * `scheme` this host never speaks carries no clone key.

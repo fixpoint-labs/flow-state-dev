@@ -32,7 +32,7 @@ function buildCtx(
 ): ScheduleResolutionContext {
   return {
     flowKind: "reminders",
-    gatewayPrincipal: { userId: "system" },
+    gatewayPrincipal: { userId: "system", orgId: "org_sys" },
     request: new Request("https://example.com/dispatch"),
     stores: {
       resourceState: {

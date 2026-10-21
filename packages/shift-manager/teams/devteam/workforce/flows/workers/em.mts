@@ -188,7 +188,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
     history: delegatedPostHistory,
-    uses: [kit.tools],
+    uses: [kit.tools, kit.messages],
     prompt: [
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).instructions,

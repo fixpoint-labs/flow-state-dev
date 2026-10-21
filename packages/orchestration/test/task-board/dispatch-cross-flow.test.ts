@@ -17,7 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, SuspensionError } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import { encodeUserSegment } from "@flow-state-dev/core/types";
+import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -33,7 +33,7 @@ import {
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
 
-const USER_ID = "u_cross_hand_off";
+const USER_ID = "u_cross_dispatch";
 const SENDER = "task-sender";
 const RECIPIENT = "task-recipient";
 const BOARD_ID = "work-board";
@@ -382,7 +382,7 @@ async function bootPartitioned(sameFlow = false, isolated = false) {
     sessionId: string,
     actionName: string,
     input: unknown = {},
-    flow: typeof coordinator = coordinator
+    flow: FlowInstance = coordinator
   ) =>
     runAction({
       orgId: DEFAULT_ORG_ID,

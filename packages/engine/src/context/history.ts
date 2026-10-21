@@ -18,7 +18,6 @@ import type {
   TokenCounter,
 } from "@flow-state-dev/core/types";
 import type {
-  BlockTraceItem,
   Content,
   ItemVisibility,
   MessageItem,
@@ -26,6 +25,7 @@ import type {
   ToolOutputItem,
 } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { sanitizeToolName } from "@flow-state-dev/core/helpers";
 import {
   buildAssistantToolCallMessage,
@@ -64,8 +64,8 @@ function omittedToolResultText(toolName: string, bytes: number | null): string {
  * `allItems` is used to resolve `block_output` BlockValue refs back to their
  * source items (FIX-413); pass the same list you're iterating over.
  */
-export function itemToLLMMessages(item: OutputItem | BlockTraceItem, allItems: readonly (OutputItem | BlockTraceItem)[]): LLMMessage[] {
-  if (!resolveItemVisibility(item as OutputItem).history) {
+export function itemToLLMMessages(item: RuntimeItem, allItems: readonly RuntimeItem[]): LLMMessage[] {
+  if (!resolveItemVisibility(item).history) {
     return [];
   }
 
@@ -190,11 +190,11 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
  * sort path produced.
  */
 export function expandRequestToMessages(
-  items: readonly (OutputItem | BlockTraceItem)[],
+  items: readonly RuntimeItem[],
   allowedTypes: Set<string>,
   allowedRoles: Set<"user" | "assistant" | "system" | "developer" | "tool"> | undefined,
 ): LLMMessage[] {
-  const sorted = collapseToCanonicalLog(items as readonly OutputItem[]).sort((a, b) => {
+  const sorted = collapseToCanonicalLog(items).sort((a, b) => {
     const tsDiff = a.ts - b.ts;
     return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
   });
@@ -334,7 +334,7 @@ export async function loadLLMHistory(
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery,
-  readLiveItems?: () => Array<OutputItem | BlockTraceItem>
+  readLiveItems?: () => RuntimeItem[]
 ): Promise<LLMMessage[]> {
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -373,7 +373,7 @@ export async function loadLLMHistory(
  * Converts an OutputItem (from the response emitter) to a SessionItem
  * so it can be included in the all() view alongside historical items.
  */
-export function outputItemToSessionItem(item: OutputItem): SessionItem {
+export function outputItemToSessionItem(item: RuntimeItem): SessionItem {
   // Extract readable content for the payload based on item type.
   // Message items get their text extracted; other items pass through.
   let payload: unknown;
@@ -465,7 +465,7 @@ export function createSessionItemViews(
   options: {
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
-    readLiveItems?: () => Array<OutputItem | BlockTraceItem>;
+    readLiveItems?: () => RuntimeItem[];
   }
 ): SessionItemViews {
   // Compute once — priorItems is immutable for the request lifetime.

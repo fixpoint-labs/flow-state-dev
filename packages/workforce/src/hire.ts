@@ -77,6 +77,9 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-fl
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
  *
+ * `name` is the worker's display name, for people only: views read it off the
+ * worker's rows, and no worker flow is handed it.
+ *
  * `resources`, `references` and `packages` join them rather than travelling to
  * the worker flow as settings: each is an instruction to THIS step about what to mint
  * the worker with, not a value any worker flow declares. A flow that happened to declare a
@@ -86,6 +89,7 @@ import { isWorkerFlowBuilder, type WorkerFlowBuilder } from "./workers/worker-fl
 const RESERVED_KEYS = [
   "flow",
   "description",
+  "name",
   WORKER_RESOURCES_KEY,
   WORKER_REFERENCES_KEY,
   PACKAGES_KEY

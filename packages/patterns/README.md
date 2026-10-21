@@ -12,38 +12,6 @@ pnpm add @flow-state-dev/patterns
 
 ## Patterns
 
-### RLM (Recursive Language Model)
-
-Implements the Recursive Language Model architecture ([Gao et al. 2025](https://alexzhang13.github.io/blog/2025/rlm/)). An LM that never sees the full context directly — instead using tools to explore, search, and recursively sub-query over large contexts.
-
-**What it validates:**
-- Generator-as-tool composition (generator listed in another generator's `tools` array)
-- Handler blocks as LLM-callable tools (peek, grep, chunk)
-- Session resources for large context storage
-- Depth control via tool set restriction (leaf generators omit the recursive tool)
-
-**Zero framework changes required.**
-
-```typescript
-import { rlmPipeline, rlmQueryInputSchema } from "@flow-state-dev/patterns";
-
-// Wire into your flow as an action
-const myFlow = defineFlow({
-  actions: {
-    rlm: {
-      inputSchema: rlmQueryInputSchema,
-      block: rlmPipeline
-    }
-  }
-  // No `resources` entry needed: the pipeline's blocks declare
-  // `resources: { context: contextResource }`, and `defineFlow` collects
-  // them into the flow's flat `resources` map. A flow-level `context` entry
-  // must be that same `contextResource`; a different definition throws.
-});
-```
-
-See `apps/kitchen-sink` for a full integration example.
-
 ### parallelTasks
 
 Single-pass fan-out/fan-in orchestration backed by `taskBoard`. Decomposes a goal into sub-tasks, dispatches a worker concurrently for each, and synthesizes the completed results. No feedback loop.
@@ -370,7 +338,7 @@ import { defaultBenchmarkRegistry } from "@flow-state-dev/patterns";
 Some patterns are intentionally left out of the roster:
 
 - **`task-board`** — the substrate primitive the others compose. `parallel-tasks` is task-board plus a planner and a synthesizer, so benchmarking the board alongside its consumers would double-count the same coordination work. It also returns a `TaskBoardHandle` rather than a synthesized answer.
-- **`event-actors`, `rlm`, `response-auditor`** — not `goal → answer` shaped. They don't map cleanly onto a single generic benchmark task and would need bespoke per-task glue (event-actors is event-driven, rlm is context-exploration scaffolding, response-auditor is a post-hoc sidechain over an existing response).
+- **`event-actors`, `response-auditor`** — not `goal → answer` shaped. They don't map cleanly onto a single generic benchmark task and would need bespoke per-task glue (event-actors is event-driven, response-auditor is a post-hoc sidechain over an existing response).
 
 Adding a pattern to the benchmark is one entry. Define its adapter, add it to `defaultBenchmarkRegistry`, and add its name to the `patterns` list in the benchmark definition (`apps/pattern-benchmark/src/benchmark.ts`). No per-pattern harness wiring.
 

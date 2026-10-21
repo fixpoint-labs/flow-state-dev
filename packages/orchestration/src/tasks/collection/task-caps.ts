@@ -63,8 +63,8 @@
  *
  *   The trap, because this bullet gets cited: `backing: "state"` takes any
  *   `StateRef`, not only a sequencer's. `StateBackingSpec.state` accepts any
- *   `StateRef` (`get-or-create.ts`), and the task tools' default own-state
- *   resolver passes a GENERATOR's own state (`defaultOwnStateResolver`).
+ *   `StateRef` (`get-or-create.ts`), so a caller can pass a GENERATOR's own
+ *   state.
  *   Only a sequencer block checkpoints: the lone `state_snapshot` emitter bails
  *   when `ctx.sequencer` is undefined, and that resolves only through a parent
  *   whose `kind === "sequencer"`. A generator's own-state container is rebuilt

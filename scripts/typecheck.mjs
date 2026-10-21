@@ -1,5 +1,6 @@
 /**
- * Run `tsc --noEmit` for the package in the current working directory.
+ * Run `tsc --noEmit` for the package in the current working directory:
+ * `tsconfig.json`, then `tsconfig.test.json` when the package has one.
  *
  * Every package's `typecheck` script routes through here, so this file is the
  * single place that decides whether a typecheck happened. It must never report
@@ -19,6 +20,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { driverPrograms } from "./typecheck-programs.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,14 +48,22 @@ if (!fs.existsSync(tscPath)) {
   process.exit(1);
 }
 
-const tscRun = spawnSync(tscPath, ["-p", "tsconfig.json", "--noEmit"], {
-  cwd: packageDir,
-  stdio: "inherit"
-});
+const configs = driverPrograms((name) => fs.existsSync(path.join(packageDir, name)));
 
-if (tscRun.error) {
-  console.error(`typecheck failed: could not run ${tscPath}: ${tscRun.error.message}`);
-  process.exit(1);
+// Run every config even after one fails, so one's errors never hide the other's.
+let failedStatus = 0;
+for (const config of configs) {
+  const tscRun = spawnSync(tscPath, ["-p", config, "--noEmit"], {
+    cwd: packageDir,
+    stdio: "inherit"
+  });
+
+  if (tscRun.error) {
+    console.error(`typecheck failed: could not run ${tscPath}: ${tscRun.error.message}`);
+    process.exit(1);
+  }
+
+  if (tscRun.status !== 0 && failedStatus === 0) failedStatus = tscRun.status ?? 1;
 }
 
-process.exit(tscRun.status ?? 1);
+process.exit(failedStatus);

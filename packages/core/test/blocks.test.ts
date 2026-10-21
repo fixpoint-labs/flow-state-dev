@@ -44,8 +44,7 @@ describe("transient block config", () => {
       name: "t-generator",
       transient: true,
       model: "openai/gpt-4o",
-      prompt: "test",
-      execute: async () => "ok"
+      prompt: "test"
     });
     expect(block.kind).toBe("generator");
     expect(block.transient).toBe(true);
@@ -54,18 +53,19 @@ describe("transient block config", () => {
   it("supports transient on sequencer blocks", () => {
     const block = sequencer({
       name: "t-sequencer",
-      transient: true,
-      execute: async () => "ok"
+      transient: true
     });
     expect(block.kind).toBe("sequencer");
     expect(block.transient).toBe(true);
   });
 
   it("supports transient on router blocks", () => {
+    const target = handler({ name: "t-router-target", execute: () => "ok" });
     const block = router({
       name: "t-router",
       transient: true,
-      execute: async () => "ok"
+      routes: [target],
+      execute: async () => target
     });
     expect(block.kind).toBe("router");
     expect(block.transient).toBe(true);
