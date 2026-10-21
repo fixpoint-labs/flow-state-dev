@@ -33,6 +33,17 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { createScheduleTickHandler } from "../src/schedules";
 
 const SECRET = "scheduler-secret";
+
+/** The latest Monday 09:00 UTC already due: a time of "0 9 * * MON" that isn't stale. */
+function latestMondayNine(now = Date.now()): number {
+  const d = new Date(now);
+  const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9);
+  const back = (d.getUTCDay() + 6) % 7; // days since Monday
+  let slot = day - back * 86_400_000;
+  if (slot > now) slot -= 7 * 86_400_000;
+  return slot;
+}
+
 const BASE = "http://localhost";
 
 function boot() {
@@ -43,9 +54,9 @@ function boot() {
     },
     async remove() {},
     // A real index returns only rows already due, carrying the scheduled time
-    // they were due at; a past Monday 09:00 is one of "0 9 * * MON".
+    // they were due at; the latest Monday 09:00 is one of "0 9 * * MON".
     async claimDue() {
-      return rows.map((row) => ({ ...row, nextFireAt: Date.parse("2026-06-01T09:00:00.000Z") }));
+      return rows.map((row) => ({ ...row, nextFireAt: latestMondayNine() }));
     },
   };
   const schedules = defineScheduleCollection({ pattern: "schedules/*", index });

@@ -45,9 +45,15 @@ scheduled time the fire is for, or nothing:
 - A carried time counts against the scheduled time within five seconds of
   it. One that is no scheduled time of the cron answers `400
   not_a_scheduled_time`; one not due yet answers `400 not_yet_due`.
-- No time counts against the latest scheduled time already due.
+- No time counts against the latest scheduled time already due, or the one due
+  within five seconds.
+- A carried time more than one period behind the latest due one answers
+  `200 { status: "duplicate", reason: "stale" }` and logs a warning: a
+  scheduler body with a fixed time sends no body instead.
+- A cron must be exactly five fields; a sixth would be seconds.
 - A time that already fired, or an earlier one, answers
-  `200 { status: "duplicate" }` and runs nothing.
+  `200 { status: "duplicate" }` and runs nothing, whatever the schedule's cron
+  is now.
 - A fire that isn't admitted (an overlap skip, a concurrency refusal, a
   `503`) leaves its time unfired for a retry.
 

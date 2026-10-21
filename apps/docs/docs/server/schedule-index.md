@@ -45,7 +45,8 @@ The index only finds which rows are due. Whether a scheduled time fires is
 decided at the dispatch endpoint, which fires each time at most once
 whichever path POSTed it (see [At most once per scheduled
 time](./scheduled.md#at-most-once-per-scheduled-time)). Two ticks that
-claim the same row on two processes still fire it once.
+claim the same row on two processes still fire it once, on a SQLite or
+Postgres store.
 
 ## Interface
 

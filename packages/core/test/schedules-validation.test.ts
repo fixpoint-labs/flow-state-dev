@@ -62,6 +62,19 @@ describe("validateScheduleConfig (static)", () => {
     ).toThrow(/invalid cron expression/);
   });
 
+  // cron-parser reads a sixth field as seconds, so "* * * * * *" would fire
+  // every second; a scheduled action fires at most once a minute.
+  it.each(["* * * * * *", "0 0 9 * * 1", "0 9 * *"])("rejects %j, which is not exactly five fields", (cron) => {
+    expect(() =>
+      validateScheduleConfig({
+        kind: "demo",
+        id: "per-second",
+        schedule: { ...baseSchedule, cron },
+        origin: "dynamic"
+      })
+    ).toThrow(/five fields/);
+  });
+
   it("rejects a schedule with no block", () => {
     expect(() =>
       validateScheduleConfig({

@@ -383,8 +383,10 @@ Which time a fire counts against:
   a second early is fine. A time that is no scheduled time of the cron gets
   `400 not_a_scheduled_time`, and a scheduled time that hasn't arrived yet
   gets `400 not_yet_due`.
-- **Without it**, the latest scheduled time already due. Never the next one, so
-  an early or manual POST can't take a time before it arrives.
+- **Without it**, the latest scheduled time already due, or the one due within
+  the next five seconds, so a sender whose clock runs a second ahead of the
+  app's still lands on the time it is for. Never a time further ahead, so an
+  early or manual POST can't take a time before it arrives.
 
 A fire for a time that already fired, or for a time earlier than one that
 did, answers `200 { status: "duplicate", scheduleId, nominalFireTime }` and
@@ -392,11 +394,29 @@ runs nothing. That includes a late retry of a missed time once the next time
 has fired. A manual POST with no body runs only if the latest due time hasn't
 fired yet.
 
+A carried time more than one period behind the latest due time answers
+`200 { status: "duplicate", reason: "stale" }`, runs nothing, and logs a
+warning on the app's server. That is what a scheduler body with a fixed
+`nominalFireTime` gets once its time has passed: if a schedule stops firing,
+look for that warning, and send no body instead.
+
 A fire that isn't admitted (an overlap skip, a concurrency refusal, a `503`)
 leaves its time unfired, so the host's retry of it still runs, unless a later
 time fired in the meantime.
 
-Changing a schedule's cron or time zone starts its record fresh.
+The record is a floor for the schedule whatever its cron: after you change a
+schedule's cron or time zone, a time at or before the last one it fired still
+answers `duplicate`.
+
+The cron must be exactly five fields (minute hour day-of-month month
+day-of-week). A sixth field would be read as seconds, so a schedule with one
+is refused: `400 invalid_schedule` at dispatch, and an error at registration
+for a static one.
+
+One case the record can't cover: two independent schedulers firing the same
+time, where the first is answered `503` after the second was already told
+`duplicate`. The first gives its time back, the second never retries, and
+that time doesn't run unless the first's retry does.
 
 The guarantee holds across processes on a store with compare-and-set across
 processes: SQLite and Postgres. On the memory store, and on the filesystem

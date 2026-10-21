@@ -13,9 +13,13 @@ import { deriveWorkerSessionId } from "../src/workers/derive-session-id";
 import { ROSTER_FLOW } from "../src/workers/keys";
 
 const ALICE = "alice";
-/** Monday 1 June 2026, 09:00 in London (BST): a time of the weekly cron, already due. */
-const MONDAY = "2026-06-01T08:00:00.000Z";
-const NEXT_MONDAY = "2026-06-08T08:00:00.000Z";
+/**
+ * The last two Mondays 09:00 in London already due: times of the weekly cron
+ * that aren't stale (a time more than one period behind the latest runs nothing).
+ */
+const mondays = CronExpressionParser.parse("0 9 * * 1", { tz: "Europe/London", currentDate: new Date(Date.now() + 1) });
+const NEXT_MONDAY = mondays.prev().toDate().toISOString();
+const MONDAY = mondays.prev().toDate().toISOString();
 
 const weekly = {
   key: "adoption",
@@ -175,6 +179,35 @@ describe("the user's list of schedules", () => {
     expect(saved.ok).toBe(false);
     expect(saved.error).toMatch(/cron/);
     expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
+  });
+
+  it("refuses a cron that isn't exactly five fields, which would fire every second", async () => {
+    const h = boot();
+    const saved = (await roster(h, "saveSchedule", { ...weekly, cron: "* * * * * *" })).output as { ok: boolean; error?: string };
+    expect(saved.ok).toBe(false);
+    expect(saved.error).toMatch(/five fields/);
+    expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
+  });
+
+  it("takes its fired record with it when deleted, so the key saved again starts fresh", async () => {
+    const h = boot();
+    await roster(h, "saveSchedule", weekly);
+    expect((await fire(h, weekly.key, { nominalFireTime: NEXT_MONDAY })).status).toBe(202);
+    await h.settled();
+    const runtime = await h.state.getRuntime();
+    const record = () =>
+      runtime.stores.resourceState.get(
+        "user",
+        `${ALICE}:~org:${ORG}`,
+        `scheduled-fires/${ROSTER_FLOW}/${formatScheduleId(ORG, ALICE, weekly.key)}`
+      );
+    expect(await record()).toBeDefined();
+    await roster(h, "deleteSchedule", { key: weekly.key });
+    expect(await record()).toBeUndefined();
+    // Saved again under the same key, it is a new schedule: its time fires.
+    await roster(h, "saveSchedule", weekly);
+    expect((await fire(h, weekly.key, { nominalFireTime: NEXT_MONDAY })).status).toBe(202);
+    await h.settled();
   });
 
   it("mirrors each saved schedule into the index the host configured", async () => {

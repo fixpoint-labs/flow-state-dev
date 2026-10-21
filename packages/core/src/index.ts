@@ -383,6 +383,7 @@ export type {
 
 export {
   defineScheduleBinding,
+  isFiveFieldCron,
   validateScheduleConfig,
   validateSchedulesConfig
 } from "./types/schedules";

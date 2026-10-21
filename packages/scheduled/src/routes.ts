@@ -205,10 +205,21 @@ export async function handleDispatch(
     return jsonResponse(400, { error: time.error, message: time.message });
   }
   const nominalFireTime = new Date(time.at).toISOString();
+  // More than one period behind the latest due time: a fixed time in the
+  // scheduler's body, or a host that stalled. Nothing runs, and the host's
+  // log says why, so a schedule that stopped firing can be found.
+  if (time.stale) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[flow-state/scheduled] ${flowKind} schedule ${scheduleId}: nominalFireTime ${body.nominalFireTime} is more than one ` +
+        `period behind its latest due time, so nothing runs. A scheduler that sends a fixed time should send no body.`
+    );
+    return jsonResponse(200, { status: "duplicate", reason: "stale", scheduleId, nominalFireTime });
+  }
   const claim = await claimScheduledTime(
     host.stores.resourceState,
     firedRecordAddress(flowKind, scheduleId, effectivePrincipal),
-    { at: time.at, cron: schedule.cron, timezone }
+    { at: time.at }
   );
   if (claim.outcome === "duplicate") {
     return jsonResponse(200, { status: "duplicate", scheduleId, nominalFireTime });

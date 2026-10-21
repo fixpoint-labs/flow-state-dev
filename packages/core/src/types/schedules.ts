@@ -246,6 +246,16 @@ export type SchedulesConfig = {
 const STATIC_SCHEDULE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
+ * Whether `cron` is exactly five whitespace-separated fields (minute hour
+ * day-of-month month day-of-week). `cron-parser` reads a sixth field as
+ * seconds and fills missing ones, so parsing alone admits a schedule that
+ * fires every second, or one that means something other than it says.
+ */
+export function isFiveFieldCron(cron: string): boolean {
+  return cron.trim().split(/\s+/).length === 5;
+}
+
+/**
  * Per-entry validator. Used at registration time for the static map and
  * at dispatch time by the adapter for resolved dynamic schedules. Throws
  * on malformed input — adapter callers translate the throw into a 400.
@@ -266,6 +276,13 @@ export function validateScheduleConfig(args: {
     throw new Error(
       `Flow "${kind}" schedule "${id}" has an invalid id. ` +
         `Use lowercase alphanumeric characters and dashes (max 64).`
+    );
+  }
+
+  if (!isFiveFieldCron(schedule.cron)) {
+    throw new Error(
+      `Flow "${kind}" schedule "${id}" has an invalid cron expression ${JSON.stringify(schedule.cron)}: it is not exactly five fields. ` +
+        `Use POSIX 5-field syntax (minute hour day-of-month month day-of-week): a sixth field would be read as seconds.`
     );
   }
 

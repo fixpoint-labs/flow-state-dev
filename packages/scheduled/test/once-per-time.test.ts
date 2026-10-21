@@ -4,7 +4,7 @@
  * router and its own adapter over a shared store, as two processes are, so a
  * guarantee that lives in one process's memory fails here.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import {
@@ -16,6 +16,7 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/engine";
 import { createScheduledTransportAdapter } from "../src";
+import { recentTimes } from "./recent-times";
 
 const SECRET = "scheduler-secret";
 const runs: string[] = [];
@@ -77,16 +78,18 @@ async function withHosts<T>(count: number, body: (routers: ReturnType<typeof hos
   }
 }
 
-const JUNE = "2026-06-01T00:00:00.000Z";
-const JULY = "2026-07-01T00:00:00.000Z";
+
+// The latest monthly time already due, and the one before it: neither is stale.
+const { latest: LATEST, previous: PREVIOUS } = recentTimes(MONTHLY);
+const second = (iso: string, by: number) => new Date(Date.parse(iso) + by * 1_000).toISOString();
 
 describe("one firing per scheduled time", () => {
   it("fires a time once when two hosts sharing a store both POST it", async () => {
     await withHosts(2, async ([a, b]) => {
-      const [first, second] = await Promise.all([fire(a!, { nominalFireTime: JUNE }), fire(b!, { nominalFireTime: JUNE })]);
-      const statuses = [first.status, second.status].sort();
+      const [first, other] = await Promise.all([fire(a!, { nominalFireTime: LATEST }), fire(b!, { nominalFireTime: LATEST })]);
+      const statuses = [first.status, other.status].sort();
       expect(statuses).toEqual([200, 202]);
-      const duplicate = first.status === 200 ? first : second;
+      const duplicate = first.status === 200 ? first : other;
       expect(duplicate.body.status).toBe("duplicate");
     });
   });
@@ -94,12 +97,12 @@ describe("one firing per scheduled time", () => {
   it("answers a time already fired as a duplicate after a restart", async () => {
     const stores = createInMemoryStores();
     const before = host(stores);
-    expect((await fire(before, { nominalFireTime: JUNE })).status).toBe(202);
+    expect((await fire(before, { nominalFireTime: LATEST })).status).toBe(202);
     await disposeFlowApiRouter(before);
     // A fresh adapter and router: nothing in memory survives.
     const after = host(stores);
     try {
-      const again = await fire(after, { nominalFireTime: JUNE });
+      const again = await fire(after, { nominalFireTime: LATEST });
       expect(again.status).toBe(200);
       expect(again.body.status).toBe("duplicate");
     } finally {
@@ -107,27 +110,32 @@ describe("one firing per scheduled time", () => {
     }
   });
 
-  it("refuses a time earlier than one already fired, and fires a later one", async () => {
+  it("refuses a time earlier than one already fired", async () => {
     await withHosts(1, async ([a]) => {
-      expect((await fire(a!, { nominalFireTime: JULY })).status).toBe(202);
-      const late = await fire(a!, { nominalFireTime: JUNE });
+      expect((await fire(a!, { nominalFireTime: LATEST })).status).toBe(202);
+      const late = await fire(a!, { nominalFireTime: PREVIOUS });
       expect(late.status).toBe(200);
       expect(late.body.status).toBe("duplicate");
-      expect((await fire(a!, { nominalFireTime: "2026-08-01T00:00:00.000Z" })).status).toBe(202);
+    });
+  });
+
+  it("fires a late retry of the previous time, then the latest", async () => {
+    await withHosts(1, async ([a]) => {
+      expect((await fire(a!, { nominalFireTime: PREVIOUS })).status).toBe(202);
+      expect((await fire(a!, { nominalFireTime: LATEST })).status).toBe(202);
     });
   });
 
   it("lands a time carried a second early on that scheduled time", async () => {
     await withHosts(1, async ([a]) => {
-      const early = await fire(a!, { nominalFireTime: "2026-05-31T23:59:59.000Z" });
-      expect(early.status).toBe(202);
-      expect((await fire(a!, { nominalFireTime: JUNE })).body.status).toBe("duplicate");
+      expect((await fire(a!, { nominalFireTime: second(LATEST, -1) })).status).toBe(202);
+      expect((await fire(a!, { nominalFireTime: LATEST })).body.status).toBe("duplicate");
     });
   });
 
   it("refuses a carried time that is no scheduled time, with 400", async () => {
     await withHosts(1, async ([a]) => {
-      const off = await fire(a!, { nominalFireTime: "2026-06-03T12:00:00.000Z" });
+      const off = await fire(a!, { nominalFireTime: second(LATEST, 3_600) });
       expect(off.status).toBe(400);
       expect(off.body.error).toBe("not_a_scheduled_time");
     });
@@ -152,37 +160,40 @@ describe("one firing per scheduled time", () => {
       const untimed = await fire(a!);
       expect(untimed.status).toBe(202);
       // A timed fire for that same latest due time is the same firing.
-      const latestDue = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
-      const timed = await fire(b!, { nominalFireTime: latestDue });
+      const timed = await fire(b!, { nominalFireTime: LATEST });
       expect(timed.body.status).toBe("duplicate");
       // And a second untimed fire, on another host, is a duplicate too.
       expect((await fire(b!)).body.status).toBe("duplicate");
     });
   });
 
-  it("starts fresh when the schedule's cron changes", async () => {
-    const stores = createInMemoryStores();
-    const monthly = host(stores);
-    expect((await fire(monthly, { nominalFireTime: JULY })).status).toBe(202);
-    await disposeFlowApiRouter(monthly);
-    // Now daily: June 15th is a scheduled time of the new cron, earlier than
-    // July, and the record written under the old cron doesn't refuse it.
-    const daily = host(stores, "0 0 * * *");
+  it("answers a fixed time more than one period old as a stale duplicate, says so, and runs nothing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
-      expect((await fire(daily, { nominalFireTime: "2026-06-15T00:00:00.000Z" })).status).toBe(202);
+      await withHosts(1, async ([a], stores) => {
+        // A scheduler body written once, months ago, and sent unchanged on every run.
+        const stale = monthBefore(PREVIOUS);
+        const answered = await fire(a!, { nominalFireTime: stale });
+        expect(answered.status).toBe(200);
+        expect(answered.body).toMatchObject({ status: "duplicate", reason: "stale" });
+        expect(warn.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(/more than one period behind/);
+        expect(await stores.request.list({})).toEqual([]);
+        // It claimed nothing: the latest time still fires.
+        expect((await fire(a!, { nominalFireTime: LATEST })).status).toBe(202);
+      });
     } finally {
-      await disposeFlowApiRouter(daily);
+      warn.mockRestore();
     }
   });
 
   it("refuses a body idempotencyKey with 400 naming the change", async () => {
     await withHosts(1, async ([a]) => {
-      const keyed = await fire(a!, { nominalFireTime: JUNE, idempotencyKey: "june" });
+      const keyed = await fire(a!, { nominalFireTime: LATEST, idempotencyKey: "latest" });
       expect(keyed.status).toBe(400);
       expect(keyed.body.error).toBe("idempotency_key_removed");
       expect(String(keyed.body.message)).toContain("scheduled time");
       // Nothing was claimed by the refused fire.
-      expect((await fire(a!, { nominalFireTime: JUNE })).status).toBe(202);
+      expect((await fire(a!, { nominalFireTime: LATEST })).status).toBe(202);
     });
   });
 
@@ -191,3 +202,9 @@ describe("one firing per scheduled time", () => {
     expect(() => createScheduledTransportAdapter({ idempotencyOptions: {} } as never)).toThrow(/idempotencyOptions/);
   });
 });
+
+/** The first of the month before `iso`'s month, at midnight UTC. */
+function monthBefore(iso: string): string {
+  const d = new Date(iso);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)).toISOString();
+}

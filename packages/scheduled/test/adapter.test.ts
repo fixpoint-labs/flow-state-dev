@@ -15,6 +15,10 @@ import {
   createScheduledTransportAdapter,
   SCHEDULED_TRANSPORT_SOURCE
 } from "../src";
+import { recentTimes } from "./recent-times";
+
+/** The latest time of the flows' monthly cron ("0 0 1 * *") already due. */
+const MONTH_START = recentTimes("0 0 1 * *").latest;
 
 const noopBlock = handler({
   name: "noop",
@@ -166,7 +170,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     );
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("billing", "monthly-invoices", {
-      nominalFireTime: "2026-06-01T00:00:00Z"
+      nominalFireTime: MONTH_START
     });
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
@@ -181,7 +185,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(schedMeta(envelope).origin).toBe("static");
     // The scheduled time the fire counts against, as the endpoint writes it.
     expect(schedMeta(envelope).nominalFireTime).toBe(
-      "2026-06-01T00:00:00.000Z"
+      MONTH_START
     );
   });
 
@@ -317,7 +321,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const first = await route.handler(
       ...Object.values(
         postRequest("billing", "monthly-invoices", {
-          nominalFireTime: "2026-06-01T00:00:00Z"
+          nominalFireTime: MONTH_START
         })
       ).slice(0, 2) as [Request, { params: Record<string, string> }]
     );
@@ -326,7 +330,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const second = await route.handler(
       ...Object.values(
         postRequest("billing", "monthly-invoices", {
-          nominalFireTime: "2026-06-01T00:00:00Z"
+          nominalFireTime: MONTH_START
         })
       ).slice(0, 2) as [Request, { params: Record<string, string> }]
     );
@@ -634,7 +638,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     const route = createScheduledTransportAdapter()
       .createBindings(host)
       .routes!.find((r) => r.method === "POST")!;
-    const body = { nominalFireTime: "2026-06-01T00:00:00Z" };
+    const body = { nominalFireTime: MONTH_START };
 
     const first = await route.handler(
       ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
@@ -664,7 +668,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     const route = createScheduledTransportAdapter()
       .createBindings(host)
       .routes!.find((r) => r.method === "POST")!;
-    const body = { nominalFireTime: "2026-06-01T00:00:00Z" };
+    const body = { nominalFireTime: MONTH_START };
 
     const first = await route.handler(
       ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [

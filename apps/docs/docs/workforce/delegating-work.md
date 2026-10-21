@@ -197,9 +197,14 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 
 Work that comes round on a schedule, like refreshing the adoption numbers every Monday, is a schedule in the user's schedule collection. Each time it is due, it files an ordinary task on the board of the worker it names, in the user's own conversation with that worker, as the user. The task runs, retries, reports and cancels like any task filed there, and the worker hears it end. No model turn decides what to file: the schedule says what lands.
 
-Save one through the roster flow's `saveSchedule` action:
+Save one through the roster flow's `saveSchedule` action, on the user's roster session (`workforce-roster`), with an action client for that flow:
 
 ```ts
+import { createClient } from "@flow-state-dev/client";
+
+const actions = createClient({ flowKind: "workforce-roster", userId, baseUrl });
+// rosterSessionId: a session of workforce-roster that the user owns, the one
+// your app already reads their roster through.
 await actions.sendAction(
   "saveSchedule",
   {
@@ -216,13 +221,13 @@ await actions.sendAction(
 );
 ```
 
-`input` takes the task's `goal`, and optionally `assignee`, `title`, `priority`, `input` and `metadata`. With no `assignee`, the task goes to the filer's delegate when it has exactly one. Saving an existing `key` replaces it, and `enabled: false` keeps the schedule without firing it. A cron that doesn't parse is refused, and nothing is saved:
+`input` takes the task's `goal`, and optionally `assignee`, `title`, `priority`, `input` and `metadata`. With no `assignee`, the task goes to the filer's delegate when it has exactly one. Saving an existing `key` replaces it, and `enabled: false` keeps the schedule without firing it. The cron must be exactly five fields (minute hour day-of-month month day-of-week), and the time zone a known IANA zone. Anything else is refused, and nothing is saved:
 
 ```json
 { "ok": false, "error": "invalid_schedule: cron \"every monday\" in UTC doesn't parse. …" }
 ```
 
-`deleteSchedule({ key })` removes one. `listSchedules({})` returns the user's schedules, each with `nextRunAt`, when it is next due, worked out from its cron and time zone as the list is read:
+`deleteSchedule({ key })` removes one, with the record of the times it fired, so a schedule saved again under the same key starts fresh. `listSchedules({})` returns the user's schedules, each with `nextRunAt`, when it is next due, worked out from its cron and time zone as the list is read:
 
 ```json
 {
@@ -240,7 +245,7 @@ await actions.sendAction(
 }
 ```
 
-`nextRunAt` says when the schedule is due, not that your host will fire it: on a host whose cron isn't running it still shows a time. It is `null` for a schedule that is off.
+`nextRunAt` says when the schedule is due, not that your host will fire it: on a host whose cron isn't running it still shows a time. It is `null` for a schedule that is off, and for a row whose cron doesn't parse.
 
 ### Firing them
 

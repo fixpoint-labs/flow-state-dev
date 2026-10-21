@@ -18,16 +18,27 @@
 import { CronExpressionParser } from "cron-parser";
 import { resolveUserStorageKey, type ResourceStateStore } from "@flow-state-dev/engine";
 import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
+import { firedRecordKey } from "./firedRecords";
 
 /**
- * How far a carried time may sit from a scheduled time and still count as it:
- * a host clock a second or two off lands on the time it meant.
+ * How far a sender's clock may sit from ours and still land on the time it
+ * meant: for a carried time, how far it may be from a scheduled time; for an
+ * untimed fire, how early it may arrive for the time it is for.
  */
 const SCHEDULED_TIME_TOLERANCE_MS = 5_000;
 
 /** The scheduled time a fire counts against, or why it counts against none. */
 export type ScheduledTimeResult =
-  | { ok: true; at: number }
+  | {
+      ok: true;
+      at: number;
+      /**
+       * The time is more than one period behind the latest scheduled time
+       * already due: a fixed time in a scheduler's body, or a host that
+       * stalled. It is answered as a duplicate and runs nothing.
+       */
+      stale: boolean;
+    }
   | { ok: false; error: "invalid_nominal_fire_time" | "not_a_scheduled_time" | "not_yet_due"; message: string };
 
 /** The latest scheduled time at or before `at`, or `null` when the cron has none. */
@@ -63,18 +74,21 @@ function firstAfter(cron: string, timezone: string, at: number): number | null {
  *   scheduled time is refused, and so is one not yet due, so an early POST
  *   can't claim a time and swallow its real fire.
  * - **No carried time** counts against the latest scheduled time already due,
- *   never the next one.
+ *   never the next one; a fire up to the tolerance early counts against the
+ *   time it is for, so a sender's clock a second ahead loses no run.
+ *
+ * A carried time more than one period behind the latest due time is `stale`.
  *
  * @param carried The dispatch body's `nominalFireTime`, as sent.
  * @param now The endpoint's clock, in ms since epoch.
  */
 export function scheduledTimeOf(cron: string, timezone: string, carried: string | undefined, now: number): ScheduledTimeResult {
   if (carried === undefined) {
-    const at = latestAtOrBefore(cron, timezone, now);
+    const at = latestAtOrBefore(cron, timezone, now + SCHEDULED_TIME_TOLERANCE_MS);
     if (at === null) {
       return { ok: false, error: "not_a_scheduled_time", message: `schedule "${cron}" has no scheduled time already due` };
     }
-    return { ok: true, at };
+    return { ok: true, at, stale: false };
   }
   const sent = Date.parse(carried);
   if (Number.isNaN(sent)) {
@@ -102,20 +116,29 @@ export function scheduledTimeOf(cron: string, timezone: string, carried: string 
       message: `nominalFireTime ${carried} is a scheduled time that hasn't arrived yet; it fires when it is due`
     };
   }
-  return { ok: true, at };
+  return { ok: true, at, stale: isStale(cron, timezone, at, now) };
 }
 
-/** The one record a schedule keeps: the latest time it fired, and the cron it fired under. */
+/** Whether `at` is more than one period behind the latest scheduled time already due at `now`. */
+function isStale(cron: string, timezone: string, at: number, now: number): boolean {
+  const latest = latestAtOrBefore(cron, timezone, now + SCHEDULED_TIME_TOLERANCE_MS);
+  if (latest === null || at >= latest) return false;
+  const before = latestAtOrBefore(cron, timezone, latest - 1);
+  return before !== null && at < before;
+}
+
+/**
+ * The one record a schedule keeps: the latest time it fired. A record written
+ * before it was a floor also carries the cron and zone it fired under; those
+ * are read past, never compared (BP-030).
+ */
 interface FiredRecord {
   lastFiredAt: number;
-  cron: string;
-  timezone: string;
 }
 
 function readRecord(state: unknown): FiredRecord | undefined {
   const value = state as Partial<FiredRecord> | undefined;
-  if (typeof value?.lastFiredAt !== "number" || typeof value.cron !== "string" || typeof value.timezone !== "string") return undefined;
-  return value as FiredRecord;
+  return typeof value?.lastFiredAt === "number" ? { lastFiredAt: value.lastFiredAt } : undefined;
 }
 
 /** Where a schedule's record is kept. */
@@ -132,7 +155,7 @@ export interface FiredRecordAddress {
 export function firedRecordAddress(flowKind: string, scheduleId: string, principal: ResolvedPrincipal): FiredRecordAddress {
   return {
     scopeId: resolveUserStorageKey(principal.userId, principal.orgId, { id: flowKind, isolateUserState: false }),
-    key: `scheduled-fires/${flowKind}/${scheduleId}`
+    key: firedRecordKey(flowKind, scheduleId)
   };
 }
 
@@ -150,22 +173,23 @@ const CLAIM_ATTEMPTS = 8;
 
 /**
  * Claim scheduled time `at` for a schedule: it fires only if the schedule's
- * record holds an earlier time, or none, or one written under another cron or
- * time zone. Compare-and-set, so of two hosts claiming one time, one wins.
+ * record holds an earlier time, or none. The record is a floor whatever the
+ * cron: after an edit, a job stalled under the old cron can't fire a time at
+ * or before the last one. Compare-and-set, so of two hosts claiming one time,
+ * one wins.
  *
  * @throws when the store keeps losing the race (a store that never settles).
  */
 export async function claimScheduledTime(
   store: ResourceStateStore,
   address: FiredRecordAddress,
-  claim: { at: number; cron: string; timezone: string }
+  claim: { at: number }
 ): Promise<ClaimOutcome> {
   for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
     const current = await store.get("user", address.scopeId, address.key);
     const record = readRecord(current?.state);
-    const sameSchedule = record !== undefined && record.cron === claim.cron && record.timezone === claim.timezone;
-    if (sameSchedule && record.lastFiredAt >= claim.at) return { outcome: "duplicate", lastFiredAt: record.lastFiredAt };
-    const next: FiredRecord = { lastFiredAt: claim.at, cron: claim.cron, timezone: claim.timezone };
+    if (record !== undefined && record.lastFiredAt >= claim.at) return { outcome: "duplicate", lastFiredAt: record.lastFiredAt };
+    const next: FiredRecord = { lastFiredAt: claim.at };
     const written = await store.set("user", address.scopeId, address.key, { ...next }, current?.version ?? 0);
     if (!written.ok) continue;
     const claimedVersion = written.version;

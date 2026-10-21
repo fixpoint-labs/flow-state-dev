@@ -26,18 +26,25 @@
  * dropped. The write isn't checked against the roster: a roster changes after
  * a row is written.
  */
-import { handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, type ActionConfig, type BlockContext, type SchedulesConfig } from "@flow-state-dev/core/types";
+import { defineResourceCollection, handler } from "@flow-state-dev/core";
+import { dispatchThroughSeam, isFiveFieldCron, type ActionConfig, type BlockContext, type SchedulesConfig } from "@flow-state-dev/core/types";
 import {
+  FIRED_RECORDS_PATTERN,
   createResourceCollectionScheduleResolver,
   defineScheduleCollection,
+  firedRecordCollectionKey,
+  formatScheduleId,
   parseNextFireAt,
   type ScheduleIndex
 } from "@flow-state-dev/scheduled/collection";
 import { z } from "zod";
 import { deriveWorkerSessionId, criteriaState } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
+import { ROSTER_FLOW } from "../workers/keys";
 import { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
+
+/** The accessor the roster flow declares the dispatch endpoint's fired records under. */
+const FIRED_RECORDS_RESOURCE = "workforceScheduledFires";
 
 /** What `hireWorkforce` takes for recurring work. */
 export interface ScheduledWorkOptions {
@@ -193,7 +200,14 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     pattern: SCHEDULES_PATTERN,
     ...(options.index === undefined ? {} : { index: options.index })
   });
-  const resources = { ...installation.resources, [SCHEDULES_RESOURCE]: collection };
+  // The dispatch endpoint's record of each schedule's last fired time, in the
+  // same cell: read by no one here, deleted with its schedule.
+  const firedRecords = defineResourceCollection({
+    pattern: FIRED_RECORDS_PATTERN,
+    scope: "user",
+    stateSchema: z.object({ lastFiredAt: z.number() }).passthrough()
+  });
+  const resources = { ...installation.resources, [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords };
   const collectionOf = (ctx: { resources: unknown }) => (ctx.resources as Record<string, ScheduleCollectionRef>)[SCHEDULES_RESOURCE]!;
   const prefix = SCHEDULES_PATTERN.slice(0, SCHEDULES_PATTERN.indexOf("*"));
   const keyOf = (path: string) => (path.startsWith(prefix) ? path.slice(prefix.length) : path);
@@ -226,12 +240,12 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     outputSchema: saveScheduleOutputSchema,
     resources,
     execute: async (input, ctx) => {
-      if (parseNextFireAt(input.cron, input.timezone ?? "UTC") === null) {
+      if (!isFiveFieldCron(input.cron) || parseNextFireAt(input.cron, input.timezone ?? "UTC") === null) {
         return {
           ok: false as const,
           error:
-            `invalid_schedule: cron ${JSON.stringify(input.cron)} in ${input.timezone ?? "UTC"} doesn't parse. ` +
-            "Use five fields (minute hour day-of-month month day-of-week) and an IANA time zone. Nothing was saved."
+            `invalid_schedule: cron ${JSON.stringify(input.cron)} in ${input.timezone ?? "UTC"} doesn't parse as five fields. ` +
+            "Use exactly five fields (minute hour day-of-month month day-of-week) and an IANA time zone. Nothing was saved."
         };
       }
       const row: ScheduleRow = {
@@ -254,6 +268,14 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     resources,
     execute: async (input, ctx) => {
       await collectionOf(ctx).delete(input.key);
+      // The fired record goes with the schedule, so the key saved again is a
+      // new schedule. Its dispatch id is the one the endpoint keyed it by: the
+      // org and user this run is admitted as, never the input.
+      const identity = ctx.session.identity as { userId?: string; orgId?: string };
+      if (identity.userId !== undefined && identity.orgId !== undefined) {
+        const records = (ctx.resources as Record<string, { delete(key: string): Promise<void> }>)[FIRED_RECORDS_RESOURCE]!;
+        await records.delete(firedRecordCollectionKey(ROSTER_FLOW, formatScheduleId(identity.orgId, identity.userId, input.key)));
+      }
       return { ok: true as const };
     }
   });
@@ -277,8 +299,8 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
   };
 
   return {
-    /** The schedule collection, for the roster flow's `resources`. */
-    resources: { [SCHEDULES_RESOURCE]: collection },
+    /** The schedule collection and the fired records, for the roster flow's `resources`. */
+    resources: { [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords },
     /** The roster flow's `schedules`: a dispatch id resolves to its row. */
     schedules,
     /** `listSchedules`, `saveSchedule` and `deleteSchedule`, for the roster flow's `actions`. */
