@@ -38,13 +38,13 @@ pnpm --filter @flow-state-dev/shift-manager dev --config ../my-lab/fsdev.config.
 
 ## The `fsd` profile
 
-The profile is at `packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`. The Lab has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. Inbox is empty until a worker asks you something.
+The profile is at `packages/shift-manager/teams/devteam/fsd.fsdev.config.mts`. The Lab has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. Inbox is empty until a worker asks you something. The projects and the MCP servers they use are defined in `packages/shift-manager/teams/devteam/fsd-projects.mts`.
 
 The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/fsd.sqlite`, or wherever `FSD_STORE` points. Delete the file to start fresh.
 
 ### Asking for work
 
-Ask the Shift Coordinator for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own.
+Ask the Shift Coordinator for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own, and works to this repository's `AGENTS.md` and `CLAUDE.md`.
 
 Before cutting that branch, the Lab fetches the upstream your `main` tracks, usually `origin/main`, and starts from whichever is newer, that upstream or your local `main`. So you don't need to pull first, and commits you haven't pushed are kept. Your own `main`, its files and your index aren't touched.
 
@@ -74,9 +74,9 @@ For runs with nobody at the keyboard, such as the repository's checks or CI, `LI
 
 ## The `devteam` profile
 
-`devteam` is a software team, at `packages/shift-manager/teams/devteam/fsdev.config.mts`.
+`devteam` is a software team, at `packages/shift-manager/teams/devteam/fsdev.config.mts`. Its workers' files sit beside the config; the [`teams/devteam` README](https://github.com/fixpoint-labs/flow-state-dev/tree/main/packages/shift-manager/teams/devteam) lays out the tree and the checks that run against it.
 
-An EM worker leads workstreams and files the coder's tasks on each one's board, and a coder worker runs each task as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Three projects exist from the start: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, with none.
+An EM worker leads workstreams and files the coder's tasks on each one's board, and a coder worker runs each task as a supervised coding run. On start the EM asks you to approve one feature, so Inbox has something in it. Three projects exist from the start: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, with none. Each user talks to a project through its [project coordinator](../workforce/projects.md#talking-to-a-project), which opens a workstream when you ask it for new work.
 
 Its [Shift Coordinator](../workforce/shift-coordinator.md) is a coordinator with the EM and the coder as delegates. Ask it for feature work with a line like `cart-badge: show a badge on the cart`, in the form `<issue-slug>: <what the feature is>`, and it hands your message to the EM. The EM files the feature as a row on the board, or answers that it filed nothing because your message names no feature.
 
@@ -88,4 +88,4 @@ The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/devteam.sqlit
 
 The Shift Coordinator has [memory](../workforce/shift-coordinator.md#giving-it-memory): working memory within a conversation, a rolling digest across conversations, and the `memory/recall` tool to search it. By default it records nothing, so that memory stays empty; ask it to remember something for later and it says it can't keep it.
 
-Start Shift Manager with `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into its memory after each answer, at the cost of extra model calls every turn. Its memory is kept per user, apart from your other flows.
+Start Shift Manager with `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into its memory after each answer, at the cost of extra model calls every turn. When the Shift Coordinator hands a request straight to a delegate, it takes no turn of its own, so nothing is recorded for that request. The request can appear as earlier context in a later turn that is recorded. Its memory is kept per user, apart from your other flows.

@@ -45,7 +45,7 @@ If the Lab fails to start after a save, the error prints and Shift Manager waits
 
 ### From a clone of this repository
 
-In a checkout of flow-state-dev, `pnpm shift-manager:dev` opens a Lab for working on the framework and on Shift Manager itself. See [Working on Shift Manager](./from-a-checkout.md) for that profile, and for `devteam`, the Lab the repository's checks run against.
+In a checkout of flow-state-dev, `pnpm shift-manager:dev` opens a Lab for working on the framework and on Shift Manager itself. See [From a checkout](./from-a-checkout.md) for that profile, and for `devteam`, the Lab the repository's checks run against.
 
 ## What you see
 
