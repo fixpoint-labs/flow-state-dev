@@ -19,7 +19,14 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
-| `blockTask`, `TaskCollection.block`, `unblock` | `updateTask({ status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
+| `blockTask` | `updateTask({ taskId, patch: { status: "held" } })` and `"pending"` before it starts (flattened by FIX-2081); `waitForUser` after | FIX-2080 |
+| `TaskCollection.block`, `unblock` | `TaskCollection.hold`, `release` | FIX-2080 |
+| The `"blocked"` task status, and `"blocked"` in `listTasks`' status filter | `"held"` | FIX-2080 |
+| `Task.undispatched`, `TaskInit.undispatched` | `held` | FIX-2080 |
+| Change kinds `blocked`, `unblocked` | `held`, `released` | FIX-2080 |
+| Change kind `dispatched` | `released`: every release of a held row emits it | FIX-2080 |
+| The board's `counts.blocked` | `counts.held` | FIX-2080 |
+| `createCascadeSkipDependents` | Nothing: every board cancels a failed or cancelled row's dependents | FIX-2080 |
 | `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
 | `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostHistory`, `delegatedPostOnFinished`, `delegatedPostSchema`, `DelegatedPost` | A routed task through `WORKER_TASK_ENTRY`: declare `work` with `workerTaskEntry`; the turn still gets `{ message }` | FIX-2083 |
 | `taskLedgers({ taskTurn })` | Nothing: a routed turn is a task turn | FIX-2083 |
@@ -29,12 +36,15 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | A split task's `{ answer, pieces }` output | The latest `reportProgress` checkpoint, else the worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks({ filedByTask })` | FIX-2077 |
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |
+| `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
 
 Behaviour that changes without a removed name, carried by the owner's changeset the same way.
-Behaviour lines live here, not in the table above: whichever of FIX-2080 and FIX-2081 merges
-second moves FIX-2080's behaviour rows into this table.
+Behaviour lines live here, not in the table above.
 
 | Changed | Now | Owner |
 |---|---|---|
 | `updateTask` on a started or finished task | Refused, naming the field and the state; a started task takes only a cancel, and a message steer once FIX-2086 lands | FIX-2081 |
 | Reassigning a running task | Refused: cancel it and file it again | FIX-2081 |
+| A follow-up into a busy session being refused | It waits, then starts in that session when the open task ends | FIX-2080 |
+| A dependency on another board, waiting for good | Refused at filing: cross boards with a wait or a held task | FIX-2080 |
+| Plan-and-execute and supervisor cascading only a failed step | A cancelled step's dependents are cancelled too, with the same `skipped` label | FIX-2080 |

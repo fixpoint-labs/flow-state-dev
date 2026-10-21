@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 416" role="img" aria-label="Six rows, today against after. Start: today now, deps, or blocked or recorded, and blocked has no way out; after, now, deps on this board, or held, released to start, with a foreign dependency refused. Session: today new, or a follow-up only once its task ends, and a busy session refuses it; after, new, ongoing, or a follow-up, and a busy session holds the next one pending. Result: today the filer, or the conversation for a post, a row kind of its own; after, a setting, the filer or the conversation, the latter from a conversation only. Attempts: today fixed at 2, 1 for a post; after, maxAttempts at filing, default 2. Endings: today only a split's cancel and a pattern's opt-in step cascade; after, two cascades on every board, owed until paid. At upgrade: today nothing reads retired shapes; after, one map at the read boundary with six entries, each turned on by its owner."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+
+  <g id="heads">
+    <text class="t-tag c-mute" x="172" y="40">TODAY</text>
+    <text class="t-tag c-code" x="556" y="40">AFTER</text>
+  </g>
+
+  <g id="start">
+    <text class="t-lbl" x="24" y="82">START</text>
+    <rect class="lost" x="160" y="56" width="368" height="46" rx="5"/>
+    <text class="t-b" x="174" y="75">Now, deps, or blocked or recorded</text>
+    <text class="t-s" x="174" y="92">blocked has no way out</text>
+    <rect class="chosen" x="544" y="56" width="380" height="46" rx="5"/>
+    <text class="t-b" x="558" y="75">Now, deps on this board, or held</text>
+    <text class="t-s" x="558" y="92">release starts it; a foreign dep is refused</text>
+  </g>
+
+  <g id="session">
+    <text class="t-lbl" x="24" y="138">SESSION</text>
+    <rect class="lost" x="160" y="112" width="368" height="46" rx="5"/>
+    <text class="t-b" x="174" y="131">New, or a follow-up once it ends</text>
+    <text class="t-s" x="174" y="148">a busy session refuses the follow-up</text>
+    <rect class="chosen" x="544" y="112" width="380" height="46" rx="5"/>
+    <text class="t-b" x="558" y="131">New, ongoing, or a follow-up</text>
+    <text class="t-s" x="558" y="148">a busy session holds the next one pending</text>
+  </g>
+
+  <g id="result">
+    <text class="t-lbl" x="24" y="194">RESULT</text>
+    <rect class="lost" x="160" y="168" width="368" height="46" rx="5"/>
+    <text class="t-b" x="174" y="187">The filer; a post, the conversation</text>
+    <text class="t-s" x="174" y="204">a row kind of its own</text>
+    <rect class="chosen" x="544" y="168" width="380" height="46" rx="5"/>
+    <text class="t-b" x="558" y="187">The filer, or the conversation</text>
+    <text class="t-s" x="558" y="204">a setting, from a conversation only</text>
+  </g>
+
+  <g id="attempts">
+    <text class="t-lbl" x="24" y="250">ATTEMPTS</text>
+    <rect class="lost" x="160" y="224" width="368" height="46" rx="5"/>
+    <text class="t-b" x="174" y="243">Fixed: 2 for a task, 1 for a post</text>
+    <text class="t-s" x="174" y="260">no choice at filing</text>
+    <rect class="chosen" x="544" y="224" width="380" height="46" rx="5"/>
+    <text class="t-b" x="558" y="243">maxAttempts at filing</text>
+    <text class="t-s" x="558" y="260">default 2; editable until it starts</text>
+  </g>
+
+  <g id="endings">
+    <text class="t-lbl" x="24" y="306">ENDINGS</text>
+    <rect class="lost" x="160" y="280" width="368" height="46" rx="5"/>
+    <text class="t-b" x="174" y="299">A split's cancel; a pattern's step</text>
+    <text class="t-s" x="174" y="316">the rest wait or run for good</text>
+    <rect class="chosen" x="544" y="280" width="380" height="46" rx="5"/>
+    <text class="t-b" x="558" y="299">Two cascades, on every board</text>
+    <text class="t-s" x="558" y="316">filed tasks and dependents, owed until paid</text>
+  </g>
+
+  <g id="at-upgrade">
+    <text class="t-lbl" x="24" y="362">AT UPGRADE</text>
+    <rect class="lost" x="160" y="336" width="368" height="46" rx="5"/>
+    <text class="t-b" x="174" y="355">Old rows read as written</text>
+    <text class="t-s" x="174" y="372">nothing to read the retired shapes</text>
+    <rect class="chosen" x="544" y="336" width="380" height="46" rx="5"/>
+    <text class="t-b" x="558" y="355">One map at the read boundary</text>
+    <text class="t-s" x="558" y="372">six entries, each turned on by its owner</text>
+  </g>
+
+</svg>
