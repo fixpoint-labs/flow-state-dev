@@ -87,7 +87,7 @@ describe("filing settings on a conversation's board (FIX-2080)", () => {
       // The first row is fine on its own; the second is not a task session's to ask for.
       h.controls.plans.s1 = [
         { goal: "Pick the dates", assignee: "eng.tasker" },
-        { goal: "Book the rooms", assignee: "eng.tasker", session: "ongoing" }
+        { goal: "Book the flights", assignee: "eng.tasker", session: "ongoing" }
       ];
       h.controls.batch.add("s1");
       const planner = await h.open("alice", "planner");
@@ -98,7 +98,7 @@ describe("filing settings on a conversation's board (FIX-2080)", () => {
       expect(refused).toHaveLength(1);
       expect(refused[0]!.message).toMatch(/^setting_not_from_task_session: .*session "ongoing"/);
       expect(await h.rowsNamed("alice", "Pick the dates")).toHaveLength(0);
-      expect(await h.rowsNamed("alice", "Book the rooms")).toHaveLength(0);
+      expect(await h.rowsNamed("alice", "Book the flights")).toHaveLength(0);
     } finally {
       await h.dispose();
     }
