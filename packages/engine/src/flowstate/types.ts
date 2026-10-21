@@ -282,6 +282,13 @@ export interface CreateFlowStateOptions<
    * checkpoints on a cadence.
    */
   durabilityRetention?: RuntimeConfig["durabilityRetention"];
+
+  /**
+   * How long past its due time a debt may stay outstanding before a pass
+   * ends it, settled undeliverable and logged (FIX-2078). Only takes effect
+   * with durable execution and a store that keeps wakes. Default 24 hours.
+   */
+  maxDebtAgeMs?: RuntimeConfig["maxDebtAgeMs"];
   
   /**
    * Low-level escape hatch: a pre-built FlowDispatcher controlling where

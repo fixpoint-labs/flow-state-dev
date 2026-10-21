@@ -33,8 +33,11 @@ export type {
   RequestHost,
   ResumeWaitInput,
   ResumeWaitResult,
+  RequestWakes,
   SettleParentTaskInput,
-  SettleParentTaskResult
+  SettleParentTaskResult,
+  WakeSettleResult,
+  WakeView
 } from "./request-host";
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";

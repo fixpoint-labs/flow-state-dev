@@ -34,6 +34,7 @@ import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
+import { fireWakeThrough } from "../durability/request-wakes";
 import type { MatchFunction } from "path-to-regexp";
 import {
   compileTransportPattern,
@@ -502,7 +503,10 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           logger: runtimeConfig.logger,
           // Lets the sweep resume an overdue wait with `wait_timed_out`
           // through this router's host (FIX-1816).
-          continueRequest: (opts) => handlers.host.continueRequest(opts)
+          continueRequest: (opts) => handlers.host.continueRequest(opts),
+          // A due wake's entry runs through this router's host, as a dispatched
+          // internal request in its session, as its owner (FIX-2078 D1).
+          fireWake: (wake) => fireWakeThrough(handlers.host, wake)
         })
       : { dispose: () => {}, timesOutWaits: () => false };
   // Requests this router serves are offered a wait only while its own sweeper

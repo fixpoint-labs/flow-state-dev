@@ -54,6 +54,7 @@ import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher"
 import { createWaitResumeOperation, type WaitResumeOperation } from "../context/wait-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
+import { installWakes } from "../durability/request-wakes";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -998,6 +999,7 @@ class InternalFlowState<TSettings extends object>
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
+      maxDebtAgeMs: this.#options.maxDebtAgeMs,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
@@ -1086,6 +1088,16 @@ class InternalFlowState<TSettings extends object>
   #installWaitResume(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
     const provider = runtimeConfig.durabilityProvider;
+    // Debts' due times (FIX-2078 D1), checked once here: offered only with
+    // durable execution and a store that keeps wakes, logged once otherwise.
+    if (requestHost !== undefined) {
+      installWakes(requestHost, {
+        stores,
+        durable: provider !== undefined,
+        ...(runtimeConfig.maxDebtAgeMs !== undefined ? { maxDebtAgeMs: runtimeConfig.maxDebtAgeMs } : {}),
+        logger: runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER
+      });
+    }
     if (requestHost === undefined || provider === undefined) return;
     // How a block's `ctx.session.stopRequest` stops a parked request: the same
     // host, the same terms.
