@@ -775,6 +775,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of inits) added.push(await addTask(init));
         return added;
       },
+      // Merged reads rely on task ids being unique across the two ledgers: both mint `task_<random>` ids.
       get: (id) => board.get(id) ?? plan.get(id),
       list: (filter) => [...board.list(filter), ...plan.list(filter)],
       count: (filter) => board.count(filter) + plan.count(filter),
