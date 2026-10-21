@@ -147,7 +147,7 @@ export async function payCascadeAfterWrite(writes: CascadeWrites, row: Task | un
  *
  * @returns How many rows were cancelled.
  */
-export async function cancelDeadDependents(writes: CascadeWrites, now: number): Promise<number> {
+async function cancelDeadDependents(writes: CascadeWrites, now: number): Promise<number> {
   let cancelled = 0;
   for (let pass = true; pass; ) {
     pass = false;
