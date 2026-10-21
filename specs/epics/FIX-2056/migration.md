@@ -38,6 +38,9 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `taskLedgers({ taskTurn })` | Nothing: a routed turn is a task turn | FIX-2083 |
 | `defineCoordinatorFlow`'s `delegateFlows`; `defineSessionBoard`'s `postFlows` and `posts`; `posts` and `both` in `listDelegates`' takes | Nothing: a delegate is a worker whose flow takes tasks, checked by its roles at hire | FIX-2083 |
 | `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall`, the `already-dispatched` decline | `createTask`, and `updateTask({ id, status: "pending" })` to release a held row | The later of FIX-2082 and FIX-2083, with `dispatchTask` |
+| `createScheduledTransportAdapter`'s `idempotencyWindowMs` | Nothing: the dispatch endpoint fires each scheduled time at most once, recorded in the host's store | FIX-2085 |
+| `createScheduledTransportAdapter`'s `idempotencyOptions` (the cache's test seam) | Nothing: it goes with the cache | FIX-2085 |
+| The dispatch request body's `idempotencyKey` | Nothing: the scheduled time is the key. A body that sends one is refused with `400` | FIX-2085 |
 | `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
 | A split task's `{ answer, pieces }` output | The latest `reportProgress` checkpoint, else the worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks({ filedByTask })` | FIX-2077 |
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
@@ -58,3 +61,4 @@ Behaviour lines live here, not in the table above.
 | Plan-and-execute and supervisor cascading only a failed step | A cancelled step's dependents are cancelled too, with the same `skipped` label | FIX-2080 |
 | `updateTask({ message })` on an open task | Steers it: uses no attempt and never cancels | FIX-2086 |
 | A line typed in a finished task's session | Talk: the task doesn't change | FIX-2086 |
+| A scheduled fire for a time already fired, or earlier than one that has | Answered `200` with status `duplicate`, and nothing runs: a late retry of a missed time, or one delivered after the next time fired, never runs ([FIX-2085 D2](../../issues/FIX-2085/DECISIONS.md#d2)) | FIX-2085 |
