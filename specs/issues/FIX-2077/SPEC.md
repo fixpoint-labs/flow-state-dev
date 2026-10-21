@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **files a task whose worker leaves background work running** | Hears "done" while that work still writes | Hears "done" once, after it ends, including work the flow's own end hooks start |
-| **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no piece open or still owed to it; its output is the latest `reportProgress` checkpoint, else that answer ([D3](DECISIONS.md#d3)) |
+| **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no [filed work still holding it](DECISIONS.md#filed-work-holding); its output is the latest `reportProgress` checkpoint, else that answer ([D3](DECISIONS.md#d3)) |
 | **messages a worker whose task is running** | The message runs after the task settled | It runs for the task before it settles; its answer never becomes the output, though a checkpoint it reports does |
 | **has a task whose request waits on a webhook, a call or a task** | Its claim lapses in two minutes and the task runs again | It shows running and keeps its claim, across a restart too ([D1](DECISIONS.md#d1)) |
 | **has a task that stops to ask a person** | The same lapse: it runs again with the question open | It keeps its claim; it shows running until FIX-2058 ([decided](DECISIONS.md#person-stop)) |
@@ -16,8 +16,8 @@
 ## The goal, and how we'll know it's met
 
 **A dispatched task is settled once, by the claim gate, only when its work is over: its request
-and all that request's background work have ended, nothing it filed is open or still owes it its
-ending, and nothing is queued for it. A task that waits is never run twice.**
+and all that request's background work have ended, no [filed work is still holding
+it](DECISIONS.md#filed-work-holding), and nothing is queued for it. A task that waits is never run twice.**
 
 | Is it the right goal? | |
 |---|---|
@@ -83,7 +83,7 @@ flowchart LR
   W["a request for the task · work, onTaskSettled, a queued message, a resume"] --> E["engine drains background work · onFinished · drains what the end hooks started"]
   E --> G["claim gate · the one rule-6 check"]
   G -->|"done"| S["settle the row once"]
-  G -->|"a filed task open or owed, or a message queued"| H["record waitingOn · drop the lease · the next request re-checks"]
+  G -->|"filed work still holding it, or a message queued"| H["record waitingOn · drop the lease · the next request re-checks"]
   W -->|"suspends"| K["record waitingOn · keep the claim · no lease"]
 ```
 
