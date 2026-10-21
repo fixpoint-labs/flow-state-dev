@@ -111,7 +111,7 @@ export async function act(who: Connected, flowKind: string, sessionId: string, a
       break;
     }
   }
-  const found = (await who.routes.requests(sessionId).catch(() => [])).find((r) => r.id === requestId);
+  const found = (await who.routes.requests(sessionId).catch((): Array<Record<string, any>> => [])).find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
@@ -220,7 +220,7 @@ export async function quiet(who: Connected, timeoutMs = 300_000, everyMs = 4_000
     const sessions = await who.routes.sessions().catch(() => []);
     let running = false;
     for (const s of sessions) {
-      const requests = await who.routes.requests(s.id).catch(() => []);
+      const requests = await who.routes.requests(s.id).catch((): Array<Record<string, any>> => []);
       if (requests.some((r) => RUNNING.has(String(r.status)))) {
         running = true;
         break;
