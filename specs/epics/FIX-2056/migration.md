@@ -16,6 +16,14 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
 | `blockTask`, `TaskCollection.block`, `unblock` | `updateTask({ status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
+| The `"blocked"` task status, and `"blocked"` in `listTasks`' status filter | `"held"` | FIX-2080 |
+| `Task.undispatched`, `TaskInit.undispatched` | `held` | FIX-2080 |
+| Change kinds `blocked`, `unblocked` | `held`, `released` | FIX-2080 |
+| The board's `counts.blocked` | `counts.held` | FIX-2080 |
+| `createCascadeSkipDependents` | Nothing: every board cancels a failed or cancelled row's dependents | FIX-2080 |
+| A follow-up into a busy session being refused | Nothing: it waits, then starts in that session when the open task ends | FIX-2080 |
+| A dependency on another board, waiting for good | Refused at filing: cross boards with a wait or a held task | FIX-2080 |
+| Plan-and-execute and supervisor cascading only a failed step | A cancelled step's dependents are cancelled too, with the same `skipped` label | FIX-2080 |
 | `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |

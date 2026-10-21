@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, how the tasks a task filed are cancelled when it is cancelled, retried or fails. Chosen: a debt recorded in the ending's own write and paid within seconds. Instead of: cancelling after the ending, best effort, as the split's piece cancel does today. It comes down to the first row: a crash between the ending and the cancel leaves the cascade owed and paid on restart, where best effort leaves the filed work running for good. The price is the second row: for a few seconds the filed work still runs and spends, where best effort is usually instant. The third row: one more debt kind for the sweeper to pay, where best effort adds none. Locks in: a cascade debt FIX-2078's sweeper pays, and a server-written cause on every cascaded cancel. Flips if: a task and its filed tasks are kept in one store write."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, how the tasks a task filed are cancelled when it is cancelled, retried or fails. Chosen: a debt recorded in the ending's own write and paid within seconds. Instead of: cancelling after the ending, best effort, as the split's piece cancel does today. It comes down to the first row: a crash between the ending and the cancel leaves the cascade owed and paid once due, where best effort leaves the filed work running for good. The price is the second row: for a few seconds the filed work still runs and spends, where best effort is usually instant. The third row: one more debt kind for the sweeper to pay, where best effort adds none. Locks in: one cascade debt, due within 2 s and paid on time by FIX-2078's wake, and a server-written cause on every cascaded cancel. Flips if: a task and its filed tasks are kept in one store write."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -58,7 +58,7 @@
     <text class="t-lbl" x="32" y="169">ENDING AND CANCEL</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Owed, paid on restart</text>
+    <text class="t-b" x="248" y="161">Owed, paid once due</text>
     <text class="t-s" x="248" y="179">the ending's write recorded it</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Filed work runs for good</text>
@@ -70,7 +70,7 @@
     <text class="t-lbl" x="32" y="235">BEFORE THE CANCEL</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">A few seconds of spend</text>
-    <text class="t-s" x="248" y="241">paid by a dispatch or a touch</text>
+    <text class="t-s" x="248" y="241">its pass pays it; due in 2 s</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Usually instant</text>
     <text class="t-s" x="612" y="241">when nothing crashes</text>
