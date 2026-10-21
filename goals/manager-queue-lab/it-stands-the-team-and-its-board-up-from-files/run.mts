@@ -38,7 +38,7 @@ import { QUEUE_COLUMNS, queueView } from "../lab/queue.mts";
  * The task status set as FIX-443 §2 fixed it, written out — asserted on the
  * enum against this list, not against a reading of itself.
  */
-const STATUS_SET = ["pending", "in_progress", "blocked", "parked", "completed", "errored", "cancelled"];
+const STATUS_SET = ["pending", "in_progress", "held", "parked", "completed", "errored", "cancelled"];
 
 /**
  * Orchestration's task tools, written out: what the manager's turn must hold,

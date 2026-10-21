@@ -89,10 +89,10 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
     iconClassName: "text-info animate-spin",
     label: "In progress",
   },
-  blocked: {
+  held: {
     icon: PauseCircleIcon,
     iconClassName: "text-warning",
-    label: "Blocked",
+    label: "Held",
   },
   parked: {
     icon: EyeIcon,
@@ -280,7 +280,7 @@ export function TaskPlan({
       (entry) =>
         entry.task.status !== "pending" &&
         entry.task.status !== "in_progress" &&
-        entry.task.status !== "blocked" &&
+        entry.task.status !== "held" &&
         entry.task.status !== "parked"
     );
   }, [state.boardMeta.status, state.tasks]);
@@ -582,7 +582,7 @@ function TaskPlanRow({
   const showError = task.status === "errored" && task.error !== undefined;
   const showFeedback =
     task.feedback !== undefined &&
-    (task.status === "blocked" ||
+    (task.status === "held" ||
       task.status === "parked" ||
       entry.kind === "retried");
   const deps = formatDeps(task);

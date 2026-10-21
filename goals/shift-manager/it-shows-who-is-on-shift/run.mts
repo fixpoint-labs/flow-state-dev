@@ -273,7 +273,7 @@ async function readStore(api: LabApi, userId: string): Promise<Store & { unmatch
       status: running.length > 0 || parked.length > 0 || myAsks.length > 0 ? "on shift" : "off shift",
       held: [...running, ...parked].map((r) => r.key),
       waits: [...parked.map((r) => r.id), ...myAsks.map((a) => a.id)],
-      queued: mine.filter((r) => r.status === "pending" || r.status === "blocked").length,
+      queued: mine.filter((r) => r.status === "pending" || r.status === "held").length,
     };
   });
   const teams = [...new Set(workers.map((w) => w.team))];

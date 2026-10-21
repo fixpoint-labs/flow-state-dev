@@ -52,7 +52,7 @@ describe("tool card states", () => {
 describe("task plan states", () => {
   const expected: Array<[string, string]> = [
     ["parked", "attention"],
-    ["blocked", "warning"],
+    ["held", "warning"],
     ["in_progress", "info"],
     ["completed", "success"],
     ["errored", "destructive"],
@@ -101,7 +101,7 @@ describe("task plan states", () => {
           makeBoardMeta({ collectionId: "board" }),
           makeTaskChange({
             collectionId: "board",
-            task: makeTask({ id: "t1", goal: "blocked", status: "blocked", feedback: "needs the schema first" }),
+            task: makeTask({ id: "t1", goal: "held", status: "held", feedback: "needs the schema first" }),
           }),
         ]}
       >

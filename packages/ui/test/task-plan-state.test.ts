@@ -466,7 +466,7 @@ describe("extractTaskPlanState, legacy awaiting_review items", () => {
           completed: 0,
           errored: 0,
           cancelled: 0,
-          blocked: 0,
+          held: 0,
           awaiting_review: 1,
           in_progress: 0,
           pending: 0,
@@ -485,7 +485,7 @@ describe("extractTaskPlanState, legacy awaiting_review items", () => {
       completed: 0,
       errored: 0,
       cancelled: 0,
-      blocked: 0,
+      held: 0,
       parked: 1,
       in_progress: 0,
       pending: 0,
@@ -495,5 +495,40 @@ describe("extractTaskPlanState, legacy awaiting_review items", () => {
       "board-1"
     );
     expect(state.boardMeta.counts).toEqual(counts);
+  });
+});
+
+/**
+ * FIX-2080 — a trace recorded before `held` replaced `blocked`. The fold reads
+ * the old status and the old counts key as `held`, as it reads the parked
+ * rename above, so a held section and the counts ribbon show old traces too.
+ */
+describe("extractTaskPlanState, legacy blocked items", () => {
+  it("reads a legacy blocked task status as held", () => {
+    resetItemCounters();
+    const legacy = makeTask({ id: "t1", status: "blocked" as TaskStatus });
+    const state = extractTaskPlanState([makeTaskChange("board-1", legacy, { kind: "blocked" })], "board-1");
+    expect(state.tasks[0]?.task.status).toBe("held");
+  });
+
+  it("folds a legacy blocked counts key into held", () => {
+    resetItemCounters();
+    const state = extractTaskPlanState(
+      [
+        makeBoardMeta("board-1", "completed", {
+          total: 1,
+          completed: 0,
+          errored: 0,
+          cancelled: 0,
+          blocked: 1,
+          parked: 0,
+          in_progress: 0,
+          pending: 0,
+        }),
+      ],
+      "board-1"
+    );
+    expect(state.boardMeta.counts?.held).toBe(1);
+    expect(state.boardMeta.counts).not.toHaveProperty("blocked");
   });
 });

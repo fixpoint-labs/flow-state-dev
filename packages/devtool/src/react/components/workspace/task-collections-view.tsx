@@ -492,13 +492,13 @@ const FALLBACK_TONE: Tone = { glyph: "border border-dashed border-fs-ink3", text
 
 /**
  * By meaning: running is blueprint, done is green, failed is red, not yet
- * started is a dashed outline. Blocked, parked and cancelled are notes, not
+ * started is a dashed outline. Held, parked and cancelled are notes, not
  * problems, so they stay in ink.
  */
 const STATUS_TONE: Record<string, Tone> = {
   pending: FALLBACK_TONE,
   in_progress: { glyph: "bg-fs-blue", text: "text-fs-blue" },
-  blocked: { glyph: "border border-fs-ink2", text: "text-fs-ink2" },
+  held: { glyph: "border border-fs-ink2", text: "text-fs-ink2" },
   parked: { glyph: "bg-fs-ink3", text: "text-fs-ink2" },
   completed: { glyph: "bg-fs-green", text: "text-fs-green" },
   errored: { glyph: "bg-fs-red", text: "text-fs-red" },
@@ -517,7 +517,7 @@ function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) 
   const ribbon: Array<[string, number, string]> = [
     ["pending", counts.pending, STATUS_TONE.pending!.glyph],
     ["active", counts.in_progress, STATUS_TONE.in_progress!.glyph],
-    ["blocked", counts.blocked, STATUS_TONE.blocked!.glyph],
+    ["held", counts.held, STATUS_TONE.held!.glyph],
     ["parked", counts.parked, STATUS_TONE.parked!.glyph],
     ["done", counts.completed, STATUS_TONE.completed!.glyph],
     ["error", counts.errored, STATUS_TONE.errored!.glyph],

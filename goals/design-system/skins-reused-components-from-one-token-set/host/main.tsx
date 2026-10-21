@@ -100,7 +100,7 @@ const boards: Array<{ name: string; means?: "attention" | "warning"; items: Outp
   {
     name: "task-plan:blocked",
     means: "warning",
-    items: f.board("b-blocked", "active", [task("t2", "blocked", { feedback: "Needs the schema first.", attempts: 2 })]),
+    items: f.board("b-held", "active", [task("t2", "held", { feedback: "Needs the schema first.", attempts: 2 })]),
   },
   { name: "task-plan:in-progress", items: f.board("b-running", "active", [task("t3", "in_progress")]) },
   { name: "task-plan:completed", items: f.board("b-done", "active", [task("t4", "completed")]) },
@@ -158,7 +158,7 @@ const seats = [
   { topic: "billing", clientData: { workerId: "billing", flow: "agent", instructions: "Handle refunds." } },
   { topic: "triage", clientData: { workerId: "triage", flow: "agent", instructions: null } },
 ];
-const cards = ["pending", "in_progress", "parked", "blocked", "completed"].map((status, i) => ({
+const cards = ["pending", "in_progress", "parked", "held", "completed"].map((status, i) => ({
   topic: `card-${i}`,
   clientData: { id: `card-${i}`, status, title: `Card ${status}`, assignee: i % 2 ? "billing" : undefined },
 }));

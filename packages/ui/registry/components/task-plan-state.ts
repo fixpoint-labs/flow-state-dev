@@ -44,7 +44,7 @@ import {
 export type TaskStatus =
   | "pending"
   | "in_progress"
-  | "blocked"
+  | "held"
   | "parked"
   | "completed"
   | "errored"
@@ -84,8 +84,9 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
-  | "blocked"
-  | "unblocked"
+  | "held"
+  | "released"
+  | "settings_changed"
   | "review_requested"
   | "resumed"
   | "cancelled"
@@ -101,7 +102,7 @@ export type BoardCounts = {
   total: number;
   pending: number;
   in_progress: number;
-  blocked: number;
+  held: number;
   parked: number;
   completed: number;
   errored: number;
@@ -148,16 +149,31 @@ export type TaskPlanState = {
  */
 const LEGACY_PARKED_STATUS = "awaiting_review";
 
+/**
+ * The status `held` replaced (FIX-2080): a trace recorded before then carries
+ * `blocked` on `task-change.task.status` and a `counts.blocked` key on
+ * `task-board-meta`, read here as `held`, as the parked rename is above.
+ */
+const LEGACY_HELD_STATUS = "blocked";
+
 function migrateTaskStatus<T extends { status?: unknown }>(task: T): T {
-  return task.status === LEGACY_PARKED_STATUS ? { ...task, status: "parked" } : task;
+  if (task.status === LEGACY_PARKED_STATUS) return { ...task, status: "parked" };
+  if (task.status === LEGACY_HELD_STATUS) return { ...task, status: "held" };
+  return task;
 }
 
-function migrateCounts<T extends { parked?: number }>(counts: T | undefined): T | undefined {
-  if (counts === undefined) return counts;
-  const legacy = (counts as Record<string, unknown>)[LEGACY_PARKED_STATUS];
+/** Fold a legacy count key into the current one, removing it. */
+function foldCount<T>(counts: T, legacyKey: string, key: string): T {
+  const legacy = (counts as Record<string, unknown>)[legacyKey];
   if (typeof legacy !== "number") return counts;
-  const { [LEGACY_PARKED_STATUS]: _legacy, ...rest } = counts as Record<string, unknown>;
-  return { ...rest, parked: (counts.parked ?? 0) + legacy } as unknown as T;
+  const { [legacyKey]: _legacy, ...rest } = counts as Record<string, unknown>;
+  const current = (counts as Record<string, unknown>)[key];
+  return { ...rest, [key]: (typeof current === "number" ? current : 0) + legacy } as unknown as T;
+}
+
+function migrateCounts<T extends { parked?: number; held?: number }>(counts: T | undefined): T | undefined {
+  if (counts === undefined) return counts;
+  return foldCount(foldCount(counts, LEGACY_PARKED_STATUS, "parked"), LEGACY_HELD_STATUS, "held");
 }
 
 export const TASK_CHANGE_COMPONENT = "task-change";
@@ -178,7 +194,7 @@ export const STATUS_SECTIONS: ReadonlyArray<{
 }> = [
   { status: "pending", label: "Todo" },
   { status: "in_progress", label: "In progress" },
-  { status: "blocked", label: "Blocked" },
+  { status: "held", label: "Held" },
   { status: "parked", label: "Parked" },
   { status: "completed", label: "Done" },
   { status: "errored", label: "Failed" },

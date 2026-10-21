@@ -1351,7 +1351,8 @@ describe("plan-and-execute pattern", () => {
       expect(exports.createLLMEvaluator).toBeDefined();
       expect(exports.createCaptureAndPlan).toBeDefined();
       expect(exports.createApplyReplan).toBeDefined();
-      expect(exports.createCascadeSkipDependents).toBeDefined();
+      // The dependents cascade is the board's own now (FIX-2080): no step to export.
+      expect(exports).not.toHaveProperty("createCascadeSkipDependents");
       expect(exports.createSynthesize).toBeDefined();
       expect(exports.normalizeOutputStatus).toBeDefined();
     });

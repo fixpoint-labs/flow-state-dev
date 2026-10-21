@@ -29,7 +29,7 @@ export function workerStates(snapshot: LoadedSnapshot): WorkerStates {
   const seats = new Map([...real.workers].map(([id, state]) => [id, { ...state, held: [...state.held] }]));
   for (const row of allRows(snapshot)) {
     const status = readStatus(row.status);
-    if (status !== "pending" && status !== "blocked") continue;
+    if (status !== "pending" && status !== "held") continue;
     const owner = workerFor(roster, row);
     if (owner !== undefined) seats.get(owner.id)?.held.push(row);
   }

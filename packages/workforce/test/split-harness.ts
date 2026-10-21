@@ -89,7 +89,8 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
           controls.refusals.push({
             worker,
             error: error instanceof Error ? error.name : String(error),
-            ...(error instanceof Error ? { message: error.message } : {})
+            // A filing refused by its settings names the rule (FIX-2080).
+            ...(error instanceof Error && error.name === "TaskFilingRefusedError" ? { message: error.message } : {})
           });
         }
       }

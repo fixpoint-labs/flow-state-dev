@@ -65,7 +65,7 @@ export interface QueueView {
 const TERMINAL: ReadonlySet<Task["status"]> = new Set(["completed", "errored", "cancelled"]);
 
 /** The statuses that mean a person is holding this up. */
-const WAITING: ReadonlySet<Task["status"]> = new Set(["parked", "blocked"]);
+const WAITING: ReadonlySet<Task["status"]> = new Set(["parked"]);
 
 /** Project one row down to what a column shows. */
 function project(task: Task): QueueRow {
@@ -121,7 +121,7 @@ export function queueView(rows: readonly Task[], now: number = Date.now()): Queu
     // Order matters once: claimability is asked FIRST, because a lapsed-lease
     // row is `in_progress` and would otherwise be read as running by a check
     // on status alone — which is the reading this column exists to correct.
-    if (isClaimable(row, lookup, now) || (row.status === "pending" && row.undispatched === true)) view.queued.push(project(row));
+    if (isClaimable(row, lookup, now) || row.status === "held") view.queued.push(project(row));
     else if (liveClaim(row, now)) view.running.push(project(row));
     else if (WAITING.has(row.status)) view.waitingOnYou.push(project(row));
     else if (TERMINAL.has(row.status)) view.done.push(project(row));
