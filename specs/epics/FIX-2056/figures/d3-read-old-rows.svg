@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3: what happens to a retired row shape still in flight at upgrade. Chosen: read it and map it to its nearest new meaning. Instead of: no second read, as accepted for the durable replay keys. It comes down to the first row: a user's open task in a persistent store survives the upgrade, or is lost. Second row, the price: a legacy read and a test in each of four children. Third row, a tie: new rows are written only in the new shape either way. Locks in reads kept until FIX-2071. Flips if no persistent store outside tests holds these rows."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3: what happens to a retired row shape still in flight at upgrade. Chosen: read it and map it to its nearest new meaning. Instead of: no second read, as accepted for the durable replay keys. It comes down to the first row: a user's open task in a persistent store survives the upgrade, or is lost. Second row, the price: one map in the collection layer, built and tested by FIX-2080. Third row, a tie: new rows are written only in the new shape either way. Locks in the map until FIX-2071, owned by FIX-2080. Flips if no persistent store outside tests holds these rows."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,8 +66,8 @@
     <text class="t-lbl" x="32" y="224">CODE TO</text>
     <text class="t-lbl" x="32" y="237">CARRY</text>
     <text class="mark minus" x="228" y="226">−</text>
-    <text class="t-b" x="248" y="225">A legacy read in four children</text>
-    <text class="t-s" x="248" y="243">each with a test, removed no earlier than FIX-2071</text>
+    <text class="t-b" x="248" y="225">One map, in FIX-2080</text>
+    <text class="t-s" x="248" y="243">each entry on as its old writer goes</text>
     <text class="mark plus" x="592" y="226">+</text>
     <text class="t-b" x="612" y="225">None</text>
     <text class="t-s" x="612" y="243">as the durable replay keys do</text>
@@ -89,8 +89,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Legacy reads kept until FIX-2071</text>
-    <text class="t-s" x="32" y="389">ER-9, one builder per retired shape</text>
+    <text class="t-b" x="32" y="371">The map kept until FIX-2071</text>
+    <text class="t-s" x="32" y="389">ER-6, owned by FIX-2080</text>
   </g>
 
   <g id="flips-if">

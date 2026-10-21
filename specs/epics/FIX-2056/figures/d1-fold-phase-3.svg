@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1: fold phase 3 in now, or do it later with the Inbox. Chosen: all 31 rows, eleven issues and a closure. Instead of: phase 1 now, phase 3 later. It comes down to the first row: updateTask and reopen are rewritten once when folded, twice when split. Second row, the price: FIX-2058 and FIX-2070 wait for one more issue. Third row, a tie: the model and its rules are the same either way. Locks in one epic slot for a twelve-issue set. Flips if FIX-2058 or FIX-2070 can start on phase 1 alone."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: steer and follow-ups land in this set, or later with the Inbox. Chosen: steer and follow-ups in this set. Instead of: phase 3 later. It comes down to the first row: updateTask and reopen are rewritten once when folded, twice when split. Second row, the price: FIX-2058 and FIX-2070 wait for FIX-2086 too. Third row, a tie: the model and its rules are the same either way. Locks in one chain, FIX-2080, FIX-2081, FIX-2086, and FIX-2086 never answers a question. Flips if FIX-2058 or FIX-2070 can start without FIX-2086."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">All 31 rows, 11 issues and a closure</text>
+    <text class="t-h c-code" x="228" y="112">Steer and follow-ups in this set</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Phase 1 now, phase 3 later</text>
@@ -89,14 +89,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">One epic slot for a twelve-issue set</text>
-    <text class="t-s" x="32" y="389">eleven issues along the code's seams</text>
+    <text class="t-b" x="32" y="371">One chain: FIX-2080, FIX-2081, FIX-2086</text>
+    <text class="t-s" x="32" y="389">FIX-2086 never answers a question (D2)</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">FIX-2058 or FIX-2070 can start on phase 1</text>
+    <text class="t-b" x="494" y="371">FIX-2058 or FIX-2070 can start without it</text>
     <text class="t-s" x="494" y="389">then FIX-2086 leaves the set</text>
   </g>
 </svg>

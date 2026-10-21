@@ -2,36 +2,36 @@
 
 [Spec](SPEC.md) · **Decisions**
 
-The calls that sit above any one issue: what was chosen, what lost, why, and what each locks in
-for the eleven issues and the closure under it. The model itself was decided by the owner in
-[`workforce-coordination-concept.md`](../../../docs/internal/design/workforce-coordination-concept.md#decisions)
-and is not reopened here. These three are how the set carries it out; all three are on the sign-off.
+The calls above any one issue. The owner decided the model in
+[`workforce-coordination-concept.md`](../../../docs/internal/design/workforce-coordination-concept.md#decisions);
+these three carry it out.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  E["FIX-2056"] --> D1["D1 · all 31 rows, eleven issues and a closure, now"]
-  D1 -.->|"rejected"| X1["phase 1 now, phase 3 later with the Inbox"]
+  E["FIX-2056"] --> D1["D1 · steer and follow-ups land in this set"]
+  D1 -.->|"rejected"| X1["phase 3 later, beside the Inbox"]
   E --> D2["D2 · no child waits on FIX-2058"]
   D2 -.->|"rejected"| X2["phase 3's suspension parts blocked by FIX-2058"]
-  E --> D3["D3 · a retired row shape in flight is read, not dropped"]
+  E --> D3["D3 · a retired row in flight is read through one map"]
   D3 -.->|"rejected"| X3["no second read, as for the durable keys"]
 ```
 
 <a name="d1"></a>
-## D1 · All 31 rows as eleven issues and a closure, phase 3 folded in, now
+## D1 · Steer and follow-ups land in this set
 
 | | |
 |---|---|
-| **Instead of** | Phase 1 now, and phase 3 (steer and follow-ups) later, beside the Inbox |
-| **Because** | Phase 3 changes the tool phase 1 rewrites: `updateTask` gets one rule per field in FIX-2081, and its `message` field is that rule's last row. Reopen overwrites an output that FIX-2077's settle rule and FIX-2080's follow-up session are built to keep. Split later, `updateTask` and the reopen path are each rewritten twice |
-| **Locks in** | One epic slot for a twelve-issue set. FIX-2058 and FIX-2070 wait for the whole set, steer included. Eleven issues because the 31 rows fall along the code's seams (gate, notice, collection, tools, coordinator, contract); the two rows that cross a seam are split by part, each half named in its issue |
+| **Instead of** | Phase 3 (steer and follow-ups, FIX-2086) later, beside the Inbox |
+| **Because** | One chain rewrites `updateTask` and the output a finished task keeps: FIX-2080's settings, then FIX-2081's one rule per field, whose last row is `message`, then FIX-2086's steer and follow-up, which retire reopen. Split, `updateTask`'s field table and the reopen path are each rewritten twice, and reopen survives a release beside follow-ups, overwriting output FIX-2077's settle rule keeps |
+| **Locks in** | FIX-2058 and FIX-2070 wait for FIX-2086 too |
+| **FIX-2086 does not, until FIX-2058** | Answer a question a task stopped on with a steer · retire `answerTask` or the parks · mark a task waiting on a person ([D2](#d2)) |
 
-**What would change my mind:** FIX-2058 or FIX-2070 finding it can start on phase 1 alone. Then
-FIX-2086 moves out of the set, and those epics start one issue earlier.
+**What would change my mind:** FIX-2058 or FIX-2070 finding it can start without FIX-2086. Then
+FIX-2086 leaves the set and those epics start one issue earlier.
 
-![D1: all 31 rows now, chosen, beside phase 3 later. Decides it: updateTask and reopen rewritten once, not twice. Price: the next two epics wait one more issue. Flips if they can start on phase 1 alone](figures/d1-fold-phase-3.svg)
+![D1: steer in this set, chosen, beside phase 3 later; decided by updateTask rewritten once, not twice](figures/d1-fold-phase-3.svg)
 
 It comes down to `updateTask`: folded, it is rewritten once; split, twice.
 
@@ -40,89 +40,88 @@ It comes down to `updateTask`: folded, it is rewritten once; split, twice.
 
 | | |
 |---|---|
-| **Instead of** | The gaps file's line "its phase 3 parts that touch suspensions wait on FIX-2058", and the epic issue's matching sequencing line |
-| **Because** | FIX-2058 is blocked by this epic. A child blocked by FIX-2058 makes a cycle: the epic can't wrap until the child is done, and the child can't start until FIX-2058, which can't start until the epic wraps. The parts that touch suspensions are two: a steer that answers a question a task stopped on, and marking a task *waiting on a person*. Both are about stopping for a person, which is FIX-2058's objective |
-| **Locks in** | FIX-2086's steer never answers a question; FIX-2058 owns that, with the retirement of `answerTask` and the parks. FIX-2077 tells a person's stop from a wait, so a wait leaves the task running; FIX-2058 marks the person's stop. Until FIX-2058 lands, `answerTask` is a fifth task tool, and the closure's sweep allows it |
+| **Instead of** | The gaps file's line "its phase 3 parts that touch suspensions wait on FIX-2058" |
+| **Because** | FIX-2058 is blocked by this epic, so a child blocked by FIX-2058 is a cycle: the epic can never wrap. The parts that touch suspensions are two, a steer that answers a question and marking a task *waiting on a person*, and both are FIX-2058's objective |
+| **Locks in** | FIX-2077 tells a person's stop from a wait, so a wait leaves the task running; FIX-2058 marks the person's stop and owns the answer. Until it lands, `answerTask` is a fifth task tool the closure's sweep allows. No child waits on FIX-2070 either: work that needs `receive` is its. The coordinator checks both at each refresh |
 
 **What would change my mind:** FIX-2058's blocker narrowed to the children it needs (FIX-2077 and
-FIX-2081), so it can start mid-epic. Then the answer by steer can stay in FIX-2086.
+FIX-2081). Then the answer by steer can stay in FIX-2086.
 
-![D2: no child waits on FIX-2058, chosen, beside phase 3's suspension parts blocked by it. Decides it: the cycle that would keep the epic from wrapping. Price: no answer by steer until FIX-2058. Flips if FIX-2058 is blocked only by the children it needs](figures/d2-no-cycle.svg)
+![D2: no child waits on FIX-2058, chosen; decided by the cycle that would keep the epic from wrapping](figures/d2-no-cycle.svg)
 
 It comes down to the cycle: a child blocked by FIX-2058 would keep this epic from ever wrapping.
 
 <a name="d3"></a>
-## D3 · A row of a retired shape that is in flight at upgrade is read, not dropped
+## D3 · A retired row in flight at upgrade is read, not dropped, through one map
 
 | | |
 |---|---|
-| **Instead of** | Extending the gaps file's accepted cost for the durable keys (`fsd.ask.*`, the `asked` flag, the hand-off route names: no second spelling read) to the task rows this epic retires |
-| **Because** | BP-030: a persisted record keeps its old shape until it is read. The rows are a user's open work in a SQLite or Postgres store: a post, a blocked task, a parked split, a reopened task. Dropping them loses work a person filed. The durable keys are replay detail inside one request, and the owner accepted losing those |
-| **Locks in** | Each child that retires a row shape reads it, maps it to its nearest new meaning (a post to a routed task, blocked to held, a parked split to running, a reopened row to pending), and tests that, under ER-9. The reads are removed no earlier than FIX-2071 |
+| **Instead of** | Extending the durable keys' accepted cost (no second spelling read) to the task rows this epic retires |
+| **Because** | BP-030. The rows are a user's open work in a persistent store; dropping them loses work a person filed. The durable keys are replay detail the owner accepted losing |
+| **Locks in** | One map in the collection layer, built and tested by FIX-2080 for all four shapes: a post to a routed task, blocked to held, a parked split to running, a reopened row to pending. FIX-2077, FIX-2083 and FIX-2086 each turn their shape's entry on in the PR that stops writing it, and build no read of their own. The map is removed no earlier than FIX-2071 |
 
 **What would change my mind:** no persistent store outside tests and local dev databases holds
-these rows. Then the reads are dead code, and the durable keys' rule covers rows too.
+these rows. Then the map is dead code, and the durable keys' rule covers rows too.
 
-![D3: read a retired row shape and map it, chosen, beside no second read. Decides it: a user's open task survives the upgrade. Price: a legacy read in four children. Flips if no persistent store holds these rows](figures/d3-read-old-rows.svg)
+![D3: read retired rows through one map, chosen, beside no second read; decided by a user's open task surviving the upgrade](figures/d3-read-old-rows.svg)
 
 It comes down to a user's open task in a persistent store: read, it survives the upgrade; dropped, it is gone.
 
 ## Who owns what
 
-![Who owns what: ten rules by eleven issues, the closure and the coordinator, each rule with one owner, ER-9 with one builder per retired row shape](figures/ownership.svg)
+![Who owns what: six rules by ten issues and the closure, each rule with one owner](figures/ownership.svg)
 
-Every rule has one owner, or one builder per retired shape for ER-9. Read a row to see where a
-rule is decided and where it is only consumed; a *uses* cell is a place a child must not
-re-decide.
+A *uses* cell is a place a child must not re-decide. Board modes and delegates are FIX-2076's and
+FIX-2081's own scope.
 
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | Only the claim gate (a dispatched row) or the drain (an inline row) records a row's ending. No tool, worker block or Workforce path settles one (rule 18) | FIX-2076 | Every child's spec review; the closure sweep |
-| ER-2 | One predicate for when a task is done (rule 6), at the gate in orchestration. No Workforce code re-derives it, or a request's kind, from session `taskId` or `filingSessionId` | FIX-2077 | FIX-2082's, FIX-2083's and FIX-2086's spec review |
-| ER-3 | Every ending of a delegated task reaches its filer exactly once, through one path. No second report path | FIX-2078 | FIX-2079's, FIX-2083's and FIX-2085's spec review; leg c |
-| ER-4 | Every debt has a due time, with the sweeper as its backstop. No new path pays only on the next touch | FIX-2079 | Every child's spec review; leg b |
-| ER-5 | A board's `mode` decides whether its drain waits; a board that mixes them is refused when built | FIX-2076 | FIX-2082's and FIX-2083's spec review |
-| ER-6 | Four filing settings. Start and attempts stay editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2083's and FIX-2086's spec review |
-| ER-7 | The four task tools are the only task surface, for models and screens alike, with identity from the server (BP-031). No child adds a task tool or a second write path | FIX-2081 | Every later child's spec review; the closure sweep |
-| ER-8 | Tasks go only to the filer's delegates, or anyone with `delegates: all`; only the user changes delegates, unless a coordinator was configured to | FIX-2081 | FIX-2083's spec review |
-| ER-9 | A persisted row of a shape a child retires is read and mapped, not dropped ([D3](#d3)) | FIX-2077 (split park), FIX-2080 (blocked), FIX-2083 (post), FIX-2086 (reopened) each build their own | Each of those four's spec review |
-| ER-10 | No child waits on FIX-2058 or FIX-2070. Work that needs the Inbox or `receive` is theirs ([D2](#d2)) | The coordinator | Each refresh |
+| ER-1 | Only the claim gate (a dispatched row) or the drain (an inline row) records a row's ending. No tool, worker block, wait or Workforce path does (rule 18) | FIX-2076 | Every spec review; the closure sweep |
+| ER-2 | One predicate for done (rule 6), in orchestration, checked after the request's background work and when a task it filed ends. Every wait, a plan board's drain included, wakes on the ending the gate writes; a deadline writes none. No Workforce code re-derives a request's kind from session state | FIX-2077 | FIX-2078's, FIX-2082's, FIX-2083's and FIX-2086's spec review |
+| ER-3 | Every ending of a delegated task reaches its filer once, through one path, and every debt has a due time with the sweeper as backstop | FIX-2078 | FIX-2083's and FIX-2085's spec review; legs b and c |
+| ER-4 | Four filing settings. Start and attempts editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2083's and FIX-2086's spec review |
+| ER-5 | The four task tools are the only task surface, for models and screens, with identity from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
+| ER-6 | A retired row shape is read through FIX-2080's one map, never a child's own ([D3](#d3)) | FIX-2080 | FIX-2077's, FIX-2083's and FIX-2086's spec review |
 
 ## Coordination seams
 
-| Seam | Between | Rule |
-|---|---|---|
-| The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2080, FIX-2081, FIX-2082, FIX-2086 | FIX-2081 owns the list and the field rules. FIX-2080 builds the held status and settings it exposes; FIX-2082 adds `getTask`'s wait and FIX-2086 the `message` field, each after FIX-2081 merges |
-| The claim gate (`task-entry.ts`, `record-result.ts`) | FIX-2077, FIX-2076, FIX-2082 | FIX-2077 owns the settle predicate. FIX-2076's waited dispatch and FIX-2082's waits read it |
-| The conversation board's `afterRun` and the notice | FIX-2078, FIX-2079, FIX-2077 | FIX-2078 moves the notice into orchestration; FIX-2079 replaces `afterRun`'s resends with due times; FIX-2077 removes the split settle |
-| The board-pass entry, `runTaskBoard` | FIX-2079, FIX-2084 | FIX-2079 makes it one at a time; FIX-2084 renames it `dispatch` and keeps that |
-| Queued messages | FIX-2077, FIX-2070 | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
-| A task stopped for a person | FIX-2077, FIX-2086, FIX-2058 | FIX-2077 tells it from a wait; FIX-2058 marks it and owns the answer; FIX-2086's steer never answers |
+| Seam | Owner, then who else touches it |
+|---|---|
+| The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait and FIX-2086's `message` land after it |
+| The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end (`engine/src/execution/runAction.ts`, after the side-chain pool drains) | FIX-2077 owns the predicate and where it runs. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
+| The wait (`tasks/helpers/wait-for-response.ts`) | FIX-2082 owns it, for `getTask` and a plan board's drain alike. FIX-2076 only sets which boards wait |
+| `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice and replaces resends with due times; FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
+| The collection read (`tasks/collection/`) | FIX-2080 owns the map; the retiring children turn entries on |
+| Queued messages | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
+| A task stopped for a person | FIX-2077 tells it from a wait; FIX-2058 marks it and owns the answer |
 
 ## Decided in review, recorded so no child reopens them
 
-- **The epic issue's three open questions are answered by the concept.** A delegate answering a
-  person's message may wait on work it hands off (rule 9), except on a task whose result goes to
-  the conversation. Result into the conversation is a filing setting any task may take, not a kind
-  of task, so the invent-kill against a task-type flag holds. Rows in flight at upgrade: [D3](#d3).
-- **The attempts setting is FIX-2080's**, with the other three; FIX-2083 only uses it (attempts 1).
-- **FIX-1024 is not a child.** It is a phase 0 question (two claim copies). FIX-2077 reads the
-  claim at the gate; if its spec collapses the copies, it closes FIX-1024.
-- **Overlapping bugs are related, not re-parented:** FIX-1884 and FIX-1700 close with FIX-2079,
-  FIX-1659 with FIX-2081. Each is narrower than its child.
-- **FIX-1870 is superseded** by this epic; it stays canceled and related.
+- **The epic issue's three open questions are answered by the concept.** A delegate may wait on
+  work it hands off (rule 9), except a task whose result goes to the conversation. Result into the
+  conversation is a filing setting, not a task kind. Rows in flight: [D3](#d3).
+- **The attempts setting is FIX-2080's**; FIX-2083 only uses it (attempts 1).
+- **FIX-1024 is not a child.** FIX-2077 reads the claim at the gate; if its spec collapses the two
+  copies, it closes FIX-1024.
+- **Overlapping bugs are related, not re-parented:** FIX-1884 and FIX-1700 close with FIX-2078,
+  FIX-1659 with FIX-2081. FIX-1870 is superseded and stays canceled.
+- **Round 1 (cursor review):** FIX-2079 merged into FIX-2078, one ending-path owner. D3 is one map,
+  not four reads. The rules cut to six. Kept: the closure issue (every epic ends in one), the
+  31-row lead measure (a countable measure, each child citing its rows) and FIX-2085 (no blocker).
+- **One answer for done**, from the POC below: no seam keeps its own test.
 
 ## What the end-state POC showed
 
-None built yet. One is recommended before the gate, narrow: the claim gate's seam alone, where
-FIX-2076's waited dispatch, FIX-2077's settle rule and FIX-2082's nested wait meet. If those three
-need the gate to answer "is this task done?" in more than one place, the division moves
-before eleven specs are written against it. The other seams are one-writer edits and need none.
+- **Built:** [`poc/claim-gate-seam/`](poc/claim-gate-seam/): today's claim gate on the real engine (four legs), and a model of FIX-2076, FIX-2077 and FIX-2082 merged, with one, two and today's answers to "is this task done?" over six scenarios.
+- **See it:** `bash specs/epics/FIX-2056/poc/claim-gate-seam/run.sh` (7 pass on `c179030c`).
+- **Showed:** **one answer.** Rule 6 at the gate is the only "done" needed; a drain with its own answer moves past a running row in four of six scenarios. Today the gate settles about 300 ms before background work ends and with a filed task open.
+- **Changed:** the waited dispatch moved from FIX-2076 to FIX-2082, one wait with one owner (FIX-2082 now blocked by FIX-2076), and FIX-2077's check runs after the engine drains background work, not at the entry's last step.
 
 ## How it got here
 
-- **Concept merged (2026-10-21)** — #3534; the owner decided the model and its last four open calls.
-- **Spec written (2026-10-21)** — the 31 rows split into eleven issues and a closure, FIX-2076 to
-  FIX-2087. D2 removes the cycle the gaps file's sequencing line would have made.
+- **Concept merged (2026-10-21)** — #3534; the owner decided the model.
+- **Spec written (2026-10-21)** — the 31 rows split into eleven issues and a closure. D2 removes a cycle.
+- **Review round 1 (2026-10-21)** — FIX-2079 merged into FIX-2078; D3 became one map in FIX-2080.
+- **POC** — the waited dispatch moved to FIX-2082, because the run showed two answers to "done" let a drain move past a running row.
 
 **Open: none.**
