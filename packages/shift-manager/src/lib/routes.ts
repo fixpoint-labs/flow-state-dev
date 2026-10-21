@@ -10,6 +10,7 @@
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /messages                      every message between the user's workers (FIX-1989)
+ *     /schedules                     the user's scheduled work, each with its next run (FIX-2085)
  *     /s/<sessionId>                 one of the user's sessions with a worker, as a conversation
  *     /p/<projectId>/<stream|board|workstreams|brief>[?owner=<userId>&ws=<workstreamId>]
  *     /p/private/<projectId>/<tab>[?owner=…&ws=…]   one of the user's own private projects
@@ -36,6 +37,7 @@ export type Route =
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "messages" }
+  | { level: "schedules" }
   | { level: "session"; sessionId: string }
   | {
       level: "project";
@@ -76,6 +78,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "roster" && a !== undefined && (b === "settings" || b === "rules")) return { level: "worker-settings", worker: a };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   if (head === "messages") return { level: "messages" };
+  if (head === "schedules") return { level: "schedules" };
   if (head === "s" && a !== undefined) return { level: "session", sessionId: a };
   if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
   if (head === "settings") return { level: "settings" };
@@ -104,6 +107,8 @@ export function pathFor(route: Route): string {
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
     case "messages":
       return "/messages";
+    case "schedules":
+      return "/schedules";
     case "session":
       return `/s/${e(route.sessionId)}`;
     case "project": {
