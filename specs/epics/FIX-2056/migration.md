@@ -20,5 +20,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `createScheduledTransportAdapter`'s `idempotencyWindowMs` | Nothing: the dispatch endpoint fires each scheduled time at most once, recorded in the host's store | FIX-2085 |
 | The dispatch request body's `idempotencyKey` | Nothing: the scheduled time is the key. A body that sends one is refused with `400` | FIX-2085 |
-| `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
+| `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
+| A split task's `{ answer, pieces }` output | The worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks` | FIX-2077 |
+| A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |

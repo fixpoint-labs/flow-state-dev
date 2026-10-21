@@ -45,6 +45,7 @@ import { harnessUnsandboxed, unsandboxedHint, unsandboxedNote } from "./harness-
 import { harnessSessionFlow, type HarnessBlock, type HarnessFeeds } from "./harness-session-flow";
 import { worktreeRoot } from "./harness-worktree";
 import type { ModeAvailability, ModeCheck } from "./harness-gate";
+import type { HarnessModel, ModelChoices } from "./harness-models";
 import { flowKindOf, modeById } from "./modes";
 import { scriptedCodex } from "./scripted-codex";
 
@@ -52,10 +53,24 @@ import { scriptedCodex } from "./scripted-codex";
 export const CODEX_SESSION = flowKindOf(modeById("codex"));
 
 /**
- * The model Codex mode runs. `undefined` is Codex's own default model, which
- * the Codex package can't price, so a run reports no cost estimate.
+ * The models Codex mode offers in New session, its default first. Kept by
+ * hand, because Codex's SDK can't list models (FIX-1952 D3; FIX-1975 removes
+ * this list once it can). Read off the pinned Codex's own catalog
+ * (`codex debug models`, 0.152.1): the entries it marks to show, in its order.
+ * When Codex ships or retires a model, edit this list.
  */
-export const CODEX_MODEL: string | undefined = undefined;
+export const CODEX_MODELS: readonly HarnessModel[] = [
+  { id: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
+  { id: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6-Luna" },
+  { id: "gpt-5.5", label: "GPT-5.5" },
+  { id: "gpt-5.2", label: "GPT-5.2" },
+];
+
+/** What Codex mode's New session offers: the list above, its first entry preselected. */
+export async function codexModelChoices(): Promise<ModelChoices> {
+  return { models: CODEX_MODELS, defaultId: CODEX_MODELS[0]!.id, reason: null, fallbackId: null };
+}
 
 /**
  * The only variables of the server's environment Codex's process is handed
@@ -106,10 +121,9 @@ export function codexSandboxed(): boolean {
   return !harnessUnsandboxed();
 }
 
-/** The SDK's thread options Codex mode runs with. */
+/** The SDK's thread options Codex mode runs with. The model is the session's, through the block's `model`. */
 export function codexThreadOptions(): CodexThreadOptions {
   return {
-    ...(CODEX_MODEL !== undefined ? { model: CODEX_MODEL } : {}),
     // No approval prompts: nobody is there to answer one. The sandbox is the fence.
     approvalPolicy: "never",
     sandboxMode: codexSandboxed() ? "workspace-write" : "danger-full-access",
@@ -144,6 +158,7 @@ export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): 
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
+    model: feeds.model,
     thread: codexThreadOptions(),
     client: codexClientOptions(),
     ...(resolveCodexClient !== undefined ? { resolveCodexClient } : {}),
@@ -165,6 +180,8 @@ export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): Harness
 
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
+  // No `defaultModel`: a session from before models could be picked runs on
+  // Codex's own default, as it did.
   return harnessSessionFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
 }
 
