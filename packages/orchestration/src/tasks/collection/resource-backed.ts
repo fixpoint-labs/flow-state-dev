@@ -108,6 +108,7 @@ import {
   assertValidLeaseDeadline,
   linkRunGuards,
   completionPatch,
+  cancelPatch,
   progressPatch,
   reportsProgress,
   RENEW_LEASE_TICKET_DETAIL,
@@ -1037,27 +1038,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // The decline is now REPORTED (FIX-976) — behaviour is unchanged, but the
       // caller learns the cancel did nothing instead of reading silence as
       // success. Substrate write-backs discard this and stay silent.
-      // How the cancel was made, when its caller says (FIX-2081): server-set, never input.
-      const via = options?.via !== undefined ? { cancelledVia: options.via } : {};
       return transitionRef(
         id,
         "cancelled",
         "cancelled",
-        () =>
-          reason !== undefined
-            ? {
-                error: reason,
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-                ...via,
-              }
-            : {
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-                ...via,
-              },
+        () => cancelPatch(reason, options?.via, now()) as Partial<Task<TInput, TOutput>>,
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it
