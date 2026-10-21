@@ -62,10 +62,10 @@
  * even though it has nothing to do with the execution tier.
  *
  * That is the intended trade, not an oversight. The rule has to fire inside
- * files the compiler never sees — several packages typecheck only `src/**`
- * (devtool's tsconfig is `include: ["src/**\/*"]`), so a test fixture's
- * `{ phase: "work" }` is invisible to `tsc` and this check is the only thing
- * standing between a renamed fixture and a stale one. Keying the rule to
+ * files the compiler never sees — workforce's `.test.ts` files are outside
+ * every typecheck program, so a fixture's `{ phase: "work" }` there is
+ * invisible to `tsc` and this check is the only thing standing between a
+ * renamed fixture and a stale one. Keying the rule to
  * declared carriers would need exactly the type information that is missing at
  * those positions, and would go green on precisely the files it exists for.
  *
@@ -233,10 +233,10 @@ const RETIRED_CALLABLE_MEMBERS = new Set(["work"]);
  * name back on the wire.
  *
  * **Stated under-reach:** a *read* of one of these (`row.backgroundTasks`)
- * anywhere, and a declaration outside these packages, are not caught. In `src`
- * a read of a field that no longer exists fails `pnpm typecheck` already; in a
- * test directory that is not typechecked, it is not caught by anything, and
- * that gap is real. Under-reaching with the boundary written down beats taxing
+ * anywhere, and a declaration outside these packages, are not caught. In a
+ * typechecked file a read of a field that no longer exists fails `pnpm
+ * typecheck` already; in workforce's `.test.ts` files, which are not yet
+ * typechecked, it is not caught by anything, and that gap is real. Under-reaching with the boundary written down beats taxing
  * every domain model in the repo.
  */
 const RETIRED_CONTRACT_FIELDS = new Set(["workGroupId", "backgroundTasks", "workResults"]);

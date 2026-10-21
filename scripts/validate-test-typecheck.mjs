@@ -19,14 +19,7 @@ import { driverPrograms } from "./typecheck-programs.mjs";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 /** Directory under `packages/` → the issue that removes the entry. */
-const LATER_IN_STACK = "FIX-1343: wired by a later PR in its stack";
 const DEFERRED = {
-  "claude-code": LATER_IN_STACK,
-  cli: LATER_IN_STACK,
-  codex: LATER_IN_STACK,
-  cursor: LATER_IN_STACK,
-  devtool: LATER_IN_STACK,
-  "harness-manager": LATER_IN_STACK,
   workforce: "FIX-2016: wired after the open PRs that rewrite its tests land",
 };
 

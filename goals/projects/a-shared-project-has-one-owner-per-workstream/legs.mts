@@ -109,7 +109,7 @@ async function act(who: Connected, kind: string, sessionId: string, action: stri
   if (posted.status !== 202) return { status: `http ${posted.status}`, requestId: null, output: undefined, error: show(posted.body) };
   const requestId = String(posted.body?.request?.id);
   const status = await who.routes.settle(kind, requestId, timeoutMs);
-  const found = (await who.routes.requests(sessionId).catch(() => [])).find((r) => r.id === requestId);
+  const found = (await who.routes.requests(sessionId).catch((): Array<Record<string, any>> => [])).find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 

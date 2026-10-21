@@ -124,6 +124,19 @@ export interface CursorAgentOptions {
    */
   onSession?: HarnessSessionHook;
   /**
+   * Which model the run uses: a fixed id, or a resolver called once per
+   * invocation, like `cwd` and `resume`, so one block can run a different
+   * model for each run. It becomes the agent's `model` (`{ id }`) on
+   * `Agent.create` and `Agent.resume` alike, and the cost-estimate fallback.
+   *
+   * `null`, `""` and `undefined` from the resolver all mean "no model named",
+   * and Cursor's SDK refuses a local agent with none, so name one here or on
+   * `agent.model`. Setting this beside `agent.model` or `send.model` is
+   * refused when the block is built: one owner per value. A model with
+   * parameters (`{ id, params }`) goes on `agent.model`.
+   */
+  model?: string | HarnessResolver<string | null | undefined>;
+  /**
    * The SDK's agent options, forwarded verbatim to `Agent.create` /
    * `Agent.resume` (model, api key, mode, tools, MCP servers, the rest of
    * `local` besides `cwd`).
@@ -339,6 +352,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    model,
     agent: agentOptions,
     send: sendOptions,
     recordPlan = false,
@@ -351,6 +365,11 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
     (options as InternalTestSeams)[INTERNAL_SDK_VERSION_READER] ?? readInstalledCursorSdkVersion,
   );
   assertNoOwnedKeys(agentOptions, sendOptions);
+  if (model !== undefined && (agentOptions?.model !== undefined || sendOptions?.model !== undefined)) {
+    throw new CursorAgentConfigError(
+      `cursorAgent: \`model\` and \`${agentOptions?.model !== undefined ? "agent" : "send"}.model\` cannot be set together — each names the model a run uses. Drop one.`,
+    );
+  }
   if (env !== undefined) assertFenceable(agentOptions, sendOptions, options.resolveCursorClient);
   const resolveCursorClient =
     env !== undefined
@@ -387,14 +406,17 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
       const dispatchedAt = Date.now();
       let agent: CursorAgentLike | null = null;
       let sessionId: string | null = null;
+      let runModel: string | undefined;
 
       try {
+        // Resolved once, before the agent is opened, beside its directory and conversation.
+        runModel = (typeof model === "function" ? await model(ctx) : model) || undefined;
         agent = await openAgent({
           ctx,
           resolveCwd,
           resolveResume,
           onSession,
-          agentOptions,
+          agentOptions: runModel === undefined ? agentOptions : { ...agentOptions, model: { id: runModel } },
           resolveCursorClient,
         });
         sessionId = agent.agentId;
@@ -417,7 +439,7 @@ export function cursorAgent(options: CursorAgentOptions = {}) {
           dispatchedAt,
           settled,
           finalMessage: emitState.finalMessage,
-          configuredModel: agentOptions?.model?.id,
+          configuredModel: runModel ?? agentOptions?.model?.id,
           name,
           ctx,
         });
@@ -721,7 +743,7 @@ async function settleRun(
  * agent is the durable conversation, and each `send` is one run inside it.
  *
  * Cost is priced against the model the run actually used, falling back to the
- * one configured on `agent.model`. Cursor's own ids are mostly unpriced in
+ * one configured on `model` or `agent.model`. Cursor's own ids are mostly unpriced in
  * core's table today, so most runs report `null` — see the README.
  */
 function buildHandle(args: {
