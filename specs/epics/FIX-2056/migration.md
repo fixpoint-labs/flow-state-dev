@@ -15,10 +15,12 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
-| `blockTask`, `TaskCollection.block`, `unblock` | `updateTask({ status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
+| `blockTask` | `updateTask({ taskId, patch: { status: "held" } })` and `"pending"` before it starts (flattened by FIX-2081); `waitForUser` after | FIX-2080 |
+| `TaskCollection.block`, `unblock` | `TaskCollection.hold`, `release` | FIX-2080 |
 | The `"blocked"` task status, and `"blocked"` in `listTasks`' status filter | `"held"` | FIX-2080 |
 | `Task.undispatched`, `TaskInit.undispatched` | `held` | FIX-2080 |
 | Change kinds `blocked`, `unblocked` | `held`, `released` | FIX-2080 |
+| Change kind `dispatched` | `released`: every release of a held row emits it | FIX-2080 |
 | The board's `counts.blocked` | `counts.held` | FIX-2080 |
 | `createCascadeSkipDependents` | Nothing: every board cancels a failed or cancelled row's dependents | FIX-2080 |
 | A follow-up into a busy session being refused | Nothing: it waits, then starts in that session when the open task ends | FIX-2080 |

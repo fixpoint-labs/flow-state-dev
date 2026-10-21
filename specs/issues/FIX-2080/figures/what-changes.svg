@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 416" role="img" aria-label="Six rows, today against after. Start: today now, deps, or blocked or recorded, and blocked has no way out; after, now, deps on this board, or held, released to start, with a foreign dependency refused. Session: today new, or a follow-up only once its task ends, and a busy session refuses it; after, new, ongoing, or a follow-up, and a busy session holds the next one pending. Result: today the filer, or the conversation for a post, a row kind of its own; after, a setting, the filer or the conversation, the latter from a conversation only. Attempts: today fixed at 2, 1 for a post; after, maxAttempts at filing, default 2. Endings: today only a split's cancel and a pattern's opt-in step cascade; after, two cascades on every board, owed until paid. At upgrade: today nothing reads retired shapes; after, one map at the read boundary with five entries, each turned on by its owner."
+<svg viewBox="0 0 940 416" role="img" aria-label="Six rows, today against after. Start: today now, deps, or blocked or recorded, and blocked has no way out; after, now, deps on this board, or held, released to start, with a foreign dependency refused. Session: today new, or a follow-up only once its task ends, and a busy session refuses it; after, new, ongoing, or a follow-up, and a busy session holds the next one pending. Result: today the filer, or the conversation for a post, a row kind of its own; after, a setting, the filer or the conversation, the latter from a conversation only. Attempts: today fixed at 2, 1 for a post; after, maxAttempts at filing, default 2. Endings: today only a split's cancel and a pattern's opt-in step cascade; after, two cascades on every board, owed until paid. At upgrade: today nothing reads retired shapes; after, one map at the read boundary with six entries, each turned on by its owner."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -98,7 +98,7 @@
     <text class="t-s" x="174" y="372">nothing to read the retired shapes</text>
     <rect class="chosen" x="544" y="336" width="380" height="46" rx="5"/>
     <text class="t-b" x="558" y="355">One map at the read boundary</text>
-    <text class="t-s" x="558" y="372">five entries, each turned on by its owner</text>
+    <text class="t-s" x="558" y="372">six entries, each turned on by its owner</text>
   </g>
 
 </svg>

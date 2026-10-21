@@ -48,7 +48,7 @@ dashed path is the same run with both cascades switched off, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/runs-by-its-filing-settings/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: a dependent starts after its dependency ends; a held task starts only on release; a dependency on another board, or one closing a loop, is refused, filing nothing; after a retry, the row's attempts and dependencies refuse an edit. b: a follow-up filed while its task runs waits, then runs in that task's session; an ongoing task runs in the delegate's session for this conversation; from a task's session both conversation settings are refused, as is a wait on a conversation-result task. c: attempts 3 fails after the third failure, each retry in the same session. d: a cancel, a retry and a final failure each cancel the open filed task; a failed and a cancelled dependency each cancel a two-deep chain; killed between an ending and its cascade, the filed child and the dependent are each cancelled on the next touch. e: a seeded blocked row and recorded row read as held and start on release; the other entries read as today |
+| **Signal** | a: a dependent starts after its dependency ends; a held task starts only on release; a dependency on another board, or one closing a loop, is refused, filing nothing; after a retry, the row's attempts and dependencies refuse an edit. b: a follow-up filed while its task runs waits, then runs in that task's session; an ongoing task runs in the delegate's session for this conversation; from a task's session both conversation settings are refused, as is a wait on a conversation-result task. c: attempts 3 fails after the third failure, each retry in the same session. d: a cancel, a retry and a final failure each cancel the open filed task; a failed and a cancelled dependency each cancel a two-deep chain; killed between an ending and its cascade, the filed child and the dependent are each cancelled on the next touch; if FIX-2076 is already on main, a failed attempt's open plan row ends cancelled. e: a seeded blocked row and recorded row read as held and start on release; the other entries read as today |
 | **Input** | Deterministic workers. Another chain depth, attempt count or kill point must pass too |
 | **Anti-game** | No assertions on cascade calls or a stubbed collection: stored rows, and session ids from the request records |
 | **Control that must fail** | `GOAL_CONTROL=no-cascade` must FAIL leg d on *the open filed task is cancelled* and *the dependent chain is cancelled*. Today's `main` must also FAIL leg a on *refused and files nothing* and leg b on *the follow-up stays unstarted* |
@@ -69,7 +69,7 @@ The four settings become fields of the task, chosen at filing; two cascades run 
 +   held: true,                    // starts when released
     maxAttempts: 3,                // the attempts setting; Workforce defaults it to 2
 +   session: "ongoing",            // Workforce: the delegate's session for this conversation
-+   resultTo: "conversation",      // Workforce: from a conversation only
++   resultTo: "filer",             // or "conversation": Workforce, from a conversation only, attempts 1
   })
 - await tasks.block(id, "waiting on legal")
 - await tasks.unblock(id)
@@ -80,8 +80,9 @@ The four settings become fields of the task, chosen at filing; two cascades run 
 -   .tap(createCascadeSkipDependents({ name }))   // every board cancels dependents now
 ```
 
-A model's `blockTask` goes; `updateTask({ status: "held" | "pending" })` holds and releases until
-FIX-2081 rewrites the tool list. The other settings reach models with FIX-2081's `createTask`.
+A model's `blockTask` goes; `updateTask({ taskId, patch: { status: "held" | "pending" } })` holds
+and releases before a start. This issue adds `status` to today's patch; FIX-2081 flattens the call
+when it rewrites the tool list. The other settings reach models with FIX-2081's `createTask`.
 
 **Docs:** update *Orchestration → Task substrate* (`held`, dependencies, cascades), *Orchestration →
 Task board* (the built-in cascade replaces *Cascade-skipping dep-blocked tasks*), *Workforce →
@@ -130,11 +131,11 @@ Each ending records what it owes in the same write, so a crash leaves the cascad
 | `followUpOf`, the earlier task's session, refused while its session is busy | **Builds on.** The refusal becomes a wait (rule 5) |
 | `blocked`, and the recorded-not-started mark `dispatchTask` releases | **Replaced** by one status, `held` ([D1](DECISIONS.md#d1)) |
 | The read-boundary migrations for `parked` and `wait` (BP-030) | **Built beside.** The retired-shape map sits at the same boundary |
-| The epic's [D3](../../epics/FIX-2056/DECISIONS.md#d3), [ER-4, ER-6](../../epics/FIX-2056/DECISIONS.md#who-owns-what) | **Kept**, with a fifth map entry ([decided](DECISIONS.md#decided-not-asked)) |
+| The epic's [D3](../../epics/FIX-2056/DECISIONS.md#d3), [ER-4, ER-6](../../epics/FIX-2056/DECISIONS.md#who-owns-what) | **Kept**, with a fifth and a sixth map entry ([decided](DECISIONS.md#decided-not-asked)) |
 
 | The debt | |
 |---|---|
-| **Removes** | `blocked`, `block`, `unblock`, `blockTask` · the recorded-not-started mark · `createCascadeSkipDependents` · the busy-session refusal · the split-only cancel cascade, whose code FIX-2077 deletes with its park · a dependency id that never resolves. Each public one is a [migration line](../../epics/FIX-2056/migration.md) the implementation changeset carries |
+| **Removes** | `blocked`, `block`, `unblock`, `blockTask` · the recorded-not-started mark · `createCascadeSkipDependents` · the busy-session refusal · the split-only cancel cascade, whose code FIX-2077 deletes with its park · a dependency id that never resolves. Each public one is a [migration line](../../epics/FIX-2056/migration.md) the implementation changeset carries; if FIX-2081's spec merges first, this issue's three behaviour lines move into its Changed table |
 | **Adds** | `held`, `hold` and `release` · the `session` and `resultTo` fields · a cascade debt on the ending · the retired-shape map, removed no earlier than FIX-2071 |
 | **Leaves** | A cascade owed past its due time is paid on the next touch until FIX-2078, which now lands after this issue, pays it on time with its wake · the refusal of a wait on a conversation-result task lives on today's wait, and moves with it to `getTask` (FIX-2082) |
 
