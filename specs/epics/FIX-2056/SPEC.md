@@ -74,7 +74,7 @@ The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 |---|---|---|
 | [FIX-2076](https://linear.app/fixpoint-labs/issue/FIX-2076) · board modes | Plan and delegation boards; wrong boards refused | — |
 | [FIX-2077](https://linear.app/fixpoint-labs/issue/FIX-2077) · when a task is done | Rule 6 at the claim gate, after background work; a wait leaves a task running | FIX-2078, FIX-2080, FIX-2081 |
-| [FIX-2078](https://linear.app/fixpoint-labs/issue/FIX-2078) · endings and debts | Every ending to its filer once; due times and the sweeper | — |
+| [FIX-2078](https://linear.app/fixpoint-labs/issue/FIX-2078) · endings and debts | Every ending to its filer once; due times and the sweeper | FIX-2080 |
 | [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) · filing settings | Start, session, result, attempts; cascades; the one read for retired rows ([D3](DECISIONS.md#d3)) | — |
 | [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · five tools | Five task tools, one rule per field; delegates as authority | FIX-2076, FIX-2080 |
 | [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait; 5 deep, 100 under a top task | FIX-2076, FIX-2077, FIX-2081 |
@@ -104,14 +104,15 @@ flowchart LR
   T -->|"updateTask"| S
   T -->|"createTask, delegates"| R["FIX-2083 · routed tasks"]
   L -->|"session, result, attempts"| R
-  E["FIX-2078 · endings and debts"] -->|"the sweeper recovers a lost wait"| B
+  L -->|"dependents cancelled, with their cause"| E["FIX-2078 · endings and debts"]
+  E -->|"the sweeper recovers a lost wait"| B
   E -->|"result to the conversation"| R
   R -->|"no post entry"| K["FIX-2084 · worker contract"]
   E -->|"onTaskSettled, dispatch"| K
   H["FIX-2085 · schedules"]
 ```
 
-An edge is what one issue hands the next. FIX-2076, FIX-2078, FIX-2080 and FIX-2085 start at once;
+An edge is what one issue hands the next. FIX-2076, FIX-2080 and FIX-2085 start at once;
 every child blocks the closure, left off. The longest chain is four.
 
 ## What stays as it is

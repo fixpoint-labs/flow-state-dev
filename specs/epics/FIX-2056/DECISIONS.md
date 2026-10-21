@@ -60,7 +60,7 @@ It comes down to the cycle: a child blocked by FIX-2058 would keep this epic fro
 |---|---|
 | **Instead of** | Extending the durable keys' accepted cost (no second spelling read) to the task rows this epic retires |
 | **Because** | BP-030. The rows are a user's open work in a persistent store; dropping them loses work a person filed. The durable keys are replay detail the owner accepted losing |
-| **Locks in** | One map in the collection layer, built and tested by FIX-2080 for all four shapes: a post to a routed task, blocked to held, a parked split to running, a reopened row to pending. FIX-2077, FIX-2083 and FIX-2086 each turn their shape's entry on in the PR that stops writing it, and build no read of their own. The map is removed no earlier than FIX-2071 |
+| **Locks in** | One map in the collection layer, built and tested by FIX-2080 for all six shapes: a post to a routed task, blocked to held, the recorded-not-started mark to held, a parked split to running, a reopened row to pending, a row parked for a turn to pending. FIX-2077, FIX-2083 and FIX-2086 each turn their shape's entry on in the PR that stops writing it, and build no read of their own. The map is removed no earlier than FIX-2071 |
 
 **What would change my mind:** no persistent store outside tests and local dev databases holds
 these rows. Then the map is dead code, and the durable keys' rule covers rows too.
@@ -89,14 +89,15 @@ FIX-2081's own scope.
 
 | Seam | Owner, then who else touches it |
 |---|---|
-| The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait and FIX-2086's `message` land after it |
+| The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2080 lands first: it removes `blockTask`, adds `status` (held or pending) to `updateTask`'s patch, turns the busy-session refusal into a wait and adds `held` to the status filter. Then FIX-2081 owns the list and field rules, and FIX-2082's wait and FIX-2086's `message` land after it |
 | Who a filing can reach (`workforce/src/conversation-board/board.ts`, `reach()`) | FIX-2081 replaces a task session's roster arm with the self-step grant, after FIX-2076's plan rows land, so a worker files its own steps with or without delegates |
 | The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: after the engine's last drain on every terminal path, which follows `onFinished` (`engine/src/execution/runAction.ts:2447`→`:2630`→`:2641`, `:2773`→`:2918`→`:2936`), through an engine seam for framework packages, not an author hook. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
 | The wait (`tasks/helpers/wait-for-response.ts`) and its limits | FIX-2082 owns it and its limits: 5 waits deep; a tree 5 deep, 100 under its top task. FIX-2076 only sets which boards wait. A board's dispatch rides the row's wait. A bare `dispatcher({ wait: true })` has no row, and the engine awaits acceptance only (`core/src/blocks/dispatcher.ts:169-171`, `engine/src/context/dispatch-operation.ts:273-280`): FIX-2082 adds an engine wait that returns the result |
-| The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts |
+| The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts, FIX-2080's cascade debt among them |
 | `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times, removes the `reportOwed` marker and keeps Shift Manager's error route on the ending path ([f](#f)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
 | The collection read (`tasks/collection/`) | FIX-2080 owns the map; the retiring children turn entries on |
 | Queued messages | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
+| The filer on a task row (`tasks/schema/task.ts`) | FIX-2078 owns the server-written filer fields, session and flow, under rule 4 (a user's follow-up copies the original's). FIX-2082 and FIX-2086 read them; FIX-2081's filing-task link is its own |
 
 ## Decided in review, recorded so no child reopens them
 
