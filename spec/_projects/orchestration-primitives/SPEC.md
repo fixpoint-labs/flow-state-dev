@@ -11,7 +11,7 @@ outside it.
 
 | | |
 |---|---|
-| **Winning when** | Every pattern that runs on the task board stores its work as Task rows, and work one worker gives another is answered once, whichever path delivers it. The current bet is one task primitive (FIX-2056): `createTask` files, `getTask({ id, wait })` waits, and `dispatchTask` retires |
+| **Winning when** | Every pattern that runs on the task board stores its work as Task rows, and work one worker gives another is answered once, whichever path delivers it. A task that stops for a person waits in one place, one Inbox item answered once (FIX-2058). The current bet is one task primitive (FIX-2056): `createTask` files, `getTask({ id, wait })` waits, and `dispatchTask` retires |
 | **The read** | Parallel ways to give work. Today: **2** row kinds, a task and a coordinator's post, filed through `addTask` or `dispatchTask`; the claim ticket is already the only answer-once fence, since FIX-1872 removed the coordinator delivery ledger on Oct 13. Done is one task kind, filed by `createTask`, whose ending only the claim gate or the drain records ([PD-3](DECISIONS.md)). `roundRobin` and `debate` run off the board and are outside, by the owner's call ([*decided once*](DECISIONS.md)) |
 | **Now** | 6 epics done (the Plan/Task series counted as one) · 1 in flight · 3 filed, not started. FIX-2056's epic spec was approved Oct 21: ten issues and a closure, none started |
 | **Kill line** | If FIX-2056's closure shows a coordinator or hand-off goal regressing once posts become tasks, one primitive is the wrong bet. Then the job becomes naming the kinds clearly; answered-once still holds as the finish line, and the remaining epics change with it |
@@ -68,8 +68,9 @@ on it; the renames come last.
 
 - **Not every multi-agent pattern.** Patterns off the board, such as `roundRobin` and `debate`,
   are outside; FIX-922 decides whether they stay patterns.
-- **Not a way to ask a person something.** Approvals, Shift Manager's AskCard and the harness
-  question inbox stay outside. FIX-2058 sits uneasily against this line ([Open](DECISIONS.md#open)).
+- **Not the screens that ask a person.** Approvals, Shift Manager's AskCard and the harness
+  question inbox stay outside. A task that stops for a person is inside: FIX-2058 makes each stop
+  one Inbox item, answered once ([*decided once*](DECISIONS.md)).
 - **Not a message layer.** Work moves as task rows; Relay tried a second channel and was canceled.
 - **Not a choice of execution mode per skill** ([PD-2](DECISIONS.md)).
 - **Not Workforce.** Workers, `WORKER.md` and channels sit on this substrate and belong to the

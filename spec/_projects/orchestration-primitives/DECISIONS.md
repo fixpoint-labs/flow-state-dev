@@ -60,7 +60,7 @@ to keep right. If FIX-2056's closure shows those can't run as routed tasks, this
 
 ![PD-3's trade-off](figures/pd3-asks-are-tasks.svg)
 
-It comes down to a post that expects an answer: today's message needs a second once-only check to get one.
+It comes down to a post that expects an answer: a ledger-backed message needs a second once-only check to get one, which is why FIX-1872 removed the ledger on Oct 13.
 
 ## Decided once
 
@@ -75,24 +75,9 @@ It comes down to a post that expects an answer: today's message needs a second o
 | Does the outcome cover every multi-agent pattern? | **Only board-based ones.** `roundRobin` and `debate` run their own loop; FIX-922 decides whether they stay patterns | Product owner, Oct 12 |
 | What carries a post that expects an answer, and one that doesn't? | **A task**, filed by `createTask` and waited on by `getTask({ id, wait })`; a tell is a plain message ([PD-3](#pd-3--anything-that-expects-an-answer-is-a-task-a-tell-is-a-plain-message)). `dispatchTask` and `addTask` retire | Product owner, Oct 11; re-homed by FIX-2056, Oct 21 |
 | Does any FIX-2056 child wait on FIX-2058? | **No**, or each blocks the other and FIX-2056 never wraps. Answering a question by steer and marking a task *waiting on a person* are FIX-2058's; `answerTask` and the parks stay until then | FIX-2056 D2, approved Oct 21 ([#3588](https://github.com/fixpoint-labs/flow-state-dev/pull/3588)) |
+| Does the outcome cover a task that stops for a person? | **Yes.** Each stop is one Inbox item, answered once, and FIX-2058 stays in this project. The screens that ask (approvals, AskCard, the harness question inbox) stay outside | Coordinator, Oct 21, under the owner's standing authorization for reversible calls: the recommendation, applied when the owner had not answered within an hour |
 
 <a name="open"></a>
 ## Open
 
-### FIX-2058 and "not a way to ask a person": widen the outcome, or move the epic?
-
-**Plain terms.** This spec puts asking a person something outside the project. FIX-2058, filed
-here, makes every stop for a person one Inbox item, and FIX-2056's D2 hands it the answer by
-steer. Both can't stand.
-
-**The trade-off.** Widening keeps the Inbox beside the task gate it hangs on, but this project
-then owns a person-facing surface. Moving FIX-2058 to Human-in-the-Loop keeps this project to
-work between workers, at the cost of a cross-project dependency.
-
-**My recommendation:** widen. Add "a task that stops for a person waits in one place, answered
-once" to *Winning when*, and narrow the exclusion to the asking screens themselves.
-
-**What would change my mind:** Human-in-the-Loop already planning to own the Inbox.
-
-**What being wrong costs:** low and reversible: one line of scope, and where FIX-2058's spec is
-reviewed.
+None.
