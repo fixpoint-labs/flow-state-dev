@@ -691,6 +691,9 @@ importers:
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../packages/orchestration
+      '@flow-state-dev/scheduled':
+        specifier: workspace:*
+        version: link:../packages/scheduled
       '@flow-state-dev/store-postgres':
         specifier: workspace:*
         version: link:../packages/store-postgres

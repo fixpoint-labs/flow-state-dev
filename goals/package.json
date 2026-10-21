@@ -27,6 +27,7 @@
     "@flow-state-dev/mcp": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",

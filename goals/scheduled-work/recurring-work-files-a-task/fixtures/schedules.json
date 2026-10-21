@@ -1,0 +1,17 @@
+{
+  "org": "acme",
+  "user": "alice",
+  "filer": "launch",
+  "assignee": "researcher",
+  "start": "2026-03-20T12:00:00.000Z",
+  "weekly": {
+    "key": "adoption-numbers",
+    "cron": "0 9 * * 1",
+    "timezone": "Europe/London",
+    "goal": "Refresh the adoption numbers"
+  },
+  "listed": [
+    { "key": "standup-notes", "cron": "30 7 * * 1-5", "timezone": "America/New_York", "goal": "Collect the standup notes" },
+    { "key": "month-end", "cron": "15 18 28-31 * *", "timezone": "Asia/Tokyo", "goal": "Close the month's numbers" }
+  ]
+}

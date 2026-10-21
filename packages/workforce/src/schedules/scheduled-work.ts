@@ -37,7 +37,7 @@ import {
 import { z } from "zod";
 import { deriveWorkerSessionId, criteriaState } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
-import { FILE_SCHEDULED_TASK_ENTRY, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_KIND } from "./keys";
+import { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_KIND } from "./keys";
 
 /** What `hireWorkforce` takes for recurring work. */
 export interface ScheduledWorkOptions {
@@ -259,7 +259,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
   });
 
   const actions: Record<string, ActionConfig> = {
-    listSchedules: {
+    [LIST_SCHEDULES_ACTION]: {
       inputSchema: listSchedules.inputSchema,
       block: listSchedules,
       description: "The user's schedules, each with when it is next due, worked out from its cron and time zone."

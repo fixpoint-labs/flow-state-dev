@@ -28,3 +28,6 @@ export const TASK_SCHEDULE_KIND = "task";
  * Reached only by a fire's dispatch, never by a caller.
  */
 export const FILE_SCHEDULED_TASK_ENTRY = "fileScheduledTask";
+
+/** The roster flow action a screen lists the user's schedules through, each with its next run. */
+export const LIST_SCHEDULES_ACTION = "listSchedules";
