@@ -1,0 +1,105 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, how the tasks a task filed are cancelled when it is cancelled, retried or fails. Chosen: a debt recorded in the ending's own write and paid within seconds. Instead of: cancelling after the ending, best effort, as the split's piece cancel does today. It comes down to the first row: a crash between the ending and the cancel leaves the cascade owed and paid once due, where best effort leaves the filed work running for good. The price is the second row: for a few seconds the filed work still runs and spends, where best effort is usually instant. The third row: one more debt kind for the sweeper to pay, where best effort adds none. Locks in: one cascade debt, due within 2 s and paid on time by FIX-2078's wake, and a server-written cause on every cascaded cancel. Flips if: a task and its filed tasks are kept in one store write."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+    .c-gone { fill:var(--gone); }
+    .n-box  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">When a task ends, how are the tasks it filed cancelled?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">A debt with the ending</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Cancel after it, best effort</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A CRASH BETWEEN</text>
+    <text class="t-lbl" x="32" y="169">ENDING AND CANCEL</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Owed, paid once due</text>
+    <text class="t-s" x="248" y="179">the ending's write recorded it</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Filed work runs for good</text>
+    <text class="t-s" x="612" y="179">nothing remembers it was owed</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">THE WINDOW</text>
+    <text class="t-lbl" x="32" y="235">BEFORE THE CANCEL</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">A few seconds of spend</text>
+    <text class="t-s" x="248" y="241">its pass pays it; due in 2 s</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Usually instant</text>
+    <text class="t-s" x="612" y="241">when nothing crashes</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="282">WHAT THE BOARD</text>
+    <text class="t-lbl" x="32" y="295">KEEPS</text>
+    <text class="mark minus" x="228" y="284">−</text>
+    <text class="t-b" x="248" y="283">One more debt kind</text>
+    <text class="t-s" x="248" y="301">the sweeper pays it when due</text>
+    <text class="mark plus" x="592" y="284">+</text>
+    <text class="t-b" x="612" y="283">Nothing new</text>
+    <text class="t-s" x="612" y="301">the split cancel, widened</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="336" width="446" height="72" rx="5"/>
+    <text class="t-lbl" x="32" y="357">LOCKS IN</text>
+    <text class="t-b" x="32" y="377">A cascade debt, and its cause</text>
+    <text class="t-s" x="32" y="395">each cascaded cancel names the task that caused it</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="336" width="446" height="72" rx="5"/>
+    <text class="t-lbl" x="494" y="357">FLIPS IF</text>
+    <text class="t-b" x="494" y="377">A task and its filed tasks share one write</text>
+    <text class="t-s" x="494" y="395">then the cancel lands in the ending itself</text>
+  </g>
+</svg>
