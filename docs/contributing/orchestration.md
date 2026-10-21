@@ -417,7 +417,10 @@ others are missing:
    research. The spec for a bug is worth writing then, and what it carries is the
    reproduction shape and the regression seam.
 3. **It isn't really a bug** — *the worker decides,* before it builds. The "fix" is a new
-   capability, or it changes a contract other code depends on. Promote it — a feature must
+   capability, a new way to do a job something already does
+   ([`asking-for-decisions.md`](asking-for-decisions.md) → "When approving adds a way to do a
+   job"), or it changes a contract other code depends on.
+   Promote it — a feature must
    not reach `main` through the one route with no gate in front of it. A *routing* call,
    not a reaction to the fix turning out to be interesting.
 
