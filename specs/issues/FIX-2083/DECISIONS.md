@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A `post: true` flag moved onto `createTask`, which refuses a goal; or the model's goal alone, as for any task |
 | **Because** | [FIX-1872 D2](../FIX-1872/DECISIONS.md#d2) holds: a delegate answers what the person wrote, and the coordinator goal grades a held-out word arriving intact. A flag keeps a second shape of one tool, which FIX-2081 just retired. So the model files an ordinary task with the routing settings and its own goal, and on a turn routing a message the server attaches that message, as written, with who wrote it and the recent lines, to every task the turn files with its result to the conversation |
-| **Locks in** | `target` on `createTask`, the public field naming a workstream record, accepted only from a filer whose delegates have targets. The attached message is server-written and never an input field. The routing settings are the model's per task (the concept's *chooses per task*): a routed task is attempts 1 ([epic](../../epics/FIX-2056/DECISIONS.md)): the policies file 1, and the server stamps 1 on every conversation-result task whatever the model passes: a judgment model that leaves `maxAttempts` out gets 1, never the board's default, and one that passes 3 gets 1 |
+| **Locks in** | `target` on `createTask`, the public field naming a workstream record: a filing setting, set only at filing and refused on `updateTask`, and refused from a filer whose delegates have no targets. The workstream session it resolves to is server-written, stored top level beside `session` (BP-031), never an input. The attached message is server-written and never an input field. The routing settings are the model's per task (the concept's *chooses per task*): a routed task is attempts 1 ([epic](../../epics/FIX-2056/DECISIONS.md)) by FIX-2080's rule for a conversation-result task: unset reads 1, so a judgment model that leaves `maxAttempts` out gets 1, never the board's default, and any other value is refused at filing, naming the rule. The policies file 1 |
 
 ![D1: how a judgment coordinator hands a message on. createTask with the routing settings and the message attached, chosen, beside a post flag on createTask. Decides it: what the delegate answers; both keep the user's words. The price: a field and a server-attached message on createTask. Locks in target on createTask; flips if the product wants coordinators to brief in their own words](figures/d1-createtask-as-written.svg)
 
@@ -43,7 +43,7 @@ words. Then nothing is attached, and the goal is the brief.
 |---|---|
 | **Instead of** | Today's timer, which each delegate's run keeps beside its turn and which wakes the coordinator at the deadline |
 | **Because** | The timer lives in the delegate's process, so a restart loses it and the round waits for some other wake. FIX-2078's wake is the engine's one due-time source ([its D1](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)), fired until a pass clears it, after a crash too. The deadline belongs to the coordinator's round, not to a delegate's run, which a routed task's `work` entry no longer special-cases |
-| **Locks in** | A round's deadline is due time on the coordinator session's wake, cleared when every round is closed. This issue therefore lands after FIX-2078, as the epic already orders. `roundDeadline` stays the internal entry the wake runs |
+| **Locks in** | A round's deadline is due time on a wake on the coordinator's session whose entry is `roundDeadline`, cleared when every round is closed. On a host where FIX-2078's start check finds no wake support, the round deadline keeps an in-process timer, as today, so rounds still close there, though not across a restart. This issue therefore lands after FIX-2078, as the epic already orders. `roundDeadline` stays an internal entry |
 
 ![D2: who closes a round at its deadline. A wake on the coordinator's session, chosen, beside a timer in each delegate's run. Decides it: a host restart before the deadline; the wake closes the round on time, the timer is lost. The price: one more due-time kind on the wake. Locks in that this lands after FIX-2078](figures/d2-round-wake.svg)
 
@@ -82,9 +82,14 @@ whether the lead can manage the workers under it. Then the vet keeps its own cal
   pending in the user's list and cancellable there. The cost, from rules 5, 6 and 9 together: a
   delegate waiting on work it filed holds later messages to it until that work ends. A waiting
   task whose round has closed is still worked; its answer lands once, late, as today.
-- **A routed turn is a task turn.** The `taskTurn: false` stopgap goes; the delegate may file work
-  and wait on it (rule 9), and its task stays open until that work ends (rule 6, FIX-2077). The
-  coordinator never waits on a routed task (FIX-2082's refusal).
+- **A routed turn is a task turn.** The `taskTurn: false` stopgap goes; the delegate may file work,
+  and its task stays open until that work ends (rule 6, FIX-2077). Until FIX-2082 lifts the
+  task-turn wait refusal, a routed delegate files work and ends its turn, and rule 6 keeps its task
+  open; from FIX-2082 on it may also wait on that work (rule 9). The coordinator never waits on a
+  routed task (FIX-2082's refusal).
+- **Routing never picks the coordinator itself.** Its candidates exclude the coordinator, whatever
+  its delegate list says, so no routed task lands on its own plan ledger. Best fit's self-pick
+  stays what it is today: the coordinator answers, and nothing is filed.
 - **Endings.** One entry, `onTaskSettled`, through FIX-2078's path. A conversation-result ending
   lands as a line under the delegate's name and feeds the rounds; nothing wakes a judgment turn
   for it. A failure's error report rides it ([(f)](../../epics/FIX-2056/DECISIONS.md#f)).
@@ -101,11 +106,20 @@ whether the lead can manage the workers under it. Then the vet keeps its own cal
   posts, and builds no read of its own (ER-6).
 - **`dispatchTask`.** This issue removes its post form; if FIX-2082 has landed, the tool and its
   action too (FIX-2081 D1).
-- **Changeset lines**, removed outright under [(e)](../../epics/FIX-2056/DECISIONS.md#e):
-  `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostHistory`, `delegatedPostOnFinished`
-  and `delegatedPostSchema` (a delegate declares `work` only); `dispatchTask({ post, target })`
-  (`createTask` with the routing settings); `taskLedgers({ taskTurn })` (nothing). The epic's
-  `migration.md` names only the first; the others ride its row.
+- **Changeset lines**, removed outright under [(e)](../../epics/FIX-2056/DECISIONS.md#e), each a
+  row in the epic's [`migration.md`](../../epics/FIX-2056/migration.md):
+  `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostHistory`, `delegatedPostOnFinished`,
+  `delegatedPostSchema` and `DelegatedPost` (a delegate declares `work` only);
+  `taskLedgers({ taskTurn })` (nothing); `defineCoordinatorFlow`'s `delegateFlows`,
+  `defineSessionBoard`'s `postFlows` and `posts`, and `posts`/`both` in `listDelegates`' takes
+  (a delegate is a worker whose flow takes tasks; FIX-2084's role check is the one answer). The
+  implementation's sweep checks they are gone. `dispatchTask({ post, target })` has no row of its
+  own: it is FIX-2081's `dispatchTask` row, whose routed-task line reads `createTask` with
+  `target` and the routing settings; whichever of #3596 and this PR merges second writes that.
+- **The collection's dispatch verb.** If this lands after FIX-2082, it removes
+  `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall` and the
+  `already-dispatched` decline with the tool, under the same row. If FIX-2082 lands later, it
+  does.
 - **No POC and no checker.** The premises are read from code at `96404d25`, and no claim here
   rests on a count.
 
@@ -138,8 +152,10 @@ Recorded for the implementer, not baked into the design. Round 1, on `48372389`.
   `onPostSettled` or `postCancelled` in `packages/` or `apps/`, leaving `workerTaskEntry` and
   `conversation-board/task-entry.ts` as the only entry and ending pair (`task-settled.ts`,
   `notice-delivery.ts`, `board.ts`).
-- **Merge order** (second look): this lands after FIX-2078, FIX-2080 and FIX-2081 merge (the
-  blocked-by relations); D2 rests on FIX-2078's sweeper-kept wake.
+- **Merge order** (second look, cross-spec audit): this lands after FIX-2077, FIX-2078, FIX-2080
+  and FIX-2081 merge (the blocked-by relations); D2 rests on FIX-2078's sweeper-kept wake, and a
+  routed task stays open while its filed work runs only under FIX-2077's rule 6. No edge from
+  FIX-2082: the interim under *A routed turn is a task turn* covers either order.
 - **D3 can be its own PR** (Cursor, second look): it shares no code path with the post removal.
   It stays in this issue because the epic puts *one fit check* here
   ([SPEC](../../epics/FIX-2056/SPEC.md), set and debt); the implementer may land it separately.

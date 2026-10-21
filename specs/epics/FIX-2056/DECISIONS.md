@@ -89,7 +89,7 @@ FIX-2081's own scope.
 
 | Seam | Owner, then who else touches it |
 |---|---|
-| The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait and FIX-2086's `message` land after it |
+| The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait, FIX-2083's `target` on `createTask` and FIX-2086's `message` land after it |
 | The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: the request's `onFinished`, run after background work drains on every terminal path (`engine/src/execution/runAction.ts:2447`→`:2630`, `:2773`→`:2918`). No engine hook needed. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
 | The wait (`tasks/helpers/wait-for-response.ts`) and its limits | FIX-2082 owns it and its limits: 5 waits deep; a tree 5 deep, 100 under its top task. FIX-2076 only sets which boards wait. A board's dispatch rides the row's wait. A bare `dispatcher({ wait: true })` has no row, and the engine awaits acceptance only (`core/src/blocks/dispatcher.ts:169-171`, `engine/src/context/dispatch-operation.ts:273-280`): FIX-2082 adds an engine wait that returns the result |
 | The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts |

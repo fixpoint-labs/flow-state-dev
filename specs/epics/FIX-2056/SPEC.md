@@ -74,7 +74,7 @@ The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 | [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) · filing settings | Start, session, result, attempts; cascades; the one read for retired rows ([D3](DECISIONS.md#d3)) | — |
 | [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · four tools | Four task tools, one rule per field; delegates as authority | FIX-2080 |
 | [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait; 5 deep, 100 under a top task | FIX-2076, FIX-2077, FIX-2081 |
-| [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2078, FIX-2080, FIX-2081 |
+| [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2077, FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2084](https://linear.app/fixpoint-labs/issue/FIX-2084) · worker contract | Roles checked at hire; `respond` and `dispatch` | FIX-2078, FIX-2083 |
 | [FIX-2085](https://linear.app/fixpoint-labs/issue/FIX-2085) · schedules | A schedule files an ordinary task | — |
 | [FIX-2086](https://linear.app/fixpoint-labs/issue/FIX-2086) · steer and follow-up | `updateTask({ message })`; finished output never changes | FIX-2077, FIX-2081 |
@@ -97,6 +97,7 @@ flowchart LR
   T -->|"getTask"| W
   T -->|"updateTask"| S
   T -->|"createTask, delegates"| R["FIX-2083 · routed tasks"]
+  B -->|"a routed task stays open while its filed work runs"| R
   L -->|"session, result, attempts"| R
   E["FIX-2078 · endings and debts"] -->|"result to the conversation"| R
   R -->|"no post entry"| K["FIX-2084 · worker contract"]
@@ -105,7 +106,7 @@ flowchart LR
 ```
 
 An edge is what one issue hands the next. FIX-2076, FIX-2078, FIX-2080 and FIX-2085 start at once;
-every child blocks the closure, left off. The longest chain is four.
+every child blocks the closure, left off. The longest chain is five once FIX-2081 blocks FIX-2077 (FIX-2080, FIX-2081, FIX-2077, FIX-2083, FIX-2084); four until then.
 
 ## What stays as it is
 
