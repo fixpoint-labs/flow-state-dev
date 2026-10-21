@@ -31,3 +31,5 @@
 | 2026-10-21 | `8b3f56d92` + goal | n/a | FAIL (expected) | `GOAL_CONTROL=memory-dedupe`: `b:exactly-one-task — one scheduled time filed 4 tasks (fires answered 202, 202, 202, 202)`; `b:early-files-nothing — … filed 1 task(s)` |
 | 2026-10-21 | `8b3f56d92` + mutation | n/a | FAIL (expected) | next run worked out in UTC, not the row's zone: only `c:next-run` fails, for all three zones |
 | 2026-10-21 | `8b3f56d92` + mutation | n/a | FAIL (expected) | the fire files through `addTask_tasks` (recorded, not started): only `a:it-runs` (ended pending) and `a:ending-heard-once` (0 ending requests) fail, with CAN'T TELL on launch's ending requests |
+| 2026-10-21 | `49159691b` | n/a | PASS | After review fixes (five-field crons, stale fixed times, untimed tolerance, floor, delete with its record): all three legs as before; b answers 200, 202, 200, 200 |
+| 2026-10-21 | `49159691b` | n/a | FAIL (expected) | `GOAL_CONTROL=memory-dedupe`: `b:exactly-one-task — one scheduled time filed 4 tasks (fires answered 202, 202, 202, 202)`; `b:early-files-nothing` as before |
