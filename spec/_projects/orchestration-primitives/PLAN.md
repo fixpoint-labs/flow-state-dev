@@ -7,7 +7,8 @@ Live status is [Spec](SPEC.md) → *the epics*; this page is the order and what 
 ![The arc](figures/arc.svg)
 
 Each lane is an epic, its bar running from filed to wrapped; a green bar is done, a blue one is in
-flight, and the red line is today.
+flight, a grey outline was canceled, a lane with no bar is filed but not started, and the red line
+is today.
 
 ## The order, and what each hands the next
 
