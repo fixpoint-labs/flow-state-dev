@@ -334,6 +334,57 @@ body {
   border-radius: 0;
 }
 
+/* ── Search: DocSearch's button and modal on paper, in ink ──
+   DocSearch draws everything from its `--docsearch-*` variables; these
+   point them at the page's tokens. The selected result is an ink tint and
+   a matched word is ink with an underline, so search adds no hue.
+
+   DocSearch's stylesheet loads after this one and sets its defaults on
+   `:root`, so the mapping sits on its own `.DocSearch` roots (the navbar
+   button and the modal's container) instead, and the corner rules are
+   scoped under them to outrank its rules. */
+
+.DocSearch {
+  --docsearch-primary-color: var(--ink1);
+  --docsearch-highlight-color: var(--ink1);
+  --docsearch-focus-color: var(--ink1);
+  --docsearch-text-color: var(--ink2);
+  --docsearch-hit-color: var(--ink2);
+  --docsearch-secondary-text-color: var(--ink3);
+  --docsearch-icon-color: var(--ink3);
+  --docsearch-key-color: var(--ink3);
+  --docsearch-search-button-text-color: var(--ink3);
+  --docsearch-muted-color: var(--ink4);
+  --docsearch-error-color: var(--red);
+  --docsearch-subtle-color: var(--hairline-internal);
+  --docsearch-container-background: color-mix(in oklab, var(--ink1) 40%, transparent);
+  --docsearch-modal-background: var(--paper);
+  --docsearch-background-color: var(--paper-band);
+  --docsearch-footer-background: var(--paper-band);
+  --docsearch-key-background: var(--paper-band);
+  --docsearch-searchbox-background: var(--paper-card);
+  --docsearch-searchbox-focus-background: var(--paper-card);
+  --docsearch-search-button-background: var(--paper-card);
+  --docsearch-hit-background: var(--paper-card);
+  --docsearch-hit-highlight-color: color-mix(in oklab, var(--ink1) 8%, transparent);
+  --docsearch-soft-primary-color: color-mix(in oklab, var(--ink1) 8%, transparent);
+  --docsearch-modal-shadow: inset 0 0 0 1px var(--hairline-structural);
+  --docsearch-footer-shadow: inset 0 1px 0 var(--hairline-structural);
+  --docsearch-hit-shadow: none;
+  --docsearch-key-pressed-shadow: none;
+}
+
+/* DocSearch rounds these in its own rules rather than through a variable. */
+.DocSearch.DocSearch-Button,
+.DocSearch .DocSearch-Button-Key,
+.DocSearch .DocSearch-Commands-Key,
+.DocSearch .DocSearch-Modal,
+.DocSearch .DocSearch-Form,
+.DocSearch .DocSearch-Hit,
+.DocSearch .DocSearch-Hit a {
+  border-radius: 0;
+}
+
 /* ── Scrollbars: a thin hairline thumb on a clear track ── */
 
 * {
