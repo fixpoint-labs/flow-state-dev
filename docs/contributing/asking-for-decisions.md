@@ -180,11 +180,6 @@ the artifact carries more product surface than one artifact should.
 
 ## When approving adds a way to do a job
 
-A change that adds another way to do a job something already does (hand off work, wait for a
-result, answer a question, report an ending) is how a surface grows one reasonable approval at a
-time. Each such ask can state the cost honestly ("a second entry kind nobody needs") and still
-recommend building it, and nobody keeps the count. Two rules:
-
 - **The reduction is the default, and it is the engineer's call.** Extend the closest existing
   entry with an option ([`issue-spec`](../../.agents/skills/issue-spec/SKILL.md) Step 3.5,
   question 7). Under [`epic-em`](../../.agents/skills/epic-em/SKILL.md), make it and report it

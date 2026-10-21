@@ -9,11 +9,10 @@ don't, and a ledger that samples only children reports zero for it.
 top recurring class, both trending **down** across cycles. Flat or rising means the
 upstream fixes landed at the wrong altitude — move them, don't add more.
 
-**Ways per job** — the second number, on epic rows. Classes come from review findings, so an
-added way to do a job that was approved in round one never appears in them, and it even
-improves rounds-to-approval. So the epic-wrap job audit records `ways per job: <job> N→M`
-for each job the epic touched. The target is flat or down. A rise with no approved
-keep-ask behind it ([`asking-for-decisions.md`](../contributing/asking-for-decisions.md) →
+**Ways per job** — the second number, on epic rows. The epic-wrap job audit records
+`ways per job: <job> N→M` for each job the epic touched. A round-one approval never lands
+in the classes and can improve rounds-to-approval, so the target is flat or down. A rise
+with no approved keep-ask ([`asking-for-decisions.md`](../contributing/asking-for-decisions.md) →
 "When approving adds a way to do a job") means the job check was skipped.
 
 **A cycle may declare a different primary axis**, and several have. When it does, the

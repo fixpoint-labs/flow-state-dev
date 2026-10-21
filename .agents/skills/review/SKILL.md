@@ -48,15 +48,14 @@ which is most of what divergence produces. They compose; they don't merge.
 Give every lens the same target framing, `docs/philosophy.md`, and — for a change — the
 spec.
 
-**Every change gets the job check, whether or not its direction is settled.** Tell the Coherence lens:
-anything the diff adds that does a job something already does is a direction finding when
-the spec's question-7 line (`issue-spec` Step 3.5) doesn't name it. That covers a public
-method, tool, entry, action or resume path, and a fallback that finds what a primitive
-should hand over, like a lookup around a claim the caller can't see. The finding goes to the
-ask ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
-approving adds a way to do a job"), never to an implementer note. A bug-route change has no
-spec, so everything it adds counts. An approved spec settles what it decided, not what the
-diff added after it. A fallback is also a tenet 5 finding: the fix belongs in the primitive.
+**Every change gets the job check, settled direction or not.** Tell Coherence: anything the
+diff adds that does a job something already does — a public method, tool, entry, action,
+resume path, or a fallback that finds what a primitive should hand over — is a direction
+finding when the spec's question-7 line (`issue-spec` Step 3.5) doesn't name it. A
+bug-route change has no spec, so everything it adds counts. The finding goes to the ask
+([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
+approving adds a way to do a job"), never an implementer note. A fallback is also tenet 5:
+the fix belongs in the primitive.
 
 **Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
 code exists most alternatives are expensive regret — the spec is where they pay for
