@@ -82,21 +82,21 @@ flowchart LR
   W["a request for the task · work, onTaskSettled, a queued message, a resume"] --> E["engine drains background work · onFinished · drains what the end hooks started"]
   E --> G["claim gate · the one rule-6 check"]
   G -->|"done"| S["settle the row once"]
-  G -->|"a filed task open or a message queued"| H["record the hold · drop the lease · the next request re-checks"]
-  W -->|"suspends"| K["record the hold · keep the claim · no lease"]
+  G -->|"a filed task open or a message queued"| H["record waitingOn · drop the lease · the next request re-checks"]
+  W -->|"suspends"| K["record waitingOn · keep the claim · no lease"]
 ```
 
 Every request for the task ends at the same check, after the engine's last drain. A request that
-suspends, or ends with work still open, records the hold instead.
+suspends, or ends with work still open, records what it waits on (`waitingOn`) instead.
 
 ## What stays as it is
 
 - **Inline plan rows.** The drain records each row when its worker returns (FIX-2076). Its
-  background work belongs to the parent task's request, so it holds the parent's settle, not the row's.
+  background work belongs to the parent task's request, so it delays the parent's settle, not the row's.
 - **Failures.** A request that throws fails the attempt where it does today; retries are unchanged.
 - **Who a piece can go to.** Any worker on the roster that takes tasks (delegates as authority is FIX-2081's).
-- **A worker's review park** (`awaitReview`), and `answerTask`, until FIX-2058. A held row is not a
-  review park, and this issue changes neither.
+- **A worker's review park** (`awaitReview`), and `answerTask`, until FIX-2058. A row with
+  `waitingOn` set is not a review park, and this issue changes neither.
 
 ## What's already here, and the debt
 
@@ -105,7 +105,7 @@ suspends, or ends with work still open, records the hold instead.
 | The claim gate around a task entry (`task-board/task-entry.ts`) | **Extends.** It admits every request for the task and settles at the request's end |
 | The recorders the gate and the inline drain share | **Builds on.** The inline drain keeps them as they are |
 | The request's end: drain, `onFinished`, then a second drain for what the end hooks started, on every terminal path | **Extends.** The gate's check runs after that second drain, through a seam for framework packages. Not a flow-author hook ([decided](DECISIONS.md#decided-not-asked)) |
-| Lease renewal, and the reclaim that skips a row with no lease | **Builds on.** A held row drops its lease, so the reclaim leaves it alone. A board counts it as dispatched, as it does a live lease today |
+| Lease renewal, and the reclaim that skips a row with no lease | **Builds on.** A row with `waitingOn` set drops its lease, so the reclaim leaves it alone. A board counts it as dispatched, as it does a live lease today |
 | The message entry, deferred behind the task's turn | **Builds on.** Admitted for the task; FIX-2070 renames it `receive` |
 | Whatever else decides a task is done | **Three today** (the epic POC's census of every `complete`/`fail`/settle write in `orchestration` and `workforce`): the gate's recorders, `completeTask`/`failTask`, the split settle. The settle goes here, the tools in FIX-2081, a wait's cancel in FIX-2082 |
 | [FIX-1802 D3](../FIX-1802/DECISIONS.md#d3) and its BR-16: a failed piece fails the parent unless re-filed | **Superseded.** The worker's last request decides ([D3](DECISIONS.md#d3)) |
@@ -115,11 +115,11 @@ suspends, or ends with work still open, records the hold instead.
 | The debt | |
 |---|---|
 | **Removes** | The split park, its parent binding and its settle entry (`settleSplitTask`) · its cancel cascade (FIX-2080's replaces it) · the `{ answer, pieces }` output · the automatic piece-failure rule and the retry marker · the settle at the entry's last step |
-| **Adds** | A hold on a running row: what keeps it open (a person, filed tasks, or another wait). It outlives the review park, which FIX-2058 retires. One engine seam after the last drain. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
-| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded hold is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) removes it, not this issue; a crash between the last piece ending and its notice strands the parent until FIX-2078's wake pays it · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
+| **Adds** | `waitingOn` on a running row: what keeps it open (a person, filed tasks, or another wait). Not a form of FIX-2080's `held`, which is a status before a start; `waitingOn` exists only after one. It outlives the review park, which FIX-2058 retires. One engine seam after the last drain. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
+| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded wait is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) removes it, not this issue; a crash between the last piece ending and its notice strands the parent until FIX-2078's wake pays it · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
 
-**Net: down.** A park, a settle entry, a cascade, an output shape and a failure rule go; one hold
-field and one engine seam arrive.
+**Net: down.** A park, a settle entry, a cascade, an output shape and a failure rule go; one
+`waitingOn` field and one engine seam arrive.
 
 ## Sign off
 
@@ -128,7 +128,7 @@ work, and never run twice for waiting. If wrong: FIX-2082 and FIX-2086 build on 
 moves.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** the split park and its settle go; a
-hold field and an engine seam arrive. If wrong: a field nobody reads after FIX-2058.
+`waitingOn` field and an engine seam arrive. If wrong: a field nobody reads after FIX-2058.
 
 1. **[D1](DECISIONS.md#d1) · A waiting task keeps its claim with no lease.** If wrong: a task whose
    wait is lost stays running until the sweeper pays it.

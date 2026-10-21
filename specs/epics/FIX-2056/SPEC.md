@@ -98,7 +98,7 @@ flowchart LR
   T -->|"updateTask"| S
   T -->|"createTask, delegates"| R["FIX-2083 · routed tasks"]
   L -->|"session, result, attempts"| R
-  E["FIX-2078 · endings and debts"] -->|"the sweeper recovers a lost hold"| B
+  E["FIX-2078 · endings and debts"] -->|"the sweeper recovers a lost wait"| B
   E -->|"result to the conversation"| R
   R -->|"no post entry"| K["FIX-2084 · worker contract"]
   E -->|"onTaskSettled, dispatch"| K

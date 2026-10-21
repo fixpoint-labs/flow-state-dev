@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a task keeps its claim while its request waits. Chosen: no lease, the row records what holds it. Instead of: renewing the lease up to the wait&#x27;s deadline. It comes down to the first row: when the server restarts during the wait, the chosen option keeps the task running on the same attempt, while a renewed lease lapses because nothing renews it and the task runs twice. The price is the second row: a wait that is lost has no lease to end it, only its own deadline or the sweeper, where a lease would lapse. Third row: a wait on filed tasks has no deadline; the chosen option needs none, the other has nothing to renew to. Locks in: a waiting task is never re-run by a lapse. Flips if: a host must take a waiting task back by lease."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a task keeps its claim while its request waits. Chosen: no lease, the row records what it waits on (waitingOn). Instead of: renewing the lease up to the wait&#x27;s deadline. It comes down to the first row: when the server restarts during the wait, the chosen option keeps the task running on the same attempt, while a renewed lease lapses because nothing renews it and the task runs twice. The price is the second row: a wait that is lost has no lease to end it, only its own deadline or the sweeper, where a lease would lapse. Third row: a wait on filed tasks has no deadline; the chosen option needs none, the other has nothing to renew to. Locks in: a waiting task is never re-run by a lapse. Flips if: a host must take a waiting task back by lease."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">No lease · the row records the hold</text>
+    <text class="t-h c-code" x="228" y="112">No lease · the row records waitingOn</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Renew the lease to the wait&#x27;s deadline</text>
@@ -56,7 +56,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Still running, same attempt</text>
-    <text class="t-s" x="248" y="179">the hold is on the row, not in a process</text>
+    <text class="t-s" x="248" y="179">waitingOn is on the row, not in a process</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Lapses, and runs twice</text>
     <text class="t-s" x="612" y="179">nothing renews the lease after a restart</text>
@@ -95,6 +95,6 @@
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
     <text class="t-b" x="494" y="371">A host must take a waiting task back by lease</text>
-    <text class="t-s" x="494" y="389">then the hold keeps a long lease instead of none</text>
+    <text class="t-s" x="494" y="389">then waitingOn keeps a long lease instead of none</text>
   </g>
 </svg>

@@ -57,7 +57,7 @@
     <rect class="req" x="700" y="240" width="70" height="26" rx="4"/>
     <text class="t-s" x="708" y="257">waits</text>
     <rect class="wait" x="770" y="240" width="140" height="26" rx="4"/>
-    <text class="t-s" x="776" y="257">hold · no lease</text>
+    <text class="t-s" x="776" y="257">waitingOn · no lease</text>
     <text class="t-ok" x="702" y="290">keeps its claim, even</text>
     <text class="t-ok" x="702" y="306">across a restart</text>
   </g>

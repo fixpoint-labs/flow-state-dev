@@ -23,15 +23,15 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Keeping the lease and renewing it up to the wait's deadline |
-| **Because** | A lease means "a live worker holds this". A waiting task has no live worker: its request is stored, and after a restart nothing renews anything. So the row records what holds it and drops its lease, and the reclaim, which only takes rows whose lease has run out, leaves it alone. A wait on filed tasks has no deadline to renew to at all |
-| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with a filed task open or a message queued: both record a hold and drop the lease. The price: a task whose wait is lost (a resume that never comes) stays running until its wait's own deadline or FIX-2078's sweeper ends it, so this ships with or after FIX-2078 |
+| **Because** | A lease means "a live worker holds this". A waiting task has no live worker: its request is stored, and after a restart nothing renews anything. So the row records what it waits on (`waitingOn`) and drops its lease, and the reclaim, which only takes rows whose lease has run out, leaves it alone. A wait on filed tasks has no deadline to renew to at all |
+| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with a filed task open or a message queued: both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes) stays running until its wait's own deadline or FIX-2078's sweeper ends it, so this ships with or after FIX-2078 |
 
-![D1: how a waiting task keeps its claim. No lease, the row records the hold, chosen, beside renewing the lease to the wait's deadline. Decides it: a server restart while the task waits. The price: a lost wait has no lease backstop](figures/d1-claim-without-lease.svg)
+![D1: how a waiting task keeps its claim. No lease, the row records what it waits on, chosen, beside renewing the lease to the wait's deadline. Decides it: a server restart while the task waits. The price: a lost wait has no lease backstop](figures/d1-claim-without-lease.svg)
 
 It comes down to a restart while the task waits: a renewed lease lapses, and the task runs twice.
 
 **What would change my mind:** a host that must take a waiting task back by lease, for example
-to move it off a worker pool being retired. Then the hold keeps a long lease instead of none.
+to move it off a worker pool being retired. Then a row with `waitingOn` keeps a long lease instead of none.
 
 <a name="d3"></a>
 ## D3 · A task that split ends as its worker's last request ends
@@ -65,13 +65,15 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
 - **"Queued" is durable, and Workforce answers it.** Rule 6 takes a "work queued for this task"
   predicate, defaulting to none. Workforce's wiring supplies it from the message log: a message
   row for the task's session not yet acted on, not the process's admission line. `orchestration`
-  does not read Workforce state. FIX-2070 caps how many hold a task open.
+  does not read Workforce state. FIX-2070 caps how many keep a task open.
 - **Admitted for a task** (rule 2): `work`, `onTaskSettled` in the task's session, the message entry
   for a message queued there, and a resume of any of them. Admission re-mints the claim from the
-  row (its run link names the session), restarts renewal and clears the hold.
-- **The hold.** A new nullable row field read with a `== null` guard (BP-030), naming what keeps
-  the task open: a person, filed tasks, or another wait. A running row with a hold has no lease;
-  admission clears the hold and restarts the lease. The review park stays until FIX-2058 retires it.
+  row (its run link names the session), restarts renewal and clears `waitingOn`.
+- **`waitingOn`.** A new nullable row field read with a `== null` guard (BP-030), naming what keeps
+  the task open: a person, filed tasks, or another wait. A running row with `waitingOn` set has no lease;
+  admission clears it and restarts the lease. It is named apart from FIX-2080's `held`
+  ([#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)): `held` is a status that applies
+  only before a start, `waitingOn` a field that applies only after one, so no screen shows "held" for both. The review park stays until FIX-2058 retires it.
 - <a name="person-stop"></a>**A person's stop keeps its claim now**, before FIX-2058 shows it. A
   person's suspension is `human_approval` or `human_input`, the kinds `waitForUser` will carry; any
   other reason is a wait. The gate must tell the two apart to keep a wait running (the epic's
@@ -84,7 +86,7 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   `listTasks` is FIX-2081's, since ER-5 makes its four tools the only task surface.
 - **Cancelling a split task** cancels its pieces through FIX-2080's cascade; the split's own cascade
   only fired on the park this removes.
-- **Upgrade:** a split parked at upgrade reads as running with a hold, through FIX-2080's map entry,
+- **Upgrade:** a split parked at upgrade reads as running with `waitingOn` set, through FIX-2080's map entry,
   turned on in the PR that stops writing the park (ER-6). The epic's
   [migration lines](../../epics/FIX-2056/migration.md) carry the removed surfaces.
 - **FIX-1024 stays open:** the settle reads the claim from the row; the inline drain keeps its copy.
@@ -132,5 +134,8 @@ For the implementer, recorded verbatim, not baked into the design.
   `runAction.ts` drains what `onFinished` starts after it runs. "Queued" became a predicate
   Workforce supplies. A request that ends with work open records a hold too. D2 moved to *decided*:
   once the gate tells a person from a wait, the lapse path for a person is the bug.
+- **Round 2** — the running-row field is renamed from "hold" to `waitingOn`, because FIX-2080
+  ([#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)) makes `held` the status for
+  a task filed and not started. One term, one thing. No change to the approach.
 
 Open: none.
