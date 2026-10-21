@@ -1,12 +1,12 @@
 /**
  * Dispatching work on a conversation's board (FIX-1875 V2, V4).
  *
- * A row recorded but not dispatched (`undispatched`) is never started by any
- * of the board's start paths: the claim, the drain's exit, a filing's wake,
- * an assign's wake, a touch's wake. `dispatchTask` is the one way to start
- * one, and to file a new row ready. Rows are seeded in the stored shape, as a
- * recording `addTask` will write them, and every leg reads the store, never
- * the action's own say-so.
+ * A held row is never started by any of the board's start paths: the claim,
+ * the drain's exit, a filing's wake, an assign's wake, a touch's wake.
+ * `dispatchTask` releases one, and files a new row ready. Some rows are
+ * seeded in the shape an older build stored a recorded row in (`undispatched`,
+ * FIX-1875), which the board reads as held (FIX-2080); every leg reads the
+ * store, never the action's own say-so.
  */
 import { describe, expect, it } from "vitest";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
@@ -48,7 +48,7 @@ describe("a recorded row on a conversation's board (V4)", () => {
       const other = await act(host, conv, "dispatchTask_tasks", { goal: "Write the notes", assignee: "eng.tasker" });
       expect(other.ok).toBe(true);
       await host.settled();
-      // An assign that names the row's new owner: it moves, and stays recorded.
+      // An assign that names the row's new owner: it moves, and stays held.
       expect(await act(host, conv, "assignTask_tasks", { taskId: "task_recorded", assignee: "eng.writer" })).toEqual({
         ok: true
       });
@@ -57,7 +57,9 @@ describe("a recorded row on a conversation's board (V4)", () => {
       await host.settled();
 
       const row = await host.row("alice", filing, "task_recorded");
-      expect(row).toMatchObject({ status: "pending", attempts: 0, undispatched: true, assignee: "eng.writer" });
+      // The assign's write stored the row as it is read now: held, no mark.
+      expect(row).toMatchObject({ status: "held", attempts: 0, assignee: "eng.writer" });
+      expect(row).not.toHaveProperty("undispatched");
       expect(host.runs.map((run) => run.taskId)).toEqual([other.taskId]);
     } finally {
       await host.dispose();
@@ -87,16 +89,15 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
       const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
-      expect(filed).toMatchObject({ ok: true, status: "recorded" });
+      expect(filed).toMatchObject({ ok: true, status: "held" });
       for (let i = 0; i < 20; i += 1) {
         await act(host, conv, "listTasks_tasks", {});
         await host.settled();
       }
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({
-        status: "pending",
+        status: "held",
         attempts: 0,
-        assignee: "eng.tasker",
-        undispatched: true
+        assignee: "eng.tasker"
       });
       expect(host.runs).toEqual([]);
     } finally {
@@ -112,9 +113,8 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
       const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses" });
       await host.settled();
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({
-        status: "pending",
-        assignee: "eng.tasker",
-        undispatched: true
+        status: "held",
+        assignee: "eng.tasker"
       });
       expect(host.runs).toEqual([]);
     } finally {

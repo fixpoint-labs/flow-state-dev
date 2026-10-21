@@ -33,7 +33,14 @@
  *   the conversation as a request of its own, and returns without waiting for
  *   it. The start it owes is the row's own state, pending and assigned
  *   (`./ledger`), so a refused or lost wake strands nothing: any later action
- *   on the board starts every row in that state.
+ *   on the board starts every row in that state. A session works one task at
+ *   a time (FIX-2080): a row whose session another started, unfinished row
+ *   holds waits, and starts once that row ends.
+ * - **The settings** (FIX-2080). A task runs in a session of its own, or, filed
+ *   `session: "ongoing"`, in the delegate's session for this conversation; its
+ *   result goes to its filer, or, filed `resultTo: "conversation"`, to the
+ *   conversation, with one attempt. A task's session takes neither: the add
+ *   refuses them there, naming the setting.
  * - **Posts** (FIX-1872). A coordinator files a row per delegate it hands a
  *   post to, through {@link ConversationBoard.filePost}: the post in the
  *   row's server-written payload (`../coordinator/delegated-post`). The
@@ -57,6 +64,8 @@ import {
 import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   TaskCapExceededError,
+  TaskFilingRefusedError,
+  hasStarted,
   isClaimable,
   isTerminalStatus,
   owedNotices,
@@ -75,6 +84,8 @@ import { z } from "zod";
 import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { isPostRow, postRowOf } from "../coordinator/delegated-post";
 import type { TaskDelegates } from "../delegates/worker-delegates";
+import { delegateKey } from "../delegates/delegate-list";
+import { markFiled } from "./cascade";
 import {
   FILING_FLOW_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
@@ -193,6 +204,15 @@ function taskSessionKey(taskId: string, worker: string): string {
 }
 
 /**
+ * The `session` setting of the row the board is handing over, read off the
+ * row on its own board (FIX-2080): server-written at filing, never input.
+ */
+async function sessionSettingOf(ctx: BlockContext, taskId: string): Promise<Task["session"]> {
+  const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
+  return ref?.get(taskId)?.session;
+}
+
+/**
  * The claim the board's dispatch holds while it addresses a task: on its
  * worker body's state, or in the claimed worker's async scope. Server-derived:
  * minted from the row the board just claimed.
@@ -204,20 +224,43 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
 }
 
 /**
- * The board's one test for "may start" (FIX-1875 S6): the row names a
- * delegate, and it isn't recorded-but-not-dispatched (`undispatched`). Every
- * start path reads it: the claim, the drain's exit, and the wakes after a
- * filing, an assign, an answer and a touch. A path that tests the assignee
- * alone starts a recorded row. Claimability (status, deps, lease) is the
- * substrate's, read beside it; the substrate's admission refuses the mark too,
- * so another claimer of the same collection never starts a recorded row. This
- * test still reads it because the filing's wake reads no claimability.
+ * The session a row runs in, as the one-open-task rule keys it (FIX-2080):
+ * a task's own session (its root's, for a follow-up), or the delegate's
+ * ongoing session for the conversation. `undefined` for a post row, which
+ * is not a task of a session yet (FIX-2083 routes it).
  */
-export function isStartable(task: Pick<Task, "assignee" | "undispatched">): boolean {
-  return task.assignee !== undefined && task.undispatched !== true;
+export function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "sealed">): string | undefined {
+  if (isPostRow(task as Task) || task.assignee === undefined) return undefined;
+  if (task.session === "ongoing") return `delegate:${delegateKey({ worker: task.assignee })}`;
+  return taskSessionKey(task.followUpOf ?? task.id, task.assignee);
 }
 
-/** Claims only rows that may start: an unassigned or recorded row waits on the board. */
+/**
+ * Whether the row holds its session: started and unfinished, a retry
+ * waiting to run again included. A held row hasn't started.
+ */
+function holdsSession(task: Task): boolean {
+  return !isTerminalStatus(task.status) && task.status !== "held" && hasStarted(task);
+}
+
+/**
+ * The board's one test for "may start" (FIX-1875 S6, FIX-2080): the row names
+ * a delegate, and no other started, unfinished row holds the session it runs
+ * in (one open task per session). Every start path reads it: the claim, the
+ * drain's exit, and the wakes after a filing, an assign, an answer, a release
+ * and a touch. Claimability (status, deps, lease) is the substrate's, read
+ * beside it; a held row is never claimable.
+ *
+ * @param rows The board's rows, as the claim write reads them.
+ */
+export function isStartable(task: Task, rows: readonly Task[]): boolean {
+  if (task.assignee === undefined) return false;
+  const key = sessionKeyOf(task);
+  if (key === undefined) return true;
+  return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
+}
+
+/** Claims only rows that may start: an unassigned row, or one whose session is busy, waits on the board. */
 const startableOnly: TaskDispatcher = {
   claim: (collection, workerId) => collection.claim(workerId, { eligibility: isStartable })
 };
@@ -231,9 +274,14 @@ const startableOnly: TaskDispatcher = {
 function hasStartable(collection: TaskCollectionRef, id?: string): boolean {
   const now = collection.now();
   const lookup = (taskId: string): Task | undefined => collection.get(taskId);
-  return collection
-    .list({ status: ["pending", "in_progress"] })
-    .some((task) => (id === undefined || task.id === id) && isStartable(task) && isClaimable(task, lookup, now));
+  const rows = collection.list();
+  return rows.some(
+    (task) =>
+      (task.status === "pending" || task.status === "in_progress") &&
+      (id === undefined || task.id === id) &&
+      isStartable(task, rows) &&
+      isClaimable(task, lookup, now)
+  );
 }
 
 /**
@@ -242,6 +290,15 @@ function hasStartable(collection: TaskCollectionRef, id?: string): boolean {
  * refused or thrown dispatch leaves the row pending, which is its start debt,
  * for the next touch.
  */
+/**
+ * A touch that starts what the board owes: a run of the board when a row is
+ * startable now (a follow-up whose session just freed included). Never fails
+ * the caller.
+ */
+export async function wakeIfStartable(ctx: BlockContext, collection: TaskCollectionRef): Promise<void> {
+  if (hasStartable(collection)) await wake(ctx);
+}
+
 async function wake(ctx: BlockContext): Promise<void> {
   try {
     await dispatchThroughSeam(ctx, {
@@ -328,7 +385,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // The board's dispatch computes it while the claim it took is still on
       // its worker body's state: the assignee is the one the row was claimed
       // with, which the board freezes while an attempt holds it.
-      by: (task, ctx) => {
+      by: async (task, ctx) => {
         // A post row runs in the session written on it when it was filed:
         // the delegate's own session for this conversation, or the one its
         // workstream named. Never a session keyed by the task.
@@ -338,6 +395,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const worker = claim?.assignee;
         if (worker === undefined) {
           throw new Error(`Task "${task.taskId}" names no delegate, so it has no session to run in.`);
+        }
+        // A task filed `session: "ongoing"` runs in the delegate's session for
+        // this conversation (FIX-2080), read off the row the board claimed.
+        if ((await sessionSettingOf(ctx, task.taskId)) === "ongoing") {
+          return { key: `delegate:${delegateKey({ worker })}` };
         }
         // A follow-up runs in the session of the task it follows (FIX-1817):
         // keyed by that root task, from the claim, never from input.
@@ -379,6 +441,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return { [WORKER_ID_STATE_KEY]: task.assignee, [FILING_SESSION_STATE_KEY]: partition };
       }
       const flow = (await reach(ctx)).reachable.available.get(task.assignee);
+      // The delegate's ongoing session for the conversation works no one
+      // task (FIX-2080): born naming its worker, the conversation and the
+      // flow that filed into it, and no task or chain place. One that exists
+      // keeps its own state.
+      if ((await sessionSettingOf(ctx, task.taskId)) === "ongoing") {
+        return {
+          [WORKER_ID_STATE_KEY]: task.assignee,
+          [FILING_SESSION_STATE_KEY]: partition,
+          [FILING_FLOW_STATE_KEY]: options.flowKind,
+          ...(flow !== undefined ? { [TASK_FLOW_STATE_KEY]: flow } : {})
+        };
+      }
       // The session's task: a follow-up's root, though the root's own
       // hand-over has already opened it, so this is only ever the root.
       const taskId = claimOf(ctx)?.followUpOf ?? task.taskId;
@@ -435,6 +509,20 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    */
   const guarded = (ctx: BlockContext, ref: TaskCollectionRef, partition: string): TaskCollectionRef => {
     const addTask: TaskCollectionRef["addTask"] = async (init) => {
+      // A task's session files pieces of its task, heard by the task: never
+      // one in the delegate's ongoing session, or one whose result goes to
+      // the conversation (FIX-2080). Refused before anything is written.
+      const fromTask = typeof ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_ID_STATE_KEY] === "string";
+      if (fromTask && (init.session === "ongoing" || init.resultTo === "conversation")) {
+        const setting = init.session === "ongoing" ? `session "ongoing"` : `resultTo "conversation"`;
+        throw new TaskFilingRefusedError({
+          rule: "setting_not_from_task_session",
+          ...(init.id !== undefined ? { taskId: init.id } : {}),
+          detail:
+            `a task's session can't file with ${setting}: only a conversation chooses the delegate's ongoing ` +
+            `session or sends a result to the conversation. Nothing was written.`
+        });
+      }
       const id = init.id ?? newTaskId();
       const chain = chainOfFiling(ctx, partition, id);
       if (chain.depth > MAX_TASK_DEPTH) {
@@ -469,16 +557,20 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           ? given
           : { ...(given ?? {}), [PIECE_OF]: owner, ...(retrying !== undefined ? { [RETRY_OF]: retrying } : {}) };
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      // The task this piece is for learns where its session is first, so its
+      // ending's cascade can reach the piece (FIX-2080 D2).
+      if (owner !== undefined) await markFiled(ctx, owner);
       const added = await ref.addTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
         id,
-        maxAttempts: init.maxAttempts ?? TASK_ATTEMPTS,
+        // A conversation-result task has one attempt (FIX-2080).
+        maxAttempts: init.maxAttempts ?? (init.resultTo === "conversation" ? 1 : TASK_ATTEMPTS),
         ...(assignee !== undefined ? { assignee } : {}),
         ...(metadata !== undefined ? { metadata } : {})
       });
       if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
-      if (isStartable(added)) await wake(ctx);
+      if (added.status !== "held" && isStartable(added, ref.list())) await wake(ctx);
       return added;
     };
     /**
@@ -534,7 +626,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         }
         return outcome;
       }) as TaskCollectionRef["cancel"],
-      block: runOnly(ending(ref.block.bind(ref))) as TaskCollectionRef["block"],
+      // A hold is a caller's write a post row refuses, like a settle; a release
+      // or a settings change that leaves a row startable starts the board.
+      hold: runOnly(ref.hold.bind(ref)) as TaskCollectionRef["hold"],
+      async release(id) {
+        const outcome = await ref.release(id);
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        return outcome;
+      },
+      async patchSettings(id, patch) {
+        const outcome = await ref.patchSettings(id, patch);
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        return outcome;
+      },
       async addTasks(inits) {
         const added: Task[] = [];
         for (const init of inits) added.push(await addTask(init));
@@ -585,7 +689,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // or an assign (BR-10a), leaves the debt only on the row, and nothing
     // sweeps for it: this touch is what pays it. Don't narrow it to writes,
     // or to a session that files now: rows filed before it lost its last
-    // task-taking delegate still run and are heard (FIX-1802 BR-5).
+    // task-taking delegate still run and are heard (FIX-1802 BR-5). A
+    // cascade an ending still owes past its due time is paid first (FIX-2080
+    // D2): its cancels free sessions and settle dependents.
+    await ref.payOwedCascades?.();
     if (hasStartable(ref)) await wake(ctx);
     const rows = ref.list();
     await replayNotices(ctx, rows);
@@ -625,6 +732,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // lands. Neither has to win: the gate admits one answer and refuses the
       // other `already-resolved`, and either outcome clears `resumeOwed`.
       await resumeOwedWaits(ctx as never, ref);
+      // A cascade an ending still owes past its due time (FIX-2080 D2).
+      await ref.payOwedCascades?.();
       const rows = ref.list();
       const replayed = await replayNotices(ctx, rows);
       await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");

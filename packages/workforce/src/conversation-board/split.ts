@@ -187,6 +187,16 @@ function piecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
 }
 
 /**
+ * The pieces of `taskId` a turn still has to wait on or judge: every piece
+ * but a cancelled one. A retry cancels the open pieces its task filed
+ * (FIX-2080, the filed cascade), so a retried turn runs again rather than
+ * parking on work that was cancelled for it.
+ */
+function livePiecesOf(ref: TaskCollectionRef, taskId: string): Task[] {
+  return piecesOf(ref, taskId).filter((row) => row.status !== "cancelled");
+}
+
+/**
  * The task a piece filed now in the running session is a piece of: the task
  * this request holds (its turn filed it), else the parked task it settles
  * (a turn a piece's notice woke filed it), else the session's own task. None
@@ -198,11 +208,14 @@ export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefine
   return (await heldTask(ctx))?.row.id ?? parentBindingOf(ctx)?.taskId ?? own;
 }
 
-/** Whether the running task session already split `taskId`: its own board holds pieces of it. */
+/**
+ * Whether the running task session already split `taskId`: its own board
+ * holds pieces of it that weren't cancelled.
+ */
 export async function hasPieces(ctx: BlockContext, taskId: string): Promise<boolean> {
   if (stringAt(ctx, TASK_ID_STATE_KEY) === undefined) return false;
   const own = await ownConversationLedger(ctx);
-  return own !== undefined && piecesOf(own, taskId).length > 0;
+  return own !== undefined && livePiecesOf(own, taskId).length > 0;
 }
 
 /** Dispatch `action` into another session, as a request of its own. A refusal or a throw leaves the debt for the next touch. */
@@ -385,7 +398,7 @@ export const parkOnPieces = handler({
     const held = await heldTask(ctx);
     if (held === undefined) return answer;
     const taskId = held.row.id;
-    if (piecesOf(own, taskId).length === 0) return answer;
+    if (livePiecesOf(own, taskId).length === 0) return answer;
     const above = held.ref;
     // The claim this request holds: the gate verified the row and wrote its
     // run link, fenced by the ticket it minted, before the turn ran. A row

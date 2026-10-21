@@ -45,7 +45,7 @@ export {
 } from "./collection/filing";
 export { hasStarted, CASCADE_DUE_MS, type TaskSettingsPatch } from "./collection/internal";
 // The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
-export { SKIPPED_LABEL, type TaskFiledCascade } from "./collection/cascade";
+export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";
 
 // The ownership token a task write presents (FIX-981). `ticketNamesTask` is the
 // guard's own identity rule and stays module-internal — a caller mints a ticket

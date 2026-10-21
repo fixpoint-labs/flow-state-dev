@@ -47,7 +47,7 @@ import {
 import type { BlockContext, BlockDefinition, ConcurrencyConfig, ConcurrencyKey } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { isPostRow, postRowOf, postRowSchema } from "../coordinator/delegated-post";
-import { replayNotices } from "./board";
+import { replayNotices, wakeIfStartable } from "./board";
 import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
@@ -196,6 +196,10 @@ function settledEntry(options: TaskSettledOptions, posts: boolean) {
       if (notice.boardId !== CONVERSATION_LEDGER_ID) return { act: "none" };
       const ref = await ownConversationLedger(ctx as never);
       if (ref === undefined) return { act: "none" };
+      // An ending frees its session (FIX-2080): a follow-up, or a task filed
+      // into the delegate's ongoing session, waiting behind it starts now. A
+      // retry runs the board itself, below.
+      if (notice.ending !== "retried") await wakeIfStartable(ctx as never, ref);
       // A top task that ended takes its chain's count with it (FIX-1802 S5):
       // a task filed in a session that is no piece of a chain is a top.
       if (notice.ending !== "retried" && notice.ending !== "parked" && taskChainOf(ctx) === undefined) {

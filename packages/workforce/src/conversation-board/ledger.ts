@@ -23,6 +23,11 @@
  *   that same write. The run that claims it pays it. Nothing can strand a
  *   start between two writes, because there is no second write.
  *
+ * - **A cascade** a task's ending owes (FIX-2080 D2): its open dependents on
+ *   this board, and the open tasks its session filed (`./cascade`), recorded
+ *   by orchestration in the ending's own write and paid by the ending's own
+ *   pass, or by the board's next touch once past due.
+ *
  * Both are sent on the board's next touch when the dispatch that should have
  * sent them was lost (`./board`).
  */
@@ -37,7 +42,8 @@ import {
   type TaskPartitionContext,
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
-import { PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
+import { FILED_MARKER, PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
+import { filedCascade } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
 import { markReportOwed, withoutReportMarkers } from "./report-owed";
 
@@ -103,7 +109,14 @@ export const conversationLedger = Object.assign(
     partitionBy: conversationPartition,
     // The notice the filer is owed, and, for an errored ending, the report the
     // Error Reporter is owed (FIX-1983), in the ending's one write.
-    recordEnding: (row, ending) => markReportOwed(recordEnding(row, ending), ending)
+    recordEnding: (row, ending) => markReportOwed(recordEnding(row, ending), ending),
+    // A task here can run in the delegate's ongoing session for the
+    // conversation, and send its result to the conversation (FIX-2080). The
+    // board's guarded add takes both only from a conversation.
+    settings: { session: ["new", "ongoing"], resultTo: ["filer", "conversation"] },
+    // The tasks a task's session filed are cancelled with its failure, retry
+    // or cancel (FIX-2080 D2).
+    cascadeFiled: filedCascade
   }),
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
@@ -140,7 +153,8 @@ export async function ownConversationLedger(ctx: BlockContext): Promise<TaskColl
  * Metadata a caller hands in, without any marker this board keeps: a filing
  * or a patch can't forge an owed notice or an owed report, or clear one, or
  * make a row a piece of a task or another piece's retry, or point a row at a
- * session as its split (FIX-1802 S4).
+ * session as its split (FIX-1802 S4) or as the session that filed its work
+ * (FIX-2080).
  */
 export function callerMetadata(
   metadata: Readonly<Record<string, unknown>> | undefined
@@ -148,6 +162,6 @@ export function callerMetadata(
   const unmarked = withoutNoticeMarkers(metadata);
   if (unmarked === undefined) return unmarked;
   const kept = withoutReportMarkers(unmarked);
-  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [RETRY_OF]: _retry, ...rest } = kept;
+  const { [SPLIT_MARKER]: _split, [PIECE_OF]: _piece, [RETRY_OF]: _retry, [FILED_MARKER]: _filed, ...rest } = kept;
   return rest;
 }

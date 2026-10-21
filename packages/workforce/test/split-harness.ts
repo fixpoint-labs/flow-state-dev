@@ -8,7 +8,9 @@
  *   one row per piece, and records any refusal by its error's name;
  * - on a notice, it throws when the worker is in `failNoticeTurn`, and files
  *   the worker's `onErrored` piece once when the notice is a failure for good,
- *   and its `onCompleted` piece once when the notice is a completion.
+ *   and its `onCompleted` piece once when the notice is a completion;
+ * - after filing, it waits `holdAfterFiling[worker]` ms, then throws when the
+ *   worker is in `failAfterFiling` (FIX-2080: the work a failed task filed).
  *
  * Every turn is recorded (worker, session, message).
  */
@@ -21,8 +23,16 @@ import type { WorkerInstallation } from "../src/workers/installation";
 import type { ChainRecord } from "../src/conversation-board/chain";
 import { ORG, boardWorkers, bootBoardHost, messageOf, type BoardHostOptions } from "./conversation-board-harness";
 
-/** A piece a turn files. */
-export type Piece = { goal: string; assignee?: string; id?: string };
+/** A piece a turn files, with the filing settings it is filed with (FIX-2080). */
+export type Piece = {
+  goal: string;
+  assignee?: string;
+  id?: string;
+  session?: "new" | "ongoing";
+  resultTo?: "filer" | "conversation";
+  maxAttempts?: number;
+  held?: boolean;
+};
 
 /** What the splitter's turns do, by worker id: the test sets and changes these. */
 export type SplitControls = {
@@ -32,8 +42,12 @@ export type SplitControls = {
   onCompleted: Record<string, Piece>;
   /** What a worker's turn on a notice answers, in place of what it heard. */
   noticeAnswer: Record<string, unknown>;
-  refusals: Array<{ worker: string; error: string }>;
+  refusals: Array<{ worker: string; error: string; message?: string }>;
   turns: Array<{ worker: string; sessionId: string; message: string }>;
+  /** Workers whose turn throws after filing its pieces (not on a notice). */
+  failAfterFiling: Set<string>;
+  /** How long a worker's turn waits after filing its pieces, in ms. */
+  holdAfterFiling: Record<string, number>;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -68,12 +82,20 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
         return `${worker} has no board`;
       }
       for (const piece of pieces) {
+        const { goal, assignee, id, ...settings } = piece;
         try {
-          await ref.addTask({ goal: piece.goal, ...(piece.assignee ? { assignee: piece.assignee } : {}), ...(piece.id ? { id: piece.id } : {}) });
+          await ref.addTask({ goal, ...(assignee ? { assignee } : {}), ...(id ? { id } : {}), ...settings });
         } catch (error) {
-          controls.refusals.push({ worker, error: error instanceof Error ? error.name : String(error) });
+          controls.refusals.push({
+            worker,
+            error: error instanceof Error ? error.name : String(error),
+            ...(error instanceof Error ? { message: error.message } : {})
+          });
         }
       }
+      const hold = notice ? undefined : controls.holdAfterFiling[worker];
+      if (hold !== undefined) await new Promise((resolve) => setTimeout(resolve, hold));
+      if (!notice && controls.failAfterFiling.has(worker)) throw new Error(`${worker}'s turn failed after filing`);
       return `${worker} filed ${pieces.map((piece) => piece.goal).join(", ")}`;
     }
   });
@@ -120,7 +142,17 @@ export function splitWorkers(): WorkerManifest[] {
 
 /** A board host with the splitter flow registered, and its controls. */
 export function bootSplitHost(options: BoardHostOptions = {}) {
-  const controls: SplitControls = { plans: {}, failNoticeTurn: new Set(), onErrored: {}, onCompleted: {}, noticeAnswer: {}, refusals: [], turns: [] };
+  const controls: SplitControls = {
+    plans: {},
+    failNoticeTurn: new Set(),
+    onErrored: {},
+    onCompleted: {},
+    noticeAnswer: {},
+    refusals: [],
+    turns: [],
+    failAfterFiling: new Set(),
+    holdAfterFiling: {}
+  };
   const host = bootBoardHost({
     standard: splitWorkers(),
     flows: (installation) => ({ splitter: splitterFlow(installation, controls) }),
