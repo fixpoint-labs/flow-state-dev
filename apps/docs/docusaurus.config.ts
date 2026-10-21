@@ -51,6 +51,7 @@ const config: Config = {
         // Inlined SVGs (see src/components/Figure). prefixIds keeps each
         // figure's ids unique on a page; cleanupIds would name them all "a".
         // Class names stay (the drawing classes). descProp is the SVG <desc>.
+        // removeTitle: the caption names the drawing.
         svgr: {
           svgrConfig: {
             descProp: true,
@@ -60,7 +61,7 @@ const config: Config = {
                   name: "preset-default",
                   params: {
                     overrides: {
-                      removeTitle: false,
+                      removeTitle: true,
                       removeViewBox: false,
                       cleanupIds: false,
                     },
