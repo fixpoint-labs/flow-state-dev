@@ -18,6 +18,17 @@
  *   then waits on (`./split`), for any worker on the user's roster that takes
  *   a task (`rosterTaskTakers`), its delegates or not. Delegates stay the
  *   reporting line: an unassigned row goes to the only one.
+ * - **Steps for itself** (FIX-2076 D1). On a flow that plans its turns
+ *   ({@link ConversationBoard.planned}), a worker's own turn is offered the
+ *   task tools whether or not it has delegates, and a filing that names the
+ *   worker itself is a *step*: a row on the session's plan ledger (`./plan`),
+ *   worked by the same request after the turn, never a child session of
+ *   itself. The tools list both ledgers and route each write by the row: a
+ *   step can be edited before it starts, or cancelled, never completed,
+ *   failed or blocked by a call (its turn's answer is its result), and its
+ *   assignee doesn't cross to a delegate, nor a delegate's to the worker. A
+ *   filing naming the worker from anywhere but its own turn, such as a public
+ *   action, is refused.
  * - **The limits** (FIX-1802 S5). A filing past the chain's depth or its
  *   breadth is refused in the ref the resolver returns (`./chain`), as the
  *   task substrate refuses a full board: `total_task_cap_exceeded`.
@@ -57,6 +68,7 @@ import {
 import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   TaskCapExceededError,
+  TaskWriteRefusedError,
   isClaimable,
   isTerminalStatus,
   owedNotices,
@@ -109,6 +121,8 @@ import {
 import { sendOwedNotices, sendPostCancelled } from "./notice-delivery";
 import { sendOwedReports } from "./report-owed";
 import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
+import { STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
+import { verifiedWorkerOf } from "../workers/verified-worker";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -180,6 +194,34 @@ function rosterOf(delegates: TaskDelegates): AssigneeRoster {
     soleAssignee: () => (delegates.available.size === 1 ? [...delegates.available.keys()][0] : undefined)
   };
 }
+
+/**
+ * A turn's roster: the board's, plus the worker itself, whose filing is a step
+ * it works next in the same request (FIX-2076 D1).
+ */
+function withSelf(roster: AssigneeRoster, self: string): AssigneeRoster {
+  return {
+    has: (name) => name === self || roster.has(name),
+    describe: () => `${roster.describe()}. Yourself ("${self}"): a step you work next, in this request`,
+    ...(roster.soleAssignee === undefined ? {} : { soleAssignee: roster.soleAssignee })
+  };
+}
+
+/** The refusal for a filing naming the worker itself from anywhere but its own turn. */
+const stepFromItsOwnTurn = (self: string) =>
+  new TaskWriteRefusedError(
+    "step_from_its_own_turn",
+    `"${self}" is this session's own worker: a step for itself is filed only by its own turn, on a flow that works its steps, ` +
+      "and it works the step in that same request. File it for a delegate instead. Nothing was filed."
+  );
+
+/** The refusal for an assignee change that crosses the worker itself. */
+const filedApart = (taskId: string) =>
+  new TaskWriteRefusedError(
+    "step_and_task_filed_apart",
+    "a step for yourself and a task for a delegate are filed apart: cancel and file again. Nothing was written.",
+    taskId
+  );
 
 /**
  * The task session's key: one per task and worker, so a retry re-enters the
@@ -287,8 +329,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const delegates = await options.delegates(ctx);
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
     if (typeof state[TASK_ID_STATE_KEY] !== "string") return { reachable: delegates, delegates, taskSession: false };
-    // The session's own worker is on the roster too, so it can file a piece
-    // for itself. Deliberate: the chain limits (`./chain`) bound it.
+    // The session's own worker may be on the roster too; a filing that names
+    // it is a step, not a piece (`withSteps` below, FIX-2076).
     const roster = await options.rosterTaskTakers(ctx);
     const available = new Map([...delegates.available, ...roster.available]);
     const unavailable = new Map([...delegates.unavailable, ...roster.unavailable].filter(([worker]) => !available.has(worker)));
@@ -308,6 +350,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * no delegates still files when the roster has a task taker: deliberate.
    */
   const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).reachable.available.size > 0;
+
+  /** The flow's planning: its turns, wrapped so the steps they file run in their request (FIX-2076). */
+  const planning = definePlanning();
+
+  /** The worker this request's turn was verified to run as, when steps are worked on this flow. */
+  const stepper = (ctx: BlockContext): string | undefined => (planning.wired() ? verifiedWorkerOf(ctx.session) : undefined);
+
+  /** A turn's roster: the board's, with the worker itself when it works steps. */
+  const turnRoster: AssigneeRosterSource = async (ctx) => {
+    const base = await roster(ctx);
+    const self = stepper(ctx);
+    return self === undefined ? base : withSelf(base, self);
+  };
+
+  /** Whether a turn gets the task tools: it files for a delegate, or it works steps for itself (FIX-2076 D1). */
+  const turnFiles = async (ctx: BlockContext): Promise<boolean> => stepper(ctx) !== undefined || (await files(ctx));
 
   // The hand-over: every row to `work` on its delegate's flow, in a task
   // session keyed by the task and the worker. Built as an address rather than
@@ -415,6 +473,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   const board = taskBoard({
     name: "conversation-tasks",
     boardId: CONVERSATION_LEDGER_ID,
+    // Every row goes to a delegate's session; the run doesn't wait on one.
+    mode: "delegation",
     collection: conversationLedger,
     workers: {},
     defaultWorker: dispatchToDelegate as never,
@@ -426,6 +486,40 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   });
 
   /**
+   * The chain's half of a filing, shared by a task for a delegate and a step:
+   * the row's id, minted now so its place is reserved first, and its entry
+   * reserved under the chain's top. A filing that opens a session (a task for
+   * a delegate) is refused one board past the deepest; a step opens none, so
+   * it adds no depth and skips that check. Call `markFiled` once the add lands.
+   */
+  const reserveFiling = async (
+    ctx: BlockContext,
+    ledger: TaskCollectionRef,
+    partition: string,
+    init: TaskInit,
+    opensSession: boolean
+  ): Promise<{ id: string; markFiled: () => Promise<void> }> => {
+    const id = init.id ?? newTaskId();
+    const chain = chainOfFiling(ctx, partition, id);
+    if (opensSession && chain.depth > MAX_TASK_DEPTH) {
+      // The board one past the deepest takes no task.
+      throw new TaskCapExceededError({ cap: "total", limit: MAX_TASK_DEPTH, attempted: chain.depth, collectionId: ledger.collectionId });
+    }
+    const entry = chainEntryKey(partition, id);
+    const top = chain.top;
+    if (top !== undefined) {
+      await reserveInChain(ctx, {
+        top,
+        entry,
+        limit: options.chainLimit?.() ?? DEFAULT_TASK_CHAIN_LIMIT,
+        now: ledger.now(),
+        collectionId: ledger.collectionId
+      });
+    }
+    return { id, markFiled: async () => (top === undefined ? undefined : markAddedInChain(ctx, top, [entry])) };
+  };
+
+  /**
    * The ledger the tools and actions write through: the running session's
    * own board, guarded. A filing past the chain's limits is refused before
    * anything is written. A filing or an assign that leaves a row startable
@@ -434,23 +528,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * a split task cancels its open pieces, down the chain.
    */
   const guarded = (ctx: BlockContext, ref: TaskCollectionRef, partition: string): TaskCollectionRef => {
+    // The worker itself is no delegate: its step is a plan row (`withSteps`,
+    // which takes such a filing before it reaches here), never a child session
+    // of itself (FIX-2076).
+    const self = verifiedWorkerOf(ctx.session);
     const addTask: TaskCollectionRef["addTask"] = async (init) => {
-      const id = init.id ?? newTaskId();
-      const chain = chainOfFiling(ctx, partition, id);
-      if (chain.depth > MAX_TASK_DEPTH) {
-        // The board one past the deepest takes no task.
-        throw new TaskCapExceededError({ cap: "total", limit: MAX_TASK_DEPTH, attempted: chain.depth, collectionId: ref.collectionId });
-      }
-      const entry = chainEntryKey(partition, id);
-      if (chain.top !== undefined) {
-        await reserveInChain(ctx, {
-          top: chain.top,
-          entry,
-          limit: options.chainLimit?.() ?? DEFAULT_TASK_CHAIN_LIMIT,
-          now: ref.now(),
-          collectionId: ref.collectionId
-        });
-      }
+      if (self !== undefined && init.assignee === self) throw stepFromItsOwnTurn(self);
+      const { id, markFiled } = await reserveFiling(ctx, ref, partition, init, true);
       let assignee = init.assignee;
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
@@ -477,7 +561,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(assignee !== undefined ? { assignee } : {}),
         ...(metadata !== undefined ? { metadata } : {})
       });
-      if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
+      await markFiled();
       if (isStartable(added)) await wake(ctx);
       return added;
     };
@@ -487,8 +571,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * asks nothing of this one, so it is left off.
      */
     const ownClaim = (guards: unknown): unknown => {
-      const claim = (guards as { claim?: { partition?: string } } | undefined)?.claim;
-      return claim !== undefined && claim.partition !== partition ? { ...(guards as object), claim: undefined } : guards;
+      const claim = (guards as { claim?: { partition?: string; collectionId?: string } } | undefined)?.claim;
+      // A step's claim, held by its inline turn (FIX-2076), is on another ledger too.
+      return claim !== undefined && (claim.partition !== partition || claim.collectionId !== ref.collectionId)
+        ? { ...(guards as object), claim: undefined }
+        : guards;
     };
     /** A write that may end a split task: cancel its open pieces once it lands. */
     const ending =
@@ -544,6 +631,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A post row goes to the delegate it was handed to, in that delegate's session.
         const row = ref.get(id);
         if (isPostRow(row)) return { outcome: "declined", reason: "immutable-assignee", status: row!.status };
+        if (self !== undefined && assignee === self) throw filedApart(id);
         const outcome = await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
@@ -556,6 +644,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async dispatch(id: string, dispatchOptions: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>[1]) {
+              if (self !== undefined && dispatchOptions.assignee === self) throw filedApart(id);
               const outcome = await ref.dispatch!(id, dispatchOptions);
               if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
               return outcome;
@@ -575,8 +664,168 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
   };
 
-  /** Every action on the board, and the model's every tool call, reach it here. */
-  const resolver: TaskCollectionResolver = async (ctx) => {
+  /**
+   * The board as the tools see it, with the session's plan ledger beside it
+   * (FIX-2076): a filing naming the worker itself goes on the plan ledger as a
+   * step, any other to the board; both are listed; a write by id goes to the
+   * ledger holding the row. A step counts toward the chain's breadth as a
+   * piece does, and adds no depth: it runs in this session.
+   *
+   * @param routesSelf Whether this caller is the worker's own turn, which may
+   *   file a step. Anywhere else a filing naming the worker is refused.
+   */
+  const withSteps = (
+    ctx: BlockContext,
+    board: TaskCollectionRef,
+    plan: TaskCollectionRef,
+    partition: string,
+    self: string,
+    routesSelf: boolean
+  ): TaskCollectionRef => {
+    const fileStep: TaskCollectionRef["addTask"] = async (init) => {
+      if (!routesSelf) throw stepFromItsOwnTurn(self);
+      if (isSteppingTurn(ctx)) {
+        throw new TaskWriteRefusedError(
+          "no_step_while_stepping",
+          "you are working a step, and a step files no step for itself: do this step, and say in your answer what is left. Nothing was filed."
+        );
+      }
+      if (isAnsweringTurn(ctx)) {
+        throw new TaskWriteRefusedError(
+          "no_step_while_answering",
+          "your steps have ended and this turn gives your answer: do the work yourself, or answer. A task for a delegate is still dispatched. Nothing was filed."
+        );
+      }
+      if (init.wait != null) {
+        throw new TaskWriteRefusedError(
+          "step_cannot_wait",
+          "a step for yourself runs after this turn, in this request, so this turn can't wait on it. File it without wait, and you hear how it ended when it has. Nothing was filed."
+        );
+      }
+      if (init.followUpOf !== undefined) {
+        throw new TaskWriteRefusedError(
+          "step_follows_nothing",
+          "a step for yourself runs here, in this request, and follows up no task. File it without followUpOf. Nothing was filed."
+        );
+      }
+      const { id, markFiled } = await reserveFiling(ctx, plan, partition, init, false);
+      const metadata = callerMetadata(init.metadata);
+      const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      const added = await plan.addTask({
+        ...init,
+        ...(input !== undefined ? { input } : {}),
+        id,
+        assignee: self,
+        maxAttempts: init.maxAttempts ?? STEP_ATTEMPTS,
+        ...(metadata !== undefined ? { metadata } : {})
+      });
+      await markFiled();
+      return added;
+    };
+    /**
+     * Each ledger resolves `deps` only among its own rows, so a dep on the
+     * other ledger would never be met: a step waiting on a delegate's task is
+     * cancelled as blocked, and a delegate's task waiting on a step never
+     * starts. Refused at filing, before anything is written.
+     */
+    const depsOnOneLedger = (init: TaskInit, step: boolean): void => {
+      const other = step ? board : plan;
+      const across = (init.deps ?? []).filter((dep) => other.get(dep) !== undefined);
+      if (across.length === 0) return;
+      throw new TaskWriteRefusedError(
+        "deps_across_ledgers",
+        step
+          ? `a step for yourself can depend only on your other steps, and ${across.map((dep) => `"${dep}"`).join(", ")} is a task for a delegate. ` +
+              "Do the step after that task ends, from the turn its ending wakes. Nothing was filed."
+          : `a task for a delegate can depend only on other tasks for delegates, and ${across.map((dep) => `"${dep}"`).join(", ")} is a step for yourself. ` +
+              "Dispatch it once that step has ended, or give the delegate what it needs in the task. Nothing was filed."
+      );
+    };
+    const addTask: TaskCollectionRef["addTask"] = async (init) => {
+      const step = init.assignee !== undefined && init.assignee === self;
+      depsOnOneLedger(init, step);
+      return step ? fileStep(init) : board.addTask(init);
+    };
+    /** The ledger holding `id`: the plan ledger for a step, the board for anything else. */
+    const holder = (id: string): TaskCollectionRef => (board.get(id) === undefined && plan.get(id) !== undefined ? plan : board);
+    const isStep = (id: string): boolean => holder(id) === plan;
+    /** A write by id, sent to the ledger holding the row. */
+    const byRow =
+      <K extends keyof TaskCollectionRef>(method: K) =>
+      (id: string, ...rest: any[]) =>
+        (holder(id)[method] as (...args: any[]) => any)(id, ...rest);
+    /** A settle a step never takes from a call: its turn's answer is its result. */
+    const notOnAStep =
+      <K extends "complete" | "fail" | "block">(method: K) =>
+      (id: string, ...rest: any[]) => {
+        if (isStep(id)) {
+          throw new TaskWriteRefusedError(
+            "step_settles_itself",
+            `task "${id}" is a step you filed for yourself: it ends when its turn answers, so do the step and answer with its result. Nothing was written.`,
+            id
+          );
+        }
+        return (board[method] as (...args: any[]) => any)(id, ...rest);
+      };
+    return {
+      ...board,
+      addTask,
+      async addTasks(inits) {
+        const added: Task[] = [];
+        for (const init of inits) added.push(await addTask(init));
+        return added;
+      },
+      // Merged reads rely on task ids being unique across the two ledgers: both mint `task_<random>` ids.
+      get: (id) => board.get(id) ?? plan.get(id),
+      list: (filter) => [...board.list(filter), ...plan.list(filter)],
+      count: (filter) => board.count(filter) + plan.count(filter),
+      complete: notOnAStep("complete") as TaskCollectionRef["complete"],
+      fail: notOnAStep("fail") as TaskCollectionRef["fail"],
+      block: notOnAStep("block") as TaskCollectionRef["block"],
+      cancel: byRow("cancel") as TaskCollectionRef["cancel"],
+      unblock: byRow("unblock") as TaskCollectionRef["unblock"],
+      unpark: byRow("unpark") as TaskCollectionRef["unpark"],
+      reopen: byRow("reopen") as TaskCollectionRef["reopen"],
+      setPriority: byRow("setPriority") as TaskCollectionRef["setPriority"],
+      addLabel: byRow("addLabel") as TaskCollectionRef["addLabel"],
+      removeLabel: byRow("removeLabel") as TaskCollectionRef["removeLabel"],
+      patchMetadata: async (id, patch) => holder(id).patchMetadata(id, callerMetadata(patch) ?? {}),
+      async setAssignee(id, assignee) {
+        // A step is the worker's, and a delegate's task a delegate's: the two are filed apart.
+        if (isStep(id) !== (assignee === self)) throw filedApart(id);
+        return holder(id).setAssignee(id, assignee);
+      },
+      ...(board.dispatch === undefined
+        ? {}
+        : {
+            async dispatch(id: string, dispatchOptions: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>[1]) {
+              if (!isStep(id)) {
+                if (dispatchOptions.assignee === self) throw filedApart(id);
+                return board.dispatch!(id, dispatchOptions);
+              }
+              if (dispatchOptions.wait != null) {
+                throw new TaskWriteRefusedError(
+                  "step_cannot_wait",
+                  `task "${id}" is a step for yourself: it runs after this turn, in this request, so this turn can't wait on it. Dispatch it without wait. Nothing was written.`,
+                  id
+                );
+              }
+              if (dispatchOptions.assignee !== undefined && dispatchOptions.assignee !== self) throw filedApart(id);
+              if (plan.dispatch === undefined) {
+                throw new TaskWriteRefusedError("step_not_dispatchable", `task "${id}" can't be started by its id. Nothing was written.`, id);
+              }
+              return plan.dispatch(id, { call: dispatchOptions.call });
+            }
+          })
+    };
+  };
+
+  /**
+   * The board as `routesSelf`'s caller reaches it, after its touch: the
+   * session's own board, guarded, with its steps beside it when the worker
+   * works steps (FIX-2076). `undefined` while the caller may file nothing.
+   */
+  const reachBoard = async (ctx: BlockContext, routesSelf: boolean): Promise<TaskCollectionRef | undefined> => {
     const partition = await filingSessionIdOf(ctx.session);
     const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return undefined;
@@ -597,9 +846,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     await settleIfOwedLater(ctx);
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
-    if (!(await files(ctx))) return undefined;
-    return guarded(ctx, ref, partition);
+    // A turn of a worker that works steps files them whatever its delegates.
+    if (!(await (routesSelf ? turnFiles(ctx) : files(ctx)))) return undefined;
+    const board = guarded(ctx, ref, partition);
+    const self = verifiedWorkerOf(ctx.session);
+    const plan = planning.wired() && self !== undefined ? await planLedgerAt(ctx, partition) : undefined;
+    return plan === undefined || self === undefined ? board : withSteps(ctx, board, plan, partition, self, routesSelf);
   };
+
+  /** Every action on the board reaches it here: a caller's move, which files no step for the worker. */
+  const resolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, false);
+
+  /** The model's every tool call reaches the board here: the worker's own turn, which may file its steps. */
+  const turnResolver: TaskCollectionResolver = (ctx) => reachBoard(ctx, true);
 
   /**
    * After a run: send what the rows owe, including what this run's own
@@ -657,7 +916,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   // A task session's turn can't wait, but its task can: a piece filed without
   // `wait` parks the task when the turn ends, and the piece's ending wakes it
   // (`./split`). The refusal and the description say so.
-  const eight = taskToolsForTurn(resolver, roster, {
+  const eight = taskToolsForTurn(turnResolver, turnRoster, {
     resumesWaits: true,
     dispatches: true,
     taskTurnInstead:
@@ -667,11 +926,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   const posts = options.posts;
   const tools = defineCapability({
     name: "taskTools",
-    resources: { ...conversationLedgerResources, ...taskChainResources },
+    resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources },
     presets: {
       tools: {
         controlTools: async (ctx) => {
-          if (await files(ctx as never)) return eight(ctx as never);
+          if (await turnFiles(ctx as never)) return eight(ctx as never);
           if (posts === undefined || !posts.routing(ctx as never)) return [];
           return eight(ctx as never).filter((tool) => tool.name === "dispatchTask");
         },
@@ -727,14 +986,28 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     board,
     roster,
     resolver,
+    /**
+     * The board as the worker's own turn files through it: the model's task
+     * tools read it, and a step for itself goes on its plan ledger (FIX-2076).
+     * `resolver` is the actions', which file no step.
+     */
+    turnResolver,
     runBoard,
     filePost,
     files,
     tools,
+    /**
+     * Wrap a turn (`{ message }` in, the answer out) so the steps it files for
+     * itself are worked in its request, then answered once more (FIX-2076 D1,
+     * D2). Wrap every turn the flow runs as the worker: its door, its task
+     * entry's turn and the turn `entries` wakes. A worker is offered its steps
+     * only on a flow that wraps one.
+     */
+    planned: planning.planned,
     /** The task tools as public actions, `<tool>_tasks`, `dispatchTask_tasks` among them. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
-    /** The ledger and the chain records, for the flow's `resources`. */
-    resources: { ...conversationLedgerResources, ...taskChainResources }
+    /** The ledger, the plan ledger and the chain records, for the flow's `resources`. */
+    resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources }
   };
 }
 

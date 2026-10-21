@@ -49,7 +49,7 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  * alone would leave a worker asleep on claimable work until its timeout —
  * exactly the promptness defect this issue set out to fix.
  *
- * A board with dispatcher assignees passes `runsElsewhere` (FIX-982), and it
+ * A delegation board passes `runsElsewhere` (FIX-982, FIX-2076), and it
  * reaches the verdict half only. The claimable disjunct needs no adjustment for
  * it: `hasClaimableTask` judges rows by the substrate's lease, and a row a
  * child session holds has a live lease renewed from the child, so it is already

@@ -48,6 +48,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
 | A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |
 | `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
+| `dispatchedTaskPredicate` | The board's declared `mode` (`board.mode`): a delegation board's drain waits on no row, a plan board's on every row. A delegation board excuses every row, so a board mixing inline and dispatching assignees isn't supported: split it into a plan board and a delegation board | FIX-2076 |
 
 Behaviour that changes without a removed name, carried by the owner's changeset the same way.
 Behaviour lines live here, not in the table above.
@@ -59,6 +60,8 @@ Behaviour lines live here, not in the table above.
 | A follow-up into a busy session being refused | It waits, then starts in that session when the open task ends | FIX-2080 |
 | A dependency on another board, waiting for good | Refused at filing: cross boards with a wait or a held task | FIX-2080 |
 | Plan-and-execute and supervisor cascading only a failed step | A cancelled step's dependents are cancelled too, with the same `skipped` label | FIX-2080 |
+| A task a worker files naming itself (a piece for itself, in a task session of its own, its task parked on it) | A step on the session's plan ledger, worked by the same request; the request answers once, a string, instead of `{ answer, pieces }` (FIX-2077's row covers pieces for others) | FIX-2076 |
+| A board with a dispatcher assignee | Declares `mode: "delegation"`, and every assignee on it dispatches; `taskBoard()` refuses it otherwise, naming the fix | FIX-2076 |
 | `updateTask({ message })` on an open task | Steers it: uses no attempt and never cancels | FIX-2086 |
 | A line typed in a finished task's session | Talk: the task doesn't change | FIX-2086 |
 | A scheduled fire for a time already fired, or earlier than one that has | Answered `200` with status `duplicate`, and nothing runs: a late retry of a missed time, or one delivered after the next time fired, never runs ([FIX-2085 D2](../../issues/FIX-2085/DECISIONS.md#d2)) | FIX-2085 |

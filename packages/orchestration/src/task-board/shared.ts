@@ -87,9 +87,9 @@ export type RunsElsewhere = (task: Task) => boolean;
  * a drain it correctly exited as a failure, or a genuinely stuck board as a
  * clean dispatch. One predicate, one answer (FIX-1074).
  *
- * `runsElsewhere` absent means the board has no dispatcher assignee, so nothing
- * is ever dispatched and every caller keeps its pre-dispatch behaviour
- * bit-for-bit.
+ * `runsElsewhere` absent means a plan board (FIX-2076), whose rows all run in
+ * the drain, so nothing is ever dispatched and every caller keeps its
+ * pre-dispatch behaviour bit-for-bit.
  */
 export function isDispatched(
   task: Task,
@@ -131,7 +131,7 @@ export function isDispatched(
  * this count. It drops `parked` rows, and it is a **predicate of its
  * own beside** the routing one rather than a widening of it, because the two
  * answer different questions. `runsElsewhere` asks *where this row's work
- * belongs*, derived from the board's dispatcher assignees. This one asks
+ * belongs*, from the board's declared mode (`./board-mode`). This one asks
  * whether the row is waiting on a **human**, which is true on any board however
  * it dispatches.
  *
@@ -149,8 +149,8 @@ export function isDispatched(
  * ## …and only while the lease is live
  *
  * `runsElsewhere` says where a row's work *belongs*. It cannot say whether
- * anyone is on it, because it reads declarations and an assignee — facts that
- * are just as true of a row nobody is running. A claimant that dies between
+ * anyone is on it, because it reads the board's declaration — a fact that is
+ * just as true of a row nobody is running. A claimant that dies between
  * `claim()` and the child's first breath leaves exactly that: `in_progress`,
  * dispatched assignee, no worker anywhere. So does a child that was accepted and
  * then died. Both become recoverable when the deadline passes, and excluding

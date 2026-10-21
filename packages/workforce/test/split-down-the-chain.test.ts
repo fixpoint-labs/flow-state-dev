@@ -496,9 +496,13 @@ describe("a task session's pieces reach any task-taking worker on the roster", (
       expect(noTasks).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "eng\.helper"/) });
       // Refused naming why, as a delegate that takes no task is.
       expect(noTasks.error).toMatch(/eng\.helper: Worker "eng\.helper" runs on flow "helper", which takes no task/);
-      // Its own worker is on the roster too: a piece for itself is filed (bounded by the chain limits).
+      // Its own worker is no delegate: a step for itself is filed only by its own turn (FIX-2076),
+      // never by an action, and never as a task session of itself.
       h.controls.plans.s1 = [];
-      expect(await h.tool("alice", t1, "dispatchTask", { goal: "Ask myself", assignee: "s1" })).toMatchObject({ ok: true });
+      expect(await h.tool("alice", t1, "dispatchTask", { goal: "Ask myself", assignee: "s1" })).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/^step_from_its_own_turn: "s1" is this session's own worker/)
+      });
       // A conversation that isn't working a task files for its delegates only, as before.
       const fromConversation = await h.tool("alice", planner, "dispatchTask", { goal: "Ask d1 directly", assignee: "d1" });
       expect(fromConversation).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "d1"/) });
@@ -508,7 +512,7 @@ describe("a task session's pieces reach any task-taking worker on the roster", (
       expect(await h.rowsNamed("alice", "Ask nobody")).toEqual([]);
       expect(await h.rowsNamed("alice", "Ask the helper")).toEqual([]);
       expect(await h.rowsNamed("alice", "Ask d1 directly")).toEqual([]);
-      expect((await one(h, "Ask myself")).status).toBe("completed");
+      expect(await h.rowsNamed("alice", "Ask myself")).toEqual([]);
       expect((await one(h, "Plan the launch")).status).toBe("completed");
     } finally {
       await h.dispose();

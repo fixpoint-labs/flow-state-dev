@@ -68,6 +68,7 @@ function buildNestedFlow() {
   const innerBoard = taskBoard({
     name: "inner-board",
     boardId: "inner-board",
+    mode: "delegation",
     collection: defineTaskCollection({ id: "inner-ledger", scope: "user" }),
     workers: {
       deep: dispatcher({ name: "inner-dispatch", type: "task", action: "deep", session: "per-task" }),
@@ -99,6 +100,7 @@ function buildNestedFlow() {
   const outerBoard = taskBoard({
     name: "outer-board",
     boardId: "outer-board",
+    mode: "delegation",
     collection: defineTaskCollection({ id: "outer-ledger", scope: "user" }),
     workers: {
       top: dispatcher({ name: "outer-dispatch", type: "task", action: "top", session: "per-task" }),

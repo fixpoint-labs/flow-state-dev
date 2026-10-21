@@ -65,24 +65,16 @@ function senderFlow(options: {
   target: (task: { assignee: string; taskId: string }) => string | undefined | Promise<string | undefined>;
   asked: string[];
   filers?: Array<string | undefined>;
-  inlineRan: string[];
   tasks: Array<{ id: string; assignee?: string }>;
 }) {
   const board = taskBoard({
     name: "per-task-board",
     boardId: LEDGER_ID,
+    mode: "delegation",
     collection: LEDGER,
-    workers: {
-      local: handler({
-        name: "local-worker",
-        inputSchema: taskWorkerInputSchema,
-        outputSchema: z.object({ by: z.string() }),
-        execute: (input: TaskWorkerInput) => {
-          options.inlineRan.push(input.taskId);
-          return { by: "local" };
-        },
-      }),
-    },
+    // A delegation board hands every row off: there is no inline assignee
+    // beside the fallback (FIX-2076).
+    workers: {},
     defaultWorker: dispatcher<TaskWorkerInput>({
       name: "per-task-fallback",
       action: "work",
@@ -130,19 +122,16 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
     const ran: Array<{ flow: string; taskId: string; session: string }> = [];
     const asked: string[] = [];
     const filers: Array<string | undefined> = [];
-    const inlineRan: string[] = [];
     const flows = { alice: "taker-alice", bob: "taker-bob" } as Record<string, string>;
     const sender = senderFlow({
       // Async on purpose: a lookup may read a store.
       target: async (task) => flows[task.assignee],
       asked,
       filers,
-      inlineRan,
       tasks: [
         { id: "t-alice-1", assignee: "alice" },
         { id: "t-alice-2", assignee: "alice" },
         { id: "t-bob", assignee: "bob" },
-        { id: "t-local", assignee: "local" },
       ],
     });
     const state = createFlowState({
@@ -157,7 +146,7 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
     try {
       const runtime = await state.getRuntime();
       expect((await drain(runtime, sender)).error).toBeUndefined();
-      for (const id of ["t-alice-1", "t-alice-2", "t-bob", "t-local"]) {
+      for (const id of ["t-alice-1", "t-alice-2", "t-bob"]) {
         await until(async () => (await row(runtime.stores, id))?.status === "completed", id);
       }
       const byTask = Object.fromEntries(ran.map((r) => [r.taskId, r]));
@@ -166,9 +155,6 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
       expect(byTask["t-bob"]?.flow).toBe("taker-bob");
       // Two tasks for one name run in two sessions.
       expect(byTask["t-alice-1"]?.session).not.toBe(byTask["t-alice-2"]?.session);
-      // The board's own assignee ran inline and the lookup was never asked about it.
-      expect(inlineRan).toEqual(["t-local"]);
-      expect(asked).not.toContain("local");
       expect(asked.sort()).toEqual(["alice", "alice", "bob"]);
       // Each lookup was told who filed the row: the user whose request added
       // it, as the ledger stamped it, not a field the row's author supplied.
@@ -189,7 +175,6 @@ describe("a fallback that hands rows to a flow looked up per task", () => {
     const sender = senderFlow({
       target: () => undefined,
       asked: [],
-      inlineRan: [],
       tasks: [{ id: "t-nobody", assignee: "nobody" }, { id: "t-unnamed" }],
     });
     const state = createFlowState({

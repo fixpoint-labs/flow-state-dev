@@ -66,6 +66,7 @@ function recipientFlow(ran: string[]) {
   const board = taskBoard({
     name: `${RECIPIENT}-board`,
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: sharedLedger(),
     workers: {
       work: dispatcher<TaskWorkerInput>({
@@ -87,6 +88,7 @@ function senderFlow() {
   const board = taskBoard({
     name: `${SENDER}-board`,
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: sharedLedger(),
     workers: {
       work: dispatcher<TaskWorkerInput>({
@@ -252,6 +254,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
   const board = taskBoard({
     name: "conv_board",
     boardId: PARTITION_BOARD,
+    mode: "delegation",
     collection: partitionedLedger,
     dispatcher: shortLease,
     // Bounded, so a drain that never reaches its exit shows as a number rather
@@ -349,6 +352,7 @@ function partitionAgent() {
   const board = taskBoard({
     name: "agent_board",
     boardId: PARTITION_BOARD,
+    mode: "delegation",
     collection: partitionedLedger,
     workers: {
       work: dispatcher<TaskWorkerInput>({ name: "agent-dispatch", action: "work", session: "per-task" }),

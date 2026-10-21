@@ -28,10 +28,7 @@ import {
 } from "../../src/tasks";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
 import { whenBoardClaimable } from "../../src/task-board/predicates";
-import {
-  dispatchedTaskPredicate,
-  type DispatchingAssignee,
-} from "../../src/task-board/dispatch-assignee";
+import { runsElsewhereFor } from "../../src/task-board/board-mode";
 import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
@@ -382,45 +379,20 @@ describe("boardQuiescence - work handed to a child session", () => {
 });
 
 /**
- * How a board decides which of its rows a child session is running.
- *
- * Resolution has to mirror the child's own gate — a declared assignee, else
- * the floor — or the drain and the child disagree about which assignee a row
- * belongs to.
+ * How a board decides which of its rows another session is running: its
+ * declared mode (FIX-2076), not its assignees. A delegation board excuses every
+ * running row while the lease holds; a plan board excuses none.
  */
-describe("dispatchedTaskPredicate", () => {
-  const assignee = (name: string): DispatchingAssignee => ({
-    name,
-    kind: "named",
-    label: `assignee:${name}`,
-    dispatch: { type: "task", action: "t", session: "per-task" },
+describe("runsElsewhereFor", () => {
+  it("is absent for a plan board, which waits on every row", () => {
+    // Absence is what keeps every plan board on the `count()` path.
+    expect(runsElsewhereFor("plan")).toBeUndefined();
   });
 
-  it("is absent for a board with no dispatcher assignee", () => {
-    // Absence is what keeps every existing board on the `count()` path — the
-    // classifier's answer for them is bit-for-bit unchanged.
-    expect(dispatchedTaskPredicate([])).toBeUndefined();
-  });
-
-  it("separates a dispatched assignee from an inline one", () => {
-    const predicate = dispatchedTaskPredicate([assignee("background")])!;
+  it("excuses every row of a delegation board, whatever its assignee", () => {
+    const predicate = runsElsewhereFor("delegation")!;
     expect(predicate({ assignee: "background" } as never)).toBe(true);
-    expect(predicate({ assignee: "inline" } as never)).toBe(false);
-  });
-
-  it("never dispatches for an undeclared assignee — only a named assignee can", () => {
-    // The floor and the uniform assignee cannot dispatch (the board refuses a
-    // dispatcher there), so an unrouted row is always this drain's.
-    const predicate = dispatchedTaskPredicate([assignee("background")])!;
-    expect(predicate({ assignee: "unknown" } as never)).toBe(false);
-    expect(predicate({} as never)).toBe(false);
-    expect(predicate({ assignee: "background" } as never)).toBe(true);
-  });
-
-  it("does not resolve an inherited Object.prototype member as an assignee", () => {
-    // `assignee` reaches the board from a model-facing tool, so a bare index
-    // would route `"constructor"` at a declared assignee that does not exist.
-    const predicate = dispatchedTaskPredicate([assignee("background")])!;
-    expect(predicate({ assignee: "constructor" } as never)).toBe(false);
+    expect(predicate({ assignee: "constructor" } as never)).toBe(true);
+    expect(predicate({} as never)).toBe(true);
   });
 });

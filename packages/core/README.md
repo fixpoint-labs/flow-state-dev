@@ -663,9 +663,9 @@ import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",
+  mode: "delegation",                          // every row runs in a child session
   collection: issues,                          // a defineTaskCollection()
   workers: {
-    triage: triageWorker,                        // runs inline, in the drain
     implement: dispatcher({                      // dispatches
       name: "dispatch-implement",
       action: "implement",                       // flow.task.actions.implement
