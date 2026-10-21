@@ -41,6 +41,6 @@
     "esbuild": "0.27.3",
     "playwright": "^1.49.0",
     "tsx": "^4.19.4",
-    "typescript": "^6.0.3"
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

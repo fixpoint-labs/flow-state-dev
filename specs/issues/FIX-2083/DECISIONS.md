@@ -120,7 +120,7 @@ whether the lead can manage the workers under it. Then the vet keeps its own cal
   (a delegate is a worker whose flow takes tasks; FIX-2084's role check is the one answer). The
   implementation's sweep checks they are gone. `dispatchTask({ post, target })` has no row of its
   own: it is FIX-2081's `dispatchTask` row, whose routed-task line reads `createTask` with
-  `target` and the routing settings; whichever of #3596 and this PR merges second writes that.
+  `target` and the routing settings.
 - **The collection's dispatch verb.** If this lands after FIX-2082, it removes
   `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall` and the
   `already-dispatched` decline with the tool, under the same row. If FIX-2082 lands later, it

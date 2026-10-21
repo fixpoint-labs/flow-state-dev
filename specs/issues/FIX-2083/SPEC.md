@@ -121,7 +121,7 @@ A routed task is a task with three settings; routing only chooses who.
 | The post's parts: its row kind, `isPostRow`'s three board refusals, `onPostSettled`, `postCancelled`, `delegatedPostOnFinished`, the deadline timer, `taskTurn: false` | **Removes** |
 | FIX-2080's settings and its map entry *a post to a routed task* | **Builds on**, and turns the entry on |
 | FIX-2078's one ending path and its wake | **Builds on.** A round's deadline is one more due time ([D2](DECISIONS.md#d2)) |
-| FIX-2081's `createTask` and [D1](https://github.com/fixpoint-labs/flow-state-dev/pull/3596): `dispatchTask` stays until its post form goes | **Removes** the post form here, and the tool if FIX-2082 has landed |
+| FIX-2081's `createTask` and [D1](../FIX-2081/DECISIONS.md#d1): `dispatchTask` stays until its post form goes | **Removes** the post form here, and the tool if FIX-2082 has landed |
 | Best fit's evaluator call; FIX-1920's lead-fit call | **Folds** into one fit check ([D3](DECISIONS.md#d3)) |
 | [FIX-1872 D1](../FIX-1872/DECISIONS.md#d1): a post is worked on its own entry | **Superseded**, as the epic says: its reason, a cold session, is the session setting |
 | [FIX-1872 D2](../FIX-1872/DECISIONS.md#d2): the model names who; the post goes as written | **Kept**, on `createTask` ([D1](DECISIONS.md#d1)) |
