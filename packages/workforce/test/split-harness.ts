@@ -50,6 +50,8 @@ export type SplitControls = {
   holdAfterFiling: Record<string, number>;
   /** Workers whose turn files its pieces as one batch (`addTasks`), not one by one. */
   batch: Set<string>;
+  /** What a worker's turn waits on before it files its pieces (not on a notice). */
+  holdBeforeFiling: Record<string, Promise<void>>;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -78,6 +80,8 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
         delete controls.onCompleted[worker];
       }
       if (pieces.length === 0) return notice && Object.hasOwn(controls.noticeAnswer, worker) ? controls.noticeAnswer[worker] : `${worker} heard: ${input.message}`;
+      const before = notice ? undefined : controls.holdBeforeFiling[worker];
+      if (before !== undefined) await before;
       const ref = await board.board.resolver(ctx as never);
       if (ref === undefined) {
         controls.refusals.push({ worker, error: "no_delegation_board" });
@@ -155,7 +159,8 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
     turns: [],
     failAfterFiling: new Set(),
     holdAfterFiling: {},
-    batch: new Set()
+    batch: new Set(),
+    holdBeforeFiling: {}
   };
   const host = bootBoardHost({
     standard: splitWorkers(),

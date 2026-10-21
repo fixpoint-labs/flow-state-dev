@@ -101,7 +101,7 @@ import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { isPostRow, postRowOf } from "../coordinator/delegated-post";
 import type { TaskDelegates } from "../delegates/worker-delegates";
 import { delegateKey } from "../delegates/delegate-list";
-import { stampFiledMarker } from "./cascade";
+import { cancelIfParentEnded, stampFiledMarker } from "./cascade";
 import {
   FILING_FLOW_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
@@ -678,6 +678,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(metadata !== undefined ? { metadata } : {})
       });
       await markFiled();
+      if (owner !== undefined && (await cancelIfParentEnded(ctx, owner, ref, added.id, conversationLedgerAt))) {
+        return ref.get(added.id) ?? added;
+      }
       if (added.status !== "held" && isStartable(added, ref.list())) await wake(ctx);
       return added;
     };

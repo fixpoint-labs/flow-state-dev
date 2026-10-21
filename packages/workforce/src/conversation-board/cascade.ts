@@ -70,6 +70,29 @@ export async function stampFiledMarker(ctx: BlockContext, taskId: string, ledger
   await ref.patchMetadata(taskId, { [FILED_MARKER]: marker });
 }
 
+/**
+ * Once a piece of `taskId` is added on `board`, cancel it if the task has
+ * already failed for good or been cancelled. The task's ending and the
+ * piece's add are separate writes: an ending that lands between the marker's
+ * stamp and the add finds nothing to cancel, so the add checks after itself.
+ *
+ * @returns Whether the piece was cancelled.
+ */
+export async function cancelIfParentEnded(
+  ctx: BlockContext,
+  taskId: string,
+  board: TaskCollectionRef,
+  pieceId: string,
+  ledgerAt: LedgerAt
+): Promise<boolean> {
+  const above = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
+  if (typeof above !== "string") return false;
+  const parent = (await ledgerAt(ctx, above))?.get(taskId);
+  if (parent === undefined || (parent.status !== "errored" && parent.status !== "cancelled")) return false;
+  const outcome = await board.cancel(pieceId, cancelReason(parent));
+  return outcome.outcome === "recorded";
+}
+
 /** Why a cascade cancelled a piece, in the piece's row. */
 function cancelReason(row: Task): string {
   const how = row.status === "pending" ? "is running again" : row.status === "cancelled" ? "was cancelled" : "failed";

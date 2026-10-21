@@ -167,6 +167,31 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
     }
   });
 
+  it("cancels a piece filed after its task was cancelled, so it doesn't outlive the task", async () => {
+    // The task's ending finds nothing filed yet, so its cascade cancels
+    // nothing; the piece is added after. The add itself must catch it.
+    const h = bootSplitHost();
+    try {
+      let file!: () => void;
+      h.controls.holdBeforeFiling.s1 = new Promise<void>((resolve) => (file = resolve));
+      h.controls.plans.planner = [{ goal: "Plan the retreat", assignee: "s1" }];
+      h.controls.plans.s1 = [{ goal: "[slow:3000] Book the cabin", assignee: "eng.tasker" }];
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      expect(await h.until(async () => h.controls.turns.some((turn) => turn.worker === "s1"))).toBe(true);
+      const top = await one(h, "Plan the retreat");
+      expect(await h.tool("alice", planner, "cancelTask", { taskId: top.id, reason: "not needed" })).toEqual({ ok: true });
+      file();
+      expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:3000] Book the cabin")).length === 1)).toBe(true);
+      await h.settled();
+
+      expect((await one(h, "Plan the retreat")).status).toBe("cancelled");
+      expect((await one(h, "[slow:3000] Book the cabin")).status).toBe("cancelled");
+    } finally {
+      await h.dispose();
+    }
+  }, 20_000);
+
   it("cancels the open piece a running task filed within seconds of the conversation cancelling the task", async () => {
     const h = bootSplitHost();
     try {
