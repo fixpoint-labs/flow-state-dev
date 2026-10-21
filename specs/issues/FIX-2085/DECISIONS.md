@@ -98,8 +98,9 @@ It comes down to hosts without an index: the index's time leaves the list empty 
 - **A body `idempotencyKey` is refused with 400 naming the change**, not ignored (BP-030), so a host
   relying on it learns at upgrade. The routes file's header comment is rewritten with it, which
   closes [FIX-1219](https://linear.app/fixpoint-labs/issue/FIX-1219).
-- **The `scheduled` changeset carries the two migration rows.** Both removals, `idempotencyWindowMs`
-  and the body's `idempotencyKey`, have rows in the epic's [migration lines](../../epics/FIX-2056/migration.md)
+- **The `scheduled` changeset carries the three migration rows.** All three removals,
+  `idempotencyWindowMs`, the cache's `idempotencyOptions` test seam, and the body's `idempotencyKey`,
+  have rows in the epic's [migration lines](../../epics/FIX-2056/migration.md)
   with this issue as owner. Under epic [(e)](../../epics/FIX-2056/DECISIONS.md#e) this PR's
   changeset carries those lines and says teams outside the repo rewrite at upgrade.
 - **No POC and no checker.** The compare-and-set is the store contract's create-if-absent and

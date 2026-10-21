@@ -19,6 +19,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `createScheduledTransportAdapter`'s `idempotencyWindowMs` | Nothing: the dispatch endpoint fires each scheduled time at most once, recorded in the host's store | FIX-2085 |
+| `createScheduledTransportAdapter`'s `idempotencyOptions` (the cache's test seam) | Nothing: it goes with the cache | FIX-2085 |
 | The dispatch request body's `idempotencyKey` | Nothing: the scheduled time is the key. A body that sends one is refused with `400` | FIX-2085 |
 | `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
 | A split task's `{ answer, pieces }` output | The worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks` | FIX-2077 |
