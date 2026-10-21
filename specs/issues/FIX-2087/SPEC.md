@@ -9,7 +9,7 @@
 | **decides whether the epic is done** | Eleven children, each green on its own commit. Nothing uses the whole as a user would | One report on one `main` commit: every check beside its control's FAIL, every finding with its retest |
 | **uses a Workforce app, like Alice** | Routed work is a post she can't list. An ending can reach its filer twice, or wait for a touch | On a real model: her routed task is in her list, the draft lands once under writer's name, and her follow-up keeps the first version |
 | **runs Workforce on a host that restarts** | A finished task waits until something touches the board | The server is killed after an ending; writer still hears within the due time |
-| **maintains the framework** | 39 live lines: removed tools offered, posts and the split settle live, five ending writes outside the gate | 0 on the commit, and CI fails a later PR that adds a fifth task tool or a second ending path ([D2](DECISIONS.md#d2)) |
+| **maintains the framework** | 39 live lines: removed tools offered, posts and the split settle live, five ending writes outside the gate | 0 on the commit, and CI fails a later PR that adds a fifth task tool or a second ending path, found by type ([D2](DECISIONS.md#d2)) |
 | **builds a child of this epic** | No plan says what grades the assembled set | This plan, now, while they build |
 
 ## The goal, and how we'll know it's met
@@ -55,7 +55,7 @@ the one behaviour its leg proves.
 |---|---|---|
 | 1 | Legs a to c and the sweep, above | Each green; each control red where named |
 | 2 | **A journey per team the walk misses**, same Lab and model. *Hands out work:* a worker files, waits with `getTask` and answers in the same request, offered only the four task tools and `answerTask`. *Runs a coordinator:* Alice steers one routed task and cancels another. *Builds a goal-seek loop:* `goals/goal-seek-loop/replans-until-done/` passes; one built over a delegation board is refused | Each green; the steer shows in the draft, the cancel is heard once |
-| 3 | **Every child's goal check with its controls**, for every child blocking this issue when the run starts, FIX-2088 included; every goal under `goals/coordinators/` and `goals/hand-offs/`; FIX-2005's leg of `goals/workforce-privacy/` | Each PASS beside its documented FAIL |
+| 3 | **Every child's goal check with its controls**, for every child blocking this issue when the run starts, FIX-2088 included, the set printed in the report as it was read; every goal under `goals/coordinators/` and `goals/hand-offs/`; FIX-2005's leg of `goals/workforce-privacy/` | Each PASS beside its documented FAIL |
 | 4 | **The gap sweep**: each [coordination seam](../../epics/FIX-2056/DECISIONS.md#coordination-seams) read from both sides; the task-board page FIX-2081 publishes, followed as written; each epic *not done if* state absent; each of the 31 in-scope gaps rows mapped to the check that reads it | Every seam two-sided, every promise backed, 31 of 31 |
 
 Any failure becomes a child of FIX-2056 that blocks this issue, and the whole plan runs again on a
@@ -66,6 +66,13 @@ fresh commit once it merges.
 ![Today: eleven children each green on its own commit, no walk, and the sweep reading 39 live lines. After: one main commit and one runner with four bands: the walk, the crash, the failure and the sweep; three team journeys; every child's check; the gap sweep. A finding becomes a child that blocks the closure and sends the whole plan round again](figures/what-changes.svg)
 
 Everything right of the commit line runs together; the sweep also joins CI.
+
+**One rule engine, called by both.** The three rules and their allow lists live in one `rules.mjs`
+that the goal and CI both call, as `goals/vocabulary/one-word-per-thing/` keeps its own, so the two
+can't give different answers on one commit. Tool and removed names are read by name over
+`git ls-files`. The endings rule reads every caller of a task collection's `complete` and `fail` by
+type, through the TypeScript program; a name match never gates. The POC is evidence for the
+premise, not the template ([D2](DECISIONS.md#d2)).
 
 ```diff
   # .github/workflows/ci.yml, beside "One word per thing"
@@ -97,8 +104,8 @@ a page that doesn't hold when followed is a finding against it.
 | The debt | |
 |---|---|
 | **Removes** | Nothing. The children remove; this proves it |
-| **Adds** | One goal and one CI sweep. Permanent by design: the promises outlive the epic. Its allow list changes when FIX-2058 retires `answerTask` |
-| **Leaves** | Harness Manager fails its own row on a refused run, and no child removes it: a finding the closure files unless a child takes it first ([Settled](DECISIONS.md#settled)) |
+| **Adds** | One goal, one rule engine and one CI sweep. Permanent by design: the promises outlive the epic. Its allow list changes when FIX-2058 retires `answerTask` |
+| **Leaves** | Harness Manager fails its own row on a refused run and no child removes it; it goes to an open child now (FIX-2088 recommended to the coordinator), and until that child lands the allow list names it as an exemption with that owner, never as a recorder ([Settled](DECISIONS.md#settled)) |
 
 **Net: up, a little.** One goal and one CI step, for promises that stay true.
 
@@ -114,8 +121,9 @@ wrong: a CI step that fails a later PR on a tool someone meant to add.
 1. **[D1](DECISIONS.md#d1) · On a real model, a structural miss on any attempt is a finding; only a
    judgment miss earns another attempt.** If wrong: findings on races too rare to matter, a round
    each.
-2. **[D2](DECISIONS.md#d2) · The sweep joins CI; the walk stays on demand.** If wrong: a CI step
-   every later task-tool change has to edit.
+2. **[D2](DECISIONS.md#d2) · The sweep joins CI as one rule engine shared with the goal, its
+   endings read by type; the walk stays on demand.** If wrong: a CI step every later task-tool
+   change has to edit.
 
 **Open: none.** D1 is the one to weigh.
 

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the closure's checks keep running. Chosen: the task-surface sweep joins CI and the real-model walk stays on demand. Instead of: both on demand. It comes down to the first row: a fifth task tool or a second ending path added between closures fails that PR's CI under the chosen option, and goes unseen until someone re-runs the closure otherwise. The price is the second row: a PR that adds a tool on purpose must edit the sweep's allow lists. The third row is a tie: the walk costs model calls either way and stays a goal. Locks in: the allow lists as a reviewed file every task-tool change edits. Flips if: the endings rule costs more than a minute of CI."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, where the closure's checks keep running. Chosen: the task-surface sweep joins CI and the real-model walk stays on demand. Instead of: both on demand. It comes down to the first row: a fifth task tool or a second ending path added between closures fails that PR's CI under the chosen option, and goes unseen until someone re-runs the closure otherwise. The price is the second row: a PR that adds a tool on purpose must edit the sweep's allow lists. The third row is a tie: the walk costs model calls either way and stays a goal. Locks in: one rule engine for CI and the goal, its endings read by type, never by name, with allow lists every task-tool change edits. Flips if: that type read costs more than a minute of CI, and then the endings rule runs in the goal only."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -88,14 +88,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">The allow lists, a reviewed file</text>
-    <text class="t-s" x="32" y="389">FIX-2058 edits it when answerTask retires</text>
+    <text class="t-b" x="32" y="371">One rule engine, for CI and the goal</text>
+    <text class="t-s" x="32" y="389">endings read by type; a name match never gates</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The endings rule costs over a minute of CI</text>
-    <text class="t-s" x="494" y="389">then it moves to the goal; the tool rules stay</text>
+    <text class="t-b" x="494" y="371">The endings type read costs over a minute</text>
+    <text class="t-s" x="494" y="389">then endings run in the goal; tool rules stay</text>
   </g>
 </svg>
