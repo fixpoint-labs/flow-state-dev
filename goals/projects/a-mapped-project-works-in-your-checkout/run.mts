@@ -231,6 +231,7 @@ await runGoal(async (failures) => {
   const board = taskBoard({
     name: "goal-board",
     boardId: "goal-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     onReview: "exit",

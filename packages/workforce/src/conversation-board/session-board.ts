@@ -161,6 +161,13 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * worker: one entry for the model block's `uses`, beside `tools`.
      */
     messages,
+    /**
+     * Wrap a turn so the steps the worker files for itself run in its request
+     * (FIX-2076): `{ message }` in, the answer out. Wrap each turn the flow
+     * runs as the worker, and pass the wrapped turn to {@link entries}: a
+     * worker is offered its steps only on a flow that wraps one.
+     */
+    planned: board.planned,
     /** Whether the running session files now: one of its delegates takes a task. A task session files its task's pieces. */
     files: board.files as (ctx: BlockContext) => Promise<boolean>,
     /** The session's delegates as a task sees them, read now. */

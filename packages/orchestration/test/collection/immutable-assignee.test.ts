@@ -334,6 +334,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
     const boardHandle = taskBoard({
       name,
       boardId: "wired-dispatch",
+      mode: "delegation",
       collection: defineTaskCollection({ id: "wired-dispatch-coll", scope: "user" }),
       workers: { implement: assignee("wired-impl") },
     });
@@ -433,6 +434,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
     taskBoard({
       name: "dispatch-owner-a",
       boardId: "dispatch-owner-a",
+      mode: "delegation",
       collection: ledger,
       workers: { implement: assignee("owner-impl-a") },
     });
@@ -468,6 +470,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
     taskBoard({
       name: "dispatch-owner-b",
       boardId: "dispatch-owner-b",
+      mode: "delegation",
       collection: ledger,
       workers: { implement: assignee("owner-impl-b") },
     });
@@ -555,6 +558,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
       taskBoard({
         name: "invalid-dispatch-f",
         boardId: "invalid-dispatch-f",
+        mode: "delegation",
         collection: ledger,
         workers: { implement: assignee("owner-impl-f") },
       })
@@ -586,6 +590,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
     taskBoard({
       name: "dispatch-owner-d",
       boardId: "dispatch-owner-d",
+      mode: "delegation",
       collection: dispatchLedger,
       workers: { implement: assignee("owner-impl-d") },
     });

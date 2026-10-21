@@ -241,6 +241,7 @@ function host(options: {
   const board = taskBoard({
     name: "door-board",
     boardId: "door-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     onReview: "exit",

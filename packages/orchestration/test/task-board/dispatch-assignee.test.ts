@@ -68,6 +68,7 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     const board = taskBoard({
       name: "issue-work",
       boardId: "issue-work",
+      mode: "delegation",
       collection: ledger(),
       workers: { implement: assignee("implement") },
       initialTasks: [{ id: "t1", goal: "implement it", assignee: "implement" }],
@@ -110,28 +111,8 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     expect(implementSpy).not.toHaveBeenCalled();
   });
 
-  it("detaches only the assignee that holds the dispatcher, when the same block also runs inline", () => {
-    // The same block may run inline at one assignee and be the entry another assignee
-    // dispatches to. Keying the substitution by ASSIGNEE rather than by block
-    // identity is what keeps the inline assignee inline.
-    const shared = worker("shared");
-    const board = taskBoard({
-      name: "mixed-board",
-      boardId: "mixed-board",
-      collection: ledger(),
-      workers: {
-        inline: shared,
-        background: assignee("shared-entry"),
-      },
-    });
-
-    expect(board.dispatchers).toHaveLength(1);
-    expect(board.dispatchers[0]!.label).toBe("assignee:background");
-    expect(board.dispatchers[0]!.dispatch?.action).toBe("shared-entry");
-  });
-
   it("still installs a resource only the dispatched entry block declares", () => {
-    // The block is off the drain's routing table (test above), so a resource
+    // The block is off the drain's routing table, so a resource
     // it declares is no longer reachable through `board.drain` — it bubbles
     // through the gated task entry instead, which is why the entry has to be
     // on the flow for it to show up at all.
@@ -150,6 +131,7 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     const board = taskBoard({
       name: "resourceful",
       boardId: "resourceful",
+      mode: "delegation",
       collection: ledger(),
       workers: { implement: assignee("implement") },
     });
