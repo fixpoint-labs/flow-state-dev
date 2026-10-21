@@ -44,9 +44,8 @@ async function refusingBoard(): Promise<TaskCollectionRef> {
       if (assignee === "me") throw new TaskWriteRefusedError("crossing", "cancel and file again", id);
       return inner.setAssignee(id, assignee);
     },
-    dispatch: async (id, options) => {
+    dispatch: async (id) => {
       throw new TaskWriteRefusedError("no_dispatch", "not by id", id);
-      return inner.dispatch!(id, options);
     },
   };
 }
