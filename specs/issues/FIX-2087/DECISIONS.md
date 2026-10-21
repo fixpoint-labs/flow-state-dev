@@ -66,17 +66,25 @@ CI. The name match never becomes the fallback.
   `advisoryFail`) are pass-throughs, not recorders: the rule reads their callers in their place, so
   a new caller of a helper is a finding like a direct write. Every other caller of a task
   collection's `complete` or `fail` is a finding, Workforce, Harness Manager and tools included
-  (rule 18, ER-1).
-  A user's cancel and a cascade's are not endings recorded by a worker, and are out of the rule.
+  (rule 18, ER-1). So is a `cancel` that passes the caller's own claim on the row it holds: a
+  worker ending its own row by another verb. A user's cancel and a cascade's pass no such claim,
+  are not endings recorded by a worker, and are out of the rule.
 - **The task tools are the five**: the filer's `createTask`, `getTask`, `listTasks`, `updateTask`
-  and the worker's `reportProgress` (FIX-2081). **`answerTask` is the one exception on the
-  closure's commit**, until FIX-2058 ([D2 of the epic](../../epics/FIX-2056/DECISIONS.md#d2)).
+  and the worker's `reportProgress` (FIX-2081). **`answerTask` and the question park
+  `parkOnQuestion` are the exceptions on the closure's commit**, both kept until FIX-2058 ([D2 of the
+  epic](../../epics/FIX-2056/DECISIONS.md#d2), its *What stays as it is*). The rule reads every tool
+  the task-tools capability declares, so a tool built apart, as `parkOnQuestion` is, can't escape it.
   `dispatchTask` is allowed only until FIX-2082 and FIX-2083, both children: offered on the closure's
   commit, it is a finding against them.
 - **Leg b's kill point is held by a named pause**, not timing: the run patches in a stop after the
   ending's write and before its send, as FIX-2078's leg b does.
 - **The 31 rows' map is read from each child's Linear scope line** and its stories' acceptance; the
-  report prints row, story, check and verdict.
+  report prints row, story, check and verdict. Four rows promise a half other epics own, which does
+  not gate the closure ([D2 of the epic](../../epics/FIX-2056/DECISIONS.md#d2)), as
+  [(f)](../../epics/FIX-2056/DECISIONS.md#f) carves out the Error Reporter half of its row: *waiting
+  on a person* in the suspension row (gaps.md:129), answering a question in the public-actions row
+  (:142) and in `updateTask`'s message row (:153), all FIX-2058's; and `sendMessage` among the model's
+  tools (:141), FIX-2070's. The report prints each carved half beside its row.
 - **Findings follow the closure rule**: filed through `issue-manager` under FIX-2056, blocking this
   issue; a duplicate's relations are wired by the closure worker.
 
@@ -86,7 +94,7 @@ CI. The name match never becomes the fallback.
 |---|---|
 | Re-run the children's checks only | The smaller goal; no check hands a routed task down and back up on a real model |
 | Run the walk on Shift Manager's DevTeam install | Its host wires its own routes (`errorCapture`, the route model), so a pass there can rest on app code the epic says an app needn't write |
-| Script every turn of the walk | Cheaper and stable, but then nothing shows a real model can work the four tools; D1 keeps the model and tags what it may retry |
+| Script every turn of the walk | Cheaper and stable, but then nothing shows a real model can work the five tools; D1 keeps the model and tags what it may retry |
 
 <a name="settled"></a>
 ## Settled
@@ -96,8 +104,9 @@ CI. The name match never becomes the fallback.
   On `96404d2`: 1,295 files, 15 tool names, 11 ending writes, **FAIL with 39 live lines** (12 removed
   tools offered, 3 removed collection members, 19 post-entry and split-settle lines, 5 ending writes
   outside a recorder). `--control` reports 41: exactly its two plants.
-- **One ending write had no owner, and now does**: Harness Manager fails its own row when a run is
-  refused (`packages/harness-manager/src/manager.ts:2600`). It passes its own attempt's claim, but
+- **One ending write had no owner, and now does**: Harness Manager ends its own row when a run is
+  refused (`packages/harness-manager/src/manager.ts:2600-2601`): it fails it on a board read from the
+  claim, and cancels it under its own claim on the fixed board. Both are FIX-2090's. It passes its own attempt's claim, but
   a claim-fenced write from a worker block is still outside the gate: ER-1 names worker blocks, and
   the gate is `task-entry.ts` and `record-result.ts`. So the rule's wording stands and this is a
   real gap. FIX-2090 owns it and blocks this issue, so the allow list carries no exemption; if the
@@ -108,6 +117,8 @@ CI. The name match never becomes the fallback.
 - **The POC's removed rule covers less than the migration table**: it reads the removed tools in the
   task-tools file only, and has no matcher for the agent worker's `run` entry. Its 39 lines are a
   floor, not the count; the shipped rule covers every row ([What changes](SPEC.md#what-changes)).
+- **The POC's kept list predates `reportProgress`**: it allows four tools and `answerTask`. The
+  shipped allow list is the five, `answerTask` and `parkOnQuestion`.
 
 ## Notes from review
 
@@ -130,5 +141,9 @@ For the implementer, verbatim; none changes the approach.
 - **Review round 2** — the removed rule covers every migration row, the endings rule reads a write
   helper's callers in its place, and child checks row 1 already walks are skipped, as the closure
   rule says. The tools are five, with Harness Manager's write owned by FIX-2090.
+- **Cross-spec audit** — a rewritten goal is graded on its rewritten intent and a red one on removed
+  behaviour goes to the remover; the removed rule reads the table on the closure's commit, scoped,
+  under FIX-1876's roots and marker; the claim-passing cancel is an ending; `parkOnQuestion` joins
+  the allow list; four rows' non-gating halves are named.
 
 **Open: none.**
