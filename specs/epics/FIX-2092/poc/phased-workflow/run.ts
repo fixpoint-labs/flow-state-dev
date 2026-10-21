@@ -536,7 +536,6 @@ async function main(): Promise<void> {
       const views: string[] = [];
       await drive(s, { order, answer: true, views });
       const rows = await s.rows();
-      const record = (await s.record())!;
       const byStep = (k: string) => rows.find((r) => metaOf(r).step === k);
       const fix = byStep("fix-r2");
       const impl = byStep("implement")!;
