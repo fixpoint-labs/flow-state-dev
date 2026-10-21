@@ -306,8 +306,8 @@ const terminalWriteToolError = (options: {
 const STATUS_CLAUSE = "Its status will not change again.";
 /** The `clause` for a write that would have changed who the task is assigned to. */
 const ASSIGNEE_CLAUSE = "Its assignee will not change.";
-/** The `clause` for a hold or release refused on a task that has started (FIX-2080). */
-const HOLD_CLAUSE = "It has started, so it can't be held or released; cancel it instead.";
+/** The `clause` for a hold refused on a task that has started (FIX-2080). */
+const HOLD_CLAUSE = "It has started, so it can't be held; cancel it instead.";
 
 /**
  * Turn a refused transition into the recoverable result shape the rest of this
@@ -1474,11 +1474,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           //
           // Nullable on purpose: a pre-widening custom ref returns nothing, and
           // that is carried past rather than read as a decline (BP-030).
-          // The hold or release runs first (FIX-2080): it declines on a task
-          // that has started, before anything else is written.
-          if (patch.status !== undefined) {
-            const outcome: TaskWriteOutcome | undefined =
-              patch.status === "held" ? await c.hold(input.taskId) : await c.release(input.taskId);
+          // A hold runs first (FIX-2080): it declines on a task that has
+          // started, before anything else is written. A release runs last:
+          // it is what lets the task start, so everything else lands on the
+          // held task first, and a refused reassignment leaves it held rather
+          // than started under the worker it was meant to leave.
+          if (patch.status === "held") {
+            const outcome: TaskWriteOutcome | undefined = await c.hold(input.taskId);
             if (outcome != null && outcome.outcome === "declined") return outcome;
           }
           if (patch.assignee !== undefined) {
@@ -1492,13 +1494,19 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
           if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
           if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
+          if (patch.status === "pending") {
+            const outcome: TaskWriteOutcome | undefined = await c.release(input.taskId);
+            if (outcome != null && outcome.outcome === "declined") return outcome;
+          }
         },
         {
           // A patch that doesn't touch `assignee` leaves this undefined, so the
           // gate stays inert for a priority/label-only update.
           assignee: input.patch.assignee,
-          // The assignee write and the hold can decline here; the clause names what didn't change.
-          declineClause: input.patch.status !== undefined ? HOLD_CLAUSE : ASSIGNEE_CLAUSE,
+          // The hold and the assignee write can decline here; the clause names
+          // what didn't change. A hold refused beside a reassignment wrote
+          // nothing either, so the assignee's clause holds for both.
+          declineClause: input.patch.status === "held" && input.patch.assignee === undefined ? HOLD_CLAUSE : ASSIGNEE_CLAUSE,
         },
       ),
   });

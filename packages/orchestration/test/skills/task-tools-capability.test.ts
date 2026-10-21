@@ -793,6 +793,33 @@ describe("taskTools — updateTask with an assignee on a terminal task", () => {
 });
 
 /**
+ * A release and a reassignment in one `updateTask` (FIX-2080). The release is
+ * what lets the task start, so it lands last: a release first could start the
+ * task with its old worker before the reassignment, and a refused
+ * reassignment would then report failure for a task already running.
+ */
+describe("taskTools — updateTask that releases and reassigns at once", () => {
+  it("leaves the task held when the reassignment is refused", async () => {
+    // A follow-up keeps the worker of the task it follows, so its reassignment is refused.
+    const ctx = ctxWithTask("held", { assignee: "researcher", followUpOf: "root" });
+
+    const result = await runForTest(findTool("updateTask"), { taskId: "a", patch: { status: "pending", assignee: "writer" } }, ctx);
+
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect(taskA(ctx)).toMatchObject({ status: "held", assignee: "researcher" });
+  });
+
+  it("reassigns before it releases when both are allowed", async () => {
+    const ctx = ctxWithTask("held", { assignee: "researcher" });
+
+    const result = await runForTest(findTool("updateTask"), { taskId: "a", patch: { status: "pending", assignee: "writer" } }, ctx);
+
+    expect(result).toEqual({ ok: true });
+    expect(taskA(ctx)).toMatchObject({ status: "pending", assignee: "writer" });
+  });
+});
+
+/**
  * The line between this change and the blanket `catch (err)` it rejected. The
  * soft set is exactly one error class; a scope-mutation failure is not on it and
  * must still reach the caller as a throw rather than becoming a polite result
