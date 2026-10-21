@@ -42,7 +42,7 @@ const COORDINATOR = "coordinator";
 const CHIEF = "chief-of-staff";
 const PROJECT_COORDINATOR = "project-coordinator";
 /** Orchestration's eight `taskTools` (b6), by the names a turn calls them. */
-export const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"] as const;
+export const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "updateTask", "listTasks"] as const;
 
 /** An engineering ask on a research fork fits no delegate, so a4 is NOT RUN when the fork has none of these. */
 const feature = (w: string) => `Please get this feature filed for the engineering team (${w}): ${pick(["a gift-wrap option at checkout", "a recently-viewed strip on the product page", "a back-in-stock email signup on sold-out items", "a size guide link beside each size picker"])}.`;

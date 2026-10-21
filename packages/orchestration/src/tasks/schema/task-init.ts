@@ -10,6 +10,12 @@
  */
 import type { Task, TaskStatus } from "./task";
 
+/** Where a task runs: a session of its own, or the delegate's ongoing one for the conversation (`Task.session`). */
+export type TaskSessionSetting = "new" | "ongoing";
+
+/** Who hears a task's result: whoever filed it, or the conversation it was filed from (`Task.resultTo`). */
+export type TaskResultSetting = "filer" | "conversation";
+
 /** Caller-supplied fields when creating a task. `id` is auto-generated when omitted. */
 export type TaskInit<TInput = unknown> = {
   id?: string;
@@ -44,11 +50,23 @@ export type TaskInit<TInput = unknown> = {
    */
   wait?: { gateId: string; deadline: number };
   /**
-   * File the row recorded, not dispatched (see `Task.undispatched`): a board
-   * that starts work at once leaves it until `dispatch` readies it. Omitted,
-   * the row is ready, as every row was before this.
+   * File the row held (FIX-2080, the start setting): status `held`, so it
+   * doesn't start until something releases it (`release`, or `dispatch` on a
+   * board that dispatches). Omitted, it starts once its `deps` have finished.
    */
-  undispatched?: true;
+  held?: boolean;
+  /**
+   * Where the task runs (see `Task.session`). Omitted is `"new"`. A board that
+   * can't honour a value refuses the filing, naming the setting
+   * (`TaskFilingRefusedError`): a plain board takes only the default.
+   */
+  session?: TaskSessionSetting;
+  /**
+   * Who hears the result (see `Task.resultTo`). Omitted is `"filer"`. A
+   * `"conversation"` task has one attempt: `maxAttempts` unset reads as 1, and
+   * any other value is refused at filing.
+   */
+  resultTo?: TaskResultSetting;
   /**
    * The call that filed this row ready (see `Task.dispatchCall`), so the same
    * call replayed finds its own row. Set only by the dispatch path.
@@ -75,6 +93,8 @@ export type TaskFilter = {
   resumeOwed?: true;
   /** Match only tasks whose wait is over and still owes its cancel (`Task.cancelOwed`). */
   cancelOwed?: true;
+  /** Match only tasks whose ending still owes its cascade (`Task.cascadeOwed`). */
+  cascadeOwed?: true;
   /**
    * Match only tasks whose `sealed` payload holds each of these keys at this
    * plain value (compared with `===`).
@@ -110,6 +130,8 @@ export function matchesFilter(task: Task, filter?: TaskFilter): boolean {
   if (filter.resumeOwed === true && task.resumeOwed !== true) return false;
 
   if (filter.cancelOwed === true && task.cancelOwed !== true) return false;
+
+  if (filter.cascadeOwed === true && task.cascadeOwed == null) return false;
 
   if (filter.sealed !== undefined) {
     for (const [key, value] of Object.entries(filter.sealed)) {

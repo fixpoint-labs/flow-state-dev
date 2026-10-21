@@ -25,12 +25,14 @@
 
 import {
   defineResourceCollection,
+  type BlockContext,
   type DefinedResourceCollection,
   type ResourceScope,
 } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskSchema } from "../schema/task";
-import type { TaskEndingRecorder } from "./ending";
+import { taskSchema, type Task } from "../schema/task";
+import type { TaskEnding, TaskEndingRecorder } from "./ending";
+import type { TaskSettingsSupport } from "./filing";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
 
@@ -56,8 +58,30 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly partitionBy?: TaskPartitionFn;
     /** Present when every ending written to the ledger goes through a recorder. */
     readonly recordEnding?: TaskEndingRecorder;
+    /** Present when the ledger honours filing settings beyond the defaults. */
+    readonly settings?: TaskSettingsSupport;
+    /** Present when the ledger's tasks file work elsewhere that a cascade cancels. */
+    readonly cascadeFiled?: DeclaredFiledCascade;
   };
 };
+
+/**
+ * A ledger's payer for the tasks its tasks filed (FIX-2080 D2), as declared:
+ * `pay` takes the running context, bound when the ledger is resolved.
+ */
+export interface DeclaredFiledCascade {
+  /**
+   * Whether this ending owes the filed half: a pure function of the row as
+   * the ending writes it, run inside that write and possibly more than once.
+   */
+  readonly owes: (row: Task, ending: TaskEnding) => boolean;
+  /**
+   * Cancel the open tasks `row` filed, in the running context. `true` once
+   * paid; `false` leaves the cascade owed, for the next touch past its due
+   * time.
+   */
+  readonly pay: (ctx: BlockContext, row: Task) => Promise<boolean>;
+}
 
 export interface DefineTaskCollectionOptions<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
@@ -115,6 +139,21 @@ export interface DefineTaskCollectionOptions<
    * taken from what it returns; the transition decides every other field.
    */
   recordEnding?: TaskEndingRecorder;
+  /**
+   * The filing settings this ledger honours beyond the defaults (FIX-2080):
+   * `session: ["new", "ongoing"]` when its hand-over can run a task in the
+   * delegate's ongoing session, `resultTo: ["filer", "conversation"]` when it
+   * can send a result to the conversation. A filing with a value it doesn't
+   * list is refused, naming the setting.
+   */
+  settings?: TaskSettingsSupport;
+  /**
+   * The ledger's payer for the tasks a task on it filed elsewhere (FIX-2080
+   * D2). A task that fails, retries or is cancelled owes a cascade, recorded
+   * in its ending's write when `owes` says so, and paid by `pay`: at once by
+   * the ending's own pass, and by a touch of the ledger once past due.
+   */
+  cascadeFiled?: DeclaredFiledCascade;
   /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
@@ -176,6 +215,8 @@ export function defineTaskCollection<
       id: options.id,
       ...(options.partitionBy !== undefined ? { partitionBy: options.partitionBy } : {}),
       ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
+      ...(options.settings !== undefined ? { settings: options.settings } : {}),
+      ...(options.cascadeFiled !== undefined ? { cascadeFiled: options.cascadeFiled } : {}),
     },
   }) as unknown as DefinedTaskCollection;
 }

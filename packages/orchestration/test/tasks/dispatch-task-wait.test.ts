@@ -149,7 +149,6 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
           "addTask",
           "answerTask",
           "assignTask",
-          "blockTask",
           "cancelTask",
           "completeTask",
           "dispatchTask",

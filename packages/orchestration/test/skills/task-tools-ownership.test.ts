@@ -106,13 +106,12 @@ describe("taskTools — a worker can only settle the task it holds", () => {
     expect(board.theirs?.output).toBeUndefined();
   });
 
-  it.each(["failTask", "blockTask", "cancelTask"] as const)(
+  it.each(["failTask", "cancelTask"] as const)(
     "refuses %s on a sibling's task",
     async (toolName) => {
-      // The whole status-changing surface, not just the two that had an options
-      // argument before this change. `blockTask` in particular could not carry
-      // a token at all, and `cancelTask` hard-coded its guards and dropped the
-      // caller's.
+      // The whole status-changing surface, not just the one that had an options
+      // argument before this change. `cancelTask` hard-coded its guards and
+      // dropped the caller's.
       const { ctx, selfState } = boardWithTwoClaimedTasks();
       holdMine(ctx);
 

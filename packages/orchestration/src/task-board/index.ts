@@ -229,8 +229,6 @@ export type {
 } from "./blocks/recorder-failure";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
-export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
-export type { CascadeSkipDependentsOptions } from "./blocks/cascade-skip-dependents";
 export { createApplyReplan } from "./apply-replan";
 export type { ApplyReplanOptions, TaskContextSupply } from "./apply-replan";
 export {
@@ -894,6 +892,19 @@ export function taskBoard<
     initialTasks,
   });
 
+  // A drain is a touch of the board (FIX-2080 D2): a cascade an ending still
+  // owes past its due time (a crash between the ending and its cascade) is
+  // paid here, before anything is claimed.
+  const payOwedCascades = handler({
+    name: `${name}-pay-owed-cascades`,
+    transient: true,
+    inputSchema: z.unknown(),
+    execute: async (_input, ctx) => {
+      const collection = await collectionFactory(ctx);
+      await collection.payOwedCascades?.();
+    },
+  });
+
   const boardMetaActive = createBoardMetaActive({
     name: `${name}-meta-active`,
     collection: collectionFactory,
@@ -1297,6 +1308,7 @@ export function taskBoard<
     .tap(installFlowState)
     .tap(boardMetaActive)
     .tap(seedBlock)
+    .tap(payOwedCascades)
     .forEach(
       () => Array.from({ length: concurrency }, (_, i) => i),
       (workerId: number) => makeWorker(workerId),

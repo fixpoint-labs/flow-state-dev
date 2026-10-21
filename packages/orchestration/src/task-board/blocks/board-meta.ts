@@ -168,8 +168,8 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * §6 decision 3 rejected one in the **exit predicate**, which `boardQuiescence`
  * evaluates on every idle-wait fan-out event, the hottest read the board has.
  * This runs once, after the pool has finished, at the same position where the
- * board's own `createCascadeSkipDependents` already walks the graph
- * transitively. Same walk, three orders of magnitude fewer evaluations.
+ * board's dependents cascade (a failed or cancelled row's ending) already
+ * walks the graph transitively. Same walk, three orders of magnitude fewer evaluations.
  *
  * **Why not "the park was the sole cause".**
  * The tempting shape for rung 5 is a guard asking whether anything
@@ -262,7 +262,7 @@ function hasRowGoingNowhere(
     added = false;
     for (const task of all) {
       if (willResolve.has(task.id)) continue;
-      // `errored` / `cancelled` / `blocked` never resolve, and rung 3 has
+      // `errored` / `cancelled` / `held` never resolve, and rung 3 has
       // already reported them by the time this runs.
       if (task.status !== "pending") continue;
       if ((task.deps ?? []).every((dep) => willResolve.has(dep))) {
@@ -350,7 +350,7 @@ function excusedParkedByPool(input: unknown): boolean {
  *
  * 1. a persisted retry-denial marker exists → `retry-budget-exhausted`.
  * 2. nothing un-`completed` remains → `all-completed`.
- * 3. any remaining row is `errored`, `cancelled`, or `blocked` →
+ * 3. any remaining row is `errored`, `cancelled`, or `held` →
  *    `blocked-by-failures`.
  * 4. any remaining row is going nowhere → `blocked-by-failures`. Rung 3 catches
  *    a row stuck by its own *status*; this catches one stuck by its
@@ -395,7 +395,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
         completed: collection.count({ status: "completed" }),
         errored: collection.count({ status: "errored" }),
         cancelled: collection.count({ status: "cancelled" }),
-        blocked: collection.count({ status: "blocked" }),
+        held: collection.count({ status: "held" }),
         parked: collection.count({ status: "parked" }),
         in_progress: collection.count({ status: "in_progress" }),
         pending: collection.count({ status: "pending" }),
@@ -417,13 +417,13 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
       const allRemainingDispatched =
         remaining.length > 0 &&
         remaining.every((task) => isDispatched(task, now, runsElsewhere));
-      // Rung 3: a row that is stuck for a reason of its own. `blocked` joins the
+      // Rung 3: a row that is stuck for a reason of its own. `held` joins the
       // two failure statuses here so an unrelated review gate cannot mask it.
       const anyRemainingStuck = remaining.some(
         (task) =>
           task.status === "errored" ||
           task.status === "cancelled" ||
-          task.status === "blocked"
+          task.status === "held"
       );
       const terminationReason:
         | "all-completed"

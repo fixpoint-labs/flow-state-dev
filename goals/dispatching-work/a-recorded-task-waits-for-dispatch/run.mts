@@ -55,11 +55,11 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/orchestration/src/skills/task-tools-capability.ts",
-        from: String.raw`addTask\(\{ \.\.\.checked\.init, undispatched: true \}\)`,
+        from: String.raw`addTask\(\{ \.\.\.checked\.init, held: true \}\)`,
         to: "addTask({ ...checked.init })",
       },
     ],
-    does: "the task tools file addTask's row without the not-dispatched mark, so recording a task for a delegate starts it, as before FIX-1875",
+    does: "the task tools file addTask's row ready instead of held, so recording a task for a delegate starts it, as before FIX-1875",
   },
 };
 
@@ -194,9 +194,10 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
     ["for nobody", o.unassigned, o.afterTouches.unassigned],
   ] as const) {
     const rec = after.row;
-    if (rec === undefined || rec.status !== "pending" || rec.attempts !== 0 || rec.run !== undefined || after.sessions !== 0) {
+    // A recorded row is held (FIX-2080): filed, and not started until released.
+    if (rec === undefined || rec.status !== "held" || rec.attempts !== 0 || rec.run !== undefined || after.sessions !== 0) {
       failures.push(
-        `rec:not-started — wanted the row addTask_tasks recorded ${form} to be pending with no run after ${o.touches} touches over ${TOUCH_MS / 1000} s; ` +
+        `rec:not-started — wanted the row addTask_tasks recorded ${form} to be held with no run after ${o.touches} touches over ${TOUCH_MS / 1000} s; ` +
           `recording answered ${show(filed.output ?? filed.error)}, the row ${show(rec && { status: rec.status, attempts: rec.attempts, run: rec.run, assignee: rec.assignee })}, task sessions ${after.sessions}`,
       );
     }

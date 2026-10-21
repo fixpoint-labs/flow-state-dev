@@ -62,13 +62,30 @@ function clockedCollection(): {
   };
 }
 
+/** The state each fresh collection keeps its rows on, for {@link storeLegacyRow}. */
+const statesOf = new WeakMap<TaskCollectionRef, ReturnType<typeof createFakeSequencerState<{ tasks: Record<string, unknown> }>>>();
+
 function freshCollection(caps?: { maxTotalRetries?: number | null }): TaskCollectionRef {
   seq += 1;
-  return createStateBackedTaskCollection({
+  const state = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
+  const collection = createStateBackedTaskCollection({
     collectionId: `park-report-${seq}`,
-    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state,
     ...caps,
   });
+  statesOf.set(collection, state);
+  return collection;
+}
+
+/**
+ * Store a pending row as an older build filed it: a dependency the board now
+ * refuses at filing (another board's id, or a loop, FIX-2080). Such rows are
+ * still in stores, so the ladder still has to report them.
+ */
+async function storeLegacyRow(collection: TaskCollectionRef, row: { id: string; deps: string[] }): Promise<void> {
+  const state = statesOf.get(collection)!;
+  const stored = { id: row.id, goal: row.id, status: "pending", attempts: 0, deps: row.deps, createdAt: 1, updatedAt: 1 };
+  await state.patchState({ tasks: { ...(state.state.tasks as Record<string, unknown>), [row.id]: stored } });
 }
 
 /** The exit output a worker pool produces when it excused parked rows. */
@@ -115,11 +132,11 @@ async function park(collection: TaskCollectionRef, id: string): Promise<void> {
 async function settle(
   collection: TaskCollectionRef,
   id: string,
-  how: "completed" | "errored" | "cancelled" | "blocked"
+  how: "completed" | "errored" | "cancelled" | "held"
 ): Promise<void> {
   await collection.addTask({ id, goal: id });
-  if (how === "blocked") {
-    await collection.block(id, "held");
+  if (how === "held") {
+    await collection.hold(id);
     return;
   }
   if (how === "cancelled") {
@@ -194,7 +211,7 @@ describe("termination ladder — the order is the contract (§9)", () => {
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
 
-  it("rung 3: a row moved to `blocked` is an independent reason, and the review gate must not mask it", async () => {
+  it("rung 3: a held row is an independent reason, and the review gate must not mask it", async () => {
     // WHY THIS TEST EXISTS, next to the equivalence test below — it looks
     // redundant and it is not. The equivalence test asserts identity *when no
     // parked row exists anywhere*, so a board that has one is outside its scope
@@ -203,7 +220,7 @@ describe("termination ladder — the order is the contract (§9)", () => {
     // test excludes, and no strengthening of it will reach in.
     const collection = freshCollection();
     await park(collection, "ask");
-    await settle(collection, "held", "blocked");
+    await settle(collection, "held", "held");
 
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
@@ -267,7 +284,7 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     // task it is waiting for.
     const collection = freshCollection();
     await park(collection, "ask");
-    await collection.addTask({ id: "stranded", goal: "stranded", deps: ["ghost"] });
+    await storeLegacyRow(collection, { id: "stranded", deps: ["ghost"] });
 
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
@@ -303,7 +320,7 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     const collection = freshCollection();
     await park(collection, "ask");
     await collection.addTask({ id: "after", goal: "after", deps: ["ask"] });
-    await collection.addTask({ id: "stranded", goal: "stranded", deps: ["ghost"] });
+    await storeLegacyRow(collection, { id: "stranded", deps: ["ghost"] });
 
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
@@ -311,8 +328,8 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
   it("reports the stall on a dependency cycle, which no status makes visible", async () => {
     const collection = freshCollection();
     await park(collection, "ask");
-    await collection.addTask({ id: "a", goal: "a", deps: ["b"] });
-    await collection.addTask({ id: "b", goal: "b", deps: ["a"] });
+    await storeLegacyRow(collection, { id: "a", deps: ["b"] });
+    await storeLegacyRow(collection, { id: "b", deps: ["a"] });
 
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
@@ -433,24 +450,24 @@ describe("termination ladder — equivalence with the pre-FIX-1234 classifier", 
       },
     },
     {
-      name: "one row moved to blocked",
+      name: "one held row",
       build: async (c) => {
-        await settle(c, "b", "blocked");
+        await settle(c, "b", "held");
         return undefined;
       },
     },
     {
       name: "a stranded pending row",
       build: async (c) => {
-        await c.addTask({ id: "waiting", goal: "waiting", deps: ["ghost"] });
+        await storeLegacyRow(c, { id: "waiting", deps: ["ghost"] });
         return undefined;
       },
     },
     {
       name: "a dependency cycle",
       build: async (c) => {
-        await c.addTask({ id: "a", goal: "a", deps: ["b"] });
-        await c.addTask({ id: "b", goal: "b", deps: ["a"] });
+        await storeLegacyRow(c, { id: "a", deps: ["b"] });
+        await storeLegacyRow(c, { id: "b", deps: ["a"] });
         return undefined;
       },
     },
@@ -474,10 +491,10 @@ describe("termination ladder — equivalence with the pre-FIX-1234 classifier", 
       },
     },
     {
-      name: "a dispatched row alongside a blocked one",
+      name: "a dispatched row alongside a held one",
       build: async (c) => {
         const runsElsewhere = await dispatchRow(c, "background-work");
-        await settle(c, "held", "blocked");
+        await settle(c, "held", "held");
         return runsElsewhere;
       },
     },

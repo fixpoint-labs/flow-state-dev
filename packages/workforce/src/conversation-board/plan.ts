@@ -102,9 +102,9 @@ export function isSteppingTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_STEPPING_STATE] === true;
 }
 
-/** A step the drain would work now: open, and not recorded-but-not-dispatched. */
+/** A step the drain would work now: open (a held row is neither). */
 function isWorkable(row: Task): boolean {
-  return (row.status === "pending" || row.status === "in_progress") && row.undispatched !== true;
+  return row.status === "pending" || row.status === "in_progress";
 }
 
 /** The longest output or error a step's ending shows the answering turn, in characters of its JSON. */

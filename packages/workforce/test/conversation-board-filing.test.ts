@@ -211,15 +211,15 @@ describe("a task filed with no assignee", () => {
     }
   });
 
-  it("waits, pending and unassigned, with several delegates, until it is given an owner and dispatched (BR-6, FIX-1875 BR-3)", async () => {
+  it("waits, held and unassigned, with several delegates, until it is given an owner and dispatched (BR-6, FIX-1875 BR-3)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
       const filed = await record(host, "alice", conv, { goal: "pick someone" });
-      expect(filed).toEqual({ ok: true, taskId: expect.any(String), status: "recorded", note: expect.stringContaining("dispatchTask") });
+      expect(filed).toEqual({ ok: true, taskId: expect.any(String), status: "held", note: expect.stringContaining("dispatchTask") });
       await host.settled();
       expect(await list(host, "alice", conv)).toEqual([
-        expect.objectContaining({ id: filed.taskId, status: "pending", goal: "pick someone" })
+        expect.objectContaining({ id: filed.taskId, status: "held", goal: "pick someone" })
       ]);
       expect((await list(host, "alice", conv))[0]!.assignee).toBeUndefined();
       expect(host.runs).toEqual([]);
@@ -228,7 +228,7 @@ describe("a task filed with no assignee", () => {
         ok: true
       });
       await host.settled();
-      // Assigning a recorded task names its owner and starts nothing.
+      // Assigning a held task names its owner and starts nothing.
       expect(host.runs).toEqual([]);
       expect((await host.act("alice", conv, "dispatchTask_tasks", { taskId: filed.taskId })).output).toEqual({
         ok: true,
@@ -314,7 +314,7 @@ describe("reassign and cancel: the task tools' own contract on this board", () =
       expect(await write("assignTask", { assignee: "eng.tasker" })).toMatch(/"error":"terminal_task_write_declined/);
       expect(await write("cancelTask", {})).toMatch(/"error":"terminal_task_write_declined/);
       expect(await write("completeTask", { output: 1 })).toMatch(/"error":"illegal_status_transition/);
-      expect(await write("blockTask", {})).toMatch(/"error":"illegal_status_transition/);
+      expect(await write("updateTask", { patch: { status: "held" } })).toMatch(/"error":"terminal_task_write_declined/);
 
       const again = await file(host, "alice", conv, { goal: "doomed, again", assignee: "eng.tasker" });
       await host.settled();

@@ -93,11 +93,15 @@ export type DispatchAndWaitResult =
        * - `task_not_dispatchable`: the recorded row named can't be dispatched
        *   (claimed, running, ended, already dispatched or already waited on).
        *   Nothing was written.
+       * - `wait_on_conversation_result`: the task's result goes to the
+       *   conversation (`Task.resultTo`, FIX-2080), so no turn waits on it.
+       *   Nothing was filed or written.
        * - `wait_timed_out`, `wait_task_failed`, `wait_task_cancelled`: the wait
        *   was filed and ended without an answer.
        */
       readonly error:
         | "task_not_dispatchable"
+        | "wait_on_conversation_result"
         | "wait_already_pending"
         | "wait_unavailable"
         | "wait_timeout_out_of_range"
@@ -227,6 +231,18 @@ export async function dispatchAndWait(
         "This turn is itself working a task, so it can't wait for another. " +
         (options.taskTurnInstead ?? "Hand the task over without waiting instead.") +
         " Nothing was filed."
+    };
+  }
+  // A task whose result goes to the conversation is heard there (FIX-2080,
+  // T-32): a turn waiting on it would race the conversation for its result.
+  const resultTo = "taskId" in target ? collection.get(target.taskId)?.resultTo : target.resultTo;
+  if (resultTo === "conversation") {
+    return {
+      ok: false,
+      error: "wait_on_conversation_result",
+      message:
+        "This task's result goes to the conversation, so no turn waits on it: the conversation hears " +
+        "it when it ends. Dispatch it without waiting. Nothing was filed."
     };
   }
   const call = toolCallOf(ctx);

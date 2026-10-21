@@ -178,6 +178,23 @@ export const taskSchema = z.object({
    */
   followUpOf: z.string().optional(),
 
+  /**
+   * Where the task runs (FIX-2080, a filing setting): `"new"`, a session of
+   * its own (the default for a delegated task), or `"ongoing"`, the
+   * delegate's session for this conversation. A follow-up runs in its root's
+   * session and takes none. Chosen at filing, refused there by a board that
+   * can't honour it, and never changed. **Absent reads as `"new"`** (BP-030).
+   */
+  session: z.enum(["new", "ongoing"]).optional(),
+
+  /**
+   * Who hears the task's result (FIX-2080, a filing setting): `"filer"`, the
+   * one that filed it (the default), or `"conversation"`, the conversation
+   * it was filed from. A conversation-result task has one attempt. Chosen at
+   * filing and never changed. **Absent reads as `"filer"`** (BP-030).
+   */
+  resultTo: z.enum(["filer", "conversation"]).optional(),
+
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),
   priority: z.number().optional(),
@@ -418,23 +435,32 @@ export const taskSchema = z.object({
   cancelOwed: z.boolean().optional(),
 
   /**
-   * The row is recorded but not dispatched (FIX-1875): written down, with its
-   * owner, and not to start until something dispatches it. The substrate's
-   * claim admission refuses such a row, so no board, dispatcher or row action
-   * claims it, whichever drains the collection. Cleared only by
-   * `TaskCollectionRef.dispatch`.
+   * A cascade is owed for this row's ending (FIX-2080 D2): written in the
+   * same write as the ending, so a crash between the ending and the cascade
+   * leaves it owed, not lost. Covers both cascades: the open dependents of a
+   * failed or cancelled row on this board, and the open tasks a task filed
+   * (its board's `cascadeFiled`, for a failure, a cancel or a retry). `due`
+   * is the write + {@link CASCADE_DUE_MS}: the ending's own pass pays it at
+   * once, and a touch of the board pays it once past due. Cleared by the pass
+   * that paid it.
    *
-   * Present only when true. **Absent means ready** (BP-030), so every row
-   * stored before this mark existed starts as it did. Top level and
-   * server-written for `abandonments`' reason (BP-031): it decides whether a
-   * row starts, so no caller-patchable surface reaches it.
+   * Top level and server-written for `abandonments`' reason (BP-031): it
+   * drives cancels, so no caller-writable surface reaches it. **Absent reads
+   * as not owed** (BP-030).
    */
-  undispatched: z.boolean().optional(),
+  cascadeOwed: z.object({ due: z.number() }).optional(),
+
+  /**
+   * The task whose ending cancelled this row (FIX-2080): set by a cascade's
+   * cancel, server-written, so whatever reports the cancel names its cause.
+   * **Absent** on every row no cascade cancelled (BP-030).
+   */
+  causedBy: z.string().optional(),
 
   /**
    * The call that dispatched this row: the logical id of the tool call or
-   * action (FIX-1875). Written by `dispatch` in the same write that clears
-   * `undispatched`, or with the row when a dispatch files it ready, so the
+   * action (FIX-1875). Written by `dispatch` in the same write that releases
+   * a held row, or with the row when a dispatch files it ready, so the
    * same call replayed after a crash finds its own write and answers as the
    * first call did. **Absent** on every row no dispatch filed or readied
    * (BP-030).

@@ -53,7 +53,7 @@ export const TASK_BOARD_META_COMPONENT = "task-board-meta";
 export type TaskStatus =
   | "pending"
   | "in_progress"
-  | "blocked"
+  | "held"
   | "parked"
   | "completed"
   | "errored"
@@ -67,8 +67,9 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
-  | "blocked"
-  | "unblocked"
+  | "held"
+  | "released"
+  | "settings_changed"
   | "review_requested"
   | "resumed"
   | "cancelled"
@@ -110,7 +111,7 @@ export type BoardCounts = {
   total: number;
   pending: number;
   in_progress: number;
-  blocked: number;
+  held: number;
   parked: number;
   completed: number;
   errored: number;

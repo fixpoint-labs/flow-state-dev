@@ -47,7 +47,7 @@ import {
 export const BOARD_STATUS_COLUMNS = [
   "pending",
   "in_progress",
-  "blocked",
+  "held",
   "parked",
   "completed",
   "errored",
