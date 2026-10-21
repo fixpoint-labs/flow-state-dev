@@ -83,14 +83,14 @@ describe("filing settings on a conversation's board (FIX-2080)", () => {
   it("gives a conversation-result task one attempt", async () => {
     const h = bootSplitHost();
     try {
-      h.controls.plans.s1 = [{ goal: "[fail] Summarize the thread", assignee: "eng.tasker", resultTo: "conversation" }];
+      h.controls.plans.s1 = [{ goal: "[fail] Summarize the conversation", assignee: "eng.tasker", resultTo: "conversation" }];
       const conversation = await h.open("alice", "s1");
       await h.turn("alice", conversation);
       await h.settled();
 
-      const row = await one(h, "[fail] Summarize the thread");
+      const row = await one(h, "[fail] Summarize the conversation");
       expect(row).toMatchObject({ resultTo: "conversation", maxAttempts: 1, attempts: 1, status: "errored" });
-      expect(h.runs.filter((run) => run.message === "[fail] Summarize the thread")).toHaveLength(1);
+      expect(h.runs.filter((run) => run.message === "[fail] Summarize the conversation")).toHaveLength(1);
     } finally {
       await h.dispose();
     }

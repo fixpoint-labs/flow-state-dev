@@ -105,7 +105,7 @@ export interface CascadeWrites {
  *
  * @returns `true` once the debt is cleared.
  */
-export async function payCascade(writes: CascadeWrites, id: string): Promise<boolean> {
+async function payCascade(writes: CascadeWrites, id: string): Promise<boolean> {
   const row = writes.get(id);
   const owed = row?.cascadeOwed;
   if (row === undefined || owed == null) return false;
