@@ -115,6 +115,8 @@ export {
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";
+// A wrapping ref's own refusal, answered by the task tools as a soft error (FIX-2076).
+export { TaskWriteRefusedError } from "./collection/refused-write";
 export {
   getOrCreateTaskCollection,
   TASK_CHANGE_COMPONENT_TYPE,
@@ -165,15 +167,6 @@ export type { TaskDispatcher } from "./dispatchers/types";
 export { fifoDispatcher } from "./dispatchers/fifo";
 export { topologicalDispatcher } from "./dispatchers/topological";
 export { priorityDispatcher } from "./dispatchers/priority";
-export {
-  classifierDispatcher,
-  type ClassifyFn,
-  type ClassifierDispatcherOptions,
-} from "./dispatchers/classifier";
-export {
-  eventDispatcher,
-  type EventDispatcherOptions,
-} from "./dispatchers/event";
 
 // Workers
 export type {
@@ -181,20 +174,6 @@ export type {
   TaskWorkerInput,
   TaskWorkerRegistry,
 } from "./workers/types";
-
-// Helpers
-export {
-  taskLoopBack,
-  defaultTaskLoopUntil,
-  DEFAULT_TASK_LOOP_MAX_ITERATIONS,
-  type TaskLoopBackOptions,
-  type TaskLoopBackHandle,
-} from "./helpers/task-loop-back";
-export {
-  dispatchAndExecuteBlock,
-  type DispatchAndExecuteOptions,
-  type DispatchAndExecuteResult,
-} from "./helpers/dispatch-and-execute";
 
 // Lease renewal (FIX-1005) — the worker half of durable-job recovery. Exported
 // so a caller driving `claim` itself renews the lease it holds; a claimed row

@@ -11,6 +11,7 @@ import { defineFlow, defineResource, defineResourceCollection, handler } from "@
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createFlowRegistry,
@@ -67,8 +68,8 @@ describe("FIX-735: per-resource flowIsolation", () => {
       stores,
     });
 
-    await ctx.resources.accounts.patchState({ balance: 100 });
-    await ctx.resources.notes.patchState({ text: "private" });
+    await (ctx.resources.accounts as ResourceRef<{ balance: number }>).patchState({ balance: 100 });
+    await (ctx.resources.notes as ResourceRef<{ text: string }>).patchState({ text: "private" });
 
     // Shared resource lives in the user's cell; isolated one does not.
     const bare = toBareStates(await stores.resourceState.getAll("user", CELL));
@@ -97,7 +98,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
       userId: "user_1",
       stores,
     });
-    await ctxA.resources.accounts.patchState({ balance: 250 });
+    await (ctxA.resources.accounts as ResourceRef<{ balance: number }>).patchState({ balance: 250 });
 
     // A different flow that declares the same shared resource must read it.
     const ctxB = await createExecutionContext({
@@ -109,7 +110,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
       userId: "user_1",
       stores,
     });
-    expect((ctxB.resources.accounts.state as { balance: number }).balance).toBe(250);
+    expect((ctxB.resources.accounts as ResourceRef<{ balance: number }>).state.balance).toBe(250);
   });
 
   it("routes content writes per-resource by isolation bucket", async () => {
@@ -143,8 +144,8 @@ describe("FIX-735: per-resource flowIsolation", () => {
       userId: "user_1",
       stores,
     });
-    await ctx.resources.readme.writeContent("shared body");
-    await ctx.resources.secret.writeContent("private body");
+    await (ctx.resources.readme as ResourceRef<Record<string, never>>).writeContent("shared body");
+    await (ctx.resources.secret as ResourceRef<Record<string, never>>).writeContent("private body");
 
     const bare = await stores.content.getAll("user", CELL);
     expect(bare.readme).toBe("shared body");
@@ -221,6 +222,8 @@ describe("FIX-735: per-resource flowIsolation", () => {
       userId: "user_1",
       orgId: DEFAULT_ORG_ID,
       state: {},
+      journal: [],
+      version: 0,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -361,17 +364,17 @@ describe("instance-isolated resources", () => {
     orgId: DEFAULT_ORG_ID,
       flow: a, actionName: "run", requestId: "req_a", sessionId: "sess_a", userId: "user_1", stores,
     });
-    await ctxA.resources.notes.patchState({ text: "a-private" });
-    await ctxA.resources.accounts.patchState({ balance: 100 });
+    await (ctxA.resources.notes as ResourceRef<{ text: string }>).patchState({ text: "a-private" });
+    await (ctxA.resources.accounts as ResourceRef<{ balance: number }>).patchState({ balance: 100 });
 
     const ctxB = await createExecutionContext({
     orgId: DEFAULT_ORG_ID,
       flow: b, actionName: "run", requestId: "req_b", sessionId: "sess_b", userId: "user_1", stores,
     });
     // The opt-out resource carries A's write across; the private one does not.
-    expect((ctxB.resources.accounts.state as { balance: number }).balance).toBe(100);
-    expect((ctxB.resources.notes.state as { text: string }).text).toBe("");
-    await ctxB.resources.notes.patchState({ text: "b-private" });
+    expect((ctxB.resources.accounts as ResourceRef<{ balance: number }>).state.balance).toBe(100);
+    expect((ctxB.resources.notes as ResourceRef<{ text: string }>).state.text).toBe("");
+    await (ctxB.resources.notes as ResourceRef<{ text: string }>).patchState({ text: "b-private" });
 
     // One private bucket per copy, and A's value survived B writing its own.
     const bucketA = toBareStates(await stores.resourceState.getAll("user", `${CELL}:reviewer-a`));
@@ -403,7 +406,7 @@ describe("instance-isolated resources", () => {
     orgId: DEFAULT_ORG_ID,
         flow, actionName: "run", requestId: `req_${sessionId}`, sessionId, userId: "user_1", stores,
       });
-      await ctx.resources.notes.patchState({ text });
+      await (ctx.resources.notes as ResourceRef<{ text: string }>).patchState({ text });
     }
     await stores.resourceState.set("user", CELL, "accounts", { balance: 7 }, "any");
 
@@ -418,6 +421,8 @@ describe("instance-isolated resources", () => {
         userId: "user_1",
         orgId: DEFAULT_ORG_ID,
         state: {},
+        journal: [],
+        version: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };

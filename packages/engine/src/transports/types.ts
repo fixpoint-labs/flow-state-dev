@@ -38,7 +38,14 @@ import type {
 export type HostContinueRequestOptions = Pick<
   ContinueRequestOptions,
   "requestId" | "resumeContext" | "signal" | "responseEmitter" | "includeTrace"
->;
+> & {
+  /**
+   * The id of the request lease the caller took for this continuation. If the
+   * continuation does not get its turn in its session, the host releases this
+   * lease and no other. Absent, the host releases nothing.
+   */
+  leaseId?: string;
+};
 
 export type { ContinueRequestResult } from "../execution/request-continuation";
 

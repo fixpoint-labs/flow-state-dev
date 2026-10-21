@@ -3633,6 +3633,44 @@ check('INVARIANT: no merge gate for a head the automated review has not returned
   assert.deepEqual(await mergeGates(repair, fix({ repairHeadSha: 'r', repairReviewedHeadSha: 'r' })), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
 })
 
+check('INVARIANT: no merge gate for a head with a failing CI check run', async () => {
+  // orchestration.md → Gates, "Green means CI ran on this head and passed". `Typecheck & Test` passing is
+  // not the whole signal: a scout can report readyToMerge AND ciFailed when another check run on the
+  // head failed. The wake then dispatches pr-feedback for the failure, and must not ALSO offer the merge.
+  // Enforced in the wake, not left to the scout's reading of the prompt — per handle.
+  const mergeGates = async (issue, respond) =>
+    (await run('epic-wake.js', { args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', ...issue })] }), respond: epicResponder(respond) }))
+      .result.gates.filter((g) => g.kind === 'merge')
+  const reviewed = { implHeadSha: 'h', implReviewedHeadSha: 'h' }
+  assert.deepEqual(
+    await mergeGates({ implPr: 9 }, { fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ciFailed: true, ...reviewed } } }),
+    [],
+    'single PR: ready and failing is failing',
+  )
+  assert.deepEqual(
+    await mergeGates({ implPr: 9 }, { fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, ciFailed: false, ...reviewed } } }),
+    [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }],
+    'the control: the same PR with CI passing is offered',
+  )
+
+  const slice = { subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] }
+  const sub = (ciFailed) => ({
+    fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: true, ciFailed, headSha: 's', reviewedHeadSha: 's' }] } },
+  })
+  assert.deepEqual(await mergeGates(slice, sub(true)), [], 'sub-PR: ready and failing is failing')
+  assert.deepEqual(await mergeGates(slice, sub(false)), [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }])
+
+  const repair = {
+    subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+    assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false },
+  }
+  const fix = (repairCiFailed) => ({
+    fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true, repairCiFailed, repairHeadSha: 'r', repairReviewedHeadSha: 'r' } },
+  })
+  assert.deepEqual(await mergeGates(repair, fix(true)), [], 'repair PR: ready and failing is failing')
+  assert.deepEqual(await mergeGates(repair, fix(false)), [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
+})
+
 check('a refresh scan echoing a sibling id is discarded, not bound to the wrong row', async () => {
   const { result, logs } = await run('epic-wake.js', {
     args: epicArgs({

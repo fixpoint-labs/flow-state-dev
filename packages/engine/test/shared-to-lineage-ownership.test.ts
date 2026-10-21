@@ -33,6 +33,7 @@ import {
 import { z } from "zod";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
+import type { ResourceRef } from "@flow-state-dev/core/types";
 import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
 import { getPersistedData } from "../src/resources/internal";
 import { handleGetSessionState } from "../src/routes/state-routes";
@@ -125,9 +126,9 @@ describe("FIX-1068: a shared EMPTY-prefix collection must not swallow private ke
     await seedSession(stores, flow, "s_child", "s_root", "lin_root");
 
     const root = await contextFor(stores, flow, "s_root");
-    await root.resources.scratch.patchState({ note: "root private" });
+    await (root.resources.scratch as ResourceRef<{ note: string }>).patchState({ note: "root private" });
     const child = await contextFor(stores, flow, "s_child");
-    await child.resources.scratch.patchState({ note: "child private" });
+    await (child.resources.scratch as ResourceRef<{ note: string }>).patchState({ note: "child private" });
     return { stores, registry };
   }
 

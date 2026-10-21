@@ -54,7 +54,7 @@ When an `fsdev.config.ts` is present at your project root, the CLI skips auto-di
 
 ## Model overrides
 
-Use `-m` to swap models without code changes. Pass a model ID (e.g. `openai/gpt-5.4-mini`, `anthropic/claude-haiku-4-5`). Useful for testing with cheaper or faster models during development.
+Use `-m` to swap models without code changes. Pass a model ID (e.g. `openai/gpt-6-luna`, `anthropic/claude-haiku-5-5`). Useful for testing with cheaper or faster models during development.
 
 Every generator that runs in the command's own process uses the override, including generators in [background work that runs there](#waiting-for-in-process-work).
 

@@ -23,13 +23,13 @@
  * the registry draws them.
  */
 import { useEffect, type ReactNode } from "react";
+import { Settings } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AskCard } from "../components/AskCard";
 import { Conversation, ConversationFrame } from "../components/Conversation";
 import { DelegatesPanel } from "../components/DelegatesPanel";
-import { StandingRules } from "../components/StandingRules";
 import { TasksPanel } from "../components/TasksPanel";
-import { conversationSession, COORDINATOR_FLOW } from "../lib/conversation";
+import { COORDINATOR_FLOW, useConversationSession } from "../lib/conversation";
 import { useSessionItems } from "../components/flow-state/session-items-context";
 import { ItemRenderer } from "@flow-state-dev/react";
 import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
@@ -60,16 +60,19 @@ export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot;
 /**
  * v2's header (v2:125-128): the 40px CS square, the title, and a mono line
  * with the worker's status and what it watches, or *working…* while it works on
- * a line from this page (v2:1424).
+ * a line from this page (v2:1424). When there is one chief of staff, a gear at
+ * the end opens that worker's settings, on any flow.
  */
 function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   const working = useChiefOfStaffWorking();
   let status: string | undefined;
   let watching: string | null = null;
+  let workerId: string | undefined;
   if (snapshot.inventory.ok) {
     const { workers } = snapshot.inventory.value;
     const cos = chiefOfStaffOf(workers);
-    status = cos.kind === "one" ? workerStates(snapshot).workers.get(cos.worker.id)?.status : undefined;
+    workerId = cos.kind === "one" ? cos.worker.id : undefined;
+    status = workerId === undefined ? undefined : workerStates(snapshot).workers.get(workerId)?.status;
     watching = `watching ${plural(workers.length, "worker", "workers")}`;
   }
   return (
@@ -94,6 +97,18 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
           </Meta>
         )}
       </div>
+      {workerId === undefined ? null : (
+        <button
+          type="button"
+          onClick={() => navigate({ level: "worker-settings", worker: workerId })}
+          title={`${NAME} settings`}
+          aria-label={`${NAME} settings`}
+          className="ml-auto flex size-8 shrink-0 items-center justify-center text-muted-foreground hover:bg-foreground/6 hover:text-foreground"
+          data-testid="cos-settings"
+        >
+          <Settings className="size-4" aria-hidden />
+        </button>
+      )}
     </header>
   );
 }
@@ -334,33 +349,28 @@ function Talk({
 }
 
 /**
- * The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow,
- * and the standing rules of one whose inventory row says it keeps them, on whichever flow.
- * @param devtoolUrl The DevTool a rule's conversation opens in, when one is served.
+ * The right panel at Shift Coordinator: the delegates and tasks of a chief of staff on the coordinator flow.
+ * Its standing rules are on its settings page, behind the header's gear.
  */
-export function ChiefOfStaffPanel({ snapshot, devtoolUrl }: { snapshot: LoadedSnapshot; devtoolUrl?: string }) {
+export function ChiefOfStaffPanel({ snapshot }: { snapshot: LoadedSnapshot }) {
   const found = snapshot.inventory.ok ? chiefOfStaffOf(snapshot.inventory.value.workers) : undefined;
   const one = found?.kind === "one" ? found.worker : undefined;
   const cos = one?.kind === COORDINATOR_FLOW ? one : undefined;
+  const conversation = useConversationSession(cos, snapshot.sessions);
   return (
     <div className="p-3" data-testid="cos-panel">
       {cos !== undefined ? (
         <>
           <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">DELEGATES</p>
-          <DelegatesPanel key={cos.id} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} />
+          <DelegatesPanel key={cos.id} worker={cos} sessionId={conversation} />
           <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TASKS</p>
-          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversationSession(snapshot.sessions, cos)} readAt={snapshot.readAt} activeOnly />
+          <TasksPanel key={`tasks-${cos.id}`} worker={cos} sessionId={conversation} readAt={snapshot.readAt} activeOnly />
         </>
       ) : (
         <p className="px-1 text-xs text-muted-foreground" data-testid="cos-panel-empty">
           No delegates or tasks yet.
         </p>
       )}
-      {one?.rules ? (
-        <div className="px-1 pt-4">
-          <StandingRules key={`rules-${one.id}`} workerId={one.id} name={NAME} devtoolUrl={devtoolUrl} compact />
-        </div>
-      ) : null}
     </div>
   );
 }

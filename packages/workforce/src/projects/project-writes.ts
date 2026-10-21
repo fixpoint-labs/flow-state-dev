@@ -187,8 +187,7 @@ function defineWriteProject(offered: readonly string[]) {
     inputSchema: createProjectInputSchema,
     outputSchema: createProjectOutputSchema,
     resources: WRITE_RESOURCES,
-    execute: async (input, rawCtx): Promise<CreateProjectOutput> => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx): Promise<CreateProjectOutput> => {
       const problem = projectIdProblem(input.id);
       if (problem !== undefined) throw new ProjectRefusedError("invalid-project-id", `${problem}.`);
       assertRepository(input.repository);
@@ -296,8 +295,7 @@ const setRepository = handler({
   inputSchema: setRepositoryInputSchema,
   outputSchema: setRepositoryOutputSchema,
   resources: WRITE_RESOURCES,
-  execute: async (input, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
+  execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "repository");
     assertRepository(input.repository);
     await retryOnConflict(() => row.updateState((state) => ({ ...state, repository: input.repository })));
@@ -316,8 +314,7 @@ function defineSetMcpServers(offered: readonly string[]) {
     inputSchema: setMcpServersInputSchema,
     outputSchema: setMcpServersOutputSchema,
     resources: WRITE_RESOURCES,
-    execute: async (input, rawCtx) => {
-      const ctx = rawCtx as unknown as BlockContext;
+    execute: async (input, ctx) => {
       const row = await projectRowToChange(ctx, input.project, "MCP servers");
       const mcpServers = checkedMcpServers(input.mcpServers, offered);
       await retryOnConflict(() => row.updateState((state) => ({ ...state, mcpServers })));
@@ -332,8 +329,7 @@ const setBrief = handler({
   inputSchema: setBriefInputSchema,
   outputSchema: setBriefOutputSchema,
   resources: WRITE_RESOURCES,
-  execute: async (input, rawCtx) => {
-    const ctx = rawCtx as unknown as BlockContext;
+  execute: async (input, ctx) => {
     const row = await projectRowToChange(ctx, input.project, "brief");
     await retryOnConflict(() => row.updateState((state) => ({ ...state, brief: input.brief })));
     return { project: projectRowSchema.parse(row.state) };

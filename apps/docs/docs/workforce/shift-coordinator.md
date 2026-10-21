@@ -38,7 +38,7 @@ description: Your one point of contact, and the one worker that changes your ros
 flow: coordinator
 routing: judgment
 delegates: [eng.em, eng.coder]
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 tools: [hire, fire]
 ---
 
@@ -145,7 +145,7 @@ const agent = defineAgentWorkerFlow({ installation, ...agentTurn });
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent, emFlow],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: agentTurn,
 });
 
@@ -192,7 +192,7 @@ Route it by best fit, with Jev (`typesafe-ai/jev` through Vercel's AI Gateway, a
   const coordinator = defineCoordinatorFlow({
     installation,
     delegateFlows: [agent, emFlow],
--   routeModel: "openai/gpt-5.4-mini",
+-   routeModel: "openai/gpt-6-luna",
 +   routeModel: "typesafe-ai/jev",
 ```
 
@@ -235,7 +235,7 @@ Without [memory](../memory/overview.md), a Shift Coordinator on the `coordinator
 import { system } from "@flow-state-dev/memory";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
@@ -245,7 +245,7 @@ const mem = system({
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent, emFlow],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     ...agentTurn,
     catalog: { ...agentTurn.catalog, "memory/recall": mem.tool.recall() },

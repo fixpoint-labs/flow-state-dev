@@ -424,6 +424,24 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     expect((await h.sessionsWith("workerId", "alice-lead")).length).toBe(0);
   });
 
+  it("marks the user's own workstreams in its read, since the model sees owners only as user ids", async () => {
+    const judgment = scripted([{ toolName: "readProject", args: {} }], "Checkout is yours; billing is Bob's.");
+    const h = await boot({ judgment });
+    await h.open("alice", "checkout", "alice-lead");
+    await h.open("bob", "billing", "bob-lead");
+    const id = await h.coordinator("alice");
+    await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Which of these workstreams is mine?" });
+    await h.settled();
+    const requests = await h.runtime.stores.request.list({ sessionId: id, withItems: true });
+    const read = requests
+      .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+      .find((item) => item.type === "tool_output" && item.blockName === "readProject");
+    expect(read).toBeDefined();
+    // Without the mark, a coordinator read its own user's workstream as another member's and handed it nothing.
+    const marks = Object.fromEntries((read.output.workstreams as Array<{ id: string; owner: string; yours: boolean }>).map((w) => [w.id, w.yours]));
+    expect(marks).toEqual({ checkout: true, billing: false });
+  });
+
   it("lists the project's entries at most once in a turn, for its delegates and its read tool together (V5)", async () => {
     const judgment = scripted([
       { toolName: "readProject", args: {} },
@@ -572,8 +590,8 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
   });
 
   describe("checking its pick of lead against the work", () => {
-    /** The fit check's one call, answering `fits`. */
-    const fit = (fits: boolean) => mockGenerator({ script: [{ structuredOutput: { fits } }] });
+    /** The fit check's one call, answering `fits` for work that says (by default) what sort it is. */
+    const fit = (fits: boolean, says = true) => mockGenerator({ script: [{ structuredOutput: { says, fits } }] });
     const research = { id: "research", title: "Research: what to build next", lead: "alice-lead", objectives: ["Rank three ideas"] };
     /** What the open tool answered in a conversation's turns. */
     const opens = async (h: Awaited<ReturnType<typeof boot>>, sessionId: string) =>
@@ -616,6 +634,18 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       expect(await opens(h, id)).toContain('"leadFit":{"checked":true}');
     });
 
+    it("opens it when the work doesn't say what sort it is, whatever the judge makes of the lead: that is no clear misfit", async () => {
+      // The work names no sort, so no lead can be the wrong sort for it.
+      const unsaid = { id: "garnet", title: "garnet delta 6965", lead: "alice-lead", objectives: [] };
+      const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: unsaid }]), leadFit: fit(false, false) });
+      await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+      const id = await h.coordinator("alice");
+      await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Open a workstream for garnet delta 6965." });
+      await h.settled();
+      expect(await opens(h, id)).not.toContain("lead-doesnt-fit");
+      expect(await workstreams(h)).toEqual(["garnet"]);
+    });
+
     it("opens it when the check can't answer, so a failed model call never stops an open, and says why", async () => {
       const h = await boot({ judgment: scripted([{ toolName: "openWorkstream", args: research }]), leadFit: mockGenerator({ script: [] }) });
       await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
@@ -642,7 +672,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
 
     it("doesn't check a workstream opened again: it was accepted once, and a second verdict can't refuse it", async () => {
       // The first open is judged a fit; asked again, the judge would say no, but it is never asked.
-      const leadFit = mockGenerator({ script: [{ structuredOutput: { fits: true } }, { structuredOutput: { fits: false } }] });
+      const leadFit = mockGenerator({ script: [{ structuredOutput: { says: true, fits: true } }, { structuredOutput: { says: true, fits: false } }] });
       const h = await boot({
         judgment: scripted([
           { toolName: "openWorkstream", args: research },

@@ -49,6 +49,10 @@ export type RosterEntry = {
   standard: boolean;
   /** What it is for, or `null`. */
   description: string | null;
+  /** Its display name, or `null` when it has none (a view shows its id). Only a standard worker has one. */
+  name: string | null;
+  /** Its team's display name, or `null` when the team has none or the worker has no team. */
+  teamName: string | null;
   /** For one of the user's own workers forked from a standard one: that worker's id. `null` otherwise. */
   forkedFrom: string | null;
 };
@@ -62,10 +66,13 @@ export interface WorkforceClient {
    */
   roster(): Promise<RosterEntry[]>;
   /**
-   * The user's most recent session with the worker the criteria name, on the
-   * worker's current flow, or `undefined` when there is none. Matches on the
-   * criteria's keys: a session that carries a criteria key the call doesn't
-   * name is not returned. With `workstreamId`, the one session the user's
+   * The user's session with the worker the criteria name, on the worker's
+   * current flow, or `undefined` when there is none. With `worker` alone, or
+   * with `projectId`, that is the session at the derived address
+   * {@link ensureWorkerSession} creates, where another worker's message
+   * lands: a session the user opened at any other id is not returned.
+   * Otherwise the most recent match on the criteria's keys: a session that
+   * carries a criteria key the call doesn't name is not returned. With `workstreamId`, the one session the user's
    * entry for that workstream names, or `undefined` while it names none.
    * Throws when the worker isn't on the user's roster.
    */
@@ -148,13 +155,21 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   const readRoster = async (id: string): Promise<RosterEntry[]> => {
     const [own, standard] = await Promise.all([listAll(id, WORKERS_RESOURCE), listAll(id, STANDARD_WORKERS_RESOURCE)]);
     const entry = (item: { topic: string; clientData?: unknown }, isStandard: boolean): RosterEntry => {
-      const data = (item.clientData ?? {}) as { flow?: unknown; description?: unknown; forkedFrom?: unknown };
+      const data = (item.clientData ?? {}) as {
+        flow?: unknown;
+        description?: unknown;
+        forkedFrom?: unknown;
+        name?: unknown;
+        teamName?: unknown;
+      };
       const topic = item.topic.slice(item.topic.lastIndexOf("/") + 1);
       return {
         id: topic,
         flow: String(data.flow),
         standard: isStandard,
         description: typeof data.description === "string" ? data.description : null,
+        name: isStandard && typeof data.name === "string" ? data.name : null,
+        teamName: isStandard && typeof data.teamName === "string" ? data.teamName : null,
         forkedFrom: !isStandard && typeof data.forkedFrom === "string" ? data.forkedFrom : null
       };
     };
@@ -184,28 +199,44 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
     return typeof sessionId === "string" ? sessionId : null;
   };
 
+  /**
+   * Whether the criteria name a session the client opens itself: a worker's
+   * own conversation, or a project coordinator's for one project. Those live
+   * at one derived address, the one a worker's message lands in (FIX-1989).
+   */
+  const derivable = (criteria: WorkerSessionCriteria): boolean =>
+    criteria.taskId === undefined && criteria.filingSessionId === undefined && criteria.workstreamId === undefined;
+
+  /**
+   * The session at the criteria's derived address, or `undefined` while there
+   * is none. Found in the listing by its id rather than read by it, so an
+   * absent conversation is an empty answer, not a 404 a page logs.
+   */
+  const atDerived = async (criteria: WorkerSessionCriteria, flow: string, orgId: string): Promise<SessionSummary | undefined> => {
+    const sessionId = await deriveWorkerSessionId({ userId, orgId, flow, criteria });
+    const rows = await sessions.listSessions({ flowKind: flow, userId, state: criteriaState(criteria) });
+    return rows.find((row) => row.id === sessionId);
+  };
+
   const find = async (
     criteria: WorkerSessionCriteria,
     flow: string,
-    rosterId: string
+    rosterId: string,
+    orgId: string
   ): Promise<SessionSummary | undefined> => {
+    // A conversation opened at another id (a random one, from before the
+    // derived address) stays in the session lists but is never returned.
+    if (derivable(criteria)) return atDerived(criteria, flow, orgId);
     const filter = criteriaState(criteria);
     const named = new Set(Object.keys(filter));
     const rows = await sessions.listSessions({
       flowKind: flow,
       userId,
       state: filter,
-      // A coordinator's delivery opens its delegate's session as a dispatch run
-      // of the conversation, a workstream's open opens its lead's session as
-      // a dispatch run of the session that opened it, and a conversation's
-      // board opens a task's session as a dispatch run of the conversation, so
-      // a lookup for any of them includes those. A lookup that names none
-      // keeps to the sessions a user started.
-      ...(criteria.filingSessionId === undefined &&
-      criteria.workstreamId === undefined &&
-      criteria.taskId === undefined
-        ? {}
-        : { include: "dispatch-runs" as const })
+      // A coordinator's delegate session, a workstream's lead and a task's
+      // session are each a dispatch run of the session that opened it. A
+      // lookup naming none of those returned at the derived address above.
+      include: "dispatch-runs"
     });
     const matching = rows.filter((row) => {
       const state = stateOf(row);
@@ -244,15 +275,15 @@ export function createWorkforceClient(options: WorkforceClientOptions): Workforc
   const client: WorkforceClient = {
     roster: async () => readRoster((await roster()).id),
     findWorkerSession: async (criteria) => {
-      const { id } = await roster();
-      return find(criteria, flowOf(await readRoster(id), criteria.worker), id);
+      const { id, orgId } = await roster();
+      return find(criteria, flowOf(await readRoster(id), criteria.worker), id, orgId);
     },
     ensureWorkerSession: async (criteria) => {
       // One roster read per call, and the roster session's organization from
       // the same lookup.
       const { id, orgId } = await roster();
       const flow = flowOf(await readRoster(id), criteria.worker);
-      const existing = await find(criteria, flow, id);
+      const existing = await find(criteria, flow, id, orgId);
       if (existing !== undefined) return existing;
       if (criteria.taskId !== undefined) {
         // Only the hand-over opens a task's session: it is a child of the

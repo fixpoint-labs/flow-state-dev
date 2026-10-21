@@ -5,6 +5,10 @@ sidebar_label: Overview
 description: Describe a roster of workers, run each on one shared copy of the flow it names, and talk to a worker in a session that names it.
 ---
 
+import Figure from "@site/src/components/Figure";
+import PrivateAndSharedDrawing from "./private-and-shared.svg";
+import WorkforceOverviewDrawing from "./workforce-overview.svg";
+
 # Workforce
 
 `@flow-state-dev/workforce` gives each user a roster of workers: agents, or deterministic workflows, that work for that user and act as them.
@@ -17,7 +21,7 @@ Some workers are **standard**. Your installation's files define them, every user
 
 A worker can hand work to other workers on your roster, its **delegates**. That is **delegation**, and every hand-over is checked against your roster. A **coordinator** is the worker built for it: it picks a delegate for each message by its own judgment, by best fit, in turn, or sends to everyone.
 
-![One org, two users. The installation's files define the standard workers every user starts with. A shared area in the org holds a shared project, whose workstreams have one owner each, and org-scope data. Alice's private area holds her standard researcher, a private project, a coordinator and an analyst; Bob's holds his own standard researcher, a writer he forked, a coordinator and a private project. Alice owns a workstream of the shared project.](./private-and-shared.svg)
+<Figure svg={PrivateAndSharedDrawing} caption="Workers are private; sharing happens in shared resources" description={"One org, two users. The installation's files define the standard workers every user starts with. A shared area in the org holds a shared project, whose workstreams have one owner each, and org-scope data. Alice's private area holds her standard researcher, a private project, a coordinator and an analyst; Bob's holds his own standard researcher, a writer he forked, a coordinator and a private project. Alice owns a workstream of the shared project."} />
 
 For example, Alice and Bob each have the standard researcher. They are two workers, not one: Alice's answers for Alice, and Bob can't open her sessions, name her researcher as a delegate, or read what it remembers about her.
 
@@ -31,7 +35,7 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 ## What a Workforce app looks like
 
-![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, and hireWorkforce gives back one copy of each flow a worker runs on, which your app registers. Every worker on a flow shares that copy. Sessions name their worker when they are created, and live in your store with the state and resources a worker writes. A worker a user hires or forks while the app runs is a row in their own data. A task's assignee can name a standard worker that takes tasks: the board runs the list, and Workforce finds the worker.](./workforce-overview.svg)
+<Figure svg={WorkforceOverviewDrawing} caption="Worker file, worker, session: where each lives" description={"A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, and hireWorkforce gives back one copy of each flow a worker runs on, which your app registers. Every worker on a flow shares that copy. Sessions name their worker when they are created, and live in your store with the state and resources a worker writes. A worker a user hires or forks while the app runs is a row in their own data. A task's assignee can name a standard worker that takes tasks: the board runs the list, and Workforce finds the worker."} />
 
 Workforce reads your files and runs them. Each `WORKER.md` is a standard worker every user has, run by one shared copy of the flow it names. A user can add workers of their own, which nobody else can reach.
 
@@ -47,7 +51,7 @@ A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`, so `teams/e
 ```md
 ---
 description: Holds the board.
-model: openai/gpt-5.4-mini
+model: openai/gpt-6-luna
 ---
 You are the engineering lead. You break work into tasks and report what came back.
 ```
@@ -79,7 +83,7 @@ That worker file names no `flow:`, so it runs on the built-in worker flow, `agen
 
 A **skill** is a folder of instructions a worker can pull into a turn. `readWorkforce` collects the skills sitting beside each worker in the tree, and the built-in reads them. Each user keeps their own copy of a worker's skills. To talk to a worker, open a session that names it, as [Talking to a worker](./workers-on-disk.md#talking-to-a-worker) shows, and send `userId` beside `input`. The call never names the organization: every request runs in one, and [Authentication](../server/authentication.md#every-request-runs-in-an-organization) covers where it comes from. [The built-in worker](./built-in-worker.md) covers its settings, what your app can configure, and the rest of what it does not do.
 
-A `model:` such as `openai/gpt-5.4-mini` needs its provider's AI SDK package installed in your app: `@ai-sdk/openai` for an `OPENAI_API_KEY`, or `@ai-sdk/gateway` for the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Without it, the turn fails with an error naming the package to install. Use zod 3 (`zod@^3.25.76`): with zod 4 installed beside a provider package, flow definitions fail at startup. [Setting up models](../getting-started/setting-up-models.md#choose-a-provider) lists every provider.
+A `model:` such as `openai/gpt-6-luna` needs its provider's AI SDK package installed in your app: `@ai-sdk/openai` for an `OPENAI_API_KEY`, or `@ai-sdk/gateway` for the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Without it, the turn fails with an error naming the package to install. Use zod 3 (`zod@^3.25.76`): with zod 4 installed beside a provider package, flow definitions fail at startup. [Setting up models](../getting-started/setting-up-models.md#choose-a-provider) lists every provider.
 
 To run a worker on a flow you wrote yourself, name that flow's kind in the worker's `flow:`. Here is `teams/engineering/workers/triage/WORKER.md`:
 

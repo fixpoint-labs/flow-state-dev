@@ -9,6 +9,13 @@ don't, and a ledger that samples only children reports zero for it.
 top recurring class, both trending **down** across cycles. Flat or rising means the
 upstream fixes landed at the wrong altitude — move them, don't add more.
 
+**Ways per job** — the second number, on epic rows. Classes come from review findings, so an
+added way to do a job that was approved in round one never appears in them, and it even
+improves rounds-to-approval. So the epic-wrap job audit records `ways per job: <job> N→M`
+for each job the epic touched. The target is flat or down. A rise with no approved
+keep-ask behind it ([`asking-for-decisions.md`](../contributing/asking-for-decisions.md) →
+"When approving adds a way to do a job") means the job check was skipped.
+
 **A cycle may declare a different primary axis**, and several have. When it does, the
 axis and its definition are declared in that cycle's own **Method** block, which is
 authoritative for that entry — check it before reading any column against another
@@ -69,3 +76,4 @@ earlier cycle files are records and are not rewritten.
 | 21 | Shift Manager lab shell epic wrap (FIX-1649) (2026-10-04) | [`cycle-21.md`](cycle-ledger/cycle-21.md) |
 | 22 | Org primitives epic wrap (FIX-1650) (2026-10-06) | [`cycle-22.md`](cycle-ledger/cycle-22.md) |
 | 23 | hand-offs epic wrap (FIX-1815) (2026-10-11) | [`cycle-23.md`](cycle-ledger/cycle-23.md) |
+| 24 | shift-manager:dev develops Shift Manager and FSD, epic wrap (FIX-1903) (2026-10-14) | [`cycle-24.md`](cycle-ledger/cycle-24.md) |

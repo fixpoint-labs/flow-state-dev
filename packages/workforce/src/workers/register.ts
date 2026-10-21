@@ -14,9 +14,10 @@ import { checkWorkerFlows } from "../hire";
 import type { InventoryWorker } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
+import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
-import { standardWorkerFlow } from "./standard-workers";
+import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
 
 /**
  * Whether `flow` runs this installation's workers: it declares the
@@ -35,6 +36,12 @@ export interface HireWorkforceOptions {
    * this says.
    */
   taskChainLimit?: number;
+  /**
+   * The limits on worker messages (`messageWorker`): `hopLimit`, the most
+   * messages a chain of workers passes with no user's turn between them
+   * (6 when omitted), and `perTurn`, the most one turn sends (3 when omitted).
+   */
+  messages?: MessageLimits;
 }
 
 /**
@@ -55,6 +62,7 @@ export interface HireWorkforceOptions {
  */
 export function hireWorkforce(installation: WorkerInstallation, options: HireWorkforceOptions = {}): FlowInstance[] {
   if (options.taskChainLimit !== undefined) setTaskChainLimit(installation, options.taskChainLimit);
+  if (options.messages !== undefined) setMessageLimits(installation, options.messages);
   checkWorkerFlows(installation.workerFlows());
   const copies: FlowInstance[] = [];
   const unbound: string[] = [];
@@ -100,6 +108,6 @@ export function inventoryWorkers(installation: WorkerInstallation): InventoryWor
   return installation.standardWorkers().map((worker) => {
     const flow = standardWorkerFlow(worker, AGENT_FLOW)!;
     const actions = (flows[flow]?.flow as { actions?: Readonly<Record<string, unknown>> } | undefined)?.actions ?? {};
-    return { id: worker.id, kind: flow, actions };
+    return { id: worker.id, kind: flow, actions, name: workerDisplayName(worker), teamName: worker.teamName ?? null };
   });
 }

@@ -115,7 +115,7 @@ const setups: Setup[] = [
   },
 ];
 
-const modelStrings = ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4-5", "vercel/openai/gpt-5.4-mini"];
+const modelStrings = ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4-5", "vercel:openai/gpt-5.4-mini"];
 
 function generatorSource(setup: Setup, modelString: string): Source {
   const { options, explicit, gateway } = setup.build();

@@ -6,13 +6,13 @@
  * position is the assignee that **dispatches**: the board routes each row it claims
  * for the assignee to that dispatcher, and the row runs in a child session, in the
  * block the flow declares at `flow.task.actions[action]`. A worker is just a
- * block; to run it elsewhere instead of inline, the assignee holds a dispatcher.
- * This module owns three things and nothing else:
+ * block; to run it elsewhere instead of inline, the assignee holds a dispatcher,
+ * on a board that declares `mode: "delegation"` (`./board-mode`).
+ * This module owns two things and nothing else:
  *
  * 1. reading a board's assignees — a bare block means inline, a dispatcher
  *    dispatches, and the removed assignee shapes are refused by name;
- * 2. the board's "this row's work runs elsewhere" test for dispatcher assignees;
- * 3. the construction-time refusals — `assertDispatchBoardSupported` for the
+ * 2. the construction-time refusals — `assertDispatchBoardSupported` for the
  *    board, `assertDispatchEntrySupported` for the entry block the gate is
  *    given.
  *
@@ -43,7 +43,7 @@
  */
 import { getBaseCapability, type DispatchHandle } from "@flow-state-dev/core";
 import type { BlockDefinition, DispatchAddress, TaskDispatchInput } from "@flow-state-dev/core/types";
-import type { DefinedTaskCollection, Task, TaskWorker, TaskWorkerRegistry } from "../tasks";
+import type { DefinedTaskCollection, TaskWorker, TaskWorkerRegistry } from "../tasks";
 import type { TaskBoardBacking } from "./index";
 
 /** The address a `dispatcher({ type: "task" })` assignee carries: its entry and session policy. */
@@ -201,58 +201,6 @@ export function resolveWorkerSlots(config: {
     dispatchers,
     inline,
   };
-}
-
-/**
- * Build the board's "this row's work runs in a child session" test for its
- * dispatcher assignees, or `undefined` when the board holds none.
- *
- * When the fallback dispatches, every row naming an assignee the board does
- * not run inline is dispatched too, so `inline` (the names of the assignees that
- * run in the drain) is what the test excludes.
- *
- * **Derived from the board's own declarations plus the row's `assignee`, and
- * that is the durable part.** The tempting alternative is to read the row's
- * `claimedBy.sessionId` and call it dispatched when it differs from the drain's
- * own session — but nothing ever makes it differ: `claimedBy` is written only
- * by `claim()`, and the child never claims; its gate re-mints a ticket from the
- * row it verified. So a dispatched row still carries the session of the PARENT
- * that claimed it.
- *
- * The assignee is a sound basis precisely because a dispatching board freezes it
- * while an attempt holds the task: `setAssignee` declines `immutable-assignee`
- * on an `in_progress` or `parked` row, since the assignee is what the dispatch is addressed
- * by. So for a row a child is running the value this reads cannot move under
- * it, and it survives a restart and a second drain with no run state to
- * rebuild. A waiting row can change hands (FIX-1780); this then answers for
- * the new assignee, which is the worker its next claim hands it to.
- *
- * A named assignee or the fallback can dispatch — see
- * {@link assertDispatchBoardSupported}. With no fallback dispatch, an undeclared
- * or missing assignee is this drain's.
- */
-export function dispatchedTaskPredicate(
-  dispatchers: readonly DispatchingAssignee[],
-  inline: readonly string[] = []
-): ((task: Task) => boolean) | undefined {
-  const names = new Set<string>();
-  for (const assignee of dispatchers) {
-    if (assignee.name.length > 0) names.add(assignee.name);
-  }
-  if (dispatchers.some((assignee) => assignee.kind === "floor")) {
-    const runsHere = new Set(inline);
-    // An assignee no inline entry holds reaches the fallback, which hands it
-    // off. A row with no assignee is refused there and fails in the drain.
-    return (task: Task): boolean =>
-      task.assignee !== undefined && !runsHere.has(task.assignee);
-  }
-  if (names.size === 0) return undefined;
-
-  return (task: Task): boolean =>
-    // `Set.has` rather than a bare index: `assignee` reaches the board from a
-    // model-facing tool, and an index would resolve an inherited
-    // `Object.prototype` member.
-    task.assignee !== undefined && names.has(task.assignee);
 }
 
 /**

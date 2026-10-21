@@ -271,6 +271,8 @@ describe("a request that settled failed", () => {
     const asks = await lab.asks();
     expect(asks).toHaveLength(1);
     expect(asks[0]!.reason).toBe("human_input");
+    expect(asks[0]!.title).toBe("Error report: Coordinator fails on a project with no repository");
+    expect(asks[0]!.message).toBe("Seen 1 time. File it?\n\n**Questions**\n\n- Which team?");
 
     await lab.answer(asks[0]!, { decision: "file", instructions: "Put it in the Platform team" });
     expect(lab.prompts.map((p) => p.kind)).toEqual(["draft", "file"]);
@@ -410,6 +412,14 @@ describe("what the intake keeps", () => {
     expect(row).toMatchObject({ count: 2, named: { sessionId: "breaker-alice", by: "alice" } });
     const dossier = (await lab.reporter.dossierOf(row)) as { named?: { session?: unknown } };
     expect(dossier.named?.session).toMatchObject({ id: "breaker-alice", userId: "alice" });
+  });
+
+  it("leaves out a rescued failure the Lab's filter leaves out, as it does a captured one", async () => {
+    const lab = await openLab({ filter: (event) => event.flowKind !== "coordinator" });
+    // As a coordinator's rescue sends it: straight to the intake, past the capture.
+    await lab.intake({ ...requestOccurrence("req_rescued", "the judgment turn crashed"), flowKind: "coordinator", blockName: "coordinator-judgment" });
+    await lab.intake(requestOccurrence("req_kept", "the breaker broke"));
+    expect((await lab.rows()).map((r) => r.parts.message)).toEqual(["the breaker broke"]);
   });
 
   it("never moves the cap's window back for a late occurrence", async () => {

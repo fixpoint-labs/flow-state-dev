@@ -61,10 +61,10 @@ export function baselineSubject(opts: {
   };
 }
 
-/** Last path segment of a model id, for compact baseline names. */
+/** Last slash segment; a colon id with no slash drops the name before `:`. */
 function shortModel(model: string): string {
-  const parts = model.split("/");
-  return parts[parts.length - 1];
+  const slash = model.lastIndexOf("/");
+  return slash === -1 ? model.slice(model.indexOf(":") + 1) : model.slice(slash + 1);
 }
 
 /** Config for `comparePatterns` — `runBenchmark` config minus the resolved subjects. */
@@ -74,7 +74,7 @@ export type ComparePatternsConfig = Omit<RunBenchmarkConfig, "subjects"> & {
   /**
    * Pure-model baselines to compare the patterns against. Defaults to one
    * baseline on the run's `model` (named `single-generator`). Provide several —
-   * e.g. `[model, "anthropic/claude-sonnet-4-6"]` — to ask "do the patterns on
+   * e.g. `[model, "anthropic/claude-sonnet-5-5"]` — to ask "do the patterns on
    * the cheap model beat both pure models?". Each is a single-generator subject
    * on that model, named `pure-<model>`.
    */

@@ -39,6 +39,12 @@ function Composer({ send, blocked = null }: { send: (message: string) => Promise
 }
 
 describe("`> ` in Jump to messages the Shift Coordinator", () => {
+  it("opens already in message mode when seeded with the prefix (Shift+⌘K)", () => {
+    render(<JumpTo snapshot={snapshot} gaps={gaps} initialQuery="> " onClose={vi.fn()} />);
+    expect(screen.getByTestId("jump-message")).toBeTruthy();
+    expect(screen.queryAllByTestId("jump-result")).toHaveLength(0);
+  });
+
   it("switches off the results, then hands the text after the prefix over and closes", () => {
     const onClose = vi.fn();
     render(<JumpTo snapshot={snapshot} gaps={gaps} onClose={onClose} />);

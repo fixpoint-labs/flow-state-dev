@@ -48,6 +48,13 @@ which is most of what divergence produces. They compose; they don't merge.
 Give every lens the same target framing, `docs/philosophy.md`, and — for a change — the
 spec.
 
+**Every change gets the job check, whether or not its direction is settled.** Tell the Coherence lens:
+a way to do a job that the diff adds and the spec's question-7 line (`issue-spec` Step 3.5)
+doesn't name is a direction finding. It is routed to the ask, never to an implementer note.
+The definition and the ask are in
+[`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
+approving adds a way to do a job". A bug-route change has no spec, so everything it adds counts.
+
 **Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
 code exists most alternatives are expensive regret — the spec is where they pay for
 themselves. There are two ways in, and they are not the same:

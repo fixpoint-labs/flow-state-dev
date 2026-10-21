@@ -109,6 +109,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
+        // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
         uses: [skills.with({ active: ["typo-skill"] })],
       }),
     ).toThrow(/unknown skill "typo-skill"/);
@@ -121,6 +122,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
+        // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
         uses: [skills.with({ active: ["anything"] })],
       }),
     ).toThrow(/no bundled skills are available to validate against/);
@@ -151,6 +153,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
+        // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
         uses: [skills.with({ active: ["BadName"] })],
       }),
     ).toThrow(/unknown skill "BadName"/);
@@ -168,12 +171,14 @@ describe("createSkillsLibrary — static active binding", () => {
       name: "a",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skillsA.with({ active: ["alpha"] })],
     });
     const genB = generator({
       name: "b",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skillsB.with({ active: ["beta"] })],
     });
 
@@ -202,6 +207,7 @@ describe("createSkillsLibrary — static active binding", () => {
       name: "s",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ active: ["narrow"] })],
     });
     const toolNames = (await resolveTools(gen, ctx)).map((t) => t.name);
@@ -223,6 +229,7 @@ describe("createSkillsLibrary — static active binding", () => {
         name: "g",
         model: "openai/gpt-5.4-mini",
         prompt: "p",
+        // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
         uses: [skills.with({ active: ["open", "needs-db"] })],
       }),
     ).toThrow(/skill "needs-db" declares tool "db", which is not in the catalog/);
@@ -284,6 +291,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
     });
     const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
@@ -300,6 +308,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
     });
     const collection = createMockSkillsCollection();
@@ -331,6 +340,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       initialSkills: [inlineSkill("deep-research", "body")],
     });
     const merged = mergeCapabilities(
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
       "generator",
     );
@@ -347,7 +357,9 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
     const merged = mergeCapabilities(
       [
         skills.with({
+          // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
           allowed: ["deep-research"],
+          // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
           activeState: { scope: "session", field: "activeAnalystSkills" },
           dynamicActivation: true,
         }),
@@ -367,6 +379,7 @@ describe("createSkillsLibrary — dynamicActivation load tool", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ allowed: ["deep-research"], dynamicActivation: true })],
     });
     const ctx = buildReaderCtx(createMockSkillsCollection(), {
@@ -386,6 +399,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ active: ["draft"] })],
     });
     const collection = createMockSkillsCollection();
@@ -414,6 +428,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ active: ["dual"], dynamicActivation: true })],
     });
     const collection = createMockSkillsCollection();
@@ -437,6 +452,7 @@ describe("createSkillsLibrary — block-state default reader", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ allowed: ["loaded"], dynamicActivation: true })],
     });
     const collection = createMockSkillsCollection();
@@ -511,7 +527,9 @@ describe("createSkillsLibrary — explicit activeState", () => {
       prompt: "p",
       uses: [
         skills.with({
+          // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
           allowed: ["uses-search"],
+          // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
           activeState: { scope: "session", field: "activeAnalystSkills" },
         }),
       ],
@@ -538,6 +556,7 @@ describe("createSkillsLibrary — explicit activeState", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
     });
     const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
@@ -554,6 +573,7 @@ describe("createSkillsLibrary — explicit activeState", () => {
       name: "g",
       model: "openai/gpt-5.4-mini",
       prompt: "p",
+      // @ts-expect-error — source bug FIX-1378: createSkillsLibrary erases its binding config type.
       uses: [skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
     });
     const collection = createMockSkillsCollection();

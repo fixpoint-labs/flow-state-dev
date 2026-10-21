@@ -152,7 +152,8 @@ function stubWorker(mode: WorkerAdapter["mode"]): WorkerAdapter {
     mode,
     createDispatcher: () => ({ dispatch: async () => ({ requestId: "req_queued" }) }),
     startWorker: () => ({ close: async () => undefined })
-  } as WorkerAdapter;
+    // Deliberately partial: shutdown reads only the parts stubbed here.
+  } as unknown as WorkerAdapter;
 }
 
 /**
@@ -172,7 +173,8 @@ function stubWorkerWithNoConsumer(mode: WorkerAdapter["mode"]): WorkerAdapter {
       })
     }),
     startWorker: () => ({ close: async () => undefined })
-  } as WorkerAdapter;
+    // Deliberately partial, as above.
+  } as unknown as WorkerAdapter;
 }
 
 /**

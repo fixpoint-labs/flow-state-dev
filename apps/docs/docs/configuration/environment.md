@@ -38,7 +38,7 @@ These override `createModelResolver` / `models` at construction. They do not cha
 
 | Variable | What it does |
 |----------|----------------|
-| `FSDEV_INTENT_<NAME>` | Replaces the candidate list for intent `<name>`. `<NAME>` is the intent uppercased with hyphens turned into underscores (`chat` → `FSDEV_INTENT_CHAT`, `my-custom` → `FSDEV_INTENT_MY_CUSTOM`). The value is one `provider/model` or `gateway/provider/model` string; comma-separated lists are not supported. |
+| `FSDEV_INTENT_<NAME>` | Replaces the candidate list for intent `<name>`. `<NAME>` is the intent uppercased with hyphens turned into underscores (`chat` → `FSDEV_INTENT_CHAT`, `my-custom` → `FSDEV_INTENT_MY_CUSTOM`). The value is one `provider/model` or `name:model` string; comma-separated lists are not supported. |
 | `FSDEV_DEFAULT_MODEL` | Replaces `models.default` / `defaultModel`. |
 
 Construction throws when two declared intents normalize to the same env name (`my-custom` and `my_custom`). An `FSDEV_INTENT_*` for an intent this resolver does not declare is warned and ignored. A typo in a declared intent's override is warned and the resolver falls back to `default`.
@@ -46,8 +46,8 @@ Construction throws when two declared intents normalize to the same env name (`m
 `FSDEV_DEFAULT_MODEL` applies whether or not intents are declared. An app that never resolves a model ignores it, so one environment can set it for every app it runs.
 
 ```bash title=".env.local"
-FSDEV_INTENT_CHAT=openai/gpt-5.4-mini
-FSDEV_DEFAULT_MODEL=openai/gpt-5.4-mini
+FSDEV_INTENT_CHAT=openai/gpt-6-luna
+FSDEV_DEFAULT_MODEL=openai/gpt-6-luna
 ```
 
 Full rules: [Models → Environment overrides](/docs/fundamentals/models).

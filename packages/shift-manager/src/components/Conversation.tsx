@@ -8,8 +8,8 @@
  * tool calls as quiet lines), following the latest turn, the working line, the
  * composer, and the one send path. A view varies it by props, never by a fork:
  * the session it is (`session`, for one a view found itself: a project
- * coordinator's, a workstream's lead's; otherwise the user's latest with
- * the worker), the name over the worker's messages, the text for an empty conversation, what
+ * coordinator's, a workstream's lead's; otherwise the user's conversation
+ * with the worker, at its derived address), the name over the worker's messages, the text for an empty conversation, what
  * sits above the feed (`lead`), a line to hand in (`autoSend`), the
  * composer's `scale`, and `renderItem` to draw an item its own way (read
  * the session's other items with `useSessionItems()`).
@@ -26,7 +26,7 @@ import type { Gaps } from "../gaps";
 import { shiftManagerRenderers, ToolLineGroup } from "./ToolLine";
 import { SectionFailure } from "./ui";
 import { TurnComposer } from "./TurnComposer";
-import { delegateOf, openConversation, useWorkerConversation } from "../lib/conversation";
+import { knownWorkers, senderOf, useWorkerConversation } from "../lib/conversation";
 import { workerLabel } from "../lib/derive";
 import { useFollowLatest } from "../lib/follow";
 import { SessionScope } from "./TaskBoardMeta";
@@ -34,6 +34,21 @@ import { useLab } from "../lib/lab-data";
 import type { Worker } from "../lib/reads";
 import { sendTurn } from "../lib/send";
 import { clockTime } from "../lib/shell";
+import { navigate } from "../lib/routes";
+
+/** Whether a line is another worker's message (FIX-1989): written under its sender's name, as *From <sender>: <text>*. */
+function isWorkerMessage(item: OutputItem, sender: string | undefined): boolean {
+  if (sender === undefined) return false;
+  const content = (item as { content?: Array<{ text?: unknown }> }).content;
+  const first = Array.isArray(content) ? content.find((part) => typeof part.text === "string")?.text : undefined;
+  return typeof first === "string" && first.startsWith(`From ${sender}: `);
+}
+
+/**
+ * Items the feed never draws: `ItemRenderer` paints nothing for them. Keep in step with
+ * `NON_RENDERABLE_TYPES` in `@flow-state-dev/react`'s `ItemRenderer.ts`.
+ */
+const UNDRAWN = new Set<string>(["state_change", "resource_change", "suspension_resume", "continuation"]);
 
 /** v2's scrolling column (v2:122-180): padded 36/32, `max-w-[720px]`, with the composer pinned under it. */
 export function ConversationFrame({
@@ -82,9 +97,10 @@ export function Conversation({
   scale = "default",
   testId = "conversation",
   startAtEnd = false,
+  readOnly,
 }: {
   worker: Worker;
-  /** The session this conversation is, when the view found it: every line goes there. Absent, the user's latest with the worker. */
+  /** The session this conversation is, when the view found it: every line goes there. Absent, the user's conversation with the worker, at its derived address. */
   session?: string;
   sessions: readonly SessionSummary[];
   gaps: Gaps;
@@ -112,9 +128,13 @@ export function Conversation({
    * with a `lead` above the feed leaves this off so it opens on the lead.
    */
   startAtEnd?: boolean;
+  /** Why nothing can be sent here, whatever the worker: the session is read, never written to. */
+  readOnly?: string;
 }) {
-  const { clients, refresh, answered } = useLab();
+  const { clients, refresh, answered, snapshot } = useLab();
   const conversation = useWorkerConversation(worker, sessions, session);
+  const inventory = snapshot !== undefined && "inventory" in snapshot && snapshot.inventory?.ok ? snapshot.inventory.value.workers : undefined;
+  const known = useMemo(() => knownWorkers(inventory ?? [], sessions), [inventory, sessions]);
   // The feed opens where it starts, and follows once the user reaches the end or sends a line;
   // with `startAtEnd`, it opens on the latest turn, and again on each conversation it is shown.
   const feed = useFollowLatest({ startAtEnd, resetKey: conversation.sessionId });
@@ -126,16 +146,30 @@ export function Conversation({
     if (answeredHere !== undefined) reread();
   }, [answeredHere, reread]);
 
-  // A run of tool calls stays one segment: the feed draws it as one quiet line.
-  const shown = useMemo(() => (read === undefined ? [] : buildItemRenderStream(read.items, shiftManagerRenderers, { groupToolCalls: true })), [read]);
+  // A run of tool calls stays one segment: the feed draws it as one quiet line. Items it never draws
+  // are left out, so a session holding only those (a standing-rules read writes a state change into
+  // it before any line is sent) counts as empty.
+  const shown = useMemo(
+    () =>
+      read === undefined
+        ? []
+        : buildItemRenderStream(
+            read.items.filter((item) => !UNDRAWN.has(item.type)),
+            shiftManagerRenderers,
+            { groupToolCalls: true },
+          ),
+    [read],
+  );
 
   // Nothing is sent into a conversation the screen hasn't read, or to a worker with no door.
   const blocked =
-    worker.door === null || worker.kind === null
+    readOnly !== undefined
+      ? readOnly
+      : worker.door === null || worker.kind === null
       ? `${workerLabel(worker.id)} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
-        : sessionId !== null && sessionId !== opened && read === undefined
+        : conversation.resolving || (sessionId !== null && sessionId !== opened && read === undefined)
           ? "Reading the conversation first…"
           : null;
 
@@ -149,23 +183,18 @@ export function Conversation({
       autoSend={autoSend}
       onAutoSend={onAutoSend}
       send={async (message, held) => {
-        const target = conversation.target();
         const settled = startWork?.();
         feed.follow();
         try {
-          // A first line opens its session naming the worker's worker before the door's request runs in it.
-          if (sessionId === null) await openConversation(clients, { id: worker.id, kind: worker.kind! }, target);
-          const sent = await sendTurn(clients, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
+          // A first line opens the conversation at the worker's derived address before the door's request runs in it.
+          const target = await conversation.ensure();
+          return await sendTurn(clients, { sessionId: target, flowId: worker.kind!, door: worker.door! }, message, {
             onHeld: () => {
               // The session holds the line: read it back now, so it is drawn while the reply is in flight.
-              conversation.open(target);
               reread();
               held();
             },
           });
-          // `sendTurn` can resolve without calling `onHeld`, so the session is opened here too.
-          conversation.open(target);
-          return sent;
         } finally {
           // Read the Lab again however it ended. Stopped short, it may have raised an ask Inbox
           // should list; finished, it may have changed the organization, such as a project it
@@ -190,18 +219,20 @@ export function Conversation({
       >
         {failure !== undefined ? (
           <SectionFailure what="The conversation" failure={failure} onRetry={reread} testId={`${testId}-conversation-failure`} />
-        ) : sessionId === null || read?.items.length === 0 ? (
-          // A session the view opened before a first line (a project's Stream) reads empty: say so, never draw nothing.
+        ) : (sessionId === null && !conversation.resolving) || (read !== undefined && shown.length === 0 && !read.truncated) ? (
+          // No conversation at its worked-out address, a session the view opened before a first line (a project's
+          // Stream), or one whose whole read holds nothing the feed draws, reads empty: say so, never draw nothing.
+          // A cut-short read may hold more, and while the address is still being worked out it isn't known yet.
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-empty`}>
             {emptyText ?? `You haven't talked with ${name} yet. Your first line starts the conversation.`}
           </p>
-        ) : read === undefined ? (
+        ) : sessionId === null || read === undefined ? (
           <p className="text-sm text-muted-foreground" data-testid={`${testId}-conversation-reading`}>
             Reading the conversation…
           </p>
         ) : (
           <FlowProvider renderers={shiftManagerRenderers}>
-            <SessionScope sessionId={sessionId} items={read.items}>
+            <SessionScope sessionId={sessionId} flow={worker.kind} items={read.items}>
               {read.truncated ? (
                 <p className="text-xs text-muted-foreground" data-testid={`${testId}-truncated`}>
                   More than shown: this conversation holds more than one read returns.
@@ -227,6 +258,7 @@ export function Conversation({
                   const item = segment.item;
                   const role = (item as { role?: string }).role ?? "";
                   const own = renderItem?.(item);
+                  const sender = item.type === "message" && role === "assistant" ? senderOf(worker, item, known) : undefined;
                   return (
                     <li
                       key={`${item.requestId}/${item.id}`}
@@ -239,10 +271,20 @@ export function Conversation({
                       {item.type === "message" && role === "assistant" ? (
                         // v2's label over each of the worker's messages: its name and the time it was written (v2:135).
                         <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                          {(delegateOf(worker, item) ?? name).toUpperCase()}
+                          {(sender ?? name).toUpperCase()}
                           <span className="tracking-normal" data-look="message-time">
                             {clockTime(item.ts)}
                           </span>
+                          {isWorkerMessage(item, sender) ? (
+                            <button
+                              type="button"
+                              className="tracking-normal normal-case hover:text-foreground hover:underline"
+                              onClick={() => navigate({ level: "messages" })}
+                              data-testid={`${testId}-item-messages`}
+                            >
+                              Messages ›
+                            </button>
+                          ) : null}
                         </p>
                       ) : null}
                       {own !== undefined ? (

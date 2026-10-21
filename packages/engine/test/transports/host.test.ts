@@ -29,9 +29,9 @@ function buildHost(opts?: { dispatcher?: FlowDispatcher }) {
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "host-test-run",
-            execute: () => ({ ok: true })
+            execute: (_input: { value: string }): { ok: true } => ({ ok: true })
           })
         }
       }
@@ -87,9 +87,9 @@ describe("createInboundTransportHost", () => {
       leases: stores.leases
     });
 
-    const gate = handler<{ value: string }, unknown>({
+    const gate = handler({
       name: "gate",
-      execute: async (_input, ctx) =>
+      execute: async (_input: { value: string }, ctx): Promise<unknown> =>
         ctx.suspend!({ reason: "human_approval", message: "approve?" })
     });
     registry.register(
@@ -166,9 +166,9 @@ describe("createInboundTransportHost", () => {
         actions: {
           run: {
             inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
+            block: handler({
               name: "keepalive-run",
-              execute: () => ({ ok: true })
+              execute: (_input: { value: string }): { ok: true } => ({ ok: true })
             })
           }
         }

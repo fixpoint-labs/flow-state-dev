@@ -7,8 +7,8 @@
  * is holding this task, so the claim path can simply hand it out again.
  *
  * **One driver, every seam.** Three ticket-mint sites drive workers — the task
- * board's worker body, the shared `dispatchAndExecute` helper, and the
- * `routedSpecialists` pattern. Three hand-written drivers would each carry a
+ * board's worker body, its dispatched-task entry (`task-board/task-entry.ts`),
+ * and the `routedSpecialists` pattern. Three hand-written drivers would each carry a
  * cadence, a single-flight guard and a decline-to-abort rule, and they would
  * drift. Every rule lives in {@link startLeaseRenewal}.
  *
@@ -26,10 +26,10 @@
  * through lives in `./lease-renewal-scope`, because `node:async_hooks` cannot be
  * bundled for a browser and `@flow-state-dev/orchestration/tasks` is published
  * as browser-safe (`docs/architecture/items.md`). The driver itself is timers
- * and promises — nothing Node-only — so it can stay on that entry alongside
- * `dispatchAndExecute`, which needs it. Keep it that way: an import of
- * `./lease-renewal-scope` from this file, or from anything else the `tasks`
- * entry reaches, silently breaks every browser consumer at *their* bundle step.
+ * and promises — nothing Node-only — so it stays on that entry. Keep it that
+ * way: an import of `./lease-renewal-scope` from this file, or from anything
+ * else the `tasks` entry reaches, silently breaks every browser consumer at
+ * *their* bundle step.
  * `test/tasks-subpath-browser-safe.spec.ts` is what makes that failure ours
  * instead of theirs.
  *

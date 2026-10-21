@@ -33,7 +33,7 @@ import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { taskBoard } from "../../src/task-board";
-import { defineTaskCollection, type TaskWorker } from "../../src/tasks";
+import { defineTaskCollection, type TaskWorker, type TaskWorkerInput } from "../../src/tasks";
 import { assertJsonSafe } from "../../src/task-board/blocks/json-safe";
 
 const USER_ID = "u_dispatch_routing";
@@ -42,7 +42,7 @@ function worker(name: string) {
   return handler({
     name,
     inputSchema: z.unknown(),
-    execute: () => ({ done: true }),
+    execute: (_input: TaskWorkerInput) => ({ done: true }),
   });
 }
 
@@ -68,12 +68,13 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     const board = taskBoard({
       name: "issue-work",
       boardId: "issue-work",
+      mode: "delegation",
       collection: ledger(),
       workers: { implement: assignee("implement") },
       initialTasks: [{ id: "t1", goal: "implement it", assignee: "implement" }],
     });
 
-    const dispatched: { target: string; sessionId: string; source: string }[] = [];
+    const dispatched: { action: string; sessionId: string; source: string }[] = [];
     const flow = defineFlow({
       kind: "dispatch-routing-table",
       actions: { run: { block: board.drain } },
@@ -110,35 +111,15 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     expect(implementSpy).not.toHaveBeenCalled();
   });
 
-  it("detaches only the assignee that holds the dispatcher, when the same block also runs inline", () => {
-    // The same block may run inline at one assignee and be the entry another assignee
-    // dispatches to. Keying the substitution by ASSIGNEE rather than by block
-    // identity is what keeps the inline assignee inline.
-    const shared = worker("shared");
-    const board = taskBoard({
-      name: "mixed-board",
-      boardId: "mixed-board",
-      collection: ledger(),
-      workers: {
-        inline: shared,
-        background: assignee("shared-entry"),
-      },
-    });
-
-    expect(board.dispatchers).toHaveLength(1);
-    expect(board.dispatchers[0]!.label).toBe("assignee:background");
-    expect(board.dispatchers[0]!.dispatch?.action).toBe("shared-entry");
-  });
-
   it("still installs a resource only the dispatched entry block declares", () => {
-    // The block is off the drain's routing table (test above), so a resource
+    // The block is off the drain's routing table, so a resource
     // it declares is no longer reachable through `board.drain` — it bubbles
     // through the gated task entry instead, which is why the entry has to be
     // on the flow for it to show up at all.
     const auditLog = defineResource({
-      name: "dispatch-audit-log",
       scope: "user",
-      load: () => ({ entries: [] }),
+      stateSchema: z.object({ entries: z.array(z.unknown()) }),
+      default: { entries: [] },
     });
     const implement = handler({
       name: "implement-with-resource",
@@ -150,6 +131,7 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     const board = taskBoard({
       name: "resourceful",
       boardId: "resourceful",
+      mode: "delegation",
       collection: ledger(),
       workers: { implement: assignee("implement") },
     });

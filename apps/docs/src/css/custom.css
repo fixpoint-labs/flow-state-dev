@@ -1,56 +1,138 @@
 /* ══════════════════════════════════════════════════════════════
-   flow-state.dev — Editorial Monochrome Theme
-   High-contrast dark aesthetic with typography-driven hierarchy.
-   Single accent color (#B27D40) for brand identity and links.
+   flow-state.dev — the docs in the Drafting System's page register.
+
+   `@flow-state-dev/design-system/page.css` holds every value and draws
+   the register's parts: paper with the 24px grid, the `.label` rule,
+   sheet headings, figure frames and the drawing classes. This file
+   points Infima's `--ifm-*` variables at those tokens and fits
+   Docusaurus's own markup to them.
+
+   Paper and Night both ship. Docusaurus puts `data-theme="light"` or
+   `"dark"` on the root; page.css reads `"dark"` as Night.
+
+   Colour marks emphasis, never category: links, active states, the
+   table of contents and breadcrumbs are ink. The highlighter is text
+   selection only; red is the danger admonition only. Corners are
+   square and nothing casts a shadow.
+
+   `shift-manager.css` (the app register) is still imported for the
+   landing page, which reads its tokens; no rule in this file does.
    ══════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import "@flow-state-dev/design-system/shift-manager.css";
+@import "@flow-state-dev/design-system/page.css";
 
-/* ── Light mode tokens ── */
-:root {
-  --ifm-color-primary: #B27D40;
-  --ifm-color-primary-dark: #9A6D38;
-  --ifm-color-primary-darker: #865D31;
-  --ifm-color-primary-darkest: #724D29;
-  --ifm-color-primary-light: #C08F55;
-  --ifm-color-primary-lighter: #CEA16A;
-  --ifm-color-primary-lightest: #DCB37F;
-  --ifm-code-font-size: 95%;
-  --ifm-font-family-base: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', monospace;
-  --ifm-heading-font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+/* The mapping sits on the same selector as Infima's dark block so it
+   recomputes from Night's tokens and wins over Infima (same specificity,
+   loaded later). */
+:root,
+html[data-theme="dark"] {
+  /* Ink drives links, active items and focus. */
+  --ifm-color-primary: var(--ink1);
+  --ifm-color-primary-dark: var(--ink1);
+  --ifm-color-primary-darker: var(--ink1);
+  --ifm-color-primary-darkest: var(--ink1);
+  --ifm-color-primary-light: var(--ink2);
+  --ifm-color-primary-lighter: var(--ink2);
+  --ifm-color-primary-lightest: var(--ink3);
+  --ifm-color-primary-contrast-background: var(--paper-card);
+  --ifm-color-primary-contrast-foreground: var(--ink1);
+  --ifm-link-color: var(--ink1);
+  --ifm-link-hover-color: var(--ink1);
+  --ifm-link-decoration: none;
+  --ifm-link-hover-decoration: none;
+
+  /* Admonitions: one ink card for every kind; see the rules below. */
+  --ifm-color-secondary-dark: var(--hairline-structural);
+  --ifm-color-secondary-contrast-background: var(--paper-card);
+  --ifm-color-secondary-contrast-foreground: var(--ink2);
+  --ifm-color-info: var(--ink1);
+  --ifm-color-info-dark: var(--ink1);
+  --ifm-color-info-contrast-background: var(--paper-card);
+  --ifm-color-info-contrast-foreground: var(--ink2);
+  --ifm-color-success: var(--ink1);
+  --ifm-color-success-dark: var(--ink1);
+  --ifm-color-success-contrast-background: var(--paper-card);
+  --ifm-color-success-contrast-foreground: var(--ink2);
+  --ifm-color-warning: var(--ink1);
+  --ifm-color-warning-dark: var(--ink1);
+  --ifm-color-warning-contrast-background: var(--paper-card);
+  --ifm-color-warning-contrast-foreground: var(--ink2);
+  --ifm-color-danger: var(--red);
+  --ifm-color-danger-dark: var(--red);
+  --ifm-color-danger-contrast-background: var(--paper-card);
+  --ifm-color-danger-contrast-foreground: var(--ink2);
+  --ifm-alert-border-left-width: 1px;
+
+  /* Grounds and ink. Infima's grey scale becomes ink mixed into paper, so
+     every border and hover it draws stays in the inks. */
+  --ifm-color-emphasis-0: var(--paper);
+  --ifm-color-emphasis-100: color-mix(in oklab, var(--ink1) 5%, var(--paper));
+  --ifm-color-emphasis-200: color-mix(in oklab, var(--ink1) 12%, var(--paper));
+  --ifm-color-emphasis-300: color-mix(in oklab, var(--ink1) 20%, var(--paper));
+  --ifm-color-emphasis-400: color-mix(in oklab, var(--ink1) 30%, var(--paper));
+  --ifm-color-emphasis-500: color-mix(in oklab, var(--ink1) 45%, var(--paper));
+  --ifm-color-emphasis-600: var(--ink4);
+  --ifm-color-emphasis-700: var(--ink3);
+  --ifm-color-emphasis-800: var(--ink2);
+  --ifm-color-emphasis-900: var(--ink1);
+  --ifm-color-emphasis-1000: var(--ink1);
+  --ifm-background-color: var(--paper);
+  --ifm-background-surface-color: var(--paper-card);
+  --ifm-font-color-base: var(--ink2);
+  --ifm-font-color-secondary: var(--ink3);
+  --ifm-heading-color: var(--ink1);
+  --ifm-color-content: var(--ink2);
+  --ifm-color-content-secondary: var(--ink3);
+  --ifm-toc-border-color: var(--hairline-internal);
+  --ifm-hr-background-color: var(--hairline-structural);
+  --ifm-table-border-color: var(--hairline-internal);
+  --ifm-table-stripe-background: color-mix(in oklab, var(--ink1) 3%, transparent);
+  --ifm-navbar-background-color: var(--paper);
+  --ifm-navbar-link-color: var(--ink2);
+  --ifm-navbar-link-hover-color: var(--ink1);
+  --ifm-navbar-link-active-color: var(--ink1);
+  --ifm-footer-background-color: var(--paper-band);
+  --ifm-footer-color: var(--ink3);
+  --ifm-footer-link-color: var(--ink1);
+  --ifm-footer-link-hover-color: var(--ink1);
+  --ifm-footer-title-color: var(--ink3);
+  --ifm-menu-color: var(--ink3);
+  --ifm-menu-color-active: var(--ink1);
+  --ifm-menu-color-background-active: transparent;
+  --ifm-menu-color-background-hover: color-mix(in oklab, var(--ink1) 5%, transparent);
+  --ifm-breadcrumb-color-active: var(--ink1);
+  --ifm-breadcrumb-item-background-active: transparent;
+  --ifm-tabs-color: var(--ink3);
+  --ifm-tabs-color-active: var(--ink1);
+  --ifm-tabs-color-active-border: var(--ink1);
+  --ifm-code-background: var(--paper-card);
+  --ifm-dropdown-background-color: var(--paper-card);
+  --docusaurus-highlighted-code-line-bg: color-mix(in oklab, var(--ink1) 8%, transparent);
+  --docusaurus-collapse-button-bg-hover: color-mix(in oklab, var(--ink1) 5%, transparent);
+
+  /* Type. */
+  --ifm-font-family-base: var(--font-sans);
+  --ifm-heading-font-family: var(--font-sans);
+  --ifm-font-family-monospace: var(--font-mono);
+  --ifm-code-font-size: 92%;
   --ifm-heading-font-weight: 700;
-  --ifm-font-weight-bold: 600;
-  --docusaurus-highlighted-code-line-bg: rgba(178, 125, 64, 0.08);
+  --ifm-font-weight-bold: 700;
   --ifm-line-height-base: 1.65;
 
-  /* custom tokens */
-  --fsd-accent: #B27D40;
-  --fsd-accent-glow: rgba(178, 125, 64, 0.15);
-  --fsd-surface-border: rgba(0, 0, 0, 0.08);
-  --fsd-text-muted: rgba(0, 0, 0, 0.55);
-}
-
-/* ── Dark mode tokens ── */
-[data-theme="dark"] {
-  --ifm-color-primary: #B27D40;
-  --ifm-color-primary-dark: #9A6D38;
-  --ifm-color-primary-darker: #865D31;
-  --ifm-color-primary-darkest: #724D29;
-  --ifm-color-primary-light: #C08F55;
-  --ifm-color-primary-lighter: #CEA16A;
-  --ifm-color-primary-lightest: #DCB37F;
-  --ifm-background-color: #08080c;
-  --ifm-background-surface-color: #0e0e14;
-  --ifm-navbar-background-color: rgba(8, 8, 12, 0.85);
-  --ifm-footer-background-color: #050508;
-  --docusaurus-highlighted-code-line-bg: rgba(178, 125, 64, 0.1);
-
-  /* custom tokens */
-  --fsd-accent: #B27D40;
-  --fsd-accent-glow: rgba(178, 125, 64, 0.12);
-  --fsd-surface-border: rgba(255, 255, 255, 0.06);
-  --fsd-text-muted: rgba(255, 255, 255, 0.45);
+  /* Square corners and no shadows, everywhere. */
+  --ifm-global-radius: 0;
+  --ifm-code-border-radius: 0;
+  --ifm-button-border-radius: 0;
+  --ifm-card-border-radius: 0;
+  --ifm-pagination-nav-border-radius: 0;
+  --ifm-badge-border-radius: 0;
+  --ifm-alert-border-radius: 0;
+  --ifm-breadcrumb-border-radius: 0;
+  --ifm-global-shadow-lw: none;
+  --ifm-global-shadow-md: none;
+  --ifm-global-shadow-tl: none;
+  --ifm-navbar-shadow: none;
 }
 
 /* ── Global base styles ── */
@@ -65,109 +147,272 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── The grid: the top of the page only ──
+   page.css rules the whole body, but Infima paints `html`, so the body's
+   background stops at the body's own box, one window tall, and the grid
+   ends in a hard edge a screen down. Here it covers the top 480px and
+   fades into the paper over its lower half, so it frames the top of a
+   page and is gone before the reading starts. */
+
+body {
+  background-image:
+    linear-gradient(transparent 50%, var(--paper)),
+    repeating-linear-gradient(var(--grid-line) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 24px);
+  background-size: 100% 480px;
+  background-repeat: no-repeat;
+}
+
+/* ── Labels: one style for every label Docusaurus draws ── */
+
+.markdown th,
+.menu__list-item-collapsible > .menu__link--sublist,
+.menu__link--sublist-caret,
+.footer__title,
+.theme-admonition [class*="admonitionHeading"],
+.pagination-nav__sublabel {
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+
+/* ── Links: ink with a 1px underline; focus is a 2px ink outline ── */
+
+.markdown a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.markdown a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink1);
+  outline-offset: 2px;
+}
+
 /* ── Navbar ── */
 
-[data-theme="dark"] .navbar {
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+.navbar {
+  border-bottom: 1px solid var(--hairline-structural);
 }
 
 .navbar__title {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   font-size: 0.9rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  color: var(--ink1);
 }
 
 .navbar__link {
   font-weight: 500;
   font-size: 0.875rem;
-  letter-spacing: 0.01em;
+}
+
+/* Active: weight and a 2px ink rule. */
+.navbar__link--active {
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--ink1);
 }
 
 /* ── Footer ── */
 
-[data-theme="dark"] .footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.footer__title {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  opacity: 0.5;
+.footer {
+  border-top: 1px solid var(--hairline-structural);
 }
 
 .footer__link-item {
   font-size: 0.875rem;
-  font-weight: 400;
 }
 
-/* ── Docs page refinements ── */
+.footer__copyright {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+/* ── Headings: 700 throughout; h2 is a sheet (page.css) ── */
 
 .markdown h1 {
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.03em;
 }
 
 .markdown h2 {
-  letter-spacing: -0.02em;
-  padding-top: 0.5rem;
+  margin-top: 3rem;
 }
 
 .markdown h3 {
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
-/* Code blocks — background is owned by the Prism theme (src/prismThemes.ts);
-   this rule only adds the surrounding border. */
-[data-theme="dark"] .prism-code {
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+/* ── Code ── */
+
+/* Inline code: a card chip with an internal hairline. */
+.markdown :not(pre) > code {
+  border: 1px solid var(--hairline-internal);
+  background: var(--paper-card);
+  color: var(--ink1);
 }
 
-/* Table of contents */
+/* Code blocks: the Prism theme (src/prismThemes.ts) owns the card ground;
+   this adds the structural frame figures wear too. */
+.theme-code-block {
+  border: 1px solid var(--hairline-structural);
+}
+
+/* ── Table of contents and breadcrumbs ── */
+
 .table-of-contents__link {
+  display: block;
+  padding-left: 8px;
   font-size: 0.825rem;
+  color: var(--ink3);
 }
 
-/* Sidebar */
+/* Active: weight and a 2px ink rule. */
+.table-of-contents__link--active {
+  font-weight: 700;
+  color: var(--ink1);
+  box-shadow: inset 2px 0 0 var(--ink1);
+}
+
+.breadcrumbs__link {
+  color: var(--ink3);
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+  font-weight: 700;
+  color: var(--ink1);
+}
+
+/* ── Sidebar ── */
+
+.menu__link,
+.menu__list-item-collapsible,
+.menu__caret,
+.clean-btn {
+  border-radius: 0;
+}
+
 .menu__link {
   font-size: 0.875rem;
   font-weight: 400;
-  border-radius: 6px;
 }
 
+/* Active: weight and a 2px ink rule. */
 .menu__link--active:not(.menu__link--sublist) {
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: inset 2px 0 0 var(--ink1);
 }
 
-/* ── Scrollbar (dark mode) ── */
+/* ── Admonitions: an ink card with a structural frame and a mono label.
+   Caution and warning take a dashed frame; only danger is red. ── */
 
-[data-theme="dark"] ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.theme-admonition.alert {
+  background: var(--paper-card);
+  border: 1px solid var(--hairline-structural);
+  color: var(--ink2);
+  --ifm-alert-foreground-color: var(--ink1);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-track {
-  background: transparent;
+.theme-admonition.alert--warning {
+  border-style: dashed;
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+.theme-admonition.alert--danger {
+  border-color: var(--red);
+  --ifm-alert-foreground-color: var(--red);
 }
 
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
+.theme-admonition.alert--danger [class*="admonitionHeading"] {
+  color: var(--red);
 }
 
-/* ── Selection highlight ── */
+/* ── Pagination and tabs ── */
+
+.pagination-nav__link {
+  border-color: var(--hairline-structural);
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--ink1);
+}
+
+.tabs__item {
+  border-radius: 0;
+}
+
+/* ── Search: DocSearch's button and modal on paper, in ink ──
+   DocSearch draws everything from its `--docsearch-*` variables; these
+   point them at the page's tokens. The selected result is an ink tint and
+   a matched word is ink with an underline, so search adds no hue.
+
+   DocSearch's stylesheet loads after this one and sets its defaults on
+   `:root`, so the mapping sits on its own `.DocSearch` roots (the navbar
+   button and the modal's container) instead, and the corner rules are
+   scoped under them to outrank its rules. */
+
+.DocSearch {
+  --docsearch-primary-color: var(--ink1);
+  --docsearch-highlight-color: var(--ink1);
+  --docsearch-focus-color: var(--ink1);
+  --docsearch-text-color: var(--ink2);
+  --docsearch-hit-color: var(--ink2);
+  --docsearch-secondary-text-color: var(--ink3);
+  --docsearch-icon-color: var(--ink3);
+  --docsearch-key-color: var(--ink3);
+  --docsearch-search-button-text-color: var(--ink3);
+  --docsearch-muted-color: var(--ink4);
+  --docsearch-error-color: var(--red);
+  --docsearch-subtle-color: var(--hairline-internal);
+  --docsearch-container-background: color-mix(in oklab, var(--ink1) 40%, transparent);
+  --docsearch-modal-background: var(--paper);
+  --docsearch-background-color: var(--paper-band);
+  --docsearch-footer-background: var(--paper-band);
+  --docsearch-key-background: var(--paper-band);
+  --docsearch-searchbox-background: var(--paper-card);
+  --docsearch-searchbox-focus-background: var(--paper-card);
+  --docsearch-search-button-background: var(--paper-card);
+  --docsearch-hit-background: var(--paper-card);
+  --docsearch-hit-highlight-color: color-mix(in oklab, var(--ink1) 8%, transparent);
+  --docsearch-soft-primary-color: color-mix(in oklab, var(--ink1) 8%, transparent);
+  --docsearch-modal-shadow: inset 0 0 0 1px var(--hairline-structural);
+  --docsearch-footer-shadow: inset 0 1px 0 var(--hairline-structural);
+  --docsearch-hit-shadow: none;
+  --docsearch-key-pressed-shadow: none;
+}
+
+/* DocSearch rounds these in its own rules rather than through a variable. */
+.DocSearch.DocSearch-Button,
+.DocSearch .DocSearch-Button-Key,
+.DocSearch .DocSearch-Commands-Key,
+.DocSearch .DocSearch-Modal,
+.DocSearch .DocSearch-Form,
+.DocSearch .DocSearch-Hit,
+.DocSearch .DocSearch-Hit a {
+  border-radius: 0;
+}
+
+/* ── Scrollbars: a thin hairline thumb on a clear track ── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-structural) transparent;
+}
+
+/* ── Selection: the highlighter, ink on yellow ── */
 
 ::selection {
-  background: rgba(178, 125, 64, 0.2);
-  color: inherit;
+  background: var(--highlighter);
+  color: var(--on-highlighter);
 }
 
 /* ── Animations ── */
@@ -181,9 +426,4 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-@keyframes pulseGlow {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
 }

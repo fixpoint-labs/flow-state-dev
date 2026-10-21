@@ -56,7 +56,7 @@ type LedgerRow = {
 // overrides before the engine builds its execution context.
 stripIntentOverrides();
 
-await runGoal(async (failures) => {
+await runGoal(async (failures, tell) => {
   const fixture = loadFixture<Fixture>(import.meta.url);
 
   if (fixture.seat === fixture.entry) {
@@ -86,6 +86,7 @@ await runGoal(async (failures) => {
   const board = taskBoard({
     name: BOARD_ID,
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: defineTaskCollection({ id: COLLECTION_ID, scope: "user" }),
     workers: {
       // The seat is a dispatcher, so the rows it claims run elsewhere. The flow
@@ -192,11 +193,14 @@ await runGoal(async (failures) => {
 
   // 2. It happened ELSEWHERE: each row names a session that is not the drain's.
   //    An inline seat settles the same rows from the parent session and fails
-  //    only here.
+  //    only here. A row that names no session is CAN'T TELL, not skipped: if
+  //    the field moved, this check would otherwise grade nothing and pass.
   for (const task of fixture.tasks) {
-    const ranIn = rows.get(task.id)?.output?.ranIn;
-    if (ranIn === undefined) continue;
-    if (ranIn === PARENT_SESSION) {
+    const ranIn = tell.over(
+      "2 · the session each row names",
+      [rows.get(task.id)?.output?.ranIn].filter((v): v is string => v !== undefined),
+    );
+    if (ranIn.includes(PARENT_SESSION)) {
       failures.push(`row "${task.id}" ran in the drain's own session — the seat did not hand off`);
     }
   }

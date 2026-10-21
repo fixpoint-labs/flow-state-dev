@@ -101,7 +101,7 @@ export type SkillEvaluatorBlock = EvaluatorDefinition<
  *
  * @param model - A model string, resolved by core through the app's model
  *   resolver when the block runs, or an evaluation model instance such as
- *   `openai.evaluationModel("gpt-5.4-mini")`, used as given. A model that
+ *   `openai.evaluationModel("gpt-6-luna")`, used as given. A model that
  *   can only generate is refused here, by core.
  *
  * @param options - `recentMessages`: how many earlier turns the model sees

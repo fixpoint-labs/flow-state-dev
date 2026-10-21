@@ -49,13 +49,15 @@ function assigneeKind(ran: string[]) {
     outputSchema: z.object({ handled: z.string() }),
     execute: (input: TaskWorkerInput, ctx) => {
       const { userId, orgId } = ctx.session.identity;
-      ran.push(`${(ctx.flow as { id: string }).id} ${input.taskId} as ${userId}@${orgId}`);
+      // A probe: the public view hides the instance address by design; this reads it anyway.
+      ran.push(`${(ctx.flow as unknown as { id: string }).id} ${input.taskId} as ${userId}@${orgId}`);
       return { handled: input.taskId };
     },
   });
   const board = taskBoard({
     name: "assignee-board",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: ledger(),
     workers: {
       work: dispatcher<TaskWorkerInput>({ name: "assignee-dispatch", action: "work", session: "per-task" }),
@@ -76,6 +78,7 @@ function boardFlow() {
   const board = taskBoard({
     name: "org-board",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: ledger(),
     workers: {
       lead: assignee("to-lead", LEAD),

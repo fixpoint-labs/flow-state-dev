@@ -39,7 +39,7 @@ import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk
 
 const orchestrator = generator({
   name: "orchestrator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [createClaudeCodeAgentCapability()],
 });
 ```
@@ -440,7 +440,7 @@ const workspace = createWorkspaceAgentCapability({
 
 generator({
   name: "coder",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Use the workspace agent to make the change.",
   uses: [workspace],
 });
@@ -501,6 +501,18 @@ default, not a lock. `disallowedTools` merges instead, so adding your own
 doesn't silently take the relocation ones away. `contain: false` turns all
 three off, which is what a trusted-workspace deployment wants and what nothing
 else should.
+
+### Choosing the model
+
+`model` takes a Claude model id, or a resolver asked once per run like `cwd` and
+`resume`, so one block can run a different model per session; a resumed
+conversation is handed it too. `null` leaves Claude Code on its default.
+
+`listClaudeModels({ env })` asks Claude Code which models it offers, with no
+message and no model turn, and resolves to `{ status: "models", models }` or
+`{ status: "failed", reason }`. Each model carries the concrete id its alias
+resolves to (`sonnet`, the default row), its name, and whether it is the default,
+so a stored id keeps naming one model after the alias moves on.
 
 ### Checking for a credential before you start
 

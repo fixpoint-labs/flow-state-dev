@@ -214,7 +214,8 @@ describe("validateClientProjection", () => {
 
 describe("defineResource client projection validation", () => {
   it("rejects `expose` + `data`", () => {
-    expect(() =>
+    // Built outside expect(), where an untyped callback still infers.
+    const define = () =>
       defineResource({
         ref: "memo",
         scope: "session",
@@ -223,8 +224,8 @@ describe("defineResource client projection validation", () => {
           expose: ["title"],
           data: (s) => ({ title: s.title }),
         },
-      })
-    ).toThrow(/at most one/);
+      });
+    expect(define).toThrow(/at most one/);
   });
 
   it("rejects an unknown `expose` key", () => {

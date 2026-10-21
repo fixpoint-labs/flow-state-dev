@@ -3,6 +3,10 @@ sidebar_position: 1
 title: Anatomy of a Flow
 ---
 
+import Figure from "@site/src/components/Figure";
+import FlowTypeInstanceSessionDrawing from "../docs/fundamentals/flow-type-instance-session.svg";
+import StateScopesDrawing from "../docs/fundamentals/state-scopes.svg";
+
 # Anatomy of a Flow
 
 This guide gives you a mental map of how a flow-state-dev application fits together. No code to build. Just concepts, connections, and orientation.
@@ -58,7 +62,7 @@ defineFlow({
 });
 ```
 
-![Definition, instance and session, and where each lives. defineFlow returns a definition in your code. Calling it makes an instance with its own id, which you register with the server. Sessions live in the store, and each records the instance that owns it. A request that names a session through a different instance is refused before anything runs](../docs/fundamentals/flow-type-instance-session.svg)
+<Figure svg={FlowTypeInstanceSessionDrawing} caption="Definition, instance, session: where each lives" description={"Definition, instance and session, and where each lives. defineFlow returns a definition in your code. Calling it makes an instance with its own id, which you register with the server. Sessions live in the store, and each records the instance that owns it. A request that names a session through a different instance is refused before anything runs"} />
 
 `defineFlow` returns a flow type. Call it, with no arguments, to produce the instance you register with the server. With no arguments, the instance's id is its kind, and requests address it by that id. Instances take merge-based overrides if you need to swap actions or config at creation time, and a definition that needs several configured copies declares that on itself — see [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance).
 
@@ -78,7 +82,7 @@ The HTTP flow: `POST /api/flows/:flowId/actions/:action` (or with `:sessionId` f
 
 Four scopes, each its own record with typed atomic operations:
 
-![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization, or one record per flow copy with isolateUserState. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session names its user and org but holds neither one's state. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](../docs/fundamentals/state-scopes.svg)
+<Figure svg={StateScopesDrawing} caption="The four state scopes" description={"Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization, or one record per flow copy with isolateUserState. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session names its user and org but holds neither one's state. Blocks read and write all four; the browser sees only the fields a scope's client config exposes"} />
 
 Request scope lasts for one action run. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources. [State and scopes](/docs/fundamentals/state-and-scopes) compares the four lifetimes in one table.
 

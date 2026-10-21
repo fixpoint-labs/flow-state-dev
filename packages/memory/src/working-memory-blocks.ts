@@ -24,7 +24,7 @@ export interface WorkingMemoryBlockConfig {
 /** Config for the observe generator. */
 export interface WorkingMemoryObserveConfig extends WorkingMemoryBlockConfig {
   name?: string
-  /** Model ID for the extraction LLM. Default: 'gpt-5-mini'. */
+  /** Model ID for the extraction LLM. Default: 'gpt-6-luna'. */
   model?: string
   /** Maximum observations to extract per turn. Default: 3. */
   maxExtractPerTurn?: number
@@ -75,7 +75,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
 
   return generator({
     name: config?.name ?? 'workingMemory/observe',
-    model: config?.model ?? 'gpt-5-mini',
+    model: config?.model ?? 'gpt-6-luna',
     inputSchema: z.string(),
     outputSchema: observationsSchema,
     resources: { workingMemory: workingMemoryResource },
@@ -253,7 +253,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * import { workingMemoryCapture } from '@flow-state-dev/memory'
  *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
- *   .sideChain((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))
+ *   .sideChain((input) => input.message, workingMemoryCapture({ model: 'gpt-6-luna' }))
  *   .step(chat)
  * ```
  *

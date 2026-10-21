@@ -13,10 +13,18 @@
  *    refuse. A refusal releases the lease and writes nothing.
  * 3. Record the resolution on the suspension, then continue the SAME request.
  *    `runAction` releases the lease when the run ends or parks again.
- * 4. If setup fails before the run starts, put the suspension back exactly as
- *    it was admitted, release the lease, and rethrow, so the resume can be
- *    tried again. Nothing after the run starts can reach this: see the
- *    containment note on `createInboundTransportHost`'s `continueRequest`.
+ * 4. If setup fails before the continuation's handle is returned, put the
+ *    suspension back exactly as it was admitted, release the lease, and
+ *    rethrow, so the resume can be tried again. Nothing after the handle is
+ *    returned can reach this: see the containment note on
+ *    `createInboundTransportHost`'s `continueRequest`.
+ *
+ * Waiting for the request's turn on its session's concurrency key is not
+ * setup. That wait runs after the handle is returned, inside `finished`, so
+ * the resolution is already accepted. If the wait fails (the queue budget runs
+ * out, or the backend fails), the host releases this resume's own
+ * lease (passed as `leaseId`) and the suspension keeps its resolution. The
+ * request stays parked and the durability sweep re-drives it.
  */
 import {
   RESUME_ACTION_STATUS,
@@ -138,6 +146,7 @@ export async function resumeUnderLease<TRefusal>(
     });
     const handle = await deps.continueRequest({
       requestId: args.requestId,
+      leaseId: lease.leaseId,
       resumeContext: {
         suspensionId: suspension.suspensionId,
         action: args.action,
@@ -187,6 +196,7 @@ export async function continueUnderLease<TRefusal>(
     }
     const handle = await deps.continueRequest({
       requestId: args.requestId,
+      leaseId: lease.leaseId,
       ...(admitted.resumeContext !== undefined ? { resumeContext: admitted.resumeContext } : {})
     });
     return { ok: true, handle };

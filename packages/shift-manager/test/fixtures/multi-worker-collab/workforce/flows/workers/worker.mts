@@ -184,7 +184,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
         // answers on the user's behalf; the user answers through the
         // planner's conversation.
         const parked = await ledger.awaitReview(taskId, control === "silent-park" ? undefined : piece.asks, {
-          claim: currentWorkerClaim(),
+          claim: currentWorkerClaim(ctx),
           fromRunning: true,
           onQuestion: true,
         });

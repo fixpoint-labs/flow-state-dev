@@ -125,6 +125,12 @@ describe("the shortcuts", () => {
     expect(screen.getByTestId("right-panel-rail")).toBeTruthy();
     act(() => void fireEvent.keyDown(document.body, { key: "k", metaKey: true }));
 
+    // Shift+⌘K opens Jump to already in message mode.
+    act(() => void fireEvent.keyDown(document.body, { key: "K", metaKey: true, shiftKey: true }));
+    expect((screen.getByTestId("jump-input") as HTMLInputElement).value).toBe("> ");
+    expect(screen.getByTestId("jump-message")).toBeTruthy();
+    act(() => void fireEvent.keyDown(document.body, { key: "K", metaKey: true, shiftKey: true }));
+
     press("[");
     press("]");
     expect(sidebar.getAttribute("data-collapsed")).toBe("false");

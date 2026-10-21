@@ -44,7 +44,7 @@ framework. The methodology mitigates that:
 fsdev benchmark apps/pattern-benchmark/src/benchmark.ts --format markdown
 
 # override the executor model (e.g. an OpenRouter free-tier model)
-fsdev benchmark apps/pattern-benchmark/src/benchmark.ts --model openrouter/meta-llama/llama-3.1-70b-instruct
+fsdev benchmark apps/pattern-benchmark/src/benchmark.ts --model openrouter:meta-llama/llama-3.1-70b-instruct
 
 # cap spend and write JSON for further processing
 fsdev benchmark apps/pattern-benchmark/src/benchmark.ts --max-cost 0.50 --output results.json

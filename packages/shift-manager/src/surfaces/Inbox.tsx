@@ -6,7 +6,9 @@
  *
  * Drawn as design v2's Inbox (v2:559-645): a 400px list whose items carry the
  * highlighter square (each one waits on the user), and a detail on the
- * inspector surface headed by the question at 26px. Under it, *From the
+ * inspector surface headed by the ask's short title at 26px; an ask that gave a
+ * title has its message drawn under it at body size, as markdown, rather than
+ * the whole ask set in display type. Under it, *From the
  * session* lists the worker's last tool calls before it asked, and the
  * user's own lines sent into that session follow (BR-18), both read from
  * the ask's session.
@@ -16,7 +18,8 @@
  * worker flow has no door gets the box disabled, saying so; Approve and Reject are
  * untouched (BR-22).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Markdown from "react-markdown";
 import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, Meta, ScreenTitle, SectionFailure, StateSquare, Tabs } from "../components/ui";
@@ -36,6 +39,10 @@ type Filter = (typeof FILTERS)[number];
 
 function matches(filter: Filter, ask: Ask): boolean {
   return filter === "All" || (filter === "Approvals") === (ask.kind === "approval");
+}
+
+function askHeading(ask: Ask): string {
+  return ask.item.title || ask.item.message || "(no message)";
 }
 
 export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapshot; suspensionId: string | null; gaps: Gaps }) {
@@ -115,7 +122,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                         </span>
                       </span>
                       <span className="line-clamp-2 text-sm leading-[1.3] font-semibold" data-testid="inbox-item-question">
-                        {ask.item.message ?? "(no message)"}
+                        {askHeading(ask)}
                       </span>
                       <Meta className="text-muted-foreground" testId="inbox-item-from">
                         {workerLabel(ask.workerId ?? "unknown worker")} · task —
@@ -142,8 +149,9 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                   {workerLabel(selected.workerId ?? "unknown worker")} asked, in session {selected.sessionId}
                 </Meta>
                 <ScreenTitle scale="detail" testId="inbox-detail-title">
-                  {selected.item.message ?? "(no message)"}
+                  {askHeading(selected)}
                 </ScreenTitle>
+                {selected.item.title && selected.item.message ? <AskBody text={selected.item.message} /> : null}
                 <AskCard ask={selected} titled />
                 <AskSession key={selected.item.suspensionId} ask={selected} reread={replies} />
               </div>
@@ -166,6 +174,30 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
           </>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * A titled ask's message, under its title: body text drawn from markdown, so
+ * a list of questions is a list and code is code. Headings in it stay body
+ * size; the ask's title is the only heading.
+ */
+const bodyHeading = ({ children }: { children?: ReactNode }) => <p className="font-semibold">{children}</p>;
+const BODY_COMPONENTS = { h1: bodyHeading, h2: bodyHeading, h3: bodyHeading, h4: bodyHeading, h5: bodyHeading, h6: bodyHeading };
+
+function AskBody({ text }: { text: string }) {
+  return (
+    <div
+      className={cn(
+        "text-sm leading-[1.55]",
+        "[&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1",
+        "[&_code]:bg-foreground/10 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[12.5px]",
+        "[&_pre]:my-1.5 [&_pre]:overflow-x-auto [&_pre]:bg-foreground/10 [&_pre]:p-2.5 [&_pre_code]:bg-transparent [&_pre_code]:px-0",
+      )}
+      data-testid="inbox-detail-body"
+    >
+      <Markdown components={BODY_COMPONENTS}>{text}</Markdown>
     </div>
   );
 }

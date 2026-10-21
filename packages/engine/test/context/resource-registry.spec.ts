@@ -8,6 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
   JsonObject,
   ResourceConfig,
@@ -191,6 +192,7 @@ function makeRegistry(options: {
   return createScopeResourceRegistry({
     scope: "session",
     scopeId: "sess_1",
+    orgId: DEFAULT_ORG_ID,
     cellOf: () => "sess_1",
     configs: options.configs ?? {},
     readResources: () => state,
@@ -226,6 +228,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
@@ -258,6 +261,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
@@ -287,6 +291,7 @@ describe("concurrent resource writes", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: {
         spine: makeResourceConfig({ stateSchema: z.object({}).passthrough(), default: {} }),
@@ -885,6 +890,7 @@ describe("delta-verb refusal against a rewriting schema (FIX-1269)", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: options.configs,
       readResources: () => state,
@@ -1292,6 +1298,7 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
@@ -1335,6 +1342,7 @@ describe("createScopeResourceRegistry — collections", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
@@ -1529,6 +1537,7 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,
@@ -1573,6 +1582,7 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     const registry = createScopeResourceRegistry({
       scope: "session",
       scopeId: "sess_1",
+      orgId: DEFAULT_ORG_ID,
       cellOf: () => "sess_1",
       configs: { items: nsConfig },
       readResources: () => state,

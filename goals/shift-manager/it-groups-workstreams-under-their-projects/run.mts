@@ -917,7 +917,8 @@ async function race(setup: Setup, apis: { owner: LabApi; member: LabApi; crowd: 
     const sessions = new Set(done.map((o) => String(o.output?.workstream?.sessionId)));
     if (sessions.size > 1) fail(leg, `${who}: the opens answered ${sessions.size} different sessions`);
     const made = done.filter((o) => o.output?.opened === true).length;
-    if (done.length > 0 && made !== 1) fail(leg, `${who}: ${made} of the opens say they made the entry, not one`);
+    // Exactly one open makes the entry; none completing is also the refusal above.
+    if (made !== 1) fail(leg,`${who}: ${made} of the opens say they made the entry, not one`);
     if (done.some((o) => o.output?.workstream?.owner !== who)) fail(leg, `${who}: an open answered another owner's entry`);
     if (sessions.size === 1) answered.set(who, [...sessions][0]!);
   }

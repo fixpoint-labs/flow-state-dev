@@ -19,7 +19,7 @@
  */
 import { cleanup, render } from "@testing-library/react";
 import { useState } from "react";
-import JsxParser from "react-jsx-parser";
+import JsxParser, { type TProps } from "react-jsx-parser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkExpressions,
@@ -369,7 +369,8 @@ describe("the guard and the renderer agree on what parses", () => {
     `<></>`,
   ];
 
-  const components = new Proxy({} as Record<string, unknown>, { get: () => "span" });
+  // Every name resolves to the intrinsic `span`, which the parser renders though its type asks for components.
+  const components = new Proxy({} as NonNullable<TProps["components"]>, { get: () => "span" });
 
   function rendererAccepts(jsx: string): boolean {
     let rejected = false;

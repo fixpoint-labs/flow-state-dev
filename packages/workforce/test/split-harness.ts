@@ -30,6 +30,8 @@ export type SplitControls = {
   failNoticeTurn: Set<string>;
   onErrored: Record<string, Piece>;
   onCompleted: Record<string, Piece>;
+  /** What a worker's turn on a notice answers, in place of what it heard. */
+  noticeAnswer: Record<string, unknown>;
   refusals: Array<{ worker: string; error: string }>;
   turns: Array<{ worker: string; sessionId: string; message: string }>;
 };
@@ -41,7 +43,7 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
   const turn = handler({
     name: "splitter-turn",
     inputSchema: doorInput,
-    outputSchema: z.string(),
+    outputSchema: z.unknown(),
     resources: { ...installation.resources, ...board.resources },
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
@@ -59,7 +61,7 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
         pieces.push(controls.onCompleted[worker]!);
         delete controls.onCompleted[worker];
       }
-      if (pieces.length === 0) return `${worker} heard: ${input.message}`;
+      if (pieces.length === 0) return notice && Object.hasOwn(controls.noticeAnswer, worker) ? controls.noticeAnswer[worker] : `${worker} heard: ${input.message}`;
       const ref = await board.board.resolver(ctx as never);
       if (ref === undefined) {
         controls.refusals.push({ worker, error: "no_delegation_board" });
@@ -118,7 +120,7 @@ export function splitWorkers(): WorkerManifest[] {
 
 /** A board host with the splitter flow registered, and its controls. */
 export function bootSplitHost(options: BoardHostOptions = {}) {
-  const controls: SplitControls = { plans: {}, failNoticeTurn: new Set(), onErrored: {}, onCompleted: {}, refusals: [], turns: [] };
+  const controls: SplitControls = { plans: {}, failNoticeTurn: new Set(), onErrored: {}, onCompleted: {}, noticeAnswer: {}, refusals: [], turns: [] };
   const host = bootBoardHost({
     standard: splitWorkers(),
     flows: (installation) => ({ splitter: splitterFlow(installation, controls) }),

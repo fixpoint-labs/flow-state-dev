@@ -76,6 +76,7 @@ export type TestContextRuntime = {
   userId: string;
   orgId?: string;
   flow: FlowInstance;
+  /** Trace rows are in this list. `testItems().blockOutputs()` reads them. */
   getItems: () => OutputItem[];
 };
 
@@ -610,6 +611,6 @@ export async function createTestContext<TInput = unknown>(
     userId,
     orgId,
     flow,
-    getItems: () => response.getItems()
+    getItems: () => response.getItems() as OutputItem[]
   };
 }

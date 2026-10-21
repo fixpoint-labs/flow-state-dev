@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
-import type {
-  GeneratorModel,
-  ModelResolver,
-  SequencerDefinition,
-} from "@flow-state-dev/core/types";
+import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
 import type {
   BenchmarkRegistry,
   BenchmarkSubject,
   BenchmarkTask,
+  SequencerDefinition,
 } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -256,7 +253,7 @@ describe("runBenchmark", () => {
     const report = await runBenchmark({
       subjects: [genSubject("p", "pattern")],
       tasks: [tasks[0]],
-      model: "openrouter/meta-llama/llama-3.1-70b-instruct", // unpriced
+      model: "openrouter:meta-llama/llama-3.1-70b-instruct", // unpriced
       judgeModel: "anthropic/claude-haiku-4-5", // priced
       runs: 1,
       maxCostUsd: 1.0,

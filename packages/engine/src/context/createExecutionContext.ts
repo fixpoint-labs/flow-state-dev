@@ -38,7 +38,7 @@ import type {
   StateSnapshotItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
+import type { BlockValueInternal, RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
@@ -2488,6 +2488,10 @@ export async function createExecutionContext<
     return modelResolver(modelId, blockName);
   }) as ModelResolver;
   resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
+  const providerOf = modelResolver.providerOf;
+  if (providerOf !== undefined) {
+    resolveModel.providerOf = (modelId: string) => providerOf.call(modelResolver, modelId);
+  }
   // Evaluator strings resolve only through the flow's own resolver. When an
   // app-supplied resolver has no `resolveEvaluationModel`, the hook stays
   // absent and the evaluator refuses the string; the default resolver is
@@ -2498,8 +2502,8 @@ export async function createExecutionContext<
       resolveEvaluationModel.call(modelResolver, modelId, blockName);
   }
 
-  const readLiveItems = (): Array<OutputItem | BlockTraceItem> => {
-    const typedResponse = responseRef.current as { getItems?: () => Array<OutputItem | BlockTraceItem> };
+  const readLiveItems = (): RuntimeItem[] => {
+    const typedResponse = responseRef.current as { getItems?: () => RuntimeItem[] };
     if (typeof typedResponse.getItems === "function") {
       return typedResponse.getItems();
     }

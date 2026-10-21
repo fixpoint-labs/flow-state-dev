@@ -12,13 +12,15 @@
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "lint:brand": "node scripts/lint-brand.mjs"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.7.0",
-    "@docusaurus/plugin-client-redirects": "3.9.2",
-    "@docusaurus/plugin-content-docs": "^3.7.0",
-    "@docusaurus/preset-classic": "^3.7.0",
+    "@docusaurus/core": "^3.10.2",
+    "@docusaurus/plugin-client-redirects": "3.10.2",
+    "@docusaurus/plugin-content-docs": "^3.10.2",
+    "@docusaurus/preset-classic": "^3.10.2",
+    "@flow-state-dev/design-system": "workspace:*",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.1.0",
     "prism-react-renderer": "^2.3.0",
@@ -26,10 +28,9 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "^3.7.0",
-    "@docusaurus/tsconfig": "^3.7.0",
-    "@docusaurus/types": "^3.7.0",
-    "typescript": "~5.7.0"
+    "@docusaurus/module-type-aliases": "^3.10.2",
+    "@docusaurus/tsconfig": "^3.10.2",
+    "@docusaurus/types": "^3.10.2"
   },
   "browserslist": {
     "production": [

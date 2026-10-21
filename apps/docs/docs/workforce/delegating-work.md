@@ -2,7 +2,7 @@
 title: Delegating work
 sidebar_position: 3.6
 sidebar_label: Delegating work
-description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for its own."
+description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for any worker on your roster that takes tasks."
 ---
 
 # Delegating work
@@ -12,6 +12,8 @@ A worker can hand work to other workers on your roster. The workers it hands wor
 There are two ways to hand something over. A [coordinator](./coordinators.md) passes a question on as a **post**, and the delegate answers it. Work that has to be done, like a change made, a report written or a run that takes an hour, goes as a **task**: the worker files it on a board, for one of its delegates. The delegate works it in a new session of its own, a **task session**, and the worker that filed it hears how it ended.
 
 A worker files tasks when one of its delegates can take a task. There's no switch to flip. Who the worker hands work to decides it.
+
+To ask another worker something without handing it work, a worker sends a message instead. See [Messaging other workers](./messaging-workers.md#message-or-delegate).
 
 ## Giving a worker the task tools
 
@@ -28,13 +30,17 @@ delegates: [eng.coder, eng.reviewer]
 
 When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` records a task without starting it, until `dispatchTask` names it by its `taskId`. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
 
-A worker whose delegates only take posts, like a coordinator that routes questions, gets none of the tools. A worker with no delegates gets none either. On a session of either, the app's actions answer:
+A worker whose delegates only take posts, like a coordinator that routes questions, has no one to hand a task to, and neither does a worker with no delegates. On a session of either, the app's actions answer:
 
 ```json
 { "ok": false, "error": "no_delegation_board" }
 ```
 
-Add a delegate that takes tasks partway through a conversation and the tools are there on the next call; remove the last one and they're gone.
+The worker's own turn still gets the tools on the built-in and coordinator flows, for the steps it files for itself: see [Working in steps](#working-in-steps).
+
+In a task session the rule is wider: a worker working a task can hand pieces to any worker on the roster that takes tasks, delegates or not. See [Splitting a task](#splitting-a-task).
+
+Add a delegate that takes tasks partway through a conversation and it can be handed tasks on the next call; remove the last one and the actions answer `no_delegation_board` again.
 
 ### On your own worker flow
 
@@ -61,9 +67,9 @@ export const emFlow = workerFlow((installation) => {
 
   const answer = generator({
     name: "em-answer",
-    model: "openai/gpt-5.4-mini",
+    model: "openai/gpt-6-luna",
     inputSchema: messageInput,
-    uses: [board.tools],
+    uses: [board.tools, board.messages],
     prompt: "You lead the feature. File the work for your delegates; never do it yourself.",
     user: (input) => input.message,
   });
@@ -93,17 +99,44 @@ What the kit gives you, and where each piece goes:
 | Field | Put it in |
 |-------|-----------|
 | `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
+| `messages` | The same `uses`. It carries `messageWorker`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
 | `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
-| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends. |
+| `planned(turn)` | Wrap the block that answers a message, and use what it returns wherever that block runs as the worker: the `run` action, the task entry's `turn`, and `entries`. The steps the worker files for itself then run in the same request. See [Working in steps](#working-in-steps). Leave it out and the flow's workers file no steps. |
+| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. |
 | `files(ctx)` | Read it when you need to know whether the running session files now. |
 | `taskDelegates(ctx)` | The session's delegates as a task sees them: `available` (worker id to flow) and `unavailable` (worker id to why). |
 
 Compose `board.tools` once on a block. A block that also gets the task tools another way, such as Orchestration's `createTaskToolsCapability`, has two tools of the same name, and the turn is refused.
 
 A flow that leaves the kit out gives its workers no task tools, whatever their delegates.
+
+## Working in steps
+
+A worker can plan its own work. A task it files naming **itself** is a **step**: it isn't handed to anyone, and no new session opens for it. When the worker's turn ends, the same request works the steps, one at a time and in order, each as a turn of the worker in the same session. A step sees the conversation so far, the steps before it included, and the results of the steps listed in its `deps`. Then the worker answers once more, told how each step ended, and that answer is what the request returns: your reply in a conversation, or the task's result in a task session.
+
+```json title="Three dispatchTask calls: the steps the worker files for itself"
+{ "goal": "Outline the post", "assignee": "eng.writer" }
+{ "goal": "Draft the post", "assignee": "eng.writer", "deps": ["<the outline's taskId>"] }
+{ "goal": "Tighten the draft", "assignee": "eng.writer", "deps": ["<the draft's taskId>"] }
+```
+
+A step filed with `addTask` is recorded, as any task is, and waits until `dispatchTask` names it by its `taskId`.
+
+A step that fails isn't tried again, and a step waiting on it is cancelled. The worker's last turn hears both, and can do the work itself, explain, or carry on. A request that files no step costs nothing extra. One that does costs a model turn for each step, and one more for the answer.
+
+The worker gets the task tools for its steps on the built-in and coordinator flows even with no delegates. A few rules keep a step the worker's own:
+
+- Only the worker's own turn files one. An action naming the worker, or a filing from anywhere else, is refused.
+- A step's own turn files no step for itself. A step that finds more work says so in its answer, and the answer after the steps deals with it.
+- A step depends only on other steps, and a delegate's task only on other tasks: a step whose `deps` names a delegate's task, or a delegate's task whose `deps` names a step, is refused when it is filed.
+- The turn that answers after the steps can't file another step for itself. It can still hand a task to a delegate.
+- A step can't be waited on (`dispatchTask` with `wait`), and it can't be completed, failed or blocked with a tool call: it ends when its turn answers. It can be changed with `updateTask` before it starts, or cancelled.
+- A step stays the worker's, and a delegate's task stays a delegate's: `assignTask` won't move one into the other. Cancel it and file it again.
+
+The worker's `listTasks` lists the session's steps beside the tasks it dispatched; a step's `assignee` is the worker itself. Steps sit on a ledger of their own, `plan`, which your app reads the same way it reads `tasks` ([Showing a user's boards in your app](#showing-a-users-boards-in-your-app)). On a worker with no delegate that takes tasks, the app's `<tool>_tasks` actions answer `no_delegation_board`, so read the `plan` ledger to show its steps. They count toward [the 100 tasks under one top task](#how-far-it-goes), and add no depth.
 
 ## Where the tasks go
 
@@ -142,14 +175,29 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it, as long as it has delegates of its own that take tasks. It files the pieces on its own task session's board, for its own delegates, and its task waits until every piece has ended. Then the task completes with what the pieces returned, or fails naming the pieces that failed for good, and the session above hears it.
+A worker given a task can split it into pieces. It can hand a piece to any other worker on your roster that takes tasks, not only its own delegates, so a task that needs something another worker knows can get it from that worker. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
+
+The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
+
+```json
+{
+  "answer": "The codename is Bluebird.",
+  "pieces": [
+    { "taskId": "task_8f2…", "goal": "Ask the archivist for the codename", "assignee": "archivist", "status": "completed", "output": "Bluebird" }
+  ]
+}
+```
+
+If the worker didn't get a turn after the last piece ended (after a server restart, for example), the output is `{ pieces }` with no `answer`, so treat `answer` as optional. A task with a piece that failed for good fails, naming it. Only the session that filed the task hears it end; it doesn't hear each piece.
 
 ```text
 your conversation ── task ──▶ lead's task session ── pieces ──▶ two task sessions
-        ◀── "completed, with both results" ──┘
+        ◀── "completed, with lead's answer" ──┘
 ```
 
-Each piece's ending wakes the worker for a turn before it counts toward the task. When a piece fails for good, that turn can dispatch the work again, for the same delegate or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
+A worker on a task can't wait for a piece inside its turn: `dispatchTask` with `wait` is refused there. It files the piece without `wait` and ends its turn, and the piece's ending wakes it.
+
+When a piece fails for good, the turn its ending woke can dispatch the work again, to the same worker or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
 
 Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
 
@@ -163,7 +211,7 @@ A chain stops at **five boards deep**, counting the board of the session that fi
 { "ok": false, "error": "total_task_cap_exceeded" }
 ```
 
-Each task is a session and at least one model turn, so a worker that splits at every level gets expensive fast.
+Each task is a session and at least one model turn, so a worker that splits at every level gets expensive fast. A [step](#working-in-steps) counts toward the 100 too, but it opens no session and adds no depth.
 
 If your jobs need more than 100 tasks under one top task, raise the limit when you register the flows:
 
@@ -176,5 +224,6 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 ## Related pages
 
 - [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.
+- [Messaging other workers](./messaging-workers.md): asking another worker something without filing a task.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.
 - [Task board](../orchestration/task-board.md): the board and the task tools underneath.

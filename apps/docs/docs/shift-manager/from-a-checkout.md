@@ -12,7 +12,7 @@ If you've cloned the flow-state-dev repository, Shift Manager comes with two Lab
 
 The `fsd` profile's coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so.
 
-The [Shift Coordinator](../workforce/shift-coordinator.md) answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`.
+The [Shift Coordinator](../workforce/shift-coordinator.md) answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-6-luna`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
 
 To run the scripted coder (`stub`) instead of Claude Code, set `DEVFORCE_LAB_HARNESS=stub`. It writes one file and costs nothing. A `Coder:` line at start names the coder the Lab started with.
 
@@ -48,7 +48,11 @@ Ask the Shift Coordinator for work on either project, and say which one, for exa
 
 Before cutting that branch, the Lab fetches the upstream your `main` tracks, usually `origin/main`, and starts from whichever is newer, that upstream or your local `main`. So you don't need to pull first, and commits you haven't pushed are kept. Your own `main`, its files and your index aren't touched.
 
-If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run compares your `main` with the copy of its upstream you last fetched instead, and a warning prints where you started Shift Manager.
+If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run starts from your local `main`, and a warning prints where you started Shift Manager.
+
+The Lab pins the URL of each remote and the upstream your branches track the first time it starts with your checkout, and fetches only from those. If you change a remote's URL on purpose, the next run fetches nothing, starts from your local `main`, and prints a warning naming a pin file. If you change a branch's upstream, the run still fetches the pinned upstream and prints the same kind of warning. Either way, delete that pin file and restart Shift Manager to accept the change.
+
+A coding run works in your checkout with your trust, the way Claude Code does when you start it there. It can create and move branches, tags and remote-tracking refs in your repository.
 
 Only those two projects get a worktree of your checkout. Apart from that fetch, the Lab reaches no git remote, so a coding run on a project you add yourself, even one on this repository, is refused, naming the repository, and nothing is cloned.
 

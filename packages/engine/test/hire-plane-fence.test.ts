@@ -14,7 +14,7 @@ import {
   dispatcher,
   handler,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { FlowInstance, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../src";
 import { InstancePinMismatchError } from "../src/context/instance-pin";
 import { createMockModelResolver } from "@flow-state-dev/testing";
@@ -53,7 +53,9 @@ const whoami = handler({
   execute: async (input, ctx) => {
     const seen = ctx.resources.seen as unknown as ResourceCollectionRef;
     const config = ctx.flow.config as { instructions?: string };
-    const instance = (ctx.flow as { id: string }).id;
+    // A probe: the public view hides the instance address by design; this reads
+    // it anyway, to observe which copy ran.
+    const instance = (ctx.flow as unknown as { id: string }).id;
     const { userId = "", orgId = "" } = ctx.session.identity;
     await seen.create(input.tag, {
       instance,
@@ -240,7 +242,7 @@ async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}
   return { state, runtime, call, act, seenIn };
 }
 
-function worker(id: string, instructions: string) {
+function worker(id: string, instructions: string): FlowInstance {
   return workerKind({ id, config: { instructions } });
 }
 

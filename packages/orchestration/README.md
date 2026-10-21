@@ -346,8 +346,7 @@ Anything that reports *which* task runs next needs both; anything asking only
 
 ### Dispatchers
 
-`fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
-`classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. None of
+`fifoDispatcher`, `topologicalDispatcher` (the default), and `priorityDispatcher`. None of
 them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
 on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
 differ only in ordering. `fifoDispatcher` and
@@ -361,12 +360,17 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, mode, onReview, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
 single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
+`mode` (`"plan"` default | `"delegation"` — whether the drain waits on its tasks: a plan
+board runs every task inline and waits on each, a delegation board hands every task to
+another session through a dispatcher assignee and waits on none; a plan board holding a
+dispatcher, a delegation board with an inline assignee, and a delegation board with no
+dispatcher are refused at construction, naming the fix),
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
@@ -400,7 +404,7 @@ or reassign its tasks. See the docs, "Changing tasks from outside a run".
 Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
 any of them is a construction error, so configure caps on
-`getOrCreateTaskCollection`'s sequencer/request backing instead. Per-task retries
+`getOrCreateTaskCollection`'s `state` backing instead. Per-task retries
 are set via `maxAttempts` on each task (`TaskInit`), not on the board. At the retry
 budget the failing task settles terminal `errored` and the board's completion item
 reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries` and
@@ -432,12 +436,15 @@ failure by default; only a composition that supplies a tail able to read the rep
 
 #### Dispatching tasks through a dispatcher assignee
 
-An assignee under `workers` is a block. Put a `dispatcher({ action, session })`
-in that position and the assignee dispatches its tasks: the drain claims a row, sends a
-`task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
-entry's block runs in a **child session** of the session that drained — on a request
-of its own — and settles the row itself. Any other block in that position runs
-inline in the drain. The worker is declared once, on the flow, exactly like an
+An assignee under `workers` is a block. On a board declared `mode: "delegation"`, put a
+`dispatcher({ action, session })` in that position and the assignee dispatches its tasks:
+the drain claims a row, sends a `task` dispatch to the flow's `task.actions[action]`
+entry, and moves on, while the entry's block runs in a **child session** of the session
+that drained — on a request of its own — and settles the row itself. Every assignee on a
+delegation board dispatches, and the drain waits on none of its rows; a board that runs
+its assignees inline is a plan board (the default), which waits on every row and takes
+no dispatcher. `taskBoard()` refuses a board whose assignees contradict its mode, naming
+the fix. The worker is declared once, on the flow, exactly like an
 action. An assignee holding anything other than a block (an object such as
 `{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
@@ -457,9 +464,9 @@ const issueLedger = defineTaskCollection({
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",               // required once any assignee dispatches
+  mode: "delegation",                  // every row is dispatched; the drain waits on none
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
-    triage: triageBlock,               // runs inline
     implement: dispatcher({            // dispatches to flow.task.actions.implement
       name: "dispatch-implement",
       action: "implement",
@@ -551,7 +558,7 @@ declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, labe
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
 **An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
-allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
+allowSessionState?, taskTurn? })` returns a `TaskBinding` to pass as a task entry's `from`.
 The entry then needs no board in its flow, and takes tasks from any board whose
 ledger `resolve(ledgerId, ctx, partition)` returns (`Promise<TaskCollectionRef | undefined>`).
 The ledger id is the `boardId` the sending board dispatches under, so a board over a
@@ -565,6 +572,14 @@ throws `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`, carrying `entry`
 that ledger. The id arrives on the dispatch, so resolve it against `ctx`, never from
 a process-wide map. `uses` declares the ledgers' resources, `onError` defaults to
 `"skip"`, and `allowSessionState` accepts an entry whose blocks keep session state.
+`taskTurn` defaults to `true`, which makes each run of the entry a task turn
+(`isTaskTurn(ctx)`): `dispatchTask` with `wait: true` is refused, and the run gets
+`parkOnQuestion`, whose question goes to whoever filed the task. Set `taskTurn: false`
+for an entry whose run answers the user directly: it can wait on work it dispatches,
+and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the
+task is still current, and task-tool writes from the run can touch only the task it
+holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session
+state; if it does, its runs are task turns anyway.
 
 ```ts
 task: {
@@ -590,6 +605,27 @@ task: {
     },
   },
 },
+```
+
+`currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`, returns the
+claim ticket (`TaskClaimTicket`, carrying `taskId` and `attempt` among others)
+of the task the calling worker holds. Pass the block's own `ctx`. It answers in a worker
+the board runs inline and in a worker reached through a task entry. It returns
+`undefined` everywhere else: a coordinator, a block wired directly, and any other
+request the worker starts or resumes. A worker's task-tool writes are limited to the
+task it holds. A write naming a different task is refused with
+`task_write_declined: you hold task "<held>", not "<named>"`.
+
+```ts
+const worker = handler({
+  name: "report",
+  inputSchema: taskWorkerInputSchema,
+  outputSchema: z.object({ result: z.string() }),
+  execute: async (input, ctx) => {
+    const claim = currentWorkerClaim(ctx); // undefined outside a claimed worker
+    return { result: `${input.goal} (task ${claim?.taskId}, attempt ${claim?.attempt})` };
+  },
+});
 ```
 
 The `task` dispatch carries the claim's identity (`boardId`, `taskId`, `attempt`,
@@ -661,7 +697,9 @@ board's drain in an outer, judge-gated loop: seed → drain → judge → (repla
 repeat → finalize. The `judge` returns a three-way `Verdict`
 (`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
 the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
-The board must be request- or resource-backed. `parallelTasks` and `planAndExecute`
+The board must be request- or resource-backed and a plan board: a delegation board, whose
+drain returns while its tasks still run, and an `onReview: "exit"` board, whose drain can return
+with a task parked, are refused at construction. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Skills
@@ -762,9 +800,7 @@ ready row as soon as it's written, the way a Workforce conversation does. It tak
 fields, or `taskId` for a recorded row, and with `wait` it parks the turn until the task ends
 ([below](#waiting-for-a-tasks-answer)). On such a board `addTask` and
 `assignTask` record rows that wait for a dispatch, and `addTask` answers
-`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`, so the
-standalone `taskTools` and a custom resolver offer no `dispatchTask`, and their `addTask` files a
-row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
+`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`. Without it the tools offer no `dispatchTask`, and `addTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
 the `dispatchTask_<board>` action, which never waits.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
@@ -782,16 +818,9 @@ board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards `taskBoard` builds itself — not the capability
-> surface on its own. Wiring the
-> exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
-> generator's own-state board through a bare, **uncapped** collection: `addTask`
-> there is unbounded. For a bounded board on that path, build the
-> collection yourself with
-> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
-> resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
-> target the host generator's own state via `ctx.parent` (each tool runs as a
-> child block, so `ctx.sequencer` is the wrong container) and name the board's
-> `stateKey` (`DELEGATION_BOARD_FIELD`).
+> surface on its own. A resolver you hand to `createTaskToolsCapability(resolver)`
+> is bounded only if the collection it returns was built with
+> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })`.
 
 **Every `taskTools` call reports a problem the same way.** A status change the
 task's current status does not permit is a recoverable tool result too, not a
@@ -877,11 +906,14 @@ whatever runs the board calls `resumeOwedWaits` as it touches the board outside 
 run, a task's notice), and the host has durable execution and a running durability sweeper
 (`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
-`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
+`taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`. On a task turn a wait is
+refused with `wait_unavailable`; a layer that has its own way for a task to wait on another
+passes it as `taskTurnInstead` (a sentence), and the refusal and the `dispatchTask` description
+say it in place of the generic advice.
 
 Two functions sit under the option, for a layer that builds its own board surface:
 
-- `dispatchAndWait(ctx, collection, init, { timeoutMs? })`, from
+- `dispatchAndWait(ctx, collection, init, { timeoutMs?, taskTurnInstead? })`, from
   `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from inside
   a generator's tool call. Call it from your own tool when you don't use the task tools'
   `dispatchTask`. Before filing it refuses a host that can't bound the wait (`canHoldWait(ctx)`,

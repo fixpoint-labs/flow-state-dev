@@ -61,7 +61,7 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
       execute: async (input, ctx) => {
-        const cwd = feeds.cwd(ctx as never);
+        const cwd = await feeds.cwd(ctx as never);
         const step = script[seen.length] ?? "write";
         seen.push(
           step === "read"
@@ -192,6 +192,7 @@ function lab(options: {
   const board = taskBoard({
     name: "host-board",
     boardId: "host-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     onReview: "exit",

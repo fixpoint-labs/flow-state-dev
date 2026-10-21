@@ -557,7 +557,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
     expect(hasSettled()).toBe(false);
 
     const swept = await detectInterruptedRequests({ stores, staleThresholdMs: 40 });
-    expect(swept.map((s) => s.requestId)).not.toContain("req_drain_heartbeat");
+    expect(swept.map((s) => s.entry.requestId)).not.toContain("req_drain_heartbeat");
     expect((await stores.request.get("req_drain_heartbeat"))?.status).toBe("in_progress");
 
     gate.resolve();

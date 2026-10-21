@@ -5,6 +5,9 @@ sidebar_label: Projects
 description: "A project is a body of work, private to one user or shared with the org. Each workstream in it has one owner, and each user talks to it through their own project coordinator."
 ---
 
+import Figure from "@site/src/components/Figure";
+import ProjectOverviewDrawing from "./project-overview.svg";
+
 # Projects
 
 A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a user.
@@ -13,7 +16,7 @@ The work inside a project is split into **workstreams**. Each workstream has one
 
 Each user talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that user's workstreams.
 
-![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each user's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
+<Figure svg={ProjectOverviewDrawing} caption="A project is shared with the organization, or private to you" description={"A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each user's project coordinator hands work only to their own open workstreams."} />
 
 ## Private and shared
 
@@ -354,7 +357,7 @@ const installation = createWorkerInstallation({
 });
 ```
 
-Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
+Give its flow the project coordinator's tool, `readProject`, which reads the project its session is linked to and marks each workstream `yours: true` when the user owns it. Put `projectCoordinatorTools` in the catalog you pass `defineCoordinatorFlow` as `agent`, and name the tool in the worker's file:
 
 ```ts
 import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/workforce";
@@ -362,7 +365,7 @@ import { defineCoordinatorFlow, projectCoordinatorTools } from "@flow-state-dev/
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: { catalog: { ...projectCoordinatorTools } },
 });
 ```
@@ -419,13 +422,13 @@ Your coordinator can open a workstream for you when you ask for work none of you
 const workstreams = defineWorkstreamBlocks({
   installation,
   leadFlows: [agentLeads],
-  leadFit: { model: "openai/gpt-5.4-mini" },
+  leadFit: { model: "openai/gpt-6-luna" },
 });
 
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
       ...projectCoordinatorTools,
@@ -459,7 +462,7 @@ When `openWorkstream` runs in your own coordinator's turn, the new workstream is
 
 `listLeads` returns every worker that can lead, whether or not it suits the work. A coordinator with a single lead tends to pick it even when its description says it does something else. Set `leadFit` to have the open refuse that pick.
 
-With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
+With `leadFit: { model }` set, `openWorkstreamTool` makes one call to that model before it opens, asking whether the lead's description (from its worker file, as `listLeads` shows it) says it does the work in the workstream's title and objectives. When the answer is no, the open is refused with `lead-doesnt-fit` and nothing is written. The same call asks whether the title and objectives say what sort of work it is at all, and work they don't, such as a bare name, passes the check. The refusal's message tells the worker to pick another lead from `listLeads`, or, if none does the work, to open nothing and say a worker for it has to be hired first.
 
 The check runs only once every other refusal has passed, so a bad id or a lead that can't lead is refused for that reason without a model call. Opening a workstream that is already open, with the same lead, isn't checked again.
 
@@ -475,7 +478,7 @@ Your coordinator can change your workstreams in its project when you ask: rename
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
       ...projectCoordinatorTools,
@@ -529,7 +532,7 @@ const projects = defineProjectBlocks();
 const coordinator = defineCoordinatorFlow({
   installation,
   delegateFlows: [agent],
-  routeModel: "openai/gpt-5.4-mini",
+  routeModel: "openai/gpt-6-luna",
   agent: {
     catalog: {
       ...projectCoordinatorTools,
@@ -741,13 +744,24 @@ Before the server cuts a new branch, it fetches that base's upstream, the remote
 A few cases go differently:
 
 - **Your branch and its upstream have each moved.** The run is refused with `base-diverged`, naming both commits, and nothing is made. Pull or rebase, or push, and the next run starts.
-- **The fetch fails**, because you're offline, a credential is refused, or it times out. The comparison uses the copy you last fetched, and the server logs a warning naming the checkout and git's error.
+- **The fetch fails**, because you're offline, a credential is refused, or it times out. The run starts from your local branch, and the server logs a warning naming the checkout and git's error. It doesn't fall back to the copy you last fetched.
+- **The remote or upstream changed since the server first saw it.** See [Changing your remote](#changing-your-remote).
 - **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
 - **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
 
 Listing the checkout is what allows the fetch, so the upstream doesn't need to be in `remotes.allow`. `remotes.allow` decides only which remotes the host clones. The upstream's URL is checked before git sees it: one that uses a transport helper such as `ext::`, starts with `-`, or uses a scheme other than `https`, `ssh` or `file` isn't fetched, and the server logs why.
 
 Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
+
+#### Changing your remote
+
+The server fetches only from the remote URLs and upstreams it pinned the first time it started with your checkout listed. The pins are kept in `<root>/.fetch-pins/`, not in your repository, and survive restarts. A remote or branch that appears later is pinned at the next start. A value already pinned doesn't change.
+
+If a remote's URL no longer matches its pin, the server fetches nothing at all. It logs a warning that names the remote, both URLs and the pin file, and the run starts from your local branch. If a branch's upstream no longer matches its pin, the server still fetches the pinned upstream from the pinned URL, and logs a warning naming the pin file. If you made the change yourself, say because the repository moved, accept it by deleting the pin file the warning names and restarting the server. It pins your config as it is at that start.
+
+#### What a run in your checkout can do
+
+A run in your checkout works with your trust, the way a coding agent you start in your own repository does. It can create and move branches, tags and remote-tracking refs, because git shares those between worktrees. Every worktree also shares your checkout's `.git/config`, so a run could repoint `origin`; the pins keep that from steering the next fetch or your credentials. It doesn't keep a run away from your refs. If you want a run kept apart from your branches, give its project a repository the host clones instead of a checkout.
 
 To review a run, open its worktree, or run `git log -p <branch> --not main main@{upstream}` from your checkout, with your base branch in place of `main`. For a base with no upstream, leave out `main@{upstream}`. That shows only the run's commits, whether it started from your base branch or from its upstream. Avoid `git diff main...<branch>`, which also shows upstream commits your `main` doesn't have. The branch stays checked out in the run's worktree, because a run can be continued later, after a question is answered or when you send it another turn, and it picks up in the same place. So git won't check that branch out a second time in your own tree. When you're done with a run, `git worktree remove <path>` frees the branch.
 

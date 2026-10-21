@@ -39,7 +39,7 @@ function createSSEResponse(): Response {
 
 describe("createVercelHandler", () => {
   it("forwards requests to the underlying router", async () => {
-    const spy = vi.fn(async () => new Response("ok"));
+    const spy = vi.fn<FlowApiRouter["GET"]>(async () => new Response("ok"));
     const router = createMockRouter({ GET: spy });
     const handler = createVercelHandler(router);
 
@@ -51,7 +51,7 @@ describe("createVercelHandler", () => {
   });
 
   it("unwraps async params from Next.js 15", async () => {
-    const spy = vi.fn(async () => new Response("ok"));
+    const spy = vi.fn<FlowApiRouter["GET"]>(async () => new Response("ok"));
     const router = createMockRouter({ POST: spy });
     const handler = createVercelHandler(router);
 
@@ -122,7 +122,7 @@ describe("createVercelHandler", () => {
   });
 
   it("handles optional catch-all with undefined path", async () => {
-    const spy = vi.fn(async () => new Response("ok"));
+    const spy = vi.fn<FlowApiRouter["GET"]>(async () => new Response("ok"));
     const router = createMockRouter({ GET: spy });
     const handler = createVercelHandler(router);
 
@@ -159,7 +159,7 @@ describe("createVercelHandler", () => {
 
 describe("createVercelBareHandler", () => {
   it("forwards requests with empty path array", async () => {
-    const spy = vi.fn(async () => new Response("ok"));
+    const spy = vi.fn<FlowApiRouter["GET"]>(async () => new Response("ok"));
     const router = createMockRouter({ GET: spy });
     const handler = createVercelBareHandler(router);
 

@@ -78,9 +78,7 @@ const reopenFinishedTask = handler({
   inputSchema: z.unknown(),
   outputSchema: reopenedSchema,
   resources: { ...conversationLedgerResources },
-  execute: async (_input, typed) => {
-    // A handler's context is typed by its own resources; the readers take the base context.
-    const ctx = typed as unknown as BlockContext;
+  execute: async (_input, ctx) => {
     const finished = await finishedTaskOf(ctx);
     const reopened = finished === undefined ? undefined : await finished.ledger.reopen(finished.row.id);
     if (finished === undefined || reopened?.outcome !== "recorded") return { reopened: sessionTaskOf(ctx) ?? "" };
@@ -118,6 +116,6 @@ export function replyOrReopen<TInputSchema extends ZodTypeAny>(
     routes: [turn, reopen],
     resources: { ...conversationLedgerResources },
     execute: async (_input, ctx) =>
-      (await finishedTaskOf(ctx as unknown as BlockContext)) === undefined ? turn : reopen
+      (await finishedTaskOf(ctx)) === undefined ? turn : reopen
   });
 }

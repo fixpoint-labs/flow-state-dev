@@ -1,0 +1,38 @@
+# task-board › it lets a worker plan its own steps
+
+**Issue:** FIX-2076 (epic FIX-2056), leg a. Its spec's goal: `specs/issues/FIX-2076/SPEC.md` → "The goal, and how we'll know it's met".
+
+**Outcome:** a worker handed a job in steps files each step for itself, and the request that works its task works the steps, in order, in the same session, each seeing what the one before produced. No session is opened per step and nothing is handed to another worker. Then the worker answers once, having seen every step end, and that answer is the task's result.
+
+**Input:**
+
+- One in-process host on the real engine and a SQLite store, acted on over its HTTP router as one verified person (`goals/lib/http-actions`). The tree in `fixtures/workforce/`: `crew.desk` on a goal-local `desk` flow (the person's conversation; its turn runs no model), delegate `crew.writer`; `crew.writer` on the built-in `agent` flow and a real model, with no delegates. Its instructions say to file numbered steps for itself and to do one step when it comes.
+- The person files one task for the writer from the desk with `dispatchTask_tasks`: a product announcement in three steps (leg a1: outline, draft, tighten) or two (leg a2: outline, write). The first step invents a two-word codename.
+- Held out, made at run time: the product, picked from `fixtures/briefs.json`, and the codename, which only the first step's turn invents.
+
+**Signal:** each failure is tagged `<leg>:<assertion>`.
+
+- `steps-in-task-session` the writer filed as many steps as the brief has, all for itself, all `completed`, all on the plan ledger of the task's own session.
+- `in-order` each step started after the one before it ended.
+- `carries-forward` the codename the first step's output states is in every later step's output.
+- `no-child-session` the conversation ledger holds no row but the person's task: nothing was handed to a session, the writer's own included.
+- `listed` the task session's `listTasks_tasks` lists its steps and no open delegation row.
+- `result-is-the-answer` the task is `completed` with one answer (a string, not `{ answer, pieces }`) that names the codename.
+
+**Anti-game:** every grade reads the store (the plan ledger, the conversation ledger, the task row) or a public task action's answer, never the model's tool arguments or its prose about what it did. The codename is invented at run time by the first step's turn, so a later step or the result that holds it got it through the steps. A step filed as a task for a session of the writer lands on the conversation ledger, which `no-child-session` reads.
+
+**Model:** real for the writer: the goals library's default model through the gateway (`gatewayModel(goalModel())`; `GOAL_MODEL` overrides). Gated on a key that serves it (`keysServing`); without one the run is blocked, not failed.
+
+**Run:** `pnpm tsx goals/task-board/a-worker-plans-its-own-steps/run.mts`. `GOAL_LEGS=a1,a2` runs some legs. On demand only, never a CI gate.
+
+**Controls:** `GOAL_CONTROL=no-plan` is today's `main` as a scratch patch applied as the process loads (`goals/lib/module-patch.mts`): the agent's turn runs without its plan, and a filing naming the worker is a task handed to a session of its own. Leg a1 must fail **`a1:steps-in-task-session`** and **`a1:no-child-session`**.
+
+A step that fails, and the answer naming it, is proven in CI by `packages/workforce/test/worker-plans-its-steps.test.ts`: a real model won't fail a step on cue. FIX-2080 had not landed when this did, so a failed attempt's open steps stay open for the next attempt rather than ending `cancelled`; that assertion joins this leg with FIX-2080.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-10-21 | fix/FIX-2076, uncommitted goal | vercel:openai/gpt-5.4-mini | FAIL | first draft of the writer's instructions: it filed one step per turn and finished the rest in its answer; the instructions now say to file every step in one turn |
+| 2026-10-21 | fix/FIX-2076, uncommitted goal | vercel:openai/gpt-5.4-mini | FAIL | a1: the first step's turn read the original task in its history and tried to file the step again; the step's brief now says it is running and not to file it again |
+| 2026-10-21 | fix/FIX-2076, uncommitted goal | vercel:openai/gpt-5.4-mini | PASS | a1: 3 steps completed in order in the task session, codename "Velvet Beam" in every later step and the result; a2: 2 steps, "Lunar Veil"; one `work` request in the task session; no delegation row |
+| 2026-10-21 | fix/FIX-2076, uncommitted goal | vercel:openai/gpt-5.4-mini | FAIL (control `no-plan`, expected) | a1: 0 steps; four rows on the conversation ledger for crew.writer (task sessions of itself); the task parked on them |

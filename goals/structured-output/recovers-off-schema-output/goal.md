@@ -5,7 +5,7 @@
 **Input:** `fixtures/goal.json` — a multi-step research request that drives the plan-and-execute thinking style (plan → execute → evaluate, with replanning enabled). Held-out: any multi-step research goal must pass a correct implementation; nothing below asserts on the specific topic or answer text, only that the run completed through plan-and-execute with substantive content.
 **Signal:** From the `--capture` file: `result.success === true`, at least one plan-and-execute item (`task-change` or `task-board-meta` component), and a final assistant message whose content is ≥ `minAnswerChars`. A pre-fix run aborts with `execution_error` (`AI_NoObjectGeneratedError`) and fails all three.
 **Anti-game:** A hollow pass is "the run completed but never went through the replan loop" (e.g. it fell back to the default thinking style, or returned an empty message). The check therefore asserts plan-and-execute items are present **and** the answer has real content — not merely that `success === true`. It cannot deterministically force the off-schema branch (model non-determinism), so the deterministic CI specs (`packages/core/test/generator-repair.test.ts`, `…/models/ai-sdk-model-resolver.test.ts`, and the plan-and-execute coercion test) are the mechanism proof; this goal proves the real-world outcome on GLM 5.2.
-**Model:** real — `vercel/zai/glm-5.2` (the model that surfaced the bug; do not substitute).
+**Model:** real — `vercel:zai/glm-5.2` (the model that surfaced the bug; do not substitute).
 
 ## How to run
 
@@ -21,7 +21,7 @@ To exercise the realistic production path instead (primaries on GLM, coercion on
 
 ```bash
 cd apps/kitchen-sink
-pnpm fsdev run chat-agent setSelectedModel -i '{"selectedModel":"vercel/zai/glm-5.2"}' --user u1 --session s1
+pnpm fsdev run chat-agent setSelectedModel -i '{"selectedModel":"vercel:zai/glm-5.2"}' --user u1 --session s1
 pnpm fsdev run chat-agent run -i '{"message":"<goal>","mode":"ask","thinkingStyle":"plan-and-execute"}' --user u1 --session s1 --capture /tmp/pae-glm.json
 ```
 

@@ -108,7 +108,7 @@ import { z } from "zod";
 
 const investigate = generator({
   name: "investigate",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   inputSchema: z.object({ company: z.string() }),
   prompt: "Research the company and write up what you find.",
 });
@@ -133,7 +133,7 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 
 ### From a task board worker
 
-A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Put a `dispatcher({ action, session })` in the worker's position instead and the board dispatches each claimed row to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
+A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Declare the board `mode: "delegation"` and put a `dispatcher({ action, session })` in each worker's position instead, and the board dispatches each claimed row to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -145,6 +145,7 @@ const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "use
 const board = taskBoard({
   name: "diligence",
   boardId: "diligence",
+  mode: "delegation",             // every row is handed to a run of its own
   collection: diligenceTasks,
   workers: {
     investigate: dispatcher({
@@ -152,7 +153,6 @@ const board = taskBoard({
       action: "investigate",      // flow.task.actions.investigate
       session: "per-task",        // one session per row
     }),
-    summarize: summarizeBlock,    // a bare block runs inline, in the request that claimed the row
   },
   initialTasks: [
     { id: "filings", goal: "Read the Q3 filings", assignee: "investigate" },
@@ -171,7 +171,7 @@ The drain claims a row, sends it to the `investigate` entry, and moves on. The r
 
 Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
 
-A board with a worker that dispatches needs an explicit `boardId` and a `defineTaskCollection()`. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
+A board with a worker that dispatches needs `mode: "delegation"`, an explicit `boardId` and a `defineTaskCollection()`, and every worker on it dispatches; work that runs inline goes on a board of its own. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. All of these are checked when the board is built.
 
 Read next: **[Assignees that dispatch](/docs/orchestration/task-board#assignees-that-dispatch)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 

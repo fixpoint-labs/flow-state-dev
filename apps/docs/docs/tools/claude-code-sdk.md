@@ -53,7 +53,7 @@ import { createClaudeCodeAgentCapability } from "@flow-state-dev/claude-code/sdk
 
 const orchestrator = generator({
   name: "orchestrator",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   uses: [createClaudeCodeAgentCapability()],
 });
 ```
@@ -672,7 +672,7 @@ const workspace = createWorkspaceAgentCapability({
 
 generator({
   name: "coder",
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   prompt: "Use the workspace agent to make the change.",
   uses: [workspace],
 });
@@ -729,6 +729,39 @@ const agent = claudeCodeAgent({
 This is the interim story. Routing approvals through flow-state-dev's own
 human-in-the-loop suspend and resume is a follow-up; `onToolApproval` is the seam
 that work will plug into.
+
+## Choosing the model
+
+`model` takes a Claude model id, or a resolver asked once per run, like `cwd` and
+`resume`. A resolver is how one block runs a different model for each session:
+read the id from the session's state. A resumed conversation is handed the same
+id. Return `null`, or leave `model` unset, and Claude Code runs its own default.
+
+```ts
+claudeCodeAgent({
+  detached: true,
+  resume: (ctx) => previousSessionIdFor(ctx),
+  model: (ctx) => (ctx.session.state as { model?: string }).model ?? null,
+});
+```
+
+To offer a person a choice, `listClaudeModels` asks Claude Code which models it
+offers, the same way `probeClaudeAccount` below asks about the credential: no
+message, no model turn.
+
+```ts
+import { listClaudeModels } from "@flow-state-dev/claude-code/sdk";
+
+const list = await listClaudeModels({ env });
+if (list.status === "models") {
+  const preselected = list.models.find((m) => m.isDefault) ?? list.models[0];
+}
+```
+
+Each entry carries the concrete id an alias resolves to: the row Claude Code
+calls `sonnet`, or its default, comes back under the model it points at today.
+Store that id, and a session keeps its model after the alias moves on. A failed
+call resolves to `{ status: "failed", reason }` and never throws.
 
 ## Checking for a credential before you start
 

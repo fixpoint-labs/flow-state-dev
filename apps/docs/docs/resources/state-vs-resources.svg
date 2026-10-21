@@ -1,78 +1,89 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 484" role="img" aria-labelledby="title desc">
-  <title id="title">Scope state and resources: same scope, different records</title>
-  <desc id="desc">A session's state is one flat record of fields that every block in the flow shares. A session-scoped resource is a separate named record in the resource store, keyed by its scope and path, holding a content body and its own typed state. Blocks read state through ctx.session and a resource through ctx.resources. A generator sees a resource only when it is marked llmReadable, and the browser sees either one only through a client config. A resource is not a field of session state.</desc>
-  <defs>
-    <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
-      @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
-      .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
-      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
-      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
-      .card-line { fill: var(--card); stroke: var(--org); stroke-width: 1.5; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
-    </style>
-  </defs>
-
-  <rect x="0" y="0" width="920" height="484" rx="16" class="bg"/>
-
-  <text x="28" y="36" class="title">Scope state and resources: same scope, different records</text>
-  <text x="28" y="58" class="muted">Both below are session-scoped. Neither one holds the other.</text>
-
-  <!-- Session state -->
-  <rect x="28" y="84" width="300" height="264" rx="14" class="wall-sess"/>
-  <text x="44" y="108" class="h">Session state</text>
-  <text x="44" y="126" class="muted">On the session record</text>
-
-  <rect x="44" y="142" width="268" height="104" rx="10" class="card-sess"/>
-  <text x="58" y="166" class="code">mode: "agent"</text>
-  <text x="58" y="186" class="code">messageCount: 4</text>
-  <text x="58" y="214" class="muted">Flat fields. One namespace that</text>
-  <text x="58" y="230" class="muted">every block in the flow shares.</text>
-
-  <text x="44" y="276" class="p">Read and write:</text>
-  <text x="44" y="296" class="code">ctx.session.state</text>
-  <text x="44" y="326" class="muted">Flags, counters, small settings</text>
-
-  <!-- Resources -->
-  <rect x="348" y="84" width="544" height="264" rx="14" class="wall-org"/>
-  <text x="364" y="108" class="h">Resources</text>
-  <text x="364" y="126" class="muted">Their own store, keyed by scope, then path</text>
-
-  <rect x="364" y="142" width="252" height="154" rx="10" class="card-line"/>
-  <text x="378" y="166" class="h">draft</text>
-  <text x="378" y="186" class="code">session/draft</text>
-  <text x="378" y="212" class="p">content: the body</text>
-  <text x="378" y="232" class="p">state: its own typed fields</text>
-  <text x="378" y="262" class="code">ctx.resources.draft</text>
-  <text x="378" y="280" class="muted">State versioned; content is not</text>
-
-  <rect x="628" y="142" width="248" height="154" rx="10" class="card-line"/>
-  <text x="642" y="166" class="h">One item of a collection</text>
-  <text x="642" y="186" class="code">session/files/readme.md</text>
-  <text x="642" y="212" class="p">Same shape, one record</text>
-  <text x="642" y="232" class="p">per item</text>
-  <text x="642" y="262" class="muted">Documents, plans, artifacts</text>
-
-  <text x="364" y="322" class="muted">A user or org resource can also be kept per flow copy, with flowIsolation.</text>
-
-  <!-- Not a copy -->
-  <rect x="28" y="368" width="864" height="100" rx="12" class="box"/>
-  <text x="44" y="392" class="h">Not a copy, and who sees what</text>
-  <text x="44" y="416" class="p">A resource is not a field of session state. Writing one never touches the other.</text>
-  <text x="44" y="436" class="p">Blocks use both. A generator sees a resource only when it is llmReadable, and writes it only when llmWritable.</text>
-  <text x="44" y="456" class="p">The browser sees neither unless a client config exposes it.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 707">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<rect class="solid" x="28" y="56" width="864" height="44"/>
+<text class="nm" x="40" y="83">The browser</text>
+<text class="sub" x="160" y="82">sees neither unless a client config exposes it</text>
+<rect fill="url(#hatch)" x="28" y="148" width="300" height="10"/><line class="thin" x1="28" y1="158.5" x2="328" y2="158.5"/>
+<rect class="solid" x="28" y="148" width="300" height="270"/>
+<text class="lb" x="40" y="180">RECORD 01 · SESSION SCOPE</text>
+<text class="nm" x="40" y="202">Session state</text>
+<text class="sub" x="40" y="220">on the session record</text>
+<line class="hi" x1="28" y1="232" x2="328" y2="232"/>
+<rect class="thin" x="40" y="244" width="276" height="56"/>
+<text class="c" x="52" y="263">mode: "agent"</text>
+<line class="hi" x1="40" y1="272" x2="316" y2="272"/>
+<text class="c" x="52" y="291">messageCount: 4</text>
+<text class="t" x="40" y="324">Flat fields. One namespace that</text>
+<text class="t" x="40" y="340">every block in the flow shares.</text>
+<text class="t" x="40" y="364">Flags, counters, small settings</text>
+<line class="hi" x1="28" y1="380" x2="328" y2="380"/>
+<text class="c" x="40" y="404">ctx.session.state</text>
+<rect fill="url(#hatch)" x="372" y="148" width="520" height="10"/><line class="thin" x1="372" y1="158.5" x2="892" y2="158.5"/>
+<rect class="solid" x="372" y="148" width="520" height="270"/>
+<text class="lb" x="384" y="180">RECORDS 02 · SESSION SCOPE</text>
+<text class="nm" x="384" y="202">Resources</text>
+<text class="sub" x="384" y="220">their own store, keyed by scope, then path</text>
+<line class="hi" x1="372" y1="232" x2="892" y2="232"/>
+<rect class="thin" x="384" y="244" width="244" height="162"/>
+<text class="nm" x="396" y="266">draft</text>
+<text class="c" x="396" y="286">session/draft</text>
+<line class="hi" x1="384" y1="298" x2="628" y2="298"/>
+<text class="lb" x="396" y="316">CONTENT</text>
+<text class="t" x="460" y="316">the body</text>
+<line class="hi" x1="384" y1="326" x2="628" y2="326"/>
+<text class="lb" x="396" y="344">STATE</text>
+<text class="t" x="460" y="344">its own typed fields</text>
+<line class="hi" x1="384" y1="354" x2="628" y2="354"/>
+<text class="c" x="396" y="376">ctx.resources.draft</text>
+<text class="sub" x="396" y="394">state versioned; content is not</text>
+<rect class="thin" x="640" y="244" width="240" height="162"/>
+<text class="nm" x="652" y="266">One item of a collection</text>
+<text class="c" x="652" y="286">session/files/readme.md</text>
+<line class="hi" x1="640" y1="298" x2="880" y2="298"/>
+<text class="lb" x="652" y="316">CONTENT</text>
+<text class="t" x="716" y="316">the body</text>
+<line class="hi" x1="640" y1="326" x2="880" y2="326"/>
+<text class="lb" x="652" y="344">STATE</text>
+<text class="t" x="716" y="344">its own typed fields</text>
+<line class="hi" x1="640" y1="354" x2="880" y2="354"/>
+<text class="sub" x="652" y="376">same shape, one record per item</text>
+<text class="sub" x="652" y="394">documents, plans, artifacts</text>
+<rect class="solid" x="28" y="458" width="300" height="48"/>
+<text class="nm" x="40" y="480">Blocks</text>
+<text class="sub" x="40" y="497">every block in the flow</text>
+<rect class="solid" x="384" y="458" width="244" height="48"/>
+<text class="nm" x="396" y="480">A generator</text>
+<text class="sub" x="396" y="497">llmReadable · llmWritable</text>
+<line class="ln" x1="178" y1="457" x2="178" y2="419" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<rect class="ground" x="165.7" y="431" width="24.7" height="15"/><text class="plate" x="178" y="442" text-anchor="middle">01</text>
+<path class="ln" d="M329 482 H350 V325 H383" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<rect class="ground" x="337.6" y="431" width="24.7" height="15"/><text class="plate" x="350" y="442" text-anchor="middle">02</text>
+<line class="ln-dash" x1="506" y1="457" x2="506" y2="407" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<rect class="ground" x="457.4" y="431" width="97.2" height="15"/><text class="plate" x="506" y="442" text-anchor="middle">03 IF MARKED</text>
+<line class="ln-dash" x1="178" y1="147" x2="178" y2="101" marker-end="url(#ah)"/>
+<rect class="ground" x="165.7" y="117" width="24.7" height="15"/><text class="plate" x="178" y="128" text-anchor="middle">04</text>
+<line class="ln-dash" x1="632" y1="147" x2="632" y2="101" marker-end="url(#ah)"/>
+<rect class="ground" x="619.6" y="117" width="24.7" height="15"/><text class="plate" x="632" y="128" text-anchor="middle">04</text>
+<line class="hi" x1="0" y1="530" x2="920" y2="530"/>
+<text class="n" x="28" y="556">01</text>
+<text class="t" x="60" y="556">Blocks read and write session state through ctx.session.state.</text>
+<text class="n" x="28" y="581">02</text>
+<text class="t" x="60" y="581">Blocks read and write a resource through ctx.resources. A resource is not a field of session state.</text>
+<text class="t" x="60" y="598">Writing one never touches the other.</text>
+<text class="n" x="28" y="623">03</text>
+<text class="t" x="60" y="623">A generator sees a resource only when it is llmReadable, and writes it only when llmWritable.</text>
+<text class="n" x="28" y="648">04</text>
+<text class="t" x="60" y="648">The browser sees neither unless a client config exposes it.</text>
+<text class="n" x="28" y="673">05</text>
+<text class="t" x="60" y="673">Both are session-scoped. Neither one holds the other. A user or org resource can also be kept per flow</text>
+<text class="t" x="60" y="690">copy, with flowIsolation.</text>
+<line class="ln" x1="28" y1="717" x2="54" y2="717" marker-end="url(#ah)"/>
+<text class="lb" x="62" y="721">READS AND WRITES</text>
+<line class="ln-dash" x1="222.0" y1="717" x2="248.0" y2="717" marker-end="url(#ah)"/>
+<text class="lb" x="256.0" y="721">ONLY WHEN MARKED OR EXPOSED</text>
+<rect fill="url(#hatch)" x="498.5" y="711" width="26" height="11"/><rect class="thin" x="498.5" y="711" width="26" height="11"/>
+<text class="lb" x="532.5" y="721">OUTLIVES THE REQUEST</text>
 </svg>

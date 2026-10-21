@@ -111,6 +111,7 @@ describe("defineFlow concurrency validation", () => {
     // The factory caller must not be able to smuggle a reserved policy past
     // definition-time validation through `options.request`.
     expect(() =>
+      // @ts-expect-error — invalid on purpose: the type allows only the definition's policy here.
       flow({ request: { concurrency: "restart" as unknown as ConcurrencyConfig } })
     ).toThrow(/request default.*reserved but not/s);
   });

@@ -1,7 +1,7 @@
 /**
- * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
- * Inbox, Tasks and Roster with their counts, Settings, PROJECTS, TEAMS, and a footer
- * (BR-6) with the on-shift count. A header above them all carries
+ * The sidebar (S5): in order, Shift Coordinator, Inbox, Tasks and Roster with
+ * their counts, Messages, PROJECTS, TEAMS, then Settings pinned above a footer
+ * (BR-6) with the ⌘K tip and the on-shift count. A header above them all carries
  * the mark, which changes the theme with a click, and names the theme.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
@@ -23,7 +23,7 @@
  *
  * Collapsed, it is a 48px rail: the toggle that expands it, then an icon each
  * for Shift Coordinator, Inbox (with its count while an ask waits), Tasks,
- * Roster, Settings and Jump to. Each icon names itself on hover and navigates as its
+ * Roster, Messages and Jump to, with Settings at the bottom. Each icon names itself on hover and navigates as its
  * entry does.
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
@@ -90,6 +90,7 @@ const ICON_PATHS = {
   jump: "M6 1.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z M9.3 9.3l3.2 3.2",
   inbox: "M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2",
   tasks: "M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7",
+  messages: "M1.5 2.5h11v7h-6l-3 2.5v-2.5h-2z",
   roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
   /** Settings: a key. */
   settings: "M4.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M7.5 7.5h5 M10.5 7.5v2 M12.5 7.5v1.5",
@@ -143,44 +144,6 @@ function Heading({ children, aside, testId }: { children: string; aside?: string
       <Meta role="label">{children}</Meta>
       {aside === undefined ? null : <Meta role="label">{aside}</Meta>}
     </p>
-  );
-}
-
-/** The organization this user's sessions are bound to. One per Lab principal. */
-function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative" data-testid="org-switcher">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between border px-2 py-1.5 text-left text-sm"
-      >
-        <span className="truncate font-medium">{orgId}</span>
-        <Meta role="count" className="text-muted-foreground">▾</Meta>
-      </button>
-      {open ? (
-        <div role="menu" className="absolute inset-x-0 top-full z-10 mt-1 border bg-popover p-1 text-popover-foreground shadow">
-          <button
-            type="button"
-            role="menuitemradio"
-            aria-checked
-            className="w-full px-2 py-1.5 text-left text-sm hover:bg-accent"
-            onClick={() => {
-              setOpen(false);
-              onSwitch();
-            }}
-          >
-            {orgId}
-          </button>
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            The Lab binds you to one organization; it is the only one to switch to.
-          </p>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -263,7 +226,7 @@ function SidebarRail({
   waiting: boolean;
 }) {
   return (
-    <div className="flex w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
+    <div className="flex h-full w-12 flex-col items-center gap-1 py-3" data-testid="sidebar-rail">
       <SidebarToggle collapsed onToggle={onToggle} />
       <div className="mt-2 flex flex-col items-center gap-1">
         <RailItem label="Shift Coordinator" active={route.level === "cos"} onClick={() => navigate({ level: "cos" })} testId="rail-cos">
@@ -282,14 +245,19 @@ function SidebarRail({
         <RailItem label="Tasks" active={route.level === "tasks" || route.level === "task"} onClick={() => navigate({ level: "tasks", by: "state" })} testId="rail-tasks">
           <NavIcon name="tasks" />
         </RailItem>
-        <RailItem label="Roster" active={route.level === "roster" || route.level === "rules"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
+        <RailItem label="Roster" active={route.level === "roster" || route.level === "worker-settings"} onClick={() => navigate({ level: "roster", team: null })} testId="rail-roster">
           <NavIcon name="roster" />
         </RailItem>
-        <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
-          <NavIcon name="settings" />
+        <RailItem label="Messages" active={route.level === "messages" || route.level === "session"} onClick={() => navigate({ level: "messages" })} testId="rail-messages">
+          <NavIcon name="messages" />
         </RailItem>
         <RailItem label="Jump to (⌘K)" onClick={onJump} testId="rail-jump">
           <NavIcon name="jump" />
+        </RailItem>
+      </div>
+      <div className="mt-auto">
+        <RailItem label="Settings" active={route.level === "settings"} onClick={() => navigate({ level: "settings" })} testId="rail-settings">
+          <NavIcon name="settings" />
         </RailItem>
       </div>
     </div>
@@ -340,7 +308,7 @@ function ProjectGroup({
           data-testid={`${testId}-toggle`}
           className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         >
-          <Meta className={`text-[10px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
+          <Meta className={`inline-flex size-3 items-center justify-center text-[11px] transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}>▸</Meta>
         </button>
         <div className="min-w-0 flex-1">
           <NavItem
@@ -474,20 +442,7 @@ export function Sidebar({
             <SidebarHeader look={look} onToggle={onToggle} />
           )}
           <div className="flex-1 overflow-y-auto p-3">
-            {loaded === undefined ? null : <OrgSwitcher orgId={loaded.orgId} onSwitch={retry} />}
-            <button
-              type="button"
-              onClick={onJump}
-              data-testid="jump-to"
-              className="mt-2 flex w-full items-center justify-between border bg-secondary px-2 py-1.5 text-muted-foreground"
-            >
-              <Meta role="control">Jump to…</Meta>
-              <kbd className="border px-1">
-                <Meta role="count">⌘K</Meta>
-              </kbd>
-            </button>
-
-            <div className="mt-3 space-y-0.5">
+            <div className="space-y-0.5">
               <ChiefOfStaffEntry active={route.level === "cos"} />
               <NavItem
                 label="Inbox"
@@ -524,16 +479,16 @@ export function Sidebar({
                 icon={<NavIcon name="roster" />}
                 count={counts?.["on shift"]}
                 mark={partial}
-                active={(route.level === "roster" && route.team === null) || route.level === "rules"}
+                active={(route.level === "roster" && route.team === null) || route.level === "worker-settings"}
                 onClick={() => navigate({ level: "roster", team: null })}
                 testId="nav-roster"
               />
               <NavItem
-                label="Settings"
-                icon={<NavIcon name="settings" />}
-                active={route.level === "settings"}
-                onClick={() => navigate({ level: "settings" })}
-                testId="nav-settings"
+                label="Messages"
+                icon={<NavIcon name="messages" />}
+                active={route.level === "messages" || route.level === "session"}
+                onClick={() => navigate({ level: "messages" })}
+                testId="nav-messages"
               />
             </div>
 
@@ -547,7 +502,7 @@ export function Sidebar({
             </Heading>
             <div data-testid="teams">
               {drawn === undefined ? null : (
-                teamsOf(drawn.workers).map(({ team, workers }) => (
+                teamsOf(drawn.workers).map(({ team, name, workers }) => (
                   <button
                     key={team}
                     type="button"
@@ -559,12 +514,12 @@ export function Sidebar({
                       route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
                     }`}
                   >
-                    <span className="flex-1 truncate">{team}</span>
+                    <span className="flex-1 truncate">{name}</span>
                     <span className="flex gap-0.5">
                       {workers.map((worker) => {
                         const status = states?.workers.get(worker.id)?.status ?? "off shift";
                         return (
-                          <span key={worker.id} title={`${workerLabel(worker.name)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
+                          <span key={worker.id} title={`${workerLabel(worker.displayName)} · ${status}`} data-testid="worker" data-worker-id={worker.id} data-status={status}>
                             <ShiftMark status={status} className="block size-2" />
                           </span>
                         );
@@ -586,11 +541,23 @@ export function Sidebar({
               ) : null}
             </div>
           </div>
+          <div className="px-3 pb-2">
+            <NavItem
+              label="Settings"
+              icon={<NavIcon name="settings" />}
+              active={route.level === "settings"}
+              onClick={() => navigate({ level: "settings" })}
+              testId="nav-settings"
+            />
+          </div>
           <footer
             className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
             data-testid="sidebar-footer"
             data-look="meta-meta"
           >
+            <p className="text-[10.5px]" data-testid="jump-tip">
+              <kbd>⌘K</kbd> to go to anything
+            </p>
             <p className="flex items-center gap-3">
               {counts === undefined ? null : (
                 <>

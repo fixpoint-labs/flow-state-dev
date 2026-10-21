@@ -3,6 +3,13 @@ title: Glossary
 description: "The main terms in flow-state.dev, the package each comes from, and the lower pieces each is built from."
 ---
 
+import Figure from "@site/src/components/Figure";
+import LayersDrawing from "./glossary/layers.svg";
+import CoreDrawing from "./glossary/core.svg";
+import OrchestrationDrawing from "./glossary/orchestration.svg";
+import WorkforceDrawing from "./glossary/workforce.svg";
+import ShiftManagerDrawing from "./glossary/shift-manager.svg";
+
 # Glossary
 
 flow-state.dev is built in layers. A small set of primitives in Core (blocks, flows, sessions, resources) carries everything above it. Orchestration builds task boards out of those primitives, Workforce builds workers, coordinators and projects out of flows, sessions and resources, and Shift Manager is an app that reads what Workforce writes.
@@ -13,13 +20,13 @@ Most terms link to their full page.
 
 ## The layers
 
-![Five stacked layers. Contracts at the bottom holds the item types and block instance ids. Core above it holds blocks, flows, actions, scopes, resources and capabilities. The third layer holds Engine, which runs flows and stores what they write, Client and React for the browser, Orchestration, which builds tasks and task boards, and the smaller packages Memory, Tools and Workspace. The fourth layer holds the hosts and stores built on Engine, Workforce built on Core and Orchestration, and Patterns and Harness manager. Shift Manager sits on top: an app that serves a Workforce through the Engine and reads it.](./glossary/layers.svg)
+<Figure svg={LayersDrawing} caption="Each layer is built from the ones below it" description={"Five stacked layers. Contracts at the bottom holds the item types and block instance ids. Core above it holds blocks, flows, actions, scopes, resources and capabilities. The third layer holds Engine, which runs flows and stores what they write, Client and React for the browser, Orchestration, which builds tasks and task boards, and the smaller packages Memory, Tools and Workspace. The fourth layer holds the hosts and stores built on Engine, Workforce built on Core and Orchestration, and Patterns and Harness manager. Shift Manager sits on top: an app that serves a Workforce through the Engine and reads it."} />
 
 A package uses only the layers under it. Workforce imports Core and Orchestration and nothing from Engine: when it needs to register a flow or open a session, your app passes in the function that does it.
 
 ## Core and Engine: from a block to a running flow
 
-![Core builds up in five steps. A block is a typed unit of work, in one of five kinds. A sequencer is a block that runs other blocks in order. An action wraps one root block under a name. A flow is a kind that declares its actions, scopes, resources and capabilities. A flow instance is the flow called with an id and settings. The Engine registers instances and opens sessions on them, and each request on a session runs one action and streams items. Beside the chain, a tool is a block a generator may call, a capability bundles resources, state and tools a block pulls in with uses, and a resource collection is a family of resources keyed by a pattern.](./glossary/core.svg)
+<Figure svg={CoreDrawing} caption="Core: from a block to a running flow" description={"Core builds up in five steps. A block is a typed unit of work, in one of five kinds. A sequencer is a block that runs other blocks in order. An action wraps one root block under a name. A flow is a kind that declares its actions, scopes, resources and capabilities. A flow instance is the flow called with an id and settings. The Engine registers instances and opens sessions on them, and each request on a session runs one action and streams items. Beside the chain, a tool is a block a generator may call, a capability bundles resources, state and tools a block pulls in with uses, and a resource collection is a family of resources keyed by a pattern."} />
 
 The top row builds left to right: each box is made of the one before it. The Engine row runs what the top row defines. A tool is an ordinary block, and so is a dispatcher.
 
@@ -38,7 +45,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Side chain** | core | A block a sequencer starts without waiting for it. Its items are marked as side-chain output. | Sequencer, block |
 | **Tool** | core | A block listed in a generator's `tools`, so the model can call it. There is no separate tool type. | Block |
 | **Dispatcher block** | core | `dispatcher()` builds a handler that sends its input to an entry on another flow. It is not a sixth kind. | Handler |
-| **Model resolver** | core | Turns a model string such as `openai/gpt-5.4-mini` into a model a generator can call, with fallbacks. See [Models](./fundamentals/models.md). | Configuration |
+| **Model resolver** | core | Turns a model string such as `openai/gpt-6-luna` into a model a generator can call, with fallbacks. See [Models](./fundamentals/models.md). | Configuration |
 | **Action** | core | A named entry point on a flow. It wraps one root block and adds an input schema, hooks, a token budget and durability settings. See [Actions](./fundamentals/actions.md). | One block |
 | **Scope** | core | Where state lives and how long it lasts. There are four: `request`, `session`, `user` and `org`. See [State and scopes](./fundamentals/state-and-scopes.md). | None |
 | **State** | core | Zod-typed data on a scope, or on one block (`ctx.self`). | Scope |
@@ -69,7 +76,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 
 ## Orchestration: a task board
 
-![A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board.](./glossary/orchestration.svg)
+<Figure svg={OrchestrationDrawing} caption="Orchestration: what a task board is made of" description={"A task is a row with a goal, a status and an optional assignee. Tasks live in a task collection, kept either in state or in a resource collection. A task board is a sequencer that drains the collection: a dispatcher picks the next ready task, the assignee routes it to a board worker, and a board worker is any block. Built on the board: the goal-seek loop wraps a drain with a judge, the harness manager is a board worker that runs a coding agent, and four patterns use a board."} />
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
@@ -78,7 +85,7 @@ The top row builds left to right: each box is made of the one before it. The Eng
 | **Task board** | orchestration | `taskBoard()`: drains a task collection with a pool of workers, holding back tasks whose dependencies aren't done. See [Task board](./orchestration/task-board.md). | Sequencer, task collection, capability |
 | **Board worker** | orchestration | A block that runs one claimed task. | Block |
 | **Assignee** | orchestration | Who a task goes to: an entry in a task board's workers, or a name the board's assignee check accepts, such as one of a Workforce worker's delegates. A task's `assignee` names it, and it runs the task inline or dispatches it to a dispatch run in another session. A task whose assignee names no entry goes to the default assignee, or fails. See [Task board](./orchestration/task-board.md). | Board worker, task |
-| **Dispatcher** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass in a classifier or event dispatcher. | Task collection |
+| **Dispatcher** | orchestration | The rule that picks the next ready task. By name: `topological` (the default), `fifo` or `priority`. You can also pass your own `TaskDispatcher`. | Task collection |
 | **Dispatch a task** | orchestration | Start a task on another worker now. How a recorded task starts depends on the board. On a conversation's board, a worker dispatches with `dispatchTask`, and a task recorded without it doesn't start until it is dispatched. On a board a drain runs, recording is enough: the drain starts each task when it claims it, and dispatches it when its assignee holds a `dispatcher()`. | Task, wait, dispatcher block |
 | **Wait** | orchestration | What a caller does on a task it dispatched when its next step needs the result: its turn pauses until the task ends, then carries on with the task's output. A wait has a time limit, and nothing holds a request open while it lasts. A board's `onIdle: "wait"` is a different setting: the board stays alive when it has nothing to do. | Dispatch a task |
 | **Hand-off** | orchestration | A session that was doing the work passes it to another session, mid-work. Giving another worker new work isn't a hand-off; it's dispatching a task. | Dispatch a task |
@@ -99,7 +106,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 ## Workforce: workers, coordinators, projects
 
-![Each Workforce term beside what it is made of. A worker is a resource in one user's scope that names its worker flow. A standard worker is read from the installation's files, the same for every user. A roster is one user's workers. A coordinator is a worker on the coordinator flow, with delegates from the same roster in its session. A project is one row, in the user's scope or the org's; a workstream is an entry in a shared project that only its owner writes, plus its lead's session. A project coordinator is one session per user per project.](./glossary/workforce.svg)
+<Figure svg={WorkforceDrawing} caption="Workforce: what each term is made of" description={"Each Workforce term beside what it is made of. A worker is a resource in one user's scope that names its worker flow. A standard worker is read from the installation's files, the same for every user. A roster is one user's workers. A coordinator is a worker on the coordinator flow, with delegates from the same roster in its session. A project is one row, in the user's scope or the org's; a workstream is an entry in a shared project that only its owner writes, plus its lead's session. A project coordinator is one session per user per project."} />
 
 | Term | Package | What it is | Built from |
 |---|---|---|---|
@@ -126,7 +133,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 ## Shift Manager: screens over a Workforce
 
-![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator screen is a user's session with the Lab's Shift Coordinator worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator.](./glossary/shift-manager.svg)
+<Figure svg={ShiftManagerDrawing} caption="Shift Manager: what each screen reads" description={"Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator screen is a user's session with the Lab's Shift Coordinator worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a user. Tasks lists the tasks on your boards. Roster lists your workers, with on shift and off shift worked out from their tasks and asks. A project view shows a project, its workstreams with their progress, your own workstreams' boards, and your own project coordinator."} />
 
 [Shift Manager](./shift-manager/overview.md) is a browser app, published as `@flow-state-dev/shift-manager`. It stores nothing of its own: every screen is a read of the Lab it serves.
 
@@ -139,7 +146,7 @@ These sit beside Orchestration on Core and don't use a task board.
 | **Inbox** | Shift Manager | The pending asks in sessions you started and the runs they started, oldest first. | Asks |
 | **Tasks** | Shift Manager | Every task not done on your boards, grouped by state, worker or workstream. | Task, board |
 | **Roster** | Shift Manager | Your workers, grouped as on shift (running a task, or waiting on you with a parked task or a pending ask) or off shift. Worked out on each read, not stored. | Roster, tasks, asks |
-| **Staff** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
+| **General** | Shift Manager | The group that lists org workers, the ones on no team. | Org worker |
 
 ## Words that mean two things
 

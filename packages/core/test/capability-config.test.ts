@@ -322,12 +322,54 @@ describe("configured ref via dynamic uses", () => {
       name: "dyn",
       model: "intent/utility",
       prompt: "p",
-      uses: [(_ctx) => [banner.config({ note: "x" })]],
+      uses: [() => [banner.config({ note: "x" })]],
     });
-    const context = (gen.config as { context: Array<(i: unknown, c: unknown) => unknown> }).context;
+    const context = (gen.config as unknown as { context: Array<(i: unknown, c: unknown) => unknown> }).context;
     const dynamicResolver = context[context.length - 1];
     await expect(dynamicResolver({}, {} as never)).rejects.toThrow(
       /Capability "banner" declares open config but was reached through a dynamic/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The generator's assembled context — the surface a configured capability is
+// for. The merged-surface tests above stop at `mergeCapabilities`; these build
+// a real generator and read what it will hand the model.
+// ---------------------------------------------------------------------------
+
+describe("config reaches a generator's assembled context", () => {
+  const shouting = defineCapability({
+    name: "banner",
+    presets: { shout: {}, default: [] },
+    config: {
+      schema: z.object({ note: z.string(), loud: z.boolean().default(false) }),
+      resolve: (cfg, ctx) => ({ context: [cfg.loud || ctx.presets.has("shout") ? cfg.note.toUpperCase() : cfg.note] }),
+    },
+  });
+  const note = "hello-915";
+
+  /** The string entries of a built generator's context slot. */
+  const assembled = (uses: Parameters<typeof generator>[0]["uses"]): string[] => {
+    const gen = generator({ name: "g", model: "openai/gpt-5.4-mini", prompt: "p", uses });
+    const context = (gen.config as { context?: unknown }).context;
+    return (Array.isArray(context) ? context : [context]).filter((v): v is string => typeof v === "string");
+  };
+
+  it("an explicit config value reaches the assembled context", () => {
+    expect(assembled([shouting.config({ note, loud: true })])).toContain(note.toUpperCase());
+  });
+
+  it("a defaulted field is honoured: loud defaults to false", () => {
+    const context = assembled([shouting.config({ note })]);
+    expect(context).toContain(note);
+    expect(context).not.toContain(note.toUpperCase());
+  });
+
+  it.each([
+    ["config, then presets", () => [shouting.config({ note }).presets({ shout: true })]],
+    ["presets, then config", () => [shouting.presets({ shout: true }).config({ note })]],
+  ] as const)("a preset turned on reconciles against the config value (%s)", (_order, uses) => {
+    expect(assembled(uses())).toContain(note.toUpperCase());
   });
 });

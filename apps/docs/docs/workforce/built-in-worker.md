@@ -5,6 +5,9 @@ sidebar_label: The built-in worker
 description: "The agent worker flow the framework ships: a worker that talks, steered by its own file, with tools, skills, and memory you add when you want them."
 ---
 
+import Figure from "@site/src/components/Figure";
+import BuiltInWorkerMemoryDrawing from "./built-in-worker-memory.svg";
+
 # The built-in worker
 
 Write a description and some instructions in a `WORKER.md`, name no `flow:`, and you have a worker that talks. It runs on a worker flow the framework ships, called `agent`.
@@ -106,7 +109,7 @@ A conversation keeps its recent turns, each worker keeps its own skills for each
 
 Standing rules, the notes you've asked a worker to keep, are kept per worker and per user, and read on every turn. See [Standing rules](./standing-rules.md).
 
-![A conversation holds recent turns, a worker's skills are kept per user, and memory is kept per user](./built-in-worker-memory.svg)
+<Figure svg={BuiltInWorkerMemoryDrawing} caption="What a built-in worker keeps, and who shares it" description={"A conversation holds recent turns, a worker's skills are kept per user, and memory is kept per user"} />
 
 ## Skills
 
@@ -192,7 +195,7 @@ import { system } from "@flow-state-dev/memory";
 import { boardTool, searchTool } from "./tools";
 
 const mem = system({
-  model: "openai/gpt-5.4-mini",
+  model: "openai/gpt-6-luna",
   working: { capacity: 7 },
   episodic: true,
   semantic: true,

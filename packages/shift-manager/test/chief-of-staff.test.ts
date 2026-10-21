@@ -7,9 +7,9 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, type LoadedSnapshot } from "../src/lib/derive";
-import { conversationSession, currentConversation, newConversationId } from "../src/lib/conversation";
+import { conversationAt } from "../src/lib/conversation";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { STAFF_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
+import { GENERAL_TEAM, toBoardRow, toWorker, type Ask, type BoardRow, type Worker } from "../src/lib/reads";
 
 const ORG = "org_1";
 const worker = (id: string, door: string | null = "run"): Worker => ({ ...toWorker({ id, kind: "agent", door })! });
@@ -69,8 +69,10 @@ describe("which worker is the chief of staff (V2, D2)", () => {
       kind: "agent",
       door: "run",
       rules: false,
-      team: STAFF_TEAM,
+      team: GENERAL_TEAM,
+      teamName: "General",
       name: "chief-of-staff",
+      displayName: "chief-of-staff",
     });
   });
 });
@@ -206,63 +208,18 @@ describe("the tasks waiting on the user, in the shift summary", () => {
   });
 });
 
-describe("the user's conversation with the chief of staff (V4, BR-14)", () => {
-  const cos = worker("desk.chief-of-staff");
-  const session = (id: string, workerId: string | undefined, createdAt: number, parentSessionId?: string, flowKind = "agent"): SessionSummary =>
-    ({ id, flowKind, flowId: flowKind, ...(workerId === undefined ? {} : { state: { workerId } }), userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
+describe("the user's conversation with a worker (V4, BR-14, FIX-1989)", () => {
+  const session = (id: string, createdAt: number, parentSessionId?: string): SessionSummary =>
+    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt, ...(parentSessionId === undefined ? {} : { parentSessionId }) }) as SessionSummary;
 
-  it("is the newest session on the worker's flow, naming its worker, that no other run started", () => {
-    const sessions = [
-      session("old", "desk.chief-of-staff", 1),
-      session("newest", "desk.chief-of-staff", 3),
-      session("heard", "desk.chief-of-staff", 9, "desk.front"),
-      session("other", "desk.asker", 10),
-      session("mid", "desk.chief-of-staff", 2),
-      // The worker's id on another flow, and a session on its flow that names no worker.
-      session("elsewhere", "desk.chief-of-staff", 11, undefined, "em"),
-      session("nobody", undefined, 12),
-    ];
-    expect(conversationSession(sessions, cos)).toBe("newest");
+  it("is the session at the worker's derived address once the listing holds it, never a newer one at another id", () => {
+    // A message opens the derived conversation, so the view must be on it, whatever else the user opened.
+    expect(conversationAt([session("wks_derived", 1), session("conv_random", 9)], "wks_derived", null)).toBe("wks_derived");
+    expect(conversationAt([session("conv_random", 9)], "wks_derived", null)).toBeNull();
+    expect(conversationAt([session("conv_random", 9)], null, null)).toBeNull();
   });
 
-  it("is never a session another run started, and none when there is no direct one", () => {
-    expect(conversationSession([session("heard", "desk.chief-of-staff", 9, "desk.front")], cos)).toBeNull();
-    // A store that nulls absent keys hands back `null` for a direct session's parent.
-    expect(conversationSession([{ ...session("direct", "desk.chief-of-staff", 1), parentSessionId: null } as unknown as SessionSummary], cos)).toBe(
-      "direct",
-    );
-    expect(conversationSession([], cos)).toBeNull();
-  });
-});
-
-describe("which conversation the view is on, once a line opened one (V4, BR-14)", () => {
-  const cos = worker("desk.chief-of-staff");
-  const session = (id: string, createdAt: number): SessionSummary =>
-    ({ id, flowKind: "agent", flowId: "agent", state: { workerId: "desk.chief-of-staff" }, userId: "u", createdAt, updatedAt: createdAt }) as SessionSummary;
-
-  it("keeps the session a first line opened until the listing holds it", () => {
-    expect(currentConversation([], cos, "cos_new")).toBe("cos_new");
-    expect(currentConversation([session("older", 1)], cos, "cos_new")).toBe("cos_new");
-  });
-
-  it("follows the newest direct session once the listing has caught up, even one started elsewhere", () => {
-    expect(currentConversation([session("cos_new", 2)], cos, "cos_new")).toBe("cos_new");
-    expect(currentConversation([session("cos_new", 2), session("from_another_tab", 3)], cos, "cos_new")).toBe("from_another_tab");
-    expect(currentConversation([session("listed", 1)], cos, null)).toBe("listed");
-  });
-});
-
-describe("a new conversation's id", () => {
-  it("is minted without crypto.randomUUID, which a page on plain HTTP doesn't have", () => {
-    const real = globalThis.crypto.randomUUID;
-    Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true, writable: true });
-    try {
-      const a = newConversationId();
-      const b = newConversationId();
-      expect(a).toMatch(/^conv_[0-9a-f]{32}$/);
-      expect(a).not.toBe(b);
-    } finally {
-      Object.defineProperty(globalThis.crypto, "randomUUID", { value: real, configurable: true, writable: true });
-    }
+  it("is the session a first line opened, before the listing holds it", () => {
+    expect(conversationAt([], "wks_derived", "wks_derived")).toBe("wks_derived");
   });
 });

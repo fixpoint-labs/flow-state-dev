@@ -116,7 +116,7 @@ function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsSt
  *
  * const analyze = generator({
  *   name: 'security-analyze',
- *   model: 'gpt-5',
+ *   model: 'gpt-6.1-sol',
  *   uses: [cap],
  *   // Auto-gets: framing + accumulated context, ctx.cap.perspective.*
  * })

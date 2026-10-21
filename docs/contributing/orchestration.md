@@ -417,7 +417,10 @@ others are missing:
    research. The spec for a bug is worth writing then, and what it carries is the
    reproduction shape and the regression seam.
 3. **It isn't really a bug** — *the worker decides,* before it builds. The "fix" is a new
-   capability, or it changes a contract other code depends on. Promote it — a feature must
+   capability, a new way to do a job something already does
+   ([`asking-for-decisions.md`](asking-for-decisions.md) → "When approving adds a way to do a
+   job"), or it changes a contract other code depends on.
+   Promote it — a feature must
    not reach `main` through the one route with no gate in front of it. A *routing* call,
    not a reaction to the fix turning out to be interesting.
 
@@ -469,6 +472,18 @@ or leaves draft, so a PR marked ready in the same breath as its merge merges a h
 reviewer saw. Take a PR out of draft when its work is ready for review, not when it is
 ready to merge. Call it ready to merge — or merge it through MERGE-ONLY — only once that
 review and the required checks have returned on its current head.
+
+**Green means CI ran on this head and passed.** Read the `Typecheck & Test` check run on
+the PR's current head, never the combined commit status: Vercel posts `success` there for
+builds its ignored-build step skipped, so a head whose tests failed can read green on that
+surface. A head with **no** `Typecheck & Test` run is untested, not green. GitHub starts no
+`pull_request` workflow while a PR conflicts with its base, so a PR opened on a conflicting
+head shows only third-party checks, all passing, until a push resolves the conflict.
+`Typecheck & Test` gates only typecheck and the test shards, so it is not the whole failure
+signal: CI is failing when **any** check on the current head failed, even while
+`Typecheck & Test` passes. Per check name only its latest completed run counts, so a failed
+or cancelled run that a rerun turned green is not a failure. A failing head is never ready
+to merge. A missing run is untested, not failing.
 
 **In-session approval is a human channel.** Record the user's explicit go-ahead as
 `approvedInSession:<reviewed head>`; it authorizes only that revision and becomes stale
@@ -892,7 +907,7 @@ The skill is [`spec-poc`](../../.agents/skills/spec-poc/SKILL.md).
 
 The artifact merges with its spec, but **retention is not production integration**.
 It remains explicitly experimental: outside production imports, workspace packages,
-default builds, test/lint and knip discovery. Keep authored evidence, not dependencies,
+default builds, test/lint and fallow discovery. Keep authored evidence, not dependencies,
 generated output or secrets. The cost of being wrong is a recorded experiment, not an API.
 
 **Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
@@ -956,7 +971,7 @@ flowchart LR
   `origin/main` after confirmed spec merge, not from the spec branch.
 - **Post-merge experiments use follow-up PRs**, never the original merged PR; see
   [Merging and amending a spec](#merging-and-amending-a-spec).
-- **Keep isolation narrow.** Default test/lint/knip discovery excludes retained experimental
+- **Keep isolation narrow.** Default test/lint/fallow discovery excludes retained experimental
   code under `specs/issues/*/poc/**` and `specs/epics/*/poc/**`, not production code.
   Required CI still runs for issue and epic spec branches. See [`specs/README.md`](../../specs/README.md).
 

@@ -106,7 +106,6 @@
     "build:assets": "node scripts/build-assets.mjs",
     "prepublishOnly": "node scripts/check-assets.mjs",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "lint": "echo 'lint not configured yet'",
     "test": "vitest run",
     "test:watch": "vitest"
   }

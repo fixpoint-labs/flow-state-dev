@@ -3,11 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Private lab: Shift Manager's light and dark theme, as values over the tokens FSD's components already read. No components.",
+  "description": "Private lab: the Flow State brand as CSS values. shift-manager.css is the app register (Shift Manager light and dark, over the tokens FSD components read); page.css is the page register (Drafting System paper, ink, grid, sheets, figures and drawing classes). No components.",
   "exports": {
-    "./shift-manager.css": "./shift-manager.css"
+    "./shift-manager.css": "./shift-manager.css",
+    "./page.css": "./page.css"
   },
-  "files": ["shift-manager.css"],
+  "files": ["shift-manager.css", "page.css"],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ."
@@ -18,7 +19,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }
 }

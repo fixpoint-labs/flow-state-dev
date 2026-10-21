@@ -1,107 +1,88 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 576" role="img" aria-labelledby="title desc">
-  <title id="title">Workforce: what each term is made of</title>
-  <desc id="desc">Each Workforce term beside what it is made of. A worker is a resource in one user’s scope that names its worker flow. A standard worker is read from the installation’s files, the same for every user. A roster is one user’s workers. A coordinator is a worker on the coordinator flow, with delegates from the same roster in its session. A project is one row, in the user’s scope or the org’s; a workstream is an entry in a shared project that only its owner writes, plus its lead’s session. A project coordinator is one session per user per project.</desc>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
-    </marker>
-    <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --warm-fill:#fff7ed; --warm:#c2410c; }
-      @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --warm-fill:#2a1608; --warm:#fb923c; } }
-      .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
-      .wall-proc { fill: var(--proc-fill); stroke: var(--proc); stroke-width: 2; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
-      .wall-warm { fill: var(--warm-fill); stroke: var(--warm); stroke-width: 2; }
-      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
-      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
-      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
-      .card-proc { fill: var(--card); stroke: var(--proc); stroke-width: 1.5; }
-      .card-org { fill: var(--card); stroke: var(--org); stroke-width: 1.5; }
-      .card-warm { fill: var(--card); stroke: var(--warm); stroke-width: 1.5; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .dash { fill: none; stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 6 4; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
-      .tag-sess { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--sess); letter-spacing: .04em; }
-      .tag-proc { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--proc); letter-spacing: .04em; }
-      .tag-org { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--org); letter-spacing: .04em; }
-      .tag-warm { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--warm); letter-spacing: .04em; }
-      .tag-ink { font: 700 11px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); letter-spacing: .04em; }
-      .edge { stroke: var(--card-line); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
-    </style>
-  </defs>
-
-  <rect x="0" y="0" width="920" height="576" rx="16" class="bg"/>
-  <text x="28" y="36" class="title">Workforce: what each term is made of</text>
-  <text x="28" y="58" class="muted">Workforce adds files and rules. Everything lands in a Core or Orchestration piece on the right.</text>
-  <text x="28" y="92" class="tag-org">WORKFORCE TERM</text>
-  <text x="344" y="92" class="tag-sess">BUILT FROM</text>
-  <rect x="28" y="104" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="126" class="h">Worker</text>
-  <text x="42" y="144" class="code">a resource, one owner</text>
-  <rect x="344" y="104" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="125" class="tag-sess">RESOURCE</text>
-  <text x="508" y="125" class="p">A resource in one user’s scope that names its worker</text>
-  <text x="508" y="143" class="p">flow, with its own instructions, skills and tools.</text>
-  <path d="M296 130 L342 130" class="edge"/>
-  <rect x="28" y="166" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="188" class="h">Standard worker</text>
-  <text x="42" y="206" class="code">WORKER.md</text>
-  <rect x="344" y="166" width="548" height="52" rx="10" class="card"/>
-  <text x="358" y="187" class="tag-ink">FILES</text>
-  <text x="508" y="187" class="p">Read from the installation’s files, the same for every</text>
-  <text x="508" y="205" class="p">user. Fork one to make it a worker of your own.</text>
-  <path d="M296 192 L342 192" class="edge"/>
-  <rect x="28" y="228" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="250" class="h">Roster</text>
-  <text x="42" y="268" class="code">one user’s workers</text>
-  <rect x="344" y="228" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="249" class="tag-sess">RESOURCE COLL.</text>
-  <text x="508" y="249" class="p">One user’s workers, standard ones included. A user’s</text>
-  <text x="508" y="267" class="p">own workers come back after a restart.</text>
-  <path d="M296 254 L342 254" class="edge"/>
-  <rect x="28" y="290" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="312" class="h">Coordinator</text>
-  <text x="42" y="330" class="code">flow: coordinator</text>
-  <rect x="344" y="290" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="311" class="tag-org">WORKER</text>
-  <text x="508" y="311" class="p">A worker on the coordinator flow. Its delegates, from</text>
-  <text x="508" y="329" class="p">the same roster, are in its session.</text>
-  <path d="M296 316 L342 316" class="edge"/>
-  <rect x="28" y="352" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="374" class="h">Project</text>
-  <text x="42" y="392" class="code">a body of work</text>
-  <rect x="344" y="352" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="373" class="tag-sess">RESOURCE COLL.</text>
-  <text x="508" y="373" class="p">One row, in the user’s scope when private or the</text>
-  <text x="508" y="391" class="p">org’s when shared: title, brief, owner.</text>
-  <path d="M296 378 L342 378" class="edge"/>
-  <rect x="28" y="414" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="436" class="h">Workstream</text>
-  <text x="42" y="454" class="code">one owner each</text>
-  <rect x="344" y="414" width="548" height="52" rx="10" class="card-sess"/>
-  <text x="358" y="435" class="tag-sess">ENTRY + SESSION</text>
-  <text x="508" y="435" class="p">An entry in a shared project that only its owner</text>
-  <text x="508" y="453" class="p">writes, plus its lead’s workstream session.</text>
-  <path d="M296 440 L342 440" class="edge"/>
-  <rect x="28" y="476" width="268" height="52" rx="10" class="card-org"/>
-  <text x="42" y="498" class="h">Project coordinator</text>
-  <text x="42" y="516" class="code">one per user per project</text>
-  <rect x="344" y="476" width="548" height="52" rx="10" class="card-org"/>
-  <text x="358" y="497" class="tag-org">WORKER SESSION</text>
-  <text x="508" y="497" class="p">A coordinator’s session, one per user per project. It</text>
-  <text x="508" y="515" class="p">hands work only to that user’s own workstreams.</text>
-  <path d="M296 502 L342 502" class="edge"/>
-  <text x="28" y="560" class="muted">Blue: Core. Grey: your files. Green: made of the Workforce terms above it.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 34 920 685">
+<defs>
+<pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ink" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="lb" x="60" y="64">WORKFORCE TERM</text>
+<text class="lb" x="344" y="64">BUILT FROM</text>
+<rect class="solid" x="60" y="78" width="236" height="60"/>
+<text class="nm" x="74" y="105">Worker</text>
+<text class="sub" x="74" y="124">a resource, one owner</text>
+<rect fill="url(#hatch)" x="344" y="78" width="548" height="10"/><line class="thin" x1="344" y1="88.5" x2="892" y2="88.5"/>
+<rect class="solid" x="344" y="78" width="548" height="60"/>
+<text class="lb" x="358" y="110">RESOURCE</text>
+<text class="lb" x="358" y="126">CORE</text>
+<text class="t" x="496" y="110">A resource in one user's scope that names its worker</text>
+<text class="t" x="496" y="127">flow, with its own instructions, skills and tools.</text>
+<line class="ln" x1="296" y1="108" x2="343" y2="108" marker-end="url(#ah)"/>
+<rect class="solid" x="60" y="146" width="236" height="60"/>
+<text class="nm" x="74" y="173">Standard worker</text>
+<text class="c" x="74" y="192">WORKER.md</text>
+<rect class="solid" x="344" y="146" width="548" height="60"/>
+<text class="lb" x="358" y="178">FILES</text>
+<text class="lb" x="358" y="194">YOURS</text>
+<text class="t" x="496" y="178">Read from the installation's files, the same for</text>
+<text class="t" x="496" y="195">every user. Fork one to make a worker of your own.</text>
+<line class="ln" x1="296" y1="176" x2="343" y2="176" marker-end="url(#ah)"/>
+<rect class="solid" x="60" y="214" width="236" height="60"/>
+<text class="nm" x="74" y="241">Roster</text>
+<text class="sub" x="74" y="260">one user's workers</text>
+<rect fill="url(#hatch)" x="344" y="214" width="548" height="10"/><line class="thin" x1="344" y1="224.5" x2="892" y2="224.5"/>
+<rect class="solid" x="344" y="214" width="548" height="60"/>
+<text class="lb" x="358" y="246">RESOURCE COLL.</text>
+<text class="lb" x="358" y="262">CORE</text>
+<text class="t" x="496" y="246">One user's workers, standard ones included. A</text>
+<text class="t" x="496" y="263">user's own workers come back after a restart.</text>
+<line class="ln" x1="296" y1="244" x2="343" y2="244" marker-end="url(#ah)"/>
+<rect class="solid" x="60" y="282" width="236" height="60"/>
+<text class="nm" x="74" y="309">Coordinator</text>
+<text class="c" x="74" y="328">flow: coordinator</text>
+<rect fill="url(#hatch)" x="344" y="282" width="548" height="10"/><line class="thin" x1="344" y1="292.5" x2="892" y2="292.5"/>
+<rect class="solid" x="344" y="282" width="548" height="60"/>
+<text class="lb" x="358" y="314">WORKER</text>
+<text class="lb" x="358" y="330">WORKFORCE</text>
+<text class="t" x="496" y="314">A worker on the coordinator flow. Its delegates,</text>
+<text class="t" x="496" y="331">from the same roster, are in its session.</text>
+<line class="ln" x1="296" y1="312" x2="343" y2="312" marker-end="url(#ah)"/>
+<rect class="solid" x="60" y="350" width="236" height="60"/>
+<text class="nm" x="74" y="377">Project</text>
+<text class="sub" x="74" y="396">a body of work</text>
+<rect fill="url(#hatch)" x="344" y="350" width="548" height="10"/><line class="thin" x1="344" y1="360.5" x2="892" y2="360.5"/>
+<rect class="solid" x="344" y="350" width="548" height="60"/>
+<text class="lb" x="358" y="382">RESOURCE COLL.</text>
+<text class="lb" x="358" y="398">CORE</text>
+<text class="t" x="496" y="382">One row, in the user's scope when private or the</text>
+<text class="t" x="496" y="399">org's when shared: title, brief, owner.</text>
+<line class="ln" x1="296" y1="380" x2="343" y2="380" marker-end="url(#ah)"/>
+<rect class="solid" x="60" y="418" width="236" height="60"/>
+<text class="nm" x="74" y="445">Workstream</text>
+<text class="sub" x="74" y="464">one owner each</text>
+<rect fill="url(#hatch)" x="344" y="418" width="548" height="10"/><line class="thin" x1="344" y1="428.5" x2="892" y2="428.5"/>
+<rect class="solid" x="344" y="418" width="548" height="60"/>
+<text class="lb" x="358" y="450">ENTRY + SESSION</text>
+<text class="lb" x="358" y="466">CORE</text>
+<text class="t" x="496" y="450">An entry in a shared project that only its owner</text>
+<text class="t" x="496" y="467">writes, plus its lead's workstream session.</text>
+<line class="ln" x1="296" y1="448" x2="343" y2="448" marker-end="url(#ah)"/>
+<rect class="solid" x="60" y="486" width="236" height="60"/>
+<text class="nm" x="74" y="513">Project coordinator</text>
+<text class="sub" x="74" y="532">one per user per project</text>
+<rect fill="url(#hatch)" x="344" y="486" width="548" height="10"/><line class="thin" x1="344" y1="496.5" x2="892" y2="496.5"/>
+<rect class="solid" x="344" y="486" width="548" height="60"/>
+<text class="lb" x="358" y="518">WORKER SESSION</text>
+<text class="lb" x="358" y="534">WORKFORCE</text>
+<text class="t" x="496" y="518">A coordinator's session, one per user per project.</text>
+<text class="t" x="496" y="535">It hands work only to that user's own workstreams.</text>
+<line class="ln" x1="296" y1="516" x2="343" y2="516" marker-end="url(#ah)"/>
+<path class="ln" d="M60 304 H40 V108 H59" marker-end="url(#ah)"/><rect class="ground" x="26.8" y="203" width="26.4" height="15"/><text class="plate" x="40" y="214" text-anchor="middle">01</text>
+<path class="ln" d="M60 516 H40 V322 H59" marker-end="url(#ah)"/><rect class="ground" x="26.8" y="407" width="26.4" height="15"/><text class="plate" x="40" y="418" text-anchor="middle">02</text>
+<line class="hi" x1="0" y1="570" x2="920" y2="570"/>
+<text class="n" x="28" y="596">01</text>
+<text class="t" x="60" y="596">A coordinator is a worker: a resource in one user's scope that names the coordinator flow.</text>
+<text class="n" x="28" y="621">02</text>
+<text class="t" x="60" y="621">A project coordinator is a coordinator's session, one per user per project.</text>
+<text class="n" x="28" y="646">03</text>
+<text class="t" x="60" y="646">Workforce adds files and rules. Everything lands in a Core piece, in your files, or in a Workforce term above it;</text>
+<text class="t" x="60" y="663">the second label on the right says which.</text>
+<line class="ln" x1="28" y1="691" x2="54" y2="691" marker-end="url(#ah)"/><text class="lb" x="62" y="695">IS MADE OF</text><rect fill="url(#hatch)" x="173.0" y="685" width="26" height="11"/><rect class="thin" x="173.0" y="685" width="26" height="11"/><text class="lb" x="207.0" y="695">OUTLIVES THE REQUEST</text>
 </svg>

@@ -10,7 +10,9 @@
  *
  * - **The claim.** The gate (and an inline drain's worker body) stamps the
  *   claim it holds into the turn's async scope before the turn runs
- *   (`currentWorkerClaim`). Nothing else stamps it.
+ *   (`currentWorkerClaim`). Nothing else stamps it. An entry declared
+ *   `taskTurn: false` (a delegated post) stamps it without making the turn a
+ *   task turn.
  * - **The task session.** A board's hand-over opens a task session born
  *   naming its task in session state under {@link TASK_SESSION_TASK_KEY}, a
  *   field the session's flow declares readonly and refuses at create from any
@@ -24,7 +26,7 @@
  * something on a task turn must hold the claim it acts on, not this test
  * alone.
  */
-import { currentWorkerClaim } from "./flow-policy-wiring";
+import { claimServesTaskTurn, type WorkerClaimReader } from "./flow-policy-wiring";
 
 /**
  * The session-state field a task session's hand-over names its task in.
@@ -34,8 +36,8 @@ import { currentWorkerClaim } from "./flow-policy-wiring";
 export const TASK_SESSION_TASK_KEY = "taskId";
 
 /** Whether the running turn is a task turn: a turn the gate serves, on the row it claimed. */
-export function isTaskTurn(ctx: { readonly session?: { readonly state?: unknown } }): boolean {
-  if (currentWorkerClaim() !== undefined) return true;
+export function isTaskTurn(ctx: WorkerClaimReader & { readonly session?: { readonly state?: unknown } }): boolean {
+  if (claimServesTaskTurn(ctx)) return true;
   const state = ctx.session?.state as Record<string, unknown> | undefined;
   return typeof state?.[TASK_SESSION_TASK_KEY] === "string";
 }

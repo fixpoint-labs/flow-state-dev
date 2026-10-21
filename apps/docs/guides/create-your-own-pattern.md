@@ -152,7 +152,7 @@ pnpm fsdev run word-count count -i '{"documents":["a b c","one two","single"]}'
 ```
 
 The plan and map blocks are deterministic handlers here so the example runs with
-no key. Make `plan` (or `map`) a `generator({ model: "openai/gpt-5.4-mini", … })`
+no key. Make `plan` (or `map`) a `generator({ model: "openai/gpt-6-luna", … })`
 and the same pattern lets a model plan the work or process each item — the
 pattern doesn't care whether its blocks call a model.
 

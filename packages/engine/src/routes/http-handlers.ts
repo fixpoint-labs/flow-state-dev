@@ -500,7 +500,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetSession(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -705,7 +706,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListCollectionState(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -713,7 +715,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetCollectionItemState(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -721,7 +724,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleGetResourceManifest(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -730,7 +734,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -739,7 +744,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -748,7 +754,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -757,7 +764,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 
@@ -766,7 +774,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           debug: debugConfig,
-          tenantId
+          tenantId,
+          checkedSession: auth.session
         });
       }
 

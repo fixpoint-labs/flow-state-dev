@@ -77,8 +77,8 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
     >
       <div className="min-w-0">
         <p className="flex items-baseline gap-2">
-          <span className="font-medium">{workerLabel(worker.name)}</span>
-          <span className="text-xs text-muted-foreground">{worker.team}</span>
+          <span className="font-medium">{workerLabel(worker.displayName)}</span>
+          <span className="text-xs text-muted-foreground">{worker.teamName}</span>
           {own ? (
             <span className="border px-1 text-[10px] tracking-widest text-muted-foreground" data-testid="roster-worker-own">
               YOURS
@@ -92,20 +92,14 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
             —
           </span>
         </p>
-        {worker.rules ? (
-          <button
-            type="button"
-            onClick={() => navigate({ level: "rules", worker: worker.id })}
-            className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
-            data-testid="roster-worker-rules"
-          >
-            Rules
-          </button>
-        ) : (
-          <p className="mt-1 text-xs text-muted-foreground" data-testid="roster-worker-no-rules">
-            This worker's flow doesn't keep standing rules.
-          </p>
-        )}
+        <button
+          type="button"
+          onClick={() => navigate({ level: "worker-settings", worker: worker.id })}
+          className="mt-1 border px-1.5 py-0.5 text-xs hover:border-foreground"
+          data-testid="roster-worker-settings"
+        >
+          Settings
+        </button>
       </div>
       <div className="space-y-1 pt-0.5">
         <span className="flex gap-0.5">
@@ -153,7 +147,7 @@ function WorkerRow({ state, gaps, own }: { state: WorkerState; gaps: Gaps; own: 
           <WaitEntry key={`${row.boardRef}/${row.id}`} kind="task" id={row.id} what={`you · ${row.id}`} when={row.title} />
         ))}
         {asks.map((ask) => (
-          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.message ?? "waiting on you"} />
+          <WaitEntry key={ask.item.suspensionId} kind="ask" id={ask.item.suspensionId} what={`you · ${ask.kind}`} when={ask.item.title || ask.item.message || "waiting on you"} />
         ))}
       </ul>
     </li>
@@ -212,17 +206,17 @@ export function RosterView({
           </p>
         </div>
         <div role="group" aria-label="Team" className="flex border border-foreground text-xs">
-          {[null, ...teamsOf(workers).map((t) => t.team)].map((option, i) => (
+          {[null, ...teamsOf(workers)].map((option, i) => (
             <button
-              key={option ?? ""}
+              key={option?.team ?? ""}
               type="button"
-              aria-pressed={option === team}
-              onClick={() => navigate({ level: "roster", team: option })}
+              aria-pressed={(option?.team ?? null) === team}
+              onClick={() => navigate({ level: "roster", team: option?.team ?? null })}
               data-testid="roster-team-option"
-              data-team={option ?? ""}
-              className={`px-3 py-1 ${i > 0 ? "border-l border-foreground" : ""} ${option === team ? "bg-foreground text-background" : ""}`}
+              data-team={option?.team ?? ""}
+              className={`px-3 py-1 ${i > 0 ? "border-l border-foreground" : ""} ${(option?.team ?? null) === team ? "bg-foreground text-background" : ""}`}
             >
-              {option ?? "All"}
+              {option?.name ?? "All"}
             </button>
           ))}
         </div>

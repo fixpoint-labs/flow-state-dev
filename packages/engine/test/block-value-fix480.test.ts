@@ -19,11 +19,10 @@ import type { GeneratorModel } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type {
   BlockTraceItem,
-  BlockValue,
   MessageItem,
-  OutputItem,
 } from "@flow-state-dev/core/items";
-import { resolveBlockValue, buildItemLookup } from "@flow-state-dev/core/items";
+import { buildItemLookup } from "@flow-state-dev/core/items";
+import { resolveBlockValueInternal, type BlockValueInternal, type RuntimeItem } from "@flow-state-dev/core/items/internal";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -58,7 +57,7 @@ async function runFlow(args: {
   flow: ReturnType<ReturnType<typeof defineFlow>>;
   input: unknown;
   chunks: string[];
-}): Promise<{ items: OutputItem[] }> {
+}): Promise<{ items: RuntimeItem[] }> {
   const stores = createInMemoryStores();
   const response = createResponseEmitter({
     requestId: "req_fix480",
@@ -105,7 +104,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     ) as BlockTraceItem | undefined;
     expect(blockOutput).toBeDefined();
 
-    const value = blockOutput!.output as BlockValue<unknown>;
+    const value = blockOutput!.output as BlockValueInternal<unknown>;
     expect(value.kind).toBe("ref");
 
     const message = items.find((i) => i.type === "message") as MessageItem | undefined;
@@ -114,7 +113,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
 
     // Resolution returns the joined text.
     const lookup = buildItemLookup(items);
-    const resolved = resolveBlockValue<string>(value, lookup);
+    const resolved = resolveBlockValueInternal<string>(value, lookup);
     expect(resolved).toBe("hello world");
   });
 
@@ -158,7 +157,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     ) as BlockTraceItem | undefined;
     expect(genOutput).toBeDefined();
 
-    const value = genOutput!.output as BlockValue<unknown>;
+    const value = genOutput!.output as BlockValueInternal<unknown>;
     expect(value.kind).toBe("ref");
 
     const message = items.find(
@@ -175,7 +174,7 @@ describe("FIX-480 streaming-text generator emits block_output as ref-to-message"
     ) as BlockTraceItem | undefined;
     expect(passOutput).toBeDefined();
     const lookup = buildItemLookup(items);
-    expect(resolveBlockValue<string>(passOutput!.output, lookup)).toBe("nested");
+    expect(resolveBlockValueInternal<string>(passOutput!.output, lookup)).toBe("nested");
   });
 
   it("downstream block reading the worker output gets the resolved string (task-board recordSuccess shape)", async () => {

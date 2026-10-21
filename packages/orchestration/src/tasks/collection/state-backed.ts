@@ -113,7 +113,7 @@ export interface StateBackedOptions extends TaskCapOptions {
  * Own-property task lookup (FIX-965). `id` is model-supplied (task tool
  * calls declare `taskId: z.string()`), so BP-031 applies — indexing directly
  * could resolve an inherited `Object.prototype` member instead of missing.
- * Same guard as `keyedRouter` and `dispatch-and-execute.ts` (FIX-943).
+ * Same guard as `keyedRouter` (FIX-943).
  */
 function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
   return Object.hasOwn(tasks, id) ? tasks[id] : undefined;

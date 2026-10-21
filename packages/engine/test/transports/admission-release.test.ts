@@ -39,9 +39,9 @@ function routerFor(policy: "reject" | "queue") {
         run: {
           concurrency: policy,
           inputSchema: z.object({ value: z.string() }),
-          block: handler<{ value: string }, { ok: true }>({
+          block: handler({
             name: "leak-run",
-            execute: () => ({ ok: true })
+            execute: (_input: { value: string }): { ok: true } => ({ ok: true })
           })
         }
       }

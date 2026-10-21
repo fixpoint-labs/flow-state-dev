@@ -5,9 +5,16 @@
  */
 import { describe, expect, it } from "vitest";
 import { isTaskTurn, TASK_SESSION_TASK_KEY } from "../../src";
-import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import {
+  currentWorkerClaim,
+  openWorkerClaimScope,
+  stampCurrentClaim,
+  type WorkerClaimReader,
+} from "../../src/task-board/flow-policy-wiring";
 
-const ctxWith = (state: Record<string, unknown> | undefined) => ({ session: { state } });
+const ctxWith = (state: Record<string, unknown> | undefined): WorkerClaimReader & { session: { state: typeof state } } => ({
+  session: { state },
+});
 
 /** Run `fn` in an async scope of its own, so a stamped claim doesn't leak into the next test. */
 const isolated = <T>(fn: () => T): Promise<T> =>
@@ -16,10 +23,37 @@ const isolated = <T>(fn: () => T): Promise<T> =>
 describe("isTaskTurn", () => {
   it("is a task turn inside the claim the gate stamps", async () => {
     const seen = await isolated(() => {
-      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, createdAt: 1 });
-      return isTaskTurn(ctxWith({}));
+      openWorkerClaimScope();
+      const ctx = ctxWith({});
+      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, createdAt: 1 }, ctx);
+      return isTaskTurn(ctx);
     });
     expect(seen).toBe(true);
+  });
+
+  it("is not a task turn in another request the claimed turn started (a resume, a dispatch)", async () => {
+    // The async chain runs on into requests the worker starts in-process; the
+    // claim does not. A resumed coordinator turn or a dispatched agent turn
+    // that read the worker's claim would refuse to wait, or park on a question.
+    const inRequest = (id: string) => ({ session: { state: {} }, request: { identity: { id }, incarnation: "i1" } });
+    const seen = await isolated(() => {
+      openWorkerClaimScope();
+      stampCurrentClaim({ collectionId: "tasks", taskId: "t1", attempt: 1, createdAt: 1 }, inRequest("r_worker"));
+      return [isTaskTurn(inRequest("r_worker")), isTaskTurn(inRequest("r_started"))];
+    });
+    expect(seen).toEqual([true, false]);
+  });
+
+  it("is not a task turn under a claim its entry stamped as no task turn (a delegated post)", async () => {
+    // A post's turn answers the user: it may wait on work it dispatches and
+    // has no filer to ask. Its claim still fences its task-tool writes.
+    const ctx = { session: { state: {} }, request: { identity: { id: "r_post" }, incarnation: "i1" } };
+    const seen = await isolated(() => {
+      openWorkerClaimScope();
+      stampCurrentClaim({ collectionId: "tasks", taskId: "post:1", attempt: 1, createdAt: 1 }, ctx, { taskTurn: false });
+      return [isTaskTurn(ctx), currentWorkerClaim(ctx)?.taskId];
+    });
+    expect(seen).toEqual([false, "post:1"]);
   });
 
   it("is a task turn in a session a hand-over opened for a task, claim or not (a replay after a park)", async () => {

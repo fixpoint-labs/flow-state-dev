@@ -26,9 +26,10 @@ import { OBSERVED_PLAN } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCodexClient } from "@flow-state-dev/codex";
+import { CodexAgentAbortedError } from "@flow-state-dev/codex";
 
 import { claudeCodeSessionFlow } from "@/lib/claude-code-mode";
-import { CODEX_MODEL, CODEX_SESSION, codexBlockOptions, codexSessionFlow } from "@/lib/codex-mode";
+import { CODEX_SESSION, codexBlockOptions, codexClient, codexClientOptions, codexSessionFlow } from "@/lib/codex-mode";
 import { harnessFeeds } from "@/lib/harness-session-flow";
 import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
@@ -257,28 +258,88 @@ describe("the plan panel (V3, BR-13)", () => {
 });
 
 describe("what Kitchen Sink hands the Codex block (S1, BR-10, BR-12)", () => {
-  it("a real run gets the allowlisted environment, workspace-write with no approvals, Codex's default model, and /tmp off the writable list", () => {
+  it("a real run gets the allowlisted environment, workspace-write with no approvals, the session's model, and /tmp off the writable list", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CODEX_API_KEY", "sk-key");
     vi.stubEnv("CODEX_HOME", "/codex-home");
     const options = codexBlockOptions(harnessFeeds(CODEX_SESSION));
-    expect(options.resolveCodexClient).toBeUndefined();
-    expect(options.client?.env).toBeDefined();
-    expect(options.client!.env!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
-    expect(options.client!.env!.PATH).toBe(process.env.PATH);
-    expect(options.client!.env!.HOME).toBe(process.env.HOME);
-    expect(options.client!.env!.CODEX_HOME).toBe("/codex-home");
-    expect(options.client!.env!.CODEX_API_KEY).toBe("sk-key");
-    expect(options.client!.config).toEqual({ sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } });
+    // The SDK's own client, built once Codex has listed its MCP servers (`codexClient`).
+    expect(options.resolveCodexClient).toBeTypeOf("function");
+    expect(options.client).toBeUndefined();
+    const client = codexClientOptions();
+    expect(client.env).toBeDefined();
+    expect(client.env!.KITCHEN_SINK_PLANTED_SECRET).toBeUndefined();
+    expect(client.env!.PATH).toBe(process.env.PATH);
+    expect(client.env!.HOME).toBe(process.env.HOME);
+    expect(client.env!.CODEX_HOME).toBe("/codex-home");
+    expect(client.env!.CODEX_API_KEY).toBe("sk-key");
+    expect(client.config).toEqual({
+      service_tier: "default",
+      sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true },
+    });
+    // The model is the session's, through the block's own option, never a fixed thread setting.
     expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "workspace-write" });
-    expect(CODEX_MODEL).toBeUndefined();
+    expect(options.model).toBeTypeOf("function");
+  });
+
+  it("a run takes neither the tier nor the MCP servers your own Codex settings name", () => {
+    // Codex's overrides add to its settings, so each server is turned off by
+    // name; an empty `mcp_servers` would leave every one of them on.
+    expect(codexClientOptions(process.env, ["vercel", "linear"]).config).toMatchObject({
+      service_tier: "default",
+      mcp_servers: { vercel: { enabled: false }, linear: { enabled: false } },
+    });
+  });
+
+  it("the SDK's client is built with the servers Codex lists, asked once", async () => {
+    const asked: Array<Record<string, string>> = [];
+    const resolve = codexClient(async (env) => {
+      asked.push(env);
+      return ["vercel"];
+    });
+    const first = (await resolve({} as never)) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    await resolve({} as never);
+    expect(asked).toHaveLength(1);
+    expect(first.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+  });
+
+  it("a list Codex can't give is said in the session and asked again on the next run, never silently skipped", async () => {
+    let asked = 0;
+    const resolve = codexClient(async () => {
+      asked += 1;
+      if (asked === 1) throw new Error("codex mcp list timed out");
+      return ["vercel"];
+    });
+    const notes: Array<{ message: string; transient?: boolean }> = [];
+    const ctx = (signal: AbortSignal) =>
+      ({ signal, emit: { status: (message: string, opts?: { transient?: boolean }) => notes.push({ message, transient: opts?.transient }) } }) as never;
+    const first = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    expect(first.exec.configOverrides).not.toHaveProperty("mcp_servers");
+    expect(notes).toEqual([{ message: expect.stringContaining("codex mcp list timed out"), transient: false }]);
+    const next = (await resolve(ctx(new AbortController().signal))) as unknown as { exec: { configOverrides?: Record<string, unknown> } };
+    expect(asked).toBe(2);
+    expect(next.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
+  });
+
+  it("a run stopped while the first MCP list is still coming stops then, and the list still serves the next run", async () => {
+    let finish: (names: readonly string[]) => void = () => {};
+    const resolve = codexClient(() => new Promise((done) => (finish = done)));
+    const stop = new AbortController();
+    const first = resolve({ signal: stop.signal } as never);
+    stop.abort();
+    await expect(first).rejects.toBeInstanceOf(CodexAgentAbortedError);
+    finish(["vercel"]);
+    const next = (await resolve({ signal: new AbortController().signal } as never)) as unknown as {
+      exec: { configOverrides?: Record<string, unknown> };
+    };
+    expect(next.exec.configOverrides).toMatchObject({ mcp_servers: { vercel: { enabled: false } } });
   });
 
   it("under KITCHEN_SINK_HARNESS_UNSANDBOXED=1 a real run starts with no sandbox and no sandbox config", () => {
     vi.stubEnv("KITCHEN_SINK_HARNESS_UNSANDBOXED", "1");
     const options = codexBlockOptions(harnessFeeds(CODEX_SESSION));
     expect(options.thread).toEqual({ approvalPolicy: "never", sandboxMode: "danger-full-access" });
-    expect(options.client!.config).toBeUndefined();
+    expect(codexClientOptions().config).toEqual({ service_tier: "default" });
   });
 
   it("test mode runs the scripted Codex", () => {

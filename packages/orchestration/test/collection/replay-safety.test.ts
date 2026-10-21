@@ -126,7 +126,7 @@ describe.each(backings)("%s — a replayed write reports only what committed", (
     // as claimed here hands one lease to a second worker.
     const { collection, events } = await backing(
       async (c) => {
-        await c.addTask({ id: "t1", input: {} });
+        await c.addTask({ id: "t1", goal: "t1", input: {} });
       },
       (task) => ({ ...task, status: "in_progress", leaseUntil: 10_000_000 })
     );
@@ -140,7 +140,7 @@ describe.each(backings)("%s — a replayed write reports only what committed", (
   it("setAssignee() reports `unchanged` and emits nothing when the patch is a no-op on the winner", async () => {
     const { collection, events } = await backing(
       async (c) => {
-        await c.addTask({ id: "t1", input: {} });
+        await c.addTask({ id: "t1", goal: "t1", input: {} });
       },
       (task) => ({ ...task, assignee: "already-set" })
     );
@@ -154,7 +154,7 @@ describe.each(backings)("%s — a replayed write reports only what committed", (
   it("reclaim() counts nothing and emits nothing when the winner's lease is no longer expired", async () => {
     const { collection, events } = await backing(
       async (c) => {
-        await c.addTask({ id: "t1", input: {} });
+        await c.addTask({ id: "t1", goal: "t1", input: {} });
         await c.claim("worker-1");
       },
       // The concurrent writer renewed the lease well into the future.
@@ -170,7 +170,7 @@ describe.each(backings)("%s — a replayed write reports only what committed", (
   it("reclaim() reports exactly the winner's reclaimed tasks, never a previous attempt's", async () => {
     const { collection, events } = await backing(
       async (c) => {
-        await c.addTask({ id: "t1", input: {} });
+        await c.addTask({ id: "t1", goal: "t1", input: {} });
         await c.claim("worker-1");
       },
       (task) => task
@@ -186,7 +186,7 @@ describe.each(backings)("%s — a replayed write reports only what committed", (
     // Behaviour preservation: a replay that still commits reports normally.
     const { collection, events } = await backing(
       async (c) => {
-        await c.addTask({ id: "t1", input: {} });
+        await c.addTask({ id: "t1", goal: "t1", input: {} });
         await c.claim("worker-1");
       },
       (task) => task
@@ -201,7 +201,7 @@ describe.each(backings)("%s — a replayed write reports only what committed", (
   it("complete() reports `declined` when the winner already settled the task", async () => {
     const { collection, events } = await backing(
       async (c) => {
-        await c.addTask({ id: "t1", input: {} });
+        await c.addTask({ id: "t1", goal: "t1", input: {} });
         await c.claim("worker-1");
       },
       (task) => ({ ...task, status: "cancelled", completedAt: 1000 })

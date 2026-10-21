@@ -161,7 +161,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       inputSchema: harnessRunInputSchema,
       outputSchema: harnessRunHandleSchema,
       execute: async (input, ctx) => {
-        const cwd = feeds.cwd(ctx as never);
+        const cwd = await feeds.cwd(ctx as never);
         const step = options.script[seen.length] ?? "write";
         attempt += 1;
         const notesPath = join(cwd, "notes.md");
@@ -205,6 +205,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
   const board = taskBoard({
     name: "held-board",
     boardId: "held-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     onReview: "exit",
