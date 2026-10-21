@@ -60,6 +60,11 @@ export {
 } from "./conversation-board/task-entry";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
 export {
+  backfillBoardWakes,
+  type BoardWakeBackfillOptions,
+  type BoardWakeBackfillStores
+} from "./conversation-board/backfill-wakes";
+export {
   createWorkerLookup,
   type WorkerLookup,
   type WorkerLookupAnswer,
