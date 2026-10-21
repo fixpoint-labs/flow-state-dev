@@ -31,10 +31,19 @@ export const turnRecordSchema = z.object({
 export type TurnRecord = z.infer<typeof turnRecordSchema>;
 
 /**
- * A harness session's state. Both fields are written only by the session
- * flow's own resolvers, never by a caller (`serverOwned`).
+ * A harness session's state. `model` is the person's pick, set when the
+ * session is created and never after. The other two are written only by the
+ * session flow's own resolvers, never by a caller (`serverOwned`).
  */
 export const harnessSessionStateSchema = z.object({
+  /**
+   * The model every turn of this session runs, by the id the harness takes.
+   * Set at create and fixed for the session's life (`.readonly()`: the
+   * framework refuses any write that would change it). Absent only on a
+   * session stored before models could be picked, which runs on the mode's
+   * default.
+   */
+  model: z.string().min(1).optional().readonly(),
   /** The conversation this session is bound to. Written only by `onSession`. */
   binding: z
     .object({ confirmed: z.string().nullable().default(null) })

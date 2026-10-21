@@ -18,7 +18,9 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `blockTask`, `TaskCollection.block`, `unblock` | `updateTask({ status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
 | `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
-| `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
+| `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
+| A split task's `{ answer, pieces }` output | The worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks` | FIX-2077 |
+| A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
 | Every worker flow's door: `run` (agent, coordinator, Error Reporter), Shift Manager's EM and coder `message` | `respond` | FIX-2084 |
 | A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
 | A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |

@@ -219,7 +219,10 @@ describe("flattenTaskItems — the two axes a tie can fall on", () => {
       },
     ]);
 
-    expect(items.map((i) => (i as { data: { task: { status: string } } }).data.task.status)).toEqual(
+    // A non-`task-change` item would show as its type, so the order check still fails.
+    const statusOf = (item: TaskStreamItem) =>
+      item.type === "component" ? (item.data.task as { status: string }).status : item.type;
+    expect(items.map(statusOf)).toEqual(
       ["in_progress", "completed"]
     );
   });

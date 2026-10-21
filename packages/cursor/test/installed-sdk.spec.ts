@@ -37,7 +37,7 @@ describe("the installed SDK", () => {
   });
 
   it("exports an `Agent` with the `create` and `resume` this package drives", async () => {
-    const sdk = (await import("@cursor/sdk")) as { Agent?: Record<string, unknown> };
+    const sdk = await import("@cursor/sdk");
     expect(typeof sdk.Agent?.create).toBe("function");
     expect(typeof sdk.Agent?.resume).toBe("function");
   });
