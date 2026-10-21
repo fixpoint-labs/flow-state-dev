@@ -8,7 +8,7 @@
 |---|---|---|
 | **sends a message a coordinator routes** | It becomes a *post*: a row titled "Post for writer" she can cancel, and nothing else. A crash mid-answer ends it unanswered | An ordinary task in her list: writer's ongoing session, result to this conversation, one try. A crash is handled as any task's |
 | **asks a delegate that hands part of the job on** | Gets writer's first reply. The handed-on work's result lands in writer's own session, not hers | Gets one answer, under writer's name, once the handed-on work is back |
-| **sends a second message while that delegate still works** | Both run side by side in writer's session | The second waits, then starts in the same session when the first ends |
+| **sends a second message while that delegate still works** | Both run side by side in writer's session | The second waits in her list as a pending task she can cancel, then starts in the same session when the first ends. If writer is waiting on work it handed on, the second waits for that too |
 | **runs rounds on a host that restarts** | A round past its deadline closes only when something else wakes the conversation | It closes within seconds of its deadline, restart or not ([D2](DECISIONS.md#d2)) |
 | **writes a judgment coordinator's prompt** | `dispatchTask` with `post: true` | `createTask` with the routing settings. The delegate still reads her words as written ([D1](DECISIONS.md#d1)) |
 | **maintains the framework** | A post row kind, its own entry, ending entry, cancel action and stopgap; two fit calls | One task through one entry and one ending path; one fit check ([D3](DECISIONS.md#d3)) |
@@ -17,7 +17,8 @@
 
 **Every message a coordinator routes becomes a task its user can see and cancel, worked in the
 delegate's ongoing session, whose one complete answer lands in her conversation under the
-delegate's name, with nothing in the framework that knows a post.**
+delegate's name, with nothing in the framework that writes or works a post: a post row stored
+before the upgrade is read only through FIX-2080's map, until FIX-2071.**
 
 | Is it the right goal? | |
 |---|---|
@@ -49,10 +50,10 @@ path keeps today's deadline timer, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/coordinators/routes-each-message-as-a-task/` · no model: scripted delegates and turns on the real coordinator flow · run by the implementer at completion · verdict in the implementation PR. Then the existing `goals/coordinators/hands-each-post-to-its-delegates/` and the FIX-2005 hand-off leg of `goals/workforce-privacy/two-users-share-a-project-and-nothing-else/`, real model, must still pass |
-| **Signal** | a: each message is one task per delegate in Alice's list, read through the public task action, with session *ongoing*, result *conversation*, one attempt; each answer lands once under its delegate's name; a second message to a busy delegate starts only after the first ends, in the same session; Alice's cancel ends the task and the round does not wait. b: with the host killed while a delegate works past a 2 s deadline, the round closes within the deadline + 2 s of restart, and the late answer lands once and goes no further. c: one line under writer's name, after the filed task ends, carrying its result. d: the judgment delegate's input holds Alice's held-out word; a workstream ask lands in the workstream's session; best fit's pick, its fallback and a misfit lead's refusal each run the one fit check. e: a seeded post row is worked and answered once. Sweep: no post entry declared, no post row written, no `post` field offered |
+| **Signal** | a: each message is one task per delegate in Alice's list, read through the public task action, with session *ongoing*, result *conversation*, one attempt; each answer lands once under its delegate's name; a second message to a busy delegate starts only after the first ends, in the same session; Alice's cancel ends the task and the round does not wait; cancelling the waiting second task ends it unstarted. b: with the host killed while a delegate works past a 2 s deadline, the round closes within the deadline + 2 s of restart, and the late answer lands once and goes no further. c: one line under writer's name, after the filed task ends, carrying its result. d: the judgment delegate's input holds Alice's held-out word; a workstream ask lands in the workstream's session; best fit's pick, its fallback and a misfit lead's refusal each run the one fit check, and a lead opened on work that names no sort (a bare name) passes. e: a seeded post row is worked and answered once, through FIX-2080's map. Sweep: no post entry declared, no post row written, no `post` field offered |
 | **Input** | Deterministic delegates and evaluator picks, SQLite, the sweeper in-process. Other wording, delegate count and kill point must pass too |
 | **Anti-game** | Read tasks through `listTasks_tasks` as Alice and lines from her conversation. No spies on filings or timers |
-| **Control that must fail** | `GOAL_CONTROL=round-timer` must FAIL leg b on *the round closes within the deadline + 2 s of restart*. Today's `main` must FAIL leg c on *one line, after the filed task ends* and the sweep |
+| **Control that must fail** | `GOAL_CONTROL=round-timer` must FAIL leg b on *the round closes within the deadline + 2 s of restart*. Today's `main` must FAIL leg c on *one line, after the filed task ends* and the sweep. With FIX-2080's *post to a routed task* entry off, leg e must FAIL |
 
 ## What changes
 
@@ -140,7 +141,7 @@ field and one due time arrive.
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** every routed message is a task
-Alice lists, whose one complete answer lands on time, and nothing knows a post. If wrong: FIX-2084
+Alice lists, whose one complete answer lands on time, and nothing writes or works a post. If wrong: FIX-2084
 builds the worker contract on an entry that should be gone.
 
 **[The debt](#whats-already-here-and-the-debt), net down:** posts and their six parts go; `target`

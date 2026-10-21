@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A `post: true` flag moved onto `createTask`, which refuses a goal; or the model's goal alone, as for any task |
 | **Because** | [FIX-1872 D2](../FIX-1872/DECISIONS.md#d2) holds: a delegate answers what the person wrote, and the coordinator goal grades a held-out word arriving intact. A flag keeps a second shape of one tool, which FIX-2081 just retired. So the model files an ordinary task with the routing settings and its own goal, and on a turn routing a message the server attaches that message, as written, with who wrote it and the recent lines, to every task the turn files with its result to the conversation |
-| **Locks in** | `target` on `createTask`, the public field naming a workstream record, accepted only from a filer whose delegates have targets. The attached message is server-written and never an input field. The routing settings are the model's per task (the concept's *chooses per task*): the policies always file attempts 1; a judgment model that leaves `maxAttempts` out gets the board's default |
+| **Locks in** | `target` on `createTask`, the public field naming a workstream record, accepted only from a filer whose delegates have targets. The attached message is server-written and never an input field. The routing settings are the model's per task (the concept's *chooses per task*): a routed task is attempts 1 ([epic](../../epics/FIX-2056/DECISIONS.md)): the policies file 1, and a judgment model that leaves `maxAttempts` out on a conversation-result task gets 1, never the board's default |
 
 ![D1: how a judgment coordinator hands a message on. createTask with the routing settings and the message attached, chosen, beside a post flag on createTask. Decides it: what the delegate answers; both keep the user's words. The price: a field and a server-attached message on createTask. Locks in target on createTask; flips if the product wants coordinators to brief in their own words](figures/d1-createtask-as-written.svg)
 
@@ -58,8 +58,8 @@ stays until it does.
 | | |
 |---|---|
 | **Instead of** | Two calls: best fit's evaluator, which picks with a confidence, and FIX-1920's lead-fit generator, which answers *does the work say its sort* and *does the lead fit* |
-| **Because** | Both judge one thing, whether a worker's description fits the work. One check, asked the candidates and the work, answers a pick and a confidence. Best fit reads the pick through its ladder unchanged. Opening a workstream asks it about the chosen lead with a *none fits* choice, and refuses only that answer, so it stays a backstop for clear misfits, never a router. A failed call, or work that names no sort, lets the open through, as today |
-| **Locks in** | Lead-fit's two-part answer is gone; `lead-doesnt-fit` now means the check answered *none fits*. `leadFit: { model }` keeps naming the model, and its record keeps its shape |
+| **Because** | Both judge one thing, whether a worker's description fits the work. One check, asked the candidates and the work, answers a pick and a confidence. Best fit reads the pick through its ladder unchanged. Opening a workstream asks it about the chosen lead, with two more choices beside the pick: *none fits* and *the work doesn't say its sort*. It refuses only *none fits*, so it stays a backstop for clear misfits, never a router, and a bare-name lead still passes. A failed call lets the open through, as today |
+| **Locks in** | Lead-fit's two-part answer is one choice of three; `lead-doesnt-fit` now means the check answered *none fits*. `leadFit: { model }` keeps naming the model, and its record keeps its shape |
 
 ![D3: how fit is judged. One check for best fit and the lead vet, chosen, beside keeping two calls. Decides it: two judgments of fit that can disagree on the same worker. The price: lead-fit's two-part answer becomes one choice, so a borderline lead may change verdict. Locks in lead-doesnt-fit meaning none fits; flips if a lead vet needs a judgment best fit can't give](figures/d3-one-fit-check.svg)
 
@@ -78,7 +78,10 @@ whether the lead can manage the workers under it. Then the vet keeps its own cal
 - **The ongoing session of a workstream record** is the workstream's session, resolved at filing as
   today. A record whose target names none files nothing and is recorded.
 - **Rule 5 holds.** One open routed task per delegate session; a second waits. Best fit's hold
-  ([FIX-1833 D2](../FIX-1833/DECISIONS.md#d2)) still picks the delegate; the message now queues.
+  ([FIX-1833 D2](../FIX-1833/DECISIONS.md#d2)) still picks the delegate; the message now queues,
+  pending in the user's list and cancellable there. The cost, from rules 5, 6 and 9 together: a
+  delegate waiting on work it filed holds later messages to it until that work ends. A waiting
+  task whose round has closed is still worked; its answer lands once, late, as today.
 - **A routed turn is a task turn.** The `taskTurn: false` stopgap goes; the delegate may file work
   and wait on it (rule 9), and its task stays open until that work ends (rule 6, FIX-2077). The
   coordinator never waits on a routed task (FIX-2082's refusal).
@@ -115,6 +118,31 @@ whether the lead can manage the workers under it. Then the vet keeps its own cal
 | Address a workstream by an `assignee` like `eng.em (pricing-page)` | A string format a model must spell exactly; `target` is today's field, moved |
 | Let a routed task run beside another in the delegate's session | Rule 5 is the owner's, and two open tasks in one session break FIX-2077's done |
 | Refuse a goal on a routing turn's `createTask` | A field rule that changes with the turn; the attached message already keeps the words |
+
+## Notes from review
+
+Recorded for the implementer, not baked into the design. Round 1, on `48372389`.
+
+- **Tag the goal legs by slice** (Cursor, SPEC goal): *core* (no post writes; legs a, c, e; the
+  sweep) · *D2* (leg b) · *D3* (leg d's fit part), so a split implementation can land without
+  re-opening the whole goal.
+- **Name the three settings where the routing figure first says "three settings"** (Cursor):
+  `session: ongoing`, `resultTo: conversation`, `maxAttempts: 1`.
+- **Assemble the brief once per routing turn** (Cursor, D1): message and recent lines built once
+  and attached to each task the turn files, especially *everyone* filing N; one internal filing
+  helper, the successor to `filePost` / `deliverTo`, serving both writers.
+- **No second entry or settlement path** (Cursor): `defineCoordinatorFlow` and the board's
+  `among: [work, onDelegatedPost]` go to `work` only, and `task-settled.ts`'s post branch is
+  deleted rather than adapter-mapped (ER-6).
+- **Sweep the helpers too** (second look): the goal check's sweep also finds no `isPostRow`,
+  `onPostSettled` or `postCancelled` in `packages/` or `apps/`, leaving `workerTaskEntry` and
+  `conversation-board/task-entry.ts` as the only entry and ending pair (`task-settled.ts`,
+  `notice-delivery.ts`, `board.ts`).
+- **Merge order** (second look): this lands after FIX-2078, FIX-2080 and FIX-2081 merge (the
+  blocked-by relations); D2 rests on FIX-2078's sweeper-kept wake.
+- **D3 can be its own PR** (Cursor, second look): it shares no code path with the post removal.
+  It stays in this issue because the epic puts *one fit check* here
+  ([SPEC](../../epics/FIX-2056/SPEC.md), set and debt); the implementer may land it separately.
 
 ## How it got here
 
