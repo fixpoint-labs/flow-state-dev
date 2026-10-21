@@ -227,6 +227,7 @@ export function claimHost(options: HostOptions) {
       goal: z.string(),
       input: z.unknown().optional(),
       maxAttempts: z.number().optional(),
+      deps: z.array(z.string()).optional(),
     }),
     outputSchema: z.unknown(),
     uses: [ledgerResources],
@@ -239,6 +240,7 @@ export function claimHost(options: HostOptions) {
           goal: input.goal,
           assignee: ASSIGNEE,
           ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.deps !== undefined ? { deps: input.deps } : {}),
           maxAttempts: input.maxAttempts ?? 2,
         });
       }
