@@ -51,8 +51,6 @@ describe("a refused run on a board read from the claim", () => {
     expect(refusing.seen).toHaveLength(0);
   }, 60_000);
 
-  // A refused run ends the way any failed task ends, so a task waiting on it
-  // is not left pending for a dependency that will never complete.
   it("cancels a task that depends on the refused row, as any failed task's dependent is", async () => {
     const lab = claimHost({ mode: "claim" });
     await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { issue: "FIX-1" }, maxAttempts: 2 });

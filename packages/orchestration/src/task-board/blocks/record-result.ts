@@ -211,21 +211,15 @@ function readTaskQuietly(
 }
 
 /**
- * A worker's failure that no retry can change: thrown by a worker that knows
- * the next attempt would end the same way, such as a run refused before it
- * started because it names nothing it may work on.
- *
- * The error recorder ends the row on this attempt rather than re-queueing it:
- * `errored` for good, or `cancelled` when {@link ending} says so. The worker
- * never writes the ending itself. The recorder does, under the worker's claim,
- * so a superseded attempt's failure is declined like any other.
+ * Thrown when the next attempt would end the same way. The recorder ends the
+ * row on this attempt, under the worker's claim, so the worker writes no
+ * ending of its own. `ending` defaults to `errored`.
  */
 export class TaskEndsForGoodError extends Error {
-  /** How the row ends: `errored` (the default) or `cancelled`. */
   readonly ending: "errored" | "cancelled";
 
-  constructor(message: string, options?: { ending?: "errored" | "cancelled"; cause?: unknown }) {
-    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
+  constructor(message: string, options?: { ending?: "errored" | "cancelled" }) {
+    super(message);
     this.name = "TaskEndsForGoodError";
     this.ending = options?.ending ?? "errored";
   }
@@ -517,8 +511,6 @@ export function createRecordError(options: RecordErrorOptions) {
     execute: async (error: unknown, ctx) => {
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
-      // A failure the worker says no retry can change ends the row on this
-      // attempt, written here rather than by the worker.
       const forGood = error instanceof TaskEndsForGoodError ? error.ending : undefined;
 
       // A report that could not be DELIVERED is fatal wherever it happens, and

@@ -1,13 +1,4 @@
-/**
- * A worker that knows its failure is final says so by throwing
- * `TaskEndsForGoodError`, and the error recorder ends the row on that attempt.
- *
- * Why it matters: only the claim gate or the drain records a row's ending
- * (the FIX-2056 epic's ER-1). A worker that could not say "don't retry this"
- * had two bad choices: let the recorder re-queue a run that will be refused
- * the same way on every attempt, or write the ending itself and become a
- * second ending writer. The marker removes both.
- */
+/** The recorder ends a final failure on this attempt. An ordinary error still retries. */
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";

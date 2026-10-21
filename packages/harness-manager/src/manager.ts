@@ -751,15 +751,8 @@ export class HarnessAttemptFailed extends Error {
 
 /**
  * The run's workspace refused it: its source answered `refused`, or the host
- * would not provision what the source named.
- *
- * Not a failed attempt. The same source and host give the same answer next
- * time, so a retry would spend every attempt on one refusal. The manager
- * writes no ending of its own: this error tells the board's recorder to end
- * the row on this attempt, with this message as its reason, under the
- * attempt's own claim. It ends `cancelled` on the fixed board, and `errored`
- * on a board read from the claim, where the conversation that filed the row
- * reports it.
+ * would not provision what the source named. The same answer next time, so
+ * the recorder ends the row on this attempt instead of retrying.
  */
 export class HarnessRunRefused extends TaskEndsForGoodError {
   constructor(message: string, ending: "errored" | "cancelled") {
@@ -938,12 +931,7 @@ function harnessCtxState(ctx: {
   return ctx.sequencer?.state as ManagerState | undefined;
 }
 
-/**
- * How a refused run's row ends on this run's board. On a board read from the
- * claim it fails for good: a cancelled row there reaches nobody, and an
- * `errored` one is what the conversation that filed it reports. The fixed
- * board keeps the cancel.
- */
+/** Claim board: `errored` (a cancel there reaches nobody). Fixed board: `cancelled`. */
 function refusalEnding(ctx: { sequencer?: { state?: unknown } | undefined }): "errored" | "cancelled" {
   return harnessCtxState(ctx)?.claim != null ? "errored" : "cancelled";
 }
@@ -2595,9 +2583,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
           { outcome: "failed", reason },
         );
       }
-      // **A refused run is settled, not retried** (see `HarnessRunRefused`),
-      // and not by this handler: the error it re-throws tells the board's
-      // recorder to end the row on this attempt, under this attempt's claim.
+      // Settled by the recorder, not retried (see `HarnessRunRefused`).
       throw error;
     },
   });

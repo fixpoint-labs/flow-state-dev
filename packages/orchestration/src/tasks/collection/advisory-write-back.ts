@@ -281,10 +281,8 @@ function readClock(ref: TaskCollectionRef): number {
  * what keeps two callers from carrying two copies of that decision.
  *
  * Runs only on the error path, so the retry-budget sum it may walk is never
- * paid by a write that succeeded.
- *
- * A `noRetry` fail skips the retry route in both backings, so it is headed
- * for `errored` whatever attempts are left.
+ * paid by a write that succeeded. `noRetry` is terminal in both backings,
+ * whatever attempts are left.
  */
 function resolveTarget(
   ref: TaskCollectionRef,
