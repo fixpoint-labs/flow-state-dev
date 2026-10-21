@@ -5,6 +5,9 @@ sidebar_label: Projects
 description: "A project is a body of work, private to one user or shared with the org. Each workstream in it has one owner, and each user talks to it through their own project coordinator."
 ---
 
+import Figure from "@site/src/components/Figure";
+import ProjectOverviewDrawing from "./project-overview.svg";
+
 # Projects
 
 A **project** is a body of work: a title, a brief, an owner and, on a shared project, the people working on it. It's data, not a file. You don't write a folder or a file for one. It's a row created while the app runs, by your own code or by a worker acting for a user.
@@ -13,7 +16,7 @@ The work inside a project is split into **workstreams**. Each workstream has one
 
 Each user talks to a project through their own **project coordinator**: a conversation with a coordinator worker that reads the whole project and hands work to that user's workstreams.
 
-![A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each user's project coordinator hands work only to their own open workstreams.](./project-overview.svg)
+<Figure svg={ProjectOverviewDrawing} caption="A project is shared with the organization, or private to you" description={"A shared project lives in the organization and everyone in it reads it. A private project lives with its creator and nobody else reads it. Each workstream is one entry with one owner, read by everyone who reads the project and written only by its owner. Each user's project coordinator hands work only to their own open workstreams."} />
 
 ## Private and shared
 
