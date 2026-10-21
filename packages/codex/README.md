@@ -90,6 +90,16 @@ reasoning output) and `failureMessage`.
 `"stopped-at-limit"` never appears here, and a run stopped by your deadline throws
 rather than returning a handle.
 
+## Warnings and failures
+
+Codex's own warnings, such as a configured service tier the model doesn't
+support, are kept `status` notes, not `error` items: nothing about them ends the
+run. The stream's own errors (its reconnect attempts) are the transient status;
+the last one becomes the failure when no turn result follows it. A run that fails emits one
+`error` item whose `message` is one line saying why, read out of the API's error
+body when Codex passes one through; everything the Codex CLI printed on its way
+out is on that item's `details.output`.
+
 ## Cost
 
 An estimate, always: Codex reports tokens and no price, so the number comes from

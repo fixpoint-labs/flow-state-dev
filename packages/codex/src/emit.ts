@@ -116,10 +116,15 @@ export async function emitTranslatedEvent(
     case "tool_result":
       return emitToolResult(event, ctx, state, provenance, blockName);
     case "status":
+    case "stream_error":
       ctx.emit.status(event.message);
       return;
+    case "notice":
+      // Kept in the request record, as a status note rather than an error item.
+      ctx.emit.status(event.message, { transient: false });
+      return;
     case "error":
-      return emitError(event.message, event.code, ctx, provenance);
+      return emitError(event.message, event.code, event.details, ctx, provenance);
     case "thread_started":
     case "turn_completed":
     case "turn_failed":
@@ -248,6 +253,7 @@ async function emitToolResult(
 async function emitError(
   message: string,
   code: string | undefined,
+  details: Record<string, unknown> | undefined,
   ctx: BlockContext,
   provenance: EmitProvenance,
 ): Promise<void> {
@@ -258,6 +264,7 @@ async function emitError(
     status: "failed" as const,
     message,
     ...(code ? { code } : {}),
+    ...(details !== undefined ? { details } : {}),
   };
   await ctx.response.emit({ type: "item.added", item });
   await ctx.response.emit({ type: "item.done", item });

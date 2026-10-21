@@ -22,7 +22,7 @@ import type { ResolveCodexClient } from "@flow-state-dev/codex";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
 import { claudeCodeModelChoices, claudeCodeSessionFlow } from "@/lib/claude-code-mode";
-import { CODEX_MODELS, CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
+import { CODEX_DEFAULT_MODEL, CODEX_MODELS, CODEX_SESSION, codexModelChoices, codexSessionFlow } from "@/lib/codex-mode";
 import { CURSOR_DEFAULT_MODEL, cursorCatalogModels, cursorModelChoices, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessModelChoices, resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { MODEL_REQUIRED } from "@/lib/harness-session-flow";
@@ -101,7 +101,7 @@ function codex(): Mode {
       },
     };
   };
-  return { name: "Codex", flow: () => codexSessionFlow({ resolveCodexClient: resolve }) as never, models, fallback: undefined };
+  return { name: "Codex", flow: () => codexSessionFlow({ resolveCodexClient: resolve }) as never, models, fallback: CODEX_DEFAULT_MODEL };
 }
 
 function cursor(): Mode {
@@ -287,6 +287,8 @@ describe("what each mode offers to pick", () => {
     expect(choices.models).toBe(CODEX_MODELS);
     expect(choices.defaultId).toBe(CODEX_MODELS[0]!.id);
     expect(choices.reason).toBeNull();
+    // A session from before the picker runs on it, never on the model your own Codex settings name.
+    expect(choices.fallbackId).toBe(CODEX_DEFAULT_MODEL);
   });
 
   it("Cursor: its own list with the mode's default preselected and first when unlisted; the default alone when the list fails", async () => {

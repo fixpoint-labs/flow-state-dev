@@ -298,6 +298,9 @@ export type InstalledSdkVersionReader = () => InstalledSdkVersion;
  *
  * `thread_started` is not an emission — it carries the id to the host's session
  * hook — but it rides the same union so the block's loop has one shape to walk.
+ * `status` is the in-flight line; `notice` is a warning kept in the record.
+ * `stream_error` is the stream's own `error` event: shown as the in-flight
+ * line, and the run's failure only when no terminal turn event follows.
  */
 export type TranslatedEvent =
   | { kind: "thread_started"; threadId: string }
@@ -313,6 +316,8 @@ export type TranslatedEvent =
       isError: boolean;
     }
   | { kind: "status"; message: string }
-  | { kind: "error"; message: string; code?: string }
+  | { kind: "stream_error"; message: string }
+  | { kind: "notice"; message: string }
+  | { kind: "error"; message: string; code?: string; details?: Record<string, unknown> }
   | { kind: "turn_completed"; usage: CodexRunUsage | null }
   | { kind: "turn_failed"; message: string };
