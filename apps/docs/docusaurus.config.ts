@@ -48,6 +48,33 @@ const config: Config = {
         theme: {
           customCss: "./src/css/custom.css",
         },
+        // Diagrams are SVGs imported into MDX and inlined through SVGR, so
+        // they read the page's tokens and fonts (see src/components/Figure).
+        // `cleanupIds` would shorten every id to "a", "b"…, which collide
+        // between two figures on one page; `prefixIds` prefixes each id with
+        // its file's name instead. Class names are left alone: they are the
+        // page's drawing classes. `descProp` lets a figure pass its long
+        // description, as `titleProp` (on by default) passes its title.
+        svgr: {
+          svgrConfig: {
+            descProp: true,
+            svgoConfig: {
+              plugins: [
+                {
+                  name: "preset-default",
+                  params: {
+                    overrides: {
+                      removeTitle: false,
+                      removeViewBox: false,
+                      cleanupIds: false,
+                    },
+                  },
+                },
+                { name: "prefixIds", params: { prefixClassNames: false } },
+              ],
+            },
+          },
+        },
       } satisfies Preset.Options,
     ],
   ],
