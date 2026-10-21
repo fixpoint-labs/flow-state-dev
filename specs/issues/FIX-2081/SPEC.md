@@ -97,15 +97,18 @@ flowchart LR
 ```
 
 The tool and the action run the same block, so a screen meets every rule a model does. The write
-is the collection's guarded patch FIX-2080 adds for its own fields, reading the same table; the
-block maps the input and names the refusal.
+is the collection's guarded patch FIX-2080 adds for its own fields, and one table holds every
+field's rule, FIX-2080's included; the block maps the input and names the refusal.
 
 ## What stays as it is
 
 - **`answerTask` and the question park,** until FIX-2058. **`dispatchTask`,** until FIX-2082 and
   FIX-2083 replace its wait and its post form ([D1](DECISIONS.md#d1)).
-- **What a cancel does past the row:** the cascade is FIX-2080's; a resolved suspension,
-  FIX-2082's and FIX-2058's; the Inbox item, FIX-2058's.
+- **What a cancel does past the row:** `updateTask({ status: "cancelled" })` records its ending
+  through `endingOf`
+  ([`ending.ts:69-89`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/orchestration/src/tasks/collection/ending.ts#L69-L89)),
+  with no write path of its own; the cascade is FIX-2080's; a resolved suspension, FIX-2082's and
+  FIX-2058's; the Inbox item, FIX-2058's.
 - **The delegate actions a screen calls,** and a project coordinator's workstream leads.
 - **The raw collection's per-field setters,** the substrate's escape hatch (as FIX-2076): a
   cascade's `skipped` label and a failure audit annotate finished rows through them.

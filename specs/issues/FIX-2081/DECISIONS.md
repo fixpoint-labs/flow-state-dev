@@ -63,7 +63,9 @@ is copied at first read, like a listed `delegates:`.
   ([`resource-backed.ts:988`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/orchestration/src/tasks/collection/resource-backed.ts#L988),
   [`state-backed.ts:834`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/orchestration/src/tasks/collection/state-backed.ts#L834)). The `updateTask` block the tool and
   the action share maps the input and names the refusal. A task that starts in between is
-  refused, not edited. The per-field setters stay unguarded.
+  refused, not edited. The per-field setters stay unguarded. The table also carries FIX-2080's
+  `held`, `deps` and `maxAttempts` rows, so once this lands FIX-2080's guard reads its until-start
+  check from it rather than keeping its own beside it: one rule source inside the one patch.
 - **The field table is the concept's,** unchanged. `message` is FIX-2086's row. A cancel sent with
   anything else is refused. A refusal names field, state and next move: steer (FIX-2086), cancel
   and refile, or a follow-up.
@@ -118,5 +120,9 @@ Recorded for the implementer, not folded into the design.
 - **Draft** — framed as the epic's ER-5: four task tools, one table of field rules behind one
   guarded write, and the delegate list as the board's one roster. `dispatchTask` stays until
   FIX-2082 and FIX-2083 replace its two jobs.
+- **Round 1** — the until-start rule moved into the collection's guarded patch FIX-2080 adds; the
+  recorded row's map entry left to FIX-2080; D1's three epic lines amended; migration rows added.
+- **Round 2** — the field table carries FIX-2080's rows too, so the patch has one rule source; a
+  cancel records its ending through `endingOf`, with no write path of its own.
 
 Open: none.
