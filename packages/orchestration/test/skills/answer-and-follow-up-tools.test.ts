@@ -201,7 +201,7 @@ describe("addTask's followUpOf (S4)", () => {
     async (status) => {
       const b = await board([row("root", { status, assignee: "researcher" })]);
       const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
-      expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished: task "root" never ran/) });
+      expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun: task "root" never ran/) });
       expect(b.ref.list()).toHaveLength(1);
     }
   );
@@ -221,7 +221,7 @@ describe("addTask's followUpOf (S4)", () => {
   it("refuses a follow-up of a task cancelled before it ever ran, filing nothing", async () => {
     const b = await board([row("root", { status: "cancelled", assignee: "researcher" })]);
     const out = await b.call("addTask", { goal: "next", followUpOf: "root" });
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished: task "root" never ran/) });
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun: task "root" never ran/) });
     expect(b.ref.list()).toHaveLength(1);
   });
 
@@ -268,7 +268,7 @@ describe("addTask's followUpOf (S4)", () => {
     const dispatchTask = toolNamed(tools, "dispatchTask");
     expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
     const unfinished = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
-    expect(unfinished).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unfinished/) });
+    expect(unfinished).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun/) });
     const assigned = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", assignee: "x", wait: true }, ctx)) as any;
     expect(assigned).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee/) });
     expect(b.ref.list()).toHaveLength(1);

@@ -29,7 +29,9 @@ export type TaskFilingRule =
   /** A setting only a conversation may choose, filed from a task's session. */
   | "setting_not_from_task_session"
   /** A batch names one task id twice. */
-  | "duplicate_task_id";
+  | "duplicate_task_id"
+  /** A follow-up names a task that never ran with a worker: there is no session to follow up in. */
+  | "follow_up_of_unrun";
 
 /**
  * A filing, or an edit of one, refused at the board (FIX-2080). Nothing was
@@ -153,6 +155,29 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
     for (const next of depsOf(id) ?? []) stack.push(next);
   }
   return false;
+}
+
+/**
+ * Refuse a follow-up whose root task never ran with a worker (FIX-2080). A
+ * follow-up runs in the session its root ran in, with that worker; a root
+ * that is held, or still waiting to start, has no session yet, and a
+ * follow-up that took it would run first, in the root's place.
+ *
+ * @param lookup The board's committed row by id.
+ * @throws {TaskFilingRefusedError} with rule `follow_up_of_unrun`; a
+ *   follow-up naming no task here is left to the caller's own lookup.
+ */
+export function assertFollowUpHasRun(init: TaskInit, lookup: (id: string) => Task | undefined): void {
+  if (init.followUpOf === undefined) return;
+  const named = lookup(init.followUpOf);
+  if (named === undefined) return;
+  const root = lookup(named.followUpOf ?? named.id);
+  if (root !== undefined && root.assignee !== undefined && root.run !== undefined) return;
+  throw new TaskFilingRefusedError({
+    rule: "follow_up_of_unrun",
+    ...(init.id !== undefined ? { taskId: init.id } : {}),
+    detail: `task "${init.followUpOf}" never ran with a worker, so there is no session to follow up in. File a new task instead. Nothing was filed.`,
+  });
 }
 
 /**

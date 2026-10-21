@@ -552,7 +552,7 @@ function resolveFollowUp(
     return {
       ok: false as const,
       error:
-        `follow_up_of_unfinished: task "${followUpOf}" never ran with a worker, so there is ` +
+        `follow_up_of_unrun: task "${followUpOf}" never ran with a worker, so there is ` +
         `no session to follow up in. File a new task instead. Nothing was filed.`,
     };
   }

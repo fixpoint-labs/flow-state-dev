@@ -80,6 +80,7 @@ import {
   assertDepsFileable,
   assertFilingCallerContext,
   assertFilingSettings,
+  assertFollowUpHasRun,
   assertUniqueIds,
   hasStarted,
   isClaimable,
@@ -643,6 +644,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (self !== undefined && init.assignee === self) throw stepFromItsOwnTurn(self);
       assertFilingCallerContext(init, { fromTaskSession });
       assertFilingSettings(init, CONVERSATION_BOARD_SETTINGS, ref.collectionId);
+      assertFollowUpHasRun(init, (id) => ref.get(id));
     };
     /** Add one checked row under its chain reservation. */
     const fileReserved = async (init: TaskInit, reserved: { id: string; markFiled: () => Promise<void> }): Promise<Task> => {

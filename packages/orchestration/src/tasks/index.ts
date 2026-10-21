@@ -43,6 +43,7 @@ export {
   assertDepsFileable,
   assertFilingCallerContext,
   assertFilingSettings,
+  assertFollowUpHasRun,
   assertUniqueIds,
   type TaskFilingCallerContext,
   type TaskFilingRule,

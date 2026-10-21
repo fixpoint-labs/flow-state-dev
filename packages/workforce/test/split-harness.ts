@@ -32,6 +32,7 @@ export type Piece = {
   resultTo?: "filer" | "conversation";
   maxAttempts?: number;
   held?: boolean;
+  followUpOf?: string;
 };
 
 /** What the splitter's turns do, by worker id: the test sets and changes these. */
