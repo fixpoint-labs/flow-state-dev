@@ -110,7 +110,7 @@ long, and the interim wait is worth weighing against it.
 - **Review round 1** — the interim dispatcher `wait` dropped (FIX-2082 owns it, and the refusal
   needs only `mode`); the answering turn files no step for itself, so D2's one call stays one;
   `goalSeekLoop` also refuses a park-exit board, which could hand its judge a parked row.
-- **Cross-spec** — D2's answering turn finalizes; a checkpoint set through `updateTask({ id, output })`
+- **Cross-spec** — D2's answering turn finalizes; a checkpoint set through `reportProgress({ output })`
   stands when it returns nothing or an empty string (FIX-2081's D3).
 
 ## Notes from review
