@@ -10,7 +10,7 @@
 | **gives a Workforce worker memory, and its capture fails while it works a task** | The task is done; the missed capture is logged | The attempt fails and the task runs again ([D1](DECISIONS.md#d1)) |
 | **talks to a worker in a conversation, and a background step throws** | Logged; the turn completes | The same. Only a request working a task changes |
 | **reads the task's session afterwards** | The request reads completed | It still reads completed. The task shows the retry or the failure, with the step's error ([D2](DECISIONS.md#d2)) |
-| **cancels a task while its background work runs** | The task is cancelled | The same. Work stopped by a cancel is not an error |
+| **cancels a task while its background work runs** | The task is cancelled | The same, whatever that work does after the cancel. A dropped connection is not a cancel: a step that throws after one still fails the attempt |
 
 ## The goal, and how we'll know it's met
 
@@ -23,7 +23,7 @@ never hears "done" for it.**
 | **The real need** | *"A task whose background work broke is not reported as done"* (the issue), and the concept's rule: an attempt fails when one of its requests errors, *"its background work included"* ([Tasks, failed attempts](../../../docs/internal/design/workforce-coordination-concept.md)) |
 | **Smaller, and rejected** | "Only the `work` request's own background work counts." A failed step in a queued message, an `onTaskSettled` turn, a resume, or work the flow's `onFinished` starts would still end as done |
 | **Bigger, and not this issue's** | What a message's waiting caller hears when its request's background work fails (FIX-2070). Notices reaching the filer when nothing touches the board (FIX-2078) |
-| **Not done if** | The check passes only for work started in `work` · a retry records attempt 1's output · a cancel reads as a failure · a conversation turn's behaviour changes · the failure only reaches a log |
+| **Not done if** | The check passes only for work started in `work` · a retry records attempt 1's output · a cancel reads as a failure · an error after a dropped connection is hidden · a conversation turn's behaviour changes · the failure only reaches a log |
 
 ```mermaid
 flowchart LR
@@ -31,14 +31,16 @@ flowchart LR
   A --> L2["leg b · it always throws · one attempt"]
   A --> L3["leg c · a step the flow's onFinished starts throws"]
   A --> L4["leg d · the same flow as a plain request"]
-  A --> L5["leg e · a cancel during background work"]
+  A --> L5["leg e · a cancel · one step stops on it · one throws anyway"]
+  A --> L6["leg f · a dropped connection · then the step throws"]
   L1 --> R["rows read through the collection · notices the filer heard"]
   L2 --> R
   L3 --> R
   L4 --> R
   L5 --> R
-  R -->|"a retried · b and c failed · d completed · e cancelled"| P["PASS · goal met"]
-  R -.->|"control · the gate is told of no failures"| F["must FAIL legs a b c"]
+  L6 --> R
+  R -->|"a and f retried · b and c failed · d completed · e cancelled"| P["PASS · goal met"]
+  R -.->|"control · the gate is told of no failures"| F["must FAIL legs a b c f"]
 ```
 
 The check reads task rows and what the filer heard. The dashed path drops the failures before the
@@ -47,10 +49,10 @@ gate, and must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/background-error-fails-the-attempt/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: done on attempt 2 with attempt 2's output; attempt 1's output nowhere on the row; the filer heard one ending. b: failed after 1 attempt; its error names the background step; one failure notice. c: as b. d: the request completes and no task row exists. e: cancelled, not failed, not re-pended |
+| **Signal** | a: done on attempt 2 with attempt 2's output; attempt 1's output nowhere on the row; the filer heard one ending. b: failed after 1 attempt; its error names the background step; one failure notice. c: as b. d: the request completes and no task row exists. e: cancelled, not failed, not re-pended, both for a step that settles on the abort and for one that throws after it. f: as a |
 | **Input** | Deterministic workers on the Workforce session board. A step from `.forEachSideChain`, or one started in `onCompleted`, must pass too |
 | **Anti-game** | No assertions on the seam's input, on log lines or on a stubbed gate: rows through the collection, notices as the filer got them |
-| **Control that must fail** | `GOAL_CONTROL=drop-background-failures` must FAIL leg a on *done on attempt 2* and legs b and c on *failed after 1 attempt*; leg d must still pass, which proves the control is narrow. Today's `main` must also FAIL legs a and b |
+| **Control that must fail** | `GOAL_CONTROL=drop-background-failures` must FAIL legs a and f on *done on attempt 2* and legs b and c on *failed after 1 attempt*; leg d must still pass, which proves the control is narrow. Today's `main` must also FAIL legs a and b |
 
 ## What changes
 
@@ -71,6 +73,7 @@ publishes the task-board opener.
 flowchart LR
   W["a request admitted for the task"] --> D["engine drains background work · five drains · every terminal path"]
   D -->|"the failures, gathered across drains"| S["FIX-2077's seam after the last drain"]
+  D -->|"request cancelled"| N["no failures handed on · the task stays cancelled"]
   S --> G["claim gate · the one rule-6 check"]
   G -->|"any failure"| F["fail the attempt · retry or fail"]
   G -->|"none"| R["rule 6 as FIX-2077 has it"]
@@ -78,6 +81,8 @@ flowchart LR
 ```
 
 The engine already collects every failure when it drains; it now hands them to FIX-2077's seam.
+The engine, not the gate, decides what a cancel is: a request whose cancel fired hands on no
+failures, whatever their shape, and a dropped connection is not a cancel.
 
 ## What stays as it is
 
@@ -92,7 +97,7 @@ The engine already collects every failure when it drains; it now hands them to F
 
 | Already here | What this does with it |
 |---|---|
-| The engine's drain helper, which collects every background failure and logs it (`drainRequestSideChainPool`) | **Extends.** It keeps the failures for the request as well as logging them |
+| The engine's drain helper, which collects every background failure and logs it (`drainRequestSideChainPool`) | **Extends.** The request's background-work pool, which already holds every step, keeps their failures across drains as well as logging them |
 | [FIX-2077](../FIX-2077/SPEC.md)'s engine seam after the last drain, and its one rule-6 check ([#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592), in review) | **Extends.** The seam also carries the failures; the check fails the attempt on any |
 | The gate's failure write on a throw (`recordError`, which re-pends or fails the row) | **Builds on.** The one way to fail an attempt; background failures go through it |
 | Whatever else fails an attempt | **Three today:** the recorders' failure write (the gate's and the inline drain's), `failTask` (FIX-2081 removes it), and the split settle (FIX-2077 removes it). `.waitForSideChain({ failOnError: true })` fails the request, which reaches the first. Searched `.fail(`, `failTask`, `recordError`, `failOnError` across `orchestration`, `workforce`, `engine`. This adds none |
@@ -103,7 +108,7 @@ The engine already collects every failure when it drains; it now hands them to F
 | The debt | |
 |---|---|
 | **Removes** | The gap where a task's background failure is seen by nothing but a log |
-| **Adds** | A list of background failures carried on the request to the seam. Permanent by design: the gate needs it |
+| **Adds** | Nothing on the stored request. The pool keeps its failures across drains, and the seam reads them once, after the last. Permanent by design: the gate needs it |
 | **Leaves** | Nothing new |
 
 **Net: flat.** No surface added or removed; one input reaches a check that exists.
@@ -113,11 +118,12 @@ The engine already collects every failure when it drains; it now hands them to F
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** every request working a task,
 not only `work`. If wrong: a failure in a message or an end hook still reads as done.
 
-**[The debt](#whats-already-here-and-the-debt), net flat:** one list carried to an existing seam.
-If wrong: a field on the request nobody else reads.
+**[The debt](#whats-already-here-and-the-debt), net flat:** failures the pool already sees, kept and
+handed to an existing seam. If wrong: a list in the pool nobody else reads.
 
 1. **[D1](DECISIONS.md#d1) · Every background error fails the attempt, Workforce's memory capture
-   included.** If wrong: a flaky capture re-runs whole tasks and can fail one whose answer was fine.
+   included.** If wrong: a flaky capture re-runs whole tasks, their tools and success hooks included,
+   and can fail one whose answer was fine.
 2. **[D2](DECISIONS.md#d2) · The request stays completed; only the attempt fails.** If wrong: a
    person reading a task's session sees "completed" beside a task that retried.
 

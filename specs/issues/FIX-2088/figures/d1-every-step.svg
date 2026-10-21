@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what a background error does to a task's attempt. Chosen: every background error fails the attempt, memory capture included. Instead of: exempting Workforce's after-answer memory step. It comes down to the first row: one rule. The chosen option has one rule with no exception, while the exemption makes memory capture, the background work most workers run, the rule's exception, and a missed capture stays only in a log. The price is the second row: a flaky capture re-runs the whole task with its model calls, while the exemption keeps the answer. The third row is a tie: a conversation turn is unchanged either way. Locks in: in a task, a failed capture retries the task and the after-answer docs change. Flips if: capture failures prove frequent in real runs; then Workforce catches the step's errors itself."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what a background error does to a task's attempt. Chosen: every background error fails the attempt, memory capture included. Instead of: exempting Workforce's after-answer memory step. It comes down to the first row: one rule. The chosen option has one rule with no exception, while the exemption makes memory capture, the background work most workers run, the rule's exception, and a missed capture stays only in a log. The price is the second row: a flaky capture re-runs the whole task with its tools and success hooks, while the exemption keeps the answer. The third row is a tie: a conversation turn is unchanged either way. Locks in: in a task, a failed capture retries the task and the after-answer docs change. Flips if: capture failures prove frequent in real runs; then Workforce catches the step's errors itself."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -65,7 +65,7 @@
     <text class="t-lbl" x="32" y="222">A FLAKY CAPTURE</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">Re-runs the whole task</text>
-    <text class="t-s" x="248" y="241">model calls again; may fail a good answer</text>
+    <text class="t-s" x="248" y="241">tools and success hooks again; may fail a good answer</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Keeps the answer</text>
     <text class="t-s" x="612" y="241">loses one memory</text>
