@@ -82,6 +82,9 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
       if (!("taskId" in input)) {
+        // A wake: pay every delegating ledger this flow declares, at this
+        // session's partition. A scan of each, which is fine at a session's
+        // scale; Workforce's board runs its own pass entry instead.
         const wake = await ctx.requestHost?.wakes?.read(TASK_SETTLED_ENTRY);
         let nextDue: BoardDebts["nextDue"];
         for (const { ref, delivery } of await delegatingBoardsOf(ctx)) {
