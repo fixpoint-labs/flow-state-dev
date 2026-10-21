@@ -113,6 +113,9 @@ import type {
  * status the write could have produced when that prediction was overtakeable,
  * so clause (b) can decline to call such a row somebody else's work.
  */
+/** The write-backs this seam wraps. */
+type AdvisoryVerb = "complete" | "fail" | "cancel";
+
 interface WriteTarget {
   status: TaskStatus;
   kind: TaskChangeKind;
@@ -154,11 +157,34 @@ export async function advisoryFail(
   error: string,
   options: FailOptions
 ): Promise<TaskWriteOutcome> {
-  const before = observe(ref, taskId, "fail");
+  const before = observe(ref, taskId, "fail", options.noRetry === true);
   try {
     return await ref.fail(taskId, error, options);
   } catch (err) {
     return containOrRethrow(ref, taskId, "fail", before, options, err);
+  }
+}
+
+/**
+ * Cancel a task, containing the throw a non-conforming store raises where a
+ * conforming one would have declined.
+ *
+ * A drop-in for `ref.cancel(id, reason, options)`, for a recorder ending the
+ * row its worker holds (a worker's `TaskEndsForGoodError` asking for a cancel).
+ * A row someone else already ended must not turn into a throw that escapes the
+ * recorder and abandons the board's siblings, any more than it does on `fail`.
+ */
+export async function advisoryCancel(
+  ref: TaskCollectionRef,
+  taskId: string,
+  reason: string,
+  options: TaskTransitionOptions
+): Promise<TaskWriteOutcome> {
+  const before = observe(ref, taskId, "cancel");
+  try {
+    return await ref.cancel(taskId, reason, options);
+  } catch (err) {
+    return containOrRethrow(ref, taskId, "cancel", before, options, err);
   }
 }
 
@@ -188,12 +214,14 @@ interface CallBasis {
 function observe(
   ref: TaskCollectionRef,
   taskId: string,
-  verb: "complete" | "fail"
+  verb: AdvisoryVerb,
+  noRetry = false
 ): CallBasis {
   return {
     task: readQuietly(ref, taskId),
     at: readClock(ref),
-    grantedRetries: readGrantedRetries(ref, verb),
+    // A `noRetry` fail never takes the retry route, so the budget can't decide it.
+    grantedRetries: noRetry ? undefined : readGrantedRetries(ref, verb),
   };
 }
 
@@ -211,7 +239,7 @@ function observe(
  */
 function readGrantedRetries(
   ref: TaskCollectionRef,
-  verb: "complete" | "fail"
+  verb: AdvisoryVerb
 ): number | undefined {
   if (verb !== "fail" || ref.maxTotalRetries == null) return undefined;
   try {
@@ -274,26 +302,25 @@ function readClock(ref: TaskCollectionRef): number {
 /**
  * Where a write-back was headed, resolved the way the backings resolve it.
  *
- * `complete` is fixed. `fail` is not: with attempts left it is a *soft* fail
+ * `complete` and `cancel` are fixed. `fail` is not: with attempts left it is a *soft* fail
  * that re-pends the task, and only {@link routeFailure} — the same function
  * both backings call inside their atomic write, against the same budget the ref
  * reports — knows which. Resolving it here rather than at the call sites is
  * what keeps two callers from carrying two copies of that decision.
  *
  * Runs only on the error path, so the retry-budget sum it may walk is never
- * paid by a write that succeeded.
- *
- * A `noRetry` fail skips the retry route in both backings, so it is headed
- * for `errored` whatever attempts are left.
+ * paid by a write that succeeded. `noRetry` is terminal in both backings,
+ * whatever attempts are left.
  */
 function resolveTarget(
   ref: TaskCollectionRef,
-  verb: "complete" | "fail",
+  verb: AdvisoryVerb,
   basis: Task,
   grantedRetries: number | undefined,
   noRetry: boolean
 ): WriteTarget {
   if (verb === "complete") return { status: "completed", kind: "completed" };
+  if (verb === "cancel") return { status: "cancelled", kind: "cancelled" };
   if (noRetry) return { status: "errored", kind: "errored" };
   const routing = routeFailure(
     basis,
@@ -329,9 +356,9 @@ function resolveTarget(
 function containOrRethrow(
   ref: TaskCollectionRef,
   taskId: string,
-  verb: "complete" | "fail",
+  verb: AdvisoryVerb,
   before: CallBasis,
-  options: TaskTransitionOptions,
+  options: FailOptions,
   err: unknown
 ): TaskWriteOutcome {
   let contained: TaskWriteOutcome | undefined;
@@ -356,9 +383,9 @@ function containOrRethrow(
 function attribute(
   ref: TaskCollectionRef,
   taskId: string,
-  verb: "complete" | "fail",
+  verb: AdvisoryVerb,
   before: CallBasis,
-  options: TaskTransitionOptions
+  options: FailOptions
 ): TaskWriteOutcome | undefined {
   const snapshot = before.task;
   const current = readQuietly(ref, taskId);
@@ -368,7 +395,7 @@ function attribute(
   // advisory decline at all.
   if (basis === undefined) return undefined;
 
-  const target = resolveTarget(ref, verb, basis, before.grantedRetries, (options as FailOptions).noRetry === true);
+  const target = resolveTarget(ref, verb, basis, before.grantedRetries, options.noRetry === true);
 
   // (a) The task was already declinable when this call ran.
   //

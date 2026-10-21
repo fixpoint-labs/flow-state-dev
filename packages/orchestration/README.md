@@ -412,11 +412,12 @@ the limit in force. See the
 
 **A failure no retry can change.** A worker that knows the next attempt would end the
 same way throws `TaskEndsForGoodError` (from `@flow-state-dev/orchestration/task-board`)
-instead of writing the ending itself. The board's error recorder then ends the row on
-this attempt, under the worker's claim, with the error's message as its reason:
-`errored` with attempts left unspent (`fail` with `noRetry`), or `cancelled` when
-constructed with `{ ending: "cancelled" }`. Any other error takes the ordinary retry
-route.
+instead of writing the ending itself, naming the task it holds (`{ taskId }`). The
+board's error recorder then ends that row on this attempt, under the worker's claim,
+with the error's message as its reason: `errored` with attempts left unspent (`fail`
+with `noRetry`), or `cancelled` when constructed with `{ taskId, ending: "cancelled" }`.
+A marker naming another row (one rethrown by a board nested inside the worker) and any
+other error take the ordinary retry route.
 
 **When the board cannot record a result.** Saving a result is a commit followed by a
 change announcement, and the announcement can fail on its own. The board's two

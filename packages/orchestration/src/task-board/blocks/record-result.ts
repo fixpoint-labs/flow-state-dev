@@ -75,6 +75,7 @@ import {
   type TaskWriteToken,
 } from "../../tasks";
 import {
+  advisoryCancel,
   advisoryComplete,
   advisoryFail,
 } from "../../tasks/collection/advisory-write-back";
@@ -211,23 +212,23 @@ function readTaskQuietly(
 }
 
 /**
- * A worker's failure that no retry can change: thrown by a worker that knows
- * the next attempt would end the same way, such as a run refused before it
- * started because it names nothing it may work on.
+ * Thrown when the next attempt would end the same way. The recorder ends the
+ * row on this attempt, under the worker's claim, so the worker writes no
+ * ending of its own. `ending` defaults to `errored`.
  *
- * The error recorder ends the row on this attempt rather than re-queueing it:
- * `errored` for good, or `cancelled` when {@link ending} says so. The worker
- * never writes the ending itself. The recorder does, under the worker's claim,
- * so a superseded attempt's failure is declined like any other.
+ * It speaks only for `taskId`, the row its thrower holds: a recorder holding
+ * another row (a board nested inside the worker rethrows its worker's error on
+ * `onError: "fail"`) reads it as an ordinary failure.
  */
 export class TaskEndsForGoodError extends Error {
-  /** How the row ends: `errored` (the default) or `cancelled`. */
+  readonly taskId: string;
   readonly ending: "errored" | "cancelled";
 
-  constructor(message: string, options?: { ending?: "errored" | "cancelled"; cause?: unknown }) {
-    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
+  constructor(message: string, options: { taskId: string; ending?: "errored" | "cancelled" }) {
+    super(message);
     this.name = "TaskEndsForGoodError";
-    this.ending = options?.ending ?? "errored";
+    this.taskId = options.taskId;
+    this.ending = options.ending ?? "errored";
   }
 }
 
@@ -302,6 +303,8 @@ async function writeRethrowingIfNothingSaved(params: {
   recorder: RecorderKind;
   runId: RecorderFailureWiring["runId"];
   attempt: (write: TaskWriteToken) => Promise<unknown>;
+  /** The row's failure is final, so a release ends it rather than re-queueing it. */
+  noRetry?: boolean;
 }): Promise<RecorderFailureReport | undefined> {
   const { ctx, collection, claim, recorder, attempt } = params;
   const write = beginTaskWrite(readTaskQuietly(collection, claim.taskId));
@@ -327,7 +330,7 @@ async function writeRethrowingIfNothingSaved(params: {
       landed === true ? "committed" : "undetermined";
 
     if (verdict === "undetermined") {
-      await releaseRow(collection, claim, err);
+      await releaseRow(collection, claim, err, params.noRetry === true);
     }
 
     const runId = params.runId?.(ctx);
@@ -354,7 +357,8 @@ async function writeRethrowingIfNothingSaved(params: {
  *
  * One fenced write serves both halves of the uncertainty: if the original write
  * did commit, the claim fence declines this one harmlessly; if it did not, this
- * settles the row (or re-queues it, where retries remain).
+ * settles the row (or re-queues it, where retries remain). A row whose
+ * worker said its failure is final (`noRetry`) is not re-queued here either.
  *
  * Best-effort by design. Nothing is hidden by a failure here — the report still
  * goes out and the run still fails — and letting a failed *recovery* displace
@@ -363,14 +367,15 @@ async function writeRethrowingIfNothingSaved(params: {
 async function releaseRow(
   collection: TaskCollectionRef,
   claim: TaskClaimTicket,
-  err: unknown
+  err: unknown,
+  noRetry: boolean
 ): Promise<void> {
   try {
     await advisoryFail(
       collection,
       claim.taskId,
       `task board could not confirm its own write: ${messageOf(err)}`,
-      { ifAllowed: true, claim, refuseWhenParked: true }
+      { ifAllowed: true, claim, refuseWhenParked: true, ...(noRetry ? { noRetry: true } : {}) }
     );
   } catch {
     /* see above */
@@ -517,9 +522,11 @@ export function createRecordError(options: RecordErrorOptions) {
     execute: async (error: unknown, ctx) => {
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
-      // A failure the worker says no retry can change ends the row on this
-      // attempt, written here rather than by the worker.
-      const forGood = error instanceof TaskEndsForGoodError ? error.ending : undefined;
+      const forGood =
+        error instanceof TaskEndsForGoodError && claim !== undefined && error.taskId === claim.taskId
+          ? error.ending
+          : undefined;
+      const recorded = forGood === "cancelled" ? ("cancelled" as const) : ("errored" as const);
 
       // A report that could not be DELIVERED is fatal wherever it happens, and
       // is never written to the row or swallowed by `onError`. The deferral
@@ -582,9 +589,10 @@ export function createRecordError(options: RecordErrorOptions) {
               claim,
               recorder: "fail",
               runId: wiring.runId,
+              ...(forGood !== undefined ? { noRetry: true } : {}),
               attempt: (write) =>
                 forGood === "cancelled"
-                  ? collection.cancel(claim.taskId, message, {
+                  ? advisoryCancel(collection, claim.taskId, message, {
                       ifAllowed: true,
                       claim,
                       refuseWhenParked: true,
@@ -620,13 +628,13 @@ export function createRecordError(options: RecordErrorOptions) {
         // `onError`'s throw here instead would reject the fan-out and abandon
         // every task that had not started, which is the defect this branch
         // exists to remove.
-        return { recorded: forGood === "cancelled" ? ("cancelled" as const) : ("errored" as const), error: message };
+        return { recorded, error: message };
       }
 
       if (onError === "fail") {
         throw error instanceof Error ? error : new Error(message);
       }
-      return { recorded: forGood === "cancelled" ? ("cancelled" as const) : ("errored" as const), error: message };
+      return { recorded, error: message };
     },
   });
 }
