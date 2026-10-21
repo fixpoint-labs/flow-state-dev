@@ -13,8 +13,8 @@
  * <Figure svg={Scopes} caption="The four state scopes" description="Request, session, …" />
  * ```
  *
- * The caption is the figure's visible title and the drawing's accessible
- * name; `description` is its long description. The number ("FIG. 2 — ") is a
+ * The caption is the figure's visible title and, through `aria-labelledby`,
+ * the drawing's accessible name; `description` is its long description. The number ("FIG. 2 — ") is a
  * CSS counter, reset once per page, so figures number in page order.
  */
 import type { ComponentType, ReactElement, SVGProps } from "react";
@@ -40,20 +40,22 @@ export interface FigureProps {
 /** A framed, numbered figure whose drawing is inlined into the page. */
 export default function Figure({ svg: Drawing, caption, description }: FigureProps): ReactElement {
   const id = useId();
-  const titleId = `${id}-title`;
+  const captionId = `${id}-caption`;
   const descId = `${id}-desc`;
+  // The caption names both the figure and the drawing (no SVG <title>, so it is
+  // neither read twice nor shown again as a tooltip); the description is the SVG's <desc>.
   return (
     <figure className="figure">
-      <figcaption className="figure__caption">{caption}</figcaption>
+      <figcaption className="figure__caption" id={captionId}>
+        {caption}
+      </figcaption>
       <div className="figure__body">
         <Drawing
           className="drawing"
           role="img"
-          title={caption}
-          titleId={titleId}
           desc={description}
           descId={descId}
-          aria-labelledby={titleId}
+          aria-labelledby={captionId}
           aria-describedby={descId}
         />
       </div>

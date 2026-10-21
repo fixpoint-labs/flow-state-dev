@@ -466,6 +466,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Diagrams and custom.css keep to the page register: token colours only,
+      # strokes 1/1.3/1.4, `5 4` dashes, mono diagram text, no `--info`.
+      - name: Lint docs brand rules
+        run: pnpm --filter @flow-state-dev/docs lint:brand
+
       # No `packages:build` and no Turborepo cache, unlike the jobs above:
       # `apps/docs` declares no workspace dependency, and `docs:build` runs
       # `docusaurus build` directly rather than through turbo, so neither would
@@ -475,10 +480,5 @@ jobs:
       # across the whole site, so a page this PR never touched can break when
       # another one moves or is deleted — a `paths:` filter keyed on
       # `apps/docs/**` would skip exactly the run that catches it.
-      # Diagrams and custom.css keep to the page register: token colours only,
-      # strokes 1/1.3/1.4, `5 4` dashes, mono diagram text, no `--info`.
-      - name: Lint docs brand rules
-        run: pnpm --filter @flow-state-dev/docs lint:brand
-
       - name: Build docs site
         run: pnpm docs:build

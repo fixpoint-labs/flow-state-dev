@@ -54,7 +54,7 @@ const config: Config = {
         // between two figures on one page; `prefixIds` prefixes each id with
         // its file's name instead. Class names are left alone: they are the
         // page's drawing classes. `descProp` lets a figure pass its long
-        // description, as `titleProp` (on by default) passes its title.
+        // description as the SVG's <desc>.
         svgr: {
           svgrConfig: {
             descProp: true,

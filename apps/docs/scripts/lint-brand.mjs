@@ -3,13 +3,16 @@
  * Brand lint for the docs: the diagrams (every `.svg` under `docs/`, `guides/` and
  * `blog/`) and `src/css/custom.css` keep to the Drafting System page register.
  *
- * - colour: every colour literal (hex, rgb()/rgba(), hsl()/hsla(), a CSS colour name)
- *   is one of page.css's token values — paper, the inks, the highlighter or red, in
- *   Paper or Night. A diagram should carry none at all: it reads the page's tokens.
+ * - colour: in custom.css every colour literal is one of page.css's token values —
+ *   paper, the inks, the highlighter or red, in Paper or Night — and no colour name or
+ *   other colour function appears. A diagram carries no colour literal at all: it reads
+ *   the page's tokens through page.css's drawing classes.
  * - stroke: every stroke width is 1, 1.3 or 1.4 (diagrams, and page.css's drawing classes).
  * - dash: every dash pattern is `5 4`.
  * - info: `custom.css` never names `--info`, the app register's blue.
  * - font: no `<text>` (or anything around it) is set in a font other than the mono.
+ * - svg: a diagram has no `<title>`, `<desc>`, `<style>` or `style=` (the page and
+ *   `<Figure>` own those), and uses only the drawing classes page.css defines.
  *
  * Before linting the real files it lints `scripts/brand-lint-fixtures/`, which break
  * every rule on purpose, and fails unless each rule fires there: a rule that can no
@@ -26,11 +29,10 @@ const DOCS = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURES = join(DOCS, "scripts/brand-lint-fixtures");
 const PAGE_CSS = createRequire(join(DOCS, "package.json")).resolve("@flow-state-dev/design-system/page.css");
 
-const RULES = ["colour", "stroke", "dash", "info", "font"];
+const RULES = ["colour", "stroke", "dash", "info", "font", "svg"];
 const STROKES = new Set(["1", "1.3", "1.4"]);
 const DASHES = new Set(["5 4", "none"]);
 const NAMED = "aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen".split(" ");
-const COLOUR_PROPS = "color|background|background-color|border|border-color|border-(?:top|right|bottom|left)(?:-color)?|outline|outline-color|fill|stroke|stop-color|flood-color|text-decoration-color|box-shadow|scrollbar-color|caret-color";
 
 /** `#abc` / `#aabbcc` / `rgb(…)` as a lowercase `#rrggbb` (alpha dropped: ink at any opacity is ink). */
 function normalise(literal) {
@@ -58,19 +60,46 @@ function finding(file, text, index, rule, detail) {
   return { file, line, rule, detail };
 }
 
+/**
+ * Colour literals. In a diagram any literal fails: it would draw one mode's value in
+ * both, where the page's tokens follow the mode. In CSS a hex or rgb() must be a token
+ * value, and every other colour function (hsl, oklch, lab, hwb, color()…) fails.
+ */
 function lintColours(file, text, allowed, out) {
-  for (const m of text.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g)) {
+  const svg = file.endsWith(".svg");
+  const literal = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lch|lab|hwb|color)\([^)]*\)/g;
+  for (const m of text.matchAll(literal)) {
     // `url(#id)` and `href="#id"` are references, not colours.
-    if (/(?:url\(|href=")$/.test(text.slice(Math.max(0, m.index - 5), m.index))) continue;
-    const value = normalise(m[0]);
-    if (m[0].startsWith("hsl") || !allowed.has(value)) out.push(finding(file, text, m.index, "colour", `${m[0]} is not a page token`));
+    if (/(?:url\(|href=")$/.test(text.slice(Math.max(0, m.index - 6), m.index))) continue;
+    const tokenValue = /^(?:#|rgb)/i.test(m[0]) && allowed.has(normalise(m[0]));
+    if (svg || !tokenValue) out.push(finding(file, text, m.index, "colour", `${m[0]} is not read from a page token`));
   }
-  const named = new RegExp(`(?:^|[\\s;{"'])(?:${COLOUR_PROPS})\\s*[:=]\\s*["']?([^;"'}\\n]*)`, "gi");
-  for (const m of text.matchAll(named)) {
-    for (const word of m[1].toLowerCase().split(/[\s,()]+/)) {
-      if (NAMED.includes(word)) out.push(finding(file, text, m.index, "colour", `${word} is not a page token`));
+  // Colour names: in CSS, in any declaration's value (custom properties included); in a
+  // diagram, in any attribute or style value.
+  const values = svg ? /([\w-]+)\s*[=:]\s*["']?([^;"'<>]+)/g : /([\w-]+)\s*:\s*([^;{}]+)/g;
+  for (const m of text.matchAll(values)) {
+    for (const word of m[2].toLowerCase().split(/[\s,()]+/)) {
+      if (NAMED.includes(word)) out.push(finding(file, text, m.index, "colour", `${word} (in ${m[1]}) is not a page token`));
     }
   }
+}
+
+/** A diagram is drawing only: no title, description or styling of its own, and only page.css's drawing classes. */
+function lintSvgShape(file, text, drawingClasses, out) {
+  for (const m of text.matchAll(/<(title|desc|style)\b|\sstyle\s*=/g)) {
+    out.push(finding(file, text, m.index, "svg", `${m[1] ? `<${m[1]}>` : "a style attribute"}: the page and <Figure> own it`));
+  }
+  for (const m of text.matchAll(/\sclass\s*=\s*["']([^"']*)["']/g)) {
+    for (const name of m[1].split(/\s+/).filter(Boolean)) {
+      if (!drawingClasses.has(name)) out.push(finding(file, text, m.index, "svg", `class "${name}" is not a drawing class in page.css`));
+    }
+  }
+}
+
+/** The class names page.css's `.drawing` rules define. */
+function drawingClassNames() {
+  const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  return new Set([...css.matchAll(/\.drawing\s+(?:[a-z]+)?\.([a-z][\w-]*)/g)].map((m) => m[1]));
 }
 
 function lintStrokes(file, text, out) {
@@ -102,6 +131,7 @@ function lintFile(file, allowed) {
   const text = readFileSync(file, "utf8");
   const out = [];
   if (file.endsWith(".svg")) {
+    lintSvgShape(file, text, DRAWING_CLASSES, out);
     lintColours(file, text, allowed, out);
     lintStrokes(file, text, out);
     lintFonts(file, text, out);
@@ -135,6 +165,7 @@ function svgsUnder(dir) {
 }
 
 const allowed = allowedColours();
+const DRAWING_CLASSES = drawingClassNames();
 const show = (f) => `${f.file.startsWith(DOCS) ? relative(DOCS, f.file) : f.file}:${f.line} ${f.rule}: ${f.detail}`;
 
 // 1. The fixtures must trip every rule, or a rule has stopped working.
