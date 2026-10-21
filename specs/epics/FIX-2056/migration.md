@@ -27,7 +27,13 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | Change kind `dispatched` | `released`: every release of a held row emits it | FIX-2080 |
 | The board's `counts.blocked` | `counts.held` | FIX-2080 |
 | `createCascadeSkipDependents` | Nothing: every board cancels a failed or cancelled row's dependents | FIX-2080 |
-| `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
+| `TaskCollection.reopen` | A follow-up: `createTask({ goal, followUpOf: id })` | FIX-2086 |
+| `Task.reopened` and the worker input's `reopened` | A follow-up, which carries `followUpOf` | FIX-2086 |
+| The `reopened` change kind | Nothing: a follow-up is a new task, with its own changes | FIX-2086 |
+| `Task.parkedForTurn` and `awaitReview`'s `forTurn` | `updateTask({ id, message })`: a steer parks nothing | FIX-2086 |
+| A board's `reopenIn` (harness manager) | A follow-up: `createTask({ followUpOf })` | FIX-2086 |
+| `harnessMessageDoor`, `messageDoorInputSchema`, `messageDoorOutputSchema`, a manager's `messageDoor` | `updateTask({ id, message })` on the run's task; a line in an open task's session is a steer through the coding flow's own door (`message`, `respond` after FIX-2084) | FIX-2086 |
+| `TurnRefused`, `TurnRefusalReason`, and the types `HarnessMessageDoorOptions`, `MessageDoorAction`, `MessageDoorBoard`, `MessageDoorOptions`, `MessageDoorOutput`, `DoorRunIdentity` | `updateTask`'s refusal, which names the rule | FIX-2086 |
 | `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostHistory`, `delegatedPostOnFinished`, `delegatedPostSchema`, `DelegatedPost` | A routed task through `WORKER_TASK_ENTRY`: declare `work` with `workerTaskEntry`; the turn still gets `{ message }` | FIX-2083 |
 | `taskLedgers({ taskTurn })` | Nothing: a routed turn is a task turn | FIX-2083 |
 | `defineCoordinatorFlow`'s `delegateFlows`; `defineSessionBoard`'s `postFlows` and `posts`; `posts` and `both` in `listDelegates`' takes | Nothing: a delegate is a worker whose flow takes tasks, checked by its roles at hire | FIX-2083 |
@@ -50,3 +56,5 @@ Behaviour lines live here, not in the table above.
 | A follow-up into a busy session being refused | It waits, then starts in that session when the open task ends | FIX-2080 |
 | A dependency on another board, waiting for good | Refused at filing: cross boards with a wait or a held task | FIX-2080 |
 | Plan-and-execute and supervisor cascading only a failed step | A cancelled step's dependents are cancelled too, with the same `skipped` label | FIX-2080 |
+| `updateTask({ message })` on an open task | Steers it: uses no attempt and never cancels | FIX-2086 |
+| A line typed in a finished task's session | Talk: the task doesn't change | FIX-2086 |
