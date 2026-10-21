@@ -9,7 +9,7 @@
  *
  * - **A configured model.** Codex's wire never names the model that ran (POC,
  *   confirmed on 0.152.1), so a run left on Codex's default has nothing to
- *   price against. The `thread.model` option is the only source.
+ *   price against. The block's `model` (or `thread.model`) is the only source.
  * - **A row for it in core's table.** A Codex model the table has not learned
  *   yet shows no cost until one patch release teaches it — which corrects every
  *   adapter at once, rather than each keeping its own prices.

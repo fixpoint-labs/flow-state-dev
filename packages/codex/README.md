@@ -40,7 +40,8 @@ const agent = codexAgent({
   cwd: (ctx) => workspacePathFor(ctx),          // where the run works
   resume: (ctx) => storedThreadId(ctx),         // which thread to continue
   onSession: (id, ctx) => storeThreadId(id, ctx),       // called the moment one is named
-  thread: { model: "gpt-5.4-codex", sandboxMode: "workspace-write", approvalPolicy: "never" },
+  model: (ctx) => storedModel(ctx),                     // which model, per run (or a fixed id)
+  thread: { sandboxMode: "workspace-write", approvalPolicy: "never" },
   client: { apiKey: process.env.CODEX_API_KEY },
 });
 ```
@@ -48,8 +49,13 @@ const agent = codexAgent({
 `createCodexAgentCapability(options)` takes the same options and exposes the block
 to a generator as a tool.
 
-**The block's input is the prompt and nothing else.** Where a run writes and which
-conversation it continues are configuration, because the same block can be handed
+**`model` is asked once per run.** One block can run a different model per
+session, and a resumed thread is handed it too. `null` leaves Codex on its default.
+`thread.model` still takes a fixed id; setting both is refused when the block is
+built. Codex's SDK can't list models, so the ids are yours to supply.
+
+**The block's input is the prompt and nothing else.** Where a run writes, which
+conversation it continues and which model it runs are configuration, because the same block can be handed
 to a model as a tool, and a field on the input is a field the model could set. The
 resolvers are handed the block context alone and never the prompt, so a path or a
 session id cannot be derived from text the model wrote.
@@ -88,7 +94,7 @@ rather than returning a handle.
 
 An estimate, always: Codex reports tokens and no price, so the number comes from
 core's model price table and `cost.basis` reads `"estimated"`. It is `null`, never
-`0`, when no model was configured (Codex's output never names the model that ran),
+`0`, when no model was named (Codex's output never names the model that ran),
 when the table has no entry for it, or when the turn reported no usage.
 
 ## Tests
