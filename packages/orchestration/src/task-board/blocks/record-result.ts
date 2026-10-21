@@ -13,7 +13,9 @@
  *   sequencer. Receives the caught error as input, reads
  *   `currentClaim` from worker state, calls `collection.fail`. Honors
  *   `onError`: `"skip"` swallows the error after writing the failure;
- *   `"fail"` rethrows so the parent forEach rejects.
+ *   `"fail"` rethrows so the parent forEach rejects. A
+ *   {@link TaskEndsForGoodError} ends the row on this attempt instead of
+ *   re-queueing it: `fail` with `noRetry`, or `cancel`.
  *
  * Both write-backs are **advisory** (FIX-951): they pass `ifAllowed` and the
  * worker's `claim`, so a result that arrives after the task was settled by
@@ -205,6 +207,27 @@ function readTaskQuietly(
     return collection.get(taskId) as Task | undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * A worker's failure that no retry can change: thrown by a worker that knows
+ * the next attempt would end the same way, such as a run refused before it
+ * started because it names nothing it may work on.
+ *
+ * The error recorder ends the row on this attempt rather than re-queueing it:
+ * `errored` for good, or `cancelled` when {@link ending} says so. The worker
+ * never writes the ending itself. The recorder does, under the worker's claim,
+ * so a superseded attempt's failure is declined like any other.
+ */
+export class TaskEndsForGoodError extends Error {
+  /** How the row ends: `errored` (the default) or `cancelled`. */
+  readonly ending: "errored" | "cancelled";
+
+  constructor(message: string, options?: { ending?: "errored" | "cancelled"; cause?: unknown }) {
+    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
+    this.name = "TaskEndsForGoodError";
+    this.ending = options?.ending ?? "errored";
   }
 }
 
@@ -494,6 +517,9 @@ export function createRecordError(options: RecordErrorOptions) {
     execute: async (error: unknown, ctx) => {
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
+      // A failure the worker says no retry can change ends the row on this
+      // attempt, written here rather than by the worker.
+      const forGood = error instanceof TaskEndsForGoodError ? error.ending : undefined;
 
       // A report that could not be DELIVERED is fatal wherever it happens, and
       // is never written to the row or swallowed by `onError`. The deferral
@@ -557,12 +583,20 @@ export function createRecordError(options: RecordErrorOptions) {
               recorder: "fail",
               runId: wiring.runId,
               attempt: (write) =>
-                advisoryFail(collection, claim.taskId, message, {
-                  ifAllowed: true,
-                  claim,
-                  refuseWhenParked: true,
-                  write,
-                }),
+                forGood === "cancelled"
+                  ? collection.cancel(claim.taskId, message, {
+                      ifAllowed: true,
+                      claim,
+                      refuseWhenParked: true,
+                      write,
+                    })
+                  : advisoryFail(collection, claim.taskId, message, {
+                      ifAllowed: true,
+                      claim,
+                      refuseWhenParked: true,
+                      write,
+                      ...(forGood === "errored" ? { noRetry: true } : {}),
+                    }),
             });
           }
           await ctx.sequencer!.patchState({ currentClaim: undefined, currentLedger: undefined });
@@ -586,13 +620,13 @@ export function createRecordError(options: RecordErrorOptions) {
         // `onError`'s throw here instead would reject the fan-out and abandon
         // every task that had not started, which is the defect this branch
         // exists to remove.
-        return { recorded: "errored" as const, error: message };
+        return { recorded: forGood === "cancelled" ? ("cancelled" as const) : ("errored" as const), error: message };
       }
 
       if (onError === "fail") {
         throw error instanceof Error ? error : new Error(message);
       }
-      return { recorded: "errored" as const, error: message };
+      return { recorded: forGood === "cancelled" ? ("cancelled" as const) : ("errored" as const), error: message };
     },
   });
 }

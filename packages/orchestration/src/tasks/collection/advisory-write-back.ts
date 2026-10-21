@@ -99,6 +99,7 @@ import type { TaskChangeKind } from "./change-event";
 import type { Task, TaskStatus } from "../schema/task";
 import { routeFailure, sumGrantedRetries, transitionDeclineReason } from "./internal";
 import type {
+  FailOptions,
   TaskCollectionRef,
   TaskTransitionOptions,
   TaskWriteOutcome,
@@ -151,7 +152,7 @@ export async function advisoryFail(
   ref: TaskCollectionRef,
   taskId: string,
   error: string,
-  options: TaskTransitionOptions
+  options: FailOptions
 ): Promise<TaskWriteOutcome> {
   const before = observe(ref, taskId, "fail");
   try {
@@ -281,14 +282,19 @@ function readClock(ref: TaskCollectionRef): number {
  *
  * Runs only on the error path, so the retry-budget sum it may walk is never
  * paid by a write that succeeded.
+ *
+ * A `noRetry` fail skips the retry route in both backings, so it is headed
+ * for `errored` whatever attempts are left.
  */
 function resolveTarget(
   ref: TaskCollectionRef,
   verb: "complete" | "fail",
   basis: Task,
-  grantedRetries: number | undefined
+  grantedRetries: number | undefined,
+  noRetry: boolean
 ): WriteTarget {
   if (verb === "complete") return { status: "completed", kind: "completed" };
+  if (noRetry) return { status: "errored", kind: "errored" };
   const routing = routeFailure(
     basis,
     () => grantedRetries ?? sumGrantedRetries(ref.list()),
@@ -362,7 +368,7 @@ function attribute(
   // advisory decline at all.
   if (basis === undefined) return undefined;
 
-  const target = resolveTarget(ref, verb, basis, before.grantedRetries);
+  const target = resolveTarget(ref, verb, basis, before.grantedRetries, (options as FailOptions).noRetry === true);
 
   // (a) The task was already declinable when this call ran.
   //
