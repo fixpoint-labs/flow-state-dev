@@ -70,7 +70,7 @@ function findTool(name: string): GeneratorTool {
 }
 
 describe("taskTools capability", () => {
-  it("registers ten tools under the default preset", () => {
+  it("registers nine tools under the default preset", () => {
     const presetDefs = (taskTools as unknown as {
       __presetDefs?: { tools?: { controlTools?: unknown } };
     }).__presetDefs;
@@ -79,7 +79,6 @@ describe("taskTools capability", () => {
       "addTask",
       "answerTask",
       "assignTask",
-      "blockTask",
       "cancelTask",
       "completeTask",
       "failTask",
@@ -510,14 +509,6 @@ describe("taskTools — illegal status transitions return a recoverable result",
     expect(statusOfA(ctx)).toBe("pending");
   });
 
-  it("blockTask on an in_progress task reports not-ok instead of throwing", async () => {
-    const ctx = ctxWithTask("in_progress");
-    const result = await runForTest(findTool("blockTask"), { taskId: "a", reason: "legal" }, ctx);
-    expect(result).toMatchObject({ ok: false, taskId: "a" });
-    expect((result as { error: string }).error).toContain("illegal_status_transition");
-    expect(statusOfA(ctx)).toBe("in_progress");
-  });
-
   it("failTask on a pending task reports not-ok instead of throwing", async () => {
     const ctx = ctxWithTask("pending");
     const result = await runForTest(findTool("failTask"), { taskId: "a", error: "nope" }, ctx);
@@ -545,7 +536,7 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     // `allowedTransitionsFrom("pending")` includes `in_progress`, which no task
     // tool can reach — a worker claim during a drain is the only route there.
     expect(error).not.toContain("in_progress");
-    expect(error).toContain("From here you can call blockTask or cancelTask.");
+    expect(error).toContain("From here you can call cancelTask.");
     // The rejected tool excludes itself: its target is by definition not allowed.
     expect(error).not.toContain("completeTask");
     // Said without asserting HOW a task gets started — this surface does not
@@ -553,60 +544,25 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     expect(error).toContain("has not been started yet");
   });
 
-  it("does not imply an unblock exists for a blocked task", async () => {
+  it("names only cancelTask for a held task: no failure reaches a task that never started", async () => {
     const error = await errorFrom(
       "completeTask",
       { taskId: "a", output: "done" },
-      ctxWithTask("blocked"),
+      ctxWithTask("held"),
     );
-    expect(error).toContain('task "a" is blocked');
-    // No tool unblocks a task. `allowedTransitionsFrom("blocked")` claims
-    // `pending`, reachable ONLY via failTask with a retry budget — which this
-    // budget-less task does not have. The message must not suggest otherwise.
-    expect(error).not.toMatch(/unblock/i);
+    expect(error).toContain('task "a" is held');
+    // `allowedTransitionsFrom("held")` claims `pending`, which no
+    // status-changing tool reaches (a failure on a held task is refused,
+    // FIX-2080). The message must not suggest otherwise.
     expect(error).not.toContain("pending");
-    expect(error).toContain("cancelTask");
+    expect(error).toContain("From here you can call cancelTask.");
     expect(error).not.toContain("failTask");
-  });
-
-  it("still offers blockTask on a blocked task, because that call does real work", async () => {
-    // Pins the RULE ("would this call succeed") against the alternative reading
-    // that a blocked task should advertise only `cancelTask`. `block()` on an
-    // already-blocked task is a legal same-status transition that rewrites the
-    // reason and emits a `blocked` change, so the rule keeps it. Suppressing it
-    // would require a same-status filter, which is the thing that would also
-    // silently drop a budgeted `failTask` from a `pending` task's list.
-    //
-    // This assertion is the difference between the two readings: without it the
-    // blocked case passes under either, and a filter could be reintroduced
-    // unnoticed.
-    const error = await errorFrom(
-      "completeTask",
-      { taskId: "a", output: "done" },
-      ctxWithTask("blocked"),
-    );
-    expect(error).toContain("From here you can call blockTask or cancelTask.");
-  });
-
-  it("names the calls available from parked without claiming pending", async () => {
-    const error = await errorFrom(
-      "blockTask",
-      { taskId: "a", reason: "legal" },
-      ctxWithTask("parked"),
-    );
-    expect(error).toContain('task "a" is parked');
-    // `allowedTransitionsFrom("parked")` includes `pending`; no tool
-    // reaches it from here, so the recovery list must not mention it.
-    expect(error).not.toContain("pending");
-    expect(error).toContain("cancelTask");
-    expect(error).toContain("completeTask");
-    expect(error).toContain("failTask");
   });
 
   it("states a terminal task as terminal, without rendering an empty action list", async () => {
     const error = await errorFrom(
-      "blockTask",
-      { taskId: "a", reason: "legal" },
+      "failTask",
+      { taskId: "a", error: "late" },
       ctxWithTask("completed"),
     );
     expect(error).toContain('task "a" is completed, which is terminal');
@@ -629,11 +585,11 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     // or narrowing a row) could break this file's output with nothing in it
     // changing. Asserted here rather than guarded at runtime — an unreachable
     // `if` would hide the regression, and this names it instead.
+    // From `in_progress` and `parked` every status tool is legal, so no call
+    // there is refused and there is nothing to render.
     const probes: Array<[status: string, tool: string]> = [
       ["pending", "completeTask"],
-      ["in_progress", "blockTask"],
-      ["blocked", "completeTask"],
-      ["parked", "blockTask"],
+      ["held", "completeTask"],
     ];
     for (const [status, tool] of probes) {
       const error = await errorFrom(tool, { taskId: "a", reason: "r" }, ctxWithTask(status));
@@ -708,7 +664,7 @@ function taskA(ctx: unknown) {
 /**
  * The defect this issue is about. Against a task that already finished, three of
  * these tools used to give three different answers and only one was true:
- * `blockTask` refused honestly, `cancelTask` said it worked and did nothing, and
+ * `failTask` refused honestly, `cancelTask` said it worked and did nothing, and
  * `assignTask` said it worked and wrote the new assignee onto a dead task.
  */
 describe("taskTools — writes to a terminal task are refused, not silently accepted", () => {
@@ -727,7 +683,7 @@ describe("taskTools — writes to a terminal task are refused, not silently acce
       const error = (result as { error: string }).error;
       expect(error).toContain("terminal_task_write_declined");
       expect(error).toContain(`task "a" is ${status}, which is terminal`);
-      // Names what the caller actually attempted. `blockTask`'s copy says "its
+      // Names what the caller actually attempted. `failTask`'s copy says "its
       // status will not change again", which would be the wrong thing here —
       // `assignTask` attempts no status transition.
       expect(error).toContain("Its assignee will not change.");
@@ -752,15 +708,15 @@ describe("taskTools — writes to a terminal task are refused, not silently acce
     expect(statusOfA(ctx)).toBe("errored");
   });
 
-  it("reads the same as blockTask's refusal on the same task, bar the code and the clause", async () => {
+  it("reads the same as failTask's refusal on the same task, bar the code and the clause", async () => {
     // Decision 6: one parameterized renderer, not four bespoke messages. The
     // sentence shape and the closing suggestion have to match, or the four tools
     // drift into four ways of saying the same thing.
-    const blocked = await errorFrom("blockTask", { taskId: "a", reason: "r" }, ctxWithTask("completed"));
+    const completed = await errorFrom("failTask", { taskId: "a", error: "late" }, ctxWithTask("completed"));
     const cancelled = await errorFrom("cancelTask", { taskId: "a" }, ctxWithTask("completed"));
 
     const shape = (error: string) => error.replace(/^[a-z_]+:/, "CODE:");
-    expect(shape(cancelled)).toBe(shape(blocked));
+    expect(shape(cancelled)).toBe(shape(completed));
   });
 
   it("cancelTask still succeeds on a live task", async () => {

@@ -144,8 +144,8 @@ async function seedInStatus(collection: TaskCollectionRef, status: TaskStatus): 
   switch (status) {
     case "pending":
       return;
-    case "blocked":
-      await collection.block("t", "waiting on a dep");
+    case "held":
+      await collection.hold("t");
       return;
     case "cancelled":
       await collection.cancel("t", "no longer needed");

@@ -72,12 +72,12 @@ async function collectionInState(
       await collection.awaitReview("a");
       break;
     case "dep-blocked":
-      // `pending` forever: its dep is errored, so it can never be claimed and
-      // no worker is in flight. The state the `blocked` verdict exists for.
-      await collection.addTask({ id: "dep", goal: "dep" });
+      // `pending` until something releases its dep: the dep is held, so
+      // neither can be claimed and no worker is in flight. The state the
+      // `blocked` verdict exists for. (A dep that failed no longer leaves one:
+      // the board cancels its dependents, FIX-2080.)
+      await collection.addTask({ id: "dep", goal: "dep", held: true });
       await collection.addTask({ id: "a", goal: "a", deps: ["dep"] });
-      await collection.claim("w1");
-      await collection.fail("dep", "boom");
       break;
     case "settled":
       await collection.addTask({ id: "a", goal: "a" });

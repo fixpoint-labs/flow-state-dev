@@ -152,7 +152,7 @@ describe("transitionDeclineReason — which condition fired", () => {
     expect(transitionDeclineReason(task("pending"), "errored", ADVISORY, BOARD, NOW)).toBe(
       "disallowed",
     );
-    expect(transitionDeclineReason(task("blocked"), "errored", ADVISORY, BOARD, NOW)).toBe(
+    expect(transitionDeclineReason(task("held"), "errored", ADVISORY, BOARD, NOW)).toBe(
       "disallowed",
     );
   });
@@ -463,7 +463,7 @@ describe.each([
       expect(events.at(-1)?.kind).toBe("errored");
     });
 
-    it("declines rather than throws from pending and blocked", async () => {
+    it("declines rather than throws from pending and held", async () => {
       // Correction 3 on the filed issue: terminal statuses are the majority
       // of the exposure, not all of it. Both of these reach `errored`
       // illegally on the no-retry-budget branch.
@@ -473,11 +473,10 @@ describe.each([
       await collection.fail("p", "stale worker", ADVISORY);
       expect(collection.get("p")?.status).toBe("pending");
 
-      await collection.addTask({ id: "b", goal: "b" });
-      await collection.block("b", "waiting on a human");
+      await collection.addTask({ id: "b", goal: "b", held: true });
       await collection.fail("b", "stale worker", ADVISORY);
-      expect(collection.get("b")?.status).toBe("blocked");
-      expect(collection.get("b")?.error).toBe("waiting on a human");
+      expect(collection.get("b")?.status).toBe("held");
+      expect(collection.get("b")?.error).toBeUndefined();
     });
 
     it("does not suppress unrelated failures — a missing task still throws", async () => {
@@ -524,33 +523,34 @@ describe.each([
       expect(events).toHaveLength(0);
     });
 
-    it("declines a stale fail onto a reclaimed-and-parked task, never re-claimed", async () => {
+    it("declines a stale fail onto a reclaimed task, never re-claimed", async () => {
       // The case that discriminates the two forms of the guard, and the
       // reason it binds to ownership rather than to `Task.attempts`.
       //
       // `reclaim()` does not advance `attempts`, so with no second claim the
       // displaced worker matches the counter by construction. With retry
-      // budget the fail takes the *retry* branch to `pending`, and
-      // `blocked → pending` is legal — so `ifAllowed` passes AND a
-      // counter-only ticket passes, and the stale worker silently
-      // unblocks work a coordinator deliberately parked.
+      // budget the fail takes the *retry* branch to `pending`, which the
+      // reclaimed row already is — so `ifAllowed` passes AND a counter-only
+      // ticket passes, and the stale worker silently rewrites the row's
+      // feedback and spends a retry. A started row can't be held (FIX-2080),
+      // so a reclaimed row is the last place the case lives.
       //
       // Both `maxAttempts` and the absence of a second claim are
       // load-bearing. Drop either and the case stops discriminating.
       const a = await claimed({ id: "t", maxAttempts: 3 });
       await collection.reclaim(Number.MAX_SAFE_INTEGER);
-      await collection.block("t", "parked pending a decision");
       expect(collection.get("t")?.attempts).toBe(a.attempts); // counter unchanged
+      expect(await collection.hold("t")).toMatchObject({ outcome: "declined", reason: "started" });
       events.length = 0;
 
-      await collection.fail("t", "stale worker finally failed", {
+      const outcome = await collection.fail("t", "stale worker finally failed", {
         ...ADVISORY,
         claim: ticket(a),
       });
 
+      expect(outcome).toMatchObject({ outcome: "declined", reason: "lost-claim" });
       const task = collection.get("t");
-      expect(task?.status).toBe("blocked");
-      expect(task?.error).toBe("parked pending a decision");
+      expect(task?.status).toBe("pending");
       expect(task?.feedback).toBeUndefined();
       expect(events).toHaveLength(0);
     });
@@ -647,16 +647,14 @@ describe.each([
    * a fix applied to `complete`/`fail` alone passes every test above.
    */
   describe("every worker-callable transition honours the ticket", () => {
-    it("refuses a cross-task write on each of the five, writing nothing", async () => {
+    it("refuses a cross-task write on each of them, writing nothing", async () => {
       const a = await claimed({ id: "a" });
       const stranger = { ...ADVISORY, claim: ticket(a) };
 
-      // Three targets, each parked in a status the write in question is legal
+      // Two targets, each parked in a status the write in question is legal
       // from, so no refusal below can be produced by `ifAllowed` standing in
       // for the ownership arm.
       await claimed({ id: "b" }); // in_progress
-      await collection.addTask({ id: "c", goal: "c" });
-      await collection.block("c", "parked by a coordinator"); // pending → blocked
       await claimed({ id: "d" });
       await collection.awaitReview("d", "queued for review"); // → parked
 
@@ -668,22 +666,8 @@ describe.each([
         outcome: "declined",
         reason: "not-my-task",
       });
-      // `block` from `in_progress` is ALSO illegal, so this one pins the
-      // ordering as well as the coverage: it must report `not-my-task`, not
-      // `disallowed`.
-      expect(await collection.block("b", "not yours", stranger)).toMatchObject({
-        outcome: "declined",
-        reason: "not-my-task",
-      });
       expect(collection.get("b")?.status).toBe("in_progress");
       expect(collection.get("b")?.error).toBeUndefined();
-
-      expect(await collection.unblock("c", stranger)).toMatchObject({
-        outcome: "declined",
-        reason: "not-my-task",
-      });
-      expect(collection.get("c")?.status).toBe("blocked");
-      expect(collection.get("c")?.error).toBe("parked by a coordinator");
 
       expect(await collection.unpark("d", "not yours", stranger)).toMatchObject({
         outcome: "declined",
@@ -959,13 +943,12 @@ describe.each([
       expect(collection.get("p")?.status).toBe("pending");
     });
 
-    it("declines a fail from blocked with reason disallowed", async () => {
-      await collection.addTask({ id: "b", goal: "b" });
-      await collection.block("b", "waiting on a human");
+    it("declines a fail from held with reason disallowed", async () => {
+      await collection.addTask({ id: "b", goal: "b", held: true });
 
       const outcome = await collection.fail("b", "stale worker", ADVISORY);
 
-      expect(outcome).toEqual({ outcome: "declined", reason: "disallowed", status: "blocked" });
+      expect(outcome).toEqual({ outcome: "declined", reason: "disallowed", status: "held" });
     });
 
     it("declines a stale write with reason lost-claim on a legal transition", async () => {

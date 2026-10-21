@@ -1049,10 +1049,9 @@ describe("taskBoard - onIdle modes", () => {
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("u")).toBe("errored");
-    // `d` stays `pending` — the substrate exits without mutating it;
-    // cascade-skip (which lives one layer up in P&E / supervisor)
-    // would transition it to `cancelled` post-drain.
-    expect(final.get("d")).toBe("pending");
+    // `d` is cancelled by the board on `u`'s ending (FIX-2080): nothing is
+    // left waiting on work that will never finish, with no step to wire.
+    expect(final.get("d")).toBe("cancelled");
   });
 
   it("onIdle: 'complete-or-blocked' exits cleanly on a successful drain", async () => {
@@ -1806,7 +1805,7 @@ describe("taskBoard - board-meta emission", () => {
     ).toBe("all-completed");
   });
 
-  it("emits terminationReason='blocked-by-failures' when a pending task can't be claimed (FIX-626)", async () => {
+  it("emits terminationReason='blocked-by-failures' when a dependency failed, with its dependent cancelled (FIX-626, FIX-2080)", async () => {
     const failingWorker = handler({
       name: "fail-up-meta",
       inputSchema: taskWorkerInputSchema,
@@ -1853,7 +1852,8 @@ describe("taskBoard - board-meta emission", () => {
     expect(completed?.data?.terminationReason).toBe("blocked-by-failures");
     expect(completed?.data?.counts?.completed).toBe(0);
     expect(completed?.data?.counts?.errored).toBe(1);
-    expect(completed?.data?.counts?.pending).toBe(1);
+    expect(completed?.data?.counts?.pending).toBe(0);
+    expect(completed?.data?.counts?.cancelled).toBe(1);
   });
 
   it("counts errored tasks on completion", async () => {

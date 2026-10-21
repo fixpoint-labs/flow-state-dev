@@ -56,7 +56,7 @@ describe("task schema", () => {
       new Set([
         "pending",
         "in_progress",
-        "blocked",
+        "held",
         "parked",
         "completed",
         "errored",
@@ -98,16 +98,16 @@ describe("state machine validators", () => {
     expect(isTransitionAllowed("parked", "cancelled")).toBe(true);
   });
 
-  it("permits blocked → pending and blocked → cancelled only", () => {
-    expect(isTransitionAllowed("blocked", "pending")).toBe(true);
-    expect(isTransitionAllowed("blocked", "cancelled")).toBe(true);
-    expect(isTransitionAllowed("blocked", "in_progress")).toBe(false);
+  it("permits held → pending and held → cancelled only", () => {
+    expect(isTransitionAllowed("held", "pending")).toBe(true);
+    expect(isTransitionAllowed("held", "cancelled")).toBe(true);
+    expect(isTransitionAllowed("held", "in_progress")).toBe(false);
   });
 
   it("returns reachable statuses for a given source", () => {
     const fromPending = allowedTransitionsFrom("pending");
     expect(new Set(fromPending)).toEqual(
-      new Set(["in_progress", "blocked", "cancelled"])
+      new Set(["in_progress", "held", "cancelled"])
     );
   });
 

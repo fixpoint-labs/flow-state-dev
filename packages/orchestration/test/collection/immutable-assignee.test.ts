@@ -9,7 +9,7 @@
  * will ever wake.
  *
  * Only a task an attempt holds is frozen: *in progress*, and *parked*, whose
- * attempt can still settle it. A pending or blocked task is claimed afresh
+ * attempt can still settle it. A pending or held task is claimed afresh
  * before it runs again, and that claim reads whatever assignee the row then
  * holds, so moving it strands nothing. A parked task is moved once `unpark`
  * has ended its attempt.
@@ -156,11 +156,11 @@ describe("setAssignee on a board that dispatches", () => {
     expect(tasks.get(task.id)).toMatchObject({ status: "pending", assignee: "review" });
   });
 
-  it("moves a blocked task", async () => {
+  it("moves a held task", async () => {
     const tasks = await board({ immutableAssignee: true });
     const task = await tasks.addTask({ goal: "implement", assignee: "implement" });
-    await tasks.block(task.id, "waiting on a key");
-    expect(tasks.get(task.id)?.status).toBe("blocked");
+    await tasks.hold(task.id);
+    expect(tasks.get(task.id)?.status).toBe("held");
 
     expect(await tasks.setAssignee(task.id, "review")).toEqual({ outcome: "recorded" });
   });

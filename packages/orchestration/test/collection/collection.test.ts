@@ -277,20 +277,20 @@ describe.each([
     });
   });
 
-  describe("block / unblock / awaitReview / unpark / cancel", () => {
-    it("block transitions pending → blocked", async () => {
+  describe("hold / release / awaitReview / unpark / cancel", () => {
+    it("hold transitions pending → held", async () => {
       await collection.addTask({ id: "t", goal: "t" });
-      await collection.block("t", "deps not ready");
-      expect(collection.get("t")?.status).toBe("blocked");
-      expect(events.at(-1)?.kind).toBe("blocked");
+      await collection.hold("t");
+      expect(collection.get("t")?.status).toBe("held");
+      expect(events.at(-1)?.kind).toBe("held");
     });
 
-    it("unblock returns to pending", async () => {
+    it("release returns to pending", async () => {
       await collection.addTask({ id: "t", goal: "t" });
-      await collection.block("t");
-      await collection.unblock("t");
+      await collection.hold("t");
+      await collection.release("t");
       expect(collection.get("t")?.status).toBe("pending");
-      expect(events.at(-1)?.kind).toBe("unblocked");
+      expect(events.at(-1)?.kind).toBe("released");
     });
 
     it("awaitReview moves in_progress → parked", async () => {
@@ -352,7 +352,7 @@ describe.each([
       await collection.addTask({ id: "t", goal: "t" });
       await collection.claim("w");
       await collection.complete("t", "ok");
-      await expect(collection.block("t")).rejects.toThrow(/illegal status transition/);
+      await expect(collection.awaitReview("t")).rejects.toThrow(/illegal status transition/);
     });
   });
 

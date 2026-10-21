@@ -531,8 +531,8 @@ export type FailRouting =
  *    never refuse a first attempt.
  * 2. **The budget applies only to attempt-owned failures.** `errored` is
  *    reachable from `in_progress` and `parked` and from NEITHER
- *    `pending` nor `blocked`, while this routing is status-blind on the
- *    `maxAttempts` half — so a `fail()` on a pending or blocked task carrying
+ *    `pending` nor `held`, while this routing is status-blind on the
+ *    `maxAttempts` half — so a `fail()` on a pending task carrying
  *    `maxAttempts` legally re-pends today, and rerouting it to `errored` at the
  *    bound would attempt an illegal transition and THROW instead of settling, on
  *    a reachable path. So both the accounting and the denial are gated on
@@ -553,6 +553,10 @@ export function routeFailure(
   grantedTotal: () => number,
   maxTotalRetries: number | undefined
 ): FailRouting {
+  // A held task hasn't started, so it has no failure to retry: re-pending it
+  // would be a release in disguise (FIX-2080). Routed terminal, which the
+  // status table refuses from `held`, so the failure is refused.
+  if (task.status === "held") return { action: "terminal", deniedByBudget: false };
   if (!shouldRetryOnFail(task)) return { action: "terminal", deniedByBudget: false };
   if (!ATTEMPT_OWNED_STATUSES.has(task.status)) {
     return { action: "retry", countsAgainstBudget: false };
