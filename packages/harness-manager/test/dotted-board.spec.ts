@@ -39,6 +39,7 @@ import {
 } from "../src";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
+import { heard } from "./heard";
 
 /** A board id with dots in it, on a board kept per organization. */
 const DOTTED_BOARD_ID = "eng.feature.work";
@@ -164,7 +165,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
       return { id: TASK_ID };
     },
   });
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "dotted-board-host",
     actions: { seed: { block: seed }, drain: { block: board.drain } },
     task: { actions: { work: { block: manager } } },

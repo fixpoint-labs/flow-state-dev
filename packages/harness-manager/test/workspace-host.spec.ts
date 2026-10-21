@@ -29,6 +29,7 @@ import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type Harnes
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 import { createFakeCollection, type FakeCollection } from "../../workspace/test/fake-collection";
+import { heard } from "./heard";
 
 const BOARD_ID = "eng.feature.work";
 const ORG_ID = "org_host";
@@ -217,7 +218,7 @@ function lab(options: {
       return { id: TASK_ID };
     },
   });
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "host-flow",
     actions: { seed: { block: seed }, drain: { block: board.drain } },
     task: { actions: { work: { block: manager } } },

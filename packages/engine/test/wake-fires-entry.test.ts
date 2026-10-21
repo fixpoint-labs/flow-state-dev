@@ -14,6 +14,9 @@ import { createFlowState, inMemoryStores, runAction } from "../src";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const ran: Array<{ sessionId: string; userId: string | undefined }> = [];
+/** How long the pass holds before it settles; a test that times the shutdown raises it. */
+let passHoldsMs = 0;
+let passEnded = false;
 
 const owe = handler({
   name: "owe",
@@ -31,9 +34,11 @@ const pass = handler({
   outputSchema: z.any(),
   execute: async (_input, ctx) => {
     ran.push({ sessionId: ctx.session.identity.id, userId: ctx.session.identity.userId });
+    if (passHoldsMs > 0) await sleep(passHoldsMs);
     const wakes = ctx.requestHost?.wakes;
     const read = await wakes?.read("pass");
     if (wakes !== undefined && read !== undefined) await wakes.settle("pass", { ...read, landBy: 0 }, null);
+    passEnded = true;
     return {};
   }
 });
@@ -48,6 +53,8 @@ const states: Array<{ dispose(): Promise<void> }> = [];
 afterEach(async () => {
   for (const state of states.splice(0)) await state.dispose();
   ran.length = 0;
+  passHoldsMs = 0;
+  passEnded = false;
 });
 
 async function host(durable: boolean) {
@@ -85,6 +92,18 @@ describe("a wake fires its entry", () => {
     expect(ran).toHaveLength(1);
     expect(ran[0]).toMatchObject({ sessionId: "s1", userId: "u1" });
     expect(await runtime.stores.wakes!.get({ sessionId: "s1", entry: "pass" })).toBeNull();
+  });
+
+  it("is waited for by the host's shutdown, so the run it started never writes to a closed store", async () => {
+    passHoldsMs = 600;
+    const { call } = await host(true);
+    await call(0);
+    // Wait until the sweeper fired the entry and the pass is holding.
+    for (let i = 0; i < 100 && ran.length === 0; i += 1) await sleep(20);
+    expect(ran).toHaveLength(1);
+    expect(passEnded).toBe(false);
+    await states.splice(0)[0]!.dispose();
+    expect(passEnded).toBe(true);
   });
 
   it("is not offered on a host without durable execution", async () => {

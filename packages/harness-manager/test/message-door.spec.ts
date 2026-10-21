@@ -11,6 +11,7 @@
  * session the task's run link names.
  */
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { heard } from "./heard";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -310,7 +311,7 @@ function host(options: {
             }),
     },
     // Where the door re-runs the board: in the session that claimed the row.
-    internal: { actions: { resume: { block: board.drain } } },
+    internal: { actions: { resume: { block: board.drain }, ...heard } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "door-host" } as never);
   const state = createFlowState({

@@ -19,9 +19,10 @@
  *      waited task resumes its waiter and starts no `onTaskSettled`
  *   b  a second process is killed after a piece's ending is written and before
  *      its notice is sent; after restart, with no touch, the filer hears it and
- *      the parent whose last piece ended settles, each within 2 s
+ *      the parent whose last piece ended settles, each within its due time plus 2 s
  *   c  a dependent starts within 5 s of its dependency ending, with no read of
- *      the board; no two passes ran at once in one session
+ *      the board; no two passes ran at once in one session, and two triggers
+ *      sent at once are both answered
  *   d  a final failure: one failure notice, with its error, naming the
  *      dependent it cancelled, and none for the dependent; one task occurrence
  *      at the intake; no report marker on any row
@@ -48,6 +49,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
+  NOTICE_DUE_MS,
   resolveResourceCollection,
   type Task,
   type TaskInit,
@@ -93,7 +95,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "no-sweeper-payment": [
     {
       module: "packages/engine/src/durability/durability-sweeper.ts",
-      from: String.raw`^  if \(fireWake === undefined \|\| wakes === undefined\) return;$`,
+      from: String.raw`  if \(fireWake === undefined \|\| wakes === undefined\) return;`,
       to: "  return;"
     }
   ]
@@ -101,7 +103,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
 /** Leg b's second process dies the moment an ending's delivery would send a notice it owes. */
 const KILL_AFTER_ENDING: ModulePatch = {
   module: "packages/orchestration/src/tasks/notice/delivery.ts",
-  from: String.raw`^    async afterEnding\(row, rows, patchMetadata\) \{$`,
+  from: String.raw`    async afterEnding\(row, rows, patchMetadata\) \{`,
   to: '    async afterEnding(row, rows, patchMetadata) { if (process.env.GOAL_KILL === "after-ending" && Object.keys(row.metadata ?? {}).some((k) => k.startsWith("noticeOwed:"))) process.exit(0);'
 };
 
@@ -173,6 +175,8 @@ function buildHost(filename: string) {
       const script = JSON.parse(input.message) as Script;
       const ref = await deskBoard.board.resolver(ctx as never);
       if (ref === undefined) return { ok: false, error: "no_delegation_board" };
+      // The wait parks the turn by throwing its park; nothing here may catch it.
+      if (script.op === "wait") return dispatchAndWait(ctx as never, ref, { taskId: script.taskId });
       try {
         if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "two-passes") {
@@ -305,11 +309,11 @@ function buildHost(filename: string) {
     // The router is what runs the durability sweeper.
     const http = httpActions((await state.getRouter()) as never, USER);
     const runtime = await state.getRuntime();
+    /** Every task row in the user's cell, from every ledger: anything else there (chain records) is left out. */
     const rows = async (): Promise<Array<Task & { key: string }>> =>
-      Object.entries(await runtime.stores.resourceState.getByPrefix("user", `${USER}:~org:${ORG}`, "")).map(([key, value]) => ({
-        ...(value.state as Task),
-        key
-      }));
+      Object.entries(await runtime.stores.resourceState.getByPrefix("user", `${USER}:~org:${ORG}`, ""))
+        .map(([key, value]) => ({ ...(value.state as Task), key }))
+        .filter((row) => typeof row.goal === "string" && typeof row.status === "string");
     const byId = async (id: string) => (await rows()).find((r) => r.id === id);
     /** The `onTaskSettled` requests a session ran, by the task each was about. */
     const heard = async (sessionId: string) =>
@@ -317,7 +321,7 @@ function buildHost(filename: string) {
         .filter((r) => r.actionName === "onTaskSettled" && (r.input as { taskId?: string } | undefined)?.taskId !== undefined)
         .map((r) => ({ ...(r.input as { taskId: string; ending: string; error?: string; cancelled?: string[] }), at: r.startedAtMs }));
     const passes = async (sessionId: string) =>
-      (await runtime.stores.request.list({ sessionId })).filter((r) => r.actionName === "runTaskBoard");
+      (await runtime.stores.request.list({ sessionId, withItems: true })).filter((r) => r.actionName === "runTaskBoard");
     const act = (flow: string, session: string, action: string, input: unknown) => http.act(flow, session, action, input);
     const script = (session: string, s: Script) => act("desk", session, "run", { message: JSON.stringify(s) });
     const until = async (check: () => Promise<boolean>, ms: number) => {
@@ -341,7 +345,7 @@ if (PHASE === "kill-after-ending" || PHASE === "kill-mid-claim") {
     // X files a piece and ends its turn, parked on it; the piece's ending is
     // written, and this process dies before its notice is sent.
     const x = `kill-x-${RUN_STAMP}`;
-    writeFileSync(KILL_PLAN, JSON.stringify({ conversation, x }), "utf8");
+    writeFileSync(KILL_PLAN, JSON.stringify({ conversation, x, piece: `kill-piece-${RUN_STAMP}` }), "utf8");
     await h.script(conversation, { op: "file", tasks: [{ id: x, goal: `[file:kill-piece-${RUN_STAMP}] parent` }] });
     // Under a control nothing kills this process: it leaves once the piece ended.
     await h.until(async () => (await h.rows()).some((r) => r.goal.startsWith(`kill-piece-${RUN_STAMP}`) && r.status === "completed"), 20_000);
@@ -395,7 +399,15 @@ await runGoal(async (failures, tell) => {
         ]
       });
       await h.act("desk", conversation, "cancelTask_tasks", { taskId: cancelled, reason: "a person cancelled it" });
-      const answer = await h.script(conversation, { op: "wait", taskId: waited });
+      // Over HTTP the waiting turn suspends (the helper says so by throwing); its
+      // answer is its finished request's result.
+      await h.script(conversation, { op: "wait", taskId: waited }).catch(() => undefined);
+      const waitedTurn = async () =>
+        (await h.runtime.stores.request.list({ sessionId: conversation })).find(
+          (r) => r.actionName === "run" && JSON.stringify(r.input ?? "").includes(waited)
+        );
+      await h.until(async () => (await waitedTurn())?.status === "completed", 10_000);
+      const answer = ((await waitedTurn())?.result as { output?: { ok?: boolean; answer?: unknown } } | undefined)?.output;
       await h.act("planner", planner, "plan", {
         tasks: [
           { id: `p-${done}`, goal: word("done") },
@@ -436,10 +448,12 @@ await runGoal(async (failures, tell) => {
       const two = await h.script(conversation, { op: "two-passes" });
       await sleep(1_500);
       const runs = (await h.passes(conversation))
-        .filter((r) => r.completedAtMs !== undefined)
-        .sort((x, y) => x.startedAtMs - y.startedAtMs);
+        .filter((r) => r.completedAtMs !== undefined && r.status === "completed")
+        .map((r) => ({ id: r.id, ran: Math.min(...(r.items ?? []).map((item) => (item as { ts?: number }).ts ?? Infinity)), ended: r.completedAtMs! }))
+        .filter((r) => Number.isFinite(r.ran))
+        .sort((x, y) => x.ran - y.ran);
       tell.over("c · the conversation's passes", runs);
-      const overlaps = runs.filter((r, i) => i > 0 && r.startedAtMs < (runs[i - 1]!.completedAtMs ?? 0));
+      const overlaps = runs.filter((r, i) => i > 0 && r.ran < runs[i - 1]!.ended);
       if (overlaps.length > 0) failures.push(`c:one pass at a time — ${overlaps.length} pass(es) started while another ran`);
       notes.push(`c: the dependent started ${gap} ms after its dependency ended; ${runs.length} pass(es), none overlapping; two at once answered ${JSON.stringify((two?.outcomes ?? []).map((o: { ok: boolean; refused?: string }) => (o.ok ? "ok" : o.refused)))}`);
     });
@@ -495,24 +509,32 @@ await runGoal(async (failures, tell) => {
   };
 
   await leg("b", async () => {
-    const plan = killed("kill-after-ending", [KILL_AFTER_ENDING]) as { conversation: string; x: string };
+    const plan = killed("kill-after-ending", [KILL_AFTER_ENDING]) as { conversation: string; x: string; piece: string };
     const restarted = buildHost(KILL_DB);
     try {
       const h = await restarted.connect();
       const back = Date.now();
-      const piece = (await h.rows()).find((r) => r.goal.startsWith(`kill-piece-${RUN_STAMP}`));
+      const piece = (await h.rows()).find((r) => r.goal.startsWith(plan.piece));
       const taskSession = lines<Proof>(PROOFS).find((p) => p.taskId === plan.x)?.sessionId;
-      if (piece === undefined || taskSession === undefined) throw new Error("the second process left no piece, or no task session");
+      if (piece === undefined || taskSession === undefined) {
+        throw new Error(
+          `the second process left ${piece === undefined ? "no piece" : "a piece"} and ${taskSession === undefined ? "no task session" : "a task session"}: ` +
+            `rows ${JSON.stringify((await h.rows()).map((r) => [r.goal.slice(0, 40), r.status]))}, proofs ${JSON.stringify(lines<Proof>(PROOFS).map((p) => [p.taskId, p.goal.slice(0, 30)]))}`
+        );
+      }
       // No action on any board: only a wake can pay it.
       await h.until(async () => (await h.heard(taskSession)).some((n) => n.taskId === piece.id), 6_000);
       await h.until(async () => (await h.byId(plan.x))?.status === "completed", 6_000);
       const told = (await h.heard(taskSession)).filter((n) => n.taskId === piece.id);
       const parent = await h.byId(plan.x);
-      const toldIn = told.length === 0 ? Infinity : told[0]!.at - back;
-      const settledIn = parent?.completedAt === undefined || parent.status !== "completed" ? Infinity : parent.completedAt - back;
-      if (!(toldIn <= 2_000) || told.length !== 1) failures.push(`b:the filer hears within due time — ${told.length} notice(s), the first ${toldIn} ms after the restart`);
-      if (!(settledIn <= 2_000)) failures.push(`b:the parent whose last filed task ended settles within due time — ${parent?.status}, ${settledIn} ms after the restart`);
-      notes.push(`b: after the restart the filer heard in ${toldIn} ms and the parent settled in ${settledIn} ms`);
+      // The notice falls due NOTICE_DUE_MS after the piece's ending; a restart
+      // before that may wait for it. Both are measured from the later of the two.
+      const due = Math.max(back, (piece.completedAt ?? back) + NOTICE_DUE_MS);
+      const toldIn = told.length === 0 ? Infinity : told[0]!.at - due;
+      const settledIn = parent?.completedAt === undefined || parent.status !== "completed" ? Infinity : parent.completedAt - due;
+      if (!(toldIn <= 2_000) || told.length !== 1) failures.push(`b:the filer hears within due time — ${told.length} notice(s), the first ${toldIn} ms after its due time`);
+      if (!(settledIn <= 2_000)) failures.push(`b:the parent whose last filed task ended settles within due time — ${parent?.status}, ${settledIn} ms after its due time`);
+      notes.push(`b: the notice fell due ${due - back} ms after the restart; the filer heard ${toldIn} ms and the parent settled ${settledIn} ms after that`);
     } finally {
       await restarted.state.dispose();
     }

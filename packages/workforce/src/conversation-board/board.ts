@@ -821,7 +821,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const rounds = (passRounds.get(ctx.request.identity.id) ?? 0) + 1;
       passRounds.set(ctx.request.identity.id, rounds);
       const again = hasStartable(ref) && rounds < MAX_PASS_ROUNDS;
-      if (process.env.DEBUG_2078) console.error("[DEBUG-2078] round", ctx.session.identity.id, rounds, again, JSON.stringify(ref.list().map((r) => [r.id, r.status, r.attempts])));
       return nextDue === undefined ? { again } : { again, nextDue };
     }
   });

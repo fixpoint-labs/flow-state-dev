@@ -50,11 +50,13 @@ function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * Fire a wake through a host (the durability sweeper's `fireWake`): dispatch
  * the internal entry it names, in its session, as its owner, the way the
  * dispatch seam starts a dispatched request. Resolves once the host accepted
- * it; rejects when the host refused or failed to.
+ * it; rejects when the host refused or failed to. `onStarted` receives the
+ * run's completion, so a host that closes its stores can wait for it.
  */
 export async function fireWakeThrough(
   host: Pick<InboundTransportHost, "dispatch">,
-  wake: WakeRecord
+  wake: WakeRecord,
+  onStarted?: (finished: Promise<unknown>) => void
 ): Promise<void> {
   const handle = host.dispatch({
     source: INTERNAL_SOURCE,
@@ -68,6 +70,7 @@ export async function fireWakeThrough(
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
     responseEmitter: null
   });
+  onStarted?.(handle.finished);
   if (handle.accepted !== undefined) await handle.accepted;
 }
 

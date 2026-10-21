@@ -61,6 +61,7 @@ import {
 } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 /**
  * The transport provenance a task dispatch carries. The engine's entry
@@ -167,7 +168,7 @@ function buildFlow(options: {
     ],
   });
 
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: options.kind,
     actions: { start: { block: board.drain } },
     // A task entry no board dispatches to is refused at definition, so the

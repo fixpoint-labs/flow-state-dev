@@ -121,7 +121,7 @@ describe("a notice that has waited out its patience", () => {
 });
 
 describe("more notices than may wait on a conversation", () => {
-  it("are all heard: one refused while the line is full is sent again once it has room", async () => {
+  it("are all heard: one refused while the line is full stays owed, and the conversation's wake sends it again (FIX-2078)", async () => {
     const goals = ["Count A", "Count B", "Count C"];
     const judgment = mockGenerator({
       script: [
@@ -141,6 +141,7 @@ describe("more notices than may wait on a conversation", () => {
     let waitingWhenHeld = 0;
     const host: BoardHost = bootBoardHost({
       judgment,
+      durable: true,
       // Hold the filing reply until all three tasks have ended and sent their
       // notices: two wait, and the third is refused.
       afterModelCall: async (blockName) => {
@@ -151,12 +152,16 @@ describe("more notices than may wait on a conversation", () => {
       }
     });
     try {
+      await host.state.getRouter();
       conv = await host.conversation("alice", "lead");
       await host.post("alice", conv, "run", { message: "count them" });
       await host.settled();
       expect(waitingWhenHeld).toBe(2);
-      // Nothing touches the board after the reply: whatever reaches the
-      // third notice is the notices' own doing.
+      // Nothing touches the board after the reply: the third notice, refused
+      // while the line was full, stays owed, and the conversation's wake, due
+      // two seconds after its ending, sends it again.
+      expect(await until(async () => (await Promise.all(goals.map((goal) => linesAbout(host, conv, goal)))).every((lines) => lines.length === 1), 8_000)).toBe(true);
+      await host.settled();
       for (const goal of goals) expect(await linesAbout(host, conv, goal)).toHaveLength(1);
       const owed = (await host.rows("alice")).flatMap((row) =>
         Object.entries(row.metadata ?? {}).filter(([key, value]) => key.startsWith("noticeOwed:") && value !== null)

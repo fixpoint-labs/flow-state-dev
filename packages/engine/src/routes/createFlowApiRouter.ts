@@ -493,6 +493,14 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // grouped (the provider is read by runAction too).
   const durabilityProvider = runtimeConfig.durabilityProvider;
   const durabilityRetention = runtimeConfig.durabilityRetention;
+  // Requests a fired wake started, held so `dispose` lets them finish before
+  // the caller closes the stores they write to.
+  const firedWakes = new Set<Promise<unknown>>();
+  const holdFiredWake = (finished: Promise<unknown>): void => {
+    const held = finished.catch(() => undefined);
+    firedWakes.add(held);
+    void held.finally(() => firedWakes.delete(held));
+  };
   const durabilitySweeper =
     durabilityProvider !== undefined
       ? createDurabilitySweeper({
@@ -506,7 +514,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           continueRequest: (opts) => handlers.host.continueRequest(opts),
           // A due wake's entry runs through this router's host, as a dispatched
           // internal request in its session, as its owner (FIX-2078 D1).
-          fireWake: (wake) => fireWakeThrough(handlers.host, wake)
+          fireWake: (wake) => fireWakeThrough(handlers.host, wake, holdFiredWake)
         })
       : { dispose: () => {}, timesOutWaits: () => false };
   // Requests this router serves are offered a wait only while its own sweeper
@@ -653,6 +661,7 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     const staleSweepSettled = sweeper.dispose();
     durabilitySweeper.dispose();
     await staleSweepSettled;
+    await Promise.all([...firedWakes]);
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

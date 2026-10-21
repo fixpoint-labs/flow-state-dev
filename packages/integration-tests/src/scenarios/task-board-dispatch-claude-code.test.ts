@@ -15,6 +15,7 @@ import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 const codingTasks = defineTaskCollection({ id: "lab133-coding", scope: "user" });
 
@@ -62,7 +63,7 @@ function flowHandingOffTo(kind: string, block: TaskWorker) {
       }),
     },
   });
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind,
     actions: { drain: { block: board.drain } },
     task: { actions: { implement: { block } } },

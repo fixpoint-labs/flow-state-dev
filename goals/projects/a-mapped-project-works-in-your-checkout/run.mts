@@ -27,6 +27,7 @@
  *           `pnpm --filter @flow-state-dev/workspace... build`)
  */
 import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -269,8 +270,11 @@ await runGoal(async (failures) => {
     },
   });
   const projects = defineProjectBlocks();
+  // The board hands rows out, so the flow hears each ending (FIX-2078); this goal grades something else.
+  const heard = taskSettledEntry({ block: handler({ name: "goal-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => ({}) }) });
   const flow = defineFlow({
     kind: "goal-mapped",
+    internal: { actions: { onTaskSettled: heard } },
     actions: { ...projects.actions, seed: { block: seed }, drain: { block: board.drain }, answer: { block: answer } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "goal-mapped" } as never);

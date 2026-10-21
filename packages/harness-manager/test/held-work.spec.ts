@@ -37,6 +37,7 @@ import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type Harnes
 import { answerQuestion, inboxCollection, listQuestions } from "../src/inbox";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
+import { heard } from "./heard";
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -247,7 +248,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       return {};
     },
   });
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "held-flow",
     actions: { seed: { block: seed }, drain: { block: board.drain }, answer: { block: answerOpen } },
     task: { actions: { work: { block: manager } } },

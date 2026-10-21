@@ -33,6 +33,7 @@ import {
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 /** Terminal transport provenance for a task dispatch. Internal to `engine`; a wire value. */
 const TASK_SOURCE = "task";
@@ -108,7 +109,7 @@ function buildNestedFlow() {
     ],
   });
 
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "nested-dispatch",
     actions: { start: { block: outerBoard.drain } },
     // Both boards' entries — neither is discovered through the other's

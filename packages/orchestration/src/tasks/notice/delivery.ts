@@ -149,7 +149,6 @@ export function createDelivery(
           return;
         }
         const address = addressOf(filer);
-        if (process.env.DEBUG_2078) console.error("[DEBUG-2078] deliver", row.id, row.status, "filer", filer, "own", ctx.session.identity.id, "address", JSON.stringify(address), "notices", notices.length);
         if (address === undefined) return;
         // A waited-on row's turn is resumed, and a retry's next attempt
         // started, by the filer's pass.
@@ -157,20 +156,15 @@ export function createDelivery(
           row.resumeOwed === true || (row.status === "pending" && declared.passEntry !== undefined && row.attempts > 0);
         // Inside the filer's own pass that trigger is refused (one pass at a
         // time), and the pass's own repairs, after its drain, pay it.
-        if (runsPass) {
-          const outcome = await send(address, passEntry, {});
-          if (process.env.DEBUG_2078) console.error("[DEBUG-2078] pass sent", row.id, JSON.stringify(outcome));
-        }
+        if (runsPass) await send(address, passEntry, {});
         const entry = declared.noticeEntry?.(row) ?? TASK_SETTLED_ENTRY;
         for (const notice of notices) {
           const outcome = await send(address, entry, notice);
-          if (process.env.DEBUG_2078) console.error("[DEBUG-2078] sent", row.id, entry, JSON.stringify(outcome));
           if (outcome !== undefined && !outcome.ok && outcome.refused === FILER_GONE) {
             await settleUndeliverable(row, notice, outcome.detail, patchMetadata);
           }
         }
-      } catch (e) {
-        if (process.env.DEBUG_2078) console.error("[DEBUG-2078] afterEnding threw", e);
+      } catch {
         // Never fails the write that committed: the wake pays what is left.
       }
     }

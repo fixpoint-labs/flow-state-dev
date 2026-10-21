@@ -31,6 +31,7 @@ import {
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 const USER_ID = "u_death";
 /** The user's cell in the default org, where every flow keeps their user data. */
@@ -73,7 +74,7 @@ function buildFlow() {
 
   return {
     ran,
-    flow: defineFlow({
+    flow: defineFlow({ internal: { actions: { ...heard } },
       kind: KIND,
       actions: { start: { block: board.drain } },
       task: { actions: { background: { block: background } } },

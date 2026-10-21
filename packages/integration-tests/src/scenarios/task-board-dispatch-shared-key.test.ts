@@ -36,6 +36,7 @@ import {
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 const USER_ID = "u_sharedkey";
 /** The user's cell in the default org, where every flow keeps their user data. */
@@ -66,7 +67,7 @@ function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
     ],
   });
 
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind,
     // Keyed on `user`, so the parent and its dispatched child resolve the SAME
     // key — the parent is holding it when the child is dispatched.
