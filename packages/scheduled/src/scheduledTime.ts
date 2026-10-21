@@ -23,7 +23,7 @@ import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
  * How far a carried time may sit from a scheduled time and still count as it:
  * a host clock a second or two off lands on the time it meant.
  */
-export const SCHEDULED_TIME_TOLERANCE_MS = 5_000;
+const SCHEDULED_TIME_TOLERANCE_MS = 5_000;
 
 /** The scheduled time a fire counts against, or why it counts against none. */
 export type ScheduledTimeResult =
