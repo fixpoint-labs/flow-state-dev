@@ -42,15 +42,15 @@ const STATUS_SET = ["pending", "in_progress", "held", "parked", "completed", "er
 
 /**
  * Orchestration's task tools, written out: what the manager's turn must hold,
- * each once. Nine since FIX-1817 added `answerTask` to the eight, and ten on a
- * conversation's board since FIX-1875 added `dispatchTask`.
+ * each once. Nine since FIX-1817 added `answerTask` to the eight, ten on a
+ * conversation's board since FIX-1875 added `dispatchTask`, and nine there
+ * again since FIX-2080 retired `blockTask` (a hold is `updateTask`'s).
  */
 const TASK_TOOLS = [
   "addTask",
   "assignTask",
   "completeTask",
   "failTask",
-  "blockTask",
   "cancelTask",
   "updateTask",
   "listTasks",
@@ -200,19 +200,14 @@ await runGoal(async (failures) => {
     const afterD = await lab.rows();
     if (afterD.some((row) => row.goal === "filed for a stranger")) note(`the refused filing was stored`);
     const noOneRow = afterD.find((row) => row.id === noOneId);
-    if (noOneRow?.status !== "pending" || noOneRow.assignee !== undefined) {
-      note(`a filing with no assignee is ${noOneRow?.status ?? "missing"}; with three delegates it waits, pending and unassigned`);
+    if (noOneRow?.status !== "held" || noOneRow.assignee !== undefined) {
+      note(`a filing with no assignee is ${noOneRow?.status ?? "missing"}; with three delegates it waits, held and unassigned`);
     }
     if (lab.workLines().length !== 0) note(`${lab.workLines().length} task(s) ran; neither arm's row may run`);
 
     // ---- e. the queue is a READ ---------------------------------------------
-    // Stage each column on the real path: a held task running, a blocked row
-    // carrying its reason, the pending row above, and a finished task.
-    const blockedReason = "waiting on the customer to confirm the date";
-    const blockedRow = await lab.act("addTask_tasks", { goal: "needs a decision from a person" });
-    const blockedId = String(blockedRow.output?.taskId ?? "");
-    const blocked = await lab.act("blockTask_tasks", { taskId: blockedId, reason: blockedReason });
-    if (blocked.output?.ok !== true) note(`could not block a row: ${JSON.stringify(blocked)}`);
+    // Stage each column on the real path: a held task running, the held row
+    // above (filed, and waiting on a person to release it), and a finished task.
     await lab.act("dispatchTask_tasks", { goal: "a piece that finishes", assignee: lab.builderIds[2] });
     await lab.settled();
     lab.hold();
@@ -236,11 +231,9 @@ await runGoal(async (failures) => {
     if (duplicated.length > 0) note(`row(s) in more than one column: ${duplicated.join(", ")}`);
     if (counted.length !== rows.length) note(`the columns hold ${counted.length} rows, the store holds ${rows.length}`);
     if (!view.running.some((row) => row.id === runningId)) note(`a task its worker is running did not read as running`);
-    if (!view.queued.some((row) => row.id === noOneId)) note(`the unassigned pending row did not read as queued`);
+    if (view.queued.some((row) => row.id === noOneId)) note(`the unassigned held row read as queued; nothing starts it but a release`);
     if (view.done.length !== 1) note(`${view.done.length} row(s) read as done, not the one that finished`);
-    const waiting = view.waitingOnYou.find((row) => row.id === blockedId);
-    if (waiting === undefined) note(`the blocked row is not under "waiting on you"`);
-    else if (waiting.reason !== blockedReason) note(`the waiting row's reason is ${JSON.stringify(waiting.reason)}, not the row's own`);
+    if (!view.waitingOnYou.some((row) => row.id === noOneId)) note(`the held row is not under "waiting on you"`);
 
     // ---- f. the manager settles a task its worker is still running -----------
     // Recorded as observed behaviour, not defended as a design: the task tools
@@ -273,9 +266,9 @@ await runGoal(async (failures) => {
       `only dispatchTask, for its post form: the turn's own call to it with a task's goal answered ` +
       `${JSON.stringify(twinTurnError.split(":")[0])}, ` +
       `and the public filing answered no_delegation_board, storing nothing. A filing ` +
-      `for ${stranger} answered "${refusal.split(":")[0]}" and stored nothing; one for nobody waits, pending and ` +
+      `for ${stranger} answered "${refusal.split(":")[0]}" and stored nothing; one for nobody waits, held and ` +
       `unassigned. The manager's listTasks left the stored rows byte-identical; each of ${rows.length} rows ` +
-      `landed in one column (queued, running, waiting on you with its own reason, done). The manager settling a ` +
+      `landed in one column (queued, running, waiting on you, done). The manager settling a ` +
       `task its worker was running: ${unclaimedSettle}; the worker's turn ${ran ? "still ran and its result was declined" : "did not run"}. ` +
       `The status set is unchanged at ${statuses.length} members.`;
   } finally {

@@ -14,9 +14,10 @@
  *
  * - **Queued is not `pending`.** It is the substrate's own admission predicate,
  *   `isClaimable`, which also admits an `in_progress` row whose lease has run
- *   out — a row whose worker died. And a row recorded but not dispatched
- *   (`undispatched`), which no claim admits until `dispatchTask` readies it,
- *   is queued too: it waits on the board for its start.
+ *   out — a row whose worker died.
+ * - **A held row waits on you.** Filed, and not to start until a person
+ *   releases it (FIX-2080): no claim admits it, and nothing but a release
+ *   starts it.
  * - **Running is not `in_progress`.** It is `in_progress` *and* a live claim.
  *
  * ## The column set is checked, not assumed
@@ -53,7 +54,7 @@ export interface QueueView {
   queued: QueueRow[];
   /** `in_progress` with a live claim. */
   running: QueueRow[];
-  /** `parked` or `blocked`, carrying the reason already on the row. */
+  /** `parked` or `held`, carrying the reason already on the row, when it has one. */
   waitingOnYou: QueueRow[];
   /** Terminal: `completed`, `errored`, `cancelled`. */
   done: QueueRow[];
@@ -64,8 +65,8 @@ export interface QueueView {
 /** The statuses nothing moves out of. */
 const TERMINAL: ReadonlySet<Task["status"]> = new Set(["completed", "errored", "cancelled"]);
 
-/** The statuses that mean a person is holding this up. */
-const WAITING: ReadonlySet<Task["status"]> = new Set(["parked"]);
+/** The statuses that mean a person is holding this up: a park, and a held row nobody released yet. */
+const WAITING: ReadonlySet<Task["status"]> = new Set(["parked", "held"]);
 
 /** Project one row down to what a column shows. */
 function project(task: Task): QueueRow {
@@ -121,7 +122,7 @@ export function queueView(rows: readonly Task[], now: number = Date.now()): Queu
     // Order matters once: claimability is asked FIRST, because a lapsed-lease
     // row is `in_progress` and would otherwise be read as running by a check
     // on status alone — which is the reading this column exists to correct.
-    if (isClaimable(row, lookup, now) || row.status === "held") view.queued.push(project(row));
+    if (isClaimable(row, lookup, now)) view.queued.push(project(row));
     else if (liveClaim(row, now)) view.running.push(project(row));
     else if (WAITING.has(row.status)) view.waitingOnYou.push(project(row));
     else if (TERMINAL.has(row.status)) view.done.push(project(row));

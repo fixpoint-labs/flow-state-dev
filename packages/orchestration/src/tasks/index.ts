@@ -40,6 +40,7 @@ export {
 // and the edit a filing takes until it starts.
 export {
   TaskFilingRefusedError,
+  assertDepsFileable,
   type TaskFilingRule,
   type TaskSettingsSupport,
 } from "./collection/filing";

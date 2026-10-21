@@ -65,6 +65,7 @@ import { currentWorkerClaim, taskBoard } from "@flow-state-dev/orchestration/tas
 import {
   TaskCapExceededError,
   TaskFilingRefusedError,
+  assertDepsFileable,
   hasStarted,
   isClaimable,
   isTerminalStatus,
@@ -166,6 +167,27 @@ export interface ConversationBoardOptions {
 /** A new task's id, minted before its add so its place in the chain is reserved first. */
 function newTaskId(): string {
   return `task_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`;
+}
+
+/**
+ * A batch in an order each row's dependencies within it come first, so each
+ * add finds them on the board. The batch was checked to close no loop.
+ */
+function dependencyOrder<T extends { id: string; deps?: string[] }>(batch: readonly T[]): T[] {
+  const byId = new Map(batch.map((row) => [row.id, row]));
+  const ordered: T[] = [];
+  const placed = new Set<string>();
+  const place = (row: T): void => {
+    if (placed.has(row.id)) return;
+    placed.add(row.id);
+    for (const dep of row.deps ?? []) {
+      const inBatch = byId.get(dep);
+      if (inBatch !== undefined) place(inBatch);
+    }
+    ordered.push(row);
+  };
+  for (const row of batch) place(row);
+  return ordered;
 }
 
 /** Write the session's project over a named `project`, so a guess isn't refused `other-project`. */
@@ -640,8 +662,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return outcome;
       },
       async addTasks(inits) {
+        // The batch's dependencies are checked whole first (FIX-2080): ids
+        // filed in the same batch count, and a refusal files nothing. Then
+        // each row is added after the rows it depends on.
+        const batch = inits.map((init) => ({ ...init, id: init.id ?? newTaskId() }));
+        assertDepsFileable(batch, (id) => ref.get(id));
         const added: Task[] = [];
-        for (const init of inits) added.push(await addTask(init));
+        for (const init of dependencyOrder(batch)) added.push(await addTask(init));
         return added;
       },
       async setAssignee(id, assignee) {
