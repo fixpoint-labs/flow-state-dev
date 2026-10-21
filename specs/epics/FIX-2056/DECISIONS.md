@@ -111,6 +111,12 @@ FIX-2081's own scope.
 - **Round 2 (architect):** FIX-2062 (#3538) is built on: every resume waits its session's turn.
   FIX-1637, the keep-alive docs epic, is related: its guide picks up FIX-2085's schedules and
   FIX-2082's waits.
+- <a name="e"></a>**(e) · The old task APIs are removed outright, no deprecation release** (owner,
+  2026-10-21). Every surface in [`migration.md`](migration.md) goes in the owning child's PR, in a
+  minor bump (pre-1.0). That child's changeset carries the removal's one line from `migration.md`.
+  No child ships a deprecated alias, wrapper or warning, and the closure's tool sweep allows none:
+  the only task tool besides the four is `answerTask` ([D2](#d2)). The cost, accepted: teams
+  outside the repo calling them rewrite at upgrade.
 
 ## What the end-state POC showed
 
@@ -125,14 +131,10 @@ FIX-2081's own scope.
 - **Round 1** — FIX-2079 merged into FIX-2078; D3 became one map in FIX-2080.
 - **POC** — the waited dispatch moved to FIX-2082.
 - **Round 2** — sources agree with D2; engine prerequisites named; (e), (f) opened.
+- **Amendment** — the owner answered (e): remove outright, no deprecation release.
 
 <a name="open"></a>
 ## Open · pending the owner's answer
-
-**(e) · Old task APIs: warn for a release, then remove, or remove now?** Teams outside the repo
-calling them break at upgrade. Warning keeps both shapes a release, which the closure's tool sweep
-must allow; removing now makes them rewrite at once. Replacements and owners:
-[`migration.md`](migration.md). **Pending.**
 
 **(f) · Shift Manager's automatic error route: drop it, or keep it?** Every failed request reaches
 the Error Reporter today (`errorCapture`, `packages/shift-manager/teams/devteam/host.mts:1194`).

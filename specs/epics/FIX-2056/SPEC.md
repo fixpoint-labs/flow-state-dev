@@ -30,7 +30,7 @@ The scope is every phase 1 and phase 3 row of
 | Is it the right goal? | |
 |---|---|
 | **Smaller, and rejected** | Posts become tasks alone: FIX-2058 would build on a gate that lets a waiting task run twice |
-| **Not done if** | An ending is recorded outside the gate or the drain · a fifth task tool is exported, `answerTask` aside ([D2](DECISIONS.md#d2)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
+| **Not done if** | An ending is recorded outside the gate or the drain · a fifth task tool is exported, deprecated ones included, `answerTask` aside ([D2](DECISIONS.md#d2), [(e)](DECISIONS.md#e)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -145,6 +145,8 @@ failure. **[The debt](#whats-already-here-and-the-debt):** net down.
 3. **[D3](DECISIONS.md#d3) · A retired row in flight at upgrade is read, not dropped, through one
    map.** If wrong: one read nobody needed.
 
-**Open, the owner's:** [(e) deprecate or break](DECISIONS.md#open) · [(f) the automatic error route](DECISIONS.md#open).
+**Decided by the owner:** [(e) remove the old APIs outright](DECISIONS.md#e), no deprecation release.
+
+**Open, the owner's:** [(f) the automatic error route](DECISIONS.md#open).
 
 Epic · 10 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest

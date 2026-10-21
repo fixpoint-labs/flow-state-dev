@@ -3,8 +3,9 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md)
 
 One line per public surface the set removes, for the changesets and for consumers outside the
-repo. Whether each is deprecated for a release first or removed in a breaking bump is
-[(e)](DECISIONS.md#open), **pending the owner's answer**. Each tool's `<tool>_tasks` action follows its tool.
+repo. Each is removed outright in its owner's PR, with no deprecation release, in a minor bump
+([(e)](DECISIONS.md#e)); that PR's changeset carries the row's line. Each tool's `<tool>_tasks`
+action follows its tool.
 
 | Removed | Use instead | Owner |
 |---|---|---|
