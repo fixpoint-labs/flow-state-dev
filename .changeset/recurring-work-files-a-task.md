@@ -1,6 +1,6 @@
 ---
-"@flow-state-dev/workforce": minor
+"@flow-state-dev/workforce": patch
 "@flow-state-dev/shift-manager": patch
 ---
 
-Recurring work: a schedule in the user's schedule collection (`workforce/schedules/*`) files an ordinary task on the board of the worker its `input.filer` names, in the user's own conversation with that worker, as the user, each time it is due. The roster flow keeps and fires them, and gains `saveSchedule` (five-field crons only), `deleteSchedule` (which deletes the schedule's fired record too) and `listSchedules`, whose `nextRunAt` is worked out from each schedule's cron and time zone at read. `hireWorkforce(installation, { schedules: { index } })` mirrors them into a schedule index. Every session-board flow gains the internal `fileScheduledTask` entry, which files through the board's own `dispatchTask_tasks`. Shift Manager lists them on a new Scheduled work screen (FIX-2085).
+A schedule in the user's schedule collection files an ordinary task on the named worker's board each time it is due, through the roster flow's new `saveSchedule`, `deleteSchedule` and `listSchedules`, and Shift Manager lists them on a Scheduled work screen (FIX-2085).

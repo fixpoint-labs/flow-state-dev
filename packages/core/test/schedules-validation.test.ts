@@ -75,6 +75,25 @@ describe("validateScheduleConfig (static)", () => {
     ).toThrow(/five fields/);
   });
 
+  it.each(["static", "dynamic"] as const)("rejects an unknown time zone on a %s schedule", (origin) => {
+    expect(() =>
+      validateScheduleConfig({
+        kind: "demo",
+        id: "nowhere",
+        schedule: { ...baseSchedule, timezone: "Europe/Atlantis" },
+        origin
+      })
+    ).toThrow(/time zone "Europe\/Atlantis"/);
+    expect(() =>
+      validateScheduleConfig({
+        kind: "demo",
+        id: "london",
+        schedule: { ...baseSchedule, timezone: "Europe/London" },
+        origin
+      })
+    ).not.toThrow();
+  });
+
   it("rejects a schedule with no block", () => {
     expect(() =>
       validateScheduleConfig({

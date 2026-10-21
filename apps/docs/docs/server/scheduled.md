@@ -411,7 +411,8 @@ answers `duplicate`.
 The cron must be exactly five fields (minute hour day-of-month month
 day-of-week). A sixth field would be read as seconds, so a schedule with one
 is refused: `400 invalid_schedule` at dispatch, and an error at registration
-for a static one.
+for a static one. So is a `timezone` that isn't an IANA zone, such as a typo
+in `"Europe/London"`.
 
 One case the record can't cover: two independent schedulers firing the same
 time, where the first is answered `503` after the second was already told

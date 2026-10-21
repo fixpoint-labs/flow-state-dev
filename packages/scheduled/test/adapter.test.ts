@@ -291,6 +291,24 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(json.error).toBe("invalid_schedule");
   });
 
+  it("refuses a resolved schedule in an unknown time zone as invalid, not as no scheduled time", async () => {
+    const flow = buildFlow({
+      kind: "reminders",
+      actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
+      schedules: {
+        resolve: () => ({ cron: "0 0 * * *", timezone: "Europe/Atlantis", block: noopBlock })
+      }
+    });
+    const host = withFlow(withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()), flow);
+    const route = createScheduledTransportAdapter().createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const { request, ctx } = postRequest("reminders", "u_1/anything");
+    const response = await route.handler(request, ctx);
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string; message: string };
+    expect(json.error).toBe("invalid_schedule");
+    expect(json.message).toContain("unknown time zone");
+  });
+
   it("returns 401 when the gateway resolver throws PrincipalResolutionError", async () => {
     const adapter = createScheduledTransportAdapter();
     const host = withFlow(

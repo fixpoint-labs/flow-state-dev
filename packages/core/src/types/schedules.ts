@@ -255,6 +255,16 @@ export function isFiveFieldCron(cron: string): boolean {
   return cron.trim().split(/\s+/).length === 5;
 }
 
+/** Whether `timezone` is an IANA time zone this runtime knows. */
+function isKnownTimeZone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return timezone.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Per-entry validator. Used at registration time for the static map and
  * at dispatch time by the adapter for resolved dynamic schedules. Throws
@@ -286,8 +296,17 @@ export function validateScheduleConfig(args: {
     );
   }
 
+  // The zone is validated with the cron: an unknown one would otherwise leave
+  // a schedule that resolves on every fire and never names a scheduled time.
+  if (schedule.timezone !== undefined && !isKnownTimeZone(schedule.timezone)) {
+    throw new Error(
+      `Flow "${kind}" schedule "${id}" has an unknown time zone ${JSON.stringify(schedule.timezone)}. ` +
+        `Use an IANA time zone such as "Europe/London", or omit it for UTC.`
+    );
+  }
+
   try {
-    CronExpressionParser.parse(schedule.cron);
+    CronExpressionParser.parse(schedule.cron, schedule.timezone === undefined ? {} : { tz: schedule.timezone });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
