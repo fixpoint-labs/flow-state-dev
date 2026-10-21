@@ -20,19 +20,25 @@
  *
  * Each piece's cancel is itself an ending on the session's board, so a piece
  * that filed work of its own cascades in turn, down the chain.
+ *
+ * The ledger hands in its own lookup ({@link LedgerAt}) rather than this
+ * module importing it, since the ledger declares the payer.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   endsFiledWork,
   isTerminalStatus,
   type DeclaredFiledCascade,
-  type Task
+  type Task,
+  type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { FILING_SESSION_STATE_KEY } from "../workers/keys";
 import { FILED_MARKER, PIECE_OF } from "./board-entries";
 import { filingSessionIdOf } from "./filing-session";
-import { conversationLedgerAt } from "./ledger";
+
+/** The conversation ledger at a partition, as the running user's scope holds it. */
+type LedgerAt = (ctx: BlockContext, partition: string) => Promise<TaskCollectionRef | undefined>;
 
 const filedMarkerSchema = z.object({ session: z.string().min(1), partition: z.string().min(1) });
 
@@ -51,10 +57,10 @@ function filedMarkerOf(row: Pick<Task, "metadata"> | undefined): FiledMarker | u
  * stamp and the piece's add leaves a marker with nothing to cancel, which
  * costs a no-op; the reverse order could leave a piece no cascade reaches.
  */
-export async function markFiled(ctx: BlockContext, taskId: string): Promise<void> {
+export async function markFiled(ctx: BlockContext, taskId: string, ledgerAt: LedgerAt): Promise<void> {
   const above = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
   if (typeof above !== "string") return;
-  const ref = await conversationLedgerAt(ctx, above);
+  const ref = await ledgerAt(ctx, above);
   const row = ref?.get(taskId);
   if (ref === undefined || row === undefined) return;
   const marker: FiledMarker = { session: ctx.session.identity.id, partition: await filingSessionIdOf(ctx.session) };
@@ -72,18 +78,22 @@ function cancelReason(row: Task): string {
 /**
  * The conversation ledger's filed-task payer: owed for a failure, a retry or
  * a cancel of a row whose session filed work, paid as the module header says.
+ *
+ * @param ledgerAt The ledger's own lookup, to reach the board the pieces are on.
  */
-export const filedCascade: DeclaredFiledCascade = {
-  owes: (row, ending) => endsFiledWork(ending) && filedMarkerOf(row) !== undefined,
-  pay: async (ctx, row) => {
-    const marker = filedMarkerOf(row);
-    if (marker === undefined) return true;
-    const board = await conversationLedgerAt(ctx, marker.partition);
-    if (board === undefined) return false;
-    for (const piece of board.list()) {
-      if (piece.metadata?.[PIECE_OF] !== row.id || isTerminalStatus(piece.status)) continue;
-      await board.cancel(piece.id, cancelReason(row));
+export function filedCascadeOver(ledgerAt: LedgerAt): DeclaredFiledCascade {
+  return {
+    owes: (row, ending) => endsFiledWork(ending) && filedMarkerOf(row) !== undefined,
+    pay: async (ctx, row) => {
+      const marker = filedMarkerOf(row);
+      if (marker === undefined) return true;
+      const board = await ledgerAt(ctx, marker.partition);
+      if (board === undefined) return false;
+      for (const piece of board.list()) {
+        if (piece.metadata?.[PIECE_OF] !== row.id || isTerminalStatus(piece.status)) continue;
+        await board.cancel(piece.id, cancelReason(row));
+      }
+      return true;
     }
-    return true;
-  }
-};
+  };
+}

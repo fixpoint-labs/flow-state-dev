@@ -43,7 +43,7 @@ import {
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
 import { FILED_MARKER, PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
-import { filedCascade } from "./cascade";
+import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
 import { markReportOwed, withoutReportMarkers } from "./report-owed";
 
@@ -116,7 +116,7 @@ export const conversationLedger = Object.assign(
     settings: { session: ["new", "ongoing"], resultTo: ["filer", "conversation"] },
     // The tasks a task's session filed are cancelled with its failure, retry
     // or cancel (FIX-2080 D2).
-    cascadeFiled: filedCascade
+    cascadeFiled: filedCascadeOver(conversationLedgerAt)
   }),
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );

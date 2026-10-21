@@ -581,7 +581,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
-      if (owner !== undefined) await markFiled(ctx, owner);
+      if (owner !== undefined) await markFiled(ctx, owner, conversationLedgerAt);
       const added = await ref.addTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
