@@ -121,7 +121,7 @@ import {
 import { sendOwedNotices, sendPostCancelled } from "./notice-delivery";
 import { sendOwedReports } from "./report-owed";
 import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
-import { STEP_ATTEMPTS, definePlanning, isAnsweringTurn, planLedgerAt, planLedgerResources } from "./plan";
+import { STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
 
 /**
@@ -486,6 +486,40 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   });
 
   /**
+   * The chain's half of a filing, shared by a task for a delegate and a step:
+   * the row's id, minted now so its place is reserved first, and its entry
+   * reserved under the chain's top. A filing that opens a session (a task for
+   * a delegate) is refused one board past the deepest; a step opens none, so
+   * it adds no depth and skips that check. Call `markFiled` once the add lands.
+   */
+  const reserveFiling = async (
+    ctx: BlockContext,
+    ledger: TaskCollectionRef,
+    partition: string,
+    init: TaskInit,
+    opensSession: boolean
+  ): Promise<{ id: string; markFiled: () => Promise<void> }> => {
+    const id = init.id ?? newTaskId();
+    const chain = chainOfFiling(ctx, partition, id);
+    if (opensSession && chain.depth > MAX_TASK_DEPTH) {
+      // The board one past the deepest takes no task.
+      throw new TaskCapExceededError({ cap: "total", limit: MAX_TASK_DEPTH, attempted: chain.depth, collectionId: ledger.collectionId });
+    }
+    const entry = chainEntryKey(partition, id);
+    const top = chain.top;
+    if (top !== undefined) {
+      await reserveInChain(ctx, {
+        top,
+        entry,
+        limit: options.chainLimit?.() ?? DEFAULT_TASK_CHAIN_LIMIT,
+        now: ledger.now(),
+        collectionId: ledger.collectionId
+      });
+    }
+    return { id, markFiled: async () => (top === undefined ? undefined : markAddedInChain(ctx, top, [entry])) };
+  };
+
+  /**
    * The ledger the tools and actions write through: the running session's
    * own board, guarded. A filing past the chain's limits is refused before
    * anything is written. A filing or an assign that leaves a row startable
@@ -500,22 +534,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const self = verifiedWorkerOf(ctx.session);
     const addTask: TaskCollectionRef["addTask"] = async (init) => {
       if (self !== undefined && init.assignee === self) throw stepFromItsOwnTurn(self);
-      const id = init.id ?? newTaskId();
-      const chain = chainOfFiling(ctx, partition, id);
-      if (chain.depth > MAX_TASK_DEPTH) {
-        // The board one past the deepest takes no task.
-        throw new TaskCapExceededError({ cap: "total", limit: MAX_TASK_DEPTH, attempted: chain.depth, collectionId: ref.collectionId });
-      }
-      const entry = chainEntryKey(partition, id);
-      if (chain.top !== undefined) {
-        await reserveInChain(ctx, {
-          top: chain.top,
-          entry,
-          limit: options.chainLimit?.() ?? DEFAULT_TASK_CHAIN_LIMIT,
-          now: ref.now(),
-          collectionId: ref.collectionId
-        });
-      }
+      const { id, markFiled } = await reserveFiling(ctx, ref, partition, init, true);
       let assignee = init.assignee;
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
@@ -542,7 +561,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(assignee !== undefined ? { assignee } : {}),
         ...(metadata !== undefined ? { metadata } : {})
       });
-      if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
+      await markFiled();
       if (isStartable(added)) await wake(ctx);
       return added;
     };
@@ -665,6 +684,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   ): TaskCollectionRef => {
     const fileStep: TaskCollectionRef["addTask"] = async (init) => {
       if (!routesSelf) throw stepFromItsOwnTurn(self);
+      if (isSteppingTurn(ctx)) {
+        throw new TaskWriteRefusedError(
+          "no_step_while_stepping",
+          "you are working a step, and a step files no step for itself: do this step, and say in your answer what is left. Nothing was filed."
+        );
+      }
       if (isAnsweringTurn(ctx)) {
         throw new TaskWriteRefusedError(
           "no_step_while_answering",
@@ -683,18 +708,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           "a step for yourself runs here, in this request, and follows up no task. File it without followUpOf. Nothing was filed."
         );
       }
-      const id = init.id ?? newTaskId();
-      const chain = chainOfFiling(ctx, partition, id);
-      const entry = chainEntryKey(partition, id);
-      if (chain.top !== undefined) {
-        await reserveInChain(ctx, {
-          top: chain.top,
-          entry,
-          limit: options.chainLimit?.() ?? DEFAULT_TASK_CHAIN_LIMIT,
-          now: plan.now(),
-          collectionId: plan.collectionId
-        });
-      }
+      const { id, markFiled } = await reserveFiling(ctx, plan, partition, init, false);
       const metadata = callerMetadata(init.metadata);
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       const added = await plan.addTask({
@@ -705,10 +719,33 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         maxAttempts: init.maxAttempts ?? STEP_ATTEMPTS,
         ...(metadata !== undefined ? { metadata } : {})
       });
-      if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
+      await markFiled();
       return added;
     };
-    const addTask: TaskCollectionRef["addTask"] = (init) => (init.assignee !== undefined && init.assignee === self ? fileStep(init) : board.addTask(init));
+    /**
+     * Each ledger resolves `deps` only among its own rows, so a dep on the
+     * other ledger would never be met: a step waiting on a delegate's task is
+     * cancelled as blocked, and a delegate's task waiting on a step never
+     * starts. Refused at filing, before anything is written.
+     */
+    const depsOnOneLedger = (init: TaskInit, step: boolean): void => {
+      const other = step ? board : plan;
+      const across = (init.deps ?? []).filter((dep) => other.get(dep) !== undefined);
+      if (across.length === 0) return;
+      throw new TaskWriteRefusedError(
+        "deps_across_ledgers",
+        step
+          ? `a step for yourself can depend only on your other steps, and ${across.map((dep) => `"${dep}"`).join(", ")} is a task for a delegate. ` +
+              "Do the step after that task ends, from the turn its ending wakes. Nothing was filed."
+          : `a task for a delegate can depend only on other tasks for delegates, and ${across.map((dep) => `"${dep}"`).join(", ")} is a step for yourself. ` +
+              "Dispatch it once that step has ended, or give the delegate what it needs in the task. Nothing was filed."
+      );
+    };
+    const addTask: TaskCollectionRef["addTask"] = async (init) => {
+      const step = init.assignee !== undefined && init.assignee === self;
+      depsOnOneLedger(init, step);
+      return step ? fileStep(init) : board.addTask(init);
+    };
     /** The ledger holding `id`: the plan ledger for a step, the board for anything else. */
     const holder = (id: string): TaskCollectionRef => (board.get(id) === undefined && plan.get(id) !== undefined ? plan : board);
     const isStep = (id: string): boolean => holder(id) === plan;

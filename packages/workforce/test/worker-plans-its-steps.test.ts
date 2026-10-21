@@ -23,11 +23,14 @@ import { workerTaskEntry } from "../src/conversation-board/task-entry";
 import type { WorkerInstallation } from "../src/workers/installation";
 import { ORG, boardWorkers, bootBoardHost, messageOf } from "./conversation-board-harness";
 
-type Step = { id: string; goal: string; deps?: string[] };
+/** A row a turn files: a step for itself, or, with `assignee`, a task for that delegate. */
+type Step = { id: string; goal: string; deps?: string[]; assignee?: string };
 
 type Controls = {
   plans: Record<string, Step[]>;
   failSteps: Set<string>;
+  /** Steps whose turn tries to file one more step for itself. */
+  stepFiles: Set<string>;
   answerFiles: Set<string>;
   /** A worker whose plan turn also tries the writes a step refuses. */
   probes: Set<string>;
@@ -64,6 +67,7 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         const step = (controls.plans[worker] ?? []).find((candidate) => brief.includes(candidate.goal));
         if (step === undefined) throw new Error(`no step matches: ${input.message}`);
         if (controls.failSteps.has(step.goal)) throw new Error(`${step.goal} could not be done`);
+        if (controls.stepFiles.has(step.goal)) await refused(() => ref!.addTask({ goal: `after ${step.goal}`, assignee: worker }));
         // A value only this step produces, carrying what it saw of the step before.
         const before = /The results of the steps it depends on:\n([\s\S]*)$/.exec(input.message)?.[1] ?? "";
         return `${step.goal}#done${before.length > 0 ? ` after [${before.trim()}]` : ""}`;
@@ -74,7 +78,9 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
       }
       if (input.message.startsWith('Task "')) return `${worker} heard: ${input.message}`;
       for (const step of controls.plans[worker] ?? []) {
-        await refused(() => ref!.addTask({ id: step.id, goal: step.goal, assignee: worker, ...(step.deps ? { deps: step.deps } : {}) }));
+        await refused(() =>
+          ref!.addTask({ id: step.id, goal: step.goal, assignee: step.assignee ?? worker, ...(step.deps ? { deps: step.deps } : {}) })
+        );
       }
       if (controls.probes.has(worker)) {
         const first = (controls.plans[worker] ?? [])[0]!;
@@ -111,7 +117,7 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 
 function host(options: { taskChainLimit?: number } = {}) {
-  const controls: Controls = { plans: {}, failSteps: new Set(), answerFiles: new Set(), probes: new Set(), refusals: [], turns: [] };
+  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), probes: new Set(), refusals: [], turns: [] };
   const h = bootBoardHost({
     standard: [
       ...boardWorkers(),
@@ -241,6 +247,75 @@ describe("a worker's steps for itself run in its own request (D1)", () => {
       expect((await h.steps("alice")).map((row) => row.id)).toEqual(["s-outline"]);
       // Exactly one more model call for the planned request.
       expect(h.controls.turns.map((t) => t.kind)).toEqual(["turn", "step", "answer"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a step and a delegate's task don't wait on each other: each ledger's deps resolve only on that ledger", () => {
+  it("refuses a step that depends on a task for a delegate, and files nothing", async () => {
+    const h = host();
+    try {
+      h.controls.plans.editor = [
+        { id: "w-draft", goal: "Draft the post", assignee: "writer" },
+        { id: "e-review", goal: "Review the draft", deps: ["w-draft"] }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.refusals).toEqual([{ worker: "editor", error: "deps_across_ledgers" }]);
+      expect(await h.steps("alice")).toEqual([]);
+      // The task for the delegate was filed and ran.
+      expect((await h.rows("alice")).map((row) => [row.id, row.status])).toEqual([["w-draft", "completed"]]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a task for a delegate that depends on a step, and files nothing", async () => {
+    const h = host();
+    try {
+      h.controls.plans.editor = [
+        { id: "e-outline", goal: "Outline the post" },
+        { id: "w-draft", goal: "Draft the post", assignee: "writer", deps: ["e-outline"] }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.refusals).toEqual([{ worker: "editor", error: "deps_across_ledgers" }]);
+      expect(await h.rows("alice")).toEqual([]);
+      expect((await h.steps("alice")).map((row) => [row.id, row.status])).toEqual([["e-outline", "completed"]]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a step's own turn files no step: further work goes in its answer", () => {
+  it("refuses a step filed while a step runs, and the request still answers once", async () => {
+    const h = host();
+    try {
+      h.controls.plans.writer = [outline[0]!];
+      h.controls.stepFiles.add("Outline the post");
+      const talk = await h.open("alice", "writer");
+      expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
+      expect(h.controls.refusals).toEqual([{ worker: "writer", error: "no_step_while_stepping" }]);
+      expect((await h.steps("alice")).map((row) => [row.id, row.status])).toEqual([["s-outline", "completed"]]);
+      expect(h.controls.turns.map((t) => t.kind)).toEqual(["turn", "step", "answer"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("tells the step to report further work in its answer", async () => {
+    const h = host();
+    try {
+      h.controls.plans.writer = [outline[0]!];
+      const talk = await h.open("alice", "writer");
+      expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
+      const step = h.controls.turns.find((t) => t.kind === "step")!;
+      expect(step.message).toMatch(/say so in your answer rather than filing it/);
     } finally {
       await h.dispose();
     }

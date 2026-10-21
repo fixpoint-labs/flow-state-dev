@@ -82,12 +82,24 @@ export const STEP_ATTEMPTS = 1;
  */
 const PLAN_ANSWERING_STATE = "planAnswering";
 
+/**
+ * Request state: set while a step's turn runs. A step it files for itself is
+ * refused, so one request's steps are the ones its turn filed, and further work
+ * goes in the step's answer. Request-scoped, so it ends with the request.
+ */
+const PLAN_STEPPING_STATE = "planStepping";
+
 /** Request state: the steps already ended when this request's drain began, so the answer reports only the rest. */
 const PLAN_SEEN_STATE = "planSeen";
 
 /** Whether the running request is in its answering turn. */
 export function isAnsweringTurn(ctx: BlockContext): boolean {
   return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_ANSWERING_STATE] === true;
+}
+
+/** Whether the running request is in a step's turn. */
+export function isSteppingTurn(ctx: BlockContext): boolean {
+  return (ctx.request?.state as Record<string, unknown> | undefined)?.[PLAN_STEPPING_STATE] === true;
 }
 
 /** A step the drain would work now: open, and not recorded-but-not-dispatched. */
@@ -109,7 +121,7 @@ function shown(value: unknown): string {
  */
 function stepMessage(task: TaskWorkerInput): string {
   const lines = [
-    `You are working a step you filed for yourself, and it is running now, so don't file or dispatch it again. Do this step's work in this answer, and answer with its result.\n\n${taskMessage(task)}`
+    `You are working a step you filed for yourself, and it is running now, so don't file or dispatch it again. Do this step's work in this answer, and answer with its result. If you find more work, say so in your answer rather than filing it.\n\n${taskMessage(task)}`
   ];
   const deps = task.deps === undefined ? [] : Object.entries(task.deps);
   if (deps.length > 0) {
@@ -181,10 +193,23 @@ export function definePlanning(): Planning {
       const ended = (own?.list() ?? [])
         .filter((row) => isTerminalStatus(row.status) && !seen.has(row.id))
         .sort((a, b) => a.createdAt - b.createdAt);
-      await ctx.request.patchState({ [PLAN_ANSWERING_STATE]: true } as never);
+      // A step that threw left its mark: the answering turn is no step.
+      await ctx.request.patchState({ [PLAN_ANSWERING_STATE]: true, [PLAN_STEPPING_STATE]: false } as never);
       return { message: answerMessage(ended) };
     }
   });
+
+  /** Mark the request as in a step's turn, or out of one. */
+  const stepping = (on: boolean) =>
+    handler({
+      name: on ? "plan-step-start" : "plan-step-end",
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        await ctx.request.patchState({ [PLAN_STEPPING_STATE]: on } as never);
+      }
+    });
+  const stepStart = stepping(true);
+  const stepEnd = stepping(false);
 
   const endAnswer = handler({
     name: "plan-end-answer",
@@ -212,7 +237,11 @@ export function definePlanning(): Planning {
       execute: (task: TaskWorkerInput) => ({ message: stepMessage(task) })
     });
     // A step is one turn of the worker, on the step's brief. Its answer is the step's result.
-    const step = sequencer({ name: `${turn.name}-step`, inputSchema: taskWorkerInputSchema }).step(brief).step(turn);
+    const step = sequencer({ name: `${turn.name}-step`, inputSchema: taskWorkerInputSchema })
+      .tap(stepStart)
+      .step(brief)
+      .step(turn)
+      .tap(stepEnd);
     const board = taskBoard({
       name: `${turn.name}-plan`,
       mode: "plan",

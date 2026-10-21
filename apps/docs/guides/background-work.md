@@ -171,7 +171,7 @@ The drain claims a row, sends it to the `investigate` entry, and moves on. The r
 
 Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
 
-A board with a worker that dispatches needs `mode: "delegation"`, an explicit `boardId` and a `defineTaskCollection()`, and every worker on it dispatches; work that runs inline goes on a board of its own. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. Both are checked when the board is built.
+A board with a worker that dispatches needs `mode: "delegation"`, an explicit `boardId` and a `defineTaskCollection()`, and every worker on it dispatches; work that runs inline goes on a board of its own. The run settles its row after the request that claimed it is gone, so the ledger it settles against has to outlive that request. All of these are checked when the board is built.
 
 Read next: **[Assignees that dispatch](/docs/orchestration/task-board#assignees-that-dispatch)** for the `session` policies, what the board refuses at construction, and what the drain reports.
 
