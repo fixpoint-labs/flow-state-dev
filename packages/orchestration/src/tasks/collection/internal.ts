@@ -1267,7 +1267,7 @@ export const CASCADE_DUE_MS = 2_000;
  * Recorded in the ending's own write, so a crash between the ending and the
  * cascade leaves it owed, not lost.
  */
-export function recordCascadeOwed<TInput, TOutput>(
+function recordCascadeOwed<TInput, TOutput>(
   row: Task<TInput, TOutput>,
   ending: TaskEnding,
   recording: EndingRecording | undefined

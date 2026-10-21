@@ -37,10 +37,10 @@ import { conversationLedgerAt } from "./ledger";
 const filedMarkerSchema = z.object({ session: z.string().min(1), partition: z.string().min(1) });
 
 /** Where a task's session filed its pieces: that session, and its board's partition. */
-export type FiledMarker = z.infer<typeof filedMarkerSchema>;
+type FiledMarker = z.infer<typeof filedMarkerSchema>;
 
 /** The row's filed marker, when it carries one that reads. */
-export function filedMarkerOf(row: Pick<Task, "metadata"> | undefined): FiledMarker | undefined {
+function filedMarkerOf(row: Pick<Task, "metadata"> | undefined): FiledMarker | undefined {
   const parsed = filedMarkerSchema.safeParse(row?.metadata?.[FILED_MARKER]);
   return parsed.success ? parsed.data : undefined;
 }

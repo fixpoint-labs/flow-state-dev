@@ -415,7 +415,7 @@ describe("dispatchAndWait on a conversation-result task (FIX-2080)", () => {
 
   it("refuses a wait on a held conversation-result row, releasing nothing", async () => {
     const board = await conversationBoard();
-    await board.addTask({ id: "t", goal: "Summarize the thread", assignee: "researcher", held: true, resultTo: "conversation" });
+    await board.addTask({ id: "t", goal: "Summarize the conversation", assignee: "researcher", held: true, resultTo: "conversation" });
     const result = await dispatchAndWait(turnCtx(new Map(), "park"), board, { taskId: "t" });
     expect(result).toMatchObject({ ok: false, error: "wait_on_conversation_result" });
     expect(board.get("t")).toMatchObject({ status: "held" });
@@ -425,7 +425,7 @@ describe("dispatchAndWait on a conversation-result task (FIX-2080)", () => {
   it("refuses a wait on a new conversation-result task, filing nothing", async () => {
     const board = await conversationBoard();
     const result = await dispatchAndWait(turnCtx(new Map(), "park"), board, {
-      goal: "Summarize the thread",
+      goal: "Summarize the conversation",
       assignee: "researcher",
       resultTo: "conversation"
     });
