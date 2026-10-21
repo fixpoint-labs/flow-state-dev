@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="What changes. Today, on the left: a session has one board, and every row on it is handed to another session, a step the worker files for itself included; whether the drain waits is decided by the kind of assignee, and a goal-seek loop does not check its board. After, on the right: a session has two boards. Its plan board, mode plan and the default, holds its own steps, worked inline by its own request, and the drain waits on every row. Its delegation board, mode delegation, holds tasks for delegates, handed to their sessions, and the drain never waits. Below a fence, four boards are refused when built: a delegation board with an inline row, a delegation board with a dispatcher set to wait true, a plan board with a dispatcher set to wait false, and a goal-seek loop over a delegation board. Until FIX-2082, a plan board refuses any dispatched row."
+<svg viewBox="0 0 940 430" role="img" aria-label="What changes. Today, on the left: a session has one board, and every row on it is handed to another session, a step the worker files for itself included; whether the drain waits is decided by the kind of assignee, and a goal-seek loop does not check its board. After, on the right: a session has two boards. Its plan board, mode plan and the default, holds its own steps, worked inline by its own request, and the drain waits on every row. Its delegation board, mode delegation, holds tasks for delegates, handed to their sessions, and the drain never waits. Below a fence, five boards are refused when built: a delegation board with an inline row, a delegation board with no dispatcher, a plan board with a dispatched row until FIX-2082 lifts it, a goal-seek loop over a delegation board, and a goal-seek loop over a board with onReview exit."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -66,11 +66,11 @@
     <line class="fence" x1="16" y1="318" x2="924" y2="318"/>
     <text class="t-lbl" x="32" y="342">REFUSED WHEN BUILT</text>
     <text class="t-x" x="32" y="366">× a delegation board with an inline row</text>
-    <text class="t-x" x="32" y="388">× a delegation board, dispatcher wait: true</text>
-    <text class="t-x" x="348" y="366">× a plan board, dispatcher wait: false</text>
-    <text class="t-x" x="348" y="388">× goalSeekLoop over a delegation board</text>
-    <text class="t-x" x="644" y="366">× until FIX-2082, a plan board</text>
-    <text class="t-x" x="644" y="388">   with any dispatched row</text>
-    <text class="t-s" x="32" y="414">Each refusal names mode and the change to make.</text>
+    <text class="t-x" x="32" y="388">× a delegation board with no dispatcher</text>
+    <text class="t-x" x="348" y="366">× a plan board with a dispatched row,</text>
+    <text class="t-x" x="348" y="388">   until FIX-2082 lifts it</text>
+    <text class="t-x" x="644" y="366">× goalSeekLoop over a delegation board</text>
+    <text class="t-x" x="644" y="388">× goalSeekLoop over onReview: &quot;exit&quot;</text>
+    <text class="t-s" x="32" y="414">Each refusal names the setting and the change to make.</text>
   </g>
 </svg>

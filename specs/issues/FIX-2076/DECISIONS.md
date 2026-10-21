@@ -42,8 +42,8 @@ delegate, or FIX-2082's dispatched plan row, carries them.
 | | |
 |---|---|
 | **Instead of** | The output of the plan's last row (or rows) as the result, with no further model call |
-| **Because** | A plan row can fail for good. Last-row-wins fails the task for one step or returns a hole; a turn that sees every ending can retry, explain or carry on. Today's split already answers from the turn after its pieces |
-| **Locks in** | One more model call per request that planned, none otherwise. The result is that turn's answer, not `{ answer, pieces }`; the rows stay listable |
+| **Because** | A plan row can fail for good. Last-row-wins fails the task for one step or returns a hole; a turn that sees every ending can redo the step itself, explain or carry on. Today's split already answers from the turn after its pieces |
+| **Locks in** | Exactly one more model call per request that planned, none otherwise. That turn files no step for itself: such a filing is refused, telling it to do the work or answer; a task it files for a delegate is handed off as usual. The result is that turn's answer, not `{ answer, pieces }`; the rows stay listable |
 
 ![D2 trade-off: one more turn after the drain, chosen, beside the last row's output. Decides it: a step that failed for good. Price: one model call per planned request](figures/d2-final-turn.svg)
 
@@ -59,7 +59,7 @@ Then the last row's output wins and the turn goes.
 |---|---|
 | **Instead of** | Either a plan board that dispatches without waiting (today's behaviour, under a new name), or an interim wait built here |
 | **Because** | A plan board that doesn't wait is T-23's bug. An interim wait is a second answer to "done", which the epic's POC showed lets a drain move past a running row; FIX-2082 owns every wait and is blocked by this issue |
-| **Locks in** | Every board that dispatches declares `mode: "delegation"`, in the repo in this PR and in apps at upgrade, told so by the refusal. The task dispatcher gains `wait` with its final rules (`true` refused on delegation, `false` on plan); FIX-2082 lifts only the interim refusal |
+| **Locks in** | Every board that dispatches declares `mode: "delegation"`, in the repo in this PR and in apps at upgrade, told so by the refusal. No dispatcher `wait` lands here: FIX-2082 adds it, with its rules, and lifts the refusal |
 
 ![D3 trade-off: refuse a dispatched plan row until FIX-2082, chosen, beside an interim wait. Decides it: one answer for done. Price: no waited dispatch for one issue's span](figures/d3-refuse-until-wait.svg)
 
@@ -73,18 +73,23 @@ long, and the interim wait is worth weighing against it.
 - **`mode` is a `taskBoard` option**, `"plan"` by default, exposed on the handle. It replaces the
   dispatcher-derived `runsElsewhere`: a delegation board excuses every row, a plan board none.
   The lease conjunct stays.
-- **One convergence point for the refusals**: `taskBoard()` refuses a delegation board with an
-  inline assignee (named, uniform or floor) or none that dispatches, a plan board with a
-  dispatcher, and a `wait` that contradicts the mode; `goalSeekLoop()` refuses a delegation board.
+- **Five refusals, at two construction points.** `taskBoard()` refuses a delegation board with an
+  inline assignee (named, uniform or floor), a delegation board with no dispatcher, and, until
+  FIX-2082, a plan board with a dispatcher. `goalSeekLoop()` refuses a delegation board and a board
+  with `onReview: "exit"`: either drain can return with a row not ended, and its judge would rule
+  on it.
   Every board is built through `taskBoard()`, so a dispatching site the change misses (the
   conversation board, the conductor lab, two goals, the dispatch tests) fails at build. That is
   the totality check; no census checker is needed.
 - **Rule 18 is pinned, not built (ER-1).** A test pins that the drain records an inline row's
-  return and throw, and the claim gate a dispatched row's. A plan row's turn can't settle its row:
-  the task tools resolve only the delegation ledger, and FIX-2081 removes `completeTask` and
-  `failTask`. The raw collection stays the substrate's escape hatch; the closure sweeps the repo.
-- **An inline row's background work is its request's**: the drain records the row when its worker
-  returns; the request's end, background included, is FIX-2077's rule 6.
+  return and throw, and the claim gate a dispatched row's. The task tools route a filing by its
+  assignee (itself to the plan ledger, anyone else to the delegation ledger) and list both, but
+  settle only the delegation ledger's rows, so a plan row's turn can't settle its row; FIX-2081
+  removes `completeTask` and `failTask`. The raw collection stays the substrate's escape hatch; the closure sweeps the repo.
+- **An inline row's background work is its request's.** The drain records the row when its worker
+  returns, so a dependent row can start while the row before it still writes in the background; it
+  sees that row's return. The task's ending waits for all of it: FIX-2077's rule 6 settles after
+  the engine drains background work (aligned with #3592).
 - **The plan ledger is session-scoped and durable**, so a retry finds its rows. A failed attempt's
   open plan rows are cancelled through FIX-2080's cascade.
 
@@ -102,5 +107,21 @@ long, and the interim wait is worth weighing against it.
 - **Draft** — framed as the declared mode plus a worker's own plan; `mode` on `taskBoard`, the
   conversation board declared a delegation board, a worker's steps for itself as plan rows worked
   by its turn; the waited dispatch left to FIX-2082 behind an interim refusal.
+- **Review round 1** — the interim dispatcher `wait` dropped (FIX-2082 owns it, and the refusal
+  needs only `mode`); the answering turn files no step for itself, so D2's one call stays one;
+  `goalSeekLoop` also refuses a park-exit board, which could hand its judge a parked row.
+
+## Notes from review
+
+- "One durable ledger + row kind instead of two session ledgers … if implementers feel pain, worth a 'considered' row on **one ledger + row kind** with mode-driven wait rules—without reopening mixed-board API." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#discussion_r4332349588))
+- "If implementers later need a slimmer hot path, a **conditional** final turn (only when a row failed or outputs need reconciliation) is the usual middle ground—worth a one-line pointer in debt so it doesn't get re-litigated as surprise scope." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#discussion_r4332349606)); also: "skip it when every row succeeded and the last row's output already is the answer … if the implementer measures it, put the number in the PR." — second look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6306328261), #6)
+- "Unbounded **sequential inline plan rows in one request** (lease/transport stretch) plus **D2's unconditional extra turn** → worst case N+1 model calls per request." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#pullrequestreview-5594151124))
+- "The totality claim should be backed by a test, not an argument … `dispatchedTaskPredicate` is exported from `dispatch-assignee.ts` and used by tests directly … Add a check that the predicate is not reachable except through the `mode` path after this change (or delete the export)." — second look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6306328261), #3)
+- "task actions, the devtool task view, `check-board`, and the claim gate each currently assume one collection per session. The spec doesn't say which of them read both ledgers and which only one. Name them, because a reader that quietly sees only the delegation ledger would show a worker's steps as missing." — second look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6306328261), #5)
+- "The `reach()` comment at `board.ts:~290` says the session's own worker is on the roster so it can file a piece for itself … the roster change and the chain-limit tests that relied on self-filing need to move together (BP-034 …), not just the branch." — second look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6306328261), #7)
+- "Replacing it with a board-level `mode` is a chance to make 'does the drain wait on this row' one function owned by the board rather than an optional callback passed down four layers. Do that only as the replacement of `runsElsewhere` itself, not as a wider tidy of the quiescence code." — second look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6306328261), architecture note)
+- "Optional: drop low-information 'tie' rows in D2/D3 SVGs; share figure CSS template to cut line count." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#pullrequestreview-5594151124))
+
+These are inputs, not instructions. Adopt, adapt, or discard them.
 
 **Open: none.**

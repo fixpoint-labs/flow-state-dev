@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="D3, what a plan board does with a dispatched row before FIX-2082 lands. Chosen: refuse it when the board is built. Instead of: an interim wait built in this issue. It comes down to the first row: refusing keeps one answer for done, the claim gate&#x27;s, while an interim wait is a second answer, which the epic&#x27;s POC showed lets a drain move past a running row. Price, second row: no waited dispatch on a plan board for one issue&#x27;s span. Third row, a tie: every board that dispatches declares mode delegation either way. Locks in: the task dispatcher&#x27;s wait lands with its final rules, and FIX-2082 lifts only the interim refusal. Flips if: FIX-2082 slips past this epic."
+<svg viewBox="0 0 940 422" role="img" aria-label="D3, what a plan board does with a dispatched row before FIX-2082 lands. Chosen: refuse it when the board is built. Instead of: an interim wait built in this issue. It comes down to the first row: refusing keeps one answer for done, the claim gate&#x27;s, while an interim wait is a second answer, which the epic&#x27;s POC showed lets a drain move past a running row. Price, second row: no waited dispatch on a plan board for one issue&#x27;s span. Third row, a tie: every board that dispatches declares mode delegation either way. Locks in: no dispatcher wait lands in this issue; FIX-2082 adds it with its rules and lifts the refusal. Flips if: FIX-2082 slips past this epic."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -88,8 +88,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">A dispatcher&#x27;s wait, with its final rules</text>
-    <text class="t-s" x="32" y="391">FIX-2082 lifts only the interim refusal</text>
+    <text class="t-b" x="32" y="373">No dispatcher wait in this issue</text>
+    <text class="t-s" x="32" y="391">FIX-2082 adds it and lifts the refusal</text>
   </g>
 
   <g id="flips-if">
