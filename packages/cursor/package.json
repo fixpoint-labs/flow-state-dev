@@ -74,7 +74,6 @@
     "@cursor/sdk": "1.0.31",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "scripts": {

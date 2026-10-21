@@ -53,9 +53,9 @@ function renderBoard(...tasks: Task[]) {
   render(
     <TaskCollectionsView
       items={tasks.map((task, index) => taskItem(task, index))}
-      childSessions={[]}
+      dispatchRuns={[]}
       truncation="complete"
-      onOpenChildSession={vi.fn()}
+      onOpenDispatchRun={vi.fn()}
     />
   );
 }
@@ -143,9 +143,9 @@ describe("the reason on a task row", () => {
             1
           ),
         ]}
-        childSessions={[]}
+        dispatchRuns={[]}
         truncation="complete"
-        onOpenChildSession={vi.fn()}
+        onOpenDispatchRun={vi.fn()}
       />
     );
 

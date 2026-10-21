@@ -96,13 +96,25 @@ export interface CodexAgentOptions {
    */
   onSession?: HarnessSessionHook;
   /**
+   * Which model the run uses: a fixed id, or a resolver called once per
+   * invocation, like `cwd` and `resume`, so one block can run a different
+   * model for each run. It becomes the thread's `model` on a fresh thread and a
+   * resumed one alike, and it is what the cost estimate is priced against.
+   *
+   * `null`, `""` and `undefined` from the resolver all mean "no model named":
+   * Codex runs its own default. Setting this and `thread.model` together is
+   * refused when the block is built: one owner per value.
+   */
+  model?: string | HarnessResolver<string | null | undefined>;
+  /**
    * The SDK's thread options, forwarded verbatim (model, sandbox mode, approval
    * policy, reasoning effort, network and web-search settings, the git-repo
    * check, additional directories).
    *
-   * `model` here is also what the cost estimate is priced against — Codex's
-   * wire never names the model that ran, so a run left on Codex's default
-   * reports no cost at all.
+   * The model the run used (this group's `model`, or the block's own
+   * {@link CodexAgentOptions.model}) is also what the cost estimate is priced
+   * against — Codex's wire never names the model that ran, so a run left on
+   * Codex's default reports no cost at all.
    *
    * A `workingDirectory` or a `signal` in this bag is refused when the block is
    * built: each has exactly one owner (`cwd`, and the block's own `ctx.signal`).
@@ -180,6 +192,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
+    model,
     thread: threadOptions,
     client: clientOptions,
     resolveCodexClient = createDefaultResolveCodexClient(clientOptions ?? {}),
@@ -199,6 +212,11 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       signal: "the block's own `ctx.signal` owns cancellation",
     },
   );
+  if (model !== undefined && threadOptions?.model !== undefined) {
+    throw new CodexAgentConfigError(
+      "codexAgent: `model` and `thread.model` cannot be set together — each names the model a run uses. Drop one.",
+    );
+  }
   assertNoOwnedKeys(
     clientOptions as Record<string, unknown> | undefined,
     REFUSED_CLIENT_KEYS,
@@ -241,11 +259,14 @@ export function codexAgent(options: CodexAgentOptions = {}) {
       // `""` is treated as `null`: a host reading an unset field out of its own
       // state should get a fresh thread, not a resume of the empty id.
       const resumeId = resumeIdRaw === undefined || resumeIdRaw === "" ? null : resumeIdRaw;
+      // The model, resolved once beside them. Unset, `thread.model` (or Codex's default) stands.
+      const runModel = (typeof model === "function" ? await model(ctx) : model) || threadOptions?.model;
 
       const client = await resolveCodexClient(ctx);
       const dispatchedAt = Date.now();
       const threadArgs = {
         ...threadOptions,
+        ...(runModel !== undefined ? { model: runModel } : {}),
         ...(workingDirectory !== undefined ? { workingDirectory } : {}),
       };
       const thread =
@@ -346,7 +367,7 @@ export function codexAgent(options: CodexAgentOptions = {}) {
         finalMessage: emitState.finalMessage,
         usage:
           usage === null ? null : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
-        cost: estimateCodexCost(usage, threadOptions?.model),
+        cost: estimateCodexCost(usage, runModel),
         codexUsage: usage,
         failureMessage,
       };

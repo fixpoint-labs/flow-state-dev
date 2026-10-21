@@ -627,13 +627,13 @@ describe("claudeCodeAgent", () => {
       const controller = new AbortController();
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstMessageSeen;
       controller.abort();
 
       let caught: unknown = null;
       await expect(
-        withRaceTimeout(runPromise!.catch((err) => {
+        withRaceTimeout(runPromise.catch((err) => {
           caught = err;
           throw err;
         }), 500),
@@ -653,10 +653,10 @@ describe("claudeCodeAgent", () => {
       const controller = new AbortController();
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstMessageSeen;
       controller.abort();
-      await withRaceTimeout(runPromise!.catch(() => {}), 500);
+      await withRaceTimeout(runPromise.catch(() => {}), 500);
 
       expect(
         (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
@@ -706,12 +706,12 @@ describe("claudeCodeAgent", () => {
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
         await vendor.state.sawFirstMessage;
         controller.abort();
 
         const caught = await withRaceTimeout(
-          runPromise!.then(
+          runPromise.then(
             () => null,
             (err) => err,
           ),
@@ -774,12 +774,12 @@ describe("claudeCodeAgent", () => {
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
         await sawFirstMessage;
         controller.abort();
 
         const caught = await withRaceTimeout(
-          runPromise!.then(
+          runPromise.then(
             () => null,
             (err) => err,
           ),
@@ -797,12 +797,12 @@ describe("claudeCodeAgent", () => {
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
         await vendor.state.sawFirstMessage;
         controller.abort();
 
         const caught = await withRaceTimeout(
-          runPromise!.then(
+          runPromise.then(
             () => null,
             (err) => err,
           ),
@@ -827,9 +827,9 @@ describe("claudeCodeAgent", () => {
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       const caught = await withRaceTimeout(
-        runPromise!.then(
+        runPromise.then(
           () => null,
           (err) => err,
         ),
@@ -903,10 +903,10 @@ describe("claudeCodeAgent", () => {
       const controller = new AbortController();
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstMessageSeen;
       controller.abort();
-      await withRaceTimeout(runPromise!.catch(() => {}), 500);
+      await withRaceTimeout(runPromise.catch(() => {}), 500);
 
       // The abort branch's cleanup has now run. Only NOW let the abandoned
       // loop see the second message.
@@ -957,7 +957,7 @@ describe("claudeCodeAgent", () => {
         sawFirstEmit = resolve;
       });
       let emitCount = 0;
-      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event: unknown) => {
         emitCount += 1;
         if (emitCount === 1) {
           sawFirstEmit();
@@ -966,14 +966,14 @@ describe("claudeCodeAgent", () => {
         return originalEmit(event);
       };
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstEmitStarted;
       controller.abort();
 
       // While OUR OWN write is still held open, the run must not settle —
       // that would mean the abort branch finalized past it, exactly the bug.
       let settledEarly = false;
-      runPromise!.catch(() => {}).then(() => {
+      runPromise.catch(() => {}).then(() => {
         settledEarly = true;
       });
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -981,7 +981,7 @@ describe("claudeCodeAgent", () => {
 
       releaseFirstEmit();
       const caught = await withRaceTimeout(
-        runPromise!.then(
+        runPromise.then(
           () => null,
           (err) => err,
         ),
@@ -1035,13 +1035,13 @@ describe("claudeCodeAgent", () => {
       const firstEmitStarted = new Promise<void>((resolve) => {
         sawFirstEmit = resolve;
       });
-      (runtime.response as { emit: typeof originalEmit }).emit = async (event) => {
+      (runtime.response as { emit: typeof originalEmit }).emit = async (event: unknown) => {
         sawFirstEmit();
         await firstEmitHeld;
         return originalEmit(event);
       };
 
-      const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const runPromise = Promise.resolve(block.config.execute?.({ prompt: "go" }, runtime.ctx as never));
       await firstEmitStarted;
       const timeoutReason = new DOMException("The operation timed out.", "TimeoutError");
       controller.abort(timeoutReason);
@@ -1049,7 +1049,7 @@ describe("claudeCodeAgent", () => {
       // While our own write is still held open, the run must not settle —
       // proves the in-flight-write wait still runs for a TimeoutError reason.
       let settledEarly = false;
-      runPromise!.catch(() => {}).then(() => {
+      runPromise.catch(() => {}).then(() => {
         settledEarly = true;
       });
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -1057,7 +1057,7 @@ describe("claudeCodeAgent", () => {
 
       releaseFirstEmit();
       const caught = await withRaceTimeout(
-        runPromise!.then(
+        runPromise.then(
           () => null,
           (err) => err,
         ),
@@ -1752,6 +1752,7 @@ describe("claudeCodeAgent — resume and onSession", () => {
 
     const { error } = await testBlock(block, {
       input: { prompt: "go" },
+      // @ts-expect-error — source bug FIX-1317: testBlock takes no signal, so this one never reaches the block.
       signal: controller.signal,
     });
 
@@ -2696,11 +2697,11 @@ describe("claudeCodeAgent — recordWork", () => {
  * in the repo, so the first thing a reader would do with a brand-new option was
  * paste code that dies on an undefined symbol.
  *
- * Nothing here compiles fenced code blocks, and this package's `tsconfig`
- * includes only `src/**` — so a type-level guard under `test/` would never have
- * run. This is a runtime one instead: the snippet is reproduced verbatim and
- * driven through the block, so an unresolvable symbol is a hard failure and a
- * resolver whose shape stopped matching the option is a red test.
+ * Nothing compiles fenced code blocks, so the prose copies have no check of
+ * their own. This test is the guard: the snippet is reproduced verbatim here,
+ * where `pnpm typecheck` compiles it, and driven through the block, so an
+ * unresolvable symbol is a hard failure and a resolver whose shape stopped
+ * matching the option is a red test.
  *
  * **Keep this a copy-paste match for the three prose copies.** If it needs an
  * edit to pass, they need the same edit.
@@ -3077,7 +3078,7 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       },
     } as never);
 
-    await testBlock(block as never, { input: { prompt: "  raw  " } });
+    await testBlock(block, { input: { prompt: "  raw  " } });
 
     expect(args).toHaveLength(3);
     for (const received of args) {
@@ -3236,5 +3237,44 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(parsed.cost).toEqual({ usd: 0.02, basis: "reported" });
       expect(parsed).not.toHaveProperty("costUsd");
     });
+  });
+});
+
+describe("claudeCodeAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to a fresh run and a resumed one alike", async () => {
+    const spy = vi.fn();
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // resumes, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "sess_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      detached: true,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(spy.mock.calls[0][0].options).toMatchObject({ model: "model-for-run-1" });
+    expect(spy.mock.calls[0][0].options).not.toHaveProperty("resume");
+    expect(spy.mock.calls[1][0].options).toMatchObject({ model: "model-for-run-2", resume: "sess_saved" });
+  });
+
+  it("forwards a fixed id as before, and names none when the resolver has none", async () => {
+    const spy = vi.fn();
+    await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), model: "fixed-id" }), {
+      input: { prompt: "go" },
+    });
+    expect(spy.mock.calls[0][0].options?.model).toBe("fixed-id");
+    for (const none of [null, undefined, ""]) {
+      spy.mockClear();
+      await testBlock(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK], spy), model: () => none }), {
+        input: { prompt: "go" },
+      });
+      expect(spy.mock.calls[0][0].options?.model).toBeUndefined();
+    }
   });
 });
