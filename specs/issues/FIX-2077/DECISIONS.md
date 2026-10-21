@@ -149,6 +149,7 @@ For the implementer, recorded verbatim, not baked into the design.
   [correction](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315963943)).
   It replaces the `updateTask({ id, output })` amendment in
   [#3606](https://github.com/fixpoint-labs/flow-state-dev/pull/3606), closed unmerged. The tool and
-  its rules are FIX-2081's. No change to the approach.
+  its rules are FIX-2081's. The goal check's leg c in the spec now tells a returned result from a
+  checkpoint. No change to the approach.
 
 Open: none.
