@@ -174,7 +174,6 @@ describe("flow registry config admission", () => {
     expect(registry.list()).toEqual([]);
 
     // Minted, it registers exactly as before.
-    // @ts-expect-error — source bug FIX-2053: FlowInstance refuses a configured flow.
     registry.register(engineer({ config: { harness: "codex", model: "gpt-5.4" } }));
     expect(registry.get("engineer-blueprint")?.config).toEqual({
       harness: "codex",

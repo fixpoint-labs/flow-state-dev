@@ -7,8 +7,8 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **files a task whose worker leaves background work running** | Hears "done" while that work still writes | Hears "done" once, after it ends, including work the flow's own end hooks start |
-| **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no piece open, with that answer ([D3](DECISIONS.md#d3)) |
-| **messages a worker whose task is running** | The message runs after the task settled | It runs for the task before it settles; the output is unchanged |
+| **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no piece open; its output is the latest `reportProgress` checkpoint, else that answer ([D3](DECISIONS.md#d3)) |
+| **messages a worker whose task is running** | The message runs after the task settled | It runs for the task before it settles; its answer never becomes the output, though a checkpoint it reports does |
 | **has a task whose request waits on a webhook, a call or a task** | Its claim lapses in two minutes and the task runs again | It shows running and keeps its claim, across a restart too ([D1](DECISIONS.md#d1)) |
 | **has a task that stops to ask a person** | The same lapse: it runs again with the question open | It keeps its claim; it shows running until FIX-2058 ([decided](DECISIONS.md#person-stop)) |
 | **maintains the framework** | Three code paths decide that a task is complete | One rule, checked in one place |
@@ -24,7 +24,7 @@ queued for it. A task that waits is never run twice.**
 | **The real need** | *"The result they hear about is complete, and a task waiting on other work stays running instead of being run twice"* (the issue). The epic's ER-2: one predicate for done, which every wait wakes on |
 | **Smaller, and rejected** | "The gate waits for background work." Splits still park and settle by hand, a waiting task still runs twice, and FIX-2082 has no single ending to wake on |
 | **Bigger, and not this issue's** | A task shown as *waiting on a person* in the Inbox (FIX-2058). An ending that reaches its filer when nothing touches the board (FIX-2078). Waits inside a task (FIX-2082) |
-| **Not done if** | The gate settles a row before rule 6 holds · the split park or its settle entry still exists · a waiting task runs again after a lapse · the check passes only with no background work · a queued message changes the output |
+| **Not done if** | The gate settles a row before rule 6 holds · the split park or its settle entry still exists · a waiting task runs again after a lapse · the check passes only with no background work · a queued message's answer becomes the output |
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ settle point, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/settles-when-its-work-is-over/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Each leg: one ending, heard once by the filer. a: settled after the last write of the side chain the action starts and of the one the flow's `onFinished` starts. b: running while a piece is open; the last piece ends after a request's check ran and before its notice is admitted; settled once with the last turn's answer, no running row left. c: the message's request ends before the settle; output is `work`'s. d: a wait and a person's stop each still running on attempt 1 after a reclaim past the lease; done after the resume |
+| **Signal** | Each leg: one ending, heard once by the filer. a: settled after the last write of the side chain the action starts and of the one the flow's `onFinished` starts. b: running while a piece is open; the last piece ends after a request's check ran and before its notice is admitted; settled once with the last turn's answer (its worker never checkpoints), no running row left. c: the message's request ends before the settle; output is the latest `reportProgress` checkpoint, the message's request's included, or, when none was made, `work`'s returned result, never the message's answer. d: a wait and a person's stop each still running on attempt 1 after a reclaim past the lease; done after the resume |
 | **Input** | Deterministic workers on the Workforce session board. A different delay, piece count or suspension reason must pass too |
 | **Anti-game** | No assertions on recorder calls or a stubbed gate: rows through the collection, notices as the filer got them |
 | **Control that must fail** | `GOAL_CONTROL=settle-at-return` must FAIL leg a on *settled after the side chain's last write* and leg c on *the message's request ends before the settle*. Today's `main` must also FAIL legs b and d |
@@ -63,14 +63,15 @@ another request for the task ends.
 ```diff
   const row = await tasks.get(id)
 - const { answer, pieces } = row.output   // a split task's output
-+ const answer = row.output              // what the worker answered last, like any task
++ const answer = row.output              // the latest reportProgress checkpoint, else the last answer, like any task
 + // Need a piece's result? Its worker says it in the answer, or read the piece's own row.
 ```
 
 Nothing else is written differently. A flow author's own `onFinished` keeps running beside the gate.
 
 **Docs:** update *Workforce → Delegating work → Splitting a task* (the task stays running; its
-output is the worker's last answer; a failed piece does not fail it alone). Update *Orchestration →
+output is the latest `reportProgress` checkpoint, else the worker's last answer; a failed piece
+does not fail it alone). Update *Orchestration →
 Task board → Assignees that dispatch* (the run settles after background work and queued messages;
 a suspended run keeps its claim). Update the orchestration and workforce READMEs where they say
 the same. No new page.

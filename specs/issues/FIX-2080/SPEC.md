@@ -135,7 +135,7 @@ Each ending records what it owes in the same write, so a crash leaves the cascad
 
 | The debt | |
 |---|---|
-| **Removes** | `blocked`, `block`, `unblock`, `blockTask` · the recorded-not-started mark · `createCascadeSkipDependents` · the busy-session refusal · the split-only cancel cascade, whose code FIX-2077 deletes with its park · a dependency id that never resolves. Each public one is a [migration line](../../epics/FIX-2056/migration.md) the implementation changeset carries; if FIX-2081's spec merges first, this issue's three behaviour lines move into its Changed table |
+| **Removes** | `blocked`, `block`, `unblock`, `blockTask` · the recorded-not-started mark · `createCascadeSkipDependents` · the busy-session refusal · the split-only cancel cascade, whose code FIX-2077 deletes with its park · a dependency id that never resolves. Each public one is a [migration line](../../epics/FIX-2056/migration.md) the implementation changeset carries; this issue's three behaviour lines are in its Changed table |
 | **Adds** | `held`, `hold` and `release` · the `session` and `resultTo` fields · a cascade debt on the ending · the retired-shape map, removed no earlier than FIX-2071 |
 | **Leaves** | A cascade owed past its due time is paid on the next touch until FIX-2078, which now lands after this issue, pays it on time with its wake · the refusal of a wait on a conversation-result task lives on today's wait, and moves with it to `getTask` (FIX-2082) |
 

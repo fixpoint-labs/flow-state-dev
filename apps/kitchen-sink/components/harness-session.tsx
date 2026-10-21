@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * A harness session, picked in a harness mode's rail: the conversation with
- * the harness's own items, a composer whose stop control stops the turn, the
+ * A harness session, picked in a harness mode's rail: the model it runs and
+ * the conversation it is bound to, the conversation with the harness's own items, a composer whose stop control stops the turn, the
  * notice for the latest turn, and the plan panel beside it.
  *
  * Every item shown is the harness's own, through the app's ordinary
@@ -37,6 +37,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import type { ModelChoices } from "@/lib/harness-models";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import {
   latestTurn,
@@ -54,18 +55,20 @@ export interface HarnessSessionViewProps {
   /** The mode's session flow kind. */
   readonly flowKind: string;
   readonly sessionId: string;
+  /** The mode's models, for the name of the session's. */
+  readonly models: ModelChoices;
 }
 
 /** One harness session's conversation and plan. */
-export function HarnessSessionView({ label, flowKind, sessionId }: HarnessSessionViewProps) {
+export function HarnessSessionView({ label, flowKind, sessionId, models }: HarnessSessionViewProps) {
   return (
     <FlowProvider flowKind={flowKind} userId={KITCHEN_SINK_USER_ID} baseUrl="" renderers={chatAssistantRenderers}>
-      <SessionBody label={label} sessionId={sessionId} />
+      <SessionBody label={label} sessionId={sessionId} models={models} />
     </FlowProvider>
   );
 }
 
-function SessionBody({ label, sessionId }: { label: string; sessionId: string }) {
+function SessionBody({ label, sessionId, models }: { label: string; sessionId: string; models: ModelChoices }) {
   const session = useSession(sessionId, { items: true, autoResume: true });
   const [message, setMessage] = useState("");
 
@@ -101,6 +104,7 @@ function SessionBody({ label, sessionId }: { label: string; sessionId: string })
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="harness-session">
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="border-b px-4 py-2 text-xs text-muted-foreground">
+          {session.snapshot !== null && <SessionModel model={state.model} models={models} label={label} />}
           Conversation:{" "}
           <span className="font-mono" data-testid="bound-conversation">
             {bound ?? "none yet"}
@@ -145,6 +149,23 @@ function SessionBody({ label, sessionId }: { label: string; sessionId: string })
       </section>
       <PlanPanel session={session} label={label} turn={turn} ended={turn !== null && turn.status !== "running"} />
     </div>
+  );
+}
+
+function SessionModel({ model, models, label }: { model: string | undefined; models: ModelChoices; label: string }) {
+  const named = model ?? models.fallbackId;
+  const name = named === null ? null : (models.models.find((m) => m.id === named)?.label ?? null);
+  const text =
+    named === null
+      ? `${label}'s own default (this session predates the model picker)`
+      : `${name !== null && name !== named ? `${name} · ` : ""}${named}${model === undefined ? ` (${label} mode's default; this session predates the model picker)` : ""}`;
+  return (
+    <p className="mb-1">
+      Model:{" "}
+      <span className="font-mono" data-testid="session-model" data-model-id={model ?? ""}>
+        {text}
+      </span>
+    </p>
   );
 }
 

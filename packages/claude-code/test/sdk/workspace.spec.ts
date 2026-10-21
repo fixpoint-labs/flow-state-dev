@@ -19,8 +19,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testBlock } from "@flow-state-dev/testing";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { defineFlow, defineResourceCollection, generator } from "@flow-state-dev/core";
-import { z } from "zod";
+import { z, type ZodType } from "zod";
 import {
   createWorkspaceAgentCapability,
   containmentSandbox,
@@ -63,7 +64,7 @@ function scriptedQuery(
 /** The tool block the capability exposes. */
 function toolOf(cap: unknown) {
   const { __presetDefs } = cap as {
-    __presetDefs: { tools: { tools: Array<Record<string, unknown>> } };
+    __presetDefs: { tools: { tools: Array<BlockDefinition<ZodType<{ prompt: string }>>> } };
   };
   return __presetDefs.tools.tools[0]!;
 }
@@ -203,7 +204,7 @@ describe("createWorkspaceAgentCapability", () => {
       },
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     const options = spy.mock.calls[0][0].options;
     const expected = join(base, "run-1");
@@ -235,7 +236,7 @@ describe("createWorkspaceAgentCapability", () => {
       root: () => link,
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     const options = spy.mock.calls[0][0].options;
     const physical = realpathSync(real);
@@ -256,7 +257,7 @@ describe("createWorkspaceAgentCapability", () => {
       root: () => base,
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     expect(spy.mock.calls[0][0].options?.settingSources).toEqual([]);
 
@@ -285,7 +286,7 @@ describe("createWorkspaceAgentCapability", () => {
       root: () => base,
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     expect(spy.mock.calls[0][0].options?.disallowedTools).toEqual(
       expect.arrayContaining([...RELOCATION_TOOLS]),
@@ -305,7 +306,7 @@ describe("createWorkspaceAgentCapability", () => {
       disallowedTools: ["WebFetch"],
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     const disallowed = spy.mock.calls[0][0].options?.disallowedTools ?? [];
     expect(disallowed).toEqual(expect.arrayContaining(["WebFetch", ...RELOCATION_TOOLS]));
@@ -337,7 +338,7 @@ describe("createWorkspaceAgentCapability", () => {
       },
     });
 
-    const result = (await testBlock(toolOf(cap) as never, {
+    const result = (await testBlock(toolOf(cap), {
       input: { prompt: "go" },
       flow: flowWith(cap) as never,
     })) as {
@@ -408,7 +409,7 @@ describe("createWorkspaceAgentCapability", () => {
       actions: { go: { block: gen } },
     })();
 
-    await testBlock(toolOf(cap) as never, {
+    await testBlock(toolOf(cap), {
       input: { prompt: "go" },
       flow: flow as never,
     });
@@ -465,7 +466,7 @@ describe("createWorkspaceAgentCapability", () => {
       actions: { go: { block: gen } },
     })();
 
-    const result = (await testBlock(toolOf(cap) as never, {
+    const result = (await testBlock(toolOf(cap), {
       input: { prompt: "go" },
       flow: flow as never,
     })) as { error?: Error | null };
@@ -486,7 +487,7 @@ describe("createWorkspaceAgentCapability", () => {
       settingSources: ["user"],
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     expect(spy.mock.calls[0][0].options?.settingSources).toEqual(["user"]);
 
@@ -504,7 +505,7 @@ describe("createWorkspaceAgentCapability", () => {
       contain: false,
     });
 
-    await testBlock(toolOf(cap) as never, { input: { prompt: "go" } });
+    await testBlock(toolOf(cap), { input: { prompt: "go" } });
 
     const options = spy.mock.calls[0][0].options ?? {};
     expect("settingSources" in options).toBe(false);
@@ -544,7 +545,7 @@ describe("createWorkspaceAgentCapability", () => {
     });
 
     try {
-      const result = (await testBlock(toolOf(cap) as never, {
+      const result = (await testBlock(toolOf(cap), {
         input: { prompt: "go" },
         flow: flowWith(cap) as never,
       })) as {
@@ -594,7 +595,7 @@ describe("createWorkspaceAgentCapability", () => {
     });
 
     try {
-      const result = (await testBlock(toolOf(cap) as never, {
+      const result = (await testBlock(toolOf(cap), {
         input: { prompt: "go" },
         flow: flowWith(cap) as never,
       })) as {

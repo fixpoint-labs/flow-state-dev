@@ -900,4 +900,47 @@ describe("cursorAgent — the env fence, refusals when the block is built", () =
   it("accepts the same function with env unset, as before", () => {
     expect(() => cursorAgent({ ...GATE_OFF, send: { onStep: () => {} } })).not.toThrow();
   });
+
+  it("accepts a model resolver with env set: it is asked here, and only its answer crosses", () => {
+    expect(() => cursorAgent({ ...GATE_OFF, env: { PATH: "/usr/bin" }, model: () => "composer-2.5" })).not.toThrow();
+  });
+});
+
+describe("cursorAgent — the model, per run", () => {
+  it("asks the resolver on every run, and hands its answer to create and to resume alike", async () => {
+    const { resolve, rec } = scripted(OK_STREAM);
+    // Two runs of ONE block, as two sessions of a host share it: the second
+    // resumes an agent, and must still name the model its own run picked.
+    const picks = ["model-for-run-1", "model-for-run-2"];
+    const resumes = [null, "agent_saved"];
+    let modelRun = 0;
+    let resumeRun = 0;
+    const block = cursorAgent({
+      ...GATE_OFF,
+      resolveCursorClient: resolve,
+      model: () => picks[modelRun++]!,
+      resume: () => resumes[resumeRun++],
+      agent: { mode: "agent" },
+    });
+    await testBlock(block, { input: { prompt: "one" } });
+    await testBlock(block, { input: { prompt: "two" } });
+
+    expect(rec.created[0]).toMatchObject({ model: { id: "model-for-run-1" }, mode: "agent" });
+    expect(rec.resumed[0]).toMatchObject({ id: "agent_saved", options: { model: { id: "model-for-run-2" }, mode: "agent" } });
+  });
+
+  it("leaves `agent.model` in charge when the resolver has none", async () => {
+    for (const none of [null, undefined, ""]) {
+      const { resolve, rec } = scripted(OK_STREAM);
+      const block = cursorAgent({ ...GATE_OFF, resolveCursorClient: resolve, model: () => none });
+      await testBlock(block, { input: { prompt: "go" } });
+      expect(rec.created[0]).not.toHaveProperty("model");
+    }
+  });
+
+  it("refuses `model` beside `agent.model` or `send.model` when the block is built: one owner per value", () => {
+    expect(() => cursorAgent({ ...GATE_OFF, model: "a", agent: { model: { id: "b" } } })).toThrow(/agent\.model/);
+    expect(() => cursorAgent({ ...GATE_OFF, model: () => "a", send: { model: { id: "b" } } })).toThrow(/send\.model/);
+    expect(() => cursorAgent({ ...GATE_OFF, model: "a", agent: { model: { id: "b" } } })).toThrow(CursorAgentConfigError);
+  });
 });
