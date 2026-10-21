@@ -146,7 +146,7 @@ export function claudeCodeSessionFlow(seams: ClaudeCodeSeams = {}) {
 }
 
 /** The model the scripted Claude Code offers. It runs no model; the id only travels. */
-export const SCRIPTED_CLAUDE_MODEL = "scripted-claude-code";
+const SCRIPTED_CLAUDE_MODEL = "scripted-claude-code";
 
 /**
  * Claude Code's own list. When it can't be read, nothing is offered and New
