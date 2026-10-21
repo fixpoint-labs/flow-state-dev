@@ -2,10 +2,8 @@
  * Type-level tests for the task collection factory's options: the creation caps
  * (FIX-931) and the backing discriminant (FIX-960).
  *
- * These live under `src/` on purpose — this package's `typecheck` runs `tsc -p
- * tsconfig.json`, whose `include` is `src/**` only, and vitest transpiles test
- * files without checking types. A `@ts-expect-error` in `test/` would therefore
- * be inert. Same convention as `packages/core/src/types/tests/*.type-test.ts`.
+ * `pnpm typecheck` compiles this file, and the package's `test/` files too, so
+ * a wrong assertion here or in a test fails it.
  *
  * What they pin down:
  *

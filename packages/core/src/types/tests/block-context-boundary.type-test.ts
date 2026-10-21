@@ -1,10 +1,8 @@
 /**
  * Type-level tests pinning the public `BlockContext` boundary (FIX-999).
  *
- * These live under `src/` on purpose — this package's `typecheck` runs `tsc -p
- * tsconfig.json`, whose `include` is `src/**` only, and vitest transpiles test
- * files without checking types. A `@ts-expect-error` in `test/` would be inert.
- * Same convention as the other `*.type-test.ts` files in this directory.
+ * `pnpm typecheck` compiles this file, and the package's `test/` files too, so
+ * a wrong assertion here or in a test fails it. Vitest does not check types.
  *
  * What they pin down, and why it is worth a file:
  *

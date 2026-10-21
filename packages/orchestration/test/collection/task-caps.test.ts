@@ -221,7 +221,5 @@ describe("task caps — construction-time validation", () => {
 
 // The rule that a cap passed with `backing: "resource"` does NOT COMPILE is
 // asserted at the type level, in
-// `src/tasks/collection/tests/task-caps.type-test.ts`. It cannot live here:
-// this package's `typecheck` covers `src/**` only and vitest transpiles test
-// files without checking types, so a `@ts-expect-error` in this directory would
-// be inert.
+// `src/tasks/collection/tests/task-caps.type-test.ts`, which `pnpm typecheck`
+// compiles along with this file.

@@ -226,6 +226,8 @@ pnpm test:watch
 pnpm --filter @flow-state-dev/core test:watch
 ```
 
+Type-level assertions (`expectTypeOf`, a `// @ts-expect-error` with its reason, an `Assert<…>` helper) go in whichever test file they belong to: a `.test.ts`, a `.test-d.ts`, or a `src/**/*.type-test.ts`. Vitest strips types, so it never fails them; `pnpm typecheck` compiles every one of those files and fails on a wrong one. When you add an assertion, prove it can fail once: negate it (add or drop `.not`, change the asserted type, or delete the directive), run `pnpm --filter <package> typecheck`, see it fail on that line, then put it back. Workforce's `.test.ts` files are not compiled yet (its `DEFERRED` entry, below), so a type assertion there goes in a `.test-d.ts` for now.
+
 ### Shared module cache
 
 `engine`, `core`, `orchestration` and `integration-tests` run their test files on

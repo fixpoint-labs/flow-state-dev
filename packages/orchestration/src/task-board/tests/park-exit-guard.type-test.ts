@@ -1,11 +1,8 @@
 /**
  * Type-level test for the park-exit verdict's adjacency guard (FIX-1238).
  *
- * This lives under `src/` on purpose — this package's `typecheck` runs `tsc -p
- * tsconfig.json`, whose `include` is `src/**` only, and vitest transpiles test
- * files without checking types. Same convention as
- * `src/tasks/collection/tests/task-caps.type-test.ts`. A `@ts-expect-error`
- * placed in `test/` would be inert: nothing typechecks that directory.
+ * `pnpm typecheck` compiles this file, and the package's `test/` files too, so
+ * a wrong assertion here or in a test fails it.
  *
  * What it pins down: `boardExitsConnector` still has teeth. The connector is the
  * only thing making the drain's completion tap reject a step wired in front of
