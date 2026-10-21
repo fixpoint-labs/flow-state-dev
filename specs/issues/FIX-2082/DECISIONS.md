@@ -41,7 +41,7 @@ wake. Then the deadline keeps the suspension's expiry on that store only.
 |---|---|
 | **Instead of** | Keeping a worker's own steps inline, with a dispatched plan row only on a board a flow author builds |
 | **Because** | FIX-2076's D1 locks in *"a step needing its own session is a dispatched plan row, after FIX-2082"*, and the epic's walk has writer's plan board wait on a dispatched fact-check. A worker files its steps with `createTask` naming itself; what tells inline from dispatched is where the step runs, which is the session setting's job (FIX-2080). `"new"` is that setting's own value, so nothing new is named |
-| **Locks in** | On a filing naming the worker itself, no `session` means this session, inline (FIX-2076, unchanged), and `session: "new"` a new session of the same worker, dispatched and waited on by the drain. The ongoing-session and follow-up values are refused on a plan row. The concept's *"a plan row uses only those two"* gains the session, amended by the implementation PR; FIX-2080 (#3595) is told at this gate |
+| **Locks in** | On a filing naming the worker itself, no `session` means this session, inline (FIX-2076, unchanged), and `session: "new"` a new session of the same worker, dispatched and waited on by the drain. On a plan row FIX-2080's *"an absent session reads as the default"* does not apply: an inline plan row stores no session, nothing writes the default onto it, and only an explicit `"new"` dispatches; `createTask`'s `session` description says so. A plan row takes dependencies, attempts and `session: "new"`; held, ongoing and follow-up are refused, each naming the rule. `session: "new"` on a filing naming the worker itself is refused unless its flow declares `contributor` (FIX-2084), or, before FIX-2084 lands, has a marked `work` entry, naming the rule. The concept's *"a plan row uses only those two"* gains the session, amended by the implementation PR; FIX-2080 (#3595) is told at this gate |
 
 ![D2: how a worker's step gets its own session. Session new on a filing naming itself, chosen, beside steps inline only. Decides it: the epic's walk, a dispatched fact-check the drain waits on. The price: a plan row takes a third setting. A tie: a step filed with no session runs inline either way. Locks in: session new dispatches a worker's own step. Flips if no worker needs a step in its own session](figures/d2-own-session.svg)
 
@@ -68,8 +68,8 @@ session itself works holds its slot.
 - **The task checks.** A wait is refused, before anything is written and naming the rule, on a task
   this session didn't file, on one whose result goes to the conversation (moved from FIX-2080), on a
   task another request already waits on, on a second wait in one model step, past 5 deep, and on a
-  host that can't hold a wait. A task already ended returns at once. *This session filed it* reads a
-  filing session the substrate stamps on the row when it is built, never input (BP-031): `createdBy`
+  host that can't hold a wait. A task already ended returns at once. *This session filed it* reads
+  FIX-2078's server-written filer fields (session and flow) on the row, never input (BP-031): `createdBy`
   names only the user, and two sessions of one user can reach one shared board. A row filed before
   the upgrade has none and reads as *filer unknown*, refused, as `createdBy` reads today (BP-030).
   *Another request already waits*: a session can run requests side by side (`concurrency: "allow"` is
@@ -83,17 +83,26 @@ session itself works holds its slot.
 - **The deadline.** `deadline` is milliseconds from the call: a model can't read the clock. Unset,
   it is a host setting, five minutes by default, today's. Below the host's minimum (the sweeper's
   resolution by default: a shorter deadline can't come due sooner, and would only spin park and
-  resume) or above its maximum (24 hours by default, never past FIX-2078's maximum debt age) it is
+  resume) or above its maximum (24 hours by default) it is
   refused, naming the bound.
-- **Who gets the ending: exactly once.** The claim gate decides it in the write that records the
-  ending, against the row's wait slot: a parked request is resumed with it; otherwise it is owed to
+- **The wait's wake.** A wait's deadline is a wake whose entry is `waitDeadline`, on the waiting
+  request's session. Parked waits in one session share that wake (FIX-2078's one per session and
+  entry); it carries the earliest deadline, and each time one resumes it re-arms to the next parked
+  wait's deadline, clearing when none is parked.
+- **Who gets the ending: exactly once.** FIX-2078's one delivery decides it, for every ending
+  writer, read against the row's wait slot in the write that records the ending: a parked request is resumed with it; otherwise it is owed to
   `onTaskSettled` (rule 7). At the deadline the slot is not cleared but lapsed, in one conditional
   write that loses to an ending already written, so an ending and a deadline due together resume the
   request once. A lapsed slot still holds the ending for the request that waited, while that request
   runs: its next `getTask` (waiting or not) returns it and the notice is never owed. Only when that
-  request ends without reading it is it owed to `onTaskSettled`, once.
+  request ends without reading it is it owed to `onTaskSettled`, once: the lapsed-slot case this
+  issue adds to FIX-2078's delivery, a debt due at that request's end plus 2 s.
 - **A drain's wait** uses the host's default and waits again at each deadline, a check-in. It never
-  moves past a running row; its own request keeps its task's claim through FIX-2077's hold.
+  moves past a running row; its own request keeps its task's claim through FIX-2077's `waitingOn` (its D1: the claim kept, no lease).
+- **A cancel ends a parked wait.** Cancelling a task whose request is parked on any of the three
+  waits (`getTask`'s, a drain's dispatched row, a waiting dispatcher) resolves the wait as cancelled.
+  The request ends with no further model call, its writes are refused, and its return is not
+  recorded. FIX-2081 hands this here ([#3596](https://github.com/fixpoint-labs/flow-state-dev/pull/3596)).
 - **A dispatcher's `wait`.** Inside a board an unset `wait` follows the mode; `taskBoard()` refuses a
   plan board with `wait: false` and a delegation board with `wait: true`, and FIX-2076's refusal of
   any dispatcher on a plan board goes. Outside a board it defaults to `false`.
@@ -108,11 +117,15 @@ session itself works holds its slot.
   chain of task waits can't pass the tree's 5, so the limit binds only chains that mix in waited
   dispatches and, later, calls, which build no tree. One number bounds both, each parked wait keeps a
   session busy, and nothing in the repo nests deeper than one today.
-- **The tree's limits** stay Workforce's chain check. Plan rows count toward the 100; an inline one
-  adds no depth, and a dispatched one's session is one board deeper.
+- **The tree's limits** stay Workforce's chain check, kept for plan rows: they count toward the 100
+  (FIX-2076 keeps them in the count); an inline one adds no depth, and a dispatched plan row's
+  session is one board deeper.
 - **`dispatchTask`.** This issue removes `wait` and `timeoutMs`; if FIX-2083 has landed, also the
-  tool, its action and the epic's migration line (FIX-2081's D1). The implementation PR adds the
-  migration row `dispatchTask({ wait, timeoutMs })` → `createTask`, then `getTask({ id, wait, deadline })`.
+  tool, its action, `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall` and the
+  already-dispatched decline (FIX-2081's D1); whichever of the two lands later removes those. It
+  amends FIX-2081's one `dispatchTask` row in the epic's migration.md rather than adding a second:
+  `timeoutMs` becomes `getTask`'s `deadline`, which cancels nothing. It adds a row for
+  `dispatchAndWait` and its `DispatchAndWait*` types → `getTask({ id, wait: true })`.
 - **Upgrade (BP-030).** A row's wait slot written by today's filing reads as today. A gate parked
   before the upgrade keeps its deadline on the suspension's expiry until it resolves, without the
   cancel; the implementer places the read, or FIX-2078's backfill writes it a wake.
@@ -148,7 +161,9 @@ implementer, not baked into the design:
 - *"The sweeper's expiry-resume of wait gates stays only for pre-upgrade gates. Put a removal
   condition on it, as D1 already hints."* — second look
 - *"Drain's wait is unbounded … a hung dispatched step parks a session forever. The spec leans on
-  FIX-2078's maximum debt age. State that this is the bound."* — second look
+  FIX-2078's maximum debt age. State that this is the bound."* — second look. Corrected after the
+  cross-spec audit: debt age doesn't bound it. A hung dispatched step is bounded by its row's lease
+  and its reclaim or abandonment, whose ending the drain then hears.
 - *"Check that the in-memory test store and the Vercel and BullMQ hosts keep wakes after FIX-2078.
   If not, kitchen-sink and the unit suites can't exercise a wait."* — second look
 - *"This issue ships after FIX-2078, FIX-2076, FIX-2077 and FIX-2081 … Re-read their final shapes

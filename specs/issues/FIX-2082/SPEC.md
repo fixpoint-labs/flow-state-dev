@@ -49,7 +49,7 @@ today's cancel, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/waits-on-a-task-it-filed/` · no model: deterministic workers · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: a conversation files with `createTask` and ends; a later request waits with `getTask` and gets the task `completed` with its output in that request; a second session of the same user is refused a wait on it, and so is a second request of the filing session while the first waits. b: five nested waits, four through task requests and one waited dispatch, each resume with the result below; a sixth is refused and nothing is filed; a chain of five built below a task nobody waits on, then a late wait on that task, is refused; the 101st filing under a top task, a plan row, is refused. c: a deadline shorter than the work resumes the request with the task `in_progress` on attempt 1; a second wait gets it `completed`; the task ending after the deadline while that request still runs reaches it once, on its next `getTask`, and no `onTaskSettled` fires; in another run the request ends without waiting again and one `onTaskSettled` hears the ending; an ending and a deadline held due together resume the request once, and the ending is delivered once; killed mid-wait, the deadline still resumes within due time plus 2 s. d: a step filed `session: "new"` is waited on through two deadlines, and the next step's output carries a value only it produced. e: `dispatcher({ wait: true })` outputs the child's output |
+| **Signal** | a: a conversation files with `createTask` and ends; a later request waits with `getTask` and gets the task `completed` with its output in that request; a second session of the same user is refused a wait on it, and so is a second request of the filing session while the first waits. b: five nested waits, four through task requests and one waited dispatch, each resume with the result below; a sixth is refused and nothing is filed; a chain of five built below a task nobody waits on, then a late wait on that task, is refused; the 101st filing under a top task, a plan row, is refused. c: a deadline shorter than the work resumes the request with the task `in_progress` on attempt 1; a second wait gets it `completed`; the task ending after the deadline while that request still runs reaches it once, on its next `getTask`, and no `onTaskSettled` fires; in another run the request ends without waiting again and one `onTaskSettled` hears the ending; an ending and a deadline held due together resume the request once, and the ending is delivered once; killed mid-wait, the deadline still resumes within due time plus 2 s; the task whose request waits is cancelled, and that request ends with no further model call and no recorded return. d: a step filed `session: "new"` is waited on through two deadlines, and the next step's output carries a value only it produced. e: `dispatcher({ wait: true })` outputs the child's output |
 | **Input** | Other depths, deadlines and kill points must pass too |
 | **Anti-game** | Rows through `getTask_tasks` and `listTasks_tasks`, requests from the engine's store. No stubbed gate, sweeper or clock |
 | **Control that must fail** | `GOAL_CONTROL=deadline-cancels` must FAIL leg c on *`in_progress` on attempt 1* and *a second wait gets it*. `GOAL_CONTROL=drain-moves-on`, a drain that takes its deadline as an ending, must FAIL leg d. Today's `main` must also FAIL legs a and b |
@@ -86,8 +86,18 @@ Three ways in, one wait: the claim gate's ending or the wake resumes it, and nei
 a plan board's dispatched row; the dispatcher's `wait` and its two refusals), *Workforce →
 Delegating work* (a task's request may wait; a step in its own session), *Advanced → Durable
 execution* (a wait's deadline resumes and cancels nothing), and the core, orchestration and
-workforce READMEs. Rewrite the wait goal `goals/hand-offs/ask-survives-a-restart/` on `getTask`.
-No new page; FIX-2081 publishes the one-task opening.
+workforce READMEs. No new page; FIX-2081 publishes the one-task opening.
+
+**Goals this changes,** rewritten or retired by the implementation PR, each stating the intent it
+keeps: `goals/hand-offs/ask-survives-a-restart/` on `getTask`; FIX-2076's
+`goals/task-board/refuses-a-board-built-wrong/`, whose plan-board-with-a-dispatcher fixture gives
+way to the two wait refusals (D2's dispatcher bullet); FIX-2076's leg a and its Not-done-if
+(*no child session*), scoped to steps filed without `session: "new"`; and FIX-2080's
+`runs-by-its-filing-settings` and FIX-2078's `every-ending-reaches-its-filer` where they wait
+through `dispatchTask({ wait })`. D2 needs one board change past FIX-2076's: a plan board's drain
+reads inline or dispatched per row, not per board. With FIX-2083 (#3598), whichever removes
+`dispatchTask` rewrites `goals/coordinators/files-tasks-down-the-owners-chain/` leg e and
+`goals/coordinators/task-session-stays-open/` leg c.
 
 ## How a wait runs
 
@@ -108,8 +118,8 @@ decides.
 
 - **A person stopping a waiting request** ends it and cancels the task it waited on, as today.
 - **One wait per model step,** and `waitForCondition`, the wait on a condition inside a running request.
-- **Who pays a resume owed after a crash:** FIX-2078's delivery and its wake.
-- **The tree's limits,** Workforce's chain check: 5 deep, 100 under a top task. FIX-2076's plan rows now pass it too.
+- **Who pays a resume owed after a crash, and a cancel owed by a stop:** FIX-2078's delivery and its wake. A dispatched plan row's ending owing its waiting drain a resume is FIX-2078's case for plan rows filed `session: "new"`, which this relies on.
+- **The tree's limits,** Workforce's chain check: 5 deep, 100 under a top task. Plan rows stay in it, as FIX-2076 keeps them; a dispatched plan row's session is one board deeper.
 
 ## What's already here, and the debt
 
@@ -117,11 +127,11 @@ decides.
 |---|---|
 | What waits on another session's work: `dispatchTask({ wait, timeoutMs })` over `dispatchAndWait`; `waitForCondition` with `onTaskChangeFor`; a person's park (`awaitReview`, `parkOnQuestion`) | **Folds** the first into `getTask`, the closest; a dispatcher's wait is the same wait, not a second. The condition wait holds a running request open and stays (rule 9's *condition*). A person's park is FIX-2058's. Searched `wait`, `park`, `resume`, `await` across `packages/` |
 | The wait gate (`parkOnWait`), the row's wait slot and its resume | **Builds on.** The slot is written when the wait starts, not at filing; the gate also binds a request, for a dispatcher's wait |
-| The task-request refusal (`orchestration/src/tasks/helpers/wait-for-response.ts:222`) | **Removes** |
+| The task-request refusal (`orchestration/src/tasks/helpers/wait-for-response.ts:222`) | **Removes,** for routed turns too once FIX-2083 makes them task turns |
 | The timeout's range and its cancel (`:212`, `:440`) | **Removes.** A stop's cancel stays |
 | Wait deadlines on the suspension's expiry, read by the sweeper's resume and re-arm (`engine/src/durability/durability-sweeper.ts`) | **Moves** to FIX-2078's wake ([D1](DECISIONS.md#d1)) |
 | FIX-2076's interim refusal of a dispatched plan row (its D3, [#3593](https://github.com/fixpoint-labs/flow-state-dev/pull/3593)) | **Lifts** it |
-| Workforce's chain limits (`workforce/src/conversation-board/chain.ts`) | **Kept** as the tree's half of the limits, and **extended** to plan rows, which FIX-2076 moves off the board it checks |
+| Workforce's chain limits (`workforce/src/conversation-board/chain.ts`) | **Kept** as the tree's half of the limits, and kept for plan rows, which FIX-2076 moves off the board it checks but keeps in its count; a dispatched plan row's session is one board deeper |
 | [FIX-1816 D1](../FIX-1816/DECISIONS.md#d1): a wait is a task on the asker's board, its request parked on the row | **Kept** |
 | [FIX-1816 BR-5a, BR-14, BR-14a](../FIX-1816/BUSINESS-RULES.md): one deep; the timeout cancels; 30 s to 1 h | **Superseded:** 5 deep, a deadline that cancels nothing, no fixed range |
 | [FIX-1875 D2](../FIX-1875/DECISIONS.md#d2): `dispatchTask` takes `wait` and `timeoutMs` | **Superseded** in part: they move to `getTask` as `wait` and `deadline` |
@@ -129,12 +139,12 @@ decides.
 
 | The debt | |
 |---|---|
-| **Removes** | `dispatchTask`'s `wait` and `timeoutMs`, and the tool itself if FIX-2083 has landed · the task-request refusal · the timeout's cancel and range · wait deadlines on the suspension's expiry · FIX-2076's interim refusal |
-| **Adds** | `getTask`'s `wait` and `deadline` · `dispatcher`'s `wait` · a request binding on the wait gate, the second thing that can resume a park (a child request finishing, where the rest resume on a row's ending) · one depth count, server-written and checked at both ends of a chain · the filing session on a row, server-written · a host default, minimum and maximum deadline · `session: "new"` on a worker's own step ([D2](DECISIONS.md#d2)) |
+| **Removes** | `dispatchTask`'s `wait` and `timeoutMs`, and the tool itself if FIX-2083 has landed · `dispatchAndWait` and its `DispatchAndWaitOptions` and `DispatchAndWaitResult` types (to `getTask({ id, wait: true })`) · the task-request refusal · the timeout's cancel and range · wait deadlines on the suspension's expiry · FIX-2076's interim refusal |
+| **Adds** | `getTask`'s `wait` and `deadline` · `dispatcher`'s `wait` · a request binding on the wait gate, the second thing that can resume a park (a child request finishing, where the rest resume on a row's ending) · one depth count, server-written and checked at both ends of a chain · a host default, minimum and maximum deadline · `session: "new"` on a worker's own step ([D2](DECISIONS.md#d2)) |
 | **Leaves** | A late result of a bare dispatch can't be waited on again: FIX-2070's call ids |
 
 **Net: small, one wait gate.** A wait form, a refusal, a cancel and a second due-time path go; one
-park with three ways in, one count, a filing-session stamp and one setting value arrive. The request
+park with three ways in, one count and one setting value arrive. The request
 binding is the piece most likely to drift into a wait of its own, and the two result shapes
 (`getTask`'s task, the dispatcher's `{ status, output?, error?, requestId }`) are FIX-2070's to pick between.
 
