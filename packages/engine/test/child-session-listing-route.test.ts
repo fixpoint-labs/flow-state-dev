@@ -1155,11 +1155,9 @@ describe("paging", () => {
     // Passed as an object literal rather than the spread the neighbouring
     // tests use, so this reads the way a host actually writes it.
     //
-    // It does NOT prove the option is *declared* on
-    // `CreateFlowApiRouterOptions`: this package typechecks `src/**/*` only,
-    // so no excess-property check ever runs over this file, and an undeclared
-    // option would reach the runtime here while being unsettable by any host
-    // writing normal TypeScript. That half is guarded by review, not by CI.
+    // `pnpm typecheck` compiles this file, so the literal also proves the
+    // option is *declared* on `CreateFlowApiRouterOptions`: an undeclared one
+    // fails the excess-property check.
     const registry = createFlowRegistry();
     registry.register(openFlow("chat"));
     const stores = createInMemoryStores();

@@ -10,6 +10,7 @@ const sessionStateSchema = z.object({ messageCount: z.number().default(0) });
 const chatGenerator = generator({
   name: "chat-generator",
   model: MODEL_ID,
+  prompt: "You are a helpful assistant.",
   inputSchema: chatInputSchema,
   history: true,
   user: (input) => input.message,

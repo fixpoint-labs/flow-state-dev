@@ -14,7 +14,8 @@
  * see one account. It checks where a credential would come from, not that the
  * credential works: a key that is set but rejected reads as `account`.
  */
-import { defaultSdkImporter, type SdkImporter } from "./sdk-client";
+import { runIdleQuery } from "./idle-query";
+import type { SdkImporter } from "./sdk-client";
 
 /** What {@link probeClaudeAccount} found. */
 export type ClaudeAccountProbe =
@@ -61,61 +62,31 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  */
 export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Promise<ClaudeAccountProbe> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  let query: (args: { prompt: AsyncIterable<never>; options: { env: Record<string, string> } }) => AccountQuery;
-  try {
-    const mod = await (options.importSdk ?? defaultSdkImporter)();
-    if (typeof mod.query !== "function") throw new Error("the module has no `query` export");
-    query = mod.query as typeof query;
-  } catch (error) {
-    return { status: "sdk-missing", reason: `@anthropic-ai/claude-agent-sdk could not be loaded: ${messageOf(error)}` };
+  const asked = await runIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
+    { env: options.env, timeoutMs, ...(options.importSdk === undefined ? {} : { importSdk: options.importSdk }) },
+    (handle) => handle.accountInfo(),
+  );
+  if (asked.status === "sdk-missing") return { status: "sdk-missing", reason: asked.reason };
+  if (asked.status === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms` };
+  if (asked.status === "error") return { status: "none", reason: `Claude Code could not be asked for its account: ${asked.reason}` };
+  const info = asked.value;
+  const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
+  const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
+  // A subscription sign-in names no key or token source: it comes back as who
+  // is signed in and on what plan. "Claude API" is the no-plan label, not a sign-in.
+  const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
+  const subscriptionType =
+    typeof info.subscriptionType === "string" && info.subscriptionType !== "" && info.subscriptionType !== "Claude API"
+      ? info.subscriptionType
+      : undefined;
+  if (apiKeySource === undefined && tokenSource === undefined && email === undefined && subscriptionType === undefined) {
+    return { status: "none", reason: "Claude Code found no API key and no sign-in" };
   }
-
-  // The input stays open until the answer is in, then ends, so no message is ever sent.
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => (release = resolve));
-  async function* noMessages(): AsyncGenerator<never> {
-    await held;
-  }
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let handle: AccountQuery | undefined;
-  try {
-    handle = query({ prompt: noMessages(), options: { env: options.env } });
-    const timedOut = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), timeoutMs)));
-    const info = await Promise.race([handle.accountInfo(), timedOut]);
-    if (info === "timeout") return { status: "none", reason: `Claude Code did not report an account within ${timeoutMs} ms` };
-    const apiKeySource = typeof info.apiKeySource === "string" && info.apiKeySource !== "none" ? info.apiKeySource : undefined;
-    const tokenSource = typeof info.tokenSource === "string" && info.tokenSource !== "none" ? info.tokenSource : undefined;
-    // A subscription sign-in names no key or token source: it comes back as who
-    // is signed in and on what plan. "Claude API" is the no-plan label, not a sign-in.
-    const email = typeof info.email === "string" && info.email !== "" ? info.email : undefined;
-    const subscriptionType =
-      typeof info.subscriptionType === "string" && info.subscriptionType !== "" && info.subscriptionType !== "Claude API"
-        ? info.subscriptionType
-        : undefined;
-    if (apiKeySource === undefined && tokenSource === undefined && email === undefined && subscriptionType === undefined) {
-      return { status: "none", reason: "Claude Code found no API key and no sign-in" };
-    }
-    return {
-      status: "account",
-      ...(apiKeySource === undefined ? {} : { apiKeySource }),
-      ...(tokenSource === undefined ? {} : { tokenSource }),
-      ...(email === undefined ? {} : { email }),
-      ...(subscriptionType === undefined ? {} : { subscriptionType }),
-    };
-  } catch (error) {
-    return { status: "none", reason: `Claude Code could not be asked for its account: ${messageOf(error)}` };
-  } finally {
-    clearTimeout(timer);
-    release();
-    try {
-      handle?.close?.();
-    } catch {
-      // Already closed: nothing is left running either way.
-    }
-  }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return {
+    status: "account",
+    ...(apiKeySource === undefined ? {} : { apiKeySource }),
+    ...(tokenSource === undefined ? {} : { tokenSource }),
+    ...(email === undefined ? {} : { email }),
+    ...(subscriptionType === undefined ? {} : { subscriptionType }),
+  };
 }

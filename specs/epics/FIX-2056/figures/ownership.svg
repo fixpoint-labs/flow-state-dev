@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 296" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: six rules by ten issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the four tools. Other cells use the rule or are blank.">
+     aria-label="Who owns what: six rules by ten issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the five tools. Other cells use the rule or are blank.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -62,7 +62,7 @@
     <rect class="use" x="776" y="154" width="54" height="26" rx="3"/><text class="t-use" x="782" y="171">uses</text>
   </g>
   <g id="er5">
-    <text class="t-row" x="16" y="204">ER-5 four tools, the only surface</text>
+    <text class="t-row" x="16" y="204">ER-5 five tools, the only surface</text>
     <rect class="own" x="476" y="186" width="54" height="26" rx="3"/><text class="t-own" x="482" y="203">OWNS</text>
     <rect class="use" x="536" y="186" width="54" height="26" rx="3"/><text class="t-use" x="542" y="203">uses</text>
     <rect class="use" x="596" y="186" width="54" height="26" rx="3"/><text class="t-use" x="602" y="203">uses</text>
