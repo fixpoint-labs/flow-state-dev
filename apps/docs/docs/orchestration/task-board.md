@@ -704,6 +704,15 @@ waits.
 - `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
+Some failures would come back the same on every attempt, such as a run refused because its task names nothing it may work on. Retrying those only spends the attempts. A worker that knows this throws `TaskEndsForGoodError`, exported from `@flow-state-dev/orchestration/task-board`, naming the task it is working on. The board ends that task on this attempt, with the error's message as its reason. It ends `errored` by default, or `cancelled` if you construct the error with `{ ending: "cancelled" }`. Dependents and filed work are cascaded as for any other ending. The error only counts for the task it names. If a board inside your worker rethrows one about its own task, your task treats it as an ordinary failure and keeps its retries.
+
+```ts
+import { TaskEndsForGoodError } from "@flow-state-dev/orchestration/task-board";
+
+// in a worker: input.taskId is the task this worker is running
+throw new TaskEndsForGoodError("the task names no project", { taskId: input.taskId });
+```
+
 `onError` reaches an [assignee that dispatches](#assignees-that-dispatch) too, where there is no board run left to fail. `"fail"` fails the dispatch run that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.

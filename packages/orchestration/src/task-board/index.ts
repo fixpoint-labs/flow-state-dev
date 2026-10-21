@@ -210,6 +210,7 @@ export type { BuildWorkerStepOptions } from "./blocks/worker-step";
 export {
   createRecordSuccess,
   createRecordError,
+  TaskEndsForGoodError,
 } from "./blocks/record-result";
 export type {
   RecordSuccessOptions,

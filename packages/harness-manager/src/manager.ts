@@ -48,7 +48,7 @@ import type {
   HarnessResolver,
   HarnessSessionHook,
 } from "@flow-state-dev/core/types";
-import { taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { TaskEndsForGoodError, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
@@ -751,18 +751,12 @@ export class HarnessAttemptFailed extends Error {
 
 /**
  * The run's workspace refused it: its source answered `refused`, or the host
- * would not provision what the source named.
- *
- * Not a failed attempt. The same source and host give the same answer next
- * time, so a retry would spend every attempt on one refusal. The manager
- * settles the row with this message as its reason, under the attempt's own
- * claim, and the board's recorder then has nothing to re-queue: `cancelled`
- * on the fixed board, `errored` on a board read from the claim, where the
- * conversation that filed the row reports it.
+ * would not provision what the source named. The same answer next time, so
+ * the recorder ends the row on this attempt instead of retrying.
  */
-export class HarnessRunRefused extends Error {
-  constructor(message: string) {
-    super(message);
+export class HarnessRunRefused extends TaskEndsForGoodError {
+  constructor(message: string, options: { taskId: string; ending: "errored" | "cancelled" }) {
+    super(message, options);
     this.name = "HarnessRunRefused";
   }
 }
@@ -884,6 +878,7 @@ function taskPayload(
       `[harness-manager] task ${input.taskId} names only part of a feature payload: ` +
         `${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}. ` +
         `Feature work names both an issue and a phase.`,
+      { taskId: input.taskId, ending: "errored" },
     );
   }
   return undefined;
@@ -934,6 +929,15 @@ function harnessCtxState(ctx: {
   sequencer?: { state?: unknown } | undefined;
 }): ManagerState | undefined {
   return ctx.sequencer?.state as ManagerState | undefined;
+}
+
+/** This run's refusal of the row it holds. Claim board: `errored` (a cancel there reaches nobody). Fixed board: `cancelled`. */
+function runRefused(ctx: { sequencer?: { state?: unknown } | undefined }, message: string): HarnessRunRefused {
+  const state = harnessCtxState(ctx);
+  return new HarnessRunRefused(message, {
+    taskId: state?.taskId ?? "",
+    ending: state?.claim != null ? "errored" : "cancelled",
+  });
 }
 
 /** Read the manager's state, or throw rather than derive a wrong directory. */
@@ -1707,7 +1711,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     } catch (cause) {
       if (cause instanceof WorkspaceRefusedError) {
         if (holding) await recordPlace(ctx, before!, "refused").catch(() => undefined);
-        throw new HarnessRunRefused(refusedMessage("host", cause));
+        throw runRefused(ctx, refusedMessage("host", cause));
       }
       if (cause instanceof HeldWorkMismatchError) await parkOnMismatch(ctx, cause, before);
       throw cause;
@@ -1927,7 +1931,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         held: recorded?.held ?? null,
       });
       const answer = pinnedAnswer(await host.source(ctx), pinned);
-      if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
+      if (answer.kind === "refused") throw runRefused(ctx, refusedMessage("source", answer));
       const workspacePath = host.locate(answer, { place: placeFor(location) }).cwd;
       await ctx.sequencer!.patchState({ workspacePath });
 
@@ -2124,7 +2128,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         state.branch,
       );
       const answer = pinnedAnswer(await host.source(ctx), state);
-      if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
+      if (answer.kind === "refused") throw runRefused(ctx, refusedMessage("source", answer));
       if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
         throw new HarnessAttemptFailed(
           `[harness-manager] the run's workspace source changed between opening the run and ` +
@@ -2583,27 +2587,8 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
           { outcome: "failed", reason },
         );
       }
-      // **A refused run is settled, not retried** (see `HarnessRunRefused`).
-      // Under this attempt's own claim, so a superseded attempt cannot cancel
-      // a row its replacement holds. Best effort, like the write above: the
-      // error being unwound is what the caller gets either way.
-      //
-      // On a board read from the claim the row fails for good instead: a
-      // cancelled row there reaches nobody, and an `errored` one is what the
-      // conversation that filed it reports. The fixed board keeps the cancel.
-      if (error instanceof HarnessRunRefused && state?.taskId != null && state.attempt != null) {
-        try {
-          const tasks = await runBoard(ctx as BlockContext);
-          const row = tasks.get(state.taskId);
-          if (row !== undefined) {
-            const claim = { ...ticketForClaim(tasks.collectionId, row, tasks.partition), attempt: state.attempt };
-            if (state.claim != null) await tasks.fail(state.taskId, reason, { claim, noRetry: true });
-            else await tasks.cancel(state.taskId, reason, { claim });
-          }
-        } catch {
-          // Left to the board's recorder, which re-queues it as before.
-        }
-      }
+      // A refusal's task row is ended by the recorder, not retried (see
+      // `HarnessRunRefused`); this handler updates only the run record above.
       throw error;
     },
   });
