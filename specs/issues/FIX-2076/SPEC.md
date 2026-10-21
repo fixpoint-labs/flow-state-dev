@@ -22,7 +22,7 @@ contradicts it is refused before it runs, and a worker's own steps run in its ow
 | **The real need** | The issue's three problems: the assignee kind decides waiting; a worker has no plan of its own; `goalSeekLoop` doesn't check its board ([FIX-2076](https://linear.app/fixpoint-labs/issue/FIX-2076), epic [FIX-2056](../../epics/FIX-2056/SPEC.md) rows *plan board and delegation board*, *a goal-seek loop needs a plan board*) |
 | **Smaller, and rejected** | "`taskBoard` takes a `mode`." Hittable with no worker able to plan, so T-01 stays unmet and the self-piece keeps parking |
 | **Bigger, and not this issue's** | "A plan board waits on a row it dispatched." [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) owns every wait, this one included (epic POC) |
-| **Not done if** | A board that dispatches builds without `mode: "delegation"` · a goal-seek loop over one builds · a worker's step for itself opens a child session · a plan row counts as the session's open task · no test pins who settles a row (rule 18) |
+| **Not done if** | A board that dispatches builds without `mode: "delegation"` · a goal-seek loop over one builds · a worker's step for itself, filed without an explicit `session: "new"`, opens a child session · a plan row counts as the session's open task · no test pins who settles a row (rule 18) |
 
 ```mermaid
 flowchart LR
@@ -40,8 +40,8 @@ The check reads what a user could list and what a builder throws, not the drain'
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/a-worker-plans-its-own-steps/` (leg a, real model) and `goals/task-board/refuses-a-board-built-wrong/` (leg b, no model) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Leg a: three plan rows `completed` in the task's own session, each started after its dependency ended, and each step's output carrying a value only the step before it produced; zero child sessions; the session's delegation rows open count stays 0; the task's result names the tightened draft. Leg b: five refusals, each naming the setting and the fix |
-| **Input** | Leg a: a three-step brief; a two-step one, or one with a failing step, must pass too (the answer names the failure). Leg b: the five boards under the fence in *What changes* |
+| **Signal** | Leg a: three plan rows `completed` in the task's own session, each started after its dependency ended, and each step's output carrying a value only the step before it produced; zero child sessions (the steps are filed without `session: "new"`, which FIX-2082 makes a dispatched plan row); the session's delegation rows open count stays 0; the task's result names the tightened draft. If FIX-2080 is on main when this lands, a failed attempt's open plan row ends `cancelled`. Leg b: five refusals, each naming the setting and the fix, plus a plan row filed held refused at filing once FIX-2080 is on main |
+| **Input** | Leg a: a three-step brief; a two-step one, or one with a failing step, must pass too (the answer names the failure). Leg b: the five boards under the fence in *What changes*; the plan board with a dispatcher holds until FIX-2082 lifts that refusal, and FIX-2082 swaps it out |
 | **Anti-game** | Assert on rows and sessions read through the public task actions and on thrown builds. Not on mocked turns or on the drain's quiescence verdict |
 | **Control that must fail** | Today's `main`: leg a fails on *zero child sessions*, leg b on *five refusals* |
 
@@ -71,10 +71,11 @@ filing now routes it to the plan board, and this request works it next.
 construction checks), `orchestration/configuration` (the `mode` row), `orchestration/goal-seek-loop`
 (the plan-board precondition), `workforce/delegating-work` (a step for itself is a plan row), and
 the orchestration, core and workforce READMEs. No new page; FIX-2081 publishes the one-task opening.
-**Migration:** the implementation PR adds two rows to the epic's [migration lines](../../epics/FIX-2056/migration.md),
+**Migration:** the implementation PR adds three rows to the epic's [migration lines](../../epics/FIX-2056/migration.md),
 carried in the `orchestration` and `workforce` changesets (minor): a worker's steps for itself
 answer once instead of `{ answer, pieces }` (FIX-2077's row covers pieces for others; aligned with
-#3592), and a board that dispatches adds `mode: "delegation"`, the fix its refusal names.
+#3592); a board that dispatches adds `mode: "delegation"`, the fix its refusal names; and the
+exported `dispatchedTaskPredicate` is removed, use the board's `mode`.
 
 ## How a worker's request runs its plan
 
@@ -105,12 +106,13 @@ Rows for itself run inline and the drain waits on them all; rows for delegates a
 | `goalSeekLoop`'s construction guards ([FIX-910](https://linear.app/fixpoint-labs/issue/FIX-910)) | **Extends** with two: a delegation board, and a board with `onReview: "exit"` |
 | The drain's recorders and the claim gate | **Builds on.** Rule 18 is pinned by a test, not built |
 | [FIX-1802 → *Decided, not asked*](../FIX-1802/DECISIONS.md#decided-not-asked), "one board per session" | **Superseded in part:** two per session |
-| FIX-1802's roster that lets a task session file a piece for itself (`workforce/src/conversation-board/board.ts:290`) | **Superseded:** a filing for itself is a plan row |
-| [FIX-1786 D8](../../epics/FIX-1786/DECISIONS.md#d8): any worker files, and the split ships | **Kept** for pieces to others |
+| FIX-1802's roster that lets a task session file a piece for itself (`workforce/src/conversation-board/board.ts:290`) | **Superseded:** a filing for itself is a plan row. This lands before FIX-2081 narrows `reach()`, so a step for itself is never refused in between |
+| [FIX-1802 D1](../FIX-1802/DECISIONS.md#d1): a worker files for its delegates that take a task, "and that is the whole grant" | **Superseded in part:** a worker is also offered the task tools for its own steps, whether or not it has delegates |
+| [FIX-1786 D8](../../epics/FIX-1786/DECISIONS.md#d8): a worker whose delegates take a task gets the task tools, and the split ships | **Kept** for pieces to others |
 
 | The debt | |
 |---|---|
-| **Removes** | The assignee-derived `runsElsewhere` · the self-piece's child session and park · a mixed board |
+| **Removes** | The assignee-derived `runsElsewhere` and its exported `dispatchedTaskPredicate` (a migration row) · the self-piece's child session and park · a mixed board |
 | **Adds** | `mode` · a second session ledger, plan rows' · the plan board's interim refusal of a dispatched row ([D3](DECISIONS.md#d3)), lifted by FIX-2082 |
 | **Leaves** | A worker can still settle a row through the raw collection, the substrate's escape hatch ([decided](DECISIONS.md#decided-not-asked)) · the split park for other workers' pieces, FIX-2077 |
 

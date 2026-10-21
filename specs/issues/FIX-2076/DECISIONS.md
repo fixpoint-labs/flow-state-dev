@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Today's piece for itself: a new task session of the same worker, with the parent task parked until it reports |
 | **Because** | Rule 14 and T-01: a next step uses the session's context and the step before it. A child session sees neither, costs a session and a notice per step, and parks the task. Patterns already work this way: one more plan board, not a new idea (tenet 2) |
-| **Locks in** | Filing a task naming yourself means "my next step", in a conversation or a task. A step needing its own session is a dispatched plan row, after FIX-2082. Plan rows sit on their own ledger, listed with the user's tasks, never the session's open task (rule 5) |
+| **Locks in** | Filing a task naming yourself means "my next step", in a conversation or a task, and a worker is offered the task tools for it whether or not it has delegates. A step needing its own session is a dispatched plan row, after FIX-2082. Plan rows sit on their own ledger, listed with the user's tasks, never the session's open task (rule 5) |
 
 ![D1 trade-off: a plan row worked inline, chosen, beside a new session of itself. Decides it: whether the next step sees the one before. Price: no step for itself gets its own session until FIX-2082](figures/d1-plan-row.svg)
 
@@ -43,7 +43,7 @@ delegate, or FIX-2082's dispatched plan row, carries them.
 |---|---|
 | **Instead of** | The output of the plan's last row (or rows) as the result, with no further model call |
 | **Because** | A plan row can fail for good. Last-row-wins fails the task for one step or returns a hole; a turn that sees every ending can redo the step itself, explain or carry on. Today's split already answers from the turn after its pieces |
-| **Locks in** | Exactly one more model call per request that planned, none otherwise. That turn files no step for itself: such a filing is refused, telling it to do the work or answer; a task it files for a delegate is handed off as usual. The worker's latest `output` checkpoint is the result. That turn's answer, plain text included and not `{ answer, pieces }`, is the result only if the task never called `reportProgress` with an `output`; to replace a checkpoint, the turn checkpoints again ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3), [owner sign-off](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6317553797)). The rows stay listable |
+| **Locks in** | Exactly one more model call per request that planned, none otherwise. That turn files no step for itself: such a filing is refused, telling it to do the work or answer; a task it files for a delegate is handed off as usual. The worker's latest `output` checkpoint is the result. That turn's answer, plain text included and not `{ answer, pieces }`, is the result only if the task never called `reportProgress` with an `output`; to replace a checkpoint, the turn checkpoints again ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3), [owner sign-off](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6317553797)). Inside an inline step, `reportProgress` acts on the row whose claim the turn holds, the step's own row, never the parent; the parent's checkpoint comes only from a turn holding its claim (FIX-2081's D3). The rows stay listable |
 
 ![D2 trade-off: one more turn after the drain, chosen, beside the last row's output. Decides it: a step that failed for good. Price: one model call per planned request](figures/d2-final-turn.svg)
 
@@ -90,8 +90,29 @@ long, and the interim wait is worth weighing against it.
   returns, so a dependent row can start while the row before it still writes in the background; it
   sees that row's return. The task's ending waits for all of it: FIX-2077's rule 6 settles after
   the engine drains background work (aligned with #3592).
-- **The plan ledger is session-scoped and durable**, so a retry finds its rows. A failed attempt's
-  open plan rows are cancelled through FIX-2080's cascade.
+- **The plan ledger is session-scoped and durable**, so a retry finds its rows. Whichever of
+  FIX-2076 and FIX-2080 lands second wires the plan board into FIX-2080's cascade, so a failed
+  attempt's open plan rows end cancelled. If FIX-2080 is on main when this lands, this PR adds it
+  and leg a asserts the cancel. Until then, a failed attempt's open plan rows stay open and the
+  retry adopts them.
+- **Plan rows: who files them, and what they take after.** Only a filing the worker's own request
+  makes (its task turn, or its turn in its conversation) that names itself goes to the plan ledger.
+  A filing from anywhere else naming the session's worker, such as a schedule fire or a screen, is
+  not a step: FIX-2081 refuses a claimless one. Once filed, a plan row's fields can be edited
+  before it starts, and a cancel ends it: the drain drops its late record and the parent carries on
+  (FIX-2081's plan-row note). An inline plan row takes no message, refused with "steer the task
+  this step belongs to" (FIX-2086). A change of assignee that crosses the worker itself is refused
+  with "a step for itself and a task for a delegate are filed apart: cancel and file again"; a
+  change between delegates stands (FIX-2081's field table).
+- **A plan row can't be filed held.** The drain doesn't wait on a held row, so the answering turn
+  would run before every step ended, and nothing would work the row after. It is refused at
+  filing, naming the setting and the move ("to hold work, file it for a delegate, held"), through
+  FIX-2080's refuse-at-filing point; whichever of the two lands second wires it, and leg b gains
+  the refusal. For the same reason a hold after filing is refused on a plan row.
+- **Plan rows still count toward the chain.** A step filed from a task session counts toward
+  today's 100 tasks under one top task, so moving self-steps off the delegation board doesn't
+  free them from the cap; the self-filing chain tests move with it. Inline rows add no depth, and
+  a dispatched plan row waits for FIX-2082.
 
 ## Considered and dropped
 
