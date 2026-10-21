@@ -218,6 +218,18 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       expect(tasks.get("t")).toBeUndefined();
     });
 
+    it.each(["errored", "cancelled"] as const)("refuses a dependency filed %s in the same batch, and files none of it", async (status) => {
+      const { tasks } = await makeBacking();
+      const refused = await refusal(() =>
+        tasks.addTasks([
+          { id: "dead", goal: "dead", status },
+          { id: "t", goal: "t", deps: ["dead"] },
+        ])
+      );
+      expect(refused.rule).toBe("dependency_ended");
+      expect(tasks.list()).toHaveLength(0);
+    });
+
     it("refuses a loop within a batch, and a task that depends on itself", async () => {
       const { tasks } = await makeBacking();
       expect(

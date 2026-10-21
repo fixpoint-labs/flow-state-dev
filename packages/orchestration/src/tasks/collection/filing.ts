@@ -163,13 +163,18 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
  * @throws {TaskFilingRefusedError}
  */
 export function assertDepsFileable(
-  batch: readonly Pick<Task, "id" | "deps">[],
+  batch: readonly (Pick<Task, "id" | "deps"> & { readonly status?: Task["status"] })[],
   lookup: (id: string) => Pick<Task, "id" | "deps" | "status"> | undefined
 ): void {
   const filed = new Map(batch.map((row) => [row.id, row]));
   for (const row of batch) {
     for (const depId of row.deps ?? []) {
-      if (filed.has(depId)) continue;
+      // A row of the batch filed already ended counts as a stored one does.
+      const inBatch = filed.get(depId);
+      if (inBatch !== undefined) {
+        if (inBatch.status !== undefined && endedForGood({ status: inBatch.status })) throw ended(row.id, depId, inBatch.status);
+        continue;
+      }
       const dep = lookup(depId);
       if (dep === undefined) throw notOnBoard(row.id, depId);
       if (endedForGood(dep)) throw ended(row.id, depId, dep.status);
