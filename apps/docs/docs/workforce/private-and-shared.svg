@@ -4,12 +4,12 @@
   <defs>
     <style>
       :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --sess-fill:#e3e8f2;
-              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --card:#fcfbf7;
-              --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e; }
+              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c;
+              --box:#f8f6f0; --faint:#6e6a5e; }
       @media (prefers-color-scheme: dark) {
         :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --sess-fill:#2b3140;
-                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --card:#24231c;
-                --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777; } }
+                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e;
+                --box:#1c1b15; --faint:#8d8777; } }
       .bg { fill: var(--bg); }
       .files { fill: var(--box); stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 6 4; }
       .org { fill: none; stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 6 4; }
@@ -27,48 +27,48 @@
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
     </marker>
   </defs>
-  <rect x="0" y="0" width="920" height="560" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="560" class="bg"/>
   <text x="28" y="36" class="title">Workers are private; sharing happens in shared resources</text>
 
-  <rect x="28" y="52" width="864" height="44" rx="0" class="files"/>
+  <rect x="28" y="52" width="864" height="44" class="files"/>
   <text x="460" y="79" text-anchor="middle" class="p">The installation's files: the standard workers every user starts with</text>
 
-  <rect x="20" y="110" width="880" height="434" rx="0" class="org"/>
+  <rect x="20" y="110" width="880" height="434" class="org"/>
   <text x="36" y="130" class="muted">org acme</text>
 
-  <rect x="40" y="142" width="840" height="110" rx="0" class="shared"/>
+  <rect x="40" y="142" width="840" height="110" class="shared"/>
   <text x="56" y="164" class="wl">Shared</text>
-  <rect x="56" y="174" width="400" height="62" rx="0" class="card"/>
+  <rect x="56" y="174" width="400" height="62" class="card"/>
   <text x="70" y="198" class="h">Shared project</text>
   <text x="70" y="218" class="p">workstreams, one owner each</text>
-  <rect x="472" y="174" width="392" height="62" rx="0" class="card"/>
+  <rect x="472" y="174" width="392" height="62" class="card"/>
   <text x="486" y="198" class="h">Org-scope data</text>
   <text x="486" y="218" class="p">written only by a flow built to write it</text>
 
-  <rect x="40" y="304" width="410" height="224" rx="0" class="private"/>
+  <rect x="40" y="304" width="410" height="224" class="private"/>
   <text x="56" y="514" class="wl">Alice: private</text>
-  <rect x="56" y="320" width="184" height="60" rx="0" class="card"/>
+  <rect x="56" y="320" width="184" height="60" class="card"/>
   <text x="70" y="346" class="h">researcher</text>
   <text x="70" y="366" class="p">worker (standard)</text>
-  <rect x="252" y="320" width="184" height="60" rx="0" class="card"/>
+  <rect x="252" y="320" width="184" height="60" class="card"/>
   <text x="266" y="346" class="h">private project</text>
   <text x="266" y="366" class="p">workstreams + tasks</text>
-  <rect x="56" y="392" width="184" height="48" rx="0" class="card"/>
+  <rect x="56" y="392" width="184" height="48" class="card"/>
   <text x="148" y="421" text-anchor="middle" class="p">coordinator (worker)</text>
-  <rect x="252" y="392" width="184" height="48" rx="0" class="card"/>
+  <rect x="252" y="392" width="184" height="48" class="card"/>
   <text x="344" y="421" text-anchor="middle" class="p">analyst (worker)</text>
 
-  <rect x="470" y="304" width="410" height="224" rx="0" class="private"/>
+  <rect x="470" y="304" width="410" height="224" class="private"/>
   <text x="486" y="514" class="wl">Bob: private</text>
-  <rect x="486" y="320" width="184" height="60" rx="0" class="card"/>
+  <rect x="486" y="320" width="184" height="60" class="card"/>
   <text x="500" y="346" class="h">researcher</text>
   <text x="500" y="366" class="p">worker (standard)</text>
-  <rect x="682" y="320" width="184" height="60" rx="0" class="card"/>
+  <rect x="682" y="320" width="184" height="60" class="card"/>
   <text x="696" y="346" class="h">writer</text>
   <text x="696" y="366" class="p">worker (forked)</text>
-  <rect x="486" y="392" width="184" height="48" rx="0" class="card"/>
+  <rect x="486" y="392" width="184" height="48" class="card"/>
   <text x="578" y="421" text-anchor="middle" class="p">coordinator (worker)</text>
-  <rect x="682" y="392" width="184" height="48" rx="0" class="card"/>
+  <rect x="682" y="392" width="184" height="48" class="card"/>
   <text x="774" y="421" text-anchor="middle" class="p">private project</text>
 
   <path d="M344 238 L344 302" class="edge"/>

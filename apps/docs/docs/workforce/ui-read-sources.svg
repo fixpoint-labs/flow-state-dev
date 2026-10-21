@@ -3,17 +3,16 @@
   <desc id="desc">One session's items feed messages, task plans and approval cards, live and still there after a reload. An organization's standing collection feeds the roster, the board columns and the board list, read once on mount. Your server's flow list feeds the navigator, read once, with a leaf's sessions read when that leaf opens.</desc>
   <style>
     :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
-            --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
-            --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; }
+            --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45;
+            --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; }
     @media (prefers-color-scheme: dark) {
       :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
-              --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
-              --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; } }
+              --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a;
+              --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; } }
     .bg { fill:var(--bg); }
     .wall-proc { fill:var(--proc-fill); stroke:var(--proc); stroke-width:1.5; }
     .wall-sess { fill:var(--sess-fill); stroke:var(--sess); stroke-width:1.5; }
     .wall-org { fill:var(--org-fill); stroke:var(--org); stroke-width:1.5; }
-    .wall-file { fill:var(--box); stroke:var(--card-line); stroke-width:1.5; }
     .card { fill:var(--card); stroke:var(--card-line); stroke-width:1.2; }
     .card-sess { fill:var(--card); stroke:var(--sess); stroke-width:1.2; }
     .box { fill:var(--box); stroke:var(--card-line); stroke-width:1; }
@@ -25,15 +24,15 @@
     .code { font:11.5px 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; fill:var(--ink); }
   </style>
 
-  <rect class="bg" x="0" y="0" width="940" height="512" rx="0"/>
+  <rect class="bg" x="0" y="0" width="940" height="512"/>
   <text class="title" x="24" y="38">Three places a component reads</text>
   <text class="muted" x="24" y="60">Where it reads decides what it shows and when it changes.</text>
 
   <g id="session">
-    <rect class="wall-sess" x="24" y="80" width="286" height="300" rx="0"/>
+    <rect class="wall-sess" x="24" y="80" width="286" height="300"/>
     <text class="h" x="40" y="104">One session's items</text>
     <text class="muted" x="40" y="122">What this conversation persisted</text>
-    <rect class="card-sess" x="36" y="138" width="262" height="98" rx="0"/>
+    <rect class="card-sess" x="36" y="138" width="262" height="98"/>
     <text class="lbl" x="50" y="158">READ BY</text>
     <text class="code" x="50" y="180">messages</text>
     <text class="code" x="50" y="198">task plans</text>
@@ -43,10 +42,10 @@
   </g>
 
   <g id="org">
-    <rect class="wall-org" x="327" y="80" width="286" height="300" rx="0"/>
+    <rect class="wall-org" x="327" y="80" width="286" height="300"/>
     <text class="h" x="343" y="104">An organization's collection</text>
     <text class="muted" x="343" y="122">Outside any one session</text>
-    <rect class="card" x="339" y="138" width="262" height="98" rx="0"/>
+    <rect class="card" x="339" y="138" width="262" height="98"/>
     <text class="lbl" x="353" y="158">READ BY</text>
     <text class="code" x="353" y="180">Roster</text>
     <text class="code" x="353" y="198">BoardColumns</text>
@@ -59,10 +58,10 @@
   </g>
 
   <g id="server">
-    <rect class="wall-proc" x="630" y="80" width="286" height="300" rx="0"/>
+    <rect class="wall-proc" x="630" y="80" width="286" height="300"/>
     <text class="h" x="646" y="104">Your server's flow list</text>
     <text class="muted" x="646" y="122">The flow kinds and copies it serves</text>
-    <rect class="card" x="642" y="138" width="262" height="98" rx="0"/>
+    <rect class="card" x="642" y="138" width="262" height="98"/>
     <text class="lbl" x="656" y="158">READ BY</text>
     <text class="code" x="656" y="180">FlowNavigator</text>
     <text class="muted" x="656" y="206">One read, however many</text>
@@ -73,7 +72,7 @@
   </g>
 
   <g id="read-again">
-    <rect class="box" x="24" y="396" width="892" height="100" rx="0"/>
+    <rect class="box" x="24" y="396" width="892" height="100"/>
     <text class="h" x="40" y="420">To read again</text>
     <text class="p" x="40" y="444">Items need nothing: they keep arriving.</text>
     <text class="p" x="40" y="464">A panel reads again when its React key changes.</text>

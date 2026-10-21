@@ -4,17 +4,15 @@
   <defs>
     <style>
       :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --sess-fill:#e3e8f2;
-              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --user-fill:#efe5fc;
-              --user:#6b4fa0; --req:#6e6a5e; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; }
+              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c;
+              --box:#f8f6f0; }
       @media (prefers-color-scheme: dark) {
         :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --sess-fill:#2b3140;
-                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --user-fill:#3e3840;
-                --user:#c7a4ff; --req:#8d8777; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; } }
+                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e;
+                --box:#1c1b15; } }
       .bg { fill: var(--bg); }
       .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
       .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
-      .wall-req { fill: var(--box); stroke: var(--req); stroke-width: 1.5; stroke-dasharray: 6 4; }
-      .wall-user { fill: var(--user-fill); stroke: var(--user); stroke-width: 1.5; }
       .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
       .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.2; }
       .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.2; }
@@ -28,17 +26,17 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="558" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="558" class="bg"/>
 
   <text x="28" y="36" class="title">Definition, instance, session: where each lives</text>
   <text x="28" y="58" class="muted">The definition describes. The instance answers. The session remembers.</text>
 
   <!-- Code -->
-  <rect x="28" y="84" width="264" height="330" rx="0" class="wall-file"/>
+  <rect x="28" y="84" width="264" height="330" class="wall-file"/>
   <text x="44" y="108" class="h">Your code</text>
   <text x="44" y="126" class="muted">The definition</text>
 
-  <rect x="44" y="142" width="232" height="226" rx="0" class="card"/>
+  <rect x="44" y="142" width="232" height="226" class="card"/>
   <text x="58" y="166" class="h">defineFlow()</text>
   <text x="58" y="194" class="code">kind: "review"</text>
   <text x="58" y="214" class="p">cardinality · configSchema</text>
@@ -50,11 +48,11 @@
   <text x="58" y="342" class="muted">the kind is never a fallback.</text>
 
   <!-- Process -->
-  <rect x="312" y="84" width="280" height="330" rx="0" class="wall-sess"/>
+  <rect x="312" y="84" width="280" height="330" class="wall-sess"/>
   <text x="328" y="108" class="h">Registered instances</text>
   <text x="328" y="126" class="muted">In the process. Requests name the id.</text>
 
-  <rect x="328" y="142" width="248" height="130" rx="0" class="card-sess"/>
+  <rect x="328" y="142" width="248" height="130" class="card-sess"/>
   <text x="342" y="166" class="h">review-east</text>
   <text x="342" y="186" class="code">config: { region: "east" }</text>
   <text x="342" y="204" class="code">resources: { rubric: east }</text>
@@ -62,20 +60,20 @@
   <text x="342" y="244" class="muted">Settings stay in the process.</text>
   <text x="342" y="260" class="muted">Never listed, never stored.</text>
 
-  <rect x="328" y="282" width="248" height="64" rx="0" class="card-sess"/>
+  <rect x="328" y="282" width="248" height="64" class="card-sess"/>
   <text x="342" y="306" class="h">review-west</text>
   <text x="342" y="324" class="muted">Same kind, its own id, settings,</text>
   <text x="342" y="340" class="muted">resources and isolated state</text>
 
-  <rect x="328" y="356" width="248" height="42" rx="0" class="box"/>
+  <rect x="328" y="356" width="248" height="42" class="box"/>
   <text x="342" y="382" class="muted">A singleton's id is its kind</text>
 
   <!-- Store -->
-  <rect x="612" y="84" width="280" height="330" rx="0" class="wall-org"/>
+  <rect x="612" y="84" width="280" height="330" class="wall-org"/>
   <text x="628" y="108" class="h">Your store</text>
   <text x="628" y="126" class="muted">Kept across restarts when persistent</text>
 
-  <rect x="628" y="142" width="248" height="152" rx="0" class="card-line"/>
+  <rect x="628" y="142" width="248" height="152" class="card-line"/>
   <text x="642" y="166" class="h">Session chat-1</text>
   <text x="642" y="188" class="code">flowId: "review-east"</text>
   <text x="642" y="206" class="muted">Its owner</text>
@@ -88,7 +86,7 @@
   <text x="628" y="392" class="muted">refused before anything runs</text>
 
   <!-- Not a copy -->
-  <rect x="28" y="434" width="864" height="104" rx="0" class="box"/>
+  <rect x="28" y="434" width="864" height="104" class="box"/>
   <text x="44" y="458" class="h">Not a copy</text>
   <text x="44" y="482" class="p">An instance is the definition plus an id and settings. The definition is unchanged and shared.</text>
   <text x="44" y="502" class="p">A session belongs to one instance. Two instances of one kind never share a session.</text>

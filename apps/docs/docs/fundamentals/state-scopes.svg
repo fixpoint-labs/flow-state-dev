@@ -4,21 +4,17 @@
   <defs>
     <style>
       :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --sess-fill:#e3e8f2;
-              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --user-fill:#efe5fc;
-              --user:#6b4fa0; --req:#6e6a5e; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; }
+              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --user-fill:#efe5fc; --user:#6b4fa0;
+              --req:#6e6a5e; --card-line:#8f8a7c; --box:#f8f6f0; }
       @media (prefers-color-scheme: dark) {
         :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --sess-fill:#2b3140;
-                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --user-fill:#3e3840;
-                --user:#c7a4ff; --req:#8d8777; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; } }
+                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --user-fill:#3e3840; --user:#c7a4ff;
+                --req:#8d8777; --card-line:#6e6a5e; --box:#1c1b15; } }
       .bg { fill: var(--bg); }
       .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
       .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
       .wall-req { fill: var(--box); stroke: var(--req); stroke-width: 1.5; stroke-dasharray: 6 4; }
       .wall-user { fill: var(--user-fill); stroke: var(--user); stroke-width: 1.5; }
-      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.2; }
-      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.2; }
-      .card-line { fill: var(--card); stroke: var(--org); stroke-width: 1.2; }
       .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.2; }
       .title { font: 600 20px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
       .h { font: 600 14px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
@@ -28,13 +24,13 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="546" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="546" class="bg"/>
 
   <text x="28" y="36" class="title">Four scopes, four separate records</text>
   <text x="28" y="58" class="muted">Each has its own key and its own reach. None sits inside another.</text>
 
   <!-- Request -->
-  <rect x="28" y="84" width="200" height="316" rx="0" class="wall-req"/>
+  <rect x="28" y="84" width="200" height="316" class="wall-req"/>
   <text x="44" y="108" class="h">Request</text>
   <text x="44" y="126" class="muted">One action run</text>
   <text x="44" y="158" class="code">ctx.request</text>
@@ -45,7 +41,7 @@
   <text x="44" y="300" class="muted">cannot see it</text>
 
   <!-- Session -->
-  <rect x="244" y="84" width="200" height="316" rx="0" class="wall-sess"/>
+  <rect x="244" y="84" width="200" height="316" class="wall-sess"/>
   <text x="260" y="108" class="h">Session</text>
   <text x="260" y="126" class="muted">One conversation</text>
   <text x="260" y="158" class="code">ctx.session</text>
@@ -59,7 +55,7 @@
   <text x="260" y="348" class="muted">Holds neither one's state.</text>
 
   <!-- User -->
-  <rect x="460" y="84" width="200" height="316" rx="0" class="wall-user"/>
+  <rect x="460" y="84" width="200" height="316" class="wall-user"/>
   <text x="476" y="108" class="h">User</text>
   <text x="476" y="126" class="muted">One person</text>
   <text x="476" y="158" class="code">ctx.user</text>
@@ -72,7 +68,7 @@
   <text x="476" y="316" class="muted">copy instead</text>
 
   <!-- Org -->
-  <rect x="676" y="84" width="216" height="316" rx="0" class="wall-org"/>
+  <rect x="676" y="84" width="216" height="316" class="wall-org"/>
   <text x="692" y="108" class="h">Org</text>
   <text x="692" y="126" class="muted">Everyone in the organization</text>
   <text x="692" y="158" class="code">ctx.org?</text>
@@ -84,7 +80,7 @@
   <text x="692" y="316" class="muted">copy instead</text>
 
   <!-- Not a copy -->
-  <rect x="28" y="420" width="864" height="110" rx="0" class="box"/>
+  <rect x="28" y="420" width="864" height="110" class="box"/>
   <text x="44" y="444" class="h">Not a copy, and who sees what</text>
   <text x="44" y="468" class="p">A session is bound to one organization when it is created. It points at its user and org; it does not copy their state.</text>
   <text x="44" y="488" class="p">A tenant id splits sessions only. User and org records are the same across tenants.</text>

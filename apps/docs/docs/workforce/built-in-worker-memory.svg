@@ -3,15 +3,13 @@
   <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per user and per worker, so two workers never read each other's and two people do not share them. Memory is off until you add it; when on, it is kept per user and shared by the workers serving that user. isolateUserState keeps it apart from other flows, not from other workers on the same flow.</desc>
   <defs>
     <style>
-      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
-              --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
-              --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e;
-              --no:#a83e28; }
+      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --sess-fill:#e3e8f2;
+              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --card-line:#8f8a7c; --box:#f8f6f0;
+              --faint:#6e6a5e; }
       @media (prefers-color-scheme: dark) {
-        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
-                --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
-                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777;
-                --no:#e27a5f; } }
+        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --sess-fill:#2b3140;
+                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --card-line:#6e6a5e; --box:#1c1b15;
+                --faint:#8d8777; } }
       .bg { fill: var(--bg); }
       .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
       .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
@@ -25,13 +23,13 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="478" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="478" class="bg"/>
 
   <text x="28" y="36" class="title">What a built-in worker keeps, and who shares it</text>
   <text x="28" y="58" class="muted">Each lives in its own place.</text>
 
   <!-- Conversation -->
-  <rect x="28" y="84" width="272" height="250" rx="0" class="wall-sess"/>
+  <rect x="28" y="84" width="272" height="250" class="wall-sess"/>
   <text x="44" y="108" class="h">One conversation</text>
   <text x="44" y="126" class="muted">A session: a direct chat, or a task session</text>
   <text x="44" y="158" class="p">The recent turns</text>
@@ -43,7 +41,7 @@
   <text x="44" y="292" class="muted">other conversations.</text>
 
   <!-- Skills -->
-  <rect x="320" y="84" width="272" height="250" rx="0" class="wall-org"/>
+  <rect x="320" y="84" width="272" height="250" class="wall-org"/>
   <text x="336" y="108" class="h">One worker, one user</text>
   <text x="336" y="126" class="muted">Stored at user scope</text>
   <text x="336" y="158" class="p">The worker's skills</text>
@@ -55,7 +53,7 @@
   <text x="336" y="286" class="p">not share one worker's skills.</text>
 
   <!-- Memory -->
-  <rect x="612" y="84" width="280" height="250" rx="0" class="out"/>
+  <rect x="612" y="84" width="280" height="250" class="out"/>
   <text x="628" y="108" class="h">One user</text>
   <text x="628" y="126" class="muted">Memory: off until you add it</text>
   <text x="628" y="158" class="p">What the worker remembers</text>
@@ -67,7 +65,7 @@
   <text x="628" y="290" class="muted">on the same flow share it.</text>
 
   <!-- Not a copy -->
-  <rect x="28" y="354" width="864" height="104" rx="0" class="box"/>
+  <rect x="28" y="354" width="864" height="104" class="box"/>
   <text x="44" y="378" class="h">Not a copy</text>
   <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per user.</text>
   <text x="44" y="422" class="p">Memory is about a user, not a conversation. A new conversation starts with no turns but the same memory.</text>

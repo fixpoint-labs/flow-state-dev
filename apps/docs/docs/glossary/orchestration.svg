@@ -7,45 +7,29 @@
     </marker>
     <style>
       :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
-              --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
-              --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e;
-              --warm-fill:#fde7cb; --warm:#c2622d; }
+              --proc:#6b4fa0; --card:#fcfbf7; --card-line:#8f8a7c; --faint:#6e6a5e; }
       @media (prefers-color-scheme: dark) {
         :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
-                --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
-                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777;
-                --warm-fill:#473a26; --warm:#e0874f; } }
+                --proc:#c7a4ff; --card:#24231c; --card-line:#6e6a5e; --faint:#8d8777; } }
       .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
       .wall-proc { fill: var(--proc-fill); stroke: var(--proc); stroke-width: 1.5; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
-      .wall-warm { fill: var(--warm-fill); stroke: var(--warm); stroke-width: 1.5; }
-      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
       .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.2; }
-      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.2; }
       .card-proc { fill: var(--card); stroke: var(--proc); stroke-width: 1.2; }
-      .card-org { fill: var(--card); stroke: var(--org); stroke-width: 1.2; }
-      .card-warm { fill: var(--card); stroke: var(--warm); stroke-width: 1.2; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.2; }
       .dash { fill: none; stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 6 4; }
       .title { font: 600 20px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
       .h { font: 600 14px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
       .p { font: 13px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
       .muted { font: 12px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
       .code { font: 12px 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
-      .tag-sess { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--sess); letter-spacing: .04em; }
       .tag-proc { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--proc); letter-spacing: .04em; }
-      .tag-org { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--org); letter-spacing: .04em; }
-      .tag-warm { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--warm); letter-spacing: .04em; }
-      .tag-ink { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); letter-spacing: .04em; }
       .edge { stroke: var(--card-line); stroke-width: 1.2; fill: none; marker-end: url(#arrow); }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="560" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="560" class="bg"/>
   <text x="28" y="36" class="title">Orchestration: what a task board is made of</text>
   <text x="28" y="58" class="muted">A board is a sequencer, its workers are blocks, and its tasks are rows in state or a collection.</text>
-  <rect x="28" y="84" width="170" height="196" rx="0" class="card"/>
+  <rect x="28" y="84" width="170" height="196" class="card"/>
   <text x="42" y="108" class="h">Task</text>
   <text x="42" y="128" class="p">A goal, a status,</text>
   <text x="42" y="146" class="p">dependencies, an</text>
@@ -53,7 +37,7 @@
   <text x="42" y="182" class="p">input and output.</text>
   <text x="42" y="206" class="muted">pending · in_progress</text>
   <text x="42" y="223" class="muted">parked · completed …</text>
-  <rect x="214" y="84" width="190" height="196" rx="0" class="card"/>
+  <rect x="214" y="84" width="190" height="196" class="card"/>
   <text x="228" y="108" class="h">Task collection</text>
   <text x="228" y="128" class="p">One API: add, claim,</text>
   <text x="228" y="146" class="p">complete, fail, park.</text>
@@ -61,16 +45,16 @@
   <text x="228" y="187" class="muted">resource collection.</text>
   <text x="228" y="204" class="muted">You choose.</text>
   <path d="M198 144 L212 144" class="edge"/>
-  <rect x="420" y="84" width="472" height="196" rx="0" class="wall-proc"/>
+  <rect x="420" y="84" width="472" height="196" class="wall-proc"/>
   <text x="436" y="108" class="h">Task board</text>
   <text x="436" y="126" class="muted">A sequencer that drains the collection</text>
-  <rect x="436" y="142" width="206" height="122" rx="0" class="card-proc"/>
+  <rect x="436" y="142" width="206" height="122" class="card-proc"/>
   <text x="450" y="166" class="h">Dispatcher</text>
   <text x="450" y="186" class="p">Picks the next ready</text>
   <text x="450" y="204" class="p">task: topological</text>
   <text x="450" y="222" class="p">(default), fifo, priority,</text>
   <text x="450" y="240" class="p">or one you pass in.</text>
-  <rect x="670" y="142" width="206" height="122" rx="0" class="card-proc"/>
+  <rect x="670" y="142" width="206" height="122" class="card-proc"/>
   <text x="684" y="166" class="h">Board worker</text>
   <text x="684" y="186" class="p">Any block. Runs one</text>
   <text x="684" y="204" class="p">claimed task.</text>
@@ -78,24 +62,24 @@
   <path d="M642 202 L668 202" class="edge"/>
   <path d="M404 202 L434 202" class="edge"/>
   <text x="28" y="320" class="tag-proc">BUILT ON A TASK BOARD</text>
-  <rect x="28" y="332" width="280" height="128" rx="0" class="card"/>
+  <rect x="28" y="332" width="280" height="128" class="card"/>
   <text x="42" y="356" class="h">Goal-seek loop</text>
   <text x="42" y="376" class="p">Drains, asks a judge</text>
   <text x="42" y="394" class="p">if the goal is met,</text>
   <text x="42" y="412" class="p">replans, drains again.</text>
   <text x="42" y="430" class="muted">orchestration</text>
-  <rect x="320" y="332" width="280" height="128" rx="0" class="card"/>
+  <rect x="320" y="332" width="280" height="128" class="card"/>
   <text x="334" y="356" class="h">Harness manager</text>
   <text x="334" y="376" class="p">A board worker: one task</text>
   <text x="334" y="394" class="p">becomes one supervised</text>
   <text x="334" y="412" class="p">coding run.</text>
   <text x="334" y="430" class="muted">harness-manager</text>
-  <rect x="612" y="332" width="280" height="128" rx="0" class="card"/>
+  <rect x="612" y="332" width="280" height="128" class="card"/>
   <text x="626" y="356" class="h">Patterns</text>
   <text x="626" y="376" class="code">supervisor</text>
   <text x="626" y="394" class="code">planAndExecute</text>
   <text x="626" y="412" class="code">parallelTasks  eventActors</text>
   <text x="626" y="430" class="muted">patterns</text>
-  <rect x="28" y="484" width="864" height="52" rx="0" class="dash"/>
+  <rect x="28" y="484" width="864" height="52" class="dash"/>
   <text x="44" y="515" class="p">A task's assignee names a board worker, or a Workforce worker that takes tasks. The board runs the list; Workforce finds the worker.</text>
 </svg>

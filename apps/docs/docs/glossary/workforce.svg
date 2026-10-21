@@ -6,99 +6,84 @@
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
     </marker>
     <style>
-      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
-              --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
-              --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e;
-              --warm-fill:#fde7cb; --warm:#c2622d; }
+      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --sess:#2c4f8c; --org:#3d6b45;
+              --card:#fcfbf7; --card-line:#8f8a7c; }
       @media (prefers-color-scheme: dark) {
-        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
-                --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
-                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777;
-                --warm-fill:#473a26; --warm:#e0874f; } }
+        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --sess:#8fabe2;
+                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; } }
       .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
-      .wall-proc { fill: var(--proc-fill); stroke: var(--proc); stroke-width: 1.5; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
-      .wall-warm { fill: var(--warm-fill); stroke: var(--warm); stroke-width: 1.5; }
-      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
       .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.2; }
       .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.2; }
-      .card-proc { fill: var(--card); stroke: var(--proc); stroke-width: 1.2; }
       .card-org { fill: var(--card); stroke: var(--org); stroke-width: 1.2; }
-      .card-warm { fill: var(--card); stroke: var(--warm); stroke-width: 1.2; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.2; }
-      .dash { fill: none; stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 6 4; }
       .title { font: 600 20px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
       .h { font: 600 14px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
       .p { font: 13px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
       .muted { font: 12px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
       .code { font: 12px 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
       .tag-sess { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--sess); letter-spacing: .04em; }
-      .tag-proc { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--proc); letter-spacing: .04em; }
       .tag-org { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--org); letter-spacing: .04em; }
-      .tag-warm { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--warm); letter-spacing: .04em; }
       .tag-ink { font: 600 11px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); letter-spacing: .04em; }
       .edge { stroke: var(--card-line); stroke-width: 1.2; fill: none; marker-end: url(#arrow); }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="576" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="576" class="bg"/>
   <text x="28" y="36" class="title">Workforce: what each term is made of</text>
   <text x="28" y="58" class="muted">Workforce adds files and rules. Everything lands in a Core or Orchestration piece on the right.</text>
   <text x="28" y="92" class="tag-org">WORKFORCE TERM</text>
   <text x="344" y="92" class="tag-sess">BUILT FROM</text>
-  <rect x="28" y="104" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="104" width="268" height="52" class="card-org"/>
   <text x="42" y="126" class="h">Worker</text>
   <text x="42" y="144" class="code">a resource, one owner</text>
-  <rect x="344" y="104" width="548" height="52" rx="0" class="card-sess"/>
+  <rect x="344" y="104" width="548" height="52" class="card-sess"/>
   <text x="358" y="125" class="tag-sess">RESOURCE</text>
   <text x="508" y="125" class="p">A resource in one user’s scope that names its worker</text>
   <text x="508" y="143" class="p">flow, with its own instructions, skills and tools.</text>
   <path d="M296 130 L342 130" class="edge"/>
-  <rect x="28" y="166" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="166" width="268" height="52" class="card-org"/>
   <text x="42" y="188" class="h">Standard worker</text>
   <text x="42" y="206" class="code">WORKER.md</text>
-  <rect x="344" y="166" width="548" height="52" rx="0" class="card"/>
+  <rect x="344" y="166" width="548" height="52" class="card"/>
   <text x="358" y="187" class="tag-ink">FILES</text>
   <text x="508" y="187" class="p">Read from the installation’s files, the same for every</text>
   <text x="508" y="205" class="p">user. Fork one to make it a worker of your own.</text>
   <path d="M296 192 L342 192" class="edge"/>
-  <rect x="28" y="228" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="228" width="268" height="52" class="card-org"/>
   <text x="42" y="250" class="h">Roster</text>
   <text x="42" y="268" class="code">one user’s workers</text>
-  <rect x="344" y="228" width="548" height="52" rx="0" class="card-sess"/>
+  <rect x="344" y="228" width="548" height="52" class="card-sess"/>
   <text x="358" y="249" class="tag-sess">RESOURCE COLL.</text>
   <text x="508" y="249" class="p">One user’s workers, standard ones included. A user’s</text>
   <text x="508" y="267" class="p">own workers come back after a restart.</text>
   <path d="M296 254 L342 254" class="edge"/>
-  <rect x="28" y="290" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="290" width="268" height="52" class="card-org"/>
   <text x="42" y="312" class="h">Coordinator</text>
   <text x="42" y="330" class="code">flow: coordinator</text>
-  <rect x="344" y="290" width="548" height="52" rx="0" class="card-org"/>
+  <rect x="344" y="290" width="548" height="52" class="card-org"/>
   <text x="358" y="311" class="tag-org">WORKER</text>
   <text x="508" y="311" class="p">A worker on the coordinator flow. Its delegates, from</text>
   <text x="508" y="329" class="p">the same roster, are in its session.</text>
   <path d="M296 316 L342 316" class="edge"/>
-  <rect x="28" y="352" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="352" width="268" height="52" class="card-org"/>
   <text x="42" y="374" class="h">Project</text>
   <text x="42" y="392" class="code">a body of work</text>
-  <rect x="344" y="352" width="548" height="52" rx="0" class="card-sess"/>
+  <rect x="344" y="352" width="548" height="52" class="card-sess"/>
   <text x="358" y="373" class="tag-sess">RESOURCE COLL.</text>
   <text x="508" y="373" class="p">One row, in the user’s scope when private or the</text>
   <text x="508" y="391" class="p">org’s when shared: title, brief, owner.</text>
   <path d="M296 378 L342 378" class="edge"/>
-  <rect x="28" y="414" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="414" width="268" height="52" class="card-org"/>
   <text x="42" y="436" class="h">Workstream</text>
   <text x="42" y="454" class="code">one owner each</text>
-  <rect x="344" y="414" width="548" height="52" rx="0" class="card-sess"/>
+  <rect x="344" y="414" width="548" height="52" class="card-sess"/>
   <text x="358" y="435" class="tag-sess">ENTRY + SESSION</text>
   <text x="508" y="435" class="p">An entry in a shared project that only its owner</text>
   <text x="508" y="453" class="p">writes, plus its lead’s workstream session.</text>
   <path d="M296 440 L342 440" class="edge"/>
-  <rect x="28" y="476" width="268" height="52" rx="0" class="card-org"/>
+  <rect x="28" y="476" width="268" height="52" class="card-org"/>
   <text x="42" y="498" class="h">Project coordinator</text>
   <text x="42" y="516" class="code">one per user per project</text>
-  <rect x="344" y="476" width="548" height="52" rx="0" class="card-org"/>
+  <rect x="344" y="476" width="548" height="52" class="card-org"/>
   <text x="358" y="497" class="tag-org">WORKER SESSION</text>
   <text x="508" y="497" class="p">A coordinator’s session, one per user per project. It</text>
   <text x="508" y="515" class="p">hands work only to that user’s own workstreams.</text>

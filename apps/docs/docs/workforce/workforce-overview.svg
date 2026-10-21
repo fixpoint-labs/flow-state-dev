@@ -6,15 +6,13 @@
       <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
     </marker>
     <style>
-      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
-              --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
-              --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e;
-              --no:#a83e28; }
+      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --sess-fill:#e3e8f2;
+              --sess:#2c4f8c; --org-fill:#e4f0de; --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c;
+              --box:#f8f6f0; }
       @media (prefers-color-scheme: dark) {
-        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
-                --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
-                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777;
-                --no:#e27a5f; } }
+        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --sess-fill:#2b3140;
+                --sess:#8fabe2; --org-fill:#384230; --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e;
+                --box:#1c1b15; } }
       .bg { fill: var(--bg); }
       .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
       .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
@@ -31,37 +29,37 @@
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="560" rx="0" class="bg"/>
+  <rect x="0" y="0" width="920" height="560" class="bg"/>
 
   <text x="28" y="36" class="title">Worker file, worker, session: where each lives</text>
   <text x="28" y="58" class="muted">A worker file describes a worker; one shared copy of its flow runs it.</text>
 
   <!-- Repo -->
-  <rect x="28" y="84" width="248" height="300" rx="0" class="wall-file"/>
+  <rect x="28" y="84" width="248" height="300" class="wall-file"/>
   <text x="44" y="108" class="h">Your repository</text>
   <text x="44" y="126" class="muted">Files you write and commit</text>
 
-  <rect x="44" y="142" width="216" height="104" rx="0" class="card"/>
+  <rect x="44" y="142" width="216" height="104" class="card"/>
   <text x="58" y="166" class="h">WORKER.md</text>
   <text x="58" y="186" class="code">teams/engineering/</text>
   <text x="58" y="202" class="code">  workers/lead/</text>
   <text x="58" y="228" class="muted">Settings and instructions</text>
 
   <!-- Process -->
-  <rect x="296" y="84" width="320" height="300" rx="0" class="wall-sess"/>
+  <rect x="296" y="84" width="320" height="300" class="wall-sess"/>
   <text x="312" y="108" class="h">Your app's process</text>
   <text x="312" y="126" class="muted">Rebuilt at every start</text>
 
-  <rect x="312" y="142" width="288" height="56" rx="0" class="card"/>
+  <rect x="312" y="142" width="288" height="56" class="card"/>
   <text x="326" y="164" class="h">Record</text>
   <text x="326" y="184" class="muted">readWorkforce: reads the files</text>
 
-  <rect x="312" y="218" width="288" height="78" rx="0" class="card-sess"/>
+  <rect x="312" y="218" width="288" height="78" class="card-sess"/>
   <text x="326" y="240" class="h">One copy per flow</text>
   <text x="326" y="260" class="muted">hireWorkforce: agent, once, for every</text>
   <text x="326" y="276" class="muted">worker on it. Reads no files.</text>
 
-  <rect x="312" y="316" width="288" height="52" rx="0" class="card"/>
+  <rect x="312" y="316" width="288" height="52" class="card"/>
   <text x="326" y="338" class="h">Registry</text>
   <text x="326" y="356" class="muted">registerMany: now it answers requests</text>
 
@@ -70,17 +68,17 @@
   <path d="M260 194 L310 170" class="edge"/>
 
   <!-- Store -->
-  <rect x="636" y="84" width="256" height="300" rx="0" class="wall-org"/>
+  <rect x="636" y="84" width="256" height="300" class="wall-org"/>
   <text x="652" y="108" class="h">Your store</text>
   <text x="652" y="126" class="muted">Kept across restarts when persistent</text>
 
-  <rect x="652" y="142" width="224" height="104" rx="0" class="card"/>
+  <rect x="652" y="142" width="224" height="104" class="card"/>
   <text x="666" y="166" class="h">Sessions naming a worker</text>
   <text x="666" y="188" class="p">Each user's conversation,</text>
   <text x="666" y="206" class="p">its state and resources</text>
   <text x="666" y="230" class="muted">Never written into the file</text>
 
-  <rect x="652" y="258" width="224" height="110" rx="0" class="card"/>
+  <rect x="652" y="258" width="224" height="110" class="card"/>
   <text x="666" y="282" class="h">A user's own worker</text>
   <text x="666" y="302" class="muted">A row in their own data,</text>
   <text x="666" y="318" class="muted">hired or forked while the</text>
@@ -88,7 +86,7 @@
   <text x="666" y="356" class="muted">See Hiring and forking</text>
 
   <!-- Not a copy -->
-  <rect x="28" y="404" width="864" height="136" rx="0" class="box"/>
+  <rect x="28" y="404" width="864" height="136" class="box"/>
   <text x="44" y="428" class="h">One copy, many workers</text>
   <text x="44" y="452" class="p">A worker is an id and settings. Every worker on a flow shares its one registered copy.</text>
   <text x="44" y="472" class="p">A session names its worker when it is created, and nothing changes it. It runs on the worker's flow.</text>
