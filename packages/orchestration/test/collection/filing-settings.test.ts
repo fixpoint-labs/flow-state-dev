@@ -32,7 +32,7 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 import type { JsonObject } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
 type Clock = { at: number };
 type Backing = {
@@ -404,5 +404,82 @@ describe.each(BACKINGS)("retired rows in the store at upgrade (%s)", (_name, mak
     expect(tasks.get("s")?.status).toBe("parked");
     expect(tasks.get("r")?.reopened).toBe(true);
     expect(tasks.get("q")).toMatchObject({ status: "parked", parkedForTurn: true });
+  });
+});
+
+/**
+ * A dependency that ends while its dependent is being written, on the
+ * resource backing (review finding 1). The dependency check reads the board
+ * before the write, outside any write, and the ending's cascade reads it
+ * inside its own write: a cancel that commits between the two sees no
+ * dependent, and the check saw no ending. Gates hold the dependent's write
+ * open in that window, as a slow store does.
+ */
+describe("a dependency that ends while its dependent is written (resource-backed)", () => {
+  type Gate = { opened: Promise<void>; open: () => void };
+  const gate = (): Gate => {
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    return { opened, open };
+  };
+
+  async function slowBoard() {
+    const collection: ResourceCollectionRef<JsonObject> = createFakeResourceCollection();
+    const gates: { create?: Gate; update?: { key: string; gate: Gate; computed: Gate } } = {};
+    // Every ref the board holds holds its update open at the gate, after the
+    // new state is computed and before it is stored.
+    const slowRef = (ref: ResourceRef<JsonObject>): ResourceRef<JsonObject> =>
+      new Proxy(ref, {
+        get(target, prop, receiver) {
+          if (prop !== "updateState") return Reflect.get(target, prop, receiver);
+          return (updater: (prev: JsonObject) => JsonObject | Promise<JsonObject>) =>
+            target.updateState(async (prev) => {
+              const next = await updater(prev);
+              const held = gates.update;
+              if (held !== undefined && held.key === target.path) {
+                held.computed.open();
+                await held.gate.opened;
+              }
+              return next;
+            });
+        },
+      });
+    const realCreate = collection.create.bind(collection);
+    const realList = collection.list.bind(collection);
+    Object.assign(collection, {
+      create: async (key: string, initial: JsonObject) => {
+        if (gates.create !== undefined) await gates.create.opened;
+        return slowRef(await realCreate(key, initial));
+      },
+      list: async (prefix?: string) => (await realList(prefix)).map(slowRef),
+    });
+    const tasks = await createResourceBackedTaskCollection({ collectionId: "tasks", collection, now: () => 1_000 });
+    return { tasks, gates };
+  }
+
+  it("cancels a dependent whose dependency was cancelled while it was being filed", async () => {
+    const { tasks, gates } = await slowBoard();
+    await tasks.addTask({ id: "a", goal: "a" });
+    gates.create = gate();
+    const filing = tasks.addTask({ id: "b", goal: "b", deps: ["a"] });
+    await tasks.cancel("a");
+    gates.create.open();
+    await filing;
+    expect(tasks.get("b")).toMatchObject({ status: "cancelled", causedBy: "a", labels: ["skipped"] });
+  });
+
+  it("cancels a dependent whose new dependency was cancelled while the edit was being written", async () => {
+    const { tasks, gates } = await slowBoard();
+    await tasks.addTask({ id: "a", goal: "a" });
+    await tasks.addTask({ id: "b", goal: "b", held: true });
+    gates.update = { key: "b", gate: gate(), computed: gate() };
+    const editing = tasks.patchSettings("b", { deps: ["a"] });
+    await gates.update.computed.opened;
+    const held = gates.update;
+    gates.update = undefined;
+    await tasks.cancel("a");
+    held.gate.open();
+    await editing;
+    expect(tasks.get("b")).toMatchObject({ status: "cancelled", causedBy: "a", labels: ["skipped"] });
   });
 });

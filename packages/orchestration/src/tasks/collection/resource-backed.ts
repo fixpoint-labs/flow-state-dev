@@ -653,6 +653,31 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     );
   }
 
+  /**
+   * A dependency that ended while `id` was being written (FIX-2080 D2). The
+   * check before a filing or a deps edit reads the board outside any write,
+   * and an ending's cascade reads it inside its own write: a cancel that
+   * commits between the check and the dependent's write sees no dependent,
+   * and the check saw no ending, so neither cancels it. Re-read once the
+   * dependent has committed: a dependency ended by now cancels it, as its
+   * cascade would have. This mirror only sees what this process wrote or
+   * listed, so a cancel from another process lands on the next touch's read.
+   *
+   * @returns Whether the row was cancelled.
+   */
+  async function cancelIfDepEnded(id: string): Promise<boolean> {
+    const row = lookupRow(id);
+    if (row === undefined || isTerminalStatus(row.status)) return false;
+    for (const depId of row.deps ?? []) {
+      const dep = lookupRow(depId);
+      if (dep !== undefined && (dep.status === "errored" || dep.status === "cancelled")) {
+        await cascadeWrites.cancelDependent(id, dep);
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** The reads and writes a cascade is paid with on this board (FIX-2080 D2). */
   const cascadeWrites: CascadeWrites = {
     get: lookupRow,
@@ -698,6 +723,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
       mirror.set(task.id, created);
       emit("added", task);
+      if (await cancelIfDepEnded(task.id)) return lookupRow(task.id) as Task<TInput, TOutput>;
       return task;
     },
 
@@ -716,7 +742,15 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         created.push(task);
         emit("added", task);
       }
-      return created;
+      // A dependency that ended meanwhile cancels its dependents, and a row
+      // that cancels can end another of the batch's, so the pass repeats
+      // until it cancels nothing (at most once per row).
+      let cancelled = true;
+      while (cancelled) {
+        cancelled = false;
+        for (const task of created) if (await cancelIfDepEnded(task.id)) cancelled = true;
+      }
+      return created.map((task) => (lookupRow(task.id) ?? task) as Task<TInput, TOutput>);
     },
 
     async claim(_workerId, claimOptions) {
@@ -928,7 +962,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async patchSettings(id, settings) {
-      return writeSettings(id, settings);
+      const outcome = await writeSettings(id, settings);
+      // New dependencies have the filing's window (`cancelIfDepEnded`).
+      if (settings.deps !== undefined && outcome.outcome === "recorded") await cancelIfDepEnded(id);
+      return outcome;
     },
 
     async awaitReview(id, feedback, options) {
