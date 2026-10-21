@@ -62,7 +62,7 @@
     <rect class="use" x="776" y="154" width="54" height="26" rx="3"/><text class="t-use" x="782" y="171">uses</text>
   </g>
   <g id="er5">
-    <text class="t-row" x="16" y="204">ER-5 four tools, the only surface</text>
+    <text class="t-row" x="16" y="204">ER-5 five tools, the only surface</text>
     <rect class="own" x="476" y="186" width="54" height="26" rx="3"/><text class="t-own" x="482" y="203">OWNS</text>
     <rect class="use" x="536" y="186" width="54" height="26" rx="3"/><text class="t-use" x="542" y="203">uses</text>
     <rect class="use" x="596" y="186" width="54" height="26" rx="3"/><text class="t-use" x="602" y="203">uses</text>

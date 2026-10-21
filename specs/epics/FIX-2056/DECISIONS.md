@@ -44,7 +44,7 @@ It comes down to `updateTask`: folded, it is rewritten once; split, twice.
 |---|---|
 | **Instead of** | Phase 3's parts that touch suspensions blocked by FIX-2058, as the gaps file and the epic issue said until this PR |
 | **Because** | FIX-2058 is blocked by this epic, so a child blocked by FIX-2058 is a cycle: the epic can never wrap. Both suspension parts, a steer that answers a question and marking a task *waiting on a person*, are FIX-2058's objective |
-| **Locks in** | FIX-2077 tells a person's stop from a wait, so a wait leaves the task running; FIX-2058 marks the person's stop and owns the answer. Until it lands, `answerTask` is a fifth task tool the closure's sweep allows. No child waits on FIX-2070 either: work that needs `receive` is its |
+| **Locks in** | FIX-2077 tells a person's stop from a wait, so a wait leaves the task running; FIX-2058 marks the person's stop and owns the answer. Until it lands, `answerTask` is an interim extra tool the closure's sweep allows. No child waits on FIX-2070 either: work that needs `receive` is its |
 
 **What would change my mind:** FIX-2058's blocker narrowed to the children it needs (FIX-2077 and
 FIX-2081). Then the answer by steer can stay in FIX-2086.
@@ -82,7 +82,7 @@ FIX-2081's own scope.
 | ER-2 | One predicate for done (rule 6), in orchestration, checked after the request's background work and when a task it filed ends. Every wait, a plan board's drain included, wakes on the ending the gate writes; a deadline writes none. No Workforce code re-derives a request's kind from session state | FIX-2077 | FIX-2078's, FIX-2082's, FIX-2083's and FIX-2086's spec review |
 | ER-3 | Every ending of a delegated task reaches its filer once, through one path, and every debt has a due time with the sweeper as backstop. Shift Manager's error report rides that path, not a second one ([f](#f)) | FIX-2078 | FIX-2083's and FIX-2085's spec review; legs b and c |
 | ER-4 | Four filing settings. Start and attempts editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2083's and FIX-2086's spec review |
-| ER-5 | The four task tools are the only task surface, for models and screens, with identity from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
+| ER-5 | The five task tools (the filer's four and the worker's `reportProgress`) are the only task surface, for models and screens, with identity from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
 | ER-6 | A retired row shape is read through FIX-2080's one map, never a child's own ([D3](#d3)) | FIX-2080 | FIX-2077's, FIX-2083's and FIX-2086's spec review |
 
 ## Coordination seams
@@ -117,7 +117,7 @@ FIX-2081's own scope.
   2026-10-21). Every surface in [`migration.md`](migration.md) goes in the owning child's PR, in a
   minor bump (pre-1.0). That child's changeset carries the removal's one line from `migration.md`.
   No child ships a deprecated alias, wrapper or warning, and the closure's tool sweep allows none:
-  the only task tool besides the four is `answerTask` ([D2](#d2)), and `dispatchTask` until FIX-2082
+  the only task tool besides the five is `answerTask` ([D2](#d2)), and `dispatchTask` until FIX-2082
   and FIX-2083 replace its wait and its post form, the sweep naming it ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1), amended at that
   gate). The cost, accepted: teams
   outside the repo calling them rewrite at upgrade.
