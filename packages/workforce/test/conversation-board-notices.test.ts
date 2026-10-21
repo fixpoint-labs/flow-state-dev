@@ -12,6 +12,7 @@
  * and again after a later touch, so a second copy shows.
  */
 import { describe, expect, it } from "vitest";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { boardWorkers, bootBoardHost, messageOf, type BoardHost } from "./conversation-board-harness";
@@ -25,6 +26,9 @@ const file = async (host: BoardHost, userId: string, conv: string, input: Record
 /** The lines in a conversation about `goal`. */
 const linesAbout = async (host: BoardHost, conv: string, goal: string) =>
   (await host.messages(conv)).filter((message) => message.text.includes(`"${goal}"`)).map((message) => message.text);
+
+/** Wait until a notice owed now is past its due time, so a touch resends it (FIX-2078). */
+const pastDue = () => new Promise((resolve) => setTimeout(resolve, NOTICE_DUE_MS + 200));
 
 /** Touch the board again and let it settle: anything still owed would be sent now. */
 const touch = async (host: BoardHost, userId: string, conv: string) => {
@@ -280,10 +284,12 @@ describe("a notice that arrives mid-reply (BR-27)", () => {
       judgment,
       afterModelCall: async (blockName) => {
         if (blockName !== "coordinator-judgment" || ++calls !== 1) return;
-        // The task's own send is lost; touching the board mid-reply sends what the row still owes.
+        // The task's own send is lost; touching the board mid-reply, once it is
+        // past due, sends what the row still owes.
         await until(async () => (await host.rows("alice")).some((row) => row.status === "completed"));
         await until(() => lost.lost() > 0);
         lost.restore();
+        await pastDue();
         expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
         seen.replayedMidReply = await until(async () => (await settledRequests(host, conv)).length > 0);
         seen.landedMidReply = await until(async () => (await linesAbout(host, conv, "Count licenses")).length > 0, 500);
@@ -436,7 +442,7 @@ describe("a notice sent twice (BR-26)", () => {
 });
 
 describe("the process dies between an ending and its notice (BR-26a)", () => {
-  it("leaves the notice owed on the row, and the next touch of the board sends it, once", async () => {
+  it("leaves the notice owed on the row, and the first touch of the board once it is past due sends it, once", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -448,10 +454,12 @@ describe("the process dies between an ending and its notice (BR-26a)", () => {
       // The ending stands, and its notice is still owed: nothing landed.
       const ended = await host.row("alice", filing, filed.taskId!);
       expect(ended?.status).toBe("completed");
-      expect(ended?.metadata?.["noticeOwed:1:completed"]).toEqual({ attempt: 1, ending: "completed" });
+      expect(ended?.metadata?.["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
       expect(await linesAbout(host, conv, "survives")).toEqual([]);
 
       lost.restore();
+      // A touch resends only what is past due (FIX-2078): the fast path pays first.
+      await pastDue();
       await touch(host, "alice", conv);
       await touch(host, "alice", conv);
       expect(await linesAbout(host, conv, "survives")).toHaveLength(1);
@@ -512,7 +520,7 @@ describe("a notice that can't land (BR-28)", () => {
       expect(refused.every((request) => request.status !== "completed")).toBe(true);
       const row = await host.row("alice", filing, filed.taskId!);
       expect(row?.status).toBe("completed");
-      expect(row?.metadata?.["noticeOwed:1:completed"]).toEqual({ attempt: 1, ending: "completed" });
+      expect(row?.metadata?.["noticeOwed:1:completed"]).toMatchObject({ attempt: 1, ending: "completed" });
       expect(await linesAbout(host, conv, "orphaned [slow:150]")).toEqual([]);
     } finally {
       await host.dispose();

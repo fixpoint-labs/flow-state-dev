@@ -276,7 +276,7 @@ describe("what a filing can't name (BR-8)", () => {
 });
 
 describe("reassign and cancel: the task tools' own contract on this board", () => {
-  it("declines a reassign of a running task, lands a cancel of one, and declines its worker's late result (no notice)", async () => {
+  it("declines a reassign of a running task, lands a cancel of one, and declines its worker's late result (heard once)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
@@ -291,8 +291,10 @@ describe("reassign and cancel: the task tools' own contract on this board", () =
       const row = await host.row("alice", filing, filed.taskId!);
       expect(row).toMatchObject({ status: "cancelled", assignee: "eng.tasker" });
       expect(row?.output).toBeUndefined();
-      // A cancel owes no notice (BR-29).
-      expect((await host.messages(conv)).filter((m) => m.text.includes("long one"))).toEqual([]);
+      // A cancel through the task action is heard by its filer, once; its worker's late result is not (FIX-2078 D2).
+      expect((await host.messages(conv)).filter((m) => m.text.includes("long one")).map((m) => m.text)).toEqual([
+        expect.stringContaining("was cancelled")
+      ]);
     } finally {
       await host.dispose();
     }

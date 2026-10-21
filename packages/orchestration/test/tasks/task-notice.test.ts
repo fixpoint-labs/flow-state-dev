@@ -14,8 +14,11 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import type { Task } from "../../src/tasks";
 import {
+  cancelledDependents,
   clearNotice,
   decideNotice,
+  NOTICE_DUE_MS,
+  noticeDueAt,
   isNoticeOwed,
   noticeKey,
   noticeText,
@@ -87,15 +90,21 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     ]);
   });
 
-  it("marks an attempt that failed for good with its error, and one with attempts left as retried", () => {
+  it("marks an attempt that failed for good with its error; a retry owes none, being the row's next start (FIX-2078)", () => {
     const errored = recordEnding(row({ status: "errored", error: "no network" }), { kind: "errored", error: "no network" });
     expect(owedNotices(errored, "tasks")).toEqual([
       { boardId: "tasks", taskId: "t1", attempt: 1, ending: "errored", error: "no network" }
     ]);
-    const retried = recordEnding(row({ status: "pending" }), { kind: "retried", error: "flaky" });
-    expect(owedNotices(retried, "tasks")).toEqual([
-      { boardId: "tasks", taskId: "t1", attempt: 1, ending: "retried", error: "flaky" }
-    ]);
+    const pending = row({ status: "pending" });
+    expect(recordEnding(pending, { kind: "retried", error: "flaky" })).toBe(pending);
+  });
+
+  it("stamps when the notice falls due: two seconds after the ending's write, for the fast path to pay first", () => {
+    const written = recordEnding(row({ updatedAt: 10_000 }), { kind: "completed", output: 1 });
+    expect(noticeDueAt(written)).toBe(10_000 + NOTICE_DUE_MS);
+    expect(noticeDueAt(row())).toBeUndefined();
+    // A marker stored before FIX-2078 carries no due time: it is due at once.
+    expect(noticeDueAt(row({ metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" } } }))).toBe(0);
   });
 
   it("marks a park with its question (BR-25), and keeps it when the task completes later", () => {
@@ -110,9 +119,16 @@ describe("recordEnding: the row to write, with the notice owed", () => {
     ]);
   });
 
-  it("owes nothing for a cancel (BR-29), or for a park that asks nobody anything", () => {
+  it("owes a notice for a cancel the filer didn't make itself (D2), and none for a park that asks nobody anything", () => {
     const base = row({ status: "cancelled" });
-    expect(recordEnding(base, { kind: "cancelled", reason: "not needed" })).toBe(base);
+    expect(owedNotices(recordEnding(base, { kind: "cancelled", reason: "not needed" }), "tasks").map((n) => n.ending)).toEqual(["cancelled"]);
+    // Its own model's cancel told the filer already.
+    expect(recordEnding(base, { kind: "cancelled" }, { ownCancel: true })).toBe(base);
+    // A dependent cancelled by a failure that shares its filer: that failure's notice names it.
+    const cascaded = row({ status: "cancelled", causedBy: "t0" });
+    expect(recordEnding(cascaded, { kind: "cancelled" }, { causeSharesFiler: true })).toBe(cascaded);
+    // One whose cause another session filed is that filer's to hear.
+    expect(owedNotices(recordEnding(cascaded, { kind: "cancelled" }, { causeSharesFiler: false }), "tasks")).toHaveLength(1);
     const quiet = row({ status: "parked" });
     // FIX-1802's split park: the board parks a row for its own reasons.
     expect(recordEnding(quiet, { kind: "parked", question: "waiting on my pieces", quiet: true })).toBe(quiet);
@@ -137,9 +153,9 @@ describe("a notice delivered", () => {
   });
 
   it("clears only its own marker, so a later ending's owed notice survives the clear", () => {
-    const retried = recordEnding(row({ status: "pending" }), { kind: "retried", error: "flaky" });
-    const [first] = owedNotices(retried, "tasks") as [TaskNotice];
-    const completed = recordEnding({ ...retried, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
+    const parked = recordEnding(row({ status: "parked" }), { kind: "parked", question: "Which region?", quiet: false });
+    const [first] = owedNotices(parked, "tasks") as [TaskNotice];
+    const completed = recordEnding({ ...parked, status: "completed", attempts: 2 }, { kind: "completed", output: 1 });
     const cleared = { ...completed, metadata: { ...completed.metadata, ...clearNotice(first) } } as Task;
     expect(owedNotices(cleared, "tasks").map((n) => n.ending)).toEqual(["completed"]);
   });
@@ -188,20 +204,18 @@ describe("what an ending does: one decision", () => {
 describe("a waited-on row's ending resumes the turn waiting on it, and wakes none (FIX-1816 S9)", () => {
   const waitedRow = (patch: Partial<Task> = {}) => row({ wait: { gateId: "ask:tasks:t1", deadline: 9 }, ...patch } as Partial<Task>);
 
-  it("marks its notices asked, so the receiving entry can tell", () => {
-    const completed = recordEnding(waitedRow({ output: "yes" }), { kind: "completed", output: "yes" });
-    expect(owedNotices(completed, "tasks")).toEqual([
-      { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", asked: true }
-    ]);
-    // A row nobody waits on is not marked.
-    expect(owedNotices(recordEnding(row(), { kind: "completed", output: 1 }), "tasks")[0]).not.toHaveProperty("asked");
+  it("owes no notice for any ending: the turn waiting on it is resumed instead (FIX-2078)", () => {
+    const completed = waitedRow({ output: "yes" });
+    expect(recordEnding(completed, { kind: "completed", output: "yes" })).toBe(completed);
+    const cancelled = waitedRow({ status: "cancelled", error: "not needed" });
+    expect(recordEnding(cancelled, { kind: "cancelled", reason: "not needed" })).toBe(cancelled);
   });
 
-  it("owes a notice for a cancel too: its turn waits on every ending, where a filed row's cancel stays silent", () => {
-    const cancelled = recordEnding(waitedRow({ status: "cancelled", error: "not needed" }), { kind: "cancelled", reason: "not needed" });
-    expect(owedNotices(cancelled, "tasks").map((n) => [n.ending, n.asked])).toEqual([["cancelled", true]]);
-    const filed = row({ status: "cancelled" });
-    expect(recordEnding(filed, { kind: "cancelled" })).toBe(filed);
+  it("marks a notice stored before FIX-2078 asked, so the receiving entry resumes rather than wakes", () => {
+    const stored = waitedRow({ metadata: { "noticeOwed:1:completed": { attempt: 1, ending: "completed" } }, output: "yes" });
+    expect(owedNotices(stored, "tasks")).toEqual([
+      { boardId: "tasks", taskId: "t1", attempt: 1, ending: "completed", output: "yes", asked: true }
+    ]);
   });
 
   it("resumes, under either policy, instead of waking the judgment turn or landing a line", () => {
@@ -223,5 +237,32 @@ describe("caller writes can't reach the markers", () => {
     const forged = { ...recordEnding(row(), { kind: "completed", output: 1 }).metadata, note: "mine" };
     expect(withoutNoticeMarkers(forged)).toEqual({ note: "mine" });
     expect(withoutNoticeMarkers(undefined)).toBeUndefined();
+  });
+});
+
+describe("a failure or a cancel names the dependents it cancelled (FIX-2078 D2)", () => {
+  const filer = { sessionId: "conversation" };
+  const failed = row({ id: "f", status: "errored", error: "boom", filer } as Partial<Task>);
+  const rows = [
+    failed,
+    row({ id: "d1", status: "cancelled", causedBy: "f", filer } as Partial<Task>),
+    row({ id: "d2", status: "cancelled", causedBy: "f", filer: { sessionId: "someone-else" } } as Partial<Task>),
+    row({ id: "d3", status: "pending", deps: ["f"], filer } as Partial<Task>),
+    row({ id: "d4", status: "cancelled", causedBy: "other", filer } as Partial<Task>)
+  ];
+
+  it("lists only the cancels its ending caused that share its filer", () => {
+    expect(cancelledDependents(failed, rows)).toEqual(["d1"]);
+    const written = recordEnding(failed, { kind: "errored", error: "boom" });
+    expect(owedNotices(written, "tasks", rows)[0]?.cancelled).toEqual(["d1"]);
+    // Without the board's rows, a notice names none.
+    expect(owedNotices(written, "tasks")[0]).not.toHaveProperty("cancelled");
+  });
+
+  it("says so in the notice's words", () => {
+    const notice: TaskNotice = { boardId: "tasks", taskId: "f", attempt: 1, ending: "errored", error: "boom", cancelled: ["d1"] };
+    expect(noticeText(notice, { goal: "Build it", assignee: "eng" })).toBe(
+      'Task "Build it" (f) failed for good with eng: boom; it cancelled the tasks that depended on it: d1'
+    );
   });
 });

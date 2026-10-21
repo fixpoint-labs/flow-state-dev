@@ -51,6 +51,12 @@ export interface PayBoardDebtsOptions {
   readonly onUndeliverable?: (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => Promise<void>;
   /** The clock. Default `ref.now()`. */
   readonly now?: number;
+  /**
+   * Send past-due notices again. Default `true`. A pass's repairs after its
+   * drain pass `false`: the drain's own endings went on their fast path, and
+   * the repairs before it already sent what was past due.
+   */
+  readonly resend?: boolean;
 }
 
 function log(message: string, detail: Record<string, unknown>): void {
@@ -84,11 +90,15 @@ export async function payBoardDebts(
     log("a pass's cascades failed and stay owed", { error: (error as Error).message });
   }
 
+  // A notice stored before FIX-2078 has no due time: it is due now, the
+  // upgrade's, and its age counts from here (BP-030).
+  await stampLegacyNotices(ref, now);
+
   // 4: notices past due, sent again here; one too old ends.
   const rows = ref.list();
   for (const row of rows) {
     const due = noticeDueAt(row);
-    if (due === undefined || due > now) continue;
+    if (due === undefined || due > now || options.resend === false) continue;
     for (const notice of owedNotices(row, ref.collectionId, rows)) {
       if (tooOld(due)) {
         const detail = `it was still owed ${Math.round((now - due) / 1000)} s past its due time`;
@@ -135,6 +145,18 @@ export async function payBoardDebts(
     if (row.status === "in_progress" && row.leaseUntil != null && !isTerminalStatus(row.status)) owe(row.leaseUntil);
   }
   return { nextDue };
+}
+
+/** Give each owed-notice marker that carries no due time (stored before FIX-2078) one: `now`. */
+async function stampLegacyNotices(ref: TaskCollectionRef, now: number): Promise<void> {
+  for (const row of ref.list()) {
+    const stamped: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row.metadata ?? {})) {
+      if (!key.startsWith("noticeOwed:") || value === null || typeof value !== "object") continue;
+      if ((value as { due?: unknown }).due === undefined) stamped[key] = { ...(value as object), due: now };
+    }
+    if (Object.keys(stamped).length > 0) await ref.patchMetadata(row.id, stamped);
+  }
 }
 
 /**

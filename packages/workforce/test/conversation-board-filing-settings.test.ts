@@ -115,7 +115,9 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       expect(pieces).toHaveLength(2);
       expect(pieces.map((piece) => piece.status)).toEqual(["cancelled", "cancelled"]);
       // The retry ran the task's turn again, rather than waiting on cancelled work.
-      expect(h.controls.turns.filter((turn) => turn.worker === "s1")).toHaveLength(2);
+      // (Its session also hears each piece's cancel, cascaded from above it,
+      // FIX-2078 D2: those turns are woken by a notice.)
+      expect(h.controls.turns.filter((turn) => turn.worker === "s1" && !turn.message.startsWith('Task "'))).toHaveLength(2);
     } finally {
       await h.dispose();
     }

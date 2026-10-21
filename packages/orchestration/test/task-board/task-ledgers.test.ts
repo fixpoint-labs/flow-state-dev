@@ -28,6 +28,7 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection } from "../helpers";
 import { taskBoard, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_task_ledgers";
 const RECIPIENT = "ledgers-recipient";
@@ -58,7 +59,7 @@ async function declaredLedger(ledgerId: string, ctx: BlockContext) {
 }
 
 function recipientFlow(ran: string[], reads: string[]) {
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: RECIPIENT,
     actions: {},
     resources: { [LEDGER_A.id]: LEDGER_A, [LEDGER_B.id]: LEDGER_B },
@@ -95,7 +96,7 @@ function senderFlow(kind: string, list: ReturnType<typeof ledger>, taskId: strin
     },
     initialTasks: [{ id: taskId, goal: `do ${taskId}`, assignee: "work", input: {} }],
   });
-  return defineFlow({ kind, actions: { start: { block: board.drain } } })({ id: kind });
+  return defineFlow({ internal: { actions: { ...heard } }, kind, actions: { start: { block: board.drain } } })({ id: kind });
 }
 
 async function durableRow(stores: StoreRegistry, ledgerId: string, taskId: string) {
@@ -144,7 +145,7 @@ describe("a task entry served by many ledgers", () => {
       workers: { work: dispatcher<TaskWorkerInput>({ name: "own-dispatch", action: "work", session: "per-task" }) },
     });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "both",
         actions: { drain: { block: board.drain } },
         task: {
@@ -250,7 +251,7 @@ describe("the gate of a task entry served by many ledgers", () => {
       },
     });
     const entry = binding.gate({ block: worker } as unknown as ActionCore, "work");
-    const flow = defineFlow({ kind: "door-gate", actions: { work: entry } } as never)({ id: "door-gate" });
+    const flow = defineFlow({ internal: { actions: { ...heard } }, kind: "door-gate", actions: { work: entry } } as never)({ id: "door-gate" });
     const runStores = createInMemoryStores();
     const run = async (ledgerId: string, attemptOffset = 0, sessionId = `s_${ledgerId}_${attemptOffset}`) => {
       const row = (await ledgerOf(ledgerId === "b" ? "b" : "a")).get("t1") as Task;

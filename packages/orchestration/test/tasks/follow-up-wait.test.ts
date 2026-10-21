@@ -18,6 +18,7 @@ import {
   type TaskCollectionRef
 } from "../../src";
 import { act, runtimeFor, stepModel, toolResults, type StepFn } from "./wait-fixture";
+import { heard } from "../fixtures/heard";
 
 const BOARD = "waits";
 
@@ -51,7 +52,7 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
     outputSchema: z.any(),
     execute: async (_input, ctx) => (await boardOf(ctx))!.list().map((t) => ({ id: t.id, followUpOf: t.followUpOf, wait: t.wait }))
   });
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: "wait-board",
     resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
     actions: {

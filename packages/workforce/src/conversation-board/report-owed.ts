@@ -86,9 +86,11 @@ export async function sendTaskReport(
       },
       from
     });
+    if (process.env.DEBUG_2078) console.error("[DEBUG-2078] report", JSON.stringify(outcome));
     if (outcome.ok) return "taken";
     return outcome.refused === "flow-not-found" ? "no-reporter" : "not-taken";
-  } catch {
+  } catch (e) {
+    if (process.env.DEBUG_2078) console.error("[DEBUG-2078] report threw", e);
     return "not-taken";
   }
 }

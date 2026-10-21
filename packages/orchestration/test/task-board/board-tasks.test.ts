@@ -6,7 +6,7 @@
  * request that made the original routing decision is gone, possibly along
  * with the process. So the flow has to be able to answer "which block runs
  * this row?" from strings alone, which is what a task entry is for: a plain
- * `{ block }` under `defineFlow({ tasks })`, addressed by the
+ * `{ block }` under `defineFlow({ internal: { actions: { ...heard } }, tasks })`, addressed by the
  * `dispatcher({ type: "task", action })` the board holds at the assignee.
  *
  * **The gate.** The flow's entry is a plain block, but a `task` dispatch never
@@ -31,6 +31,7 @@ import { defineFlow, dispatcher, generator, handler, router, sequencer } from "@
 import { z } from "zod";
 import { defineTaskCollection, type TaskWorker } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 function worker(name: string): TaskWorker {
   return handler({
@@ -74,7 +75,7 @@ describe("the gated task entry — what the flow carries for a dispatched assign
     const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     const implement = worker("implement");
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: implement, concurrency: "queue" } } },
@@ -102,7 +103,7 @@ describe("the gated task entry — what the flow carries for a dispatched assign
   it("lets an assignee dispatch to an entry named differently from the assignee", () => {
     const board = dispatchBoard({ name: "issue-work", boardId: "issue-work", assignee: "rework", target: "implement" });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: worker("implement") } } },
@@ -120,16 +121,16 @@ describe("the gated task entry — what the flow carries for a dispatched assign
 
     expect(board.dispatchers).toEqual([]);
     expect(() =>
-      defineFlow({ kind: "inline", actions: { run: { block: board.drain } } })
+      defineFlow({ internal: { actions: { ...heard } }, kind: "inline", actions: { run: { block: board.drain } } })
     ).not.toThrow();
   });
 });
 
-describe("defineFlow({ task: { actions } }) — declaring the entries a board dispatches to", () => {
+describe("defineFlow({ internal: { actions: { ...heard } }, task: { actions } }) — declaring the entries a board dispatches to", () => {
   it("defines when the drain IS the action root", () => {
     const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: worker("implement") } } },
@@ -147,7 +148,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
       .step(board.drain);
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: outer } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -161,7 +162,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     const outer = sequencer({ name: "outer" }).step(inner);
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: outer } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -179,7 +180,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: route } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -194,7 +195,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: {
           runA: { block: board.drain },
@@ -209,7 +210,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     const a = dispatchBoard({ name: "issue-work", boardId: "issue-work", assignee: "implement" });
     const b = dispatchBoard({ name: "review-work", boardId: "review-work", assignee: "review" });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { runA: { block: a.drain }, runB: { block: b.drain } },
       task: { actions: { implement: { block: worker("implement") }, review: { block: worker("review") } } },
@@ -227,7 +228,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     // could hand a row to an entry nobody declared.
     const board = dispatchBoard({ name: "issue-work", boardId: "issue-work" });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { run: { block: board.drain } },
       })
@@ -243,7 +244,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
       tools: [board.drain],
     });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board-as-tool",
         actions: { run: { block: sequencer({ name: "run" }).step(agent) } },
       })
@@ -255,7 +256,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     const b = dispatchBoard({ name: "board-b", boardId: "board-b", assignee: "implement" });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { runA: { block: a.drain }, runB: { block: b.drain } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -278,7 +279,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
     });
 
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: { runA: { block: a.drain }, runB: { block: b.drain } },
         task: { actions: { implement: { block: worker("implement") } } },
@@ -288,7 +289,7 @@ describe("defineFlow({ task: { actions } }) — declaring the entries a board di
 
   it("refuses a task entry no reachable board dispatches to", () => {
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "board",
         actions: {},
         task: { actions: { implement: { block: worker("implement") } } },
@@ -310,7 +311,7 @@ describe("a board reached only as a tool still lands its ledger on the flow", ()
       prompt: "drain the board",
       tools: [board.drain],
     });
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "tool-only-ledger",
       actions: { run: { block: sequencer({ name: "run-ledger" }).step(agent) } },
       task: { actions: { implement: { block: worker("implement-ledger") } } },

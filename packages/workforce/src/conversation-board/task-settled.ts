@@ -137,8 +137,14 @@ export const AFTER_REPLY_CONCURRENCY = { policy: "defer", key: replyLine } as co
 const passLine: ConcurrencyKey = (ctx) =>
   ctx.sessionId === undefined ? undefined : `${ctx.tenantId ?? ""}\u0000pass\u0000${ctx.sessionId}`;
 
-/** Set on the board's run entry (FIX-2078): one pass at a time per session; a second is refused. */
-export const PASS_CONCURRENCY = { policy: "reject", key: passLine } as const satisfies ConcurrencyConfig;
+/**
+ * Set on the board's run entry (FIX-2078): one pass at a time per session. A
+ * second waits until the running one ends, then runs as a request of its own,
+ * which reads what was written meanwhile: a pass reads its board once per
+ * request, so a running pass can't see a retry or an ending another request
+ * writes, and a second refused outright would leave that start to the wake.
+ */
+export const PASS_CONCURRENCY = { policy: "defer", key: passLine } as const satisfies ConcurrencyConfig;
 
 /** Write a notice's dedupe key: `true` the first time. */
 function noteSeen(ctx: BlockContext, key: string) {
@@ -242,6 +248,9 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await onEnding(ctx, notice);
       await reportFailure(ctx, notice);
       const first = await noteSeen(ctx, noticeKey(notice));
+      // Acknowledged here, once reported and deduped, before what it wakes: a
+      // split's settle below reads a piece whose notice is still owed as open.
+      await ref.patchMetadata(row.id, clearNotice(notice));
       const decision = decideNotice(notice, options.policy(ctx));
       // A waited-on row's turn, or a retry's next attempt: the pass's, which
       // resumes it or starts it. Every copy runs it; the pass is one at a time.
@@ -280,7 +289,8 @@ export function taskSettledEntry(options: TaskSettledOptions) {
  * on by the coordinator's handling, and acknowledged once that has run, queued
  * on the session rather than deferred on the reply line, so a delegate's answer
  * lands while a reply runs. A post that failed for good is reported to the
- * Error Reporter first (decision (f)), until FIX-2083.
+ * Error Reporter first, best effort (decision (f), FIX-2010): the coordinator
+ * hears the ending whether or not the intake took it. Until FIX-2083.
  */
 export function postSettledEntry(options: TaskSettledOptions & { readonly onPost: BlockDefinition<any, any> }) {
   const settle = handler({
@@ -306,7 +316,9 @@ export function postSettledEntry(options: TaskSettledOptions & { readonly onPost
       }
       // A notice its row doesn't owe was delivered already, or was never owed.
       if (!isNoticeOwed(row!, notice)) return { act: "none" };
-      await reportFailure(ctx, notice);
+      // Best effort on a post (FIX-2010): the coordinator hears its ending
+      // whether or not the intake took the report.
+      await reportFailure(ctx, notice).catch(() => undefined);
       const key = noticeKey(notice);
       const acknowledged = ((ctx.session.state as Record<string, unknown>)[TASK_NOTICES_STATE] ?? []) as string[];
       const post = postRowOf(row);

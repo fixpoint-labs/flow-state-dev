@@ -5,7 +5,7 @@
  * The waiting turn is a generator in a plain sequencer, the shape a Workforce
  * turn has. "The colleague" is a later request in the same conversation that
  * claims and settles the row, and the board touch is a request that calls
- * `resumeOwedWaits` directly: the notice that will call it on its own arrives
+ * `payOwedResumes` directly: the notice that will call it on its own arrives
  * with the child-finished signal (FIX-1816 P3).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,7 @@ import {
   until,
   USER
 } from "./wait-fixture";
+import { heard } from "../fixtures/heard";
 
 describe("wait on the board: file, park, and resume on the row's ending", () => {
   it("files one row marked waited-on, parks, and resumes with the row's output as the answer (BR-1, BR-2)", async () => {
@@ -133,7 +134,7 @@ describe("wait on the board: file, park, and resume on the row's ending", () => 
             outcome: { answered: true, answer: "answer" }
           })
       });
-      const resumer = defineFlow({ kind: "wait-board", actions: { go: { block: resumeOnly } } })({ id: "wait-board" });
+      const resumer = defineFlow({ internal: { actions: { ...heard } }, kind: "wait-board", actions: { go: { block: resumeOnly } } })({ id: "wait-board" });
       const resumed = await runAction({
         orgId: DEFAULT_ORG_ID,
         flow: resumer,

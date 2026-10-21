@@ -97,6 +97,7 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
       const notice = input as TaskSettledInput;
       const board = await boardOf(ctx, notice.boardId);
       const row = board?.ref.get(notice.taskId);
+      if (process.env.DEBUG_2078) console.error("[DEBUG-2078] admit", notice.taskId, "board", board?.ref.collectionId, "row", row?.status, "owed", row === undefined ? null : isNoticeOwed(row, notice), "boards", (await delegatingBoardsOf(ctx)).length);
       // A notice its row doesn't owe was delivered already, or never owed.
       if (row === undefined || !isNoticeOwed(row, notice)) return { owed: false };
       return { owed: true, notice };

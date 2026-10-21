@@ -283,7 +283,7 @@ export function noticeText(
   // The dependents its ending cancelled, which owe no notice of their own (D2).
   const cascade =
     notice.cancelled !== undefined && notice.cancelled.length > 0
-      ? ` It cancelled the tasks that depended on it: ${notice.cancelled.join(", ")}.`
+      ? `; it cancelled the tasks that depended on it: ${notice.cancelled.join(", ")}`
       : "";
   switch (notice.ending) {
     case "completed":
@@ -295,7 +295,7 @@ export function noticeText(
     case "retried":
       return `${named} failed with ${worker} and runs again: ${notice.error ?? "no error was recorded"}`;
     case "cancelled":
-      return `${named} was cancelled.${cascade}`;
+      return `${named} was cancelled${cascade}`;
   }
 }
 
