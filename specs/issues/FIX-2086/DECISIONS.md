@@ -14,7 +14,7 @@ flowchart TD
   D1 -.->|"rejected"| X1["a line only the running request sees · lost on a retry"]
   I --> D2["D2 · a steer no request took gives the task one more turn"]
   D2 -.->|"rejected"| X2["settle anyway · the steer recorded as untaken"]
-  I --> D3["D3 · the latest finished follow-up reads as current · models and screens"]
+  I --> D3["D3 · the latest completed follow-up reads as current · models and screens"]
   D3 -.->|"rejected"| X3["screens only · getTask returns the original"]
 ```
 
@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A line written into the task's session, which only the request running now reads, as a user's line reaches a task today |
 | **Because** | A steer "joins the brief" (the concept's table), and a brief outlives an attempt: if the attempt that took a steer fails, the retry must not redo the task as first filed. Session history can't carry that: a retry may start before the line is read, retention evicts old items, and history can't tell a kept line from a refused one, which is why the coding door keeps its own `turns` collection today. On the row, `getTask` shows what the task was told |
-| **Locks in** | `steers` on the task row: server-written, append-only, each with its sender and the attempt that took it, readable through `getTask`. The coding door's `turns` collection folds into it and goes. At most 20 per task; the 21st is refused, naming the rule (cancel and refile, or a follow-up). A retry's brief carries every steer, taken or not |
+| **Locks in** | `steers` on the task row: server-written, append-only, each with its sender and the attempt that took it, readable through `getTask`. The coding door's `turns` collection folds into it: its writes go, and a turn no attempt took at upgrade reads as a steer ([Upgrade](#decided-not-asked)). At most 20 per task; the 21st is refused, naming the rule (cancel and refile, or a follow-up). A retry's brief carries every steer, taken or not |
 
 ![D1: where a steer is kept. On the task, every later attempt reads it, chosen, beside a line only the running request sees. Decides it: a retry after a steer; kept on the task, the retry has it; a session line is lost. The price: the brief grows with each steer, capped at 20. A tie: what the person sees in the session. Locks in: steers on the row, the turns collection goes. Flips if steers must not survive a retry](figures/d1-steer-on-the-task.svg)
 
@@ -54,15 +54,15 @@ costs a model turn each time. Then an untaken steer is reported to its sender in
 task settles.
 
 <a name="d3"></a>
-## D3 · The latest finished follow-up reads as current, for models and screens
+## D3 · The latest completed follow-up reads as current, for models and screens
 
 | | |
 |---|---|
 | **Instead of** | Showing the follow-up's output as current only on screens, with `getTask` returning the original alone |
 | **Because** | The epic's [ER-5](../../epics/FIX-2056/DECISIONS.md#who-owns-what): the four tools are the one task surface for models and screens. A filer's model reading writer's task should see the version Alice sees, not one she replaced. Computed at read from `followUpOf`, nothing is stored, so the original's output never changes |
-| **Locks in** | The task view (`getTask`, `listTasks`, the screen actions) adds `current`: the id and output of the latest finished follow-up in the chain, or absent when there is none. `output` stays the row's own. A dependent still reads the output of the task it named, as delivered |
+| **Locks in** | The task view adds `current`: the latest follow-up in the chain that **completed**. One that errored or was cancelled is skipped, and `current` is absent when none completed, so a model and a screen read the same thing. On `getTask` and the screen action reading one task it is `{ id, output }`, the output cut to `READ_OUTPUT_LIMIT` with `outputCut` set, the projection `readTask` applies today (BP-042). `listTasks` stays result-free: a row carries `current: { id }` only. `output` stays the row's own. A dependent still reads the output of the task it named, as delivered |
 
-![D3: what a task view calls current. The latest finished follow-up, for models and screens, chosen, beside screens only. Decides it: a filer's model reading the task Alice corrected. The price: one more field on every task read. A tie: the original output is never changed either way. Locks in: current on the task view, dependents unchanged. Flips if filers must never see a version they did not file](figures/d3-current-for-everyone.svg)
+![D3: what a task view calls current. The latest completed follow-up, for models and screens, chosen, beside screens only. Decides it: a filer's model reading the task Alice corrected. The price: one more field on every task read. A tie: the original output is never changed either way. Locks in: current on the task view, dependents unchanged. Flips if filers must never see a version they did not file](figures/d3-current-for-everyone.svg)
 
 It comes down to a filer's model reading a corrected task: screens-only shows it the version Alice replaced.
 
@@ -104,7 +104,10 @@ It comes down to a filer's model reading a corrected task: screens-only shows it
   reads as pending with one steer pointing at the session's latest line, so its attempt still
   picks the task up. Its output is replaced once, by that attempt, the last time. A row parked
   for a turn at upgrade (a door that crashed between the park and the re-queue) reads as pending,
-  not charged: a sixth entry in the same map.
+  not charged: a sixth entry in the same map. A turn the coding door kept that no attempt took
+  (`turns/**`, neither delivered nor withdrawn) reads as an untaken steer on its row, from the
+  turn's person, keyed by the turn's id so a replay adds nothing: a seventh entry (BP-030). Writes
+  to `turns/**` stop at upgrade; its reader stays, read-only, until the map goes.
 - **A taken steer shows in the task's session** as a line from its sender, so the session reads
   as the worker was told.
 - **No POC and no checker.** The premises are read from code and cited; nothing rests on a count.
@@ -152,5 +155,8 @@ discarding one.
 - **Cross-spec** — `updateTask`'s callers briefly added the assignee for an `output` checkpoint;
   on the owner's revision the checkpoint is FIX-2081's `reportProgress`, and the callers are back
   to the filer and the user from a screen.
+- **Codex, round 1** (factual, no round) — `current` follows `readTask`'s bounded output and
+  `listTasks` stays result-free; `current` names completed follow-ups only; an untaken legacy
+  turn reads as a steer at upgrade. The epic's migration lines gain the removed door exports.
 
 Open: none.

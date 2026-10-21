@@ -10,7 +10,7 @@
 | **redirects a task a worker is running** | No tool for it. Typed in the task's session, the line is a separate reply, not part of the task | The running request takes it before its next model call. No attempt is used, nothing settles, nothing is cancelled |
 | **talks to a running coding run** | The run's attempt is stopped, parked and re-queued through a door only coding flows have | The current coding run ends, and once its process has exited the same request starts the next run in the same coding session, with the message |
 | **wants a finished task done differently** | A message reopens it: same id, and its output is overwritten | Refused, naming the rule. A follow-up task runs in the same session; the original output stays as delivered |
-| **already used a finished task's output** (its filer, a dependent) | It can change underneath them | It never changes. The task view shows the latest finished follow-up's output as current, the original as history |
+| **already used a finished task's output** (its filer, a dependent) | It can change underneath them | It never changes. The task view shows the latest completed follow-up's output as current, the original as history |
 | **types in a task's session** | Reopens, steers or replies, depending on the kind and the status | One meaning: a steer while the task is open, conversation once it has finished |
 
 ## The goal, and how we'll know it's met
@@ -24,7 +24,7 @@ changes, because a correction is a follow-up.**
 | **The real need** | *"One way to brief, steer and redirect a task, and results that stay as delivered"* (the issue). Concept [rule 20](../../../docs/internal/design/workforce-coordination-concept.md#the-rules); stories T-20, T-21, T-26, T-29, T-31, U-02 |
 | **Smaller, and rejected** | "Remove reopen." Finished output stops changing, but a filer still can't steer, a coding run still has its own door, and a line in a task's session still means three things |
 | **Bigger, and not this issue's** | A steer that answers a question a task stopped on, and retiring `answerTask` (FIX-2058, the epic's [D2](../../epics/FIX-2056/DECISIONS.md#d2)) · a message to a task, which is conversation and never a steer (FIX-2070) |
-| **Not done if** | Any write but the steer puts words into an open task · a steer uses an attempt, records an ending or cancels · a task settles with a steer no request took · anything writes a finished task's output again, except once for a row reopened before the upgrade, by the attempt already picking it up · `reopen` or a message door is still exported · a reopened row in flight at upgrade is dropped |
+| **Not done if** | Any write but the steer puts words into an open task · a steer uses an attempt, records an ending or cancels · a task settles with a steer no request took · anything writes a finished task's output again, except once for a row reopened before the upgrade, by the attempt already picking it up · `reopen` or a message door is still exported · a reopened row in flight, or a coding turn no attempt took, is dropped at upgrade |
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,8 @@ Four ways in become one steer kept on the task; a finished task takes a follow-u
 - // a user's line on a finished task's session reopened it, same id, new output
 + updateTask({ id, message: "Make it shorter" })   // refused: finished; file a follow-up
 + createTask({ goal: "Half as long", followUpOf: id })   // same session, same worker
-+ getTask({ id })   // { ..., output, current: { id: followUpId, output } }
++ getTask({ id })   // { ..., output, current: { id: followUpId, output } }  latest completed; output cut as readTask's
++ listTasks()       // rows carry current: { id } only, no output
 ```
 
 ```diff
@@ -117,7 +118,7 @@ when none is left.
 | Already here | What this does with it |
 |---|---|
 | The job, *send words into a task*: `reopen` ([`reopen.ts`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/workforce/src/conversation-board/reopen.ts)), the coding door ([`door.ts:14-21`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/harness-manager/src/door.ts#L14-L21)), `answerTask`, and a line in an open task's session, a separate reply ([`agent-worker-flow.ts:1321-1324`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/workforce/src/agent-worker-flow.ts#L1321-L1324)). Closest: the coding door, which already steers without an attempt | **Folds** three into one: `updateTask`'s `message`. `answerTask` stays for FIX-2058. A steer is not a fifth way |
-| The door's `turns` collection: a line kept per attempt, taken once ([`turns.ts`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/harness-manager/src/turns.ts)) | **Generalised.** Its keep-then-take rule moves onto the task row; the collection goes ([D1](DECISIONS.md#d1)) |
+| The door's `turns` collection: a line kept per attempt, taken once ([`turns.ts`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/harness-manager/src/turns.ts)) | **Generalised.** Its keep-then-take rule moves onto the task row; its writes go, and a turn no attempt took reads as a steer at upgrade ([D1](DECISIONS.md#d1)) |
 | A context entry re-read before every model step ([`binding-reader.ts:15-19`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/orchestration/src/skills/binding-reader.ts#L15-L19)) | **Builds on.** How a running request takes a steer |
 | [FIX-1817 D2](../FIX-1817/DECISIONS.md#d2): nothing reopens; more work is a follow-up | **Restored.** The concept reverses FIX-1764's reopen, which superseded it |
 | FIX-1764's reopen (no retained spec; [#3534](https://github.com/fixpoint-labs/flow-state-dev/pull/3534) retires it) | **Superseded** |
@@ -127,8 +128,8 @@ when none is left.
 
 | The debt | |
 |---|---|
-| **Removes** | `reopen`, its patch, the `reopened` mark and change kind, the reopened turn · `messageDoor`, `harnessMessageDoor`, `reopenIn`, the park for a turn and the `turns` collection · the reply that runs beside an open task |
-| **Adds** | `steers` on the task, with a taken mark per attempt, written through one collection verb · `current` on the task view ([D3](DECISIONS.md#d3)) · rule 6's untaken-steer input · a map entry for a row parked for a turn, removed with the map no earlier than FIX-2071 |
+| **Removes** | `reopen`, its patch, the `reopened` mark and change kind, the reopened turn · `messageDoor`, `harnessMessageDoor` and its schemas and types, `reopenIn`, the park for a turn and writes to the `turns` collection ([migration lines](../../epics/FIX-2056/migration.md)) · the reply that runs beside an open task |
+| **Adds** | `steers` on the task, with a taken mark per attempt, written through one collection verb · `current` on the task view ([D3](DECISIONS.md#d3)) · rule 6's untaken-steer input · map entries for a row parked for a turn and for a turn no attempt took, removed with the map no earlier than FIX-2071 |
 | **Leaves** | Answering a question by a steer (FIX-2058) · a worker flow with no model call takes a steer only as its next turn, by design ([D2](DECISIONS.md#d2)) |
 
 **Net: down.** A verb, two doors, a collection, a park and a side reply go; a collection verb, one
@@ -148,7 +149,7 @@ reads after a task settles.
    wrong: a long task's brief grows with every steer.
 2. **[D2](DECISIONS.md#d2) · A steer no request took gives the task one more turn before it
    settles.** If wrong: a late "never mind" costs one extra model turn.
-3. **[D3](DECISIONS.md#d3) · The latest finished follow-up reads as current, for models and
+3. **[D3](DECISIONS.md#d3) · The latest completed follow-up reads as current, for models and
    screens.** If wrong: a filer's model reads a correction it didn't ask for.
 
 **Open: none.** Number 2 is the one to weigh: it decides when a redirected task finishes.
