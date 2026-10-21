@@ -48,7 +48,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
 | A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |
 | `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
-| `dispatchedTaskPredicate` | The board's declared `mode` (`board.mode`): a delegation board's drain waits on no row, a plan board's on every row | FIX-2076 |
+| `dispatchedTaskPredicate` | The board's declared `mode` (`board.mode`): a delegation board's drain waits on no row, a plan board's on every row. A delegation board excuses every row, so a board mixing inline and dispatching assignees isn't supported: split it into a plan board and a delegation board | FIX-2076 |
 
 Behaviour that changes without a removed name, carried by the owner's changeset the same way.
 Behaviour lines live here, not in the table above.
