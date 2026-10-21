@@ -33,15 +33,15 @@ function takesTaskId(schema: ActionInputSchema | undefined, optional = false): b
 }
 
 /**
- * The generated tool that starts a recorded row, `dispatchTask_<suffix>`. Its
+ * The generated tool that starts a held row, `dispatchTask_<suffix>`. Its
  * `taskId` is optional, since a goal files a new task instead, so the required
  * `taskId` rule alone would never offer it; on a row it starts that row.
  */
 const DISPATCH_PREFIX = "dispatchTask_";
 
 /**
- * Eight of the task tools `taskToolActions` generates for a board, always
- * together. It also generates `answerTask`; these eight are enough to find a
+ * Seven of the task tools `taskToolActions` generates for a board, always
+ * together. It also generates `answerTask`; these seven are enough to find a
  * board's family.
  */
 const TASK_TOOLS = [
@@ -49,7 +49,6 @@ const TASK_TOOLS = [
   "assignTask",
   "completeTask",
   "failTask",
-  "blockTask",
   "cancelTask",
   "updateTask",
   "listTasks",
@@ -57,7 +56,7 @@ const TASK_TOOLS = [
 
 /**
  * The board suffixes the flow's own action list names: every `<suffix>` for
- * which all eight `<tool>_<suffix>` above are actions. `taskToolActions` generates
+ * which all seven `<tool>_<suffix>` above are actions. `taskToolActions` generates
  * them together, so a whole family is a board's tools even when this
  * session has no rows on that board (a sibling session sharing the flow
  * kind, or a board with no tasks yet). An app's own `cancelTask_now`
