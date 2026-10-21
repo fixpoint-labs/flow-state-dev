@@ -92,9 +92,15 @@ It comes down to hosts without an index: the index's time leaves the list empty 
   worker on the server, as her own message would reach it (BP-031). A worker not on her roster, or
   an assignee not among its delegates, refuses the filing, and the fire is dropped like any failed
   filing. The write itself is not checked: a roster changes after a row is written.
-- **One filing path.** If FIX-2081 lands first, the fire calls `createTask`'s block; if this
-  lands first, the filing beneath today's actions, which FIX-2081 keeps. No filing code is this
-  issue's own.
+- **A schedule whose assignee is its own `input.filer` is refused at fire,** dropped like any
+  failed filing. A filing naming the worker itself is a step on its plan ledger (FIX-2076), which
+  only that worker's own request drains, so a fired one would sit there unworked and its ending
+  would owe launch no notice.
+- **One filing path.** Before FIX-2081, the fire uses the start-now filing beneath
+  `dispatchTask_tasks`'s goal form: filed ready, the board woken, as Alice. Not `addTask_tasks`'s,
+  which records the row without starting it. Whichever of FIX-2081 and this issue lands second
+  moves the fire onto `createTask`'s block, so removing `dispatchTask` never touches schedules. No
+  filing code is this issue's own.
 - **A body `idempotencyKey` is refused with 400 naming the change**, not ignored (BP-030), so a host
   relying on it learns at upgrade. The routes file's header comment is rewritten with it, which
   closes [FIX-1219](https://linear.app/fixpoint-labs/issue/FIX-1219).

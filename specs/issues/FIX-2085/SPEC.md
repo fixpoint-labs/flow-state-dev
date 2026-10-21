@@ -108,7 +108,7 @@ the handler, which files.
 | Already here | What this does with it |
 |---|---|
 | What fires a time at most once: the per-process cache (`scheduled/src/idempotency.ts`), the index's atomic `claimDue`, BullMQ's one job per slot, the best-effort overlap check | **Replaces** the cache with one stored time per schedule at the endpoint, where all paths meet. The closest, `claimDue`, covers only the polling path. The rest are left alone |
-| What files a task from outside a worker turn: a screen's task actions, and routing's `filePost` (`workforce/src/conversation-board/board.ts:712`) | **Builds on** the screen's filing (FIX-2081's `createTask` once it lands, the same filing beneath it until then). `filePost` is FIX-2083's |
+| What files a task from outside a worker turn: a screen's task actions, and routing's `filePost` (`workforce/src/conversation-board/board.ts:712`) | **Builds on** the screen's filing (FIX-2081's `createTask` once it lands; until then the start-now filing beneath `dispatchTask_tasks`). `filePost` is FIX-2083's |
 | What works out a next run: `parseNextFireAt`; the index row's `nextFireAt` | **Builds on** `parseNextFireAt` at read. The index row stays the index's |
 | [FIX-1546 D1](../FIX-1546/DECISIONS.md#d1): an index row is its schedule's cell plus key | **Kept** |
 | The resolver's `kind` → block map (FIX-838) and the row's stamped org (FIX-1442, FIX-1545) | **Kept.** Workforce adds one `kind`, `task` |
