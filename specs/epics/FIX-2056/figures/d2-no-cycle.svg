@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2: where the suspension parts of phase 3 go. Chosen: no child waits on FIX-2058; the answer by steer and the waiting-on-a-person mark move there. Instead of: those parts blocked by FIX-2058 inside this epic. It comes down to the first row: blocked by FIX-2058, which this epic blocks, the epic can never wrap. Second row, the price: a steer can't answer a question until FIX-2058 lands, and answerTask stays a fifth tool till then. Third row, a tie: the work is done either way, by one epic or the other. Locks in FIX-2086's steer never answers. Flips if FIX-2058 is blocked only by the children it needs."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: where the suspension parts of phase 3 go. Chosen: no child waits on FIX-2058; the answer by steer and the waiting-on-a-person mark move there. Instead of: those parts blocked by FIX-2058 inside this epic. It comes down to the first row: blocked by FIX-2058, which this epic blocks, the epic can never wrap. Second row, the price: a steer can't answer a question until FIX-2058 lands, and answerTask stays an interim extra tool till then. Third row, a tie: the work is done either way, by one epic or the other. Locks in FIX-2086's steer never answers. Flips if FIX-2058 is blocked only by the children it needs."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -67,7 +67,7 @@
     <text class="t-lbl" x="32" y="237">BY STEER</text>
     <text class="mark minus" x="228" y="226">−</text>
     <text class="t-b" x="248" y="225">Waits for FIX-2058</text>
-    <text class="t-s" x="248" y="243">answerTask stays a fifth task tool till then</text>
+    <text class="t-s" x="248" y="243">answerTask stays an interim extra tool till then</text>
     <text class="mark plus" x="592" y="226">+</text>
     <text class="t-b" x="612" y="225">Ships with the steer</text>
     <text class="t-s" x="612" y="243">in FIX-2086, if it could ever start</text>
