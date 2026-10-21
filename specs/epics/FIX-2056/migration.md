@@ -3,8 +3,10 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md)
 
 One line per public surface the set removes, for the changesets and for consumers outside the
-repo. Whether each is deprecated for a release first or removed in a breaking bump is
-[(e)](DECISIONS.md#open), **pending the owner's answer**. Each tool's `<tool>_tasks` action follows its tool.
+repo. Each is removed outright in its owner's PR, with no deprecation release, in a minor bump
+([(e)](DECISIONS.md#e)); that PR's changeset carries the row's line and says teams outside the
+repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shift Manager's
+`errorCapture` is not here: it is kept ([(f)](DECISIONS.md#f)).
 
 | Removed | Use instead | Owner |
 |---|---|---|
@@ -18,4 +20,3 @@ repo. Whether each is deprecated for a release first or removed in a breaking bu
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |
-| `errorCapture` into the Error Reporter | Pending [(f)](DECISIONS.md#open) | FIX-2078 |

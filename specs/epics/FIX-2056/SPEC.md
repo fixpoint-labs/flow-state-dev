@@ -30,7 +30,7 @@ The scope is every phase 1 and phase 3 row of
 | Is it the right goal? | |
 |---|---|
 | **Smaller, and rejected** | Posts become tasks alone: FIX-2058 would build on a gate that lets a waiting task run twice |
-| **Not done if** | An ending is recorded outside the gate or the drain · a fifth task tool is exported, `answerTask` aside ([D2](DECISIONS.md#d2)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
+| **Not done if** | An ending is recorded outside the gate or the drain · a fifth task tool is exported, deprecated ones included, `answerTask` aside ([D2](DECISIONS.md#d2), [(e)](DECISIONS.md#e)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -112,6 +112,7 @@ every child blocks the closure, left off. The longest chain is four.
 - **Patterns**, already plan boards; claim orders; routing policies, rounds and records; a delegate's memory.
 - **The agent flow**, and `chief-of-staff` until FIX-2071; **messages** until FIX-2070; **parks and
   `answerTask`** until FIX-2058.
+- **Shift Manager's error route** into the Error Reporter, re-expressed on the ending path ([(f)](DECISIONS.md#f)).
 - **`dispatcher()`** stays the transport a row runs through, not a row of its own.
 - **Not children:** FIX-2072, FIX-2073, FIX-2075, FIX-2063, FIX-1024, FIX-1637 ([why](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)).
 
@@ -128,7 +129,7 @@ every child blocks the closure, left off. The longest chain is four.
 
 | The debt | |
 |---|---|
-| **Removes** | Posts · six task tools · `settleSplitTask` · reopen · blocked · the automatic error routes ([f](DECISIONS.md#open)) · `afterRun`'s resends · the stopgap · a second fit call |
+| **Removes** | Posts · six task tools · `settleSplitTask` · reopen · blocked · the `reportOwed` error marker · `afterRun`'s resends · the stopgap · a second fit call |
 | **Adds** | A board `mode` · `getTask`'s wait · four filing settings · the role check at hire · scheduled tasks · one read for retired rows until FIX-2071 ([D3](DECISIONS.md#d3)) |
 
 **Net: down.** Six task tools and a row kind leave; one setting per job arrives.
@@ -145,6 +146,10 @@ failure. **[The debt](#whats-already-here-and-the-debt):** net down.
 3. **[D3](DECISIONS.md#d3) · A retired row in flight at upgrade is read, not dropped, through one
    map.** If wrong: one read nobody needed.
 
-**Open, the owner's:** [(e) deprecate or break](DECISIONS.md#open) · [(f) the automatic error route](DECISIONS.md#open).
+**Decided by the owner:** [(e) remove the old APIs outright](DECISIONS.md#e), no deprecation
+release · [(f) keep Shift Manager's error route](DECISIONS.md#f) · [(a) one epic](DECISIONS.md#a) ·
+[(b) D1 kept](DECISIONS.md#b).
+
+**Open, the owner's:** none.
 
 Epic · 10 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest
