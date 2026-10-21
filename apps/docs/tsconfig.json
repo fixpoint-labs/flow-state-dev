@@ -1,5 +1,5 @@
 {
-  // Inlined from @docusaurus/tsconfig 3.9.2 minus `baseUrl`. FIX-2068 extends it again once that option is gone.
+  // Inlined from @docusaurus/tsconfig 3.10.2 minus `baseUrl`. FIX-2068 extends it again once that option is gone.
   "compilerOptions": {
     "allowJs": true,
     "esModuleInterop": true,
