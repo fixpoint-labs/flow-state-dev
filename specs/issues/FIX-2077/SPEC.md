@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **files a task whose worker leaves background work running** | Hears "done" while that work still writes | Hears "done" once, after it ends, including work the flow's own end hooks start |
-| **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no piece open; its output is the latest `reportProgress` checkpoint, else that answer ([D3](DECISIONS.md#d3)) |
+| **builds a manager worker that splits its task** | The task parks; a separate step settles it as `{ answer, pieces }`, failing it if a piece failed | The task stays running. It is done when a request for it ends with no piece open or still owed to it; its output is the latest `reportProgress` checkpoint, else that answer ([D3](DECISIONS.md#d3)) |
 | **messages a worker whose task is running** | The message runs after the task settled | It runs for the task before it settles; its answer never becomes the output, though a checkpoint it reports does |
 | **has a task whose request waits on a webhook, a call or a task** | Its claim lapses in two minutes and the task runs again | It shows running and keeps its claim, across a restart too ([D1](DECISIONS.md#d1)) |
 | **has a task that stops to ask a person** | The same lapse: it runs again with the question open | It keeps its claim; it shows running until FIX-2058 ([decided](DECISIONS.md#person-stop)) |
@@ -16,8 +16,8 @@
 ## The goal, and how we'll know it's met
 
 **A dispatched task is settled once, by the claim gate, only when its work is over: its request
-and all that request's background work have ended, nothing it filed is open, and nothing is
-queued for it. A task that waits is never run twice.**
+and all that request's background work have ended, nothing it filed is open or still owes it its
+ending, and nothing is queued for it. A task that waits is never run twice.**
 
 | Is it the right goal? | |
 |---|---|
@@ -29,7 +29,7 @@ queued for it. A task that waits is never run twice.**
 ```mermaid
 flowchart LR
   A["a real engine · durable store · a session board"] --> L1["leg a · background work, and work an end hook starts"]
-  A --> L2["leg b · two pieces · the last ends just after a check"]
+  A --> L2["leg b · two pieces · the last ends just after a check, or during a request"]
   A --> L3["leg c · a message queued mid-task"]
   A --> L4["leg d · a wait and a person's stop · a lapse · the resume"]
   L1 --> R["rows read through the collection · notices the filer heard"]
@@ -46,7 +46,7 @@ settle point, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-board/settles-when-its-work-is-over/` · no model · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Each leg: one ending, heard once by the filer. a: settled after the last write of the side chain the action starts and of the one the flow's `onFinished` starts. b: running while a piece is open; the last piece ends after a request's check ran and before its notice is admitted; settled once with the last turn's answer (its worker never checkpoints), no running row left. c: the message's request ends before the settle; output is the latest `reportProgress` checkpoint, the message's request's included, or, when none was made, `work`'s returned result, never the message's answer. d: a wait and a person's stop each still running on attempt 1 after a reclaim past the lease; done after the resume |
+| **Signal** | Each leg: one ending, heard once by the filer. a: settled after the last write of the side chain the action starts and of the one the flow's `onFinished` starts. b: running while a piece is open; the last piece ends after a request's check ran and before its notice is admitted; settled once with the last turn's answer (its worker never checkpoints), no running row left. Variant: the last piece ends while a request for the parent runs; that request's check leaves it running, and it settles after the turn the piece's notice wakes, with that turn's answer. c: the message's request ends before the settle; output is the latest `reportProgress` checkpoint, the message's request's included, or, when none was made, `work`'s returned result, never the message's answer. d: a wait and a person's stop each still running on attempt 1 after a reclaim past the lease; done after the resume |
 | **Input** | Deterministic workers on the Workforce session board. A different delay, piece count or suspension reason must pass too |
 | **Anti-game** | No assertions on recorder calls or a stubbed gate: rows through the collection, notices as the filer got them |
 | **Control that must fail** | `GOAL_CONTROL=settle-at-return` must FAIL leg a on *settled after the side chain's last write* and leg c on *the message's request ends before the settle*. Today's `main` must also FAIL legs b and d |
@@ -83,7 +83,7 @@ flowchart LR
   W["a request for the task · work, onTaskSettled, a queued message, a resume"] --> E["engine drains background work · onFinished · drains what the end hooks started"]
   E --> G["claim gate · the one rule-6 check"]
   G -->|"done"| S["settle the row once"]
-  G -->|"a filed task open or a message queued"| H["record waitingOn · drop the lease · the next request re-checks"]
+  G -->|"a filed task open or owed, or a message queued"| H["record waitingOn · drop the lease · the next request re-checks"]
   W -->|"suspends"| K["record waitingOn · keep the claim · no lease"]
 ```
 
@@ -117,7 +117,7 @@ suspends, or ends with work still open, records what it waits on (`waitingOn`) i
 |---|---|
 | **Removes** | The split park, its parent binding and its settle entry (`settleSplitTask`) · its cancel cascade (FIX-2080's replaces it) · the `{ answer, pieces }` output · the automatic piece-failure rule and the retry marker · the settle at the entry's last step |
 | **Adds** | `waitingOn` on a running row: what keeps it open (a person, filed tasks, or another wait). Not a form of FIX-2080's `held`, which is a status before a start; `waitingOn` exists only after one. It outlives the review park, which FIX-2058 retires. One engine seam after the last drain. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
-| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded wait is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) removes it, not this issue; a crash between the last piece ending and its notice strands the parent until FIX-2078's wake pays it · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
+| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded wait is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) removes it, not this issue; a crash between the last piece ending and the settle, before its notice is acted on or after, strands the parent until FIX-2078's wake pays it · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
 
 **Net: down.** A park, a settle entry, a cascade, an output shape and a failure rule go; one
 `waitingOn` field and one engine seam arrive.

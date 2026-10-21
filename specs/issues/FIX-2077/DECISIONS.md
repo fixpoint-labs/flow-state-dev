@@ -24,7 +24,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Keeping the lease and renewing it up to the wait's deadline |
 | **Because** | A lease means "a live worker holds this". A waiting task has no live worker: its request is stored, and after a restart nothing renews anything. So the row records what it waits on (`waitingOn`) and drops its lease, and the reclaim, which only takes rows whose lease has run out, leaves it alone. A wait on filed tasks has no deadline to renew to at all |
-| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with a filed task open or a message queued: both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes) stays running until its wait's own deadline or FIX-2078's sweeper ends it, so this ships with or after FIX-2078 |
+| **Locks in** | A waiting task is never re-run by a lapse. That covers a request that suspends and one that ends with a filed task open or owed, or a message queued: both set `waitingOn` and drop the lease. The price: a task whose wait is lost (a resume that never comes, or a queued message whose request a restart dropped) stays running until its wait's own deadline or FIX-2078's sweeper pays it, so this ships with or after FIX-2078 |
 
 ![D1: how a waiting task keeps its claim. No lease, the row records what it waits on, chosen, beside renewing the lease to the wait's deadline. Decides it: a server restart while the task waits. The price: a lost wait has no lease backstop](figures/d1-claim-without-lease.svg)
 
@@ -55,6 +55,14 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   of every request it admitted for a dispatched task. Today's other writers of done go: the split
   settle here, `completeTask`/`failTask` in FIX-2081, a wait's cancel in FIX-2082. FIX-2078 calls
   the same function when a filed task ends.
+- **"Nothing it filed is open" includes an ending still owed.** A filed task holds the parent while
+  it is open, and also while its ending is still owed to the parent's session: the `noticeOwed`
+  marker its ending wrote on its row, which clears when the notice is acted on, before the turn it
+  wakes; after FIX-2082 ([#3597](https://github.com/fixpoint-labs/flow-state-dev/pull/3597)), also a
+  lapsed wait slot its request has not read. Rule 6 reads both in `orchestration`, with no Workforce
+  read. So when the last piece ends during a request for the parent, that request's check leaves it
+  running, and the turn the piece's ending wakes decides it, as D3 assumes. Today's split settle
+  keeps the same guard (`holdsSettle` in `workforce/src/conversation-board/split.ts`).
 - **Where it runs: after the engine's last drain.** The engine drains background work, runs
   `onFinished`, then drains what `onFinished` and `onErrored` started
   (`engine/src/execution/runAction.ts`: `drainRequestSideChainPool` at `:2447`, `onFinished` at
@@ -153,5 +161,13 @@ For the implementer, recorded verbatim, not baked into the design.
   rest of this spec: the split row, the message row and *Not done if*, leg b, the filer's diff and
   the docs line, D3's *Locks in* and figure, and the epic's split-output migration row. No change
   to the approach.
+- **Amendment, after merge (3)** — from the epic's cross-spec audit, after the original review in
+  [#3592](https://github.com/fixpoint-labs/flow-state-dev/pull/3592). Rule 6's "nothing it filed is
+  open" also counts a filed task whose ending is still owed to the task's session, restoring the
+  guard today's split settle has; without it, a piece ending during a request let that request's
+  check settle the parent before the piece's ending reached it, which FIX-2078's delivery,
+  FIX-2082's lapsed slot and D3 all assume cannot happen. Leg b gains that variant. D1's price
+  names a dropped queued message, and the debt's crash case covers a crash after the notice too.
+  No change to the approach.
 
 Open: none.
