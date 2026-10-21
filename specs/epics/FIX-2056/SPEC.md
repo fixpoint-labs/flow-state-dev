@@ -121,7 +121,7 @@ every child blocks the closure, left off. The longest chain is four.
 | Already here | What the set does with it |
 |---|---|
 | The concept docs; FIX-1047's claim (#3521); FIX-2057's prune (#3541); FIX-2062's resume in turn (#3538) | **Builds on.** A removal needs a second route to its job, not zero callers (tenet 3) |
-| [#3102](https://github.com/fixpoint-labs/flow-state-dev/pull/3102)'s PD-3, PR-1 and PR-2: FIX-1870's, through `dispatchTask` | **Re-homed.** PR-1 and PD-3 to FIX-2083, PR-2 to FIX-2081 (`createTask`, then `getTask`'s wait). #3102 is amended at approval |
+| [#3102](https://github.com/fixpoint-labs/flow-state-dev/pull/3102)'s PD-3, PR-1 and PR-2: FIX-1870's, through `dispatchTask` | **Re-homed.** PR-1 and PD-3 to FIX-2083, PR-2 to FIX-2081 and FIX-2082 (`createTask`, riding `dispatchTask`'s wait until `getTask`'s, per [FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)). #3102 is amended at approval |
 | [FIX-1870 D1](../FIX-1870/DECISIONS.md#d1) and [its review notes](../FIX-1870/DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them): `dispatchTask` waits, one deep, and a timeout cancels | **Superseded.** `getTask` waits, 5 deep, and a deadline cancels nothing |
 | [FIX-1870 D2](../FIX-1870/DECISIONS.md#d2): a post that needs an answer is a task | **Kept and finished** by FIX-2083 |
 | [FIX-1872 D1](../../issues/FIX-1872/DECISIONS.md#d1): a post row on the delegate's own entry | **Superseded.** Session and result are filing settings |

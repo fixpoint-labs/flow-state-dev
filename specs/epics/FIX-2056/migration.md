@@ -10,9 +10,12 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 
 | Removed | Use instead | Owner |
 |---|---|---|
-| `addTask` | `createTask` | FIX-2081 |
-| `dispatchTask` | `createTask`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
-| `readTask` | `getTask` | FIX-2081 |
+| `addTask` | `createTask({ …, held: true })` to file without starting; `updateTask({ id, status: "pending" })` releases it | FIX-2081 |
+| `dispatchTask` | `createTask`; `{ taskId }` is `updateTask({ id, status: "pending" })`; `{ taskId, assignee }` is `updateTask({ id, assignee })`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
+| `readTask({ taskId })` | `getTask({ id })` | FIX-2081 |
+| `updateTask`'s `taskId`, `patch`, `addLabel`, `removeLabel` | Flat input: `updateTask({ id, priority, labels, … })`; `labels` replaces the list | FIX-2081 |
+| `addDelegate`, `removeDelegate`, `setFallback` on every coordinator | `managesOwnDelegates: true` in the coordinator's `WORKER.md`; otherwise the user edits the list | FIX-2081 |
+| A task session's reach to the whole roster | `delegates: [ … ]`, or `delegates: all` | FIX-2081 |
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
@@ -21,3 +24,10 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |
+
+Behaviour that changes without a removed name, carried by the owner's changeset the same way:
+
+| Changed | Now | Owner |
+|---|---|---|
+| `updateTask` on a started or finished task | Refused, naming the field and the state; a started task takes only a cancel | FIX-2081 |
+| Reassigning a running task | Refused: cancel it and file it again | FIX-2081 |

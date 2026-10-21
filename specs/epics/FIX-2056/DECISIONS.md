@@ -117,7 +117,9 @@ FIX-2081's own scope.
   2026-10-21). Every surface in [`migration.md`](migration.md) goes in the owning child's PR, in a
   minor bump (pre-1.0). That child's changeset carries the removal's one line from `migration.md`.
   No child ships a deprecated alias, wrapper or warning, and the closure's tool sweep allows none:
-  the only task tool besides the four is `answerTask` ([D2](#d2)). The cost, accepted: teams
+  the only task tool besides the four is `answerTask` ([D2](#d2)), and `dispatchTask` until FIX-2082
+  and FIX-2083 replace its wait and its post form, the sweep naming it ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1), amended at that
+  gate). The cost, accepted: teams
   outside the repo calling them rewrite at upgrade.
 - <a name="f"></a>**(f) · Shift Manager's automatic error route is kept** (owner, 2026-10-21).
   FIX-2078 owns it: `errorCapture` into the Error Reporter
