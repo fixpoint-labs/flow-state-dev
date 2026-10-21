@@ -457,7 +457,8 @@ action. An assignee holding anything other than a block (an object such as
 `{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
 ```ts
-import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
@@ -483,12 +484,53 @@ const board = taskBoard({
   },
 });
 
+// Runs in this session once per ending of a task the board handed out.
+const onEnding = handler({
+  name: "on-issue-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async (notice) => {
+    // notice.ending, and notice.output / notice.error / notice.question
+    return {};
+  },
+});
+
 export default defineFlow({
   kind: "issues",
   actions: { drain: { block: board.drain } },
+  internal: { actions: { onTaskSettled: taskSettledEntry({ block: onEnding }) } }, // required
   task: { actions: { implement: { block: implementBlock } } },   // what runs in the child
 })();
 ```
+
+**Hearing how a task ended.** The session that filed a row hears each of its endings once, as
+a request to its flow's `onTaskSettled` internal entry. `taskSettledEntry({ block, concurrency? })`
+builds that entry; `defineFlow` refuses a flow that holds a board that dispatches without one,
+whichever flow the rows run on. `block` takes `taskSettledInputSchema` / `TaskSettledInput`:
+`{ boardId, taskId, attempt, ending, output?, error?, question?, cancelled? }`, where `ending` is
+`"completed"`, `"errored"` (failed for good), `"parked"` (on its worker's question) or
+`"cancelled"`, and `cancelled` lists, on a failure or a cancel, the dependents it cancelled that
+the same session filed (they send no notice of their own). A retry sends nothing, nor does a row
+the filer waited on (`dispatchTask` with `wait`), nor a cancel the filer's own model made with its
+task tool in its turn. The block runs once per ending; if it throws, the notice stays owed and is
+sent again. The entry queues on the session unless `concurrency` says otherwise.
+
+A notice that couldn't be sent when the row ended (the process died, the send failed) is sent
+about two seconds later, or as soon as the server is running again if it was down then: on a host with durable execution and a store that keeps wakes, the
+durability sweeper runs `onTaskSettled` in the filing session with an empty input, which sends
+what that session's boards still owe (`payBoardDebts`) and never calls `block`. A filer whose
+session is gone, or a notice still owed past the host's `maxDebtAgeMs`, is recorded on the row's
+`metadata` under `noticeUndeliverable:<attempt>:<ending>` as `{ at, detail }`. User docs:
+[Hearing how a task ended](https://flow-state.dev/docs/orchestration/task-board#hearing-how-a-task-ended).
+
+That empty-input `onTaskSettled` request is the board's **pass**: it pays, in the filing session,
+whatever the session's boards still owe. It is built from two exports, for a flow that runs its
+own pass on another entry (named as
+`passEntry` in a `defineTaskCollection({ delivery })`): `payBoardDebts(ctx, ref, options?)` pays,
+in the running session, what a board's rows owe (cancels, cascades, resumes, notices past due) and
+answers `{ nextDue }`, the time the next debt falls due; `settlePassWake(ctx, entry, wake, nextDue)`
+then moves the session's wake for `entry` to `nextDue`, or clears it when nothing is owed. Read
+`wake` with `ctx.requestHost?.wakes?.read(entry)` at the start of the pass.
 
 `session` decides which child session an assignee's rows run in:
 
@@ -558,7 +600,8 @@ assistant: dispatcher({
 }),
 ```
 
-`defineFlow` refuses a dispatch whose entry the flow forgot to declare, a task
+`defineFlow` refuses a flow holding a board that dispatches with no `onTaskSettled` internal
+entry, a dispatch whose entry the flow forgot to declare, a task
 entry no board dispatches to and no `from` serves, a task dispatcher no board holds,
 two boards dispatching to one entry, and an entry with `from` that a board in the
 same flow also dispatches to. `board.dispatchers` lists the assignees that dispatch, in
@@ -912,8 +955,9 @@ for limits and errors.
 `wait` and `timeoutMs` are in the schema only on a board that dispatches, also resumes waits,
 and runs on a host that can hold a wait: pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true, resumesWaits: true })` only when
-whatever runs the board calls `resumeOwedWaits` as it touches the board outside a turn (a board
-run, a task's notice), and the host has durable execution and a running durability sweeper
+the board hands its rows out, so the flow holding it declares `onTaskSettled` (the filing
+session's `onTaskSettled` request resumes the waiting turn when its task ends; after a crash the
+session's wake sends it again), and the host has durable execution and a running durability sweeper
 (`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
 `taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`. On a task turn a wait is
@@ -921,7 +965,7 @@ refused with `wait_unavailable`; a layer that has its own way for a task to wait
 passes it as `taskTurnInstead` (a sentence), and the refusal and the `dispatchTask` description
 say it in place of the generic advice.
 
-Two functions sit under the option, for a layer that builds its own board surface:
+One function sits under the option, for a layer that builds its own board surface:
 
 - `dispatchAndWait(ctx, collection, init, { timeoutMs?, taskTurnInstead? })`, from
   `@flow-state-dev/orchestration/task-board`, files `init` and waits for its answer from inside
@@ -935,13 +979,14 @@ Two functions sit under the option, for a layer that builds its own board surfac
   `wait_stopped`: the person stopped the turn, the task is cancelled and the request is
   stopped. Through the task tools' `dispatchTask` the turn ends there, so the model never
   reads it.
-- `resumeOwedWaits(ctx, collection)`, from `@flow-state-dev/orchestration`, resumes each
-  waiting turn whose task has ended. Call it whenever your layer touches the board outside a
-  turn (a board run, a task's notice), so an answer whose resume was lost to a crash is still
-  delivered. It returns at once when nothing is owed. It also cancels each task whose wait was
-  stopped or timed out while its own cancel failed (`Task.cancelOwed`). Until something touches
-  the board, that task's worker may keep running. It resolves to `{ resumed, stillOwed }`, task
-  ids; a task still owed is retried on the next call.
+
+A waiting turn whose task has ended is resumed by the board's pass (`payBoardDebts`, above),
+which also cancels each task whose wait was stopped or timed out while its own cancel failed
+(`Task.cancelOwed`). Until that pass runs, that task's worker may keep running.
+
+**Migrating from `resumeOwedWaits`.** `resumeOwedWaits(ctx, collection)` is no longer exported.
+The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make
+sure the flow holding the board declares `onTaskSettled`.
 
 #### When a task stops on a question
 

@@ -136,9 +136,11 @@ Read next: **[Starting a job from a flow](/docs/server/background-work#starting-
 A board is a list of tasks plus a set of named workers that claim them. A worker normally runs its tasks inline, in the request that claimed them. Declare the board `mode: "delegation"` and put a `dispatcher({ action, session })` in each worker's position instead, and the board dispatches each claimed row to a dispatch run. How many runs that is depends on the worker's session key: `per-task` gives every row a run to itself, while `per-worker` and a shared `{ key }` send several rows into one run, one request each. The worker is declared once on the flow, under `task.actions`, and the worker names it with `action`. Do not set `type` — the stamped address is `type: "task"`:
 
 ```ts
-import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+import { z } from "zod";
 
 const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
 
@@ -160,14 +162,23 @@ const board = taskBoard({
   ],
 });
 
+// Runs in this session each time a row ends: completed, failed for good, parked on a question, or cancelled.
+const onEnding = handler({
+  name: "on-diligence-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
+
 export default defineFlow({
   kind: "diligence",
   actions: { run: { block: board.drain } },
+  internal: { actions: { onTaskSettled: taskSettledEntry({ block: onEnding }) } },
   task: { actions: { investigate: { block: investigateBlock } } },
 })();
 ```
 
-The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
+The drain claims a row, sends it to the `investigate` entry, and moves on. The run executes `investigateBlock` with the same worker input an inline worker would get, and settles the row itself. When the row ends, this session hears it once, on `onTaskSettled`, which `defineFlow` requires of a flow holding a board like this one; see [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended). Which session a row lands in is the worker's `session` policy: `"per-task"`, `"per-worker"`, or `{ key: (task) => string }`.
 
 Tasks are seeded here to keep the example in one piece. A row added later with `addTask` carries the same `assignee` field.
 
