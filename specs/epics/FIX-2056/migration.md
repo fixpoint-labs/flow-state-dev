@@ -65,3 +65,5 @@ Behaviour lines live here, not in the table above.
 | `updateTask({ message })` on an open task | Steers it: uses no attempt and never cancels | FIX-2086 |
 | A line typed in a finished task's session | Talk: the task doesn't change | FIX-2086 |
 | A scheduled fire for a time already fired, or earlier than one that has | Answered `200` with status `duplicate`, and nothing runs: a late retry of a missed time, or one delivered after the next time fired, never runs ([FIX-2085 D2](../../issues/FIX-2085/DECISIONS.md#d2)) | FIX-2085 |
+| A board that hands rows out (a `dispatcher` assignee, or a delegation board) on a flow with no `onTaskSettled` internal action | Refused when the flow is built, naming the entry: declare `internal: { actions: { onTaskSettled: taskSettledEntry({ block }) } }`, so every ending reaches the session that filed it | FIX-2078 |
+| An `onTaskSettled` handler, and a Workforce conversation, on a cancel | Receive `cancelled` endings: a cancel the filer didn't make itself through its own task tool is heard once, and a failure or cancel notice names the dependents it cancelled | FIX-2078 |

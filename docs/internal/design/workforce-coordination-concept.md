@@ -388,9 +388,9 @@ A behavior none of these rules explains is a bug in the model.
 7. Every ending of a delegated task, a failure included, reaches its filer once, as its result
    setting says: the waiting request, or `onTaskSettled`. Set to the filer's conversation, it
    lands there under the assignee's name.
-8. Every debt has a due time. The settling side pays it, `dispatch` and every touch resend it, and
-   the durability sweeper pays it when due. The first two are its fast paths; a resend pays it
-   if still owed.
+8. Every debt has a due time. The settling side pays it, a pass or a touch resends what is past
+   due, and the durability sweeper pays it when due. The first two are its fast paths; a resend
+   pays it if still owed.
 9. A request may wait on a task it filed, a call or a condition, even inside a waited-on task, up to
    5 waits deep (apart from the tree's 5), each with a deadline, but never on a task whose result
    goes to the conversation. A late call result is kept for a caller that waits again. It waits on
@@ -495,7 +495,8 @@ waits (rule 9); and twenty-three newly decided:
 - [x] **Dependencies stay within one board (rule 16).**
 - [x] **Waiting on a task is `getTask` with `wait` (rule 9).**
 - [x] **Recurring work is a schedule** that files a task → Tasks.
-- [x] **A failure is an ending (rule 7);** Error Reporter only if the filer messages it.
+- [x] **A failure is an ending (rule 7);** its delivery also sends a final failure to the Error
+  Reporter's intake, once, as the task occurrence it dedupes; a filer may still message it.
 - [x] **Task tools are public actions,** called by screens as the user → worker contract.
 - [x] **`dispatch` runs one at a time (rule 17).**
 - [x] **A board's `mode` is `plan` or `delegation` (rule 14).**

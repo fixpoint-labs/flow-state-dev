@@ -184,7 +184,7 @@ function buildHost(filename: string) {
             dispatchThroughSeam(ctx, { type: "internal", action: "runTaskBoard", session: { id: ctx.session.identity.id }, payload: {}, from: "goal-two-passes" });
           return { ok: true, outcomes: await Promise.all([send(), send()]) };
         }
-        return await dispatchAndWait(ctx as never, ref, { taskId: script.taskId });
+        return { ok: false, error: "unknown op" };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
@@ -220,9 +220,9 @@ function buildHost(filename: string) {
       resources: { ...installation.resources, ...board.resources },
       actions: { run: { inputSchema: doorInput.strict(), block: turn, userMessage: (i: { message: string }) => i.message }, ...board.actions },
       internal: { actions: board.entries(turn, () => "fixed") },
-      task: { actions: { work: workerTaskEntry({ name: `every-ending-${kind}-task`, turn }) } }
+      task: { actions: { work: workerTaskEntry({ name: `every-ending-${kind}-task`, turn: turn as never }) } }
     } as never);
-  workerFlows = { desk: flowOf("desk", deskBoard, deskTurn), doer: flowOf("doer", doerBoard, doerTurn) };
+  workerFlows = { desk: flowOf("desk", deskBoard, deskTurn), doer: flowOf("doer", doerBoard, doerTurn as never) };
 
   // The plain flow: orchestration's board, with no Workforce, handing rows to
   // its own task entry in sessions of their own.
@@ -505,11 +505,11 @@ await runGoal(async (failures, tell) => {
     });
     if (patches.length > 0) assertPatched(patches, REPO_ROOT, mark);
     if (child.status !== 0 || !existsSync(KILL_PLAN)) throw new Error(`the second process ended ${child.status} with no plan`);
-    return JSON.parse(readFileSync(KILL_PLAN, "utf8")) as Record<string, string & number>;
+    return JSON.parse(readFileSync(KILL_PLAN, "utf8")) as unknown;
   };
 
   await leg("b", async () => {
-    const plan = killed("kill-after-ending", [KILL_AFTER_ENDING]) as { conversation: string; x: string; piece: string };
+    const plan = killed("kill-after-ending", [KILL_AFTER_ENDING]) as unknown as { conversation: string; x: string; piece: string };
     const restarted = buildHost(KILL_DB);
     try {
       const h = await restarted.connect();
@@ -542,7 +542,7 @@ await runGoal(async (failures, tell) => {
 
   // ---- e. a claimant killed mid-lease ----------------------------------------------------------
   await leg("e", async () => {
-    const plan = killed("kill-mid-claim", []) as { conversation: string; z: string; leaseUntil?: number };
+    const plan = killed("kill-mid-claim", []) as unknown as { conversation: string; z: string; leaseUntil?: number };
     if (plan.leaseUntil === undefined) throw new Error("the row held no lease when the process died");
     const restarted = buildHost(KILL_DB);
     try {
