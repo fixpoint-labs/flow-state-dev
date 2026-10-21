@@ -34,7 +34,6 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
-import type { DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -258,8 +257,6 @@ export interface TaskRequestAdmissionOptions {
   readonly endRules?: TaskEndRules;
   /** Whether the turn this request runs is a task turn (`isTaskTurn`). Default `true`. */
   readonly taskTurn?: boolean;
-  /** Declarations `find` needs in scope (its ledgers' resources). */
-  readonly uses?: readonly DefinedCapability[];
 }
 
 /**
@@ -277,7 +274,10 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
     name: options.name,
     transient: true,
     inputSchema: z.unknown(),
-    ...(options.uses !== undefined ? { uses: [...options.uses] } : {}),
+    // No `uses` and no resources here, deliberately: a block that declares
+    // them is entered after an await (their load), and the claim and lease
+    // scopes opened below would then publish to nobody. `find` reads ledgers
+    // the entry's flow declares.
     execute: async (_input, ctx) => {
       // FIRST STATEMENTS, before any await: past the first await both publish to nobody.
       openWorkerClaimScope();

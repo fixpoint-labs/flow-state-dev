@@ -17,13 +17,12 @@
  *   admission line, so a restart doesn't lose it.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { defineCapability } from "@flow-state-dev/core";
 import { taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
 import { filedWorkHolds, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
-import { messageLogOf, workerMessagesResources } from "../messages/message-log";
+import { messageLogOf } from "../messages/message-log";
 import { WORKER_MESSAGES_SEEN_STATE } from "../messages/worker-message-entry";
 import { FILING_SESSION_STATE_KEY } from "../workers/keys";
-import { conversationLedgerAt, conversationLedgerResources, ownConversationLedger } from "./ledger";
+import { conversationLedgerAt, ownConversationLedger } from "./ledger";
 
 /** The running row this session works, on the ledger of the conversation it was opened for, or none. */
 export async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
@@ -62,14 +61,10 @@ export const conversationEndRules: TaskEndRules = {
   workQueued: (ctx) => messageQueued(ctx)
 };
 
-const admissionResources = defineCapability({
-  name: "task-session-admission",
-  resources: { ...conversationLedgerResources, ...workerMessagesResources }
-});
-
 /**
  * Admit the running request for this session's task while it waits: first in
- * the entry's sequencer, `.tap(admitOwnTask(...))`.
+ * the entry's sequencer, `.tap(admitOwnTask(...))`. The entry's flow declares
+ * the conversation ledger and the message log (the session kit's resources).
  *
  * @param answerCounts Whether the entry's turn answer can be the task's result (a woken turn's can, a message's can't).
  */
@@ -78,7 +73,6 @@ export function admitOwnTask(name: string, answerCounts: boolean) {
     name,
     answerCounts,
     find: ownTaskRow,
-    endRules: conversationEndRules,
-    uses: [admissionResources]
+    endRules: conversationEndRules
   });
 }

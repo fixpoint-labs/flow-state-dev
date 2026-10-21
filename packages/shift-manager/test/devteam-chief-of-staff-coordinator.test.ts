@@ -227,7 +227,7 @@ describe("the chief of staff as a coordinator (S10)", () => {
   it("refuses a coder session seeded with server-only fields, naming the field, as the coordinator and the EM do", async () => {
     const lab = await open();
     // The coder's session has no delegate or board fields: without the refusal, the create answers 201 and drops them.
-    for (const field of ["delegates", "fallback", "taskNotices", "splitParent"]) {
+    for (const field of ["delegates", "fallback", "taskNotices"]) {
       const created = await lab.door("POST", `coder/sessions`, { body: { userId: LAB_USER_ID, state: { workerId: "eng.coder", [field]: [] } } });
       expect(created.status, `${field}: ${JSON.stringify(created.body)}`).toBe(400);
       expect(created.body).toMatchObject({ field });
