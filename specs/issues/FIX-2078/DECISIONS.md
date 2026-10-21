@@ -130,10 +130,12 @@ that caused it. Then each cancel gets its notice, and turns are batched instead.
 
   The cascade owed is the debt of FIX-2080's D2
   ([#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)): orchestration's own
-  ending recorder writes it in the ending's write, and the ending's own pass pays it at once.
-  This issue gives it the wake, written before the ending, so that wake is the backstop that
-  pays it on time after a crash. It is one debt with no resend of its own: until this issue
-  lands, a touch pays it only once past due; after, it follows the rule for every debt below.
+  ending recorder writes it in the ending's write. This issue pays it at the delivery step the
+  convergence point names (same-board dependents' cancels before the notice is composed; on
+  repair, an owed cascade before an owed notice is resent), with a wake per half as the two rows
+  above say, so it is paid on time after a crash. It is one debt with no resend of its own:
+  until this issue lands, the ending's own pass pays it and a touch pays it once past due;
+  after, it follows the rule for every debt below.
 
 - **Order against FIX-2077.** This issue removes the replay of owed endings on a touch and
   replaces it with the wake. If FIX-2077 lands first, it keeps that replay and removes only the
