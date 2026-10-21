@@ -21,6 +21,7 @@ import { act, everythingIn, refusal, talk, textOf, type Connected, type Person, 
 import { messageOf, type RunRecord, type Turn } from "./record.mts";
 import { askInStream, delegatesPanel, projectGroups, projectWorkstreams, rosterRows, type ProjectAt } from "./screens.mts";
 import { isPostRow } from "../../lib/post-rows.mts";
+import type { StoredItem } from "../../lib/shift-manager.mts";
 import { anythingRunning, conversationRecord, sessionRows, taskRows, workerRow, type Delivery, type StoredSession, type StoredTask } from "./store.mts";
 
 const hex = (n = 2) => randomBytes(n).toString("hex");
@@ -327,7 +328,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
           mine = conversationRecord(o.store, A.userId, convId).ledger.filter((d) => d.postId === turn.requestId);
           const to = mine.find((d) => d.delegate.worker === facts.fork && d.status === "delivered" && d.sessionId !== undefined);
           if (to !== undefined) {
-            const items = await alice.routes.items(to.sessionId!, "message").catch(() => []);
+            const items = await alice.routes.items(to.sessionId!, "message").catch((): StoredItem[] => []);
             const said = items.filter((i) => i.role === "assistant").at(-1);
             if (said !== undefined) {
               answer = { session: to.sessionId!, text: textOf(said) };

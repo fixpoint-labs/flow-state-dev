@@ -40,22 +40,22 @@ const agent = cursorAgent({
   cwd: (ctx) => workspacePathFor(ctx),              // where the run works
   resume: (ctx) => storedAgentId(ctx),              // which agent to continue
   onSession: (id, ctx) => storeAgentId(id, ctx),    // called the moment one is opened
-  agent: {
-    model: { id: "composer-2.5" },
-    apiKey: process.env.CURSOR_API_KEY,
-  },
+  model: (ctx) => storedModel(ctx) ?? "composer-2.5", // which model, per run (or a fixed id)
+  agent: { apiKey: process.env.CURSOR_API_KEY },
 });
 ```
 
 `createCursorAgentCapability(options)` takes the same options and exposes the
 block to a generator as a tool.
 
-**A model is required.** Cursor's SDK refuses to create a local agent without one,
-so `agent.model` is not optional in practice. `Cursor.models.list()` from the SDK
-enumerates what your account can select.
+**A model is required.** Cursor's SDK refuses to create a local agent without one.
+Name it with `model`, an id or a resolver asked once per run (a resumed agent is
+handed it too), or with `agent.model`, which also takes Cursor's model `params`.
+Setting `model` beside `agent.model` or `send.model` is refused when the block is
+built. `Cursor.models.list()` from the SDK enumerates what your account can select.
 
-**The block's input is the prompt and nothing else.** Where a run writes and which
-conversation it continues are configuration, because the same block can be handed
+**The block's input is the prompt and nothing else.** Where a run writes, which
+conversation it continues and which model it runs are configuration, because the same block can be handed
 to a model as a tool, and a field on the input is a field the model could set. The
 resolvers are handed the block context alone and never the prompt, so a path or a
 session id cannot be derived from text the model wrote.
