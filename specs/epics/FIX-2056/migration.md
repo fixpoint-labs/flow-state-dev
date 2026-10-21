@@ -10,7 +10,8 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 
 | Removed | Use instead | Owner |
 |---|---|---|
-| `addTask`, `dispatchTask` | `createTask`; wait with `getTask({ id, wait: true })` | FIX-2081 |
+| `addTask` | `createTask` | FIX-2081 |
+| `dispatchTask` | `createTask`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
 | `readTask` | `getTask` | FIX-2081 |
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
