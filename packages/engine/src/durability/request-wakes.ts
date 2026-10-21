@@ -75,7 +75,7 @@ export async function fireWakeThrough(
 }
 
 /** The default most a debt may stay outstanding past its due time: 24 hours. */
-export const DEFAULT_MAX_DEBT_AGE_MS = 86_400_000;
+const DEFAULT_MAX_DEBT_AGE_MS = 86_400_000;
 
 /** Process-wide, so a host built many times (tests, a worker beside a router) says it once. */
 let warnedNoWakes = false;

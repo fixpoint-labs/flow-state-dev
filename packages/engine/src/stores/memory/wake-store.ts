@@ -27,7 +27,7 @@ export function coalesceWake(existing: WakeRecord | null, input: WakeInput, now:
   };
 }
 
-export class InMemoryWakeStore implements WakeStore {
+class InMemoryWakeStore implements WakeStore {
   private readonly data = new Map<string, WakeRecord>();
 
   async owe(input: WakeInput): Promise<WakeRecord> {

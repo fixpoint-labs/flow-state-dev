@@ -374,7 +374,7 @@ export async function wakeIfStartable(ctx: BlockContext, collection: TaskCollect
  * write that owes a start, so a crash after the write leaves the debt a due
  * time. A host that keeps no wakes has the fast path only. Never fails.
  */
-export async function owePass(ctx: BlockContext): Promise<void> {
+async function owePass(ctx: BlockContext): Promise<void> {
   try {
     await ctx.requestHost?.wakes?.owe({ entry: RUN_BOARD_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
   } catch {

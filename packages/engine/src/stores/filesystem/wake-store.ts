@@ -12,7 +12,7 @@ import path from "node:path";
 import type { WakeInput, WakeKey, WakeRecord, WakeStore } from "../types";
 import { coalesceWake, wakeStorageKey } from "../memory/wake-store";
 
-export class FilesystemWakeStore implements WakeStore {
+class FilesystemWakeStore implements WakeStore {
   private readonly rootDir: string;
   private chain: Promise<unknown> = Promise.resolve();
 
