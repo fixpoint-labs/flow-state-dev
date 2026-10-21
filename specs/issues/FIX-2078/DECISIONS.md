@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A hook orchestration registers, which the sweeper calls to scan boards · in-process timers · a parked request per debt, riding the wait deadlines the sweeper reads |
 | **Because** | The engine stays free of orchestration, and a debt survives a crash (story F-01). A wake is generic: a session, an internal entry, a due time and the owner, all server-written. A scan has no due-time index and reads every user's ledgers each tick. A timer dies with its process. A parked request carries a lease and a history, and its deadline can't move earlier. The schedule index (`claimDue`) is the nearest index, and it doesn't fit: it lives in `scheduled`, which the engine can't depend on, advances rows by cron, and is at-most-once, where a debt must fire until paid |
-| **Locks in** | A record kind in the engine's stores: memory, filesystem, SQLite and Postgres keep it; a custom adapter may. Without it, or with no durability provider, a host keeps the fast paths and says so once at start. Where the sweeper runs as an external cron, a debt is paid no sooner than its next run. The wake is the engine's one due-time source: a wait deadline is a wake whose entry resumes the wait. This issue doesn't move today's wait deadlines; FIX-2082 puts any it adds or reshapes on the wake, not on a second path |
+| **Locks in** | A record kind in the engine's stores: memory, filesystem, SQLite and Postgres keep it; a custom adapter may. On the store registry it is one optional key beside the suspension store, so an adapter written before it still type-checks and loads. A host detects it by that key being present, checked once at start: without it, or with no durability provider, the host logs once and keeps the fast paths only. Where the sweeper runs as an external cron, a debt is paid no sooner than its next run. The wake is the engine's one due-time source: a wait deadline is a wake whose entry resumes the wait. This issue doesn't move today's wait deadlines; FIX-2082 puts any it adds or reshapes on the wake, not on a second path |
 
 ![D1: where a debt's due time lives. A wake the engine keeps, chosen, beside a hook that scans boards and beside in-process timers. Decides it: a crash after an ending. The price: a record kind every store adapter keeps](figures/d1-due-wakes.svg)
 
@@ -157,7 +157,7 @@ Implementer notes from the epic coordinator, recorded before review:
 From spec review, round 1 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)), recorded verbatim for implementation:
 
 - FSD Architect, fix 8: "Name the exact engine code (SPEC.md:125, DECISIONS.md:68-72): the sweeper re-arm in `durability-sweeper.ts:40-52`; `onWaitDeadline` in `wait-deadlines.ts`, and `resumeWaitGate`; where the wake store sits next to `SuspensionStore` (`engine/src/stores/types.ts:1509`); `ledger.ts:106` and `report-owed.ts:34-38`, moved into the debt table."
-- FSD Architect, fix 9: "Optional wake store (SPEC.md:136). Spell out its shape on the registry and how hosts detect it. A host without it should log once and run on the fast paths only."
+- FSD Architect, fix 9: "Optional wake store (SPEC.md:136). Spell out its shape on the registry and how hosts detect it. A host without it should log once and run on the fast paths only." *Round 2: folded into D1 → Locks in at the architect's request; the key's name is the implementer's.*
 - Second look, note: "Control coverage. Only leg b has a must-fail control. A control for leg c (for example, the fast-path run off) would show that its 5 s start isn't being paid by the sweeper instead."
 - Cursor: "'Decided, not asked' ≈ build plan. Wake versioning, coalescing, four debt kinds, repair→drain→last-ready, upgrade paths — mostly derivable from `durability-sweeper.ts`, `wait-deadlines.ts`, and Workforce `board.ts`."
 - Cursor: "Duplication. 'How a debt is paid' + SVG + Decided, not asked + sign-off repeat the same pipeline; SVG aria-labels repeat D1/D2 prose. One canonical flow section would be enough."
@@ -173,5 +173,8 @@ From spec review, round 1 ([#3594](https://github.com/fixpoint-labs/flow-state-d
   session filed it. Owed report markers are carried across the upgrade and old debts get a wake.
   The goal names the hosts it covers and gained a lease leg. Because review found a wake a pass
   could clear before its debt was written, and debts that never cleared or were lost at upgrade.
+- **Round 2** — D1 now locks in the wake store's place on the registry (one optional key) and how
+  a host detects it, which round 1 had left to the implementer. The order against FIX-2077 on
+  removing replay-on-touch waits on #3592 agreeing that this issue removes it.
 
 Open: none.
