@@ -1,9 +1,4 @@
-/**
- * The page register: Paper and Night set the same tokens, Night reaches the page by
- * every route page.css promises (explicit theme, `.dark`, the OS setting when no theme
- * is set), hairlines and the grid are ink at their fixed opacities, and the only hues
- * are the highlighter and red.
- */
+/** page.css: Paper, Night, and the hairline opacities. */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,7 +9,6 @@ const paper = rule(css, ":root");
 const night = rule(css, ':root[data-theme="dark"], :root[data-theme="night"], .dark');
 const nightByOs = rule(css, ":root:not([data-theme])");
 
-/** `rgba(r, g, b, a)` as its colour and its alpha. */
 function rgba(value: string): { rgb: number[]; alpha: number } {
   const m = /^rgba\((\d+), (\d+), (\d+), ([\d.]+)\)$/.exec(value);
   if (m === null) throw new Error(`not rgba(): ${value}`);

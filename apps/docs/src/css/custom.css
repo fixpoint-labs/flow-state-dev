@@ -1,23 +1,7 @@
-/* ══════════════════════════════════════════════════════════════
-   flow-state.dev — the docs in the Drafting System's page register.
-
-   `@flow-state-dev/design-system/page.css` holds every value and draws
-   the register's parts: paper with the 24px grid, the `.label` rule,
-   sheet headings, figure frames and the drawing classes. This file
-   points Infima's `--ifm-*` variables at those tokens and fits
-   Docusaurus's own markup to them.
-
-   Paper and Night both ship. Docusaurus puts `data-theme="light"` or
-   `"dark"` on the root; page.css reads `"dark"` as Night.
-
-   Colour marks emphasis, never category: links, active states, the
-   table of contents and breadcrumbs are ink. The highlighter is text
-   selection only; red is the danger admonition only. Corners are
-   square and nothing casts a shadow.
-
-   `shift-manager.css` (the app register) is still imported for the
-   landing page, which reads its tokens; no rule in this file does.
-   ══════════════════════════════════════════════════════════════ */
+/*
+ * Infima pointed at the page register (`@flow-state-dev/design-system/page.css`).
+ * `shift-manager.css` stays for the landing page; no rule in this file reads it.
+ */
 
 @import "@flow-state-dev/design-system/shift-manager.css";
 @import "@flow-state-dev/design-system/page.css";
@@ -199,7 +183,6 @@ body {
   font-size: 0.875rem;
 }
 
-/* Active: weight and a 2px ink rule. */
 .navbar__link--active {
   font-weight: 700;
   box-shadow: inset 0 -2px 0 var(--ink1);
@@ -239,7 +222,6 @@ body {
 
 /* ── Code ── */
 
-/* Inline code: a card chip with an internal hairline. */
 .markdown :not(pre) > code {
   border: 1px solid var(--hairline-internal);
   background: var(--paper-card);
@@ -261,7 +243,6 @@ body {
   color: var(--ink3);
 }
 
-/* Active: weight and a 2px ink rule. */
 .table-of-contents__link--active {
   font-weight: 700;
   color: var(--ink1);
@@ -291,7 +272,6 @@ body {
   font-weight: 400;
 }
 
-/* Active: weight and a 2px ink rule. */
 .menu__link--active:not(.menu__link--sublist) {
   font-weight: 700;
   box-shadow: inset 2px 0 0 var(--ink1);

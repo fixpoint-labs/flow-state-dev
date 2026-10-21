@@ -1,24 +1,8 @@
 #!/usr/bin/env node
 /**
- * Brand lint for the docs: the diagrams (every `.svg` under `docs/`, `guides/` and
- * `blog/`) and `src/css/custom.css` keep to the Drafting System page register.
- *
- * - colour: in custom.css every colour literal is one of page.css's token values —
- *   paper, the inks, the highlighter or red, in Paper or Night — and no colour name or
- *   other colour function appears. A diagram carries no colour literal at all: it reads
- *   the page's tokens through page.css's drawing classes.
- * - stroke: every stroke width is 1, 1.3 or 1.4 (diagrams, and page.css's drawing classes).
- * - dash: every dash pattern is `5 4`.
- * - info: `custom.css` never names `--info`, the app register's blue.
- * - font: no `<text>` (or anything around it) is set in a font other than the mono.
- * - svg: a diagram has no `<title>`, `<desc>`, `<style>` or `style=` (the page and
- *   `<Figure>` own those), and uses only the drawing classes page.css defines.
- *
- * Before linting the real files it lints `scripts/brand-lint-fixtures/`, which break
- * every rule on purpose, and fails unless each rule fires there: a rule that can no
- * longer fail is reported, not trusted.
- *
- * Usage: node scripts/lint-brand.mjs [file...]   (no files: the docs' own)
+ * Brand lint: diagrams under `docs/`, `guides/` and `blog/`, plus `src/css/custom.css`.
+ * Fixtures in `scripts/brand-lint-fixtures/` must trip every rule, or the run fails.
+ * Usage: node scripts/lint-brand.mjs [file...]
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -47,24 +31,18 @@ function normalise(literal) {
   return literal.toLowerCase();
 }
 
-/** The colours page.css defines: its tokens' values, in both modes. */
 function allowedColours() {
   const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   const literals = css.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi) ?? [];
   return new Set(literals.map(normalise));
 }
 
-/** One finding: `file:line rule: detail`. */
 function finding(file, text, index, rule, detail) {
   const line = text.slice(0, index).split("\n").length;
   return { file, line, rule, detail };
 }
 
-/**
- * Colour literals. In a diagram any literal fails: it would draw one mode's value in
- * both, where the page's tokens follow the mode. In CSS a hex or rgb() must be a token
- * value, and every other colour function (hsl, oklch, lab, hwb, color()…) fails.
- */
+/** A diagram literal would freeze one mode. In CSS a hex or rgb() must be a token value. */
 function lintColours(file, text, allowed, out) {
   const svg = file.endsWith(".svg");
   const literal = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lch|lab|hwb|color)\([^)]*\)/g;
@@ -84,7 +62,6 @@ function lintColours(file, text, allowed, out) {
   }
 }
 
-/** A diagram is drawing only: no title, description or styling of its own, and only page.css's drawing classes. */
 function lintSvgShape(file, text, drawingClasses, out) {
   for (const m of text.matchAll(/<(title|desc|style)\b|\sstyle\s*=/g)) {
     out.push(finding(file, text, m.index, "svg", `${m[1] ? `<${m[1]}>` : "a style attribute"}: the page and <Figure> own it`));
@@ -96,7 +73,6 @@ function lintSvgShape(file, text, drawingClasses, out) {
   }
 }
 
-/** The class names page.css's `.drawing` rules define. */
 function drawingClassNames() {
   const css = readFileSync(PAGE_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   return new Set([...css.matchAll(/\.drawing\s+(?:[a-z]+)?\.([a-z][\w-]*)/g)].map((m) => m[1]));
@@ -114,8 +90,7 @@ function lintStrokes(file, text, out) {
 }
 
 function lintFonts(file, text, out) {
-  // In a diagram, any font family named anywhere (attribute, style attribute, <style>)
-  // reaches its <text>. It must be the mono.
+  // Any font-family in the file reaches its <text>.
   for (const m of text.matchAll(/font-family\s*[:=]\s*["']?([^;"'}>]+)|font\s*:\s*([^;"'}]+)/g)) {
     const value = (m[1] ?? m[2]).trim();
     const family = m[1] ? value : value.replace(/^.*?\d+(?:\.\d+)?(?:px|em|rem|%)(?:\/\S+)?\s+/, "");
@@ -126,7 +101,6 @@ function lintFonts(file, text, out) {
   }
 }
 
-/** Every finding for one file. */
 function lintFile(file, allowed) {
   const text = readFileSync(file, "utf8");
   const out = [];

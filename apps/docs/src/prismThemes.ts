@@ -21,8 +21,7 @@ export const inkTheme: PrismTheme = {
       types: ["comment", "prolog", "cdata", "doctype"],
       style: { color: "var(--ink4)", fontStyle: "italic" },
     },
-    { types: ["punctuation"], style: { color: "var(--ink3)" } },
-    { types: ["operator", "entity", "url"], style: { color: "var(--ink3)" } },
+    { types: ["punctuation", "operator", "entity", "url"], style: { color: "var(--ink3)" } },
     {
       types: ["keyword", "atrule", "tag", "builtin", "important"],
       style: { color: "var(--ink1)", fontWeight: "600" },
@@ -32,14 +31,10 @@ export const inkTheme: PrismTheme = {
       style: { color: "var(--ink1)" },
     },
     {
-      types: ["string", "char", "attr-value", "inserted", "regex"],
+      types: ["string", "char", "attr-value", "inserted", "regex", "property", "variable", "attr-name"],
       style: { color: "var(--ink2)" },
     },
     { types: ["function", "class-name"], style: { color: "var(--ink1)", fontWeight: "500" } },
-    {
-      types: ["property", "variable", "attr-name"],
-      style: { color: "var(--ink2)" },
-    },
     { types: ["deleted"], style: { color: "var(--ink3)", textDecorationLine: "line-through" } },
     { types: ["bold"], style: { fontWeight: "bold" } },
     { types: ["italic"], style: { fontStyle: "italic" } },

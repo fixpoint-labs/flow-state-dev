@@ -156,13 +156,7 @@ body {
   padding: 8px 12px;
   background: var(--paper-band);
   border-bottom: 1px solid var(--hairline-structural);
-  font-family: var(--font-mono);
-  font-size: var(--label-size);
-  font-weight: 500;
   line-height: 1.5;
-  letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
-  color: var(--ink3);
 }
 
 .figure__caption::before {
@@ -204,7 +198,6 @@ body {
 .drawing .ink { fill: var(--ink1); }
 .drawing .hatch-line { stroke: var(--hairline-structural); stroke-width: 1; }
 
-/* Text. */
 .drawing .cap { font-size: 10.5px; letter-spacing: 1.7px; fill: var(--ink3); }
 .drawing .lb { font-size: 10px; letter-spacing: 1.5px; fill: var(--ink3); }
 .drawing .nm { font-size: 15px; fill: var(--ink1); }

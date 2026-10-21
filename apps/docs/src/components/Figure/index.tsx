@@ -13,9 +13,7 @@
  * <Figure svg={Scopes} caption="The four state scopes" description="Request, session, …" />
  * ```
  *
- * The caption is the figure's visible title and, through `aria-labelledby`,
- * the drawing's accessible name; `description` is its long description. The number ("FIG. 2 — ") is a
- * CSS counter, reset once per page, so figures number in page order.
+ * The number ("FIG. 2 — ") is a CSS counter, reset once per page.
  */
 import type { ComponentType, ReactElement, SVGProps } from "react";
 import { useId } from "react";
@@ -46,7 +44,7 @@ export default function Figure({ svg: Drawing, caption, description }: FigurePro
   // neither read twice nor shown again as a tooltip); the description is the SVG's <desc>.
   return (
     <figure className="figure">
-      <figcaption className="figure__caption" id={captionId}>
+      <figcaption className="figure__caption label" id={captionId}>
         {caption}
       </figcaption>
       <div className="figure__body">
