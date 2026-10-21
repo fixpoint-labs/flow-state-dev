@@ -54,10 +54,9 @@ which owns the setting (round 1's second look recommends this split): then this 
 refusal and makes a drain wait on a dispatched row from any board (legs a, b, c, e), and FIX-2080
 decides `session: "new"` on a worker's own step, against its own default of `"new"`.
 
-**The new session's slot** (decided by the coordinator, assuming the owner accepts D2; it drops out
-with D2 if the owner rejects it): a plan row filed `session: "new"` **does** hold its new
-session's one open-task slot once started and until it ends, because it is that session's open task.
-FIX-2080's *"plan rows never"* covers rows run inline in the filing session.
+**The new session's slot:** a plan row filed `session: "new"` never holds a one-open-task slot,
+its new session's included, like every plan row under FIX-2080 (DECISIONS L68-70). Only a task the
+session itself works holds its slot.
 
 ## Decided, not asked
 
@@ -170,5 +169,9 @@ implementer, not baked into the design:
 - **Draft** — framed as the epic's wait seam: one wait on core's gate, reached by `getTask`, a plan
   board's dispatched row and a waiting dispatcher, its deadline on FIX-2078's wake, its depth counted
   once in the engine; the task-request refusal and the timeout's cancel removed.
+
+- **Sign-off (2026-10-21)** — the owner accepted D1 (a wait's deadline is a wake) and D2 (a worker's
+  step runs in its own session when filed with `session: "new"`), and asked that the new session's
+  slot agree with FIX-2080's *"plan rows never"*: [comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3597#issuecomment-6317555768).
 
 Open: none.
