@@ -25,16 +25,14 @@ gcloud scheduler jobs create http monthly-invoices \
   --uri="https://app.example.com/api/flows/billing/schedules/monthly-invoices/dispatch" \
   --http-method=POST \
   --headers="Authorization=Bearer ${FSDEV_SCHEDULER_SECRET},Content-Type=application/json" \
-  --message-body='{"nominalFireTime":"2026-06-01T00:00:00Z"}' \
   --max-retry-attempts=3 \
   --min-backoff=30s \
   --max-backoff=600s
 ```
 
-`nominalFireTime` is fixed in this example. If you want it to track
-the actual fire moment, leave the body empty (the framework defaults
-to `now()`) or template the field via Cloud Scheduler's body
-substitution.
+The job sends no body. Cloud Scheduler can't put the scheduled time in a
+fixed body, and with no `nominalFireTime` the fire counts against the latest
+scheduled time that is already due, which is the time this run is for.
 
 The dispatch endpoint mirrors the schedule on the framework side:
 
@@ -82,10 +80,11 @@ fire, so rotation is automatic.
 ## Retries
 
 Cloud Scheduler retries failed runs (non-2xx responses) according to
-the `--max-retry-attempts` and backoff settings on the job. The
-framework's `(scheduleId, nominalFireTime)` idempotency dedupes a
-retry that lands within the configured window — the second response
-is `200 { status: "duplicate" }` and the action does not run twice.
+the `--max-retry-attempts` and backoff settings on the job. A retry of a
+run that already dispatched answers `200 { status: "duplicate" }` and the
+action does not run twice: each scheduled time fires at most once. A retry
+that lands after the next scheduled time has come counts against that next
+time instead.
 
 If the action itself fails after the dispatch returned 202, Cloud
 Scheduler does not retry — the dispatch was successful from its
@@ -103,7 +102,8 @@ Set both to the same value for consistency in DevTool.
 
 - The job's body is fixed at create time. If your action needs
   per-fire input that varies, compute it inside the action from the
-  `nominalFireTime` and any state in the flow's user/org scope. Cloud
+  scheduled time (`nominalFireTime` on the input function's context) and
+  any state in the flow's user/org scope. Cloud
   Scheduler doesn't template body fields beyond a fixed string.
 - Dead-letter and alerting are managed in Cloud Scheduler, not in the
   framework. Wire those up on the job if you need persistent failure

@@ -250,22 +250,26 @@ for the attribution recipe.
 POST /api/flows/:flowKind/schedules/:scheduleId/dispatch
 ```
 
-Body fields are optional:
+The body is optional. It carries one field, the scheduled time this fire is for:
 
 ```json
 {
-  "nominalFireTime": "2026-06-01T09:00:00Z",
-  "idempotencyKey": "weekly-digest-2026-06-01"
+  "nominalFireTime": "2026-06-01T09:00:00Z"
 }
 ```
+
+Send the time your scheduler fired for, or send no body at all. Without a
+time, the fire counts against the latest scheduled time that is already due.
+Either way the endpoint fires each scheduled time at most once (see [At most
+once per scheduled time](#at-most-once-per-scheduled-time)).
 
 Response codes:
 
 | Code | Meaning |
 | ---- | ------- |
-| 202  | Accepted — action was dispatched |
-| 200  | `duplicate` (idempotency hit) or `skipped` (overlap policy) |
-| 400  | Schedule id pattern invalid, or resolved schedule is malformed |
+| 202  | Accepted: the action was dispatched |
+| 200  | `duplicate` (that scheduled time already fired, or a later one did) or `skipped` (overlap policy) |
+| 400  | Schedule id pattern invalid, resolved schedule malformed, `nominalFireTime` not a scheduled time of the cron (`not_a_scheduled_time`) or not due yet (`not_yet_due`), or the body carries `idempotencyKey` (`idempotency_key_removed`) |
 | 401  | Gateway auth failed |
 | 404  | Flow or schedule not found |
 | 405  | Wrong method (only POST is supported) |
@@ -361,28 +365,47 @@ policy](../advanced/concurrency-policies.md) keyed on the schedule id:
 
 Skip is best-effort. If two ticks arrive within a few milliseconds of
 each other, both can pass the in-flight check before either calls
-`host.dispatch`, and both proceed. The framework-side idempotency
-cache (next section) catches the dupe when both ticks carry the same
-`nominalFireTime`. If you need exactly-once semantics across a tight
-window, lean on the host scheduler's own idempotency.
+`host.dispatch`. When both are for the same scheduled time, only one of
+them fires (next section).
 
-## Idempotency
+## At most once per scheduled time
 
-A `(scheduleId, nominalFireTime)` pair that arrives twice within the
-configurable window returns `200 { status: "duplicate" }` on the
-second call. Default window is 60 seconds; override on the adapter:
+Every schedule fires each scheduled time at most once, however many times
+that time is POSTed: a retry, a second host behind the same cron, or a
+process that restarted between two deliveries. The endpoint keeps one record
+per schedule in the host's store, the latest time it fired, and checks it
+before the schedule's handler runs.
 
-```ts
-createScheduledTransportAdapter({ idempotencyWindowMs: 5 * 60_000 });
-```
+Which time a fire counts against:
 
-The cache is per-process and in-memory. For multi-process deployments,
-either rely on the host scheduler's idempotency (Cloud Scheduler and
-EventBridge dedupe at-least-once delivery on their side) or front the
-adapter with a shared cache. v1 does not ship a distributed dedupe
-layer.
+- **With `nominalFireTime`**, the scheduled time it names. A time up to five
+  seconds off still lands on the scheduled time it is nearest, so a host clock
+  a second early is fine. A time that is no scheduled time of the cron gets
+  `400 not_a_scheduled_time`, and a scheduled time that hasn't arrived yet
+  gets `400 not_yet_due`.
+- **Without it**, the latest scheduled time already due. Never the next one, so
+  an early or manual POST can't take a time before it arrives.
 
-A custom `idempotencyKey` on the body wins over the default key.
+A fire for a time that already fired, or for a time earlier than one that
+did, answers `200 { status: "duplicate", scheduleId, nominalFireTime }` and
+runs nothing. That includes a late retry of a missed time once the next time
+has fired. A manual POST with no body runs only if the latest due time hasn't
+fired yet.
+
+A fire that isn't admitted (an overlap skip, a concurrency refusal, a `503`)
+leaves its time unfired, so the host's retry of it still runs, unless a later
+time fired in the meantime.
+
+Changing a schedule's cron or time zone starts its record fresh.
+
+The guarantee holds across processes on a store with compare-and-set across
+processes: SQLite and Postgres. On the memory store, and on the filesystem
+store, it holds within one process only.
+
+The body takes no `idempotencyKey`: the scheduled time is the key. A body
+that sends one is refused with `400 idempotency_key_removed`, and the adapter
+takes no `idempotencyWindowMs` or `idempotencyOptions` (it throws, naming the
+option, when given one).
 
 ## Listing schedules
 
@@ -430,8 +453,9 @@ A few cuts kept the surface honest:
   EventBridge, Vercel Cron, or a small `setInterval` yourself. The
   integration guides walk through each.
 - **No durable missed-window handling.** If the host scheduler misses
-  a tick, the framework does not catch up. Retries and backfill are
-  the host scheduler's responsibility.
+  a tick, the framework does not catch up. Retries are the host
+  scheduler's responsibility, and a retry only runs while no later
+  scheduled time has fired. There is no backfill.
 - **No cross-tenant enumeration of dynamic schedules.** The listing
   endpoint reports static schedules only and a `dynamic.provided`
   boolean. The host's own UI surfaces dynamic schedules; it already

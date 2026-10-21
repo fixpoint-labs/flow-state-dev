@@ -238,7 +238,7 @@ const worker = createScheduleDispatchWorker({
 });
 ```
 
-Consumes scheduler-fired jobs and POSTs to the framework's schedule dispatch endpoint, bridging BullMQ's native cron to the scheduled transport adapter.
+Consumes scheduler-fired jobs and POSTs to the framework's schedule dispatch endpoint, bridging BullMQ's native cron to the scheduled transport adapter. Each POST carries the job's scheduled time, so a job processed twice, or late, fires its time once. A job with no scheduled time sends none, and counts against the latest time already due.
 
 ### Schedule index
 

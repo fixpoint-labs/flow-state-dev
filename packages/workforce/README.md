@@ -377,6 +377,12 @@ const flows = hireWorkforce(installation);
 flowRegistry.registerMany(flows); // agent, custom-agent, intake, workforce-roster
 ```
 
+The roster flow also keeps the user's schedules: `saveSchedule`, `deleteSchedule` and
+`listSchedules` (each with its next run), and a fire through the
+[scheduled-dispatch endpoint](../scheduled/README.md) files an ordinary task on the named worker's
+board, as the user. `hireWorkforce(installation, { schedules: { index } })` mirrors them into a
+schedule index; see [Recurring work](https://flow-state.dev/docs/workforce/delegating-work#recurring-work).
+
 The installation reads three keys of its own: **`flow`**, which names the flow the worker runs on,
 **`description`**, the roster label, and **[`resources`](#the-documents-a-worker-may-touch)**, the
 documents this worker may touch. Everything else is that worker's settings, parsed against the
