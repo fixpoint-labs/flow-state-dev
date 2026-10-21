@@ -103,11 +103,11 @@ Set `maxAttempts` and, while `attempts < maxAttempts`, a call to `fail` is a *so
 
 A *held* task is filed but won't start. No claim takes it, whatever its `deps`, until something releases it. File one held with `addTask({ ..., held: true })`, or hold a pending one later with `hold(id)`. `release(id)` puts it back in `pending`, and from there it starts like any other task once its `deps` have finished.
 
-A held task is waiting on a decision, not on a failure, so a board never counts it as done or failed. A task stored as `blocked` by an earlier version reads as `held`, with its old reason on `feedback`.
+A held task keeps a board from finishing: nothing will start it, so a [task board](./task-board.md#termination-onidle-modes)'s drain reports it with the failures, as `"blocked-by-failures"`. Release it, or cancel it, to let the board finish.
 
 ### Changing a filing before it starts
 
-Until a task first starts, three of the things it was filed with can still change: whether it is held, its `deps`, and its `maxAttempts`. `patchSettings(id, patch)` changes any of them in one write. `hold` and `release` are the same write under their own names.
+Until a task first starts, three of the things it was filed with can still change: whether it is held, its `deps`, and its `maxAttempts`. `patchSettings(id, patch)` changes any of them in one write. `hold` and `release` are the same write under their own names. A release on its own is never refused this way: leaving `held` is how a task starts again.
 
 ```ts
 await tasks.patchSettings("draft", { deps: ["outline", "sources"], maxAttempts: 3 });
@@ -126,13 +126,13 @@ Once a worker has claimed the task, the answer is `started`. A retry that return
 - `dependency_ended`: the dependency has already failed or been cancelled, so the task could never start.
 - `dependency_loop`: the dependencies lead back to the task itself.
 
-In an `addTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A refusal anywhere in the batch files none of it.
+In an `addTasks` batch, the ids in the same batch count as on the board, so a batch can file a whole chain. A batch row filed already failed or cancelled counts as an ended dependency, and a batch that names one id twice is refused (`duplicate_task_id`). A refusal anywhere in the batch files none of it.
 
 ### When a task ends badly, its dependents end too
 
 When a task fails for good or is cancelled, every open task that depends on it is cancelled, and then every open task that depends on those, down the chain. Each one is labelled `skipped`, its `error` says which dependency ended (`dep draft failed`, `dep draft was cancelled`), and `causedBy` holds the id of the task whose ending started the cascade.
 
-The ending's own write records that the cascade is owed, and the same call pays it right after. If the process dies between the two, the debt stays on the stored row, and the next touch of the board pays it: a task board's drain, or `payOwedCascades()` when you drive the collection yourself. A task that completes, or is retried, owes nothing to its dependents. A retried dependency may still succeed.
+The ending's own write records that the cascade is owed, and the same call pays it right after. If the process dies between the two, the debt stays on the stored row, and the next touch of the board pays it: a task board's drain, or `payOwedCascades()` when you drive the collection yourself. A touch also reads the stored tasks and cancels any unstarted task whose dependency has failed or been cancelled, which catches a dependent another process filed while the dependency was ending. A task that completes, or is retried, owes nothing to its dependents. A retried dependency may still succeed.
 
 ## TaskCollection
 
