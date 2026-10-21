@@ -53,8 +53,8 @@ import { sessionIdOfFiling } from "./filing-session";
 import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
-import { taskMessage } from "./task-message";
 import { isPostRow } from "../coordinator/delegated-post";
+import { taskMessage } from "./task-message";
 
 // A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
 export { taskMessage } from "./task-message";

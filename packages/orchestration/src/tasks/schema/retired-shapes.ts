@@ -55,19 +55,18 @@ function without(row: Readonly<Record<string, unknown>>, ...keys: string[]): Rec
 /** The entries. Only {@link withRetiredShapes} and the tests read this table. */
 export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> = {
   // `blocked` and `held` mean the same: filed, not started, until someone says
-  // go (D1). The reason `block` stored as `error` is kept as the row's note:
-  // an `error` on a row that never ended reads as a failure.
+  // go (D1). The reason `block` stored as `error` moves to `metadata.heldReason`:
+  // an `error` on a row that never ended reads as a failure, and `feedback` is
+  // handed to the row's worker as what to fix.
   blocked: {
     on: true,
     owner: "FIX-2080",
     read: (row) => {
       if (row.status !== "blocked") return undefined;
       const rest = without(row, "error");
-      return {
-        ...rest,
-        status: "held",
-        ...(typeof row.error === "string" && row.feedback == null ? { feedback: row.error } : {}),
-      };
+      if (typeof row.error !== "string") return { ...rest, status: "held" };
+      const metadata = row.metadata !== null && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {};
+      return { ...rest, status: "held", metadata: { ...metadata, heldReason: row.error } };
     },
   },
   // The recorded-not-started mark (`dispatchTask`'s, FIX-1875) is a held row:

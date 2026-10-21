@@ -84,7 +84,7 @@ Task status in the pattern's output:
 
 Internally tasks are full substrate `Task` records — every transition emits a `task-change` component item on the stream so renderers see live state without polling. The `<TaskPlan />` renderer subscribes to `task-change` per task and `task-board-meta` for board-level progress; both items are emitted by the pattern out of the box.
 
-When a task errors, the task collection cancels every pending task whose deps include the failed one (transitively), so the evaluator never loops on tasks that can no longer run. A plan or a replan whose `deps` name a task that isn't on the board, or loop back on themselves, is refused when it is added, and the run fails.
+When a task errors, the task collection cancels every pending task whose deps include the failed one (transitively), so the evaluator never loops on tasks that can no longer run. A replanned task that depends on a task that has already failed is skipped the same way, along with any replanned task that depends on it, and the rest of the replan runs. A plan or a replan whose `deps` name a task that isn't on the board, or loop back on themselves, is refused when it is added, and the run fails.
 
 These statuses are intentionally different from Supervisor's quality-gate statuses (`needs-revision`, `escalated`) — they model a different lifecycle. Don't conflate them.
 

@@ -25,7 +25,7 @@
  *   worked by the same request after the turn, never a child session of
  *   itself. The tools list both ledgers and route each write by the row: a
  *   step can be edited before it starts, or cancelled, never completed,
- *   failed or blocked by a call (its turn's answer is its result), and its
+ *   failed or held by a call (its turn's answer is its result), and its
  *   assignee doesn't cross to a delegate, nor a delegate's to the worker. A
  *   filing naming the worker from anywhere but its own turn, such as a public
  *   action, is refused.
@@ -80,6 +80,10 @@ import {
   TaskFilingRefusedError,
   TaskWriteRefusedError,
   assertDepsFileable,
+  assertFilingCallerContext,
+  assertFilingSettings,
+  assertFollowUpHasRun,
+  assertUniqueIds,
   hasStarted,
   isClaimable,
   isTerminalStatus,
@@ -100,7 +104,7 @@ import { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "../worker-task-entry";
 import { isPostRow, postRowOf } from "../coordinator/delegated-post";
 import type { TaskDelegates } from "../delegates/worker-delegates";
 import { delegateKey } from "../delegates/delegate-list";
-import { markFiled } from "./cascade";
+import { cancelIfParentEnded, stampFiledMarker } from "./cascade";
 import {
   FILING_FLOW_STATE_KEY,
   FILING_PROJECT_STATE_KEY,
@@ -129,6 +133,7 @@ import {
   CONVERSATION_LEDGER_ID,
   callerMetadata,
   conversationLedger,
+  CONVERSATION_BOARD_SETTINGS,
   conversationLedgerAt,
   conversationLedgerResources
 } from "./ledger";
@@ -618,23 +623,22 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // which takes such a filing before it reaches here), never a child session
     // of itself (FIX-2076).
     const self = verifiedWorkerOf(ctx.session);
-    const addTask: TaskCollectionRef["addTask"] = async (init) => {
+    const fromTaskSession = typeof ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_ID_STATE_KEY] === "string";
+    /**
+     * Every check a row passes before anything is written (FIX-2080): the
+     * worker isn't its own delegate, a task's session asks for neither
+     * conversation setting, and the board takes the settings asked for. A
+     * batch runs these for every row before its first add.
+     */
+    const checkFiling = (init: TaskInit): void => {
       if (self !== undefined && init.assignee === self) throw stepFromItsOwnTurn(self);
-      // A task's session files pieces of its task, heard by the task: never
-      // one in the delegate's ongoing session, or one whose result goes to
-      // the conversation (FIX-2080). Refused before anything is written.
-      const fromTask = typeof ((ctx.session.state ?? {}) as Record<string, unknown>)[TASK_ID_STATE_KEY] === "string";
-      if (fromTask && (init.session === "ongoing" || init.resultTo === "conversation")) {
-        const setting = init.session === "ongoing" ? `session "ongoing"` : `resultTo "conversation"`;
-        throw new TaskFilingRefusedError({
-          rule: "setting_not_from_task_session",
-          ...(init.id !== undefined ? { taskId: init.id } : {}),
-          detail:
-            `a task's session can't file with ${setting}: only a conversation chooses the delegate's ongoing ` +
-            `session or sends a result to the conversation. Nothing was written.`
-        });
-      }
-      const { id, markAdded } = await reserveFiling(ctx, ref, partition, init, true);
+      assertFilingCallerContext(init, { fromTaskSession });
+      assertFilingSettings(init, CONVERSATION_BOARD_SETTINGS, ref.collectionId);
+      assertFollowUpHasRun(init, (id) => ref.get(id));
+    };
+    /** Add one checked row under its chain reservation. */
+    const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
+      const { id, markAdded } = reserved;
       let assignee = init.assignee;
       if (assignee === undefined) {
         // An unassigned task goes to the conversation's only delegate; with
@@ -655,7 +659,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
-      if (owner !== undefined) await markFiled(ctx, owner);
+      if (owner !== undefined) await stampFiledMarker(ctx, owner, conversationLedgerAt);
       const added = await ref.addTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
@@ -668,8 +672,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(owner !== undefined ? { filedByTask: owner } : {})
       });
       await markAdded();
+      if (owner !== undefined && (await cancelIfParentEnded(ctx, owner, ref, added.id, conversationLedgerAt))) {
+        return ref.get(added.id) ?? added;
+      }
       if (added.status !== "held" && isStartable(added, ref.list())) await wake(ctx);
       return added;
+    };
+    const addTask: TaskCollectionRef["addTask"] = async (init) => {
+      checkFiling(init);
+      return fileReserved(init, await reserveFiling(ctx, ref, partition, init, true));
     };
     /**
      * The options a write on this board presents: a claim the running
@@ -701,7 +712,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       };
     /**
      * A post row is settled only by its delegate's run, behind the claim gate:
-     * a caller may cancel it, never complete, fail or block it, so no answer
+     * a caller may cancel it, never complete, fail or hold it, so no answer
      * lands that its delegate didn't give.
      */
     const runOnly =
@@ -751,13 +762,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return outcome;
       },
       async addTasks(inits) {
-        // The batch's dependencies are checked whole first (FIX-2080): ids
-        // filed in the same batch count, and a refusal files nothing. Then
-        // each row is added after the rows it depends on.
-        const batch = inits.map((init) => ({ ...init, id: init.id ?? newTaskId() }));
+        // A refused batch files nothing (FIX-2080): every row's checks, the
+        // batch's dependencies (its own ids count) and every row's place in
+        // the chain come first. A reservation a later refusal strands lapses
+        // with its lease. Then each row is added after the rows it depends on.
+        assertUniqueIds(inits);
+        const batch = dependencyOrder(inits.map((init) => ({ ...init, id: init.id ?? newTaskId() })));
+        for (const init of batch) checkFiling(init);
         assertDepsFileable(batch, (id) => ref.get(id));
+        const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
+        for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
         const added: Task[] = [];
-        for (const init of dependencyOrder(batch)) added.push(await addTask(init));
+        for (const [i, init] of batch.entries()) added.push(await fileReserved(init, reserved[i]!));
         return added;
       },
       async setAssignee(id, assignee) {
@@ -815,7 +831,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     self: string,
     routesSelf: boolean
   ): TaskCollectionRef => {
-    const fileStep: TaskCollectionRef["addTask"] = async (init) => {
+    /** Every check a step passes before anything is written. */
+    const checkStep = (init: TaskInit): void => {
       if (!routesSelf) throw stepFromItsOwnTurn(self);
       if (isSteppingTurn(ctx)) {
         throw new TaskWriteRefusedError(
@@ -841,6 +858,17 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           "a step for yourself runs here, in this request, and follows up no task. File it without followUpOf. Nothing was filed."
         );
       }
+      // A step runs in this request, after this turn, so nothing would release
+      // one filed held (FIX-2080).
+      if (init.held === true) {
+        throw new TaskWriteRefusedError(
+          "step_cannot_be_held",
+          "a step for yourself runs after this turn, in this request, so it can't be filed held. File it without held, or file it later. Nothing was filed."
+        );
+      }
+    };
+    const fileStep: TaskCollectionRef["addTask"] = async (init) => {
+      checkStep(init);
       const { id, markAdded } = await reserveFiling(ctx, plan, partition, init, false);
       const metadata = callerMetadata(init.metadata);
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
@@ -860,9 +888,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     /**
      * Each ledger resolves `deps` only among its own rows, so a dep on the
-     * other ledger would never be met: a step waiting on a delegate's task is
-     * cancelled as blocked, and a delegate's task waiting on a step never
-     * starts. Refused at filing, before anything is written.
+     * other ledger would never be met: neither a step waiting on a delegate's
+     * task nor a delegate's task waiting on a step would ever start. Refused
+     * at filing, before anything is written.
      */
     const depsOnOneLedger = (init: TaskInit, step: boolean): void => {
       const other = step ? board : plan;
@@ -877,8 +905,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
               "Dispatch it once that step has ended, or give the delegate what it needs in the task. Nothing was filed."
       );
     };
+    const isStepFiling = (init: TaskInit): boolean => init.assignee !== undefined && init.assignee === self;
     const addTask: TaskCollectionRef["addTask"] = async (init) => {
-      const step = init.assignee !== undefined && init.assignee === self;
+      const step = isStepFiling(init);
       depsOnOneLedger(init, step);
       return step ? fileStep(init) : board.addTask(init);
     };
@@ -907,9 +936,21 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       ...board,
       addTask,
       async addTasks(inits) {
-        const added: Task[] = [];
-        for (const init of inits) added.push(await addTask(init));
-        return added;
+        // A refused batch files nothing (FIX-2080): the steps' checks and each
+        // row's ledger come first, and the delegates' tasks go to the board as
+        // one batch, which checks them whole before its first add.
+        for (const init of inits) {
+          const step = isStepFiling(init);
+          depsOnOneLedger(init, step);
+          if (step) checkStep(init);
+        }
+        const tasks = await board.addTasks(inits.filter((init) => !isStepFiling(init)));
+        const steps: Task[] = [];
+        for (const init of inits.filter(isStepFiling)) steps.push(await fileStep(init));
+        const byInit = new Map<TaskInit, Task>();
+        inits.filter((init) => !isStepFiling(init)).forEach((init, i) => byInit.set(init, tasks[i]!));
+        inits.filter(isStepFiling).forEach((init, i) => byInit.set(init, steps[i]!));
+        return inits.map((init) => byInit.get(init)!);
       },
       // Merged reads rely on task ids being unique across the two ledgers: both mint `task_<random>` ids.
       get: (id) => board.get(id) ?? plan.get(id),

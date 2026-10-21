@@ -80,6 +80,75 @@ describe("filing settings on a conversation's board (FIX-2080)", () => {
     }
   });
 
+  it("refuses a whole batch from a task's session when one row asks for a conversation setting, and files none of it", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.planner = [{ goal: "Plan the offsite", assignee: "s1" }];
+      // The first row is fine on its own; the second is not a task session's to ask for.
+      h.controls.plans.s1 = [
+        { goal: "Pick the dates", assignee: "eng.tasker" },
+        { goal: "Book the flights", assignee: "eng.tasker", session: "ongoing" }
+      ];
+      h.controls.batch.add("s1");
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      await h.settled();
+
+      const refused = h.controls.refusals.filter((r) => r.worker === "s1");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.message).toMatch(/^setting_not_from_task_session: .*session "ongoing"/);
+      expect(await h.rowsNamed("alice", "Pick the dates")).toHaveLength(0);
+      expect(await h.rowsNamed("alice", "Book the flights")).toHaveLength(0);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a batch that names one id twice, and files none of it", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.s1 = [
+        { goal: "Draft the agenda", assignee: "eng.tasker", id: "task_agenda" },
+        { goal: "Draft the agenda again", assignee: "eng.tasker", id: "task_agenda" }
+      ];
+      h.controls.batch.add("s1");
+      const conversation = await h.open("alice", "s1");
+      await h.turn("alice", conversation);
+      await h.settled();
+
+      const refused = h.controls.refusals.filter((r) => r.worker === "s1");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.message).toMatch(/^duplicate_task_id: .*"task_agenda"/);
+      expect(await h.rowsNamed("alice", "Draft the agenda")).toHaveLength(0);
+      expect(await h.rowsNamed("alice", "Draft the agenda again")).toHaveLength(0);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a follow-up of a task that hasn't run yet: there is no session to follow up in", async () => {
+    // A follow-up runs in the session its root ran in. A root that is held,
+    // or still waiting to start, has none; the follow-up must not take it first.
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.s1 = [
+        { goal: "Draft the brief", assignee: "eng.tasker", id: "task_brief", held: true },
+        { goal: "Polish the brief", followUpOf: "task_brief" }
+      ];
+      const conversation = await h.open("alice", "s1");
+      await h.turn("alice", conversation);
+      await h.settled();
+
+      const refused = h.controls.refusals.filter((r) => r.worker === "s1");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.message).toMatch(/^follow_up_of_unrun: task "task_brief" never ran/);
+      expect(await h.rowsNamed("alice", "Polish the brief")).toHaveLength(0);
+      expect((await one(h, "Draft the brief")).status).toBe("held");
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("gives a conversation-result task one attempt", async () => {
     const h = bootSplitHost();
     try {
@@ -120,6 +189,31 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       await h.dispose();
     }
   });
+
+  it("cancels a piece filed after its task was cancelled, so it doesn't outlive the task", async () => {
+    // The task's ending finds nothing filed yet, so its cascade cancels
+    // nothing; the piece is added after. The add itself must catch it.
+    const h = bootSplitHost();
+    try {
+      let file!: () => void;
+      h.controls.holdBeforeFiling.s1 = new Promise<void>((resolve) => (file = resolve));
+      h.controls.plans.planner = [{ goal: "Plan the retreat", assignee: "s1" }];
+      h.controls.plans.s1 = [{ goal: "[slow:3000] Book the cabin", assignee: "eng.tasker" }];
+      const planner = await h.open("alice", "planner");
+      await h.turn("alice", planner);
+      expect(await h.until(async () => h.controls.turns.some((turn) => turn.worker === "s1"))).toBe(true);
+      const top = await one(h, "Plan the retreat");
+      expect(await h.tool("alice", planner, "updateTask", { id: top.id, status: "cancelled" })).toEqual({ ok: true });
+      file();
+      expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:3000] Book the cabin")).length === 1)).toBe(true);
+      await h.settled();
+
+      expect((await one(h, "Plan the retreat")).status).toBe("cancelled");
+      expect((await one(h, "[slow:3000] Book the cabin")).status).toBe("cancelled");
+    } finally {
+      await h.dispose();
+    }
+  }, 20_000);
 
   it("cancels the open piece a running task filed within seconds of the conversation cancelling the task", async () => {
     const h = bootSplitHost();

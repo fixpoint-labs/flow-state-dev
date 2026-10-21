@@ -27,7 +27,11 @@ export type TaskFilingRule =
   /** A conversation-result task has one attempt. */
   | "conversation_result_one_attempt"
   /** A setting only a conversation may choose, filed from a task's session. */
-  | "setting_not_from_task_session";
+  | "setting_not_from_task_session"
+  /** A batch names one task id twice. */
+  | "duplicate_task_id"
+  /** A follow-up names a task that never ran with a worker: there is no session to follow up in. */
+  | "follow_up_of_unrun";
 
 /**
  * A filing, or an edit of one, refused at the board (FIX-2080). Nothing was
@@ -59,6 +63,32 @@ export interface TaskSettingsSupport {
   readonly session?: readonly TaskSessionSetting[];
   /** The `resultTo` values the board honours. Default: `["filer"]`. */
   readonly resultTo?: readonly TaskResultSetting[];
+}
+
+/** Where a filing comes from, as the board that takes it knows it. */
+export interface TaskFilingCallerContext {
+  /** The filing comes from a task's own session, which files pieces of that task. */
+  readonly fromTaskSession: boolean;
+}
+
+/**
+ * Refuse a setting the filing's caller may not ask for (FIX-2080): a task's
+ * session files pieces of its task, heard by that task, so it asks neither
+ * for the delegate's ongoing session nor for a result sent to the
+ * conversation. Only a conversation chooses those.
+ *
+ * @throws {TaskFilingRefusedError} with rule `setting_not_from_task_session`.
+ */
+export function assertFilingCallerContext(init: TaskInit, context: TaskFilingCallerContext): void {
+  if (!context.fromTaskSession || (init.session !== "ongoing" && init.resultTo !== "conversation")) return;
+  const setting = init.session === "ongoing" ? `session "ongoing"` : `resultTo "conversation"`;
+  throw new TaskFilingRefusedError({
+    rule: "setting_not_from_task_session",
+    ...(init.id !== undefined ? { taskId: init.id } : {}),
+    detail:
+      `a task's session can't file with ${setting}: only a conversation chooses the delegate's ongoing ` +
+      `session or sends a result to the conversation. Nothing was written.`,
+  });
 }
 
 const DEFAULT_SESSIONS: readonly TaskSessionSetting[] = ["new"];
@@ -128,6 +158,49 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
 }
 
 /**
+ * Refuse a follow-up whose root task never ran with a worker (FIX-2080). A
+ * follow-up runs in the session its root ran in, with that worker; a root
+ * that is held, or still waiting to start, has no session yet, and a
+ * follow-up that took it would run first, in the root's place.
+ *
+ * @param lookup The board's committed row by id.
+ * @throws {TaskFilingRefusedError} with rule `follow_up_of_unrun`; a
+ *   follow-up naming no task here is left to the caller's own lookup.
+ */
+export function assertFollowUpHasRun(init: TaskInit, lookup: (id: string) => Task | undefined): void {
+  if (init.followUpOf === undefined) return;
+  const named = lookup(init.followUpOf);
+  if (named === undefined) return;
+  const root = lookup(named.followUpOf ?? named.id);
+  if (root !== undefined && root.assignee !== undefined && root.run !== undefined) return;
+  throw new TaskFilingRefusedError({
+    rule: "follow_up_of_unrun",
+    ...(init.id !== undefined ? { taskId: init.id } : {}),
+    detail: `task "${init.followUpOf}" never ran with a worker, so there is no session to follow up in. File a new task instead. Nothing was filed.`,
+  });
+}
+
+/**
+ * Refuse a batch that names one task id twice: one of the two would be lost.
+ *
+ * @throws {TaskFilingRefusedError} with rule `duplicate_task_id`.
+ */
+export function assertUniqueIds(batch: readonly { readonly id?: string }[]): void {
+  const seen = new Set<string>();
+  for (const { id } of batch) {
+    if (id === undefined) continue;
+    if (seen.has(id)) {
+      throw new TaskFilingRefusedError({
+        rule: "duplicate_task_id",
+        taskId: id,
+        detail: `the batch names task "${id}" twice. Give each task its own id. Nothing was written.`,
+      });
+    }
+    seen.add(id);
+  }
+}
+
+/**
  * Refuse a batch of filings whose dependencies this board can't run: an id
  * that names no task on this board or in the batch, a dependency already
  * failed or cancelled, or a loop. Ids filed in the same batch count.
@@ -137,13 +210,21 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
  * @throws {TaskFilingRefusedError}
  */
 export function assertDepsFileable(
-  batch: readonly Pick<Task, "id" | "deps">[],
+  batch: readonly (Pick<Task, "id" | "deps"> & { readonly status?: Task["status"] })[],
   lookup: (id: string) => Pick<Task, "id" | "deps" | "status"> | undefined
 ): void {
   const filed = new Map(batch.map((row) => [row.id, row]));
   for (const row of batch) {
+    // A row filed already ended waits on nothing, so its dependencies don't
+    // have to be live.
+    if (row.status !== undefined && isTerminalStatus(row.status)) continue;
     for (const depId of row.deps ?? []) {
-      if (filed.has(depId)) continue;
+      // A row of the batch filed already ended counts as a stored one does.
+      const inBatch = filed.get(depId);
+      if (inBatch !== undefined) {
+        if (inBatch.status !== undefined && endedForGood({ status: inBatch.status })) throw ended(row.id, depId, inBatch.status);
+        continue;
+      }
       const dep = lookup(depId);
       if (dep === undefined) throw notOnBoard(row.id, depId);
       if (endedForGood(dep)) throw ended(row.id, depId, dep.status);
