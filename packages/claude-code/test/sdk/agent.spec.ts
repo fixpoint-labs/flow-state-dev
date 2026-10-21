@@ -2697,11 +2697,11 @@ describe("claudeCodeAgent — recordWork", () => {
  * in the repo, so the first thing a reader would do with a brand-new option was
  * paste code that dies on an undefined symbol.
  *
- * Nothing here compiles fenced code blocks, and this package's `tsconfig`
- * includes only `src/**` — so a type-level guard under `test/` would never have
- * run. This is a runtime one instead: the snippet is reproduced verbatim and
- * driven through the block, so an unresolvable symbol is a hard failure and a
- * resolver whose shape stopped matching the option is a red test.
+ * Nothing compiles fenced code blocks, so the prose copies have no check of
+ * their own. This test is the guard: the snippet is reproduced verbatim here,
+ * where `pnpm typecheck` compiles it, and driven through the block, so an
+ * unresolvable symbol is a hard failure and a resolver whose shape stopped
+ * matching the option is a red test.
  *
  * **Keep this a copy-paste match for the three prose copies.** If it needs an
  * edit to pass, they need the same edit.
