@@ -116,7 +116,7 @@ suspends, or ends with work still open, records the hold instead.
 |---|---|
 | **Removes** | The split park, its parent binding and its settle entry (`settleSplitTask`) · its cancel cascade (FIX-2080's replaces it) · the `{ answer, pieces }` output · the automatic piece-failure rule and the retry marker · the settle at the entry's last step |
 | **Adds** | A hold on a running row: what keeps it open (a person, filed tasks, or another wait). It outlives the review park, which FIX-2058 retires. One engine seam after the last drain. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
-| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded hold is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) owns removing it, not this issue · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
+| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded hold is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) removes it, not this issue; a crash between the last piece ending and its notice strands the parent until FIX-2078's wake pays it · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
 
 **Net: down.** A park, a settle entry, a cascade, an output shape and a failure rule go; one hold
 field and one engine seam arrive.
