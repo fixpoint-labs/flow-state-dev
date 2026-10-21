@@ -15,10 +15,35 @@
  * Postgres). On the memory store, and on the filesystem store, whose lock is
  * per store instance, it holds per process only.
  */
+import { CronExpressionParser } from "cron-parser";
 import type { ResourceStateStore } from "@flow-state-dev/engine";
 import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
 import { firedRecordKey } from "./firedRecords";
-import { firstFireAfter as firstAfter, latestFireAtOrBefore as latestAtOrBefore } from "./parseNextFireAt";
+
+/** The latest scheduled time at or before `at`, or `null` when the cron has none. */
+function latestAtOrBefore(cron: string, timezone: string, at: number): number | null {
+  try {
+    // `prev()` is strictly before its current date, so start a millisecond on.
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at + 1) })
+      .prev()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
+
+/** The first scheduled time strictly after `at`, or `null` when the cron has none. */
+function firstAfter(cron: string, timezone: string, at: number): number | null {
+  try {
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at) })
+      .next()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * How far a sender's clock may sit from ours and still land on the time it
