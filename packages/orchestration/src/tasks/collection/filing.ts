@@ -27,7 +27,9 @@ export type TaskFilingRule =
   /** A conversation-result task has one attempt. */
   | "conversation_result_one_attempt"
   /** A setting only a conversation may choose, filed from a task's session. */
-  | "setting_not_from_task_session";
+  | "setting_not_from_task_session"
+  /** A batch names one task id twice. */
+  | "duplicate_task_id";
 
 /**
  * A filing, or an edit of one, refused at the board (FIX-2080). Nothing was
@@ -151,6 +153,26 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
     for (const next of depsOf(id) ?? []) stack.push(next);
   }
   return false;
+}
+
+/**
+ * Refuse a batch that names one task id twice: one of the two would be lost.
+ *
+ * @throws {TaskFilingRefusedError} with rule `duplicate_task_id`.
+ */
+export function assertUniqueIds(batch: readonly { readonly id?: string }[]): void {
+  const seen = new Set<string>();
+  for (const { id } of batch) {
+    if (id === undefined) continue;
+    if (seen.has(id)) {
+      throw new TaskFilingRefusedError({
+        rule: "duplicate_task_id",
+        taskId: id,
+        detail: `the batch names task "${id}" twice. Give each task its own id. Nothing was written.`,
+      });
+    }
+    seen.add(id);
+  }
 }
 
 /**

@@ -80,6 +80,7 @@ import {
   assertDepsFileable,
   assertFilingCallerContext,
   assertFilingSettings,
+  assertUniqueIds,
   hasStarted,
   isClaimable,
   isTerminalStatus,
@@ -758,6 +759,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // batch's dependencies (its own ids count) and every row's place in
         // the chain come first. A reservation a later refusal strands lapses
         // with its lease. Then each row is added after the rows it depends on.
+        assertUniqueIds(inits);
         const batch = dependencyOrder(inits.map((init) => ({ ...init, id: init.id ?? newTaskId() })));
         for (const init of batch) checkFiling(init);
         assertDepsFileable(batch, (id) => ref.get(id));

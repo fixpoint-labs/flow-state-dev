@@ -104,6 +104,28 @@ describe("filing settings on a conversation's board (FIX-2080)", () => {
     }
   });
 
+  it("refuses a batch that names one id twice, and files none of it", async () => {
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.s1 = [
+        { goal: "Draft the agenda", assignee: "eng.tasker", id: "task_agenda" },
+        { goal: "Draft the agenda again", assignee: "eng.tasker", id: "task_agenda" }
+      ];
+      h.controls.batch.add("s1");
+      const conversation = await h.open("alice", "s1");
+      await h.turn("alice", conversation);
+      await h.settled();
+
+      const refused = h.controls.refusals.filter((r) => r.worker === "s1");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.message).toMatch(/^duplicate_task_id: .*"task_agenda"/);
+      expect(await h.rowsNamed("alice", "Draft the agenda")).toHaveLength(0);
+      expect(await h.rowsNamed("alice", "Draft the agenda again")).toHaveLength(0);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("gives a conversation-result task one attempt", async () => {
     const h = bootSplitHost();
     try {
