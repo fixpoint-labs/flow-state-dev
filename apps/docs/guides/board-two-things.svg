@@ -41,7 +41,7 @@
 <line class="ln" x1="599" y1="248" x2="480" y2="248" marker-end="url(#ah)"/>
 <rect class="ground" x="525.6" y="241" width="68.8" height="15"/><text class="plate" x="560" y="252" text-anchor="middle">01 CLAIM</text>
 <line class="ln" x1="601" y1="270" x2="761" y2="270" marker-end="url(#ah)"/>
-<rect class="ground" x="639.0" y="263" width="90.1" height="15"/><text class="plate" x="684" y="274" text-anchor="middle">02 HAND OFF</text>
+<rect class="ground" x="639.0" y="263" width="90.1" height="15"/><text class="plate" x="684" y="274" text-anchor="middle">02 DISPATCH</text>
 <rect class="thin" x="762" y="252" width="154" height="36"/>
 <text class="t" x="774" y="275">its worker</text>
 <line class="ln" x1="599" y1="290" x2="480" y2="290" marker-end="url(#ah)"/>
