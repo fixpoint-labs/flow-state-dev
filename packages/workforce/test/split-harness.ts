@@ -48,6 +48,8 @@ export type SplitControls = {
   failAfterFiling: Set<string>;
   /** How long a worker's turn waits after filing its pieces, in ms. */
   holdAfterFiling: Record<string, number>;
+  /** Workers whose turn files its pieces as one batch (`addTasks`), not one by one. */
+  batch: Set<string>;
 };
 
 const doorInput = z.object({ message: z.string() });
@@ -81,18 +83,18 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
         controls.refusals.push({ worker, error: "no_delegation_board" });
         return `${worker} has no board`;
       }
-      for (const piece of pieces) {
-        const { goal, assignee, id, ...settings } = piece;
-        try {
-          await ref.addTask({ goal, ...(assignee ? { assignee } : {}), ...(id ? { id } : {}), ...settings });
-        } catch (error) {
-          controls.refusals.push({
-            worker,
-            error: error instanceof Error ? error.name : String(error),
-            // A filing refused by its settings names the rule (FIX-2080).
-            ...(error instanceof Error && error.name === "TaskFilingRefusedError" ? { message: error.message } : {})
-          });
-        }
+      const initOf = ({ goal, assignee, id, ...settings }: Piece) => ({ goal, ...(assignee ? { assignee } : {}), ...(id ? { id } : {}), ...settings });
+      const refused = (error: unknown) =>
+        controls.refusals.push({
+          worker,
+          error: error instanceof Error ? error.name : String(error),
+          // A filing refused by its settings names the rule (FIX-2080).
+          ...(error instanceof Error && error.name === "TaskFilingRefusedError" ? { message: error.message } : {})
+        });
+      if (controls.batch.has(worker)) {
+        await ref.addTasks(pieces.map(initOf)).catch(refused);
+      } else {
+        for (const piece of pieces) await ref.addTask(initOf(piece)).catch(refused);
       }
       const hold = notice ? undefined : controls.holdAfterFiling[worker];
       if (hold !== undefined) await new Promise((resolve) => setTimeout(resolve, hold));
@@ -152,7 +154,8 @@ export function bootSplitHost(options: BoardHostOptions = {}) {
     refusals: [],
     turns: [],
     failAfterFiling: new Set(),
-    holdAfterFiling: {}
+    holdAfterFiling: {},
+    batch: new Set()
   };
   const host = bootBoardHost({
     standard: splitWorkers(),
