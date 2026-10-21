@@ -22,6 +22,7 @@ import {
 import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
+import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -104,6 +105,7 @@ export function buildInitialTask<TInput, TOutput>(
     labels: init.labels,
     metadata: init.metadata,
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
+    ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
     ...(init.session !== undefined ? { session: init.session } : {}),
     ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
     ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
@@ -288,7 +290,11 @@ export function dispatchWrite(
   };
 }
 
-/** The fields a filing may change until the task first starts (FIX-2080, ER-4). */
+/**
+ * The fields a filing may change until the task first starts (FIX-2080,
+ * ER-4; the brief's fields and the assignee since FIX-2081). Each field's rule
+ * is the field table's (`./field-rules`), read inside the write.
+ */
 export interface TaskSettingsPatch {
   /** Hold the task (`true`) or release it (`false`). */
   held?: boolean;
@@ -296,27 +302,48 @@ export interface TaskSettingsPatch {
   deps?: string[];
   /** Its attempts. */
   maxAttempts?: number;
+  /** What it is for. */
+  goal?: string;
+  /** Its short label. */
+  title?: string;
+  /** What its worker is told beside the goal. */
+  context?: string;
+  /** Its structured input. */
+  input?: unknown;
+  /** Its priority. */
+  priority?: number;
+  /** Its labels, replaced whole. */
+  labels?: string[];
+  /** Metadata keys merged over its own. */
+  metadata?: Record<string, unknown>;
+  /** Who works it. A follow-up keeps its root's worker. */
+  assignee?: string;
 }
 
-/**
- * Whether the row has ever started: claimed at least once. A retry's return
- * to `pending` does not make it unstarted again.
- */
-export function hasStarted(task: Task): boolean {
-  return task.startedAt != null || task.attempts > 0;
-}
+export { hasStarted };
 
 /** Why a settings edit is refused on `task` before anything is checked: it has started. */
 export function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
   return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
 }
 
+/** The fields a patch names, in the field table's words. */
+function patchFields(patch: TaskSettingsPatch): TaskEditField[] {
+  return (Object.keys(patch) as Array<keyof TaskSettingsPatch>).filter(
+    (field) => patch[field] !== undefined,
+  ) as TaskEditField[];
+}
+
 /**
- * The one guard on editing a filing (FIX-2080, ER-4), decided on the
- * freshest committed row, inside the write: `held`, `deps` and
- * `maxAttempts` change while the row has never started, and not after.
- * Both backings run it. Terminal rows are refused by the caller's
+ * The one guard on editing a filing (FIX-2080, ER-4; every field since
+ * FIX-2081), decided on the freshest committed row, inside the write: each
+ * field the patch names changes only while the field table allows it
+ * (`TASK_FIELD_RULES`), which for every field here is until the row first
+ * starts. Both backings run it. Terminal rows are refused by the caller's
  * `declineOnTerminal` before this runs.
+ *
+ * A conversation-result task's attempts are refused first, in every state:
+ * it has one, whenever it is asked.
  *
  * @param lookup The board's committed row by id, for the dependency check.
  * @returns The patch to write, `undefined` when nothing changes, or the
@@ -329,6 +356,15 @@ export function settingsWrite(
   patch: TaskSettingsPatch,
   lookup: (id: string) => Task | undefined,
 ): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  if (patch.maxAttempts !== undefined && task.resultTo === "conversation" && patch.maxAttempts !== 1) {
+    throw new TaskFilingRefusedError({
+      rule: "conversation_result_one_attempt",
+      taskId: task.id,
+      detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
+    });
+  }
+  const locked = lockedFields(task, patchFields(patch));
+  if (locked.length > 0) return { decline: "started" };
   const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };
   const update: Partial<Task> = {};
@@ -342,14 +378,21 @@ export function settingsWrite(
     if (!Number.isInteger(patch.maxAttempts) || patch.maxAttempts < 1) {
       throw new Error(`[tasks] maxAttempts must be a positive integer, got ${String(patch.maxAttempts)}.`);
     }
-    if (task.resultTo === "conversation" && patch.maxAttempts !== 1) {
-      throw new TaskFilingRefusedError({
-        rule: "conversation_result_one_attempt",
-        taskId: task.id,
-        detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
-      });
-    }
     update.maxAttempts = patch.maxAttempts;
+  }
+  if (patch.assignee !== undefined && patch.assignee !== task.assignee) {
+    const assigneeDeclined = assigneeChangeDecline(task, patch.assignee);
+    if (assigneeDeclined !== undefined) return { decline: assigneeDeclined };
+    update.assignee = patch.assignee;
+  }
+  if (patch.goal !== undefined && patch.goal !== task.goal) update.goal = patch.goal;
+  if (patch.title !== undefined && patch.title !== task.title) update.title = patch.title;
+  if (patch.context !== undefined && patch.context !== task.context) update.context = patch.context;
+  if (patch.input !== undefined) update.input = patch.input;
+  if (patch.priority !== undefined && patch.priority !== task.priority) update.priority = patch.priority;
+  if (patch.labels !== undefined && !sameIds(patch.labels, task.labels)) update.labels = [...patch.labels];
+  if (patch.metadata !== undefined && Object.keys(patch.metadata).length > 0) {
+    update.metadata = { ...(task.metadata ?? {}), ...patch.metadata };
   }
   return Object.keys(update).length === 0 ? undefined : { patch: update };
 }
@@ -1123,6 +1166,32 @@ export function requireClaimTicket(
   if (claim === undefined) {
     throw new Error(`[tasks] ${verb} requires the claim ticket ${detail}`);
   }
+}
+
+/**
+ * The patch a progress report writes (FIX-2081): the note, and the output
+ * marked a checkpoint. `undefined` when it names neither.
+ */
+export function progressPatch(progress: { statusNote?: string; output?: unknown }): Partial<Task> | undefined {
+  const patch: Partial<Task> = {
+    ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
+    ...(progress.output !== undefined ? { output: progress.output, checkpointed: true as const } : {}),
+  };
+  return Object.keys(patch).length === 0 ? undefined : patch;
+}
+
+/**
+ * The patch a completion writes: the final result as the output, unless the
+ * worker checkpointed one, which then stays the output (FIX-2081).
+ */
+export function completionPatch(task: Task, output: unknown, completedAt: number): Partial<Task> {
+  return {
+    ...(task.checkpointed === true ? {} : { output }),
+    completedAt,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    error: undefined,
+  };
 }
 
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */

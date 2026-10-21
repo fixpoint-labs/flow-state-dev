@@ -137,6 +137,7 @@ import {
 } from "./coordinator-config";
 import { declaresInternalPostEntry, takesDelegatedPost } from "../delegates/delegate-check";
 import { DELEGATES_STATE } from "../delegates/delegate-keys";
+import { delegateDefaultsOf, withRoster } from "../delegates/worker-delegates";
 import {
   currentDelegates,
   delegateKey,
@@ -145,7 +146,6 @@ import {
   readDelegates,
   sameDelegate,
   type DelegateRef,
-  type DelegateDefaults,
   type DelegateRecord
 } from "../delegates/delegate-list";
 import {
@@ -321,10 +321,6 @@ const deliveryRequestSchema = z.object({
 
 type DeliveryRequest = z.infer<typeof deliveryRequestSchema>;
 
-/** The defaults a worker's configuration names. */
-function defaultsOf(config: CoordinatorConfig): DelegateDefaults {
-  return { delegates: config.delegates, ...(config.fallback === undefined ? {} : { fallback: config.fallback }) };
-}
 
 /** Why best fit didn't use its evaluator's pick, in words. */
 function missReason(miss: BestFitMiss): string {
@@ -452,7 +448,9 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     const records = (ctx.session.state as Record<string, unknown>)[DELEGATES_STATE] == null
       ? await workstreamDelegateSeed(ctx as never)
       : undefined;
-    return { worker, config, defaults: { ...defaultsOf(config), ...(records === undefined ? {} : { records }) } };
+    // `delegates: all` is the roster as it stands, read now (FIX-2081 D2).
+    const defaults = await withRoster(installation, ctx, delegateDefaultsOf(config as unknown as Record<string, unknown>));
+    return { worker, config, defaults: { ...defaults, ...(records === undefined ? {} : { records }) } };
   };
 
   const blockBase = { resources, sessionStateSchema: coordinatorSessionStateSchema };
@@ -775,9 +773,10 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * The judgment turn: the built-in agent's own turn, shared rather than
    * copied, run as this conversation's worker. It reads the worker's
    * instructions, model, tools, skills and capabilities as an `agent` worker's
-   * are read, and carries the four delegate tools, the dispatch tool and the eight
-   * task tools on every coordinator, whatever the worker's `tools:` line
-   * grants. The task tools come from one capability instance, the
+   * are read, and carries the delegate tools (`listDelegates`, and the three
+   * that change the list on one set to `managesOwnDelegates`), the dispatch
+   * tool and the task tools on every coordinator, whatever the worker's
+   * `tools:` line grants. The task tools come from one capability instance, the
    * conversation's board's, composed by the turn once, so no skill or preset
    * adds a second set; they are on a turn while one of its delegates takes a
    * task.
@@ -787,7 +786,6 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     {
       kind: COORDINATOR_FLOW,
       answerName: COORDINATOR_JUDGMENT,
-      extraTools: [...sessionBoard.delegates.tools],
       board: sessionBoard,
       // The turn's model reads a delegate's answer as a line from that
       // delegate, never as its own reply, and a post the routing handed on as

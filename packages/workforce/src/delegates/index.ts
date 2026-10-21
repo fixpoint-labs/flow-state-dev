@@ -12,7 +12,7 @@
  * A flow carries them, with the task board they file onto, through
  * `defineSessionBoard`.
  */
-export { ADD_DELEGATE, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
+export { ADD_DELEGATE, ALL_DELEGATES, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
 export { delegateRecordSchema, type DelegateRecord } from "./delegate-list";
 export type { DelegateTakes } from "./delegate-check";
 export type { TaskDelegates } from "./worker-delegates";

@@ -12,12 +12,12 @@
  *   second attempt re-enters it; a reassign opens another. The hand-over
  *   re-runs the delegate check, so a delegate fired since the filing doesn't
  *   run.
- * - **The grant** (FIX-1802 D1). A session files when its delegate list holds
- *   one that takes a task now: the same list the roster reads, read on every
- *   call, server-side. A task session files too: its pieces, which its task
- *   then waits on (`./split`), for any worker on the user's roster that takes
- *   a task (`rosterTaskTakers`), its delegates or not. Delegates stay the
- *   reporting line: an unassigned row goes to the only one.
+ * - **The grant** (FIX-1802 D1, FIX-2081). A session's delegates are its
+ *   authority: it files for the ones that take a task now, read on every
+ *   call, server-side, and for no one else. Under `delegates: all` that is
+ *   the user's whole roster as it stands (`../delegates`). A task session
+ *   files its task's pieces, which its task then waits on (`./split`), for
+ *   the same delegates. An unassigned row goes to the only one.
  * - **Steps for itself** (FIX-2076 D1). On a flow that plans its turns
  *   ({@link ConversationBoard.planned}), a worker's own turn is offered the
  *   task tools whether or not it has delegates, and a filing that names the
@@ -38,8 +38,10 @@
  *   files, read per call. The resolver is the running session's own board,
  *   and none while it doesn't file, so an action answers
  *   `no_delegation_board`. The roster is the session's delegates that take a
- *   task, and in a task session every worker on the user's roster that takes
- *   one, read on every call.
+ *   task, read on every call. An edit is one guarded write
+ *   (`patchSettings`), and an assignee it writes is checked here as a
+ *   filing's is: a post row's doesn't change, and a step's and a delegate's
+ *   are filed apart.
  * - **The start.** A filing or an assign dispatches a run of the board into
  *   the conversation as a request of its own, and returns without waiting for
  *   it. The start it owes is the row's own state, pending and assigned
@@ -152,12 +154,6 @@ export interface ConversationBoardOptions {
    */
   delegates: (ctx: BlockContext) => Promise<TaskDelegates>;
   /**
-   * Every worker on the session user's roster that takes a task now, read per
-   * call: who a task session's pieces can go to, beside its delegates. A
-   * session that works no task never reads it.
-   */
-  rosterTaskTakers: (ctx: BlockContext) => Promise<TaskDelegates>;
-  /**
    * The worker flow the board's sessions run on: where each task it
    * hands over sends its notice back, as the task session's `filingFlow`.
    */
@@ -246,6 +242,15 @@ const stepFromItsOwnTurn = (self: string) =>
     "step_from_its_own_turn",
     `"${self}" is this session's own worker: a step for itself is filed only by its own turn, on a flow that works its steps, ` +
       "and it works the step in that same request. File it for a delegate instead. Nothing was filed."
+  );
+
+/** The refusal for a hold or a release of a step: the drain works a step in its request, and never waits on a held one. */
+const stepNotHeld = (taskId: string) =>
+  new TaskWriteRefusedError(
+    "step_cannot_be_held",
+    `task "${taskId}" is a step for yourself, and it runs in this request: it can't be held or released. ` +
+      "File it for a delegate, held, instead. Nothing was written.",
+    taskId
   );
 
 /** The refusal for an assignee change that crosses the worker itself. */
@@ -400,35 +405,22 @@ export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): P
 export function defineConversationBoard(options: ConversationBoardOptions) {
   /**
    * Who a filing in the running session can name, read now: its delegates
-   * that take a task, and in a task session (its pieces) every worker on the
-   * user's roster that takes one too. Server-side only: the session's task
-   * and its delegate list are server-written state, never input.
+   * that take a task (under `delegates: all`, the roster as it stands), in a
+   * task session as in a conversation (FIX-2081). Server-side only: the
+   * delegate list is server-written state, never input. Not memoized across
+   * calls, so a hire or a removal counts on the next one (D2).
    */
-  const reach = async (ctx: BlockContext): Promise<{ reachable: TaskDelegates; delegates: TaskDelegates; taskSession: boolean }> => {
-    const delegates = await options.delegates(ctx);
-    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-    if (typeof state[TASK_ID_STATE_KEY] !== "string") return { reachable: delegates, delegates, taskSession: false };
-    // The session's own worker may be on the roster too; a filing that names
-    // it is a step, not a piece (`withSteps` below, FIX-2076).
-    const roster = await options.rosterTaskTakers(ctx);
-    const available = new Map([...delegates.available, ...roster.available]);
-    const unavailable = new Map([...delegates.unavailable, ...roster.unavailable].filter(([worker]) => !available.has(worker)));
-    return { reachable: { available, unavailable }, delegates, taskSession: true };
-  };
+  const reach = (ctx: BlockContext): Promise<TaskDelegates> => options.delegates(ctx);
 
-  /** The roster the task tools and actions check an assignee against; its sole assignee is still the only delegate. */
-  const roster: AssigneeRosterSource = async (ctx) => {
-    const { reachable, delegates } = await reach(ctx);
-    return { ...rosterOf(reachable), soleAssignee: rosterOf(delegates).soleAssignee };
-  };
+  /** The roster the task tools and actions check an assignee against: the delegates. */
+  const roster: AssigneeRosterSource = async (ctx) => rosterOf(await reach(ctx));
 
   /**
-   * Whether the running session files now (FIX-1802 D1): one of its
-   * delegates takes a task, read from its list as it stands; in a task
-   * session, any worker on the roster that takes one. So a task session with
-   * no delegates still files when the roster has a task taker: deliberate.
+   * Whether the running session files for a delegate now (FIX-1802 D1): one
+   * of its delegates takes a task, read from its list as it stands. A worker
+   * that works steps files them whatever its delegates (`turnFiles`).
    */
-  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).reachable.available.size > 0;
+  const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
 
   /** The flow's planning: its turns, wrapped so the steps they file run in their request (FIX-2076). */
   const planning = definePlanning();
@@ -496,12 +488,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (options.postFlow === undefined) throw new Error(`Task "${task.taskId}" is a post, and this board hands over none.`);
         return options.postFlow(ctx, task.assignee);
       }
-      const { reachable, taskSession } = await reach(ctx);
+      const reachable = await reach(ctx);
       const flow = reachable.available.get(task.assignee);
       if (flow !== undefined) return flow;
-      const why =
-        reachable.unavailable.get(task.assignee) ??
-        (taskSession ? "it isn't a worker on this roster that takes tasks" : "it isn't one of this conversation's delegates");
+      const why = reachable.unavailable.get(task.assignee) ?? "it isn't one of this session's delegates";
       throw new Error(`Task "${task.taskId}" wasn't handed to "${task.assignee}": ${why}.`);
     },
     // The task session is born naming its worker, the task, the session
@@ -520,7 +510,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (postOf(task) !== undefined) {
         return { [WORKER_ID_STATE_KEY]: task.assignee, [FILING_SESSION_STATE_KEY]: partition };
       }
-      const flow = (await reach(ctx)).reachable.available.get(task.assignee);
+      const flow = (await reach(ctx)).available.get(task.assignee);
       // The delegate's ongoing session for the conversation works no one
       // task (FIX-2080): born naming its worker, the conversation and the
       // flow that filed into it, and no task or chain place. One that exists
@@ -673,7 +663,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A conversation-result task has one attempt (FIX-2080).
         maxAttempts: init.maxAttempts ?? (init.resultTo === "conversation" ? 1 : TASK_ATTEMPTS),
         ...(assignee !== undefined ? { assignee } : {}),
-        ...(metadata !== undefined ? { metadata } : {})
+        ...(metadata !== undefined ? { metadata } : {}),
+        // The task this piece is for, server-written (FIX-2081): `listTasks({ filedByTask })` reads it.
+        ...(owner !== undefined ? { filedByTask: owner } : {})
       });
       await markAdded();
       if (added.status !== "held" && isStartable(added, ref.list())) await wake(ctx);
@@ -743,8 +735,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
         return outcome;
       },
+      // The one guarded edit (FIX-2080, FIX-2081): the field table holds inside
+      // the write. A post row takes no edit, only a cancel; an assignee is a
+      // delegate, never the worker itself; metadata keeps its server-written
+      // keys. An edit that leaves a row startable starts the board.
       async patchSettings(id, patch) {
-        const outcome = await ref.patchSettings(id, patch);
+        const row = ref.get(id);
+        if (isPostRow(row)) {
+          return { outcome: "declined", reason: patch.assignee !== undefined ? "immutable-assignee" : "disallowed", status: row!.status };
+        }
+        if (self !== undefined && patch.assignee === self) throw filedApart(id);
+        const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
+        const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
         return outcome;
       },
@@ -842,9 +844,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const { id, markAdded } = await reserveFiling(ctx, plan, partition, init, false);
       const metadata = callerMetadata(init.metadata);
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
+      // A step a task session plans is that task's, server-written (FIX-2081).
+      const owner = await pieceOwnerOf(ctx);
       const added = await plan.addTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
+        ...(owner !== undefined ? { filedByTask: owner } : {}),
         id,
         assignee: self,
         maxAttempts: init.maxAttempts ?? STEP_ATTEMPTS,
@@ -914,17 +919,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       cancel: byRow("cancel") as TaskCollectionRef["cancel"],
       // The drain works a step in this request and doesn't wait on a held one.
       async hold(id) {
-        if (isStep(id)) {
-          throw new TaskWriteRefusedError(
-            "step_cannot_be_held",
-            `task "${id}" is a step for yourself, and it runs in this request: it can't wait to be released. File it for a delegate, held, instead. Nothing was written.`,
-            id
-          );
-        }
+        if (isStep(id)) throw stepNotHeld(id);
         return board.hold(id);
       },
       release: byRow("release") as TaskCollectionRef["release"],
-      patchSettings: byRow("patchSettings") as TaskCollectionRef["patchSettings"],
       unpark: byRow("unpark") as TaskCollectionRef["unpark"],
       reopen: byRow("reopen") as TaskCollectionRef["reopen"],
       setPriority: byRow("setPriority") as TaskCollectionRef["setPriority"],
@@ -935,6 +933,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A step is the worker's, and a delegate's task a delegate's: the two are filed apart.
         if (isStep(id) !== (assignee === self)) throw filedApart(id);
         return holder(id).setAssignee(id, assignee);
+      },
+      async patchSettings(id, patch) {
+        // A step is the worker's, and a delegate's task a delegate's: the two are filed apart.
+        if (patch.assignee !== undefined && isStep(id) !== (patch.assignee === self)) throw filedApart(id);
+        if (!isStep(id)) return board.patchSettings(id, patch);
+        // The drain works a step in this request and doesn't wait on a held one, in any state.
+        if (patch.held !== undefined) throw stepNotHeld(id);
+        const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
+        return plan.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
       },
       ...(board.dispatch === undefined
         ? {}

@@ -3,10 +3,11 @@
  *
  * The DevTool changes a task only through the flow's own actions, so a row
  * offers exactly what the flow exposes. The signal is the input: an action
- * whose input requires a string `taskId` acts on one task. That covers the
- * framework's task tools and an app's own actions (an `answer` for a parked
- * row) alike. A board's generated `dispatchTask`, whose `taskId` is optional,
- * is offered too: on a row it starts that row.
+ * whose input requires a string `id` or `taskId` acts on one task
+ * ({@link taskIdField}). That covers the framework's task tools
+ * (`updateTask`, `getTask`, `answerTask`) and an app's own actions (an
+ * `answer` for a parked row) alike. A board's generated `dispatchTask`, whose
+ * `taskId` is optional, is offered too: on a row it starts that row.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
  * are offered only on that board's rows; so is any action whose name ends with
@@ -26,10 +27,22 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+/**
+ * The field an action names its task in: `id` (the task tools since FIX-2081,
+ * `updateTask({ id })`), else `taskId` (`answerTask`, `dispatchTask`, and an
+ * app's own). `undefined` when it names none, required unless `optional`.
+ */
+export function taskIdField(schema: ActionInputSchema | undefined, optional = false): "id" | "taskId" | undefined {
+  if (schema === undefined || schema.type !== "object") return undefined;
+  for (const name of ["id", "taskId"] as const) {
+    const field = schema.fields[name];
+    if (field !== undefined && field.type === "string" && (field.required || optional)) return name;
+  }
+  return undefined;
+}
+
 function takesTaskId(schema: ActionInputSchema | undefined, optional = false): boolean {
-  if (schema === undefined || schema.type !== "object") return false;
-  const field = schema.fields.taskId;
-  return field !== undefined && field.type === "string" && (field.required || optional);
+  return taskIdField(schema, optional) !== undefined;
 }
 
 /**
@@ -40,27 +53,18 @@ function takesTaskId(schema: ActionInputSchema | undefined, optional = false): b
 const DISPATCH_PREFIX = "dispatchTask_";
 
 /**
- * Eight of the task tools `taskToolActions` generates for a board, always
- * together. It also generates `answerTask`; these eight are enough to find a
- * board's family.
+ * The filer's four task tools `taskToolActions` generates for a board, always
+ * together (FIX-2081). It also generates `answerTask` and, on a board that
+ * dispatches, `dispatchTask`; these four are enough to find a board's family.
  */
-const TASK_TOOLS = [
-  "addTask",
-  "assignTask",
-  "completeTask",
-  "failTask",
-  "blockTask",
-  "cancelTask",
-  "updateTask",
-  "listTasks",
-] as const;
+const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
 /**
  * The board suffixes the flow's own action list names: every `<suffix>` for
- * which all eight `<tool>_<suffix>` above are actions. `taskToolActions` generates
+ * which all four `<tool>_<suffix>` above are actions. `taskToolActions` generates
  * them together, so a whole family is a board's tools even when this
  * session has no rows on that board (a sibling session sharing the flow
- * kind, or a board with no tasks yet). An app's own `cancelTask_now`
+ * kind, or a board with no tasks yet). An app's own `updateTask_now`
  * comes with no family, so it names no board.
  */
 function generatedSuffixes(actions: readonly string[]): string[] {
@@ -79,10 +83,10 @@ function generatedSuffixes(actions: readonly string[]): string[] {
  * The boards an action can belong to are the ones the tab lists, plus every
  * board the flow's generated task tools name (see `generatedSuffixes`). An
  * action whose name ends with `_<suffix>` of one of them belongs to that board
- * alone; when several match (`cancelTask_feature_work` ends with `_work` too),
+ * alone; when several match (`updateTask_feature_work` ends with `_work` too),
  * the longest wins. One whose name ends with no known board's suffix is
  * generic and offered on every board, whatever its name starts with: an app
- * may name its own action `cancelTask_now`.
+ * may name its own action `updateTask_now`.
  *
  * @param actions The flow's public action names.
  * @param schemas Their input schemas, as the flow list reports them.

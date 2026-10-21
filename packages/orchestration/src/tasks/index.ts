@@ -45,6 +45,14 @@ export {
   type TaskSettingsSupport,
 } from "./collection/filing";
 export { hasStarted, CASCADE_DUE_MS, type TaskSettingsPatch } from "./collection/internal";
+// The field table (FIX-2081): each field `updateTask` changes, with its one rule.
+export {
+  TASK_FIELD_RULES,
+  NEVER_EDITABLE_FIELDS,
+  lockedFields,
+  type TaskEditField,
+  type TaskFieldRule,
+} from "./collection/field-rules";
 // The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
 export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";
 
@@ -93,6 +101,9 @@ export type {
   TaskWriteOutcome,
   TaskWriteDeclineReason,
   TaskDispatchOptions,
+  TaskProgress,
+  TaskCancelSource,
+  CancelOptions,
 } from "./collection/types";
 export { createStateBackedTaskCollection } from "./collection/state-backed";
 export type { StateBackedOptions } from "./collection/state-backed";

@@ -9,7 +9,8 @@
  * - **The model's tools**: `tools`, one capability for the model block's
  *   `uses`, carrying Orchestration's task tools, `dispatchTask` among them, while the session
  *   files and none otherwise, read before each model call. Compose it once
- *   per turn: core refuses a turn with two tools of one name.
+ *   per turn: core refuses a turn with two tools of one name. Beside it,
+ *   `questions` and `progress` (a task turn's own two) and `delegateTools`.
  * - **The actions**: `actions`, the same tools as public actions named
  *   `<tool>_tasks`, which answer `no_delegation_board` while the session
  *   doesn't file, and the four delegate actions (`addDelegate`,
@@ -56,6 +57,7 @@ import { defineConversationBoard } from "./board";
 import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY } from "./board-entries";
 import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { questionPark } from "./question-park";
+import { taskProgress } from "./task-progress";
 import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
@@ -121,7 +123,6 @@ export function defineSessionBoard(options: SessionBoardOptions) {
   const delegates = defineWorkerDelegates(options);
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
-    rosterTaskTakers: delegates.rosterTaskTakers,
     flowKind: options.flowKind,
     chainLimit: () => taskChainLimitOf(options.installation),
     ...(options.posts === undefined ? {} : { posts: options.posts }),
@@ -148,6 +149,17 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      * (FIX-1817): one entry for the model block's `uses`, beside `tools`.
      */
     questions: questionPark,
+    /**
+     * `reportProgress`, on a task turn holding a running row (FIX-2081 D3):
+     * one entry for the model block's `uses`, beside `tools`.
+     */
+    progress: taskProgress,
+    /**
+     * The delegate tools a model's turn is offered (FIX-2081): `listDelegates`
+     * always, and `addDelegate`, `removeDelegate` and `setFallback` only on a
+     * coordinator set to `managesOwnDelegates`. One entry for `uses`.
+     */
+    delegateTools: delegates.toolsCapability,
     /**
      * `messageWorker` (FIX-1989), on every turn of a session that runs a
      * worker: one entry for the model block's `uses`, beside `tools`.
