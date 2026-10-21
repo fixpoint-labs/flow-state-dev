@@ -9,8 +9,8 @@
 | **wants launch to refresh the adoption numbers every Monday** | No way in Workforce: a schedule starts a request outside the task model, and nothing files a task from one | Each Monday a task lands on launch's board, assigned to researcher. It retries, reports and cancels like any task, and launch hears its ending once ([D1](DECISIONS.md#d1)) |
 | **opens her list of scheduled work** | There is no such list, and a schedule row has no next run unless the host keeps a schedule index | Sees each schedule with its next run, worked out from its cron and time zone, on any host ([D3](DECISIONS.md#d3)) |
 | **adds or removes a schedule** | Nothing shows it | The list shows the change on its next read |
-| **runs two hosts, or restarts one, behind any cron** | Each process dedupes in its own memory for a minute: two hosts, or a restart, fire one time twice | One firing per scheduled time, on every cron path, for every scheduled action ([D2](DECISIONS.md#d2)) |
-| **sends a fire late, early or twice** | A fire with no time is deduped only for a minute | It counts against the scheduled time nearest it. A fire for a time already fired, or earlier, is refused |
+| **runs two hosts, or restarts one, behind any cron** | Each process dedupes in its own memory for a minute: two hosts, or a restart, fire one time twice | One firing per scheduled time, on every cron path, for every scheduled action, on a store the hosts share: SQLite or Postgres ([D2](DECISIONS.md#d2)) |
+| **sends a fire late, early or twice** | A fire with no time is deduped only for a minute | A fire carrying a time counts against that scheduled time; a fire with none counts against the latest time already due, never the next one. A fire for a time already fired, or earlier, is answered as a duplicate and nothing runs |
 
 The two limits the concept states stand: a fire whose filing fails is dropped, not retried, and a
 crash can lose a firing.
@@ -46,7 +46,7 @@ today's dedupe back, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/scheduled-work/recurring-work-files-a-task/` · no model: deterministic workers · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: one fire, POSTed as a host scheduler does, puts one task on launch's board in Alice's list, assigned to researcher; it runs, and launch's session runs one ending request for it; a second time's task, cancelled by Alice through the public task action, ends cancelled. b: one scheduled time POSTed by two processes sharing the store, again after one restarts, and again 20 s late, files exactly one task. c: the list shows each schedule's next run equal to its cron in its time zone; a schedule added or removed shows on the next read, with no schedule index configured |
+| **Signal** | a: one fire, POSTed as a host scheduler does, puts one task on launch's board in Alice's list, assigned to researcher; it runs, and launch's session runs one ending request for it; a second time's task, cancelled by Alice through the public task action, ends cancelled. b: one scheduled time POSTed by two processes sharing the store, again after one restarts, and again 20 s late, files exactly one task; an untimed POST a minute before the time files nothing, and the time's own fire still files. c: the list shows each schedule's next run equal to its cron in its time zone; a schedule added or removed shows on the next read, with no schedule index configured |
 | **Input** | A weekly cron in `Europe/London` on a pinned clock. Another cron, zone, or a fire on either side of the slot must pass too |
 | **Anti-game** | Tasks through the public task read; launch's requests from the engine's store; two real processes, not two handlers in one |
 | **Control that must fail** | `GOAL_CONTROL=memory-dedupe` must FAIL leg b on *exactly one task*. Today's `main` FAILS leg a on *one task on launch's board* and leg c on *next run* |
@@ -85,9 +85,9 @@ contract line), and the `scheduled` README. Extend *Workforce → Delegating wor
 ```mermaid
 flowchart LR
   H["any cron path · a host cron · a polling tick · BullMQ"] --> E["dispatch endpoint"]
-  E -->|"nearest scheduled time"| W["the schedule's last fired time · compare-and-set"]
+  E -->|"its scheduled time · never one not yet due"| W["the schedule's last fired time · compare-and-set"]
   W -->|"later time · claimed"| K["the schedule's handler"]
-  W -->|"same or earlier"| X["refused · nothing runs"]
+  W -->|"same or earlier"| X["answered as a duplicate · nothing runs"]
   K -->|"kind task · as Alice"| F["the board's filing · the one a screen uses"]
   F --> B["launch's board · an ordinary task"]
 ```
@@ -136,7 +136,7 @@ upgrade.
    board; no model turn decides.** If wrong: launch can't adapt the week's work without the
    schedule being edited.
 2. **[D2](DECISIONS.md#d2) · At most once per scheduled time, for every scheduled action, at
-   the endpoint.** If wrong: a late retry of a missed time never runs. **The one to weigh:** it
+   the endpoint.** If wrong: a late or out-of-order retry of a missed time never runs. **The one to weigh:** it
    changes the `scheduled` package for apps outside Workforce too.
 3. **[D3](DECISIONS.md#d3) · The next run is worked out from the cron at read.** If wrong: the
    list shows a time on a host whose cron isn't running.

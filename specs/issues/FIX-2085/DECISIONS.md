@@ -44,7 +44,7 @@ through the same filing.
 |---|---|
 | **Instead of** | A Workforce-only guarantee: the task's id made from the schedule and its time, so a second filing finds the first |
 | **Because** | S-03 is a flow author's story: "a restart or a second host never files the same work twice", for any scheduled action. Every cron path, a host's own cron, a polling tick and BullMQ, meets at the dispatch endpoint, and the per-process cache there is what fails: each host and each restart has its own. One stored time per schedule, claimed with a compare-and-set in the host's store before any handler runs, holds across hosts and restarts. It is one record per schedule, not one per firing, so it never grows |
-| **Locks in** | Every app using `scheduled` changes at upgrade: a fire for a time already fired, or earlier, is refused, so a late retry of a missed time never runs, and a manual POST between times counts against the nearest one. `idempotencyWindowMs` and the body's `idempotencyKey` go. On a store the processes don't share (the memory store), the guarantee holds per process only |
+| **Locks in** | Every app using `scheduled` changes at upgrade. A fire for a time already fired, or earlier than one, is answered `200` with status `duplicate`, as today's duplicate is, so a host scheduler stops retrying it: a late retry of a missed time, or one delivered after the next time fired, never runs, and a manual POST runs only if the latest due time hasn't fired. `idempotencyWindowMs` and the body's `idempotencyKey` go. The guarantee needs a store with compare-and-set across processes, SQLite or Postgres. On the memory store, and on the filesystem store, whose lock is per store instance (`engine/src/stores/types.ts:1275-1280`), it holds per process only |
 
 ![D2: one firing per time at the endpoint, chosen, beside a task id made from schedule and time. Decides it: a flow outside Workforce, such as monthly invoices, also fires once on two hosts. Price: a late retry of a missed time is refused. Locks in two knobs removed; flips if no app runs scheduled actions outside Workforce on more than one host](figures/d2-once-at-the-endpoint.svg)
 
@@ -73,11 +73,19 @@ It comes down to hosts without an index: the index's time leaves the list empty 
   passes through it: the Vercel GET shim, the polling tick, BullMQ's dispatch worker and a host's
   own cron all POST there. No index or worker keeps a second check of its own; each index's
   claim stays only as the index's way of finding due rows.
-- **A fire's time is the scheduled time nearest the time it carries,** or nearest now when it
-  carries none. A clock a second early still lands on the right time. A fire refused before the
-  engine admitted it (a concurrency refusal) gives its time back, so a retry can run, as today.
-- **The record lives in the host's store,** beside the schedule's own data, not in the index or a
-  new store method. Store adapters change nothing.
+- **A fire's time is a scheduled time, never one not yet due.** A fire carrying a time counts
+  against that scheduled time, within a small tolerance so a clock a second early lands on it; a
+  carried time that is no scheduled time is refused with 400. A fire carrying none counts against
+  the latest time already due, never the next, so an early or manual POST can't claim a time
+  that hasn't arrived and swallow its real fire.
+- **A concurrency refusal gives its time back only if nothing later claimed it.** The time is
+  claimed before the handler; when the engine then refuses the fire as in flight, the endpoint
+  writes the previous time back, version-checked against its own claim. If a later time was
+  claimed in between, that write fails and the refused time stays spent, which is what the
+  earlier-is-refused rule would do to its retry anyway.
+- **The record lives in the host's store,** beside the schedule's own data, and goes when the
+  schedule goes; not in the index or a new store method. Store adapters change nothing; the
+  filesystem store's limit is D2's.
 - **A fire files even if last week's task is still open.** `onOverlap` covers the filing request,
   not the task. Each firing is its own task, as the concept says.
 - **The row names a worker, never a session.** The fire resolves Alice's conversation with that
@@ -106,5 +114,24 @@ It comes down to hosts without an index: the index's time leaves the list empty 
 
 - **Draft** — framed as three stories meeting at two seams: the dispatch endpoint for "once",
   the board's filing for "an ordinary task"; builds on the scheduled transport and the task tools.
+- **Review round 1** — D2's time rule tightened from "nearest scheduled time" to "a scheduled
+  time already due", because an early or untimed POST could claim the next time and its real
+  fire would then be refused; a concurrency refusal gives its time back only by a version check;
+  the guarantee is scoped to stores with compare-and-set across processes.
+
+## Notes from review
+
+- "A short “authoritative guarantee lives only at the endpoint; index claim is discovery” paragraph here would simplify the implementer mental model (today `routes.ts` still dedupes in memory *after* auth but *before* resolve; D2 adds store I/O at that convergence point)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#discussion_r4333168161))
+- "A one-line pointer in the `scheduled` README that the index claim finds due rows and the endpoint claim decides firing would head that off. Doc wording is the implementer's call." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
+- "One sentence on what this option owns (wiring index/cron only vs also exposing list/read APIs for Shift Manager) would avoid two host-configuration surfaces drifting apart in implementation." — cursor, on `hireWorkforce({ schedules: { index } })` ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#discussion_r4333168177))
+- "One schedule **collection list** + in-memory `parseNextFireAt` per row (avoid per-row resource GET + avoid polling re-parse without memoization)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#discussion_r4333168179))
+- "Name whether `lastFired*` lives on the schedule collection row (schema + version) vs a sibling resource key — both reuse CAS." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#discussion_r4333168190))
+- "The record carries the cron+tz it was written under, and a mismatch resets it." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
+- "Have the memory store share a process-level singleton across adapters, so tests and single-host dev behave like the real thing." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
+- "A `scheduled` changeset should note the break." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one. A note that turns out to reveal a design problem is a spec blind spot:
+surface it and fold it back.
 
 **Open: none.**
