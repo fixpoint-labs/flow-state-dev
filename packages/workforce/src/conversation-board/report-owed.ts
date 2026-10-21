@@ -1,17 +1,27 @@
 /**
- * A task that ended errored owes the Error Reporter an occurrence (FIX-1983),
- * marked in the ending's write the way a notice is (`./ledger`). Orchestration
- * never reads the mark.
+ * A task that failed for good is reported to the Error Reporter's intake
+ * (FIX-1983), riding its ending's delivery (FIX-2078, epic decision (f)): the
+ * filer's `onTaskSettled` sends it before it acknowledges the notice, so a
+ * failed send leaves the notice owed and the report goes again with it. The
+ * intake takes it as the task occurrence it already dedupes.
+ *
+ * A notice nobody can take (its conversation is gone) sends the report where
+ * that refusal is handled. A post's report goes on `onPostSettled`.
+ *
+ * **Upgrade (BP-030).** A row stored before FIX-2078 may carry a report-owed
+ * marker (`reportOwed:<attempt>`) whose notice is already acknowledged. The
+ * filer's pass sends each such marker once as the task occurrence, and drops
+ * it once the intake took it ({@link sendLegacyReports}). Nothing writes one now.
  */
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import type { Task, TaskCollectionRef, TaskEnding } from "@flow-state-dev/orchestration/tasks";
+import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { ERROR_REPORTER_INTAKE_FLOW, INTAKE_ENTRY, INTAKE_SESSION_ID } from "../error-reporter/keys";
 
-/** The marker each owed report is kept under, in the row's metadata. */
+/** The marker an owed report was kept under before FIX-2078, in the row's metadata. */
 const REPORT_OWED_PREFIX = "reportOwed:";
 
-/** The metadata key a task's owed report for `attempt` is kept under. The intake clears it once it holds the report. */
+/** The metadata key a stored owed report for `attempt` is kept under. The intake clears it once it holds the report. */
 export function reportOwedKey(attempt: number): string {
   return `${REPORT_OWED_PREFIX}${attempt}`;
 }
@@ -19,25 +29,9 @@ export function reportOwedKey(attempt: number): string {
 interface ReportMarker {
   readonly attempt: number;
   readonly error: string;
-  /** When a send was last accepted: the intake has it, or will clear the mark once it holds it. */
-  readonly sentAt?: number;
 }
 
-/** How long an accepted send is waited on before the mark is sent again: the intake may have failed. */
-const RESEND_AFTER_MS = 5 * 60_000;
-
-/**
- * The row an ending writes, with an owed report marked when the task ended
- * errored. A pure function of what it is handed: the ledger's recorder runs
- * it inside the ending's write, perhaps more than once.
- */
-export function markReportOwed(row: Task, ending: TaskEnding): Task {
-  if (ending.kind !== "errored") return row;
-  const marker: ReportMarker = { attempt: row.attempts, error: ending.error };
-  return { ...row, metadata: { ...(row.metadata ?? {}), [reportOwedKey(row.attempts)]: marker } };
-}
-
-/** The reports a row still owes, by marker key. */
+/** The reports a row stored before FIX-2078 still owes, by marker key. */
 export function owedReports(row: Task): Array<{ key: string; marker: ReportMarker }> {
   return Object.entries(row.metadata ?? {})
     .filter(([key, value]) => key.startsWith(REPORT_OWED_PREFIX) && value !== null && typeof value === "object")
@@ -49,69 +43,78 @@ export function withoutReportMarkers(metadata: Record<string, unknown>): Record<
   return Object.fromEntries(Object.entries(metadata).filter(([key]) => !key.startsWith(REPORT_OWED_PREFIX)));
 }
 
+/** What the intake did with a report. */
+export type ReportOutcome = "taken" | "no-reporter" | "not-taken";
+
 /**
- * Send each report the rows owe to the Error Reporter's intake. The intake
- * clears the mark once the report holds it; an accepted send only notes when
- * it went, and is sent again after {@link RESEND_AFTER_MS} if the mark is
- * still there (the intake counts a redelivery once). A Lab with no reporter
- * refuses `flow-not-found`, which clears the mark: nobody will ever take it.
- * Any other refusal, or a thrown send, leaves it for the next touch.
+ * Send one task failure to the Error Reporter's intake, as the task
+ * occurrence it takes and dedupes. A Lab with no reporter refuses
+ * `flow-not-found`: nobody will ever take it. Never throws.
  *
- * @param ref The ledger the rows are on, to clear a mark.
- * @param rows The rows to send from.
- * @param board The ledger's id and the partition the rows are in.
- * @param from The sending block, for provenance.
+ * @param board The ledger's id and the partition the row is on.
+ */
+export async function sendTaskReport(
+  ctx: BlockContext,
+  row: Task,
+  failure: { readonly attempt: number; readonly error: string },
+  board: { readonly boardId: string; readonly partition: string },
+  from: string
+): Promise<ReportOutcome> {
+  const userId = ctx.session.identity.userId;
+  if (userId === undefined) return "not-taken";
+  try {
+    const outcome = await dispatchThroughSeam(ctx, {
+      type: "internal",
+      action: INTAKE_ENTRY,
+      flowKind: ERROR_REPORTER_INTAKE_FLOW,
+      session: { key: INTAKE_SESSION_ID },
+      payload: {
+        occurrence: {
+          kind: "task",
+          at: row.completedAt ?? row.updatedAt ?? Date.now(),
+          taskId: row.id,
+          boardId: board.boardId,
+          partition: board.partition,
+          attempt: failure.attempt,
+          error: failure.error,
+          userId,
+          ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
+          ...(row.title !== undefined ? { title: row.title } : {}),
+          ...(row.goal !== undefined ? { goal: row.goal } : {}),
+          ...(row.run !== undefined ? { requestId: row.run.requestId, sessionId: row.run.sessionId } : {})
+        }
+      },
+      from
+    });
+    if (outcome.ok) return "taken";
+    return outcome.refused === "flow-not-found" ? "no-reporter" : "not-taken";
+  } catch {
+    return "not-taken";
+  }
+}
+
+/**
+ * Send each report a row stored before FIX-2078 still owes, once, and drop its
+ * marker once the intake took it (or no reporter ever will). Any other outcome
+ * leaves the marker for the next pass.
+ *
  * @returns How many the reporter took.
  */
-export async function sendOwedReports(
+export async function sendLegacyReports(
   ctx: BlockContext,
   ref: TaskCollectionRef,
   rows: readonly Task[],
   board: { readonly boardId: string; readonly partition: string },
   from: string
 ): Promise<number> {
-  let sent = 0;
-  const now = Date.now();
+  let taken = 0;
   for (const row of rows) {
     for (const { key, marker } of owedReports(row)) {
-      const userId = ctx.session.identity.userId;
-      if (userId === undefined) continue;
-      if (marker.sentAt !== undefined && now - marker.sentAt < RESEND_AFTER_MS) continue;
-      let outcome;
-      try {
-        outcome = await dispatchThroughSeam(ctx, {
-          type: "internal",
-          action: INTAKE_ENTRY,
-          flowKind: ERROR_REPORTER_INTAKE_FLOW,
-          session: { key: INTAKE_SESSION_ID },
-          payload: {
-            occurrence: {
-              kind: "task",
-              at: row.completedAt ?? row.updatedAt ?? Date.now(),
-              taskId: row.id,
-              boardId: board.boardId,
-              partition: board.partition,
-              attempt: marker.attempt,
-              error: marker.error,
-              userId,
-              ...(row.assignee !== undefined ? { assignee: row.assignee } : {}),
-              ...(row.title !== undefined ? { title: row.title } : {}),
-              ...(row.goal !== undefined ? { goal: row.goal } : {}),
-              ...(row.run !== undefined ? { requestId: row.run.requestId, sessionId: row.run.sessionId } : {})
-            }
-          },
-          from
-        });
-      } catch {
-        continue;
-      }
-      if (outcome.ok) {
-        sent += 1;
-        await ref.patchMetadata(row.id, { [key]: { ...marker, sentAt: now } });
-      } else if (outcome.refused === "flow-not-found") {
-        await ref.patchMetadata(row.id, { [key]: null });
-      }
+      const outcome = await sendTaskReport(ctx, row, marker, board, from);
+      if (outcome === "not-taken") continue;
+      if (outcome === "taken") taken += 1;
+      await ref.patchMetadata(row.id, { [key]: null });
     }
   }
-  return sent;
+  return taken;
 }

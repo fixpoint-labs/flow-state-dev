@@ -1,0 +1,64 @@
+/**
+ * How a session's board delivers each ending to the session that filed it
+ * (FIX-2078): the conversation ledger's `delivery`, which orchestration's one
+ * delivery runs around every ending's write.
+ *
+ * - **The pass** a wake runs in the filer's session is the board's run entry
+ *   (`runTaskBoard`): one pass at a time, which pays every debt and clears the
+ *   wake (`./board`).
+ * - **The notice** arrives on `onTaskSettled`; a post row's on `onPostSettled`,
+ *   until FIX-2083 routes posts.
+ * - **Reaching the filer** from the running request: its own session; or,
+ *   from a task session, the session that filed its task, on the flow the
+ *   hand-over named at the task session's birth (`filingFlow`), both readonly
+ *   server-written state. From anywhere else the wake delivers, its flow read
+ *   from the filer's own session record by the engine.
+ * - **A row filed before `Task.filer`** (BP-030) is heard by the conversation
+ *   its partition names.
+ * - **A notice nobody can take** (the filer's session is gone) is said where
+ *   its writer runs, and a final failure's report goes to the Error Reporter
+ *   from there (epic decision (f)).
+ */
+import type { BlockContext } from "@flow-state-dev/core/types";
+import type { DeclaredDelivery, Task, TaskNotice } from "@flow-state-dev/orchestration/tasks";
+import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { POST_SETTLED_ENTRY, RUN_BOARD_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
+import { sessionIdOfFiling } from "./filing-session";
+import { sendTaskReport } from "./report-owed";
+
+/** Whether a row is a post row (`../coordinator/delegated-post`), read here without importing it. */
+function isPost(row: Task): boolean {
+  return (row.sealed as { kind?: unknown } | undefined)?.kind === "post";
+}
+
+/** The conversation ledger's delivery. `ledgerId` is the board id its notices name. */
+export function conversationDelivery(ledgerId: string): DeclaredDelivery {
+  return {
+    passEntry: RUN_BOARD_ENTRY,
+    noticeEntry: (row) => (isPost(row) ? POST_SETTLED_ENTRY : TASK_SETTLED_ENTRY),
+    address: (ctx, filer) => {
+      if (filer === ctx.session.identity.id) return { session: { id: filer } };
+      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+      const filing = state[FILING_SESSION_STATE_KEY];
+      const flow = state[FILING_FLOW_STATE_KEY];
+      if (typeof filing !== "string" || typeof flow !== "string" || sessionIdOfFiling(filing) !== filer) return undefined;
+      return { session: { id: filer }, flowKind: flow };
+    },
+    legacyFiler: (_row, partition) => (partition === undefined ? undefined : sessionIdOfFiling(partition)),
+    onUndeliverable: async (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => {
+      // The task's ending stands; the conversation that filed it can't be told.
+      ctx.emit.message(`The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${detail}`);
+      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+      const partition = state[FILING_SESSION_STATE_KEY];
+      if (notice.ending === "errored" && typeof partition === "string") {
+        await sendTaskReport(
+          ctx,
+          row,
+          { attempt: notice.attempt, error: notice.error ?? "" },
+          { boardId: ledgerId, partition },
+          "conversation-board-undeliverable"
+        );
+      }
+    }
+  };
+}

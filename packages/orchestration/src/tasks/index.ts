@@ -170,7 +170,19 @@ export {
   type TaskNotice,
   type NoticePolicy,
   type NoticeDecision,
+  NOTICE_DUE_MS,
+  noticeDueAt,
+  cancelledDependents,
+  type NoticeRecording,
 } from "./notice/task-notice";
+// The one delivery of a delegated row's ending (FIX-2078).
+export {
+  TASK_SETTLED_ENTRY,
+  markDelegating,
+  undeliverableRecord,
+  type DeclaredDelivery,
+  type NoticeAddress,
+} from "./notice/delivery";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";

@@ -35,6 +35,7 @@ import type { TaskEnding, TaskEndingRecorder } from "./ending";
 import type { TaskSettingsSupport } from "./filing";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
+import type { DeclaredDelivery } from "../notice/delivery";
 
 /**
  * Build the resource-instance schema for a durable task: the whole `Task`

@@ -47,13 +47,19 @@
  *   hand-over sends such a row to the delegated-post entry on the delegate's
  *   flow, in the session written on the row, never a task session, after the
  *   delegate check for a post. Its assignee can't be changed.
- * - **The outbox.** Any action on the board, and every run of it, replays the
- *   notices its rows still owe into the conversation (orchestration's notice
- *   module), and a run of the board into each parked split row's task
- *   session, which settles it when its pieces are done (`./split`).
+ * - **The pass** (FIX-2078). One run of the board, `runTaskBoard`, one at a
+ *   time per session (`reject`): repairs first (orchestration's
+ *   `payBoardDebts`: cancels, cascades, resumes, notices past due; reports
+ *   stored before the upgrade; the settles owed down the chain), then the
+ *   drain, then the repairs again, whose last ready check is the last step
+ *   before the session's wake moves to the next debt's due time or clears.
+ *   Every write that owes a start (a filing, an assign, an answer, a release)
+ *   owes that wake first, then runs the pass. A touch of the board runs the
+ *   pass only when something is startable or past due; it resends nothing.
  */
 import {
-  resumeOwedWaits,
+  payBoardDebts,
+  settlePassWake,
   taskToolsForTurn,
   taskToolActions,
   type TaskCollectionResolver,
@@ -69,7 +75,8 @@ import {
   hasStarted,
   isClaimable,
   isTerminalStatus,
-  owedNotices,
+  NOTICE_DUE_MS,
+  noticeDueAt,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -118,9 +125,10 @@ import {
   conversationLedgerAt,
   conversationLedgerResources
 } from "./ledger";
-import { sendOwedNotices, sendPostCancelled } from "./notice-delivery";
-import { sendOwedReports } from "./report-owed";
-import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater } from "./split";
+import { sendPostCancelled } from "./notice-delivery";
+import { conversationDelivery } from "./delivery";
+import { sendLegacyReports } from "./report-owed";
+import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater, settleOwed } from "./split";
 
 /**
  * How many attempts a filed task gets: a failure with one left runs the task
@@ -307,21 +315,34 @@ function hasStartable(collection: TaskCollectionRef, id?: string): boolean {
 }
 
 /**
- * Dispatch a run of the running conversation's board into the conversation,
- * as a request of its own. Never waits for it, and never fails the caller: a
- * refused or thrown dispatch leaves the row pending, which is its start debt,
- * for the next touch.
- */
-/**
- * A touch that starts what the board owes: a run of the board when a row is
- * startable now (a follow-up whose session just freed included). Never fails
- * the caller.
+ * A touch that starts what the board owes: the pass, when a row is startable
+ * now (a follow-up whose session just freed included). Never fails the caller.
  */
 export async function wakeIfStartable(ctx: BlockContext, collection: TaskCollectionRef): Promise<void> {
-  if (hasStartable(collection)) await wake(ctx);
+  if (hasStartable(collection)) await triggerPass(ctx);
 }
 
-async function wake(ctx: BlockContext): Promise<void> {
+/**
+ * Owe the running session's pass a wake, due in seconds (FIX-2078): before a
+ * write that owes a start, so a crash after the write leaves the debt a due
+ * time. A host that keeps no wakes has the fast path only. Never fails.
+ */
+export async function owePass(ctx: BlockContext): Promise<void> {
+  try {
+    await ctx.requestHost?.wakes?.owe({ entry: RUN_BOARD_ENTRY, dueAt: Date.now() + NOTICE_DUE_MS });
+  } catch {
+    // The fast path still runs.
+  }
+}
+
+/**
+ * Run the session's pass: dispatch `runTaskBoard` into the running session, as
+ * a request of its own, owing its wake first. Never waits for it, and never
+ * fails the caller: a pass already running refuses it (one at a time), and
+ * its last ready check, or the wake, covers what it would have done.
+ */
+export async function triggerPass(ctx: BlockContext): Promise<void> {
+  await owePass(ctx);
   try {
     await dispatchThroughSeam(ctx, {
       type: "internal",
@@ -331,24 +352,22 @@ async function wake(ctx: BlockContext): Promise<void> {
       from: "conversation-board-wake"
     });
   } catch {
-    // The row stays pending and assigned; the next filing or action retries it.
+    // The wake runs it.
   }
 }
 
-/**
- * Send each notice the conversation's rows still owe into the conversation
- * itself, as requests of their own. Only rows that still carry a notice
- * marker are sent; the receiving entry dedupes, so a notice replayed while
- * its first send is in flight is acted on once.
- */
-export async function replayNotices(ctx: BlockContext, rows: readonly Task[]): Promise<number> {
-  const owing = rows.filter((row) => owedNotices(row, CONVERSATION_LEDGER_ID).length > 0);
-  let sent = 0;
-  for (const row of owing) {
-    sent += await sendOwedNotices(ctx, row, { session: { id: ctx.session.identity.id }, from: "conversation-board-replay" });
-  }
-  return sent;
+/** Whether any debt on the board is past its due time: the touch runs the pass for it. */
+function hasPastDue(rows: readonly Task[], now: number): boolean {
+  return rows.some((row) => {
+    const notice = noticeDueAt(row);
+    if (notice !== undefined && notice <= now) return true;
+    if (row.cascadeOwed != null && row.cascadeOwed.due <= now) return true;
+    return (row.resumeOwed === true || row.cancelOwed === true) && row.updatedAt + NOTICE_DUE_MS <= now;
+  });
 }
+
+/** The pass's wake as read at its start, by request: settled at its end against that version. */
+const passWakes = new Map<string, Awaited<ReturnType<NonNullable<NonNullable<BlockContext["requestHost"]>["wakes"]>["read"]>>>();
 
 /**
  * Build a conversation's task board and everything a flow carrying it
@@ -582,6 +601,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
       if (owner !== undefined) await markFiled(ctx, owner);
+      // A start owed has a due time before the row exists (FIX-2078).
+      await owePass(ctx);
       const added = await ref.addTask({
         ...init,
         ...(input !== undefined ? { input } : {}),
@@ -592,7 +613,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ...(metadata !== undefined ? { metadata } : {})
       });
       if (chain.top !== undefined) await markAddedInChain(ctx, chain.top, [entry]);
-      if (added.status !== "held" && isStartable(added, ref.list())) await wake(ctx);
+      if (added.status !== "held" && isStartable(added, ref.list())) await triggerPass(ctx);
       return added;
     };
     /**
@@ -652,13 +673,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // or a settings change that leaves a row startable starts the board.
       hold: runOnly(ref.hold.bind(ref)) as TaskCollectionRef["hold"],
       async release(id) {
+        await owePass(ctx);
         const outcome = await ref.release(id);
-        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
       async patchSettings(id, patch) {
+        await owePass(ctx);
         const outcome = await ref.patchSettings(id, patch);
-        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
       async addTasks(inits) {
@@ -675,9 +698,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // A post row goes to the delegate it was handed to, in that delegate's session.
         const row = ref.get(id);
         if (isPostRow(row)) return { outcome: "declined", reason: "immutable-assignee", status: row!.status };
+        await owePass(ctx);
         const outcome = await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
-        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
       // A recorded row readied by `dispatchTask` starts the board, through the
@@ -687,8 +711,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? {}
         : {
             async dispatch(id: string, dispatchOptions: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>[1]) {
+              await owePass(ctx);
               const outcome = await ref.dispatch!(id, dispatchOptions);
-              if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+              if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
               return outcome;
             }
           }),
@@ -696,8 +721,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       // owed, in the unpark's own write (FIX-1817); then it starts the board,
       // as a filing does. A lost wake leaves the row startable for the next touch.
       async unpark(id, feedback, unparkOptions) {
+        await owePass(ctx);
         const outcome = await ref.unpark(id, feedback, unparkOptions);
-        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await wake(ctx);
+        if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
       async patchMetadata(id, patch) {
@@ -711,69 +737,86 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const partition = await filingSessionIdOf(ctx.session);
     const ref = await conversationLedgerAt(ctx, partition);
     if (ref === undefined) return undefined;
-    // The outbox, on every touch, a read included. A crash after an ending's
-    // write and before its notice's send (BR-26a), or a wake lost after an add
-    // or an assign (BR-10a), leaves the debt only on the row, and nothing
-    // sweeps for it: this touch is what pays it. Don't narrow it to writes,
-    // or to a session that files now: rows filed before it lost its last
-    // task-taking delegate still run and are heard (FIX-1802 BR-5). A
-    // cascade an ending still owes past its due time is paid first (FIX-2080
-    // D2): its cancels free sessions and settle dependents.
-    await ref.payOwedCascades?.();
-    if (hasStartable(ref)) await wake(ctx);
-    const rows = ref.list();
-    await replayNotices(ctx, rows);
-    await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
-    // And the settles owed down the chain: each parked split row's session
-    // settles its task once its pieces are done, this one's included, behind
-    // any turn it is running (FIX-1802 BR-17).
-    await replaySplits(ctx, rows);
-    await settleIfOwedLater(ctx);
+    // A touch runs the pass when something is startable or past due (FIX-2078):
+    // the pass pays it, one at a time. A touch resends nothing itself. Don't
+    // narrow it to writes, or to a session that files now: rows filed before
+    // it lost its last task-taking delegate still run and are heard (FIX-1802 BR-5).
+    if (hasStartable(ref) || hasPastDue(ref.list(), ref.now())) await triggerPass(ctx);
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
     if (!(await files(ctx))) return undefined;
     return guarded(ctx, ref, partition);
   };
 
+  /** The repairs a pass runs before its drain, and again after (`payBoardDebts`). */
+  const delivery = conversationDelivery(CONVERSATION_LEDGER_ID);
+  const repairs = async (ctx: BlockContext, ref: TaskCollectionRef, partition: string): Promise<number | undefined> => {
+    const debts = await payBoardDebts(ctx, ref, {
+      noticeEntry: delivery.noticeEntry!,
+      onUndeliverable: delivery.onUndeliverable!
+    });
+    const rows = ref.list();
+    // Reports stored before FIX-2078 (BP-030), once each.
+    await sendLegacyReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
+    // The settles owed down the chain: each parked split row's session
+    // settles its task once its pieces are done, behind any turn it runs
+    // (FIX-1802 BR-17); and this session's own, when its task is split.
+    await replaySplits(ctx, rows);
+    await settleIfOwedLater(ctx);
+    let next = debts.nextDue;
+    const later = (at: number) => {
+      next = next === undefined ? at : Math.min(next, at);
+    };
+    if (await settleOwed(ctx)) later(Date.now() + NOTICE_DUE_MS);
+    // The last ready check: a row still startable is a start owed.
+    if (hasStartable(ref)) later(Date.now() + NOTICE_DUE_MS);
+    return next;
+  };
+
+  /** The pass's first half: read its wake, then repair, before the drain. */
+  const beforeDrain = handler({
+    name: "conversation-board-before-drain",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({}),
+    resources: { ...conversationLedgerResources, ...taskChainResources },
+    execute: async (_input, ctx) => {
+      passWakes.set(ctx.request.identity.id, await ctx.requestHost?.wakes?.read(RUN_BOARD_ENTRY));
+      const partition = await filingSessionIdOf(ctx.session);
+      const ref = await conversationLedgerAt(ctx, partition);
+      if (ref !== undefined) await repairs(ctx as never, ref, partition);
+      return {};
+    }
+  });
+
   /**
-   * After a run: send what the rows owe, including what this run's own
-   * refusals and settled dead runs owe; resume each turn a waited-on row's
-   * ending still owes (`resumeOwedWaits`): a run of the board is a touch, and
-   * not a turn; run the board of each parked split row's session, down the
-   * chain; mark each of this board's pieces added in its chain (a crash
-   * between an add and its mark leaves it reserved, and the lease must never
-   * drop a piece that landed); and, in a task session whose pieces are all
-   * done, settle its task, behind any turn it is running.
+   * The pass's last half: repair again (what the drain's own endings owe),
+   * mark each of this board's pieces added in its chain (a crash between an
+   * add and its mark leaves it reserved, and the lease must never drop a
+   * piece that landed), and move the session's wake to the next debt's due
+   * time, or clear it.
    */
   const afterRun = handler({
     name: "conversation-board-after-run",
     inputSchema: z.unknown(),
-    outputSchema: z.object({ replayed: z.number() }),
+    outputSchema: z.object({ nextDue: z.number().optional() }),
     resources: { ...conversationLedgerResources, ...taskChainResources },
     execute: async (_input, ctx) => {
+      const read = passWakes.get(ctx.request.identity.id);
+      passWakes.delete(ctx.request.identity.id);
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
-      if (ref === undefined) return { replayed: 0 };
-      // One of two resume touches, with the notice entry's (`./task-settled`),
-      // which is the fast path and keeps the notice owed until the resume
-      // lands. Neither has to win: the gate admits one answer and refuses the
-      // other `already-resolved`, and either outcome clears `resumeOwed`.
-      await resumeOwedWaits(ctx as never, ref);
-      // A cascade an ending still owes past its due time (FIX-2080 D2).
-      await ref.payOwedCascades?.();
-      const rows = ref.list();
-      const replayed = await replayNotices(ctx, rows);
-      await sendOwedReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
-      await replaySplits(ctx, rows);
+      if (ref === undefined) return {};
+      const nextDue = await repairs(ctx as never, ref, partition);
       const top = taskChainOf(ctx)?.top;
-      if (top !== undefined) await markAddedInChain(ctx, top, rows.map((row) => chainEntryKey(partition, row.id)));
-      await settleIfOwedLater(ctx);
-      return { replayed };
+      if (top !== undefined) await markAddedInChain(ctx, top, ref.list().map((row) => chainEntryKey(partition, row.id)));
+      await settlePassWake(ctx as never, RUN_BOARD_ENTRY, read, nextDue);
+      return nextDue === undefined ? {} : { nextDue };
     }
   });
 
-  /** One run of the board, in its own conversation, as its owner: claim, hand over, settle up. */
+  /** One pass of the board, in its own conversation, as its owner: repair, claim and hand over, repair, settle the wake. */
   const runBoard: BlockDefinition<any, any> = sequencer({ name: "conversation-run-board", inputSchema: z.unknown() })
+    .tap(beforeDrain)
     .step(board.drain)
     .tap(afterRun);
 
@@ -848,6 +891,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
     if (ref === undefined) throw new Error("this conversation keeps no board to hand the post on through");
     if (ref.get(init.id) !== undefined) return "exists";
+    await owePass(ctx);
     try {
       await ref.addTask(init);
     } catch (error) {
@@ -855,7 +899,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (ref.get(init.id) !== undefined) return "exists";
       throw error;
     }
-    await wake(ctx);
+    await triggerPass(ctx);
     return "filed";
   };
 
@@ -864,6 +908,19 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     roster,
     resolver,
     runBoard,
+    /**
+     * A block that runs the board's pass through its entry, one at a time
+     * (FIX-2078): for a door that wants the board run, never the pass inline.
+     */
+    triggerPass: handler({
+      name: "conversation-board-trigger-pass",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({}),
+      execute: async (_input, ctx) => {
+        await triggerPass(ctx as never);
+        return {};
+      }
+    }),
     filePost,
     files,
     tools,

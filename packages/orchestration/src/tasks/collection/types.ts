@@ -376,6 +376,13 @@ export interface TaskTransitionOptions {
    * as "your write did not land".
    */
   write?: TaskWriteToken;
+  /**
+   * A cancel made through a model's task tool, inside its own turn
+   * (FIX-2078 D2). Set by the task tools only, never from input. When the
+   * running session is the row's filer, the call's result is how it hears the
+   * cancel, so the cancel owes it no notice.
+   */
+  viaTool?: boolean;
 }
 
 /**

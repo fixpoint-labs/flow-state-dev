@@ -64,7 +64,7 @@
  * take for it by name, rather than letting the schema drop them.
  */
 
-import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, handler, parseBlockInstanceId, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -454,6 +454,18 @@ const okOrError = z.union([
 const claimGuard = (
   claim: TaskClaimTicket | undefined,
 ): TaskTransitionOptions | undefined => (claim === undefined ? undefined : { claim });
+
+/**
+ * Whether this call is a model's tool call inside its own turn, rather than
+ * the `_tasks` action of the same tool (FIX-2078 D2): read off the block's
+ * server-assigned path, where a generator's tool runs at `.../tool[...]`,
+ * never from input.
+ */
+function isModelToolCall(ctx: BlockContext): boolean {
+  const instanceId = ctx._blockIdentity?.blockInstanceId;
+  if (instanceId === undefined) return false;
+  return parseBlockInstanceId(instanceId)?.path.includes("/tool[") === true;
+}
 
 // ---------------------------------------------------------------------------
 // Questions and follow-ups (FIX-1817)
@@ -1411,7 +1423,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     outputSchema: okOrError,
     execute: (input, ctx) =>
       withTask(ctx, input.taskId, (c, claim) =>
-        c.cancel(input.taskId, input.reason, claimGuard(claim)),
+        // A model's own cancel: its result tells the filer, so it owes no notice.
+        c.cancel(input.taskId, input.reason, {
+          ...(claimGuard(claim) ?? {}),
+          ...(isModelToolCall(ctx as BlockContext) ? { viaTool: true } : {}),
+        }),
       ),
   });
 

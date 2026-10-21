@@ -59,6 +59,7 @@ import { questionPark } from "./question-park";
 import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
+  PASS_CONCURRENCY,
   CONVERSATION_BOARD_SERVER_OWNED,
   conversationBoardStateShape,
   postSettledEntry,
@@ -187,9 +188,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
       onPost?: BlockDefinition<any, any>
     ) {
       return {
-        [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard },
-        [TASK_SETTLED_ENTRY]: taskSettledEntry({ runBoard: board.runBoard, turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
-        ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ runBoard: board.runBoard, turn, policy, onPost }) }),
+        // One pass at a time per session (FIX-2078): a second is refused, and
+        // the first's last ready check, or the wake, covers it.
+        [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
+        [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
+        ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
         [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
         [CANCEL_PIECES_ENTRY]: { inputSchema: cancelPiecesInputSchema, block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY },
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind })

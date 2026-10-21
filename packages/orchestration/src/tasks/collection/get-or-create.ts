@@ -27,6 +27,7 @@ import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
 import { isDefinedTaskCollection } from "./define-task-collection";
 import { partitionedResourceCollection } from "./partition";
+import { createDelivery } from "../notice/delivery";
 import type { TaskCapOptions } from "./task-caps";
 
 /** Component-item type emitted on every task lifecycle transition. */

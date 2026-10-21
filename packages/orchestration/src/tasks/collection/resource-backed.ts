@@ -137,6 +137,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskEndingRecorder } from "./ending";
+import type { DeliveryHooks } from "../notice/delivery";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
@@ -256,6 +257,13 @@ export interface ResourceBackedOptions {
    * Omitted, a cascade covers only this board's dependents.
    */
   cascadeFiled?: TaskFiledCascade;
+  /**
+   * The ledger's delivery (FIX-2078), bound to the running request: the
+   * session filing through this resolution (stamped as each row's filer) and
+   * the hooks run around every write that may end a row. Omitted on a ledger
+   * no board hands rows out from.
+   */
+  delivery?: { ownSession: string; hooks: DeliveryHooks };
 }
 
 /**
@@ -444,8 +452,20 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   // dependent on this board, or the board's filed-task payer says this ending
   // owes it one. Read inside the write, against the rows as committed.
   const filed = options.cascadeFiled;
+  const delivery = options.delivery;
   const recording: EndingRecording = {
     ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
+    // A delegated row's ending owes its filer a notice (FIX-2078); a cascaded
+    // cancel owes none when its cause shares the filer (D2).
+    ...(delivery !== undefined
+      ? {
+          delivers: true,
+          causeSharesFiler: (row: Task) => {
+            const cause = row.causedBy === undefined ? undefined : lookupRow(row.causedBy);
+            return cause !== undefined && delivery.hooks.filerOf(cause) === delivery.hooks.filerOf(row);
+          },
+        }
+      : {}),
     owesCascade: (row, ending) =>
       (endsDependents(ending) && openDependentsOf(listAll() as Task[], row.id).length > 0) ||
       filed?.owes(row, ending) === true,
@@ -515,6 +535,19 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
     }
+    // A write that may end a delegated row owes the filer's wake first (FIX-2078).
+    const ending = delivery !== undefined && mayEnd(readTaskState(ref) as Task, targetStatus);
+    if (ending) await delivery!.hooks.beforeEnding(readTaskState(ref) as Task);
+    const ownCancel =
+      guards?.viaTool === true &&
+      targetStatus === "cancelled" &&
+      delivery !== undefined &&
+      delivery.hooks.filerOf(readTaskState(ref) as Task) === delivery.ownSession;
+    const writeRecording: EndingRecording = {
+      ...recording,
+      ...(quiet === true ? { quiet } : {}),
+      ...(ownCancel ? { ownCancel: true } : {}),
+    };
 
     let committed: { task: Task<TInput, TOutput>; prevStatus: TaskStatus } | undefined;
 
@@ -547,7 +580,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             task,
             { ...patch(task), status: targetStatus },
             now(),
-            quiet === true ? { ...recording, quiet } : recording
+            writeRecording
           ),
           guards?.write
         );
@@ -569,7 +602,23 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     if (kind !== null) emit(kind, committed.task, committed.prevStatus);
     // The ending's own pass pays the cascade it owes (FIX-2080 D2).
     await payCascadeAfterWrite(cascadeWrites, committed.task as Task);
+    // Then the delivery, so a notice names the dependents just cancelled.
+    if (ending) await deliverAfter(committed.task as Task);
     return { outcome: "recorded" };
+  }
+
+  /** Deliver what `row` owes its filer now (FIX-2078). Never fails the committed write. */
+  async function deliverAfter(row: Task): Promise<void> {
+    if (delivery === undefined) return;
+    await delivery.hooks.afterEnding(row, listAll() as Task[], async (id, patch) => {
+      await ref.patchMetadata(id, patch);
+    });
+  }
+
+  /** Whether a write from `row`'s status to `target` may end it, or retry it. */
+  function mayEnd(row: Task, target: TaskStatus): boolean {
+    if (target === "completed" || target === "errored" || target === "cancelled" || target === "parked") return row.status !== target;
+    return target === "pending" && row.status === "in_progress";
   }
 
   /**
@@ -624,6 +673,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       emit(changeKind, written.next, written.prev.status !== written.next.status ? written.prev.status : undefined);
     }
     return { outcome: "recorded" };
+  }
+
+  /**
+   * The filer a new row is stamped with (FIX-2078): the session filing it, or,
+   * for a follow-up, its root's filer, whoever typed it.
+   */
+  function filerFor(init: { followUpOf?: string }): Task["filer"] {
+    if (delivery === undefined) return undefined;
+    const root = init.followUpOf === undefined ? undefined : lookupRow(init.followUpOf);
+    const rootFiler = root === undefined ? undefined : delivery.hooks.filerOf(root);
+    return { sessionId: rootFiler ?? delivery.ownSession };
   }
 
   /** The board's committed row by id, read through the mirror. */
@@ -690,7 +750,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async addTask(init) {
       assertFilingSettings(init, options.settings, options.collectionId);
-      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
+      const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy, filerFor(init));
       assertDepsFileable([task as Task], lookupRow);
       const created = await options.collection.create(
         task.id,
@@ -703,7 +763,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     async addTasks(inits) {
       for (const init of inits) assertFilingSettings(init, options.settings, options.collectionId);
-      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy));
+      const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy, filerFor(init)));
       // Every row is checked before any is written; ids in the batch count (FIX-2080).
       assertDepsFileable(built as Task[], lookupRow);
       const created: Task<TInput, TOutput>[] = [];
@@ -756,6 +816,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       for (const candidate of candidates) {
         const candidateRef = mirror.get(candidate.id);
         if (candidateRef === undefined) continue;
+        // A row this write may settle (its worker died too often) owes its
+        // filer's wake first (FIX-2078).
+        if (delivery !== undefined && claimDisposition(candidate as Task, now(), DEFAULT_MAX_ABANDONMENTS) !== "claim") {
+          await delivery.hooks.beforeEnding(candidate as Task);
+        }
 
         const written = await updateStateWith<JsonObject, ClaimWrite | undefined>(
           candidateRef,
@@ -806,6 +871,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         // head of the queue does not hide the work behind it.
         if (written.kind === "errored") {
           await payCascadeAfterWrite(cascadeWrites, written.task as Task);
+          await deliverAfter(written.task as Task);
           continue;
         }
         return written.task;
