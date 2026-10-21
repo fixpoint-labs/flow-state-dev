@@ -80,8 +80,11 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   [D2](../../epics/FIX-2056/DECISIONS.md#d2)), and once it can, leaving a person's stop on the lapse
   path asks the question twice and does its work twice. Until FIX-2058, task lists show such a task
   as *running*; the Inbox still shows the question.
-- **The output** is the last result of a `work` or `onTaskSettled` request. A message's request never
-  changes it, and one that errors fails the attempt. A notice landed as a line keeps the last answer.
+- **The output** is the last result of a `work` or `onTaskSettled` request. A result that is nothing
+  or an empty string leaves the latest checkpoint the worker set with `updateTask({ id, output })`
+  ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3)), which a non-empty result, plain text included,
+  replaces. A message's request's result never changes it, and one that errors fails the attempt,
+  keeping the checkpoint for the next. A notice landed as a line keeps the last answer.
 - **A task's pieces** are read through FIX-2081's tools: a filter by the filing task on
   `listTasks` is FIX-2081's, since ER-5 makes its four tools the only task surface.
 - **Cancelling a split task** cancels its pieces through FIX-2080's cascade; the split's own cascade
@@ -137,5 +140,10 @@ For the implementer, recorded verbatim, not baked into the design.
 - **Round 2** — the running-row field is renamed from "hold" to `waitingOn`, because FIX-2080
   ([#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)) makes `held` the status for
   a task filed and not started. One term, one thing. No change to the approach.
+- **Amendment, after merge** — the output line takes the owner's checkpoint: an empty final result
+  leaves the latest `updateTask({ id, output })` checkpoint standing. Settled on the epic thread
+  ([proposal](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315193445),
+  [settlement](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315204382));
+  the row and its rules are FIX-2081's. No change to the approach.
 
 Open: none.
