@@ -48,7 +48,6 @@ export { hasStarted, CASCADE_DUE_MS, type TaskSettingsPatch } from "./collection
 // The field table (FIX-2081): each field `updateTask` changes, with its one rule.
 export {
   TASK_FIELD_RULES,
-  NEVER_EDITABLE_FIELDS,
   lockedFields,
   type TaskEditField,
   type TaskFieldRule,
