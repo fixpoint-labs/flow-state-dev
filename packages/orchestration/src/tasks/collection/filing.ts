@@ -215,6 +215,9 @@ export function assertDepsFileable(
 ): void {
   const filed = new Map(batch.map((row) => [row.id, row]));
   for (const row of batch) {
+    // A row filed already ended waits on nothing, so its dependencies don't
+    // have to be live.
+    if (row.status !== undefined && isTerminalStatus(row.status)) continue;
     for (const depId of row.deps ?? []) {
       // A row of the batch filed already ended counts as a stored one does.
       const inBatch = filed.get(depId);
