@@ -53,6 +53,10 @@ flowchart LR
 | **Control that must fail** | Leg b with sweeper payment off; on today's `main`, leg a and the sweep |
 
 **Lead measure:** in-scope rows whose story acceptance check passes on `main`, of 31. **0 today.**
+Four rows hold a half other epics own, which does not gate the closure ([D2](DECISIONS.md#d2)), as
+[(f)](DECISIONS.md#f) carves out its row's Error Reporter half: *waiting on a person*, and answering
+a question by public action or by `updateTask`'s message (FIX-2058); `sendMessage` among the
+model's tools (FIX-2070).
 
 ## What's in the box
 
