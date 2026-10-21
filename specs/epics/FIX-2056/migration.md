@@ -11,7 +11,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | Removed | Use instead | Owner |
 |---|---|---|
 | `addTask` | `createTask({ …, held: true })` to file without starting; `updateTask({ id, status: "pending" })` releases it | FIX-2081 |
-| `dispatchTask` | `createTask`; `{ taskId }` is `updateTask({ id, status: "pending" })`; `{ taskId, assignee }` is `updateTask({ id, assignee })`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
+| `dispatchTask` | `createTask`; `{ taskId }` is `updateTask({ id, status: "pending" })`; `{ taskId, assignee }` is `updateTask({ id, assignee })`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task: `createTask` with `target` and the routing settings | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
 | `readTask({ taskId })` | `getTask({ id })` | FIX-2081 |
 | `updateTask`'s `taskId`, `patch` (FIX-2080's interim `patch.status` included), `addLabel`, `removeLabel` | Flat input: `updateTask({ id, priority, labels, status, … })`; `labels` replaces the list | FIX-2081 |
 | `addDelegate`, `removeDelegate`, `setFallback` on every coordinator | `managesOwnDelegates: true` in the coordinator's `WORKER.md`; otherwise the user edits the list | FIX-2081 |
@@ -34,11 +34,16 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | A board's `reopenIn` (harness manager) | A follow-up: `createTask({ followUpOf })` | FIX-2086 |
 | `harnessMessageDoor`, `messageDoorInputSchema`, `messageDoorOutputSchema`, a manager's `messageDoor` | `updateTask({ id, message })` on the run's task; a line in an open task's session is a steer through the coding flow's own door (`message`, `respond` after FIX-2084) | FIX-2086 |
 | `TurnRefused`, `TurnRefusalReason`, and the types `HarnessMessageDoorOptions`, `MessageDoorAction`, `MessageDoorBoard`, `MessageDoorOptions`, `MessageDoorOutput`, `DoorRunIdentity` | `updateTask`'s refusal, which names the rule | FIX-2086 |
-| `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
+| `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostHistory`, `delegatedPostOnFinished`, `delegatedPostSchema`, `DelegatedPost` | A routed task through `WORKER_TASK_ENTRY`: declare `work` with `workerTaskEntry`; the turn still gets `{ message }` | FIX-2083 |
+| `taskLedgers({ taskTurn })` | Nothing: a routed turn is a task turn | FIX-2083 |
+| `defineCoordinatorFlow`'s `delegateFlows`; `defineSessionBoard`'s `postFlows` and `posts`; `posts` and `both` in `listDelegates`' takes | Nothing: a delegate is a worker whose flow takes tasks, checked by its roles at hire | FIX-2083 |
+| `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall`, the `already-dispatched` decline | `createTask`, and `updateTask({ id, status: "pending" })` to release a held row | The later of FIX-2082 and FIX-2083, with `dispatchTask` |
 | `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
 | A split task's `{ answer, pieces }` output | The latest `reportProgress` checkpoint, else the worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks({ filedByTask })` | FIX-2077 |
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
-| The agent worker's `run` entry | `respond` | FIX-2084 |
+| Every worker flow's door: `run` (agent, coordinator, Error Reporter), Shift Manager's EM and coder `message` | `respond` | FIX-2084 |
+| A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
+| A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |
 | `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
 
 Behaviour that changes without a removed name, carried by the owner's changeset the same way.
