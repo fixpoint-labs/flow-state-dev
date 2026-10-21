@@ -231,7 +231,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error a block that uses a capability gets a ctx that is not a BlockContext: its targets widen to an open StateRef index (to be filed, found by FIX-1343).
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       if (ref.get(input.id) === undefined) {
         await ref.addTask({
@@ -251,7 +251,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error a block that uses a capability gets a ctx that is not a BlockContext: its targets widen to an open StateRef index (to be filed, found by FIX-1343).
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       const claimed = await ref.claim("drain", { leaseDurationMs: 120_000, eligibility: (t) => t.id === input.id });
       return claimed === null ? null : (JSON.parse(JSON.stringify(claimed)) as unknown);
@@ -264,7 +264,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error a block that uses a capability gets a ctx that is not a BlockContext: its targets widen to an open StateRef index (to be filed, found by FIX-1343).
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       const found = ref.get(input.id);
       return found === undefined ? null : (JSON.parse(JSON.stringify(found)) as unknown);
@@ -276,7 +276,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error a block that uses a capability gets a ctx that is not a BlockContext: its targets widen to an open StateRef index (to be filed, found by FIX-1343).
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       return ref.unpark(input.id, input.answer, { answer: true });
     },
@@ -287,7 +287,7 @@ export function claimHost(options: HostOptions) {
     outputSchema: z.unknown(),
     uses: [ledgerResources],
     execute: async (input, ctx) => {
-      // @ts-expect-error a block that uses a capability gets a ctx that is not a BlockContext: its targets widen to an open StateRef index (to be filed, found by FIX-1343).
+      // @ts-expect-error — source bug FIX-2091: a block that uses a capability gets a ctx that is not a BlockContext.
       const ref = (await ledgerAt(ctx as BlockContext, input.ledgerId, input.partition))!;
       return ref.cancel(input.id, "cancelled by the test");
     },
