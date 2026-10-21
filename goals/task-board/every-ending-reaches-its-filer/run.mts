@@ -140,7 +140,9 @@ const lines = <T,>(file: string): T[] =>
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("lead", { flow: "desk", delegates: ["eng.doer"] }),
-  worker("eng.doer", { flow: "doer", delegates: ["eng.doer"] })
+  // A worker files its pieces for another: one naming itself is a step it works inline.
+  worker("eng.doer", { flow: "doer", delegates: ["eng.helper"] }),
+  worker("eng.helper", { flow: "doer", delegates: [] })
 ];
 
 type Script = { op: "file"; tasks: TaskInit[] } | { op: "wait"; taskId: string } | { op: "two-passes" };
@@ -148,7 +150,7 @@ type Script = { op: "file"; tasks: TaskInit[] } | { op: "wait"; taskId: string }
 /**
  * What a worker does with its goal, deterministically:
  *   [slow:N]      take N ms        [slow-first:N]  take N ms on attempt 1 only
- *   [fail]        throw            [file:NAME]     file a piece NAME for itself, then end
+ *   [fail]        throw            [file:NAME]     file a piece NAME for its helper, then end
  */
 async function work(goal: string, attempt: number): Promise<string> {
   const slow = /\[slow:(\d+)\]/.exec(goal);
@@ -205,7 +207,7 @@ function buildHost(filename: string) {
       const piece = /\[file:([^\]]+)\]/.exec(input.message);
       if (piece !== null) {
         const ref = await doerBoard.board.resolver(ctx as never);
-        await ref!.addTask({ goal: `${piece[1]} [slow:400]`, assignee: "eng.doer" });
+        await ref!.addTask({ goal: `${piece[1]} [slow:400]`, assignee: "eng.helper" });
         return "filed a piece";
       }
       return work(input.message, attempt);
@@ -230,6 +232,7 @@ function buildHost(filename: string) {
   const planBoard = taskBoard({
     name: "plain-plans",
     boardId: "plans",
+    mode: "delegation",
     collection: plans,
     workers: { doer: dispatcher({ name: "plain-hand-off", type: "task", action: "work", session: "per-task" }) as unknown as TaskWorker },
     onIdle: "complete",
