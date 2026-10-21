@@ -18,5 +18,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `blockTask`, `TaskCollection.block`, `unblock` | `updateTask({ status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
 | `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
+| `createScheduledTransportAdapter`'s `idempotencyWindowMs` | Nothing: the dispatch endpoint fires each scheduled time at most once, recorded in the host's store | FIX-2085 |
+| The dispatch request body's `idempotencyKey` | Nothing: the scheduled time is the key. A body that sends one is refused with `400` | FIX-2085 |
 | `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |

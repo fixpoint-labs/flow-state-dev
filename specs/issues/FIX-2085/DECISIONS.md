@@ -98,6 +98,10 @@ It comes down to hosts without an index: the index's time leaves the list empty 
 - **A body `idempotencyKey` is refused with 400 naming the change**, not ignored (BP-030), so a host
   relying on it learns at upgrade. The routes file's header comment is rewritten with it, which
   closes [FIX-1219](https://linear.app/fixpoint-labs/issue/FIX-1219).
+- **The `scheduled` changeset carries the two migration rows.** Both removals, `idempotencyWindowMs`
+  and the body's `idempotencyKey`, have rows in the epic's [migration lines](../../epics/FIX-2056/migration.md)
+  with this issue as owner. Under epic [(e)](../../epics/FIX-2056/DECISIONS.md#e) this PR's
+  changeset carries those lines and says teams outside the repo rewrite at upgrade.
 - **No POC and no checker.** The compare-and-set is the store contract's create-if-absent and
   version check (`engine/src/stores/types.ts:1294-1320`); nothing rests on a count.
 
@@ -128,7 +132,6 @@ It comes down to hosts without an index: the index's time leaves the list empty 
 - "Name whether `lastFired*` lives on the schedule collection row (schema + version) vs a sibling resource key — both reuse CAS." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#discussion_r4333168190))
 - "The record carries the cron+tz it was written under, and a mismatch resets it." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
 - "Have the memory store share a process-level singleton across adapters, so tests and single-host dev behave like the real thing." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
-- "A `scheduled` changeset should note the break." — jhoffner, second-look pass ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3601#issuecomment-6308341179))
 
 These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
 discarding one. A note that turns out to reveal a design problem is a spec blind spot:
