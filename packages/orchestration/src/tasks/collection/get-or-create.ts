@@ -212,6 +212,20 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
   const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
   const ctx = options.ctx;
+  // A ledger a board hands rows out from delivers each ending to its filer
+  // (FIX-2078), bound to this request; and stamps the filer on each row it files.
+  const declaredDelivery = isDefinedTaskCollection(declared) ? declared.__taskCollection.delivery : undefined;
+  const sessionId = ctx.session?.identity?.id;
+  const delivery =
+    declaredDelivery !== undefined && sessionId !== undefined
+      ? {
+          ownSession: sessionId,
+          hooks: createDelivery(ctx, declaredDelivery, {
+            collectionId: options.collectionId,
+            ...(partition !== undefined ? { partition } : {}),
+          }),
+        }
+      : undefined;
   return await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection:
@@ -228,6 +242,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     ...(recordEnding !== undefined ? { recordEnding } : {}),
     ...(settings !== undefined ? { settings } : {}),
     ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
+    ...(delivery !== undefined ? { delivery } : {}),
   });
 }
 

@@ -451,6 +451,17 @@ export const taskSchema = z.object({
   cascadeOwed: z.object({ due: z.number() }).optional(),
 
   /**
+   * Who filed this row (FIX-2078): the session whose request filed it, stamped
+   * at filing from the request's server-set identity, never from caller input
+   * (BP-031). A follow-up copies its root's, so the filer is the one that
+   * filed the work, not the session a follow-up was typed in. Where its ending
+   * is delivered. Its flow is read from the session's own record when needed.
+   * **Absent** on a row filed before it (BP-030): a composing layer may name a
+   * fallback, and with none its notice is settled undeliverable.
+   */
+  filer: z.object({ sessionId: z.string() }).optional(),
+
+  /**
    * The task whose ending cancelled this row (FIX-2080): set by a cascade's
    * cancel, server-written, so whatever reports the cancel names its cause.
    * **Absent** on every row no cascade cancelled (BP-030).
