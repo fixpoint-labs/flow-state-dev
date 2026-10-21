@@ -147,6 +147,22 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── The grid: the top of the page only ──
+   page.css rules the whole body, but Infima paints `html`, so the body's
+   background stops at the body's own box, one window tall, and the grid
+   ends in a hard edge a screen down. Here it covers the top 480px and
+   fades into the paper over its lower half, so it frames the top of a
+   page and is gone before the reading starts. */
+
+body {
+  background-image:
+    linear-gradient(transparent 50%, var(--paper)),
+    repeating-linear-gradient(var(--grid-line) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 24px);
+  background-size: 100% 480px;
+  background-repeat: no-repeat;
+}
+
 /* ── Labels: one style for every label Docusaurus draws ── */
 
 .markdown th,
