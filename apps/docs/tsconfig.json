@@ -1,6 +1,5 @@
 {
-  // Inlined from @docusaurus/tsconfig 3.9.2 minus its `baseUrl`, which TS 6 deprecates and TS 7 removes.
-  // FIX-2068 goes back to extending it once it drops `baseUrl`.
+  // Inlined from @docusaurus/tsconfig 3.9.2 minus `baseUrl`. FIX-2068 extends it again once that option is gone.
   "compilerOptions": {
     "allowJs": true,
     "esModuleInterop": true,

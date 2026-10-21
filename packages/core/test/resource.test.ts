@@ -55,23 +55,24 @@ describe("defineResource", () => {
   });
 
   it("throws when render is used with contentTemplate", () => {
-    // Only the runtime refuses this pair. The typed `c` keeps the call compiling on
-    // every TS version: inside expect(() => …) an untyped one defeats inference.
-    expect(() => defineResource({
+    // Built outside expect(), where an untyped callback still infers.
+    const define = () => defineResource({
       scope: "session",
       stateSchema: z.object({}),
       contentTemplate: stubTemplate,
-      render: (c: string) => c,
-    })).toThrow("rejects render with contentTemplate");
+      render: (c) => c,
+    });
+    expect(define).toThrow("rejects render with contentTemplate");
   });
 
   it("throws when render is used with contentTemplateRef", () => {
-    expect(() => defineResource({
+    const define = () => defineResource({
       scope: "session",
       stateSchema: z.object({}),
       contentTemplateRef: "templates/analyst",
-      render: (c: string) => c,
-    })).toThrow("rejects render with contentTemplate");
+      render: (c) => c,
+    });
+    expect(define).toThrow("rejects render with contentTemplate");
   });
 
   it("accepts a single contentTemplate source", () => {
