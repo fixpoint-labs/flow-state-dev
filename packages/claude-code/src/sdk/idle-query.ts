@@ -1,5 +1,5 @@
 /**
- * Ask Claude Code one question with no model turn: `askIdleQuery()`.
+ * Ask Claude Code one question with no model turn: `runIdleQuery()`.
  *
  * Opens one streaming-input `query()` whose input never yields, so no user
  * message is sent and no model turn starts, asks the handle one thing, and
@@ -9,7 +9,7 @@
  */
 import { defaultSdkImporter, type SdkImporter } from "./sdk-client";
 
-/** What {@link askIdleQuery} got. Never a throw. */
+/** What {@link runIdleQuery} got. Never a throw. */
 export type IdleQueryResult<T> =
   /** The handle's answer. */
   | { status: "answer"; value: T }
@@ -20,7 +20,7 @@ export type IdleQueryResult<T> =
   /** The query or the question threw; `reason` is its message. */
   | { status: "error"; reason: string };
 
-/** Options for {@link askIdleQuery}. */
+/** Options for {@link runIdleQuery}. */
 export interface IdleQueryOptions {
   /** The environment Claude Code is started with. */
   env: Record<string, string>;
@@ -36,7 +36,7 @@ export interface IdleQueryOptions {
  * @param options The environment, how long to wait, and the SDK loader.
  * @param ask The one question, put to the open handle.
  */
-export async function askIdleQuery<H extends { close?: () => void }, T>(
+export async function runIdleQuery<H extends { close?: () => void }, T>(
   options: IdleQueryOptions,
   ask: (handle: H) => Promise<T>,
 ): Promise<IdleQueryResult<T>> {

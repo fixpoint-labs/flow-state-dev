@@ -14,7 +14,7 @@
  * see one account. It checks where a credential would come from, not that the
  * credential works: a key that is set but rejected reads as `account`.
  */
-import { askIdleQuery } from "./idle-query";
+import { runIdleQuery } from "./idle-query";
 import type { SdkImporter } from "./sdk-client";
 
 /** What {@link probeClaudeAccount} found. */
@@ -62,7 +62,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  */
 export async function probeClaudeAccount(options: ProbeClaudeAccountOptions): Promise<ClaudeAccountProbe> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const asked = await askIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
+  const asked = await runIdleQuery<AccountQuery, Awaited<ReturnType<AccountQuery["accountInfo"]>>>(
     { env: options.env, timeoutMs, ...(options.importSdk === undefined ? {} : { importSdk: options.importSdk }) },
     (handle) => handle.accountInfo(),
   );

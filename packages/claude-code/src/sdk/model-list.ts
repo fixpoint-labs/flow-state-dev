@@ -7,7 +7,7 @@
  * `sonnet` and the "default" row name whatever they point at today, and a host
  * that stores the id keeps that model after the alias moves on.
  */
-import { askIdleQuery } from "./idle-query";
+import { runIdleQuery } from "./idle-query";
 import type { SdkImporter } from "./sdk-client";
 
 /** One model Claude Code offers. */
@@ -64,7 +64,7 @@ const DEFAULT_ROW = "default";
  */
 export async function listClaudeModels(options: ListClaudeModelsOptions): Promise<ClaudeModelList> {
   const timeoutMs = options.timeoutMs ?? 10_000;
-  const asked = await askIdleQuery<ModelQuery, SdkModelRow[]>(
+  const asked = await runIdleQuery<ModelQuery, SdkModelRow[]>(
     { env: options.env, timeoutMs, importSdk: options.importSdk },
     (handle) => handle.supportedModels(),
   );
