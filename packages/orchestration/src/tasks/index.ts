@@ -47,7 +47,7 @@ export {
   type TaskFilingRule,
   type TaskSettingsSupport,
 } from "./collection/filing";
-export { hasStarted, CASCADE_DUE_MS, type TaskSettingsPatch } from "./collection/internal";
+export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } from "./collection/internal";
 // The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
 export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";
 

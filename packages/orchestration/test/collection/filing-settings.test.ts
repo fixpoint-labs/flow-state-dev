@@ -483,3 +483,21 @@ describe("a dependency that ends while its dependent is written (resource-backed
     expect(tasks.get("b")).toMatchObject({ status: "cancelled", causedBy: "a", labels: ["skipped"] });
   });
 });
+
+describe("the debt an ending records (FIX-2080 D2)", () => {
+  it("carries the ending's time, so a late payment can tell that ending's work from the next attempt's", async () => {
+    const clock = { at: 5_000 };
+    // A filed half that is never paid leaves the debt on the row to read.
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: createFakeResourceCollection(),
+      now: () => clock.at,
+      cascadeFiled: { owes: () => true, pay: async () => false },
+    });
+    await tasks.addTask({ id: "t", goal: "t", maxAttempts: 2 });
+    const claimed = (await tasks.claim("w"))!;
+    clock.at = 6_000;
+    await tasks.fail(claimed.id, "boom", { claim: ticketForClaim("tasks", claimed) });
+    expect(tasks.get("t")).toMatchObject({ status: "pending", cascadeOwed: { due: 6_000 + CASCADE_DUE_MS, endedAt: 6_000 } });
+  });
+});

@@ -29,6 +29,7 @@ import {
   endsFiledWork,
   isTerminalStatus,
   type DeclaredFiledCascade,
+  cascadeEndedAt,
   type Task,
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
@@ -86,11 +87,14 @@ export function filedCascadeOver(ledgerAt: LedgerAt): DeclaredFiledCascade {
     owes: (row, ending) => endsFiledWork(ending) && filedMarkerOf(row) !== undefined,
     pay: async (ctx, row) => {
       const marker = filedMarkerOf(row);
-      if (marker === undefined) return true;
+      if (marker === undefined || row.cascadeOwed == null) return true;
       const board = await ledgerAt(ctx, marker.partition);
       if (board === undefined) return false;
+      // Only the work filed by the ending this debt is for: a late payment
+      // finds the next attempt's pieces under the same parent too.
+      const endedAt = cascadeEndedAt(row.cascadeOwed);
       for (const piece of board.list()) {
-        if (piece.metadata?.[PIECE_OF] !== row.id || isTerminalStatus(piece.status)) continue;
+        if (piece.metadata?.[PIECE_OF] !== row.id || isTerminalStatus(piece.status) || piece.createdAt > endedAt) continue;
         await board.cancel(piece.id, cancelReason(row));
       }
       return true;

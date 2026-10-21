@@ -43,8 +43,11 @@ export interface TaskFiledCascade {
    */
   readonly owes: (row: Task, ending: TaskEnding) => boolean;
   /**
-   * Cancel the open tasks `row` filed. `true` once paid (nothing left to
-   * cancel included); `false` leaves the cascade owed for a later touch.
+   * Cancel the open tasks `row` filed by the time of the ending its debt is
+   * for (`cascadeEndedAt(row.cascadeOwed)`): a payment can come late, after
+   * the row's next attempt has filed tasks of its own. `true` once paid
+   * (nothing left to cancel included); `false` leaves the cascade owed for a
+   * later touch.
    */
   readonly pay: (row: Task) => Promise<boolean>;
 }

@@ -1269,6 +1269,15 @@ export interface EndingRecording {
 export const CASCADE_DUE_MS = 2_000;
 
 /**
+ * When the ending that owes `owed` was written (FIX-2080 D2): its own stamp,
+ * or, on a debt that recorded only its due time, that time less
+ * {@link CASCADE_DUE_MS} (BP-030).
+ */
+export function cascadeEndedAt(owed: NonNullable<Task["cascadeOwed"]>): number {
+  return owed.endedAt ?? owed.due - CASCADE_DUE_MS;
+}
+
+/**
  * Orchestration's cascade recorder (FIX-2080 D2): stamp the cascade owed,
  * due {@link CASCADE_DUE_MS} after the write, on an ending that owes one.
  * Recorded in the ending's own write, so a crash between the ending and the
@@ -1280,7 +1289,7 @@ function recordCascadeOwed<TInput, TOutput>(
   recording: EndingRecording | undefined
 ): Task<TInput, TOutput> {
   if (recording?.owesCascade?.(row as Task, ending) !== true) return row;
-  return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS } };
+  return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS, endedAt: row.updatedAt } };
 }
 
 /**
