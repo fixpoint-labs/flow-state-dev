@@ -28,6 +28,8 @@ flowchart TD
 | **Locks in** | FIX-2058 and FIX-2070 wait for FIX-2086 too |
 | **FIX-2086 does not, until FIX-2058** | Answer a question a task stopped on with a steer · retire `answerTask` or the parks · mark a task waiting on a person ([D2](#d2)) |
 
+**Confirmed by the owner** (2026-10-21, [(b)](#b)): FIX-2086 lands in this epic.
+
 **What would change my mind:** FIX-2058 or FIX-2070 finding it can start without FIX-2086. Then
 FIX-2086 leaves the set and those epics start one issue earlier.
 
@@ -78,7 +80,7 @@ FIX-2081's own scope.
 |---|---|---|---|
 | ER-1 | Only the claim gate (a dispatched row) or the drain (an inline row) records a row's ending. No tool, worker block, wait or Workforce path does (rule 18) | FIX-2076 | Every spec review; the closure sweep |
 | ER-2 | One predicate for done (rule 6), in orchestration, checked after the request's background work and when a task it filed ends. Every wait, a plan board's drain included, wakes on the ending the gate writes; a deadline writes none. No Workforce code re-derives a request's kind from session state | FIX-2077 | FIX-2078's, FIX-2082's, FIX-2083's and FIX-2086's spec review |
-| ER-3 | Every ending of a delegated task reaches its filer once, through one path, and every debt has a due time with the sweeper as backstop | FIX-2078 | FIX-2083's and FIX-2085's spec review; legs b and c |
+| ER-3 | Every ending of a delegated task reaches its filer once, through one path, and every debt has a due time with the sweeper as backstop. Shift Manager's error report rides that path, not a second one ([f](#f)) | FIX-2078 | FIX-2083's and FIX-2085's spec review; legs b and c |
 | ER-4 | Four filing settings. Start and attempts editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2083's and FIX-2086's spec review |
 | ER-5 | The four task tools are the only task surface, for models and screens, with identity from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
 | ER-6 | A retired row shape is read through FIX-2080's one map, never a child's own ([D3](#d3)) | FIX-2080 | FIX-2077's, FIX-2083's and FIX-2086's spec review |
@@ -91,7 +93,7 @@ FIX-2081's own scope.
 | The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: the request's `onFinished`, run after background work drains on every terminal path (`engine/src/execution/runAction.ts:2447`→`:2630`, `:2773`→`:2918`). No engine hook needed. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
 | The wait (`tasks/helpers/wait-for-response.ts`) and its limits | FIX-2082 owns it and its limits: 5 waits deep; a tree 5 deep, 100 under its top task. FIX-2076 only sets which boards wait. A board's dispatch rides the row's wait. A bare `dispatcher({ wait: true })` has no row, and the engine awaits acceptance only (`core/src/blocks/dispatcher.ts:169-171`, `engine/src/context/dispatch-operation.ts:273-280`): FIX-2082 adds an engine wait that returns the result |
 | The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts |
-| `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times and removes the automatic error routes ([f](#open)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
+| `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times, removes the `reportOwed` marker and keeps Shift Manager's error route on the ending path ([f](#f)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
 | The collection read (`tasks/collection/`) | FIX-2080 owns the map; the retiring children turn entries on |
 | Queued messages | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
 
@@ -117,6 +119,18 @@ FIX-2081's own scope.
   No child ships a deprecated alias, wrapper or warning, and the closure's tool sweep allows none:
   the only task tool besides the four is `answerTask` ([D2](#d2)). The cost, accepted: teams
   outside the repo calling them rewrite at upgrade.
+- <a name="f"></a>**(f) · Shift Manager's automatic error route is kept** (owner, 2026-10-21).
+  FIX-2078 owns it: `errorCapture` into the Error Reporter
+  (`packages/shift-manager/teams/devteam/host.mts:1194`) is preserved, re-expressed on the new
+  ending and notice path, not removed. Hosts wiring `errorCapture` keep getting error reports and
+  get no migration line. The `reportOwed` marker and its resends still go (ER-3). The gaps row
+  *a failure is an ending delivered to the filer* is met by the filer hearing it once; its
+  "Error Reporter hears only what a filer messages" half does not gate the closure.
+- <a name="a"></a>**(a) · One epic, not two** (owner, 2026-10-21). Board modes (FIX-2076) and the
+  waited dispatch (FIX-2082) stay in this set: the claim-gate POC showed FIX-2076, FIX-2077 and
+  FIX-2082 must share one answer for done.
+- <a name="b"></a>**(b) · D1 kept** (owner, 2026-10-21): steer and follow-ups, phase 3 and
+  FIX-2086, land in this epic ([D1](#d1)).
 
 ## What the end-state POC showed
 
@@ -131,12 +145,10 @@ FIX-2081's own scope.
 - **Round 1** — FIX-2079 merged into FIX-2078; D3 became one map in FIX-2080.
 - **POC** — the waited dispatch moved to FIX-2082.
 - **Round 2** — sources agree with D2; engine prerequisites named; (e), (f) opened.
-- **Amendment** — the owner answered (e): remove outright, no deprecation release.
+- **Amendment** — the owner answered (e): remove outright, no deprecation release; then (f): keep
+  the error route; (a): one epic; (b): D1 kept.
 
 <a name="open"></a>
-## Open · pending the owner's answer
+## Open
 
-**(f) · Shift Manager's automatic error route: drop it, or keep it?** Every failed request reaches
-the Error Reporter today (`errorCapture`, `packages/shift-manager/teams/devteam/host.mts:1194`).
-Dropped, it hears only what a filer sends, and hosts wiring `errorCapture` get a migration line;
-kept, failures arrive twice, an exception to ER-3. FIX-2078 owns it. **Pending.**
+None. Every question the epic asked is answered above.
