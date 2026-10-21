@@ -145,4 +145,34 @@ describe("reportProgress off a task turn, and once the task has finished", () =>
     await collection.fail("t", "boom", { claim });
     expect(collection.get("t")).toMatchObject({ status: "pending", output: "partial", checkpointed: true });
   });
+
+  it("a later attempt that completes without a checkpoint of its own writes its result, not the failed attempt's checkpoint", async () => {
+    // A failed attempt's partial work must not outlive the answer of the
+    // attempt that succeeded: only the completing attempt's own checkpoint
+    // beats its result.
+    const collection = boardCollection("progress-retry-wins");
+    await collection.addTask({ id: "t", goal: "g", maxAttempts: 2 });
+    const first = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
+    await collection.reportProgress!("t", { output: "partial" }, { claim: first });
+    await collection.fail("t", "boom", { claim: first });
+    const second = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
+    // The retry still reads the earlier checkpoint while it runs.
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", output: "partial" });
+    await collection.complete("t", "the full answer", { claim: second });
+    const done = collection.get("t");
+    expect(done).toMatchObject({ status: "completed", output: "the full answer" });
+    expect(done?.checkpointed).toBeUndefined();
+  });
+
+  it("a later attempt that checkpoints keeps its own checkpoint over its result", async () => {
+    const collection = boardCollection("progress-retry-own");
+    await collection.addTask({ id: "t", goal: "g", maxAttempts: 2 });
+    const first = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
+    await collection.reportProgress!("t", { output: "partial" }, { claim: first });
+    await collection.fail("t", "boom", { claim: first });
+    const second = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
+    await collection.reportProgress!("t", { output: "second draft" }, { claim: second });
+    await collection.complete("t", "the final answer", { claim: second });
+    expect(collection.get("t")).toMatchObject({ status: "completed", output: "second draft", checkpointed: true });
+  });
 });

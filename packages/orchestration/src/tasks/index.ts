@@ -53,10 +53,9 @@ export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } fr
 // The field table (FIX-2081): each field `updateTask` changes, with its one rule.
 export {
   TASK_FIELD_RULES,
-  NEVER_EDITABLE_FIELDS,
   lockedFields,
   type TaskEditField,
-  type TaskFieldRule,
+  type TaskUpdateField,
 } from "./collection/field-rules";
 // The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
 export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";

@@ -109,6 +109,7 @@ import {
   linkRunGuards,
   completionPatch,
   progressPatch,
+  reportsProgress,
   RENEW_LEASE_TICKET_DETAIL,
   requireClaimTicket,
   runLinkPatch,
@@ -894,14 +895,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "reportProgress",
         "of the attempt it reports on. Only the request holding a task's claim reports its progress."
       );
-      const patch = progressPatch(progress);
-      if (patch === undefined) return { outcome: "unchanged" };
+      if (!reportsProgress(progress)) return { outcome: "unchanged" };
       // Same-status, fenced like a run link: a finished, recreated or reclaimed row declines.
       return transitionRef(
         id,
         "in_progress",
         "progress_reported",
-        () => patch as Partial<Task<TInput, TOutput>>,
+        (task) => progressPatch(task as Task, progress) as Partial<Task<TInput, TOutput>>,
         linkRunGuards(progressOptions)
       );
     },

@@ -332,10 +332,13 @@ function releaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
   return task.status === "held" && patch.held === false && patchFields(patch).length === 1;
 }
 
-/** Why a settings edit is refused on `task` before anything is checked: it has started. */
-function settingsDecline(task: Task, patch: TaskSettingsPatch): TaskWriteDeclineReason | undefined {
-  if (releaseOnly(task, patch)) return undefined;
-  return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
+/**
+ * The status check the field table leaves: a settings edit lands only on a
+ * pending or held row. Which fields a started row still takes is the
+ * table's call (`lockedFields`), not this one's.
+ */
+function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  return task.status !== "pending" && task.status !== "held" ? "started" : undefined;
 }
 
 /** The fields a patch names, in the field table's words. */
@@ -376,7 +379,7 @@ export function settingsWrite(
   }
   const locked = releaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
-  const declined = settingsDecline(task, patch);
+  const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };
   const update: Partial<Task> = {};
   if (patch.held === true && task.status === "pending") update.status = "held";
@@ -1179,25 +1182,37 @@ export function requireClaimTicket(
   }
 }
 
-/**
- * The patch a progress report writes (FIX-2081): the note, and the output
- * marked a checkpoint. `undefined` when it names neither.
- */
-export function progressPatch(progress: { statusNote?: string; output?: unknown }): Partial<Task> | undefined {
-  const patch: Partial<Task> = {
-    ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
-    ...(progress.output !== undefined ? { output: progress.output, checkpointed: true as const } : {}),
-  };
-  return Object.keys(patch).length === 0 ? undefined : patch;
+/** Whether a progress report names anything to write. */
+export function reportsProgress(progress: { statusNote?: string; output?: unknown }): boolean {
+  return progress.statusNote !== undefined || progress.output !== undefined;
 }
 
 /**
- * The patch a completion writes: the final result as the output, unless the
- * worker checkpointed one, which then stays the output (FIX-2081).
+ * The patch a progress report writes on `task` (FIX-2081): the note, and the
+ * output marked a checkpoint of the attempt running now.
+ */
+export function progressPatch(task: Task, progress: { statusNote?: string; output?: unknown }): Partial<Task> {
+  return {
+    ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
+    ...(progress.output !== undefined
+      ? { output: progress.output, checkpointed: true as const, checkpointAttempt: task.attempts }
+      : {}),
+  };
+}
+
+/**
+ * The patch a completion writes (FIX-2081): the completing attempt's own
+ * result as the output, unless that same attempt reported a checkpoint,
+ * which then stays the output. A checkpoint from an earlier, failed attempt
+ * is the retry's to read while it runs; it never beats the result of the
+ * attempt that completed.
  */
 export function completionPatch(task: Task, output: unknown, completedAt: number): Partial<Task> {
+  const ownCheckpoint = task.checkpointed === true && task.checkpointAttempt === task.attempts;
   return {
-    ...(task.checkpointed === true ? {} : { output }),
+    ...(ownCheckpoint
+      ? {}
+      : { output, ...(task.checkpointed === true ? { checkpointed: undefined, checkpointAttempt: undefined } : {}) }),
     completedAt,
     leaseUntil: undefined,
     claimedBy: undefined,

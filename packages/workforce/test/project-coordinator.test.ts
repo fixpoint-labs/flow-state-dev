@@ -462,7 +462,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
 
 describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)", () => {
   /** Hire `id` on `flow` onto `user`'s roster, listing `delegates`. */
-  const hireOn = async (h: Awaited<ReturnType<typeof boot>>, user: string, id: string, flow: string, delegates: string[]) =>
+  const hireOn = async (h: Awaited<ReturnType<typeof boot>>, user: string, id: string, flow: string, delegates: string[] | "all") =>
     h.ok(user, ROSTER_FLOW, await h.openSession(user, ROSTER_FLOW), "hire", {
       id,
       flow,
@@ -587,6 +587,15 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     expect(refusal(quiet)).toContain("cannot-lead");
     const listed = (await h.ok("alice", "lab", lab, "readProject", { project: apollo })) as { workstreams: unknown[] };
     expect(listed.workstreams).toEqual([]);
+  });
+
+  it("takes a lead whose file says delegates: all, which is the whole roster and never empty (FIX-2081 D2)", async () => {
+    const h = await boot();
+    await hireOn(h, "alice", "alice-all", "lead", "all");
+    const lab = await h.lab("alice");
+    expect(
+      await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "checkout", title: "Checkout", lead: "alice-all" })
+    ).toMatchObject({ opened: true });
   });
 
   describe("checking its pick of lead against the work", () => {

@@ -838,8 +838,10 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * the attempt or the lease lapsed. Neither field changes the status.
    *
    * A checkpoint is the task's output from then on (`Task.checkpointed`):
-   * {@link complete} keeps it rather than writing the final result, and a
-   * failed attempt keeps it for the next. Publishes `progress_reported`.
+   * {@link complete} keeps it rather than writing the final result when the
+   * completing attempt reported it, and a failed attempt keeps it for the
+   * next to read; that next attempt's own result replaces it on completion.
+   * Publishes `progress_reported`.
    *
    * Optional, so a ref written before it keeps compiling (BP-030); the tool
    * refuses on a board without it.

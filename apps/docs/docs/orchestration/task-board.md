@@ -84,7 +84,7 @@ Every rule is checked inside the write, so a task that starts between your read 
 
 `reportProgress` writes two things on the task its turn holds. `statusNote` is a one-line note for task views; `listTasks` shows it. `output` is a checkpoint of the result so far; `getTask` shows it as the task's output, marked `checkpoint: true`. Neither changes the task's status.
 
-The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
+The latest checkpoint is the task's output. When the task completes, a checkpoint the completing attempt reported stays, and that attempt's final answer becomes the output only when it reported none. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next attempt to read, but the next attempt's own result replaces it when that attempt completes. Once the task has finished, `reportProgress` is refused and nothing changes.
 
 For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createParkOnQuestion`](#when-a-task-stops-on-a-question) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
 

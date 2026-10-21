@@ -984,7 +984,8 @@ and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered 
 turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
 (at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
 task carries as its output (`checkpointed: true`). Neither changes the task's status. When the
-task completes, a checkpoint stays as its output; a failed attempt keeps it for the next one. On a
+task completes, a checkpoint the completing attempt reported stays as its output; a failed
+attempt's checkpoint stays for the retry to read, and the retry's own result replaces it. On a
 finished task it answers `task_finished` and writes nothing. The collection side is
 `TaskCollectionRef.reportProgress(id, progress, { claim })`, which emits `progress_reported`.
 

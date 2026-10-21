@@ -39,7 +39,7 @@
  *   GOAL_CONTROL=edit-any-state  the field table's state rule is off. Must
  *     FAIL leg b on the running and finished columns.
  *
- * Run: pnpm tsx goals/task-tools/four-tools-one-rule-per-field/run.mts
+ * Run: pnpm tsx goals/task-tools/five-tools-one-rule-per-field/run.mts
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
@@ -75,7 +75,7 @@ const ALICE = "u_tools_alice";
 const BOB = "u_tools_bob";
 const ORG = "org_tools";
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("four-tools-one-rule-per-field");
+const SCRATCH = process.env.GOAL_SCRATCH ?? goalTmpDir("five-tools-one-rule-per-field");
 
 const PATCHES: Record<string, ModulePatch[]> = {
   // A task session's delegates are the whole roster again, as before FIX-2081.

@@ -44,7 +44,7 @@ puts back today's reach, and it must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/task-tools/four-tools-one-rule-per-field/` · no model: scripted turns on the real Workforce flows · run by the implementer at completion · verdict in the implementation PR |
+| **Goal check** | `goals/task-tools/five-tools-one-rule-per-field/` · no model: scripted turns on the real Workforce flows · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | a: workers are offered the four, `reportProgress` on a task turn only, `parkOnQuestion` on a task turn not waited on, `listDelegates`, and `answerTask` and `dispatchTask` while they stand; only a configured coordinator gets `addDelegate`, `removeDelegate`, `setFallback`; an inline plan step that calls `reportProgress({ output })` checkpoints its own row, and the task's result is still the answering turn's. b: each field in each state (pending, held, pending after a retry, running, finished; a retried row refuses every edit but a cancel), by tool, by `updateTask_tasks` as the user, and by `dispatchTask`'s reassign and release while it stands: allowed writes read back changed; refused ones leave the row unchanged and name field and state; a cancel with an edit is refused; a running task's reassign is refused and its first worker's result lands. c: a piece for a non-delegate is refused; under `all`, a worker hired mid-session is reachable; Bob's call to Alice's action is refused |
 | **Input** | Deterministic workers and scripted tool calls. Other worker names and another field order must pass too |
 | **Anti-game** | Tools from the model request; rows through the public read actions, not the collection |

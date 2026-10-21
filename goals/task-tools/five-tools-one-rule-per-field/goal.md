@@ -16,7 +16,7 @@
 
 **Model:** n/a (model-free).
 
-**Run:** `pnpm tsx goals/task-tools/four-tools-one-rule-per-field/run.mts`. On demand only, never a CI gate.
+**Run:** `pnpm tsx goals/task-tools/five-tools-one-rule-per-field/run.mts`. On demand only, never a CI gate.
 
 **Controls:** each is a scratch patch to the code under test, applied as it loads (`goals/lib/module-patch.mts`), printed by the run, and refused when it never reached the code.
 

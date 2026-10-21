@@ -28,7 +28,7 @@
 - `GOAL_CONTROL=pieces-output`: the settle ignores the woken turn's answer (`conversation-board/split.ts`, `settleParent`). Leg 1 must fail **`1:report-is-output`**, alone.
 - `GOAL_CONTROL=wake-coordinator`: a task session's board is the one above it, the desk's (`conversation-board/board.ts`, the resolver's partition), so A's pieces land on the desk's board and their endings are the desk's. Leg 4 must fail **`4:desk-hears-tasks-only`**. Leg 1 goes red with it (A's task completes from its first turn); it has no isolating red state.
 
-**Before-state:** `main` at `ce4dbe52` (the merged spec, before FIX-1997) fails leg 1: A's `dispatchTask` for `crew.keeper` is refused `unknown_assignee`. Since FIX-2081 a task reaches only its filer's delegates, so `crew.keeper` is one of A's; a piece for a non-delegate is refused, which `goals/task-tools/four-tools-one-rule-per-field/` leg c grades. The `delegates-only` control is retired with the roster reach it put back.
+**Before-state:** `main` at `ce4dbe52` (the merged spec, before FIX-1997) fails leg 1: A's `dispatchTask` for `crew.keeper` is refused `unknown_assignee`. Since FIX-2081 a task reaches only its filer's delegates, so `crew.keeper` is one of A's; a piece for a non-delegate is refused, which `goals/task-tools/five-tools-one-rule-per-field/` leg c grades. The `delegates-only` control is retired with the roster reach it put back.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

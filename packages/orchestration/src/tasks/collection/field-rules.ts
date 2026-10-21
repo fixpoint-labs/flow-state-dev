@@ -23,7 +23,7 @@ import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 
 /** How long a field stays editable. */
-export type TaskFieldRule =
+type TaskFieldRule =
   /** Until the task is first claimed (`hasStarted`). */
   | "until-start"
   /** Until the task reaches a terminal status. */
@@ -42,14 +42,16 @@ export const TASK_FIELD_RULES = {
   assignee: "until-start",
   maxAttempts: "until-start",
   held: "until-start",
+  // Here only so a refusal can name a cancel beside the fields: a cancel is
+  // `status: "cancelled"` through `cancel()`, never a settings patch.
   cancel: "until-finish",
 } as const satisfies Record<string, TaskFieldRule>;
 
 /** A field the table holds a rule for. */
 export type TaskEditField = keyof typeof TASK_FIELD_RULES;
 
-/** The fields of a task that never change after filing, whatever its state. */
-export const NEVER_EDITABLE_FIELDS = ["followUpOf", "session", "resultTo", "attempts"] as const;
+/** The fields `updateTask` takes as fields, beside `id`: the table less a hold and a cancel, which it takes as `status`. */
+export type TaskUpdateField = Exclude<TaskEditField, "held" | "cancel">;
 
 /**
  * Whether the row has ever started: claimed at least once. A retry's return

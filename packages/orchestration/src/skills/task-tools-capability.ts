@@ -61,6 +61,7 @@ import {
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskEditField,
+  type TaskUpdateField,
   type TaskInit,
   type TaskSettingsPatch,
   type TaskStatus,
@@ -794,7 +795,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .optional()
       .describe("Who hears its result: you (filer, the default), or the conversation, under the delegate's name."),
     maxAttempts: z.number().int().positive().optional().describe("How many tries the task gets in all."),
-  };
+    // Every field `updateTask` edits is one a filing sets, plus the filing-only keys above.
+  } satisfies Record<TaskUpdateField, z.ZodTypeAny> & Record<string, z.ZodTypeAny>;
   type NewTaskInput = z.infer<z.ZodObject<typeof createTaskFields>>;
   /**
    * The fields a filing once took to wait (FIX-1816), refused by name: the
@@ -1283,7 +1285,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     metadata: z.record(z.string(), z.unknown()).optional().describe("Keys merged over the task's metadata."),
     assignee: z.string().optional().describe("One of your delegates."),
     maxAttempts: z.number().int().positive().optional(),
-  } as const;
+    // Exactly the table's fields: one added on either side alone fails to compile.
+  } as const satisfies Record<TaskUpdateField, z.ZodTypeAny>;
   type UpdateField = keyof typeof updateFields;
   const UPDATE_FIELDS = Object.keys(updateFields) as UpdateField[];
 
@@ -1382,7 +1385,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // row stored `blocked` after a retry reads as held with attempts spent
       // (BP-030), and releasing it is how it runs again.
       const releaseOnly = current.status === "held" && input.status === "pending" && fields.length === 0;
-      const locked = releaseOnly ? [] : lockedFields(current, edits);
+      // Two rules hold in every state and name their own refusal, so they go
+      // to the write: a step's hold (`step_cannot_be_held`) and a
+      // conversation-result task's attempts (`conversation_result_one_attempt`).
+      const ownRule =
+        input.status !== undefined || (input.maxAttempts !== undefined && current.resultTo === "conversation");
+      const locked = releaseOnly || ownRule ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
       if (input.assignee !== undefined && input.assignee !== current.assignee) {
         if (current.answered === true) return awaitingAnswerError(input.id);
@@ -1485,9 +1493,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     description:
       "Read one task on your delegation board in full: what it was asked to do (goal, " +
       "context and input), every field you can edit before it starts, how it stands, its " +
-      "worker's latest status note, and its output: the result " +
-      "when it completed, or, while it runs, the checkpoint its worker last reported " +
-      "(checkpoint: true). Its error when it failed, the question it waits on when it is " +
+      "worker's latest status note, and its output: the result so far while it runs, or its " +
+      "result once it completed. checkpoint: true means the output came from a reported " +
+      "checkpoint. Its error when it failed, the question it waits on when it is " +
       "parked. Use it to answer from what a task found, rather than from a line about it.",
     inputSchema: z.object({ id: z.string() }),
     outputSchema: z.union([
