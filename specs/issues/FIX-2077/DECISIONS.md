@@ -82,11 +82,12 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   as *running*; the Inbox still shows the question.
 - **The output** is the last result of a `work` or `onTaskSettled` request. A result that is missing
   (`undefined`) or the empty string leaves the latest checkpoint the worker reported with
-  `reportProgress({ output })` ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3)); any other value,
-  plain text, `null`, `false`, `0`, `{}` and `[]` included, replaces it. Only a `work` or
-  `onTaskSettled` request may checkpoint `output`, so a message's request never changes the output;
-  while it holds the claim it may only set a `statusNote`. One that errors fails the attempt,
-  keeping the checkpoint for the next. A notice landed as a line keeps the last answer.
+  `reportProgress({ output })` ([FIX-2081's D3 (`reportProgress`)](../FIX-2081/DECISIONS.md#d3),
+  not this spec's D3); any other value, plain text, whitespace, `null`, `false`, `0`, `{}` and `[]`
+  included, replaces it. Only a `work` or `onTaskSettled` request may checkpoint `output`, so a
+  message's request never changes the output; while it holds the claim it may only set a
+  `statusNote`. A terminal request that errors fails the attempt, keeping the checkpoint for the
+  next. A notice landed as a line keeps the last answer.
 - **A task's pieces** are read through FIX-2081's tools: a filter by the filing task on
   `listTasks` is FIX-2081's, since ER-5 makes its four tools the only task surface.
 - **Cancelling a split task** cancels its pieces through FIX-2080's cascade; the split's own cascade
@@ -142,14 +143,11 @@ For the implementer, recorded verbatim, not baked into the design.
 - **Round 2** — the running-row field is renamed from "hold" to `waitingOn`, because FIX-2080
   ([#3595](https://github.com/fixpoint-labs/flow-state-dev/pull/3595)) makes `held` the status for
   a task filed and not started. One term, one thing. No change to the approach.
-- **Amendment, after merge** — the output line takes the owner's checkpoint: a missing or
-  empty-string final result leaves the latest `reportProgress({ output })` checkpoint standing, and
-  only a `work` or `onTaskSettled` request sets it
-  ([owner decision](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315764765),
-  [correction](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315963943)).
-  It replaces the `updateTask({ id, output })` amendment in
+- **Amendment, after merge** — the output line takes the owner's checkpoint
+  ([decision](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315764765),
+  [correction](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315963943)),
+  superseding the `updateTask({ id, output })` amendment in
   [#3606](https://github.com/fixpoint-labs/flow-state-dev/pull/3606), closed unmerged. The tool and
-  its rules are FIX-2081's. The goal check's leg c in the spec now tells a returned result from a
-  checkpoint. No change to the approach.
+  its rules are FIX-2081's; the goal check's leg c follows. No change to the approach.
 
 Open: none.
