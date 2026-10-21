@@ -9,7 +9,7 @@
 | **decides whether the epic is done** | Eleven children, each green on its own commit. Nothing uses the whole as a user would | One report on one `main` commit: every check beside its control's FAIL, every finding with its retest |
 | **uses a Workforce app, like Alice** | Routed work is a post she can't list. An ending can reach its filer twice, or wait for a touch | On a real model: her routed task is in her list, the draft lands once under writer's name, and her follow-up keeps the first version |
 | **runs Workforce on a host that restarts** | A finished task waits until something touches the board | The server is killed after an ending; writer still hears within the due time |
-| **maintains the framework** | 39 live lines: removed tools offered, posts and the split settle live, five ending writes outside the gate | 0 on the commit, and CI fails a later PR that adds a fifth task tool or a second ending path, found by type ([D2](DECISIONS.md#d2)) |
+| **maintains the framework** | At least 39 live lines: removed tools offered, posts and the split settle live, five ending writes outside the gate | 0 on the commit, and CI fails a later PR that adds a sixth task tool or a second ending path, found by type ([D2](DECISIONS.md#d2)) |
 | **builds a child of this epic** | No plan says what grades the assembled set | This plan, now, while they build |
 
 ## The goal, and how we'll know it's met
@@ -47,15 +47,15 @@ the one behaviour its leg proves.
 | **Signal** | Tagged `<leg>:<assertion>`. **a**, the concept's [*How it flows*](../../../docs/internal/design/workforce-coordination-concept.md#how-it-flows) less the call and the Inbox: launch's routed task for writer is in Alice's list; writer files researcher's task and ends, its own task running with no request; one `onTaskSettled` starts writer again; its plan board waits on a dispatched fact-check row; the draft lands once, under writer's name, with the held-out word and researcher's fact; a follow-up returns a new version and the original reads byte-identical. **b**: killed after researcher's ending is written, before it is sent; writer hears once, within the due time plus 2 s of restart. **c**: researcher fails out; writer hears one failure notice naming the dependent it cancelled. **Every leg**: each ending reaches its filer exactly once. **Sweep**: 0 live lines |
 | **Input** | A goal-local Lab: launch on the built-in coordinator, writer and researcher on the built-in agent flow, as `WORKER.md` files only, on SQLite, served by Shift Manager's command; Alice acts through the shipped clients. Topic, held-out word and fact picked at run time |
 | **Anti-game** | Alice's conversation and rows through `listTasks_tasks` and `getTask_tasks` as Alice; endings counted from the filer's notices; no fixture writes a row. Shift Manager's error report is neither a second ending nor a failure ([(f)](../../epics/FIX-2056/DECISIONS.md#f)) |
-| **Control that must fail** | `GOAL_CONTROL=no-sweeper-payment` (FIX-2078's) must FAIL **`b:hears-in-due-time`**; `no-cascade` (FIX-2080's) **`c:dependent-cancelled`**. The sweep's `--control` reports exactly its two plants. Today's `main` FAILs **`a:routed-listed`**, and the sweep with 39 lines ([it does](DECISIONS.md#settled)) |
+| **Control that must fail** | `GOAL_CONTROL=no-sweeper-payment` (FIX-2078's) must FAIL **`b:hears-in-due-time`**; `no-cascade` (FIX-2080's) **`c:dependent-cancelled`**. The sweep's `--control` reports exactly its plants, one per rule. Today's `main` FAILs **`a:routed-listed`**, and the sweep with at least the POC's 39 lines ([it does](DECISIONS.md#settled)) |
 
 ## The plan, in the order it runs
 
 | # | What runs | PASS means |
 |---|---|---|
 | 1 | Legs a to c and the sweep, above | Each green; each control red where named |
-| 2 | **A journey per team the walk misses**, same Lab and model. *Hands out work:* a worker files, waits with `getTask` and answers in the same request, offered only the four task tools and `answerTask`. *Runs a coordinator:* Alice steers one routed task and cancels another. *Builds a goal-seek loop:* `goals/goal-seek-loop/replans-until-done/` passes; one built over a delegation board is refused | Each green; the steer shows in the draft, the cancel is heard once |
-| 3 | **Every child's goal check with its controls**, for every child blocking this issue when the run starts, FIX-2088 included, the set printed in the report as it was read; every goal under `goals/coordinators/` and `goals/hand-offs/`; FIX-2005's leg of `goals/workforce-privacy/` | Each PASS beside its documented FAIL |
+| 2 | **A journey per team the walk misses**, same Lab and model. *Hands out work:* a worker files, waits with `getTask` and answers in the same request, offered only the five task tools and `answerTask`. *Runs a coordinator:* Alice steers one routed task and cancels another. *Builds a goal-seek loop:* `goals/goal-seek-loop/replans-until-done/` passes; one built over a delegation board is refused | Each green; the steer shows in the draft, the cancel is heard once |
+| 3 | **Every child's goal check with its controls**, for every child blocking this issue when the run starts, FIX-2088 included, the set printed in the report as it was read, **skipping any that row 1 already walks** ([the closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa)): every one of its legs asserted by a leg of row 1, with its control red there. Read at run time like the set; each skip is printed beside the leg that covers it, and a check walked in part runs. Every goal under `goals/coordinators/` and `goals/hand-offs/`; FIX-2005's leg of `goals/workforce-privacy/` | Each PASS beside its documented FAIL |
 | 4 | **The gap sweep**: each [coordination seam](../../epics/FIX-2056/DECISIONS.md#coordination-seams) read from both sides; the task-board page FIX-2081 publishes, followed as written; each epic *not done if* state absent; each of the 31 in-scope gaps rows mapped to the check that reads it | Every seam two-sided, every promise backed, 31 of 31 |
 
 Any failure becomes a child of FIX-2056 that blocks this issue, and the whole plan runs again on a
@@ -69,9 +69,15 @@ Everything right of the commit line runs together; the sweep also joins CI.
 
 **One rule engine, called by both.** The three rules and their allow lists live in one `rules.mjs`
 that the goal and CI both call, as `goals/vocabulary/one-word-per-thing/` keeps its own, so the two
-can't give different answers on one commit. Tool and removed names are read by name over
-`git ls-files`. The endings rule reads every caller of a task collection's `complete` and `fail` by
-type, through the TypeScript program; a name match never gates. The POC is evidence for the
+can't give different answers on one commit. The tools rule allows the five and `answerTask`.
+The removed rule covers every row of the epic's [migration table](../../epics/FIX-2056/migration.md),
+each matched where its name means that surface: a removed tool or its `_tasks` action anywhere in
+`git ls-files`, not only the task-tools file, and the agent worker's `run` entry by the flow's
+declared actions, since `run` alone is too common a word. The endings rule reads every caller of a
+task collection's `complete` and `fail` by type, through the TypeScript program; a name match never
+gates. A helper that wraps them, like `advisoryComplete`, is not a recorder: its own callers are
+read in its place, so the allow list names recorder functions, never a helper's file. `--control`
+plants one line per rule. The POC is evidence for the
 premise, not the template ([D2](DECISIONS.md#d2)).
 
 ```diff
@@ -105,7 +111,7 @@ a page that doesn't hold when followed is a finding against it.
 |---|---|
 | **Removes** | Nothing. The children remove; this proves it |
 | **Adds** | One goal, one rule engine and one CI sweep. Permanent by design: the promises outlive the epic. Its allow list changes when FIX-2058 retires `answerTask` |
-| **Leaves** | Harness Manager fails its own row on a refused run and no child removes it; it goes to an open child now (FIX-2088 recommended to the coordinator), and until that child lands the allow list names it as an exemption with that owner, never as a recorder ([Settled](DECISIONS.md#settled)) |
+| **Leaves** | Nothing of its own. Harness Manager's own write on a refused run is FIX-2090's, which blocks this issue, so the allow list carries no exemption for it ([Settled](DECISIONS.md#settled)) |
 
 **Net: up, a little.** One goal and one CI step, for promises that stay true.
 
