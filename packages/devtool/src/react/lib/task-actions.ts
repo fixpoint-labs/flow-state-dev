@@ -46,7 +46,7 @@ function takesTaskId(schema: ActionInputSchema | undefined, optional = false): b
 }
 
 /**
- * The generated tool that starts a recorded row, `dispatchTask_<suffix>`. Its
+ * The generated tool that starts a held row, `dispatchTask_<suffix>`. Its
  * `taskId` is optional, since a goal files a new task instead, so the required
  * `taskId` rule alone would never offer it; on a row it starts that row.
  */
