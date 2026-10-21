@@ -153,13 +153,14 @@ session and result settings. Finished output is fixed because its filer and depe
 it; a correction or more tracked work is a follow-up, which a screen can offer. A task view shows the latest finished follow-up's output
 as current, the original as history.
 
-**The worker reports progress with `reportProgress({ status?, output? })`,** its own tool, not the
-filer's `updateTask`. It's offered only on a task turn, acts on the task the request holds through
-its claim (so it takes no `id`), and is refused once the task finishes. Any request holding the
-claim may call it, a queued `receive` included. `status` is a one-line status for task views;
-`output` is a checkpoint of the result so far. A non-empty final result replaces the checkpoint; an
-empty or missing one leaves the latest checkpoint; a failed attempt keeps it for the next. A
-`percent` may come later. Found work still goes to the filer as a message.
+**The worker reports progress with `reportProgress({ statusNote?, output? })`,** its own tool, not
+the filer's `updateTask`. It's offered only on a task turn, acts on the task the request holds
+through its claim (so it takes no `id`), and is refused once the task finishes. Any request holding
+the claim may call it, a queued `receive` included. It is not a public action: screens don't
+checkpoint. `statusNote` is a one-line note for task views; it never changes the task's status, done
+stays rule 6, and a worker never settles its own row (rule 18). `output` is a checkpoint of the
+result so far, by rule 22. A `percent` may come later. Found work still goes to the filer as a
+message.
 
 **A board pays what it owes.** A **debt** is an ending owed to the filer, a wait owed a resume, a task
 whose filed tasks have all ended owed its settle, or a ready row never started. Beyond rule 8's fast
@@ -314,9 +315,9 @@ apart rows filed under one id), which the claim gate checks (`taskDispatchInputS
 `packages/core/src/types/dispatch.ts`).
 
 The model's seven tools: the filer's task tools `createTask`, `getTask`, `listTasks` and
-`updateTask`, the worker's `reportProgress`, plus `sendMessage` and `waitForUser`. `getTask` can also wait (rule 9). The task tools are also public
-actions, not entries: a screen calls them as the user to cancel a task, release a held one or answer
-its questions. Outside the seven, every worker gets `listDelegates`; only a coordinator the user
+`updateTask`, the worker's `reportProgress`, plus `sendMessage` and `waitForUser`. `getTask` can
+also wait (rule 9). The filer's task tools are also public actions, not entries: a screen calls them
+as the user to cancel a task, release a held one or answer its questions. `reportProgress` isn't one. Outside the seven, every worker gets `listDelegates`; only a coordinator the user
 configured at hire to change its own delegates gets `addDelegate`, `removeDelegate` and
 `setFallback`.
 
@@ -421,8 +422,9 @@ A behavior none of these rules explains is a bug in the model.
     never a raw session; the server resolves the session. It never steers a task; to a finished one
     it is talk in its session, which outlives the task.
 22. Only a request holding a task's claim reports its progress, with `reportProgress`, until the
-    task finishes. A non-empty final result replaces the checkpoint; otherwise the checkpoint is
-    the output, and a retry keeps it.
+    task finishes; its `statusNote` never changes the task's status. A non-empty final result
+    replaces the `output` checkpoint; an empty or missing one leaves it as the output, and a failed
+    attempt keeps it for the retry.
 
 ## Vocabulary
 
@@ -461,7 +463,7 @@ rest.
 | Finished, open, settle | Ended; not ended; record a row's ending |
 | Attempt | One try at a task: every request working it in that try, queued messages and resumes included; `maxAttempts` caps them |
 | Background work | Work a request started, such as saving to memory, that runs on after it returns its result |
-| Progress, checkpoint | What a task's worker reports with `reportProgress` while it runs: a one-line status, and the output so far |
+| Progress, status note, checkpoint | What a task's worker reports with `reportProgress` while it runs: a one-line note (never the task's status), and the output so far |
 | Steer | `updateTask({ message })` into an unfinished task, or the user typing in its session; the `updateTask` table says what it does. A `sendMessage` never steers |
 | Follow-up, sibling | A new task in an earlier task's session; a task filed beside another, for work its worker reported |
 | Claim, claim gate, task entry | The right to record a task's ending; the step that checks it and settles the row; `work`, the action a task runs through |
@@ -502,7 +504,7 @@ waits (rule 9); and twenty-three newly decided:
 - [x] **When a task is done (rule 6).**
 - [x] **A task's session outlives its task (rule 21).**
 - [x] **A finished task's output never changes (rule 20).**
-- [x] **The worker reports progress with its own tool (rule 22):** `reportProgress({ status, output })`,
+- [x] **The worker reports progress with its own tool (rule 22):** `reportProgress({ statusNote, output })`,
   claim-bound, not `updateTask({ id, output })`; `percent` later, `followUps` held.
 - [x] **The cold read's calls:** retries, stops, typing, `deadline?`, limits, any `{ task }` → rules
   6, 9, 12, 21.
