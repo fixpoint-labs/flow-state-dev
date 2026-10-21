@@ -147,12 +147,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ── The grid: the top of the page only ──
-   page.css rules the whole body, but Infima paints `html`, so the body's
-   background stops at the body's own box, one window tall, and the grid
-   ends in a hard edge a screen down. Here it covers the top 480px and
-   fades into the paper over its lower half, so it frames the top of a
-   page and is gone before the reading starts. */
+/* Override page.css. Infima paints html, so the body grid ends one window down. */
 
 body {
   background-image:

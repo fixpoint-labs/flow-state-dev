@@ -159,7 +159,6 @@ const config: Config = {
 
   themeConfig: {
     ...(algolia && { algolia }),
-    // The Algolia crawler reads this to verify we own the domain it crawls.
     metadata: [
       { name: "algolia-site-verification", content: "9C3EE12F53D419A7" },
     ],
