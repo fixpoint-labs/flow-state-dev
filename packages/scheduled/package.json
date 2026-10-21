@@ -31,6 +31,10 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./collection": {
+      "types": "./dist/collection.d.ts",
+      "default": "./src/collection.ts"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./src/testing.ts"
@@ -49,6 +53,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
+      },
+      "./collection": {
+        "types": "./dist/collection.d.ts",
+        "default": "./dist/collection.js"
       },
       "./testing": {
         "types": "./dist/testing.d.ts",

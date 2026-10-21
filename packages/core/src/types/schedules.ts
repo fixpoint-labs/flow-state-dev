@@ -78,6 +78,14 @@ export type ScheduleResolutionContext = {
    */
   stores: ScheduleResolutionStores;
   /**
+   * The storage key of `userId`'s cell in `orgId`, for data no flow isolates:
+   * where a user-scoped resource collection that declares no `flowIsolation`
+   * (a schedule collection) keeps its rows. Supplied by the dispatch endpoint,
+   * which owns the engine's key derivation, so a resolver reads a user's row
+   * without depending on the engine.
+   */
+  userStorageKey(userId: string, orgId: string): string;
+  /**
    * The owner pin of the registered instance this dispatch addresses, when
    * that instance is pinned to an owner; absent for every other flow. Taken
    * from the registry, never from the request. It chooses no storage key:

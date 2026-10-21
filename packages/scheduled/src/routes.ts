@@ -16,6 +16,7 @@
 import {
   ConcurrencyRejectedError,
   PrincipalResolutionError,
+  resolveUserStorageKey,
   type InboundRequestEnvelope,
   type InboundTransportHost,
   type ResolvedPrincipal
@@ -118,6 +119,10 @@ export async function handleDispatch(
         gatewayPrincipal,
         request: req,
         stores: host.stores as ScheduleResolutionStores,
+        // The cell a collection that isolates nothing keeps a user's rows in,
+        // derived the way every other user-scoped read derives it.
+        userStorageKey: (userId, orgId) =>
+          resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false }),
         // The registered instance's pin, so a hired worker resolves only
         // schedules in its own org, and a private one only its user's. From
         // the registry, never the request.
