@@ -81,12 +81,12 @@ const CONTROLS: Record<string, Control> = {
     assertions: ["a:completes-after-pieces"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/split.ts",
-        from: String.raw`export async function settleParent\(ctx(?:: BlockContext)?\)(?:: Promise<boolean>)? \{`,
-        to: "$& return false;",
+        module: "packages/workforce/src/conversation-board/task-settled.ts",
+        from: String.raw`\.tap\(admitOwnTask\("conversation-task-settled-admission", true\)\)`,
+        to: "",
       },
     ],
-    does: "a split task never settles from its pieces: it stays parked on the board above after they end",
+    does: "a piece's notice never runs for the task that filed it, so the task is never checked after its first turn: it stays running on the board above after its pieces end",
   },
 };
 
@@ -225,7 +225,8 @@ function gradeA(o: any, store: string): LegResult {
       `a:four-sessions — wanted four sessions, all Alice's: her conversation, the task's session under it, and one per piece under that, each row on its own session's board; the chain ${show(chain.map((s) => [s.state.workerId, s.userId === alice ? "alice" : s.userId, s.parentSessionId === A.conv ? "conv" : s.parentSessionId === planner?.id ? "planner" : s.parentSessionId]))}`,
     );
   }
-  const outputPieces = ((top?.output as { pieces?: Array<{ taskId?: string }> } | undefined)?.pieces ?? []).map((p) => p.taskId).sort();
+  // Its output is its worker's answer, from the turn the last piece's ending woke (FIX-2077 D3): "Noted.".
+  const answered = top?.output !== undefined && JSON.stringify(top.output).includes("Noted.") && (top.output as { pieces?: unknown } | null)?.pieces === undefined;
   const lastPiece = Math.max(...pieces.map((p) => p.completedAt ?? Infinity));
   if (
     top?.status !== "completed" ||
@@ -234,10 +235,10 @@ function gradeA(o: any, store: string): LegResult {
     pieces.length !== 2 ||
     pieces.some((p) => p.status !== "completed") ||
     !(lastPiece <= top.completedAt) ||
-    show(outputPieces) !== show(pieces.map((p) => p.id).sort())
+    !answered
   ) {
     r.failures.push(
-      `a:completes-after-pieces — wanted the top task completed within 120 s of the filing, after both pieces, from them; it is ${top?.status ?? "missing"}${top?.completedAt === undefined ? "" : ` ${top.completedAt - A.turn.startedAt} ms after the filing`}, pieces ${show(pieces.map((p) => [p.status, p.completedAt]))}, its output names ${show(outputPieces)}`,
+      `a:completes-after-pieces — wanted the top task completed within 120 s of the filing, after both pieces, from them; it is ${top?.status ?? "missing"}${top?.completedAt === undefined ? "" : ` ${top.completedAt - A.turn.startedAt} ms after the filing`}, pieces ${show(pieces.map((p) => [p.status, p.completedAt]))}, its output ${show(top?.output)}`,
     );
   }
   const conv = all.find((s) => s.id === A.conv);

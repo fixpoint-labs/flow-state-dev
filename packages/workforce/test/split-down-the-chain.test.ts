@@ -1,10 +1,13 @@
 /**
- * The split and its limits (FIX-1802 P2: V3, V4 and V5's second half).
+ * The split and its limits (FIX-1802 P2: V3, V4 and V5's second half; FIX-2077).
  *
- * A task session files pieces on its own board; its task waits on the board
- * above, parked, and settles from them through the binding it wrote at the
- * park, fenced by its claim ticket. A chain is at most five boards deep, and
- * one top task has at most 100 tasks under it (or the app's own limit).
+ * A task session files pieces on its own board. Its task stays running on the
+ * board above, waiting on them with no lease, and the request each piece's
+ * ending wakes in the task session runs for the task: the claim gate's one
+ * check at that request's end settles it once no piece holds it, with the
+ * answer of the last turn woken (FIX-2077 D3). A chain is at most five boards
+ * deep, and one top task has at most 100 tasks under it (or the app's own
+ * limit).
  *
  * Each leg acts through the flows' public actions and the turns of the
  * splitter fixture (`./split-harness`), whose turns write through the same ref
@@ -32,41 +35,51 @@ async function linesAbout(h: SplitHost, sessionId: string, goal: string) {
   return (await h.messages(sessionId)).filter((message) => message.text.includes(`Task "${goal}"`)).map((message) => message.text);
 }
 
-describe("a task session splits its task (BR-14, BR-16, V5)", () => {
-  it("files pieces on its own board, waits parked with no notice for the park, and completes from its pieces", async () => {
+/** Whether the row filed with `goal` is running and waiting on the work it filed. */
+async function waitingOnItsPieces(h: SplitHost, goal: string) {
+  const row = (await h.rowsNamed("alice", goal))[0];
+  return row?.status === "in_progress" && row.waitingOn === "filed";
+}
+
+/** The turns a task session ran on its pieces' notices. */
+function wokenTurns(h: SplitHost, sessionId: string) {
+  return h.controls.turns.filter((turn) => turn.sessionId === sessionId && turn.message.startsWith('Task "'));
+}
+
+describe("a task session splits its task (BR-14, BR-16, V5, FIX-2077)", () => {
+  it("files pieces on its own board, stays running with no lease and no notice while they are open, and completes with the last woken turn's answer", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
       h.controls.plans.s1 = [
-        { goal: "Book the venue", assignee: "eng.tasker" },
-        { goal: "Print the flyers", assignee: "eng.writer" }
+        { goal: "Book the venue [slow:300]", assignee: "eng.tasker" },
+        { goal: "Print the flyers [slow:300]", assignee: "eng.writer" }
       ];
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
+      // While its pieces run: running, waiting on them, with no lease to lapse.
+      expect(await h.until(() => waitingOnItsPieces(h, "Plan the launch"))).toBe(true);
+      expect((await one(h, "Plan the launch")).leaseUntil).toBeUndefined();
       await h.settled();
 
       const top = await one(h, "Plan the launch");
-      expect(top).toMatchObject({ status: "completed", assignee: "s1" });
-      const pieces = [await one(h, "Book the venue"), await one(h, "Print the flyers")];
+      expect(top).toMatchObject({ status: "completed", assignee: "s1", attempts: 1 });
+      expect(top.waitingOn).toBeUndefined();
+      const pieces = [await one(h, "Book the venue [slow:300]"), await one(h, "Print the flyers [slow:300]")];
       expect(pieces.map((row) => row.status)).toEqual(["completed", "completed"]);
       // The pieces are on the task session's own board, not the top's.
       expect(pieces[0]!.partition).toBe(pieces[1]!.partition);
       expect(pieces[0]!.partition).not.toBe(top.partition);
-      // Its output is its pieces'.
-      expect((top.output as { pieces: Array<{ goal: string }> }).pieces.map((piece) => piece.goal).sort()).toEqual([
-        "Book the venue",
-        "Print the flyers"
-      ]);
-      // planner heard one notice for its task: the completion. None for the park.
+      // Its output is its worker's answer, from the turn the last piece's ending woke (D3).
+      const t1 = await h.taskSessionOf("alice", top.id);
+      const woken = wokenTurns(h, t1);
+      expect(woken).toHaveLength(2);
+      expect(top.output).toBe(`s1 heard: ${woken[1]!.message}`);
+      // planner heard one notice for its task: the completion.
       expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
       // s1's task session heard each piece once; its turn ran once on the task, once on each notice.
-      const t1 = await h.taskSessionOf("alice", top.id);
       expect(await heard(h, t1)).toEqual(pieces.map((row) => `${row.id}:completed`).sort());
-      const t1Turns = h.controls.turns.filter((turn) => turn.sessionId === t1);
-      expect(t1Turns.filter((turn) => !turn.message.startsWith('Task "'))).toHaveLength(1);
-      expect(t1Turns.filter((turn) => turn.message.startsWith('Task "'))).toHaveLength(2);
-      // The binding is gone once it settled, and so is the chain's record.
-      expect((await h.session(t1)).state).toMatchObject({ splitParent: null });
+      expect(h.controls.turns.filter((turn) => turn.sessionId === t1 && !turn.message.startsWith('Task "'))).toHaveLength(1);
       expect(await h.chains("alice")).toEqual({});
     } finally {
       await h.dispose();
@@ -100,7 +113,7 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
     }
   });
 
-  it("fails, naming the piece that failed for good, and the session above hears it once (BR-16)", async () => {
+  it("a piece that fails for good fails nothing alone: the turn its ending wakes decides, and its answer completes the task (D3)", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
@@ -112,26 +125,22 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       await h.turn("alice", planner);
       await h.settled();
 
+      expect((await one(h, "Print the flyers [fail]")).status).toBe("errored");
       const top = await one(h, "Plan the launch");
-      expect(top.status).toBe("errored");
-      expect(top.error).toContain("Print the flyers [fail]");
-      expect(top.error).not.toContain("Book the venue");
-      // One line in planner's conversation: the failure. Its first failure
-      // reran the board with no turn and no line.
-      const lines = await linesAbout(h, planner, "Plan the launch");
-      expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain("failed for good");
-      // The second attempt re-entered the task session and parked again on
-      // its pieces: s1's turn ran on the task once, and filed nothing twice.
+      expect(top).toMatchObject({ status: "completed", attempts: 1 });
       const t1 = await h.taskSessionOf("alice", top.id);
-      expect(h.controls.turns.filter((turn) => turn.sessionId === t1 && !turn.message.startsWith('Task "'))).toHaveLength(1);
-      expect(await h.rowsNamed("alice", "Book the venue")).toHaveLength(1);
+      // The failure reached the worker's turn, which read it and answered.
+      const failure = wokenTurns(h, t1).find((turn) => turn.message.includes("failed for good"));
+      expect(failure).toBeDefined();
+      expect(typeof top.output).toBe("string");
+      expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
+      expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
     } finally {
       await h.dispose();
     }
   });
 
-  it("stays open while the turn a failure woke files the work again, and completes once that retry does (BR-15, BR-16a, BR-18)", async () => {
+  it("stays open while the turn a failure woke files the work again, and completes once that piece does", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
@@ -145,74 +154,22 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       const again = await one(h, "Print the flyers again");
       expect(failed.status).toBe("errored");
       expect(again.status).toBe("completed");
-      // The board, not the turn, wrote which failure the piece retries.
-      expect(again.metadata).toMatchObject({ retryOf: failed.id });
+      // No retry marker: the turn decided, and its pieces are plain pieces of the task.
+      expect(again.metadata?.retryOf).toBeUndefined();
+      expect(again.filedByTask).toBe((await one(h, "Plan the launch")).id);
       const top = await one(h, "Plan the launch");
       // The task waited for the piece filed again before it settled.
       expect(top.updatedAt).toBeGreaterThanOrEqual(again.updatedAt);
-      // The work got done, so the task did: the failure it retried no longer counts.
       expect(top.status).toBe("completed");
-      expect(top.error).toBeUndefined();
+      expect(top.output).toMatch(/^s1 heard: Task "Print the flyers again"/);
       expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
-      expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
     } finally {
       await h.dispose();
     }
   });
 
-  it("fails naming the retry when the piece filed again fails for good too (BR-16a)", async () => {
+  it("fails the attempt when the turn a piece's ending wakes throws, and fails for good when its retry's turn throws too", async () => {
     const h = bootSplitHost();
-    try {
-      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
-      h.controls.plans.s1 = [{ goal: "Print the flyers [fail]", assignee: "eng.tasker" }];
-      h.controls.onErrored.s1 = { goal: "Print them elsewhere [fail]", assignee: "eng.writer" };
-      const planner = await h.open("alice", "planner");
-      await h.turn("alice", planner);
-      await h.settled();
-
-      const again = await one(h, "Print them elsewhere [fail]");
-      expect(again.status).toBe("errored");
-      const top = await one(h, "Plan the launch");
-      expect(top.status).toBe("errored");
-      // Judged in the first failure's place: the retry is what failed for good.
-      expect(top.error).toContain("Print them elsewhere [fail]");
-      expect(top.error).not.toContain("Print the flyers [fail]");
-      expect(await heard(h, planner)).toEqual([`${top.id}:errored`]);
-    } finally {
-      await h.dispose();
-    }
-  });
-
-  it("still fails when the failed piece is never filed again, though a later turn files other work (BR-16a, control)", async () => {
-    const h = bootSplitHost();
-    try {
-      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
-      h.controls.plans.s1 = [
-        { goal: "Print the flyers [fail]", assignee: "eng.tasker" },
-        { goal: "Book the venue [slow:600]", assignee: "eng.writer" }
-      ];
-      // The failure's turn files nothing; the venue's completion files new work.
-      h.controls.onCompleted.s1 = { goal: "Order the snacks", assignee: "eng.writer" };
-      const planner = await h.open("alice", "planner");
-      await h.turn("alice", planner);
-      await h.settled();
-
-      const snacks = await one(h, "Order the snacks");
-      expect(snacks.status).toBe("completed");
-      // Filed after the failure, but not in the turn it woke: no retry.
-      expect(snacks.metadata?.retryOf).toBeUndefined();
-      const top = await one(h, "Plan the launch");
-      expect(top.updatedAt).toBeGreaterThanOrEqual(snacks.updatedAt);
-      expect(top.status).toBe("errored");
-      expect(top.error).toContain("Print the flyers [fail]");
-      expect(await heard(h, planner)).toEqual([`${top.id}:errored`]);
-    } finally {
-      await h.dispose();
-    }
-  });
-
-  it("settles at its due time when the turn the last piece woke fails, once, with no touch (BR-17, FIX-2078)", async () => {
-    const h = bootSplitHost({ durable: true });
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
       h.controls.plans.s1 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
@@ -220,22 +177,12 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
       await h.settled();
-      expect((await one(h, "Book the venue")).status).toBe("completed");
-      expect((await one(h, "Plan the launch")).status).toBe("parked");
 
-      // Nothing touches a board: the task session's wake falls due and its pass settles it.
-      h.controls.failNoticeTurn.clear();
-      expect(await h.until(async () => (await one(h, "Plan the launch")).status === "completed", 8_000)).toBe(true);
-      await h.settled();
       const top = await one(h, "Plan the launch");
-      expect(top.status).toBe("completed");
-      // No turn answered, so its output is its pieces' alone.
-      const piece = await one(h, "Book the venue");
-      expect(top.output).toEqual({
-        pieces: [{ taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }]
-      });
-      expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
-      expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
+      expect(top.status).toBe("errored");
+      expect(top.attempts).toBe(2);
+      expect(top.error).toContain("s1's turn failed on the notice");
+      expect(await heard(h, planner)).toEqual([`${top.id}:errored`]);
     } finally {
       await h.dispose();
     }
@@ -248,87 +195,35 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
       h.controls.plans.s1 = [{ goal: "Book the venue [slow:150]", assignee: "eng.tasker" }];
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
-      // The task parks; then every notice is lost, as a process that died
+      // The task waits; then every notice is lost, as a process that died
       // before sending it would lose it.
-      expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "parked")).toBe(true);
+      expect(await h.until(() => waitingOnItsPieces(h, "Plan the launch"))).toBe(true);
       const lost = await h.loseDispatches("onTaskSettled");
       await h.settled();
       expect(lost.lost()).toBeGreaterThan(0);
       lost.restore();
       expect((await one(h, "Book the venue [slow:150]")).status).toBe("completed");
-      expect((await one(h, "Plan the launch")).status).toBe("parked");
-
+      expect(await waitingOnItsPieces(h, "Plan the launch")).toBe(true);
       expect(await h.until(async () => (await one(h, "Plan the launch")).status === "completed", 8_000)).toBe(true);
       await h.settled();
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
       expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
       const t1 = await h.taskSessionOf("alice", top.id);
-      expect(h.controls.turns.filter((turn) => turn.sessionId === t1 && turn.message.startsWith('Task "'))).toHaveLength(1);
+      expect(wokenTurns(h, t1)).toHaveLength(1);
     } finally {
       await h.dispose();
     }
   });
 
-  it("settles nothing twice when the settle is replayed after it landed and before its binding cleared (BR-17)", async () => {
+  it("settles each board once, two boards down", async () => {
     const h = bootSplitHost();
-    try {
-      h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
-      h.controls.plans.s1 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
-      const planner = await h.open("alice", "planner");
-      await h.turn("alice", planner);
-      await h.settled();
-      const settled = await one(h, "Plan the launch");
-      expect(settled.status).toBe("completed");
-      const t1 = await h.taskSessionOf("alice", settled.id);
-      const partition = decodeURIComponent(settled.partition);
-
-      // As a kill after the settle and before the clear leaves it: the binding, with its ticket.
-      await h.writeSessionState(t1, {
-        splitParent: {
-          partition,
-          taskId: settled.id,
-          ticket: {
-            collectionId: "tasks",
-            taskId: settled.id,
-            attempt: settled.attempts,
-            createdAt: settled.createdAt,
-            ...(settled.incarnationId !== undefined ? { incarnationId: settled.incarnationId } : {}),
-            partition
-          },
-          filer: { session: planner, flow: "splitter" }
-        }
-      });
-      // Any touch of its board replays the settle.
-      expect((await h.tool("alice", t1, "listTasks", {})).ok).not.toBe(false);
-      await h.settled();
-      const after = await one(h, "Plan the launch");
-      expect(after.status).toBe("completed");
-      expect(after.revision).toBe(settled.revision);
-      expect(await heard(h, planner)).toEqual([`${settled.id}:completed`]);
-      expect(await linesAbout(h, planner, "Plan the launch")).toHaveLength(1);
-      expect((await h.session(t1)).state).toMatchObject({ splitParent: null });
-    } finally {
-      await h.dispose();
-    }
-  });
-
-  it("settles each board once, two boards down, at their due times, with no touch (BR-17, FIX-2078)", async () => {
-    const h = bootSplitHost({ durable: true });
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
       h.controls.plans.s1 = [{ goal: "Run the event", assignee: "s2" }];
       h.controls.plans.s2 = [{ goal: "Book the venue", assignee: "eng.tasker" }];
-      h.controls.failNoticeTurn.add("s2");
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
-      await h.settled();
-      expect((await one(h, "Book the venue")).status).toBe("completed");
-      expect((await one(h, "Run the event")).status).toBe("parked");
-      expect((await one(h, "Plan the launch")).status).toBe("parked");
-
-      h.controls.failNoticeTurn.clear();
-      expect(await h.until(async () => (await one(h, "Plan the launch")).status === "completed", 10_000)).toBe(true);
       await h.settled();
       const middle = await one(h, "Run the event");
       const top = await one(h, "Plan the launch");
@@ -341,8 +236,8 @@ describe("a task session splits its task (BR-14, BR-16, V5)", () => {
   });
 });
 
-describe("a split task's result is its worker's answer", () => {
-  it("completes with the answer of the turn the last piece's ending woke, the pieces listed under it", async () => {
+describe("a split task's result is its worker's answer (FIX-2077 D3)", () => {
+  it("completes with the answer of the turn the last piece's ending woke, and nothing else", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
@@ -351,22 +246,16 @@ describe("a split task's result is its worker's answer", () => {
       await h.turn("alice", planner);
       await h.settled();
 
-      const piece = await one(h, "Book the venue");
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
       // What the worker concluded from the piece is what the filer asked for.
       const t1 = await h.taskSessionOf("alice", top.id);
-      const woken = h.controls.turns.filter((turn) => turn.sessionId === t1 && turn.message.startsWith('Task "'));
+      const woken = wokenTurns(h, t1);
       expect(woken).toHaveLength(1);
-      const output = top.output as { answer?: unknown; pieces?: Array<Record<string, unknown>> };
-      expect(output.answer).toBe(`s1 heard: ${woken[0]!.message}`);
-      // The pieces stay under it, as they were.
-      expect(output.pieces).toEqual([
-        { taskId: piece.id, goal: "Book the venue", assignee: "eng.tasker", status: "completed", output: piece.output }
-      ]);
-      // The filer hears the answer first.
+      expect(top.output).toBe(`s1 heard: ${woken[0]!.message}`);
+      // The filer hears the answer.
       const line = (await linesAbout(h, planner, "Plan the launch"))[0]!;
-      expect(line).toContain("completed by s1: {\"answer\":\"s1 heard: Task");
+      expect(line).toContain("completed by s1: s1 heard: Task");
     } finally {
       await h.dispose();
     }
@@ -386,10 +275,8 @@ describe("a split task's result is its worker's answer", () => {
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
       expect(top.updatedAt).toBeGreaterThanOrEqual(snacks.updatedAt);
-      const output = top.output as { answer?: unknown; pieces?: Array<{ goal: string }> };
       // Not the turn that filed the snacks: the one their ending woke.
-      expect(output.answer).toMatch(/^s1 heard: Task "Order the snacks"/);
-      expect(output.pieces?.map((row) => row.goal).sort()).toEqual(["Book the venue", "Order the snacks"]);
+      expect(top.output).toMatch(/^s1 heard: Task "Order the snacks"/);
     } finally {
       await h.dispose();
     }
@@ -407,10 +294,7 @@ describe("a split task's result is its worker's answer", () => {
         await h.settled();
         const top = await one(h, "Plan the launch");
         expect(top.status).toBe("completed");
-        const output = top.output as Record<string, unknown>;
-        expect(Object.hasOwn(output, "answer")).toBe(true);
-        expect(output.answer).toBe(answer);
-        expect((output.pieces as unknown[]).length).toBe(1);
+        expect(top.output).toBe(answer);
       } finally {
         await h.dispose();
       }
@@ -427,30 +311,31 @@ describe("a split task's result is its worker's answer", () => {
       ];
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
-      expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "parked")).toBe(true);
+      expect(await h.until(() => waitingOnItsPieces(h, "Plan the launch"))).toBe(true);
       // Both pieces end before either notice runs.
       const lost = await h.loseDispatches("onTaskSettled");
       await h.settled();
       lost.restore();
       expect((await one(h, "Book the venue [slow:150]")).status).toBe("completed");
       expect((await one(h, "Print the flyers [slow:150]")).status).toBe("completed");
+      // The pieces' notices are still owed, so the task still waits on them.
+      expect(await waitingOnItsPieces(h, "Plan the launch")).toBe(true);
       const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
 
       // A touch once they are past due sends both notices (FIX-2078: a touch resends only what is past due).
       await new Promise((resolve) => setTimeout(resolve, NOTICE_DUE_MS + 200));
       await h.tool("alice", t1, "listTasks", {});
       await h.settled();
-      const woken = h.controls.turns.filter((turn) => turn.sessionId === t1 && turn.message.startsWith('Task "'));
+      const woken = wokenTurns(h, t1);
       expect(woken).toHaveLength(2);
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("completed");
-      expect((top.output as { answer?: unknown }).answer).toBe(`s1 heard: ${woken[1]!.message}`);
+      expect(top.output).toBe(`s1 heard: ${woken[1]!.message}`);
       expect(await heard(h, planner)).toEqual([`${top.id}:completed`]);
     } finally {
       await h.dispose();
     }
   });
-
 });
 
 describe("a task session's pieces go only to its delegates (FIX-2081)", () => {
@@ -461,7 +346,7 @@ describe("a task session's pieces go only to its delegates (FIX-2081)", () => {
       h.controls.plans.s1 = [{ goal: "Book the venue [slow:400]", assignee: "eng.tasker" }];
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
-      expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "parked")).toBe(true);
+      expect(await h.until(() => waitingOnItsPieces(h, "Plan the launch"))).toBe(true);
       const t1 = await h.taskSessionOf("alice", (await one(h, "Plan the launch")).id);
 
       // d1 is on alice's roster and takes tasks, and isn't one of s1's delegates.
@@ -495,7 +380,7 @@ describe("a task session's pieces go only to its delegates (FIX-2081)", () => {
 });
 
 describe("a split task changed from above while its pieces are open (BR-19)", () => {
-  it("declines a reassign, and a cancel cancels its open pieces down the chain; its later settle is declined", async () => {
+  it("declines a reassign, and a cancel cancels its open pieces down the chain, through the filed cascade (FIX-2080)", async () => {
     // Durable: the pieces' cancels are heard by the task session through its
     // wake, which the conversation that cancelled can't address (FIX-2078).
     const h = bootSplitHost({ durable: true });
@@ -509,10 +394,7 @@ describe("a split task changed from above while its pieces are open (BR-19)", ()
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
       expect(
-        await h.until(async () => {
-          const statuses = [(await h.rowsNamed("alice", "Plan the launch"))[0]?.status, (await h.rowsNamed("alice", "Run the event"))[0]?.status];
-          return statuses.every((status) => status === "parked");
-        })
+        await h.until(async () => (await waitingOnItsPieces(h, "Plan the launch")) && (await waitingOnItsPieces(h, "Run the event")))
       ).toBe(true);
       const top = await one(h, "Plan the launch");
 
@@ -529,11 +411,9 @@ describe("a split task changed from above while its pieces are open (BR-19)", ()
         "Run the event": "cancelled",
         "Hire the band [slow:400]": "cancelled"
       });
-      // Nothing settled the cancelled task. A cancel through the task action is
+      // Nothing completed the cancelled task. A cancel through the task action is
       // heard by its filer, once (FIX-2078 D2); only a model's own tool call isn't.
       expect(await heard(h, planner)).toEqual([`${top.id}:cancelled`]);
-      const t1 = await h.taskSessionOf("alice", top.id);
-      expect(await h.until(async () => ((await h.session(t1)).state as { splitParent?: unknown }).splitParent === null, 8_000)).toBe(true);
       expect(await h.chains("alice")).toEqual({});
     } finally {
       await h.dispose();
@@ -569,13 +449,12 @@ describe("how deep a chain goes (BR-20, BR-6)", () => {
     }
   });
 
-  it("refuses a session create that seeds a chain, a depth or a parent binding, naming the field", async () => {
+  it("refuses a session create that seeds a chain or a depth, naming the field", async () => {
     const h = bootSplitHost();
     try {
       for (const [field, value] of [
         ["taskChain", { depth: 1, top: { partition: "p", taskId: "t" } }],
-        ["taskFlow", "splitter"],
-        ["splitParent", null]
+        ["taskFlow", "splitter"]
       ] as const) {
         const created = await h.create("alice", "splitter", { state: { workerId: "s1", [field]: value } });
         expect(created.status, field).toBe(400);

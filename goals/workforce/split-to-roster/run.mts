@@ -5,7 +5,7 @@
  * legs, the controls and what each must fail are in goal.md.
  *
  * Run: pnpm tsx goals/workforce/split-to-roster/run.mts
- * Controls: GOAL_CONTROL=pieces-output | wake-coordinator
+ * Controls: GOAL_CONTROL=first-answer | wake-coordinator
  * Legs: GOAL_LEGS=1,2,3,4 (default: all; leg 4 grades what 1 to 3 left)
  */
 import { spawnSync } from "node:child_process";
@@ -49,7 +49,7 @@ const ORG_ID = "org_split_to_roster";
 const SCRATCH = goalTmpDir("split-to-roster");
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const MODEL = gatewayModel(goalModel());
-/** How long B holds its answer: the window leg 1 reads A's parked task in. */
+/** How long B holds its answer: the window leg 1 reads A's waiting task in. */
 const KEEPER_HOLD_MS = 4_000;
 /** How long the run waits for everything a leg started to end. */
 const QUIET_BUDGET_MS = 300_000;
@@ -64,14 +64,16 @@ const DESK = "crew.desk";
 // ---- controls ---------------------------------------------------------------------
 
 const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; assertions: string[] }> = {
-  "pieces-output": {
+  "first-answer": {
     legs: ["1"],
     assertions: ["1:report-is-output"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/split.ts",
-        from: String.raw`const answer = wokenAnswerOf\(ctx\);`,
-        to: "const answer = undefined;"
+        // The woken turn's answer is never noted, so the task completes with
+        // the answer A's first turn gave, before B answered (FIX-2077 D3).
+        module: "packages/workforce/src/conversation-board/task-settled.ts",
+        from: String.raw`\.step\(options\.turn\)\n    \.tap\(noteTaskAnswer\);`,
+        to: ".step(options.turn);"
       }
     ]
   },
@@ -248,10 +250,10 @@ const pieceOf = (row: Row): string | undefined => {
   const value = (row.metadata as Record<string, unknown> | undefined)?.pieceOf;
   return typeof value === "string" ? value : undefined;
 };
+/** A task's output as text: its worker's answer (FIX-2077 D3). */
 const answerText = (output: unknown): string | undefined => {
-  const answer = (output as { answer?: unknown } | undefined)?.answer;
-  if (answer === undefined) return undefined;
-  return typeof answer === "string" ? answer : JSON.stringify(answer);
+  if (output === undefined) return undefined;
+  return typeof output === "string" ? output : JSON.stringify(output);
 };
 
 // ---- the run ----------------------------------------------------------------------
@@ -288,9 +290,9 @@ await runGoal(async (failures) => {
       seen.codename = codename();
       say(`leg 1: the codename is ${seen.codename}`);
       const taskId = await fileForA(ask("release", B));
-      // While B works: A's task parked, and nothing running in A's task session.
+      // While B works: A's task running, waiting on its piece, and nothing running in A's task session.
       const store = await storeOf(host);
-      let during: { status?: string; running?: number; at?: number } = {};
+      let during: { status?: string; waitingOn?: unknown; lease?: unknown; running?: number; at?: number } = {};
       for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(100)) {
         const rows = await store.rows();
         const piece = rows.find((r) => r.assignee === B && pieceOf(r) === taskId);
@@ -299,7 +301,7 @@ await runGoal(async (failures) => {
           const top = (await store.rows()).find((r) => r.id === taskId);
           const own = sessionOf(top);
           const running = own === undefined ? -1 : (await store.requests(own)).filter((r) => r.status === "in_progress").length;
-          during = { status: top?.status, running, at: Date.now() };
+          during = { status: top?.status, waitingOn: (top as { waitingOn?: unknown } | undefined)?.waitingOn, lease: top?.leaseUntil, running, at: Date.now() };
           break;
         }
         const top = rows.find((r) => r.id === taskId);
@@ -317,13 +319,12 @@ await runGoal(async (failures) => {
           `1:piece-to-delegate — wanted A's task session to file a piece for its delegate ${B}; its pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, its dispatchTask calls answered ${show(tried.map((i) => i.output ?? i.result ?? i))}`
         );
       }
-      if (during.status !== "parked" || during.running !== 0) {
-        failures.push(`1:parked-while-b-works — wanted A's task parked with no request running in its session while ${B} worked; read ${show(during)}`);
+      if (during.status !== "in_progress" || during.waitingOn !== "filed" || during.lease != null || during.running !== 0) {
+        failures.push(`1:waiting-while-b-works — wanted A's task running, waiting on its piece with no lease, and no request running in its session while ${B} worked; read ${show(during)}`);
       }
       const answer = answerText(top?.output);
-      const listed = ((top?.output as { pieces?: Array<{ taskId?: string; assignee?: string; status?: string }> } | undefined)?.pieces ?? []).filter((p) => p.assignee === B);
-      if (top?.status !== "completed" || answer === undefined || !answer.includes(seen.codename) || listed.length === 0 || listed.some((p) => p.status !== "completed")) {
-        failures.push(`1:report-is-output — wanted A's task completed with its woken turn's report as its answer, holding ${seen.codename}, ${B}'s piece listed under it; it is ${top?.status ?? "missing"}, output ${show(top?.output)}`);
+      if (top?.status !== "completed" || answer === undefined || !answer.includes(seen.codename) || toB.some((p) => p.status !== "completed")) {
+        failures.push(`1:report-is-output — wanted A's task completed with its woken turn's report as its output, holding ${seen.codename}, after ${B}'s piece completed; it is ${top?.status ?? "missing"}, output ${show(top?.output)}`);
       }
       notes.push(`leg 1: ${taskId} ${top?.status}; pieces ${show(pieces.map((p) => `${p.assignee}:${p.status}`))}; during B ${show(during)}; answer ${show(answer)}`);
     }
@@ -343,11 +344,13 @@ await runGoal(async (failures) => {
         own === undefined
           ? []
           : (await store.requests(own)).filter((r) => r.actionName === "onTaskSettled" && r.status === "completed" && (r.input as { ending?: string } | undefined)?.ending === "errored");
-      const refiled = pieces.some((r) => typeof (r.metadata as Record<string, unknown> | undefined)?.retryOf === "string");
-      const ended = top !== undefined && (top.status === "errored" || (top.status === "completed" && refiled));
+      // Filed again in a turn after the failure: more pieces than the first.
+      const refiled = pieces.length > 1;
+      // The woken turn decides (D3): the task completes with its answer, or fails when that turn throws.
+      const ended = top !== undefined && (top.status === "errored" || top.status === "completed");
       if (failed.length === 0 || woken.length === 0 || !ended) {
         failures.push(
-          `2:reads-the-failure — wanted ${BROKEN}'s piece to fail for good, A's woken turn to read it, and A's task to fail or to have filed again; pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, woken turns ${woken.length}, A's task ${top?.status ?? "missing"} ${show(top?.error ?? top?.output)}`
+          `2:reads-the-failure — wanted ${BROKEN}'s piece to fail for good, A's woken turn to read it, and A's task to end through that turn; pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, woken turns ${woken.length}, A's task ${top?.status ?? "missing"} ${show(top?.error ?? top?.output)}`
         );
       }
       notes.push(`leg 2: ${taskId} ${top?.status}; pieces ${show(pieces.map((p) => `${p.assignee}:${p.status}`))}; woken ${woken.length}; refiled ${refiled}`);
@@ -385,7 +388,7 @@ await runGoal(async (failures) => {
         await host.dispose();
         host = startHost(db);
         http = httpActions((await host.getRouter()) as any, USER_ID);
-        if (atStop.top === "parked" && atStop.piece === "completed" && atStop.noticesEnded === 0 && atStop.wokenTurns === 0) break;
+        if (atStop.top === "in_progress" && atStop.piece === "completed" && atStop.noticesEnded === 0 && atStop.wokenTurns === 0) break;
         // Stopped late: let that task finish before the next attempt.
         await http.act("desk", conv, "listTasks_tasks", {});
         await quiet(host);
@@ -400,7 +403,7 @@ await runGoal(async (failures) => {
       const deskState = (await store.session(conv))?.state as { taskNotices?: string[] } | undefined;
       const heard = (deskState?.taskNotices ?? []).filter((k) => k.startsWith(`${taskId}:`) && k.endsWith(":completed"));
       const told = seen.deskTurns.filter((t) => t.message.includes(`(${taskId}) completed`));
-      if (atStop.top !== "parked" || atStop.piece !== "completed" || atStop.noticesEnded !== 0 || atStop.wokenTurns !== 0 || top?.status !== "completed" || heard.length !== 1 || told.length !== 1) {
+      if (atStop.top !== "in_progress" || atStop.piece !== "completed" || atStop.noticesEnded !== 0 || atStop.wokenTurns !== 0 || top?.status !== "completed" || heard.length !== 1 || told.length !== 1) {
         failures.push(
           `3:settles-once — wanted the host stopped after B's piece ended and before A's task session acted on its notice, and after the start the task completed and the desk heard it once; at the stop ${show(atStop)}, now ${top?.status ?? "missing"}, heard ${show(heard)}, desk turns on it ${told.length}`
         );

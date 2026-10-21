@@ -29,13 +29,13 @@
  *   for the conversation's next touch of its board. A conversation whose
  *   worker was fired accepts the send and then refuses to run it: the notice
  *   stays owed, and this session never hears of that refusal.
- * - **The split** (FIX-1802 S4). A turn that files pieces on the task
- *   session's own board leaves its task parked on them after the turn, and
- *   the task settles from them later (`./split`): the gate records nothing
- *   on a parked row, and no notice goes for the park. A task that comes back
- *   to a session whose board already holds its pieces runs no turn: it parks
- *   on them again. The entry holds the session's reply line while it runs,
- *   so a piece's notice waits for the turn, and the park, to end.
+ * - **Its pieces** (FIX-2077). A turn that files pieces on the task
+ *   session's own board leaves its task running when it ends, with no lease
+ *   (`waitingOn: "filed"`); the turn each piece's ending wakes runs for the
+ *   task (`./task-admission`), and the request after which no piece holds it
+ *   and no message is queued settles it, through the gate's one check. The
+ *   entry holds the session's reply line while it runs, so a piece's notice
+ *   waits for the turn to end.
  */
 import { defineCapability, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, TaskDispatchInput } from "@flow-state-dev/core/types";
@@ -50,7 +50,7 @@ import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } fr
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sessionIdOfFiling } from "./filing-session";
-import { hasPieces, parkOnPieces } from "./split";
+import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
 import { taskMessage } from "./task-message";
@@ -237,26 +237,23 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
     uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources } })],
     // The turn keeps the worker's skill state on the session, the same shape
     // for every task, and each task runs in a session of its own.
-    allowSessionState: true
+    allowSessionState: true,
+    // Its pieces, and a message for this session not yet acted on, hold it open (FIX-2077).
+    endRules: conversationEndRules
   }));
 
-  // A task whose pieces its session already filed (a retry, or a takeover
-  // after a crash) runs no turn: it parks on them again. An answer to the
-  // worker's question always runs the turn (FIX-1817), and so does a user's
-  // message that reopened it (FIX-1764). A `block` is handed the task and the
-  // claim the gate verified; a `turn`, the task's message.
-  const runs = async (task: TaskWorkerInput, ctx: unknown) =>
-    task.answer !== undefined || task.reopened === true || !(await hasPieces(ctx as never, task.taskId));
+  // A `block` is handed the task and the claim the gate verified; a `turn`,
+  // the task's message. A task that filed pieces stays running when the turn
+  // ends, and the turn their endings wake decides it (FIX-2077): the gate's
+  // check at the end of each request for it.
   const base = sequencer({ name, inputSchema: taskWorkerInputSchema });
-  const block = (
+  const block =
     options.block !== undefined
-      ? base.stepIf(
-          runs,
+      ? base.step(
           (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx as never, name) }),
           options.block
         )
-      : base.stepIf(runs, (task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!)
-  ).step(parkOnPieces);
+      : base.step((task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!);
 
   /**
    * The turn's message as the session's user item, so the task as filed (or

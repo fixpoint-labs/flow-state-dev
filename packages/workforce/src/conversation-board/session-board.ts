@@ -17,8 +17,8 @@
  *   `removeDelegate`, `setFallback`, `listDelegates`).
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
- *   split task settles and cancels its pieces on, and the session state they
- *   keep (`sessionStateShape`, `serverOwned`).
+ *   worker's message arrives on, and the session state they keep
+ *   (`sessionStateShape`, `serverOwned`).
  *
  * The built-in `agent` flow and the coordinator carry it through the agent's
  * shared worker turn. An app's own worker flow carries it the same way:
@@ -54,11 +54,10 @@ import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/wor
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
-import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY } from "./board-entries";
+import { RUN_BOARD_ENTRY } from "./board-entries";
 import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { questionPark } from "./question-park";
 import { taskProgress } from "./task-progress";
-import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
   PASS_CONCURRENCY,
@@ -189,8 +188,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow: a run of the board,
-     * the notice of a task the session filed, a split task's settle and
-     * the cancel of its pieces, and a worker's message (`onWorkerMessage`,
+     * the notice of a task the session filed, and a worker's message (`onWorkerMessage`,
      * FIX-1989), which always wakes the turn: `policy` is the notices' only.
      * Spread into `internal: { actions: ... }`.
      *
@@ -212,8 +210,6 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
         [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
-        [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
-        [CANCEL_PIECES_ENTRY]: { inputSchema: cancelPiecesInputSchema, block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY },
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind })
       };
     }

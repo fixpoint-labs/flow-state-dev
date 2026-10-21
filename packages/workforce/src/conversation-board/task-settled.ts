@@ -50,7 +50,8 @@ import { deleteChain, taskChainOf, taskChainResources } from "./chain";
 import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_LEDGER_ID, ownConversationLedger } from "./ledger";
 import { sendTaskReport } from "./report-owed";
-import { noteFailedPiece, noteWokenAnswer, PARENT_BINDING_STATE, settleSplitBlock, splitStateShape } from "./split";
+import { noteTaskAnswer } from "@flow-state-dev/orchestration/task-board";
+import { admitOwnTask } from "./task-admission";
 
 /** A notice, as the entries take it. */
 export const taskNoticeSchema = z
@@ -75,12 +76,11 @@ const MAX_NOTICE_KEYS = 500;
 
 /** The session-state fields a flow that keeps a conversation's board declares, server-owned. */
 export const conversationBoardStateShape = {
-  [TASK_NOTICES_STATE]: z.array(z.string()).default([]),
-  ...splitStateShape
+  [TASK_NOTICES_STATE]: z.array(z.string()).default([])
 } as const;
 
 /** {@link conversationBoardStateShape}'s fields, for the flow's `session.serverOwned`: only the board writes them. */
-export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE, PARENT_BINDING_STATE];
+export const CONVERSATION_BOARD_SERVER_OWNED: readonly string[] = [TASK_NOTICES_STATE];
 
 const settledSchema = z.object({
   act: z.enum(["none", "run-board", "wake-turn", "line", "post"]),
@@ -130,7 +130,7 @@ const replyLine: ConcurrencyKey = (ctx) =>
 /** Set on each entry that runs the conversation's turn: a task's notice waits for it, within the bound above. */
 export const REPLY_CONCURRENCY = { policy: "hold", key: replyLine } as const satisfies ConcurrencyConfig;
 
-/** Set on each entry that waits for the conversation's turn: a task's notice, and a split task's settle and cancel (FIX-1802 S4). */
+/** Set on each entry that waits for the conversation's turn: a task's notice, and a worker's message. */
 export const AFTER_REPLY_CONCURRENCY = { policy: "defer", key: replyLine } as const satisfies ConcurrencyConfig;
 
 /** The board's pass, keyed on its session alone: no other entry holds this key. */
@@ -197,11 +197,15 @@ async function reportFailure(ctx: BlockContext, notice: TaskNotice): Promise<voi
   }
 }
 
-/** The turn a notice wakes, its answer kept for a split task's settle below. */
+/**
+ * The turn a notice wakes. In a task session whose task waits on its pieces,
+ * its answer is noted as the task's result for the check at the request's end
+ * (FIX-2077); anywhere else the note is nothing.
+ */
 function wokenTurnOf(options: TaskSettledOptions) {
   return sequencer({ name: "conversation-woken-turn", inputSchema: z.object({ message: z.string() }) })
     .step(options.turn)
-    .tap(noteWokenAnswer);
+    .tap(noteTaskAnswer);
 }
 
 /** An ending, as a line in the conversation, under the delegate's name. */
@@ -248,16 +252,15 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       await onEnding(ctx, notice);
       await reportFailure(ctx, notice);
       const first = await noteSeen(ctx, noticeKey(notice));
-      // Acknowledged here, once reported and deduped, before what it wakes: a
-      // split's settle below reads a piece whose notice is still owed as open.
+      // Acknowledged here, once reported and deduped, before what it wakes: the
+      // check at this request's end reads a piece whose notice is still owed as
+      // holding its task (FIX-2077).
       await ref.patchMetadata(row.id, clearNotice(notice));
       const decision = decideNotice(notice, options.policy(ctx));
       // A waited-on row's turn, or a retry's next attempt: the pass's, which
       // resumes it or starts it. Every copy runs it; the pass is one at a time.
       if (decision.act === "resume-wait" || decision.act === "run-board") return { act: "run-board" };
       if (first !== true) return { act: "none" };
-      // A piece's failure for good wakes the turn that may file it again.
-      if (decision.act === "wake-turn") await noteFailedPiece(ctx, row);
       return {
         act: decision.act,
         text: noticeText(notice, row),
@@ -267,6 +270,10 @@ export function taskSettledEntry(options: TaskSettledOptions) {
   });
 
   const handling = sequencer({ name: "conversation-on-task-settled", inputSchema: taskNoticeSchema })
+    // In a task session whose task waits (its pieces, FIX-2077): this request
+    // runs for the task, and the task is checked at its end, after any turn
+    // this notice wakes, with that turn's answer. First, before any await.
+    .tap(admitOwnTask("conversation-task-settled-admission", true))
     .step(settle)
     .tapIf((settled: Settled) => settled.act === "line" || settled.act === "wake-turn", line)
     .tapIf(
@@ -274,12 +281,7 @@ export function taskSettledEntry(options: TaskSettledOptions) {
       (settled: Settled) => ({ message: settled.text ?? "" }),
       wokenTurnOf(options)
     )
-    .tapIf((settled: Settled) => settled.act === "run-board", runPass)
-    // In a task session whose task waits on its pieces: settle it once none
-    // is open, after any turn this notice woke, never inside it (FIX-1802
-    // S4), with that turn's answer. A turn that failed leaves it for the
-    // pass.
-    .tap(settleSplitBlock);
+    .tapIf((settled: Settled) => settled.act === "run-board", runPass);
 
   return orchestrationTaskSettledEntry({ block: handling, concurrency: AFTER_REPLY_CONCURRENCY });
 }
@@ -366,8 +368,7 @@ export function postSettledEntry(options: TaskSettledOptions & { readonly onPost
       (settled: Settled) => settled.post as PostEnding,
       options.onPost
     )
-    .tapIf((settled: Settled) => settled.act === "post" && settled.notice !== undefined, acknowledge)
-    .tap(settleSplitBlock);
+    .tapIf((settled: Settled) => settled.act === "post" && settled.notice !== undefined, acknowledge);
 
   return { inputSchema: taskNoticeSchema, block, concurrency: "queue" as const };
 }

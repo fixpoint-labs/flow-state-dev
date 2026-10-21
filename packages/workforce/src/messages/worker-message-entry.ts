@@ -23,6 +23,7 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
+import { admitOwnTask } from "../conversation-board/task-admission";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageTurnStateSchema, startTurnAtHop, TURN_MESSAGED_STATE } from "./hop";
 import { MESSAGE_WORKER_TOOL } from "./keys";
@@ -149,6 +150,10 @@ export function workerMessageEntry(options: {
   });
 
   const block = sequencer({ name: "worker-message-arrived", inputSchema: workerMessageInputSchema })
+    // A message for a task session whose task waits runs for that task, and
+    // the task is checked at its end; its answer is never the task's result
+    // (FIX-2077). First, before any await.
+    .tap(admitOwnTask("worker-message-admission", false))
     .step(heard)
     .tapIf((got: Heard) => got.act !== "none", line)
     .tapIf(

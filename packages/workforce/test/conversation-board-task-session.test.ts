@@ -192,7 +192,7 @@ describe("the session a task runs in (BR-16, BR-19)", () => {
     const host = bootBoardHost();
     try {
       // `tasker` is built on `installation.session()` alone: without the refusal, its schema drops these and the create succeeds.
-      for (const field of ["delegates", "fallback", "taskNotices", "splitParent"]) {
+      for (const field of ["delegates", "fallback", "taskNotices"]) {
         const created = await host.create("alice", "tasker", { state: { workerId: "eng.tasker", [field]: [] } });
         expect(created.status, `${field}: ${JSON.stringify(created.body)}`).toBe(400);
         expect(created.body).toMatchObject({ field });

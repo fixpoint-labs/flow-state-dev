@@ -1,6 +1,6 @@
 # workforce › it splits a task to its delegates
 
-**Issue:** FIX-1997 (epic FIX-1996); rewritten for FIX-2081 (epic FIX-2056), where a task reaches only its filer's delegates. Its spec's goal: `specs/issues/park-on-task/SPEC.md` → "The goal, and how we'll know it's met".
+**Issue:** FIX-1997 (epic FIX-1996); rewritten for FIX-2081 (epic FIX-2056), where a task reaches only its filer's delegates, and for FIX-2077, where a split task stays running and its output is its worker's answer. Its spec's goal: `specs/issues/park-on-task/SPEC.md` → "The goal, and how we'll know it's met".
 
 **Outcome:** a worker on a task can get a result from one of its delegates by filing a piece and ending its turn. Nothing runs while it waits. The piece's ending wakes it, and its task completes with the worker's own report as its answer. The person's desk hears the task end, never the piece.
 
@@ -12,12 +12,12 @@
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.
 
-- **1** `1:piece-to-delegate` A's task session filed a piece for its delegate `crew.keeper`. `1:parked-while-b-works` halfway through B's hold, A's task is `parked` and A's task session has no request running. `1:report-is-output` A's task is `completed` with `output.answer` holding the codename, and B's piece listed under `output.pieces`, completed.
-- **2** `2:reads-the-failure` `crew.broken`'s piece failed for good, a turn in A's task session was woken by that failure, and A's task ended `errored`, or `completed` after that turn filed the work again.
-- **3** `3:settles-once` the host is stopped (no drain) the moment B's piece is `completed`, while A's task is still `parked` and no `onTaskSettled` request in A's task session has ended or started the turn it wakes (the request itself is filed with B's ending, so no poll sees one without the other), so the stop lands between B's ending and A's woken turn; then it starts again over the same store and the person lists the desk's tasks. A stop polled too late is set aside and tried again with a fresh task, up to 3 attempts. A's task completes, and the desk acted on its `completed` notice once and its turn was handed it once.
+- **1** `1:piece-to-delegate` A's task session filed a piece for its delegate `crew.keeper`. `1:waiting-while-b-works` halfway through B's hold, A's task is `in_progress` with `waitingOn: "filed"` and no lease, and A's task session has no request running. `1:report-is-output` A's task is `completed` with its output, the woken turn's report, holding the codename, after B's piece completed.
+- **2** `2:reads-the-failure` `crew.broken`'s piece failed for good, a turn in A's task session was woken by that failure, and A's task ended through that turn: `completed` with its answer, or `errored` when it threw (FIX-2077 D3).
+- **3** `3:settles-once` the host is stopped (no drain) the moment B's piece is `completed`, while A's task is still `in_progress` and no `onTaskSettled` request in A's task session has ended or started the turn it wakes (the request itself is filed with B's ending, so no poll sees one without the other), so the stop lands between B's ending and A's woken turn; then it starts again over the same store and the person lists the desk's tasks. A stop polled too late is set aside and tried again with a fresh task, up to 3 attempts. A's task completes, and the desk acted on its `completed` notice once and its turn was handed it once.
 - **4** `4:desk-hears-tasks-only` across legs 1 to 3, after a last `listTasks` on the desk, every notice the desk acted on and every notice turn it ran names a task the person filed, never a piece.
 
-**Anti-game:** every grade reads the store (task rows, requests, session state) or what the desk's own turn was handed, never the model's tool arguments or prompt. The codename is fresh per leg and only B's answer holds it, so an answer holding it came through B. `1:report-is-output` reads `answer`, which only the woken turn writes; B's own output sits under `pieces`, so a settle that passes B's output up can't pass it. Leg 3 says where the stop landed; a stop after A's task settled fails it rather than passing vacuously. On a stop with no woken turn behind it, the task completes with `{ pieces }` alone, by design.
+**Anti-game:** every grade reads the store (task rows, requests, session state) or what the desk's own turn was handed, never the model's tool arguments or prompt. The codename is fresh per leg and only B's answer holds it, so an answer holding it came through B. `1:report-is-output` reads the output, which is the last woken turn's answer; A's first turn ran before B answered, so only a turn woken by B's ending can hold the codename. Leg 3 says where the stop landed; a stop after A's task settled fails it rather than passing vacuously.
 
 **Model:** real for A: the goals library's default model through the gateway (`gatewayModel(goalModel())`; `GOAL_MODEL` overrides). Gated on a key that serves it (`keysServing`); without one the run is blocked, not failed.
 
@@ -25,7 +25,7 @@
 
 **Controls:** each is a scratch patch to Workforce applied as the process loads it (`goals/lib/module-patch.mts`), printed by the run and refused when it never reached the code.
 
-- `GOAL_CONTROL=pieces-output`: the settle ignores the woken turn's answer (`conversation-board/split.ts`, `settleParent`). Leg 1 must fail **`1:report-is-output`**, alone.
+- `GOAL_CONTROL=first-answer`: the woken turn's answer is never noted (`conversation-board/task-settled.ts`, the woken turn's `noteTaskAnswer`), so the task completes with A's first answer. Leg 1 must fail **`1:report-is-output`**, alone.
 - `GOAL_CONTROL=wake-coordinator`: a task session's board is the one above it, the desk's (`conversation-board/board.ts`, the resolver's partition), so A's pieces land on the desk's board and their endings are the desk's. Leg 4 must fail **`4:desk-hears-tasks-only`**. Leg 1 goes red with it (A's task completes from its first turn); it has no isolating red state.
 
 **Before-state:** `main` at `ce4dbe52` (the merged spec, before FIX-1997) fails leg 1: A's `dispatchTask` for `crew.keeper` is refused `unknown_assignee`. Since FIX-2081 a task reaches only its filer's delegates, so `crew.keeper` is one of A's; a piece for a non-delegate is refused, which `goals/task-tools/five-tools-one-rule-per-field/` leg c grades. The `delegates-only` control is retired with the roster reach it put back.
