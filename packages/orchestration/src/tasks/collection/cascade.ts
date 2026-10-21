@@ -43,8 +43,11 @@ export interface TaskFiledCascade {
    */
   readonly owes: (row: Task, ending: TaskEnding) => boolean;
   /**
-   * Cancel the open tasks `row` filed. `true` once paid (nothing left to
-   * cancel included); `false` leaves the cascade owed for a later touch.
+   * Cancel the open tasks `row` filed by the time of the ending its debt is
+   * for (`cascadeEndedAt(row.cascadeOwed)`): a payment can come late, after
+   * the row's next attempt has filed tasks of its own. `true` once paid
+   * (nothing left to cancel included); `false` leaves the cascade owed for a
+   * later touch.
    */
   readonly pay: (row: Task) => Promise<boolean>;
 }
@@ -134,13 +137,47 @@ export async function payCascadeAfterWrite(writes: CascadeWrites, row: Task | un
 }
 
 /**
- * A touch of the board: pay every cascade past its due time. Called by
+ * A touch of the board, its second half: cancel every unstarted row (pending
+ * or held) whose dependency has failed or been cancelled. An ending records
+ * its debt from the rows its own process has seen, so a dependent filed by
+ * another process can be missed; the touch reads the committed rows and
+ * catches it. A dependency whose own debt isn't due yet is left to the
+ * ending's pass that is paying it. Repeats until a pass cancels nothing, so
+ * a chain goes in one touch.
+ *
+ * @returns How many rows were cancelled.
+ */
+async function cancelDeadDependents(writes: CascadeWrites, now: number): Promise<number> {
+  let cancelled = 0;
+  for (let pass = true; pass; ) {
+    pass = false;
+    for (const row of writes.list()) {
+      if (row.status !== "pending" && row.status !== "held") continue;
+      const dead = (row.deps ?? [])
+        .map((id) => writes.get(id))
+        .find((dep) => (dep?.status === "errored" || dep?.status === "cancelled") && !(dep.cascadeOwed != null && dep.cascadeOwed.due > now));
+      if (dead === undefined) continue;
+      await writes.cancelDependent(row.id, dead);
+      // A cancel that declined leaves the row as it was: don't pass again on it.
+      if (writes.get(row.id)?.status === "cancelled") {
+        cancelled += 1;
+        pass = true;
+      }
+    }
+  }
+  return cancelled;
+}
+
+/**
+ * A touch of the board: pay every cascade past its due time, then cancel the
+ * dependents an ending missed ({@link cancelDeadDependents}). Called by
  * whatever touches the board (a board's drain, an action on it), so a cascade
  * a crash left owed is paid on the next touch.
  *
  * @returns How many debts were cleared.
  */
 export async function payOwedCascades(writes: CascadeWrites, now: number): Promise<number> {
+  await cancelDeadDependents(writes, now);
   let paid = 0;
   for (const row of writes.list()) {
     if (row.cascadeOwed == null || row.cascadeOwed.due > now) continue;

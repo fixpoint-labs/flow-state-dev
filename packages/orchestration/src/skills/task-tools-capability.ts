@@ -398,7 +398,7 @@ function resolveFollowUp(
     return {
       ok: false as const,
       error:
-        `follow_up_of_unfinished: task "${followUpOf}" never ran with a worker, so there is ` +
+        `follow_up_of_unrun: task "${followUpOf}" never ran with a worker, so there is ` +
         `no session to follow up in. File a new task instead. Nothing was filed.`,
     };
   }
@@ -1378,7 +1378,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const edits: TaskEditField[] = [...fields, ...(input.status !== undefined ? (["held"] as const) : [])];
       // Refused before anything is checked when the state already rules it
       // out; decided again inside the write, so a start in between is refused too.
-      const locked = lockedFields(current, edits);
+      // A release alone of a held row is never refused as started: a legacy
+      // row stored `blocked` after a retry reads as held with attempts spent
+      // (BP-030), and releasing it is how it runs again.
+      const releaseOnly = current.status === "held" && input.status === "pending" && fields.length === 0;
+      const locked = releaseOnly ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
       if (input.assignee !== undefined && input.assignee !== current.assignee) {
         if (current.answered === true) return awaitingAnswerError(input.id);

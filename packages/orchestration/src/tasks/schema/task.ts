@@ -480,7 +480,18 @@ export const taskSchema = z.object({
    * drives cancels, so no caller-writable surface reaches it. **Absent reads
    * as not owed** (BP-030).
    */
-  cascadeOwed: z.object({ due: z.number() }).optional(),
+  cascadeOwed: z
+    .object({
+      due: z.number(),
+      /**
+       * When the ending that owes it was written. A late payment cancels only
+       * what was filed by then: a retry's next attempt files under the same
+       * parent. **Absent on a debt written before it** (BP-030): read with
+       * `cascadeEndedAt`.
+       */
+      endedAt: z.number().optional(),
+    })
+    .optional(),
 
   /**
    * The task whose ending cancelled this row (FIX-2080): set by a cascade's

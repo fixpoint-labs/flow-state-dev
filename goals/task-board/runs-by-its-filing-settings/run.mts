@@ -82,12 +82,18 @@ const KILL_PLAN = join(SCRATCH, "kill-plan.json");
 const PIECE_MS = 6000;
 
 const PATCHES: Record<string, ModulePatch[]> = {
-  // Both cascades off: no ending records the debt, so nothing pays one.
+  // Both cascades off: no ending records the debt, so nothing pays one, and a
+  // touch doesn't sweep for dependents an ending missed.
   "no-cascade": [
     {
       module: "packages/orchestration/src/tasks/collection/internal.ts",
       from: String.raw`  if \(recording\?\.owesCascade\?\.\(row as Task, ending\) !== true\) return row;`,
       to: "  return row;"
+    },
+    {
+      module: "packages/orchestration/src/tasks/collection/cascade.ts",
+      from: String.raw`  await cancelDeadDependents\(writes, now\);`,
+      to: ""
     }
   ]
 };
@@ -140,7 +146,9 @@ function readProofs(): Proof[] {
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("lead", { flow: "desk", delegates: ["eng.doer"] }),
-  worker("eng.doer", { flow: "doer", delegates: ["eng.doer"] })
+  // A worker files its pieces for someone else: its own steps are a plan's (FIX-2076).
+  worker("eng.doer", { flow: "doer", delegates: ["eng.helper"] }),
+  worker("eng.helper", { flow: "doer" })
 ];
 
 /** A filer turn's script: what the desk's deterministic turn does with the board it holds. */
@@ -202,7 +210,7 @@ function buildHost(filename: string) {
         try {
           await ref!.addTask({
             goal,
-            assignee: "eng.doer",
+            assignee: "eng.helper",
             ...(match[1] === "-ongoing" ? { session: "ongoing" as const } : {}),
             ...(match[1] === "-conversation" ? { resultTo: "conversation" as const } : {})
           });

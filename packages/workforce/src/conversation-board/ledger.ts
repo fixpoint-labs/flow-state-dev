@@ -40,10 +40,11 @@ import {
   recordEnding,
   type TaskCollectionRef,
   type TaskPartitionContext,
+  type TaskSettingsSupport,
   withoutNoticeMarkers
 } from "@flow-state-dev/orchestration/tasks";
 import { FILED_MARKER, PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
-import { filedCascade } from "./cascade";
+import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
 import { markReportOwed, withoutReportMarkers } from "./report-owed";
 
@@ -102,6 +103,16 @@ export const CONVERSATION_BOARD_CLIENT_FIELDS = [
  * conversation's partition. That is how an app lists the tasks its user's
  * conversations filed, and what a task screen reads.
  */
+/**
+ * The settings a conversation's board honours (FIX-2080): a task can run in the
+ * delegate's ongoing session for the conversation, and send its result to the
+ * conversation. The board's guarded add takes both only from a conversation.
+ */
+export const CONVERSATION_BOARD_SETTINGS = {
+  session: ["new", "ongoing"],
+  resultTo: ["filer", "conversation"]
+} as const satisfies TaskSettingsSupport;
+
 export const conversationLedger = Object.assign(
   defineTaskCollection({
     id: CONVERSATION_LEDGER_ID,
@@ -110,13 +121,10 @@ export const conversationLedger = Object.assign(
     // The notice the filer is owed, and, for an errored ending, the report the
     // Error Reporter is owed (FIX-1983), in the ending's one write.
     recordEnding: (row, ending) => markReportOwed(recordEnding(row, ending), ending),
-    // A task here can run in the delegate's ongoing session for the
-    // conversation, and send its result to the conversation (FIX-2080). The
-    // board's guarded add takes both only from a conversation.
-    settings: { session: ["new", "ongoing"], resultTo: ["filer", "conversation"] },
+    settings: CONVERSATION_BOARD_SETTINGS,
     // The tasks a task's session filed are cancelled with its failure, retry
     // or cancel (FIX-2080 D2).
-    cascadeFiled: filedCascade
+    cascadeFiled: filedCascadeOver(conversationLedgerAt)
   }),
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );

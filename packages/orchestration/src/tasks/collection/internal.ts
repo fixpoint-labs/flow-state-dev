@@ -322,8 +322,19 @@ export interface TaskSettingsPatch {
 
 export { hasStarted };
 
+/**
+ * A release and nothing else, on a held row. Never refused as started:
+ * leaving `held` is how a row starts again, and a row stored `blocked` after
+ * a retry reads as held with attempts already spent (BP-030). Editing what it
+ * was filed with is refused by the field table.
+ */
+function releaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
+  return task.status === "held" && patch.held === false && patchFields(patch).length === 1;
+}
+
 /** Why a settings edit is refused on `task` before anything is checked: it has started. */
-function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+function settingsDecline(task: Task, patch: TaskSettingsPatch): TaskWriteDeclineReason | undefined {
+  if (releaseOnly(task, patch)) return undefined;
   return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
 }
 
@@ -363,9 +374,9 @@ export function settingsWrite(
       detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
     });
   }
-  const locked = lockedFields(task, patchFields(patch));
+  const locked = releaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
   if (locked.length > 0) return { decline: "started" };
-  const declined = settingsDecline(task);
+  const declined = settingsDecline(task, patch);
   if (declined !== undefined) return { decline: declined };
   const update: Partial<Task> = {};
   if (patch.held === true && task.status === "pending") update.status = "held";
@@ -1331,6 +1342,15 @@ export interface EndingRecording {
 export const CASCADE_DUE_MS = 2_000;
 
 /**
+ * When the ending that owes `owed` was written (FIX-2080 D2): its own stamp,
+ * or, on a debt that recorded only its due time, that time less
+ * {@link CASCADE_DUE_MS} (BP-030).
+ */
+export function cascadeEndedAt(owed: NonNullable<Task["cascadeOwed"]>): number {
+  return owed.endedAt ?? owed.due - CASCADE_DUE_MS;
+}
+
+/**
  * Orchestration's cascade recorder (FIX-2080 D2): stamp the cascade owed,
  * due {@link CASCADE_DUE_MS} after the write, on an ending that owes one.
  * Recorded in the ending's own write, so a crash between the ending and the
@@ -1342,7 +1362,7 @@ function recordCascadeOwed<TInput, TOutput>(
   recording: EndingRecording | undefined
 ): Task<TInput, TOutput> {
   if (recording?.owesCascade?.(row as Task, ending) !== true) return row;
-  return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS } };
+  return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS, endedAt: row.updatedAt } };
 }
 
 /**

@@ -41,10 +41,15 @@ export {
 export {
   TaskFilingRefusedError,
   assertDepsFileable,
+  assertFilingCallerContext,
+  assertFilingSettings,
+  assertFollowUpHasRun,
+  assertUniqueIds,
+  type TaskFilingCallerContext,
   type TaskFilingRule,
   type TaskSettingsSupport,
 } from "./collection/filing";
-export { hasStarted, CASCADE_DUE_MS, type TaskSettingsPatch } from "./collection/internal";
+export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } from "./collection/internal";
 // The field table (FIX-2081): each field `updateTask` changes, with its one rule.
 export {
   TASK_FIELD_RULES,

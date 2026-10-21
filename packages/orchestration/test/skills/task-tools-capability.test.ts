@@ -431,6 +431,39 @@ describe("updateTask — a cancel", () => {
   });
 });
 
+/**
+ * A release and a reassignment in one `updateTask` (FIX-2080): one guarded
+ * write, so a refused reassignment can't leave the task released under the
+ * worker it was meant to leave.
+ */
+describe("updateTask — a release with a reassignment", () => {
+  it("leaves the task held when the reassignment is refused", async () => {
+    // A follow-up keeps the worker of the task it follows.
+    const ctx = ctxWithTask("held", { assignee: "researcher", followUpOf: "root" });
+    const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx);
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect(boardOf(ctx).a).toMatchObject({ status: "held", assignee: "researcher" });
+  });
+
+  it("reassigns and releases when both are allowed", async () => {
+    const ctx = ctxWithTask("held", { assignee: "researcher" });
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "writer" });
+  });
+
+  it("releases a held row that already ran, as a legacy blocked row reads, but edits nothing on it", async () => {
+    // BP-030: a row stored `blocked` after a retry reads as held with attempts
+    // spent. A release alone is how it runs again; any edit is still locked.
+    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher" });
+    const edit = (await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx)) as { ok: boolean; error: string };
+    expect(edit.ok).toBe(false);
+    expect(edit.error).toContain("field_locked_after_start");
+    expect(boardOf(ctx).a).toMatchObject({ status: "held", assignee: "researcher" });
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "pending" }, ctx)).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "researcher" });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
