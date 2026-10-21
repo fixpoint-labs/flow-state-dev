@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **builds a worker that does a job in steps** | Its steps for itself go to new sessions of itself, and its task parks until they report back | It files them on its **plan board**; its own request works them in order, each step seeing the one before ([D1](DECISIONS.md#d1)) |
-| **reads that worker's answer** | `{ answer, pieces }`, from whichever turn ran after the last piece | One answer, from a turn that saw every step end, a failed one included; it finalizes over any checkpoint the worker set ([D2](DECISIONS.md#d2)) |
+| **reads that worker's answer** | `{ answer, pieces }`, from whichever turn ran after the last piece | One answer, from a turn that saw every step end, a failed one included; it is the result unless the worker checkpointed an `output`, when the latest checkpoint is ([D2](DECISIONS.md#d2)) |
 | **builds a board that hands rows to other sessions** | Declares a dispatcher; the drain quietly stops waiting on those rows | Declares `mode: "delegation"`. Without it the board is refused when built, with that fix in the error ([D3](DECISIONS.md#d3)) |
 | **builds a goal-seek loop** | Over a board that dispatches, the judge rules while rows still run, and each `continue` burns an iteration | Refused when built over a delegation board, or a board that lets a parked row out of its drain. Over a plan board the judge sees every row ended |
 | **builds a pattern** | `planAndExecute`, `parallelTasks`, `supervisor` drain inline | The same, unchanged: they are plan boards already |
@@ -84,7 +84,7 @@ flowchart LR
   T --> D["plan board drain · mode plan"]
   D -->|"each row: the same turn, the row's brief"| D
   D --> A["one more turn · sees every row's ending · files no step for itself"]
-  A --> R["the request's result"]
+  A -->|"its answer, unless an output was checkpointed"| R["the request's result"]
   T -.->|"rows for delegates"| G["delegation board · mode delegation"]
 ```
 
@@ -127,8 +127,8 @@ second place every reader of a session's tasks has to look.
 
 1. **[D1](DECISIONS.md#d1) · A worker's step for itself is a plan row, worked in the same request.** If
    wrong: a step that needs its own session waits for FIX-2082. **The one to weigh.**
-2. **[D2](DECISIONS.md#d2) · After its plan drains, the worker answers once more, and that turn finalizes the result.**
-   An empty answer leaves the worker's latest `output` checkpoint standing (FIX-2081's D3).
+2. **[D2](DECISIONS.md#d2) · After its plan drains, the worker answers once more, and that answer is the result unless it checkpointed an output.**
+   The latest `output` checkpoint is the result whenever one exists (FIX-2081's D3).
    If wrong: one model call per planned request, spent for nothing.
 3. **[D3](DECISIONS.md#d3) · Until FIX-2082, a plan board refuses a dispatched row.** If wrong: a board
    that wants a waited dispatch can't be built for one issue's span.
