@@ -48,6 +48,7 @@ function boardFlow(ran: Ran[], rows: Array<{ id: string; input: RowInput }>, amo
   const board = taskBoard({
     name: "per-row",
     boardId: LEDGER_ID,
+    mode: "delegation",
     collection: defineTaskCollection({ id: LEDGER_ID, scope: "user" }),
     workers: {
       em: dispatcher({

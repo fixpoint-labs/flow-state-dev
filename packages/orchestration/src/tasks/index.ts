@@ -41,10 +41,15 @@ export {
 export {
   TaskFilingRefusedError,
   assertDepsFileable,
+  assertFilingCallerContext,
+  assertFilingSettings,
+  assertFollowUpHasRun,
+  assertUniqueIds,
+  type TaskFilingCallerContext,
   type TaskFilingRule,
   type TaskSettingsSupport,
 } from "./collection/filing";
-export { hasStarted, CASCADE_DUE_MS, type TaskSettingsPatch } from "./collection/internal";
+export { hasStarted, CASCADE_DUE_MS, cascadeEndedAt, type TaskSettingsPatch } from "./collection/internal";
 // The two cascades (FIX-2080 D2): a board's payer for the tasks a task filed.
 export { SKIPPED_LABEL, endsDependents, endsFiledWork, type TaskFiledCascade } from "./collection/cascade";
 
@@ -129,6 +134,8 @@ export {
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";
+// A wrapping ref's own refusal, answered by the task tools as a soft error (FIX-2076).
+export { TaskWriteRefusedError } from "./collection/refused-write";
 export {
   getOrCreateTaskCollection,
   TASK_CHANGE_COMPONENT_TYPE,

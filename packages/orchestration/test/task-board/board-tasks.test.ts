@@ -65,6 +65,7 @@ function dispatchBoard(options: { name: string; boardId: string; assignee?: stri
   return taskBoard({
     name: options.name,
     boardId: options.boardId,
+    mode: "delegation",
     collection: durable,
     workers: { [assigneeName]: assignee(options.target ?? assigneeName) },
   });
@@ -274,6 +275,7 @@ describe("defineFlow({ internal: { actions: { ...heard } }, task: { actions } })
     const b = taskBoard({
       name: "board-b",
       boardId: "shared-id",
+      mode: "delegation",
       collection: other,
       workers: { implement: assignee("implement") },
     });

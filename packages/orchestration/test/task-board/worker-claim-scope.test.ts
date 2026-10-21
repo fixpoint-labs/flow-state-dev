@@ -171,6 +171,7 @@ describe("a dispatched worker behind the claim gate", () => {
           block: taskBoard({
             name: "claim-recipient-board",
             boardId: BOARD_ID,
+            mode: "delegation",
             collection: ledger(),
             workers: { work: dispatchTo("claim-recipient-dispatch") },
           }).drain,
@@ -186,6 +187,7 @@ describe("a dispatched worker behind the claim gate", () => {
           block: taskBoard({
             name: "claim-sender-board",
             boardId: BOARD_ID,
+            mode: "delegation",
             collection: ledger(),
             workers: { work: dispatchTo("claim-sender-dispatch", "claim-recipient") },
             initialTasks: [{ id: "t1", goal: "dispatched", assignee: "work" }],

@@ -114,6 +114,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
   const board = taskBoard({
     name: `${kind}-board`,
     boardId: `${kind}-board`,
+    mode: "delegation",
     collection: defineTaskCollection({ id: `${kind}-ledger`, scope: "user" }),
     onError,
     workers: {

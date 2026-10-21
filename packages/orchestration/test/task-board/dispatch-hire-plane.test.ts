@@ -58,6 +58,7 @@ function assigneeKind(ran: string[]) {
   const board = taskBoard({
     name: "assignee-board",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: ledger(),
     workers: {
       work: dispatcher<TaskWorkerInput>({ name: "assignee-dispatch", action: "work", session: "per-task" }),
@@ -78,6 +79,7 @@ function boardFlow() {
   const board = taskBoard({
     name: "org-board",
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: ledger(),
     workers: {
       lead: assignee("to-lead", LEAD),

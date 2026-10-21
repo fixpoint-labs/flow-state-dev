@@ -69,6 +69,7 @@ function buildNestedFlow() {
   const innerBoard = taskBoard({
     name: "inner-board",
     boardId: "inner-board",
+    mode: "delegation",
     collection: defineTaskCollection({ id: "inner-ledger", scope: "user" }),
     workers: {
       deep: dispatcher({ name: "inner-dispatch", type: "task", action: "deep", session: "per-task" }),
@@ -100,6 +101,7 @@ function buildNestedFlow() {
   const outerBoard = taskBoard({
     name: "outer-board",
     boardId: "outer-board",
+    mode: "delegation",
     collection: defineTaskCollection({ id: "outer-ledger", scope: "user" }),
     workers: {
       top: dispatcher({ name: "outer-dispatch", type: "task", action: "top", session: "per-task" }),
@@ -145,8 +147,15 @@ describe("a dispatched worker can run its own dispatched board", () => {
     expect(Object.keys(flow.task?.actions ?? {}).sort()).toEqual(["deep", "top"]);
 
     const dispatched: RecordedDispatch[] = [];
+    const notices: Array<{ taskId: string; ending: string }> = [];
     const record = {
       dispatchOperation: async (spec: { sessionId: string; action: string; input: unknown }) => {
+        // An ending's notice to its filer goes through the same seam (FIX-2078);
+        // this scenario counts the hand-overs.
+        if (spec.action === "onTaskSettled") {
+          notices.push(spec.input as { taskId: string; ending: string });
+          return { requestId: `notice_${notices.length}` };
+        }
         dispatched.push({
           sessionId: spec.sessionId,
           actionName: spec.action,
@@ -191,6 +200,8 @@ describe("a dispatched worker can run its own dispatched board", () => {
     expect(outerChild.error).toBeUndefined();
     expect(ran).toContain("outer:o1");
     expect(dispatched).toHaveLength(2);
+    // The outer row ended in its child, and its filer is told.
+    expect(notices).toEqual([expect.objectContaining({ taskId: "o1", ending: "completed" })]);
 
     // 3. The inner child session. Its envelope names `inner-board`, and the
     //    flow's `tasks` map has to have a route for it — which is the whole

@@ -85,6 +85,7 @@ function senderFlow(kind: string, list: ReturnType<typeof ledger>, taskId: strin
     name: `${kind}-board`,
     // Dispatched under the ledger's id: what the recipient resolves.
     boardId: list.id,
+    mode: "delegation",
     collection: list,
     workers: {
       work: dispatcher<TaskWorkerInput>({
@@ -141,6 +142,7 @@ describe("a task entry served by many ledgers", () => {
     const board = taskBoard({
       name: "own-board",
       boardId: "own",
+      mode: "delegation",
       collection: LEDGER_A,
       workers: { work: dispatcher<TaskWorkerInput>({ name: "own-dispatch", action: "work", session: "per-task" }) },
     });

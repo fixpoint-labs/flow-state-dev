@@ -359,12 +359,17 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, mode, onReview, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
 single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
+`mode` (`"plan"` default | `"delegation"` — whether the drain waits on its tasks: a plan
+board runs every task inline and waits on each, a delegation board hands every task to
+another session through a dispatcher assignee and waits on none; a plan board holding a
+dispatcher, a delegation board with an inline assignee, and a delegation board with no
+dispatcher are refused at construction, naming the fix),
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
@@ -430,12 +435,15 @@ failure by default; only a composition that supplies a tail able to read the rep
 
 #### Dispatching tasks through a dispatcher assignee
 
-An assignee under `workers` is a block. Put a `dispatcher({ action, session })`
-in that position and the assignee dispatches its tasks: the drain claims a row, sends a
-`task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
-entry's block runs in a **child session** of the session that drained — on a request
-of its own — and settles the row itself. Any other block in that position runs
-inline in the drain. The worker is declared once, on the flow, exactly like an
+An assignee under `workers` is a block. On a board declared `mode: "delegation"`, put a
+`dispatcher({ action, session })` in that position and the assignee dispatches its tasks:
+the drain claims a row, sends a `task` dispatch to the flow's `task.actions[action]`
+entry, and moves on, while the entry's block runs in a **child session** of the session
+that drained — on a request of its own — and settles the row itself. Every assignee on a
+delegation board dispatches, and the drain waits on none of its rows; a board that runs
+its assignees inline is a plan board (the default), which waits on every row and takes
+no dispatcher. `taskBoard()` refuses a board whose assignees contradict its mode, naming
+the fix. The worker is declared once, on the flow, exactly like an
 action. An assignee holding anything other than a block (an object such as
 `{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
@@ -455,9 +463,9 @@ const issueLedger = defineTaskCollection({
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",               // required once any assignee dispatches
+  mode: "delegation",                  // every row is dispatched; the drain waits on none
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
-    triage: triageBlock,               // runs inline
     implement: dispatcher({            // dispatches to flow.task.actions.implement
       name: "dispatch-implement",
       action: "implement",
@@ -688,7 +696,9 @@ board's drain in an outer, judge-gated loop: seed → drain → judge → (repla
 repeat → finalize. The `judge` returns a three-way `Verdict`
 (`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
 the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
-The board must be request- or resource-backed. `parallelTasks` and `planAndExecute`
+The board must be request- or resource-backed and a plan board: a delegation board, whose
+drain returns while its tasks still run, and an `onReview: "exit"` board, whose drain can return
+with a task parked, are refused at construction. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Skills
@@ -816,11 +826,13 @@ task's current status does not permit is a recoverable tool result too, not a
 throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
-the ten tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
 `illegal_status_transition`, `terminal_task_write_declined`,
-`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unfinished`,
-`session_has_unfinished_task`, `task_id_taken`, and `task_awaiting_answer`. `dispatchTask`
+`not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
+`task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
+(`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
+`TaskFilingRule`). `dispatchTask`
 adds its own (`assignee_required`, `task_not_dispatchable`, `dispatch_target_required`,
 `dispatch_target_ambiguous`, `dispatch_ref_takes_no_task_fields`, and the `wait_*`
 codes when it [waits](#waiting-for-a-tasks-answer)). A
@@ -946,16 +958,14 @@ the answer reaches the session that asked.
 
 #### Following up on a finished task
 
-`addTask` and `dispatchTask` take `followUpOf` to file new work on a finished task: the follow-up
-is a new task, with the same worker, that runs in the finished task's session. It
+`addTask` and `dispatchTask` take `followUpOf` to file new work on a task: the follow-up
+is a new task, with the same worker, that runs in that task's session. It
 keeps that worker: `assignTask` and `updateTask` won't move it
 (`follow_up_takes_no_assignee`). Both tools refuse an `assignee` beside it
-(`follow_up_takes_no_assignee`), a task that hasn't finished or never ran with a worker
-(`follow_up_of_unfinished`), and a session that still has an unfinished task
-(`session_has_unfinished_task`), all before anything is filed. The finished task
-itself never changes. If two follow-ups of the same task are filed at once, the second
-gets `session_has_unfinished_task` (follow up once that one
-finishes) or `task_id_taken` (file it again).
+(`follow_up_takes_no_assignee`) and a task that never ran with a worker
+(`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
+waits until that task ends, then runs. The task it follows never changes. If two
+follow-ups of the same task are filed at once, the second gets `task_id_taken` (file it again).
 
 ### skillsManifestSource
 

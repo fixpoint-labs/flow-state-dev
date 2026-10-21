@@ -87,6 +87,7 @@ await runGoal(async (failures, tell) => {
   const board = taskBoard({
     name: BOARD_ID,
     boardId: BOARD_ID,
+    mode: "delegation",
     collection: defineTaskCollection({ id: COLLECTION_ID, scope: "user" }),
     workers: {
       // The seat is a dispatcher, so the rows it claims run elsewhere. The flow

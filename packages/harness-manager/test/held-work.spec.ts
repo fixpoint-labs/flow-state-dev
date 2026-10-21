@@ -206,6 +206,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
   const board = taskBoard({
     name: "held-board",
     boardId: "held-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     onReview: "exit",

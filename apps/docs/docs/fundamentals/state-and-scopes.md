@@ -2,6 +2,9 @@
 sidebar_position: 5
 ---
 
+import Figure from "@site/src/components/Figure";
+import StateScopesDrawing from "./state-scopes.svg";
+
 # State & Scopes
 
 State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations.
@@ -19,7 +22,7 @@ State is organized into four scopes, each its own record with its own key:
 | **User** | What does this user need across their conversations in one organization? | Across sessions for a user, per organization |
 | **Org** | What does the team need to share? | Across sessions in an org |
 
-![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization; with isolateUserState it is one record per flow copy instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
+<Figure svg={StateScopesDrawing} caption="The four state scopes" description={"Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one user across conversations and flows inside one organization, keyed by the user and the organization; with isolateUserState it is one record per flow copy instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes"} />
 
 A session names the user and organization it belongs to. It doesn't contain their state: each scope is read and written on its own record.
 

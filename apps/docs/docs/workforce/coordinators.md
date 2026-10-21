@@ -532,7 +532,7 @@ await help.sendAction(
 The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `addTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
 
 ```json
-{ "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }
+{ "ok": false, "error": "follow_up_of_unrun: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }
 ```
 
 ## Making your own flow a delegate

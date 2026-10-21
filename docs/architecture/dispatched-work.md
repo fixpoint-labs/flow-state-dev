@@ -553,18 +553,21 @@ questions:
 | | routing exclusion (`runsElsewhere`) | park exclusion (`onReview: "exit"`) |
 |---|---|---|
 | Asks | where does this row's work belong? | is this row waiting on a *human*? |
-| Derived from | the assignees the board's dispatchers serve, plus the row's `assignee` | the row's status |
+| Derived from | the board's declared `mode` (FIX-2076) | the row's status |
 | Applies to | `in_progress` rows only | `parked` rows only |
-| Applies on | boards with a dispatcher | any board, however it dispatches |
+| Applies on | `mode: "delegation"` boards, every row | any board, however it dispatches |
 | Liveness conjunct | **yes** — the lease | **no** |
 
-`runsElsewhere` reads the row's `assignee` against the assignees that dispatch,
-and that is sound only because a dispatching board freezes the assignee while an
+`runsElsewhere` is the board's declared mode, not an inference from its
+assignees (FIX-2076): a delegation board's every assignee dispatches, so every
+running row is another session's, and a plan board's runs in the drain, so none
+is. `taskBoard()` refuses a board whose assignees contradict its mode, which is
+what keeps the predicate true without reading the row. It needs no run state, so
+it survives a restart. A dispatching board still freezes the assignee while an
 attempt holds the row (`setAssignee` on an `in_progress` or `parked` row
-declines `immutable-assignee`): for a row a child is running the value cannot move under
-the predicate, and it survives a restart with no run state to rebuild. A
-waiting row can change hands (FIX-1780); its next claim hands it to the new
-assignee.
+declines `immutable-assignee`), because the child's routing key derives from it;
+a waiting row can change hands (FIX-1780), and its next claim hands it to the
+new assignee.
 `claimedBy` would not do — the child never claims, so a dispatched row still
 carries the session of the parent that claimed it.
 The run's own coordinate is `run`, which the claim gate writes from inside the

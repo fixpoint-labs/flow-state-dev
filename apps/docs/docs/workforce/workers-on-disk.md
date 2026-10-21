@@ -5,6 +5,9 @@ sidebar_label: Workers on disk
 description: "Workforce convention: describe each worker in a folder, read the tree at startup, and run every worker on one shared copy of the flow it names."
 ---
 
+import Figure from "@site/src/components/Figure";
+import DocumentsReachDrawing from "./documents-reach.svg";
+
 # Workers on disk
 
 Workforce is how you describe a roster of workers and run them. You can write each worker in TypeScript, or put each one in a folder and read the folder at startup.
@@ -136,7 +139,7 @@ that way: booting past it runs those workers short of instructions someone wrote
 Instructions written in a `TEAM.md` reach only that team's workers. They ride each worker's own
 configuration, so a worker on another team never sees them.
 
-![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own](./documents-reach.svg)
+<Figure svg={DocumentsReachDrawing} caption="references/ and resources/: where the text lives, who reaches it" description={"Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the worker ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org worker's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each worker its own"} />
 
 Team documents work differently by folder. Under `teams/<team>/resources/` they reach every worker on the worker flow that installed them, whatever its team; under `teams/<team>/references/` they reach only that team's workers. [Who reaches what](./documents-on-disk.md#who-reaches-what) shows how to filter the first.
 

@@ -53,6 +53,7 @@ function flowHandingOffTo(kind: string, block: TaskWorker) {
   const board = taskBoard({
     name: kind,
     boardId: kind,
+    mode: "delegation",
     collection: codingTasks,
     workers: {
       implement: dispatcher({

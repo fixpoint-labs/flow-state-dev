@@ -139,6 +139,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
   const board = taskBoard({
     name: "dotted-board",
     boardId: "dotted-board",
+    mode: "delegation",
     collection: ledger,
     concurrency: 1,
     ...(options.gate ? { dispatcher: runOwnerDispatcher() } : {}),

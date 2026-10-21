@@ -1,0 +1,10 @@
+/* Breaks every custom.css rule on purpose; scripts/lint-brand.mjs fails unless each one fires. */
+:root {
+  --ifm-color-primary: var(--info);
+  --ifm-link-color: tomato;
+}
+
+.pagination-nav__link:hover {
+  border-color: #2c4f8c;
+  color: oklch(0.5 0.1 250);
+}

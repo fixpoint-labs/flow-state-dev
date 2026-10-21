@@ -132,6 +132,7 @@ function buildFlow(options: {
   const board = taskBoard({
     name: `${options.kind}-board`,
     boardId: `${options.kind}-board`,
+    mode: options.mode === "dispatch" ? "delegation" : "plan",
     // Durable and user-scoped. A dispatching board must be durable (its rows
     // outlive the claiming request), and user scope is what makes the same
     // ledger reachable from inside the child session — a session-scoped one
@@ -344,8 +345,8 @@ describe("a dispatching board's launching request returns while the work is outs
     // the child session never claims — its start gate re-mints a ticket from
     // the row. So a dispatched row still carries the session of the parent
     // that claimed it, and "differs from the drain's own session" is false by
-    // construction. Anyone tempted to replace `runsElsewhere` with that
-    // comparison should fail here first.
+    // construction. Anyone tempted to tell a dispatched row by that comparison,
+    // rather than by the board's declared `mode`, should fail here first.
     expect(afterParent?.claimedBy?.sessionId).toBe("s_parent");
 
     // WHAT THE PARENT TOLD ITS CONSUMERS. The drain runs its completion meta

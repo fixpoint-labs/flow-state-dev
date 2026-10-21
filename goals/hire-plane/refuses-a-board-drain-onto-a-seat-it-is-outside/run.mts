@@ -89,6 +89,7 @@ const workerFlowName = defineFlow({
       block: taskBoard({
         name: "seat-board",
         boardId: BOARD_ID,
+        mode: "delegation",
         collection: ledger(),
         workers: {
           work: dispatcher<TaskWorkerInput>({ name: "seat-hand-off", action: "work", session: "per-task" }),
@@ -106,6 +107,7 @@ const seatHandOff = (name: string, flowKind: string) =>
 const orgBoard = taskBoard({
   name: "org-board",
   boardId: BOARD_ID,
+  mode: "delegation",
   collection: ledger(),
   workers: {
     org: seatHandOff("to-org-seat", fixture.orgWorker),

@@ -53,6 +53,7 @@ function buildFlow(kind: string, concurrency: "allow" | "queue" | "reject") {
   const board = taskBoard({
     name: `${kind}-board`,
     boardId: `${kind}-board`,
+    mode: "delegation",
     collection: defineTaskCollection({ id: `${kind}-ledger`, scope: "user" }),
     workers: {
       background: dispatcher({
