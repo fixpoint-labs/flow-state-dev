@@ -36,6 +36,13 @@
  * holds against a task the worker no longer owns, not just against
  * one it never named.
  *
+ * ## Mode (FIX-2076)
+ *
+ * `mode: "plan"` (default): every row runs in the drain, and the drain waits on
+ * every one. `mode: "delegation"`: every row is handed to another session
+ * through a dispatcher assignee, and the drain waits on none. The board refuses
+ * assignees that contradict its mode at construction (`./board-mode`).
+ *
  * ## Termination
  *
  * - `onIdle: 'complete-or-blocked'` (default, FIX-626): exit when the

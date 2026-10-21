@@ -36,7 +36,7 @@ type Controls = {
 };
 
 const doorInput = z.object({ message: z.string() });
-const STEP = "A step you filed for yourself";
+const STEP = "You are working a step you filed for yourself";
 const ANSWER = "The steps you filed for yourself have ended";
 
 function stepperFlow(installation: WorkerInstallation, controls: Controls) {

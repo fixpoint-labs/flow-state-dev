@@ -360,12 +360,17 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, mode, onReview, boardId, dispatchers, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
 single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
+`mode` (`"plan"` default | `"delegation"` — whether the drain waits on its tasks: a plan
+board runs every task inline and waits on each, a delegation board hands every task to
+another session through a dispatcher assignee and waits on none; a plan board holding a
+dispatcher, a delegation board with an inline assignee, and a delegation board with no
+dispatcher are refused at construction, naming the fix),
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched; may be a task
 dispatcher, see below),
@@ -431,12 +436,15 @@ failure by default; only a composition that supplies a tail able to read the rep
 
 #### Dispatching tasks through a dispatcher assignee
 
-An assignee under `workers` is a block. Put a `dispatcher({ action, session })`
-in that position and the assignee dispatches its tasks: the drain claims a row, sends a
-`task` dispatch to the flow's `task.actions[action]` entry, and moves on, while the
-entry's block runs in a **child session** of the session that drained — on a request
-of its own — and settles the row itself. Any other block in that position runs
-inline in the drain. The worker is declared once, on the flow, exactly like an
+An assignee under `workers` is a block. On a board declared `mode: "delegation"`, put a
+`dispatcher({ action, session })` in that position and the assignee dispatches its tasks:
+the drain claims a row, sends a `task` dispatch to the flow's `task.actions[action]`
+entry, and moves on, while the entry's block runs in a **child session** of the session
+that drained — on a request of its own — and settles the row itself. Every assignee on a
+delegation board dispatches, and the drain waits on none of its rows; a board that runs
+its assignees inline is a plan board (the default), which waits on every row and takes
+no dispatcher. `taskBoard()` refuses a board whose assignees contradict its mode, naming
+the fix. The worker is declared once, on the flow, exactly like an
 action. An assignee holding anything other than a block (an object such as
 `{ worker, dispatch }` or `{ block, session }`) is refused by name at construction.
 
@@ -456,9 +464,9 @@ const issueLedger = defineTaskCollection({
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",               // required once any assignee dispatches
+  mode: "delegation",                  // every row is handed off; the drain waits on none
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
-    triage: triageBlock,               // runs inline
     implement: dispatcher({            // dispatches to flow.task.actions.implement
       name: "dispatch-implement",
       action: "implement",
@@ -689,7 +697,9 @@ board's drain in an outer, judge-gated loop: seed → drain → judge → (repla
 repeat → finalize. The `judge` returns a three-way `Verdict`
 (`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
 the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
-The board must be request- or resource-backed. `parallelTasks` and `planAndExecute`
+The board must be request- or resource-backed and a plan board: a delegation board, whose
+drain returns while its tasks still run, and an `onReview: "exit"` board, whose drain can return
+with a task parked, are refused at construction. `parallelTasks` and `planAndExecute`
 are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Skills

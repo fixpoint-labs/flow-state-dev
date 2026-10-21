@@ -108,7 +108,9 @@ function shown(value: unknown): string {
  * steps it depends on.
  */
 export function stepMessage(task: TaskWorkerInput): string {
-  const lines = [`A step you filed for yourself. Do it now, and answer with its result.\n\n${taskMessage(task)}`];
+  const lines = [
+    `You are working a step you filed for yourself, and it is running now, so don't file or dispatch it again. Do this step's work in this answer, and answer with its result.\n\n${taskMessage(task)}`
+  ];
   const deps = task.deps === undefined ? [] : Object.entries(task.deps);
   if (deps.length > 0) {
     lines.push(`The results of the steps it depends on:\n${deps.map(([id, output]) => `- ${id}: ${shown(output)}`).join("\n")}`);

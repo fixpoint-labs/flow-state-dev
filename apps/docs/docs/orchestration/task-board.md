@@ -84,7 +84,22 @@ const board = taskBoard({
 // `board.drain` plugs into a parent sequencer as a normal step.
 ```
 
-Defaults: request-scoped storage (`collection` is optional), concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
+Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is optional), concurrency `4`, `dispatcher: "topological"`, `onIdle: "complete-or-blocked"`, `onError: "skip"`.
+
+## Plan boards and delegation boards: `mode`
+
+A board either runs its tasks or hands them out, and you say which with `mode`. It decides whether the drain waits for the work.
+
+- **`"plan"`** (the default) runs every task in the drain, and the drain waits on every one of them. When it returns, every task it could run has ended. Every assignee is a block that runs inline. The patterns are plan boards.
+- **`"delegation"`** hands every task to another session through an [assignee that dispatches](#assignees-that-dispatch), and the drain waits on none of them: it returns once each task is on its way, and the session working a task settles it.
+
+A board has one mode, so its assignees all agree with it. `taskBoard()` throws when they don't, naming the board, the assignee and the fix:
+
+- a plan board with a dispatcher assignee, named or the `defaultWorker`: declare `mode: "delegation"`;
+- a delegation board with an assignee that runs inline, named, the uniform `workers` block, or the `defaultWorker`: put a dispatcher there, or move that work to a plan board;
+- a delegation board with no dispatcher at all: drop `mode`.
+
+`board.mode` reads the mode back. A [goal-seek loop](./goal-seek-loop.md) refuses a delegation board, because its judge would rule on work that is still running.
 
 ## Termination: `onIdle` modes
 
@@ -312,17 +327,17 @@ There is no `defaultWorker` unless you pass one.
 
 The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `addTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
 
-A registry assignee can also run its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
+On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
 
 ## Assignees that dispatch {#assignees-that-dispatch}
 
 <a id="assignees-that-hand-off"></a>
 
-An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. An assignee can instead **dispatch** each claimed row to a **dispatch run** and move on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. On a board declared `mode: "delegation"`, an assignee instead **dispatches** each claimed row to a **dispatch run** and moves on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
 
 A dispatch run is an ordinary session — of this flow, or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
-An assignee dispatches when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. A board can mix assignees that dispatch with assignees that run inline:
+An assignee dispatches when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. Every assignee on the board dispatches; work that should run inline goes on a plan board of its own:
 
 ```ts
 import { defineFlow, dispatcher } from "@flow-state-dev/core";
@@ -340,9 +355,9 @@ const issues = defineTaskCollection({
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",
+  mode: "delegation",                    // every task is handed to another session
   collection: issues,
   workers: {
-    triage: triageBlock,                 // runs inline, in the drain
     implement: dispatcher({              // dispatches to flow.task.actions.implement
       name: "dispatch-implement",
       action: "implement",
@@ -429,6 +444,7 @@ declare function findFlowFor(assignee: string, ctx: BlockContext): Promise<strin
 const board = taskBoard({
   name: "support-work",
   boardId: "support-work",
+  mode: "delegation",
   collection: supportWork,                 // a defineTaskCollection()
   workers: {
     triage: dispatcher({ name: "dispatch-triage", flowKind: "support-triage", action: "work", session: "per-task" }),
@@ -544,6 +560,7 @@ An entry with `from` that a board in the same flow also dispatches to is refused
 
 `taskBoard()` throws, naming the board and the assignee, unless all of these hold for a board with any assignee that dispatches:
 
+- **It declares `mode: "delegation"`, and every assignee dispatches.** See [Plan boards and delegation boards](#plan-boards-and-delegation-boards-mode).
 - **`boardId` is set.** It is part of every dispatch run's session identity, so renaming it orphans work already in flight.
 - **The collection is a `defineTaskCollection()`.** The request, sequencer, and factory backings are refused: the run settles its row after the request that claimed it is gone.
 - **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its assignees dispatch within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.

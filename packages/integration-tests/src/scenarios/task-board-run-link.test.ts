@@ -76,7 +76,7 @@ function buildFlow(options: {
   const board = taskBoard({
     name: `${options.kind}-board`,
     boardId: `${options.kind}-board`,
-    mode: "delegation",
+    mode: options.mode === "dispatch" ? "delegation" : "plan",
     collection: defineTaskCollection({ id: `${options.kind}-ledger`, scope: "user" }),
     workers: {
       background:

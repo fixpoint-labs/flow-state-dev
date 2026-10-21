@@ -19,7 +19,7 @@ function script(): MockGeneratorScriptEntry[] {
   let filed = false;
   return [
     { when: (input) => textOf(input).includes("The steps you filed for yourself have ended"), then: { text: "Final post, from the outline." } },
-    { when: (input) => textOf(input).includes("A step you filed for yourself"), then: { text: "OUTLINE-ALPHA" } },
+    { when: (input) => textOf(input).includes("You are working a step you filed for yourself"), then: { text: "OUTLINE-ALPHA" } },
     { when: (input) => filed && textOf(input).includes("write the post"), then: { text: "I'll outline it first." } },
     {
       when: (input) => {

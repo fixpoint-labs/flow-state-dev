@@ -34,6 +34,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |
 | `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
+| `dispatchedTaskPredicate` | The board's declared `mode` (`board.mode`): a delegation board's drain waits on no row, a plan board's on every row | FIX-2076 |
 
 Behaviour that changes without a removed name, carried by the owner's changeset the same way.
 Behaviour lines live here, not in the table above.
@@ -45,3 +46,5 @@ Behaviour lines live here, not in the table above.
 | A follow-up into a busy session being refused | It waits, then starts in that session when the open task ends | FIX-2080 |
 | A dependency on another board, waiting for good | Refused at filing: cross boards with a wait or a held task | FIX-2080 |
 | Plan-and-execute and supervisor cascading only a failed step | A cancelled step's dependents are cancelled too, with the same `skipped` label | FIX-2080 |
+| A task a worker files naming itself (a piece for itself, in a task session of its own, its task parked on it) | A step on the session's plan ledger, worked by the same request; the request answers once, a string, instead of `{ answer, pieces }` (FIX-2077's row covers pieces for others) | FIX-2076 |
+| A board with a dispatcher assignee | Declares `mode: "delegation"`, and every assignee on it dispatches; `taskBoard()` refuses it otherwise, naming the fix | FIX-2076 |
