@@ -19,9 +19,9 @@ const file = async (host: BoardHost, userId: string, conv: string, input: Record
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
 
-/** Write a task down without starting it: the board's `addTask_tasks`, for a row with no owner yet. */
+/** Write a task down without starting it: the board's `createTask_tasks`, held, for a row with no owner yet. */
 const record = async (host: BoardHost, userId: string, conv: string, input: Record<string, unknown>) => {
-  const result = await host.act(userId, conv, "addTask_tasks", input);
+  const result = await host.act(userId, conv, "createTask_tasks", { held: true, ...input });
   expect(result.error, messageOf(result.error)).toBeUndefined();
   return result.output as { ok: boolean; taskId?: string; error?: string };
 };
@@ -216,7 +216,7 @@ describe("a task filed with no assignee", () => {
     try {
       const conv = await host.conversation("alice", "pm");
       const filed = await record(host, "alice", conv, { goal: "pick someone" });
-      expect(filed).toEqual({ ok: true, taskId: expect.any(String), status: "held", note: expect.stringContaining("dispatchTask") });
+      expect(filed).toEqual({ ok: true, taskId: expect.any(String), status: "held" });
       await host.settled();
       expect(await list(host, "alice", conv)).toEqual([
         expect.objectContaining({ id: filed.taskId, status: "held", goal: "pick someone" })
@@ -224,7 +224,7 @@ describe("a task filed with no assignee", () => {
       expect((await list(host, "alice", conv))[0]!.assignee).toBeUndefined();
       expect(host.runs).toEqual([]);
 
-      expect((await host.act("alice", conv, "assignTask_tasks", { taskId: filed.taskId, assignee: "eng.writer" })).output).toEqual({
+      expect((await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, assignee: "eng.writer" })).output).toEqual({
         ok: true
       });
       await host.settled();
@@ -265,8 +265,8 @@ describe("what a filing can't name (BR-8)", () => {
       expect(host.runs).toEqual([]);
       // An update can't reach a marker either.
       await host.act("alice", conv, "updateTask_tasks", {
-        taskId: filed.taskId,
-        patch: { metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored" }, extra: 1 } }
+        id: filed.taskId,
+        metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored" }, extra: 1 }
       });
       expect((await host.row("alice", filing, filed.taskId!))?.metadata).toEqual({ note: "kept", extra: 1 });
     } finally {
@@ -284,9 +284,9 @@ describe("reassign and cancel: the task tools' own contract on this board", () =
       const filing = await host.filingOf("alice", conv);
       // Wait for the run to hold it.
       for (let i = 0; i < 100 && host.runs.length === 0; i += 1) await new Promise((r) => setTimeout(r, 10));
-      const moved = await host.act("alice", conv, "assignTask_tasks", { taskId: filed.taskId, assignee: "eng.writer" });
-      expect(moved.output).toMatchObject({ ok: false, error: expect.stringContaining("immutable-assignee") });
-      expect((await host.act("alice", conv, "cancelTask_tasks", { taskId: filed.taskId })).output).toEqual({ ok: true });
+      const moved = await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, assignee: "eng.writer" });
+      expect(moved.output).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: assignee/) });
+      expect((await host.act("alice", conv, "updateTask_tasks", { id: filed.taskId, status: "cancelled" })).output).toEqual({ ok: true });
       await host.settled();
       const row = await host.row("alice", filing, filed.taskId!);
       expect(row).toMatchObject({ status: "cancelled", assignee: "eng.tasker" });
@@ -298,7 +298,7 @@ describe("reassign and cancel: the task tools' own contract on this board", () =
     }
   });
 
-  it("answers writes to a finished task with the tools' codes, and a failed task is filed again with addTask (leg e)", async () => {
+  it("answers writes to a finished task with the field table's refusal, and a failed task is filed again with createTask (leg e)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -307,21 +307,20 @@ describe("reassign and cancel: the task tools' own contract on this board", () =
       const filing = await host.filingOf("alice", conv);
       expect((await host.row("alice", filing, filed.taskId!))?.status).toBe("errored");
       const write = async (action: string, input: Record<string, unknown>) => {
-        const result = await host.act("alice", conv, `${action}_tasks`, { taskId: filed.taskId, ...input });
+        const result = await host.act("alice", conv, `${action}_tasks`, { id: filed.taskId, ...input });
         expect(result.error, messageOf(result.error)).toBeUndefined();
         return JSON.stringify(result.output);
       };
-      expect(await write("assignTask", { assignee: "eng.tasker" })).toMatch(/"error":"terminal_task_write_declined/);
-      expect(await write("cancelTask", {})).toMatch(/"error":"terminal_task_write_declined/);
-      expect(await write("completeTask", { output: 1 })).toMatch(/"error":"illegal_status_transition/);
-      expect(await write("updateTask", { patch: { status: "held" } })).toMatch(/"error":"terminal_task_write_declined/);
+      expect(await write("updateTask", { assignee: "eng.tasker" })).toMatch(/"error":"task_finished/);
+      expect(await write("updateTask", { status: "cancelled" })).toMatch(/"error":"task_finished/);
+      expect(await write("updateTask", { status: "held" })).toMatch(/"error":"task_finished/);
 
       const again = await file(host, "alice", conv, { goal: "doomed, again", assignee: "eng.tasker" });
       await host.settled();
       expect((await host.row("alice", filing, again.taskId!))?.status).toBe("completed");
-      // A completed task refuses a failure the same way.
-      const failed = await host.act("alice", conv, "failTask_tasks", { taskId: again.taskId, error: "x" });
-      expect(JSON.stringify(failed.output)).toMatch(/"error":"illegal_status_transition/);
+      // A completed task refuses an edit the same way.
+      const edited = await host.act("alice", conv, "updateTask_tasks", { id: again.taskId, priority: 2 });
+      expect(JSON.stringify(edited.output)).toMatch(/"error":"task_finished/);
     } finally {
       await host.dispose();
     }

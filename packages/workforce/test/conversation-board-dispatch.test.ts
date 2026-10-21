@@ -49,7 +49,7 @@ describe("a recorded row on a conversation's board (V4)", () => {
       expect(other.ok).toBe(true);
       await host.settled();
       // An assign that names the row's new owner: it moves, and stays held.
-      expect(await act(host, conv, "assignTask_tasks", { taskId: "task_recorded", assignee: "eng.writer" })).toEqual({
+      expect(await act(host, conv, "updateTask_tasks", { id: "task_recorded", assignee: "eng.writer" })).toEqual({
         ok: true
       });
       await host.settled();
@@ -88,7 +88,7 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     try {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
-      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
+      const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses", assignee: "eng.tasker" });
       expect(filed).toMatchObject({ ok: true, status: "held" });
       for (let i = 0; i < 20; i += 1) {
         await act(host, conv, "listTasks_tasks", {});
@@ -110,7 +110,7 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     try {
       const conv = await host.conversation("alice", "desk");
       const filing = await host.filingOf("alice", conv);
-      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses" });
+      const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses" });
       await host.settled();
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({
         status: "held",
@@ -133,7 +133,7 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
       await act(host, conv, "listTasks_tasks", {});
       await host.settled();
       expect(host.runs).toEqual([]);
-      await act(host, conv, "assignTask_tasks", { taskId: "task_ready", assignee: "eng.writer" });
+      await act(host, conv, "updateTask_tasks", { id: "task_ready", assignee: "eng.writer" });
       await host.settled();
       expect(await host.row("alice", filing, "task_ready")).toMatchObject({ status: "completed", assignee: "eng.writer" });
       expect(host.runs.map((run) => run.worker)).toEqual(["eng.writer"]);
@@ -147,8 +147,8 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     try {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
-      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
-      await act(host, conv, "assignTask_tasks", { taskId: filed.taskId!, assignee: "eng.writer" });
+      const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses", assignee: "eng.tasker" });
+      await act(host, conv, "updateTask_tasks", { id: filed.taskId!, assignee: "eng.writer" });
       await act(host, conv, "dispatchTask_tasks", { taskId: filed.taskId! });
       await host.settled();
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "completed", assignee: "eng.writer" });
@@ -163,8 +163,8 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     try {
       const conv = await host.conversation("alice", "pm");
       const filing = await host.filingOf("alice", conv);
-      const filed = await act(host, conv, "addTask_tasks", { goal: "Audit licenses", assignee: "eng.tasker" });
-      expect(await act(host, conv, "cancelTask_tasks", { taskId: filed.taskId! })).toEqual({ ok: true });
+      const filed = await act(host, conv, "createTask_tasks", { held: true, goal: "Audit licenses", assignee: "eng.tasker" });
+      expect(await act(host, conv, "updateTask_tasks", { id: filed.taskId!, status: "cancelled" })).toEqual({ ok: true });
       await host.settled();
       expect(await host.row("alice", filing, filed.taskId!)).toMatchObject({ status: "cancelled", attempts: 0 });
       expect(host.runs).toEqual([]);
@@ -311,7 +311,7 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
-      const viaAdd = await act(host, conv, "addTask_tasks", { goal: "x", assignee: "nobody.here" });
+      const viaAdd = await act(host, conv, "createTask_tasks", { held: true, goal: "x", assignee: "nobody.here" });
       const viaDispatch = await act(host, conv, "dispatchTask_tasks", { goal: "x", assignee: "nobody.here" });
       expect(viaDispatch).toEqual(viaAdd);
       expect(viaDispatch.ok).toBe(false);

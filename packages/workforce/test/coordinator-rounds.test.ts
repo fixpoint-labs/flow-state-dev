@@ -576,7 +576,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     const row = (await host.postRows("alice")).find((r) => r.sealed.round === 0 && r.assignee === "eng.coder")!;
-    const cancelled = await host.act("alice", id, "cancelTask_tasks", { taskId: row.id });
+    const cancelled = await host.act("alice", id, "updateTask_tasks", { id: row.id, status: "cancelled" });
     expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
     // Closed before the coder's turn ends.
     const openNow = async () => (await host.sessionState(id)).openRounds.filter((open: OpenRound) => open.round === 0);

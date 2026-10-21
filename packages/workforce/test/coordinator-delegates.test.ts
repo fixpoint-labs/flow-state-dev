@@ -346,8 +346,31 @@ describe("a conversation's delegates (V2)", () => {
   });
 });
 
-describe("the coordinator's own delegate tools (V2, BR-32)", () => {
-  it("adds and lists through the tools, and refuses Bob's worker exactly as the action does", async () => {
+describe("the coordinator's own delegate tools (V2, BR-32, FIX-2081 rule 13)", () => {
+  it("doesn't let a coordinator not set to change its own delegates change them through a tool", async () => {
+    const judgment = mockGenerator({
+      script: [
+        {
+          toolCalls: [
+            { toolCallId: "t1", toolName: "addDelegate", args: { worker: "eng.coder" } },
+            { toolCallId: "t2", toolName: "listDelegates", args: {} }
+          ]
+        },
+        { text: "Done." }
+      ]
+    });
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "chief");
+    await host.act("alice", id, "run", { message: "bring in a coder" });
+    const results = await toolResults(host, id);
+    // listDelegates is every worker's; addDelegate isn't offered, so nothing it would add lands.
+    expect(results.listDelegates[0].delegates.map((d: any) => d.worker)).toEqual(["eng.em"]);
+    expect(results.addDelegate?.[0]?.delegates).toBeUndefined();
+    const delegates = (await host.sessionState(id)).delegates;
+    expect((delegates ?? []).map((d: any) => d.worker)).not.toContain("eng.coder");
+  });
+
+  it("adds and lists through the tools on a coordinator set to change its own, and refuses Bob's worker exactly as the action does", async () => {
     const judgment = mockGenerator({
       script: [
         {
@@ -360,7 +383,7 @@ describe("the coordinator's own delegate tools (V2, BR-32)", () => {
         { text: "Done." }
       ]
     });
-    const host = bootHost({ judgment });
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { managesOwnDelegates: true } }) });
     expect((await host.hire("bob", { id: "bobs-helper", flow: "helper" })).error).toBeUndefined();
     const id = await host.conversation("alice", "chief");
     const turn = await host.act("alice", id, "run", { message: "bring in a coder" });
