@@ -73,12 +73,9 @@ produce, don't add ceremony.
 - **The metric that matters:** rounds-to-approval and `design-off` frequency trending
   **down** across cycles. That downward trend *is* the proof the harness is improving.
   Flat or rising means the upstream fixes aren't landing where the rework actually is.
-- **Read `ways per job` beside it.** A clean review can still hide an added way to do a
-  job: approval in round one leaves no finding, and shows up as *fewer* rounds. So the
-  epic rows' `ways per job` count is the other trend to watch, and it should hold flat or
-  fall. A rise with no approved keep-ask behind it is a skipped job check. Score it like a
-  recurring class, and trace where the check was skipped (spec, bug route, or a diff that
-  added the way after its spec).
+- **Read `ways per job` beside it** (defined in the ledger header). Score a rise with no
+  approved keep-ask as a recurring class, and trace where the job check was skipped: the
+  spec, the bug route, or a diff that added the way after its spec.
 - **Score direction artifacts against the review bar, not against comment volume.** A
   **direction artifact** is a PR whose job is to settle an approach rather than ship code —
   **spec PRs and epic PRs both**. Each runs on a budget of two rounds, and most of its

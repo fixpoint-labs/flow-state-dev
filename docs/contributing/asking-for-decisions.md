@@ -183,7 +183,12 @@ the artifact carries more product surface than one artifact should.
 A change that adds another way to do a job something already does (hand off work, wait for a
 result, answer a question, report an ending) is how a surface grows one reasonable approval at a
 time. Each such ask can state the cost honestly ("a second entry kind nobody needs") and still
-recommend building it, and nobody keeps the count. Two rules:
+recommend building it, and nobody keeps the count.
+
+**A way to do a job** is a public method, tool, action, entry, verb or resume path, or a
+fallback that finds what a primitive should hand over (a lookup around a claim the caller can't
+see). A fallback has a second fix as well: it belongs in the primitive (tenet 5). Other docs
+link to this definition rather than restating it. Two rules:
 
 - **The reduction is the default, and it is the engineer's call.** Extend the closest existing
   entry with an option ([`issue-spec`](../../.agents/skills/issue-spec/SKILL.md) Step 3.5,

@@ -274,7 +274,7 @@ Keep it brief — the user shouldn't have to read a page to make a call. If the 
 - A new vocabulary term that becomes part of how users reason about the system (block kind, scope, item type, capability category)
 - An observability or lifecycle integration that needs framework-side hooks unavailable in user space
 - A composition with existing framework features that wouldn't work outside the framework's resolution path
-- A bug fix or correctness change — those don't go through this gate at all, **unless the fix adds a way to do a job something already does** (a verb, entry, tool or resume path). That isn't a bug ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a spec"), and question 7 applies
+- A bug fix or correctness change — those don't go through this gate at all, **unless the fix adds a way to do a job something already does**. That isn't a bug ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a spec"), and question 7 applies
 
 **Signals to push back — toward *refine the substrate*, *build smaller*, or *don't build*:**
 
