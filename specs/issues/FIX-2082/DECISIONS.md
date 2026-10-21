@@ -49,7 +49,10 @@ It comes down to the epic's walk: inline only, writer's fact-check can't have a 
 
 **What would change my mind:** the owner reading *"a plan row uses only start and attempts"* as a
 rule, not a description. Then a dispatched plan row is a flow author's board only, and the
-closure's walk dispatches the fact-check from one.
+closure's walk dispatches the fact-check from one. Or the owner placing a plan row's session with FIX-2080,
+which owns the setting (round 1's second look recommends this split): then this issue lifts the
+refusal and makes a drain wait on a dispatched row from any board (legs a, b, c, e), and FIX-2080
+decides `session: "new"` on a worker's own step, against its own default of `"new"`.
 
 ## Decided, not asked
 
@@ -60,27 +63,44 @@ closure's walk dispatches the fact-check from one.
   FIX-2058's `waitForUser` park on the same gate and pass the same count.
 - **The task checks.** A wait is refused, before anything is written and naming the rule, on a task
   this session didn't file, on one whose result goes to the conversation (moved from FIX-2080), on a
-  second wait in one model step, past 5 deep, and on a host that can't hold a wait. A task already
-  ended returns at once.
+  task another request already waits on, on a second wait in one model step, past 5 deep, and on a
+  host that can't hold a wait. A task already ended returns at once. *This session filed it* reads a
+  filing session the substrate stamps on the row when it is built, never input (BP-031): `createdBy`
+  names only the user, and two sessions of one user can reach one shared board. A row filed before
+  the upgrade has none and reads as *filer unknown*, refused, as `createdBy` reads today (BP-030).
+  *Another request already waits*: a session can run requests side by side (`concurrency: "allow"` is
+  the default), so the row's wait slot is taken in one conditional write and a second taker is
+  refused; it never replaces the first gate.
 - **What it returns.** `getTask` with `wait` returns the task as `getTask` does, once it ends or at
   the deadline; its status says which. The `answer` field and the wait error codes go: a model reads
-  `failed`, `cancelled` or `in_progress` off the task. A dispatcher's wait outputs
+  `errored`, `cancelled` or `in_progress` off the task (the task's own vocabulary; `failed` is only the
+  dispatcher's result below). A dispatcher's wait outputs
   `{ status, output?, error?, requestId }`, with status `completed`, `failed` or `running`.
 - **The deadline.** `deadline` is milliseconds from the call: a model can't read the clock. Unset,
-  it is a host setting, five minutes by default, today's. Above the host's maximum (24 hours by
-  default, never past FIX-2078's maximum debt age) it is refused, naming the maximum. At the
-  deadline the row's wait is cleared, so the ending reaches `onTaskSettled` unless the request waits
-  again (rule 7). A row holds one wait at a time; a session runs one request at a time.
+  it is a host setting, five minutes by default, today's. Below the host's minimum (the sweeper's
+  resolution by default: a shorter deadline can't come due sooner, and would only spin park and
+  resume) or above its maximum (24 hours by default, never past FIX-2078's maximum debt age) it is
+  refused, naming the bound.
+- **Who gets the ending: exactly once.** The claim gate decides it in the write that records the
+  ending, against the row's wait slot: a parked request is resumed with it; otherwise it is owed to
+  `onTaskSettled` (rule 7). At the deadline the slot is not cleared but lapsed, in one conditional
+  write that loses to an ending already written, so an ending and a deadline due together resume the
+  request once. A lapsed slot still holds the ending for the request that waited, while that request
+  runs: its next `getTask` (waiting or not) returns it and the notice is never owed. Only when that
+  request ends without reading it is it owed to `onTaskSettled`, once.
 - **A drain's wait** uses the host's default and waits again at each deadline, a check-in. It never
   moves past a running row; its own request keeps its task's claim through FIX-2077's hold.
 - **A dispatcher's `wait`.** Inside a board an unset `wait` follows the mode; `taskBoard()` refuses a
   plan board with `wait: false` and a delegation board with `wait: true`, and FIX-2076's refusal of
   any dispatcher on a plan board goes. Outside a board it defaults to `false`.
-- **The depth, and why 5.** Server-written, never input, and taken when a request waits: one more
-  than the depth of whatever waits on the request's own work, read off its task's wait slot or,
-  for a waited dispatch's child, its birth. Each wait records its depth where the work below reads
-  it. A wait started late, on a task whose request already waits, doesn't re-count the waits below;
-  the tree bounds such a chain, since a request waits only on what it filed. **Why 5:** a
+- **The depth, and why 5.** Server-written, never input, and the length of the live chain of parked
+  waits, checked whenever a wait starts, from either end. Above: one more than whatever waits on the
+  request's own work now, read live off its task's wait slot or, for a waited dispatch's child, its
+  parent request's park, never a count copied at birth. Below: a wait on work that is itself already
+  waiting (a task whose request waits, a child request that dispatched and waits) adds the deepest
+  live wait under it. Over 5 is refused. So a chain built below a task nobody waits on, then waited
+  on late, can't pass 5, and nor can a wait added below after a deadline. The tree alone does not
+  bound this: a waited dispatch builds no tree level. **Why 5:** a
   chain of task waits can't pass the tree's 5, so the limit binds only chains that mix in waited
   dispatches and, later, calls, which build no tree. One number bounds both, each parked wait keeps a
   session busy, and nothing in the repo nests deeper than one today.
@@ -112,7 +132,33 @@ closure's walk dispatches the fact-check from one.
 
 ## Notes from review
 
-None yet.
+Round 1 ([#3597](https://github.com/fixpoint-labs/flow-state-dev/pull/3597)), recorded for the
+implementer, not baked into the design:
+
+- *"Don't leave a half-empty `wait-for-response.ts` behind. Rename the surviving park/resume core
+  for what it now is (a wait on a task), and complete the move (BP-034)."* — second look
+- *"The spec's debt table does not list these, so check each is dead or still reached by the stop
+  path (which stays): `WAIT_TIMED_OUT_REASON`, the `wait_timed_out`, `wait_timeout_out_of_range` and
+  `wait_task_*` error codes, `cancelOrOwe`, and `Task.cancelOwed`/`markCancelOwed`. Delete what the
+  stop path doesn't use."* — second look
+- *"The sweeper's expiry-resume of wait gates stays only for pre-upgrade gates. Put a removal
+  condition on it, as D1 already hints."* — second look
+- *"Drain's wait is unbounded … a hung dispatched step parks a session forever. The spec leans on
+  FIX-2078's maximum debt age. State that this is the bound."* — second look
+- *"Check that the in-memory test store and the Vercel and BullMQ hosts keep wakes after FIX-2078.
+  If not, kitchen-sink and the unit suites can't exercise a wait."* — second look
+- *"This issue ships after FIX-2078, FIX-2076, FIX-2077 and FIX-2081 … Re-read their final shapes
+  before the implementer starts."* — second look
+- *"Drain re-wait on host default (5m) every deadline … a sentence on whether drains get a longer
+  deadline tier (or in-place wake extension) would head off a 'why is my plan drain waking every 5
+  minutes?' surprise."* — Cursor
+- *"Refactor `wait-for-response.ts` in place … don't add a parallel `packages/orchestration/src/waits/`.
+  Thread D1 through FIX-2078 wake APIs; extend `WaitGateBinding` in core once … Land `getTask` wait on
+  FIX-2081's tool after rename … extend `goals/hand-offs/` harness; new
+  `goals/task-board/waits-on-a-task-it-filed/` should share libs, not a second runner."* — Cursor
+- *"One home for the implementation contract"*, *"keep one canonical figure"*, *"figures carry the
+  comparison"* — Cursor's editorial dedup across SPEC, DECISIONS and the figures. Below the
+  direction bar; worth doing if the implementation PR amends these documents.
 
 ## How it got here
 
