@@ -203,18 +203,17 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 A worker given a task can split it into pieces, for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed: when the task needs a worker that isn't a delegate, the worker says so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one. `listTasks({ filedByTask })` lists the pieces one task filed.
 
-The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
+The pieces go on the task session's own board. The worker's turn ends, and its task stays running, with nothing running for it, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more work, and the task keeps waiting for that too.
+
+Once no piece is open and the worker has had a turn on every piece's ending, the task completes. Its output is the same as any task's: the latest checkpoint the worker reported with `reportProgress`, or, when it reported none, the answer it gave in the last of those turns.
 
 ```json
-{
-  "answer": "The codename is Bluebird.",
-  "pieces": [
-    { "taskId": "task_8f2…", "goal": "Ask the archivist for the codename", "assignee": "archivist", "status": "completed", "output": "Bluebird" }
-  ]
-}
+"The codename is Bluebird."
 ```
 
-If the worker didn't get a turn after the last piece ended (after a server restart, for example), the output is `{ pieces }` with no `answer`, so treat `answer` as optional. A task with a piece that failed for good fails, naming it. Only the session that filed the task hears it end; it doesn't hear each piece.
+When the worker's answer should carry a piece's result, have it say so in the answer, or read the piece's own row: `listTasks({ filedByTask })` lists the pieces, and `getTask` reads one.
+
+A piece that fails for good doesn't fail the task by itself. Its ending wakes the worker like any other, and the worker's turn decides: it can file the work again, to the same worker or another, or answer with what it has. If that turn throws, the task's attempt fails. A worker that ignores a failed piece completes its task anyway, so tell your workers what to do when a piece fails. Only the session that filed the task hears it end; it doesn't hear each piece.
 
 The pieces live only as long as the attempt that filed them. When a task fails, is retried, or is cancelled, every piece it filed that is still open is cancelled within seconds. A retry doesn't wait on the pieces of the attempt before it.
 
@@ -224,10 +223,6 @@ your conversation ── task ──▶ lead's task session ── pieces ──
 ```
 
 A worker on a task can't wait for a piece inside its turn: `dispatchTask` with `wait` is refused there. It files the piece without `wait` and ends its turn, and the piece's ending wakes it.
-
-When a piece fails for good, the turn its ending woke can dispatch the work again, to the same worker or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
-
-Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
 
 Every session in the chain is yours, and only your own workers appear in it.
 

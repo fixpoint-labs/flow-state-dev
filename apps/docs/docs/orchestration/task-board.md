@@ -422,6 +422,39 @@ export default defineFlow({
 
 The drain dispatches a row once it has claimed it. A board run by a drain has no `dispatchTask` tool, because the drain decides when each task runs. For a worker that needs another worker to start now, see [Giving another worker work](#giving-another-worker-work).
 
+### When a dispatched task is done
+
+The run settles its task once, when the task's work is over. That is later than the moment the entry returns:
+
+- the run's request has ended, along with any background work it started (`.sideChain()`), and any background work your flow's `onFinished` hook started;
+- no task it filed is still open, or still owes its ending to the run's session;
+- nothing is queued for it.
+
+Until then the task stays `in_progress`. When the run's request ends and work it filed or work queued for it is still open, the row records what it waits on in `waitingOn` (`"filed"` or `"queued"`) and gives up its lease, so no other worker takes it back. The next request for the task in that session checks it again, and the request after which nothing holds it settles it. Its output is the latest checkpoint the worker reported with `reportProgress`; when it reported none, it is the run's answer.
+
+A run that stops partway, with `ctx.suspend()`, keeps its task the same way. `waitingOn` is `"person"` for a stop that asks a person (`human_approval`, `human_input`) and `"wait"` for any other, such as an external event. The task isn't handed out again however long the stop lasts, across a server restart too. Resuming the run continues the same attempt, and the task settles when that request's work is over. A run that throws fails its attempt.
+
+On a [Workforce](../workforce/delegating-work.md#splitting-a-task) conversation's board, the notice of a piece's ending and a worker's message are those later requests. On a flow of your own, a request that works on a waiting task starts with `taskRequestAdmission` and notes the answer that counts with `noteTaskAnswer`:
+
+```ts
+import { sequencer } from "@flow-state-dev/core";
+import { noteTaskAnswer, taskRequestAdmission } from "@flow-state-dev/orchestration/task-board";
+
+const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: pieceEndingSchema })
+  .tap(
+    taskRequestAdmission({
+      name: "on-piece-ended-admission",
+      answerCounts: true,
+      // The waiting task this session runs, read from server-set state.
+      find: async (ctx) => findOwnTask(ctx),
+    })
+  )
+  .step(readThePiece)
+  .tap(noteTaskAnswer);
+```
+
+`find` must answer only for a row whose run is this session. Put the admission first in the sequencer. It admits nothing while no request waits on the task, so two requests never settle it at once. Set `answerCounts: false` on an entry whose answer must never become the task's output, such as a message.
+
 ### Which session a task runs in
 
 `session` on the dispatcher decides, per row:

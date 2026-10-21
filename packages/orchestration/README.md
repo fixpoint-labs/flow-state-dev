@@ -651,7 +651,20 @@ settled or parked, has no outstanding claim, so there is nothing to reclaim. On 
 side the dispatch block returns `{ dispatched: true, taskId, sessionId, requestId,
 adopted }`, and a refused dispatch fails the row through the board's ordinary
 error path, throwing the same `DispatchRefusedError` (with its `refused` code)
-that a `dispatcher()` block throws. The child settles its own row, and the board's `onError` reaches it:
+that a `dispatcher()` block throws. The child settles its own row once, when the
+task's work is over: after its request, the background work that request started and
+the background work the flow's `onFinished` started have all ended, with no task it
+filed still open or still owing its ending to the child's session, and nothing queued
+for it. Until then the row stays `in_progress`; a request that ends with filed or
+queued work open records it in `waitingOn` (`"filed"`, `"queued"`) and drops the
+lease, and a request that suspends records `"person"` (`human_approval`,
+`human_input`) or `"wait"` (any other reason) and drops it too, so a waiting task is
+never reclaimed and run twice. The next request for the task in that session (its
+resume, or one a package admits with `taskRequestAdmission`, noting the answer that
+counts with `noteTaskAnswer`) checks it again; `afterTaskCheck` runs a step after that
+check, such as sending the notice the ending owes. The output is the latest
+`reportProgress` checkpoint, else the last answer that counts. A throw fails the attempt,
+and the board's `onError` reaches it:
 `"skip"` settles the row and lets the child's request complete, `"fail"` also fails
 that request. The one thing `onError` does not govern is the board failing to record
 what it saved — see the recorder-failure note under

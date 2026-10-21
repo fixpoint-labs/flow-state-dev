@@ -292,8 +292,9 @@ The full request execution sequence:
 6. Emit user message item (if userMessage defined)
 7. Fire request.onStarted
 8. Execute action root block, then wait for its .sideChain() work
-   ├─ Suspended (ctx.suspend()): persist status suspended, emit it, return.
-   │   Steps below do not run; the request resumes under the same id.
+   ├─ Suspended (ctx.suspend()): persist status suspended, emit it, run the
+   │   request-end hooks (told the suspension's reason), return. Steps below
+   │   do not run; the request resumes under the same id.
    ├─ Success path:
    │   ├─ Fire action.onCompleted
    │   ├─ Fire request.onCompleted
@@ -306,8 +307,9 @@ The full request execution sequence:
        ├─ Fire action.onErrored
        ├─ Fire request.onErrored
        └─ Fire request.onFinished
-9. Wait for .sideChain() work the terminal hooks queued, then stamp the
-   record's finalizedAtMs (its last write) and leave the active registry
+9. Wait for .sideChain() work the terminal hooks queued, run the request-end
+   hooks, then stamp the record's finalizedAtMs (its last write) and leave
+   the active registry
 ```
 
 **Guarantees** (for a request that finishes; see the suspended note below):
@@ -316,6 +318,7 @@ The full request execution sequence:
 - `onFinished` fires on every finished request, after the terminal record is persisted and the terminal stream status is emitted
 - `finalizedAtMs` is written only after `onFinished` and any `.sideChain()` work it queued have settled; session retention frees a request's id only after that
 - A run that calls `ctx.suspend()` ends as `suspended` instead: it fires no `onCompleted`, `onErrored` or `onFinished`, drains no terminal-hook work and writes no `finalizedAtMs`, because the id stays resumable. Session retention evicts only completed requests, so it keeps a suspended one.
+- Request-end hooks (`onRequestEnded` from `@flow-state-dev/core/types`, FIX-2077) run once per request end, after the last drain of step 9, on every terminal path and on a suspension. Framework-facing, not a flow-author hook: a package registers one from a block (the task board's claim gate settles a dispatched task there). A hook's rejection is logged and changes nothing about the request, whose record is already written; a throw in `onFinished` cannot skip one
 - `onStepErrored` fires for non-terminal step/side-chain failures (visibility hook)
 - A setup failure after the request has been accepted (`onRegistered`) settles a **fresh** request as `failed` with an `error` item. The HTTP 202 path awaits acceptance, not `finished`; leaving the row `in_progress` (or never writing one) is a silent hang. The failed record is written before `request.failed` is published, and the write leaves a row this run does not own untouched. Replay continuations still stay `suspended` / `interrupted` so they remain re-attemptable. Request observers (`onErrored` / `onFinished`) do not run on this path — there is no execution context yet.
 
