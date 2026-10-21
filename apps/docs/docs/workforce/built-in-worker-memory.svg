@@ -3,35 +3,35 @@
   <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per user and per worker, so two workers never read each other's and two people do not share them. Memory is off until you add it; when on, it is kept per user and shared by the workers serving that user. isolateUserState keeps it apart from other flows, not from other workers on the same flow.</desc>
   <defs>
     <style>
-      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
-              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
-              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
-              --faint:#94a3b8; --no:#b91c1c; }
+      :root { --bg:#f0ece1; --ink:#1b1a15; --ink-2:#3d3a32; --muted:#57544a; --proc-fill:#efe5fc;
+              --proc:#6b4fa0; --sess-fill:#e3e8f2; --sess:#2c4f8c; --org-fill:#e4f0de;
+              --org:#3d6b45; --card:#fcfbf7; --card-line:#8f8a7c; --box:#f8f6f0; --faint:#6e6a5e;
+              --no:#a83e28; }
       @media (prefers-color-scheme: dark) {
-        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
-                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
-                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
-                --faint:#64748b; --no:#f87171; } }
+        :root { --bg:#16150f; --ink:#ece7da; --ink-2:#cbc5b5; --muted:#a6a08f; --proc-fill:#3e3840;
+                --proc:#c7a4ff; --sess-fill:#2b3140; --sess:#8fabe2; --org-fill:#384230;
+                --org:#8cc39a; --card:#24231c; --card-line:#6e6a5e; --box:#1c1b15; --faint:#8d8777;
+                --no:#e27a5f; } }
       .bg { fill: var(--bg); }
-      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
-      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
-      .out { fill: var(--box); stroke: var(--faint); stroke-width: 2; stroke-dasharray: 6 4; }
-      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
+      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
+      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 1.5; }
+      .out { fill: var(--box); stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.2; }
+      .title { font: 600 20px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 600 14px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .code { font: 12px 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="920" height="478" rx="16" class="bg"/>
+  <rect x="0" y="0" width="920" height="478" rx="0" class="bg"/>
 
   <text x="28" y="36" class="title">What a built-in worker keeps, and who shares it</text>
   <text x="28" y="58" class="muted">Each lives in its own place.</text>
 
   <!-- Conversation -->
-  <rect x="28" y="84" width="272" height="250" rx="14" class="wall-sess"/>
+  <rect x="28" y="84" width="272" height="250" rx="0" class="wall-sess"/>
   <text x="44" y="108" class="h">One conversation</text>
   <text x="44" y="126" class="muted">A session: a direct chat, or a task session</text>
   <text x="44" y="158" class="p">The recent turns</text>
@@ -43,7 +43,7 @@
   <text x="44" y="292" class="muted">other conversations.</text>
 
   <!-- Skills -->
-  <rect x="320" y="84" width="272" height="250" rx="14" class="wall-org"/>
+  <rect x="320" y="84" width="272" height="250" rx="0" class="wall-org"/>
   <text x="336" y="108" class="h">One worker, one user</text>
   <text x="336" y="126" class="muted">Stored at user scope</text>
   <text x="336" y="158" class="p">The worker's skills</text>
@@ -55,7 +55,7 @@
   <text x="336" y="286" class="p">not share one worker's skills.</text>
 
   <!-- Memory -->
-  <rect x="612" y="84" width="280" height="250" rx="14" class="out"/>
+  <rect x="612" y="84" width="280" height="250" rx="0" class="out"/>
   <text x="628" y="108" class="h">One user</text>
   <text x="628" y="126" class="muted">Memory: off until you add it</text>
   <text x="628" y="158" class="p">What the worker remembers</text>
@@ -67,7 +67,7 @@
   <text x="628" y="290" class="muted">on the same flow share it.</text>
 
   <!-- Not a copy -->
-  <rect x="28" y="354" width="864" height="104" rx="12" class="box"/>
+  <rect x="28" y="354" width="864" height="104" rx="0" class="box"/>
   <text x="44" y="378" class="h">Not a copy</text>
   <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per user.</text>
   <text x="44" y="422" class="p">Memory is about a user, not a conversation. A new conversation starts with no turns but the same memory.</text>
