@@ -9,10 +9,7 @@
  *   annotation and no flow named — so the block stays portable and its type
  *   has an actual check behind it.
  *
- * These live under `src/` for the same reason the boundary tripwire does: this
- * package's `typecheck` runs `tsc -p tsconfig.json`, whose `include` is
- * `src/**` only, and vitest transpiles test files without checking types. A
- * `@ts-expect-error` under `test/` would be inert.
+ * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  */
 import { z } from "zod";
 import { defineFlow } from "../../flow/defineFlow";

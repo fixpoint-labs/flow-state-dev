@@ -21,5 +21,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `taskLedgers({ taskTurn })` | Nothing: a routed turn is a task turn | FIX-2083 |
 | `defineCoordinatorFlow`'s `delegateFlows`; `defineSessionBoard`'s `postFlows` and `posts`; `posts` and `both` in `listDelegates`' takes | Nothing: a delegate is a worker whose flow takes tasks, checked by its roles at hire | FIX-2083 |
 | `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall`, the `already-dispatched` decline | `createTask`, and `updateTask({ id, status: "pending" })` to release a held row | The later of FIX-2082 and FIX-2083, with `dispatchTask` |
-| `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
+| `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
+| A split task's `{ answer, pieces }` output | The worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks` | FIX-2077 |
+| A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |

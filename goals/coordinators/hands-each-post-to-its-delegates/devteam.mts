@@ -121,7 +121,7 @@ async function act(who: Connected, flowKind: string, sessionId: string, action: 
       break;
     }
   }
-  const found = (await who.routes.requests(sessionId).catch(() => [])).find((r) => r.id === requestId);
+  const found = (await who.routes.requests(sessionId).catch((): Array<Record<string, any>> => [])).find((r) => r.id === requestId);
   return { status, requestId, output: found?.result?.output, error: found?.result?.error?.message };
 }
 
