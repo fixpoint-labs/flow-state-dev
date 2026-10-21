@@ -24,7 +24,7 @@ to.**
 | **The real need** | *"One tool per job, and a refusal that names the rule … they decide who gives work to whom, and can cancel, release or edit tasks from a screen"* (the issue). The epic's [ER-5](../../epics/FIX-2056/DECISIONS.md#who-owns-what): the five task tools (the filer's four and the worker's `reportProgress`) are the only task surface, for models and screens, with identity from the server |
 | **Smaller, and rejected** | Rename `addTask` and `readTask`, drop the settle tools. `updateTask` still writes a finished task, a running task is still reassigned, and pieces still reach anyone on the roster |
 | **Bigger, and not this issue's** | `getTask`'s wait (FIX-2082) · `updateTask`'s `message` (FIX-2086) · routed tasks (FIX-2083) · held on questions and `answerTask` (FIX-2058) · `sendMessage`, and reading any of the user's tasks by id (FIX-2070) |
-| **Not done if** | A removed tool or its action is still exported, apart from `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` ([D1](DECISIONS.md#d1)) · an edit lands on a started or finished task, through `updateTask` or `dispatchTask`'s reassign and release · a task or a piece reaches a worker that is not its filer's delegate · a worker not set to change its delegates changes them · `reportProgress` is offered off a task turn, takes an `id`, changes the task's status, or lands once the task has finished · an action as another user lands · a rule holds through the tool but not through the action |
+| **Not done if** | A removed tool or its action is still exported, apart from `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` ([D1](DECISIONS.md#d1)) · an edit lands on a started or finished task, through `updateTask` or `dispatchTask`'s reassign and release · a task or a piece reaches a worker that is not its filer's delegate · a worker not set to change its delegates changes them · `reportProgress` is offered off a task turn, takes an `id`, changes the task's status, or lands once the task has finished · a final result replaces an `output` checkpoint, or a `receive` holding the claim is refused one · an action as another user lands · a rule holds through the tool but not through the action |
 
 ```mermaid
 flowchart LR
@@ -80,7 +80,7 @@ its claim holds, so it takes no `id`; once the task finishes it is refused ([D3]
 | Field | Means |
 | -- | -- |
 | `statusNote` | A one-line progress note for task views; any request holding the claim may set it, a queued `receive` included. It never changes the task's status: done stays rule 6, and a worker never settles its own row (rule 18) |
-| `output` | A checkpoint of the result so far, read by `getTask` and `listTasks` as progress; only a `work` or `onTaskSettled` request sets it, so a message never changes the output. Wakes no waiter. At the end, the final result replaces it unless it is missing (`undefined`) or the empty string; any other value, `null`, `false`, `0`, `{}` and `[]` included, replaces it. A failed attempt or a reclaimed lease keeps it |
+| `output` | A checkpoint of the result so far, read by `getTask` and `listTasks` as progress; any request holding the claim may set it while the task runs, a queued `receive` included. Wakes no waiter. The latest checkpoint is the task's output: the final result becomes the output only when `reportProgress` was never called with an `output`. A failed attempt or a reclaimed lease keeps it |
 
 ```diff
   # WORKER.md of a coordinator
