@@ -78,9 +78,10 @@ The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 | [FIX-2084](https://linear.app/fixpoint-labs/issue/FIX-2084) · worker contract | Roles checked at hire; `respond` and `dispatch` | FIX-2078, FIX-2083 |
 | [FIX-2085](https://linear.app/fixpoint-labs/issue/FIX-2085) · schedules | A schedule files an ordinary task | — |
 | [FIX-2086](https://linear.app/fixpoint-labs/issue/FIX-2086) · steer and follow-up | `updateTask({ message })`; finished output never changes | FIX-2077, FIX-2081 |
+| [FIX-2088](https://linear.app/fixpoint-labs/issue/FIX-2088) · background errors | A task's background error fails its attempt, through the gate's one check | FIX-2077 |
 | [FIX-2087](https://linear.app/fixpoint-labs/issue/FIX-2087) · closure · **required** | The QA plan, run on one `main` commit | every other child |
 
-Ten and a closure; the POC moved the waited dispatch to FIX-2082
+Eleven and a closure; the POC moved the waited dispatch to FIX-2082
 ([why](DECISIONS.md#what-the-end-state-poc-showed)). Engine prerequisites:
 [seams](DECISIONS.md#coordination-seams).
 
@@ -92,6 +93,7 @@ flowchart LR
   L["FIX-2080 · filing settings"] -->|"the read for retired rows"| B["FIX-2077 · when a task is done"]
   B -->|"the settle rule"| W["FIX-2082 · waits"]
   B -->|"a steer is no ending"| S["FIX-2086 · steer and follow-up"]
+  B -->|"the seam after the last drain"| G["FIX-2088 · background errors"]
   M["FIX-2076 · board modes"] -->|"a plan board's drain waits"| W
   L -->|"held, settings"| T["FIX-2081 · four tools"]
   T -->|"getTask"| W
@@ -152,4 +154,4 @@ release · [(f) keep Shift Manager's error route](DECISIONS.md#f) · [(a) one ep
 
 **Open, the owner's:** none.
 
-Epic · 10 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest
+Epic · 11 issues and a closure · Orchestration Primitives · Goal 2, differentiate on hard problems · Goal 4, keep the foundation honest

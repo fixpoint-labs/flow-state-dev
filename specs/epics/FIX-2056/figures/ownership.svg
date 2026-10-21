@@ -1,5 +1,5 @@
-<svg viewBox="0 0 940 296" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: six rules by ten issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the four tools. Other cells use the rule or are blank.">
+<svg viewBox="0 0 1000 296" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: six rules by eleven issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the four tools. Other cells use the rule or are blank.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }
@@ -15,7 +15,7 @@
     .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; letter-spacing:.06em; }
     .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
   </style>
-  <rect class="bg" x="0" y="0" width="940" height="296"/>
+  <rect class="bg" x="0" y="0" width="1000" height="296"/>
   <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE &#183; COLUMNS ARE FIX- ISSUES</text>
   <g id="columns">
     <text class="t-col" x="242" y="46">2076</text>
@@ -28,7 +28,8 @@
     <text class="t-col" x="662" y="46">2084</text>
     <text class="t-col" x="722" y="46">2085</text>
     <text class="t-col" x="782" y="46">2086</text>
-    <text class="t-col" x="842" y="46">2087&#183;cl</text>
+    <text class="t-col" x="842" y="46">2088</text>
+    <text class="t-col" x="902" y="46">2087&#183;cl</text>
   </g>
   <g id="er1">
     <text class="t-row" x="16" y="76">ER-1 only gate or drain settles</text>
@@ -37,6 +38,7 @@
     <rect class="use" x="476" y="58" width="54" height="26" rx="3"/><text class="t-use" x="482" y="75">uses</text>
     <rect class="use" x="536" y="58" width="54" height="26" rx="3"/><text class="t-use" x="542" y="75">uses</text>
     <rect class="use" x="836" y="58" width="54" height="26" rx="3"/><text class="t-use" x="842" y="75">uses</text>
+    <rect class="use" x="896" y="58" width="54" height="26" rx="3"/><text class="t-use" x="902" y="75">uses</text>
   </g>
   <g id="er2">
     <text class="t-row" x="16" y="108">ER-2 one done answer, at the gate</text>
@@ -45,6 +47,7 @@
     <rect class="use" x="536" y="90" width="54" height="26" rx="3"/><text class="t-use" x="542" y="107">uses</text>
     <rect class="use" x="596" y="90" width="54" height="26" rx="3"/><text class="t-use" x="602" y="107">uses</text>
     <rect class="use" x="776" y="90" width="54" height="26" rx="3"/><text class="t-use" x="782" y="107">uses</text>
+    <rect class="use" x="836" y="90" width="54" height="26" rx="3"/><text class="t-use" x="842" y="107">uses</text>
   </g>
   <g id="er3">
     <text class="t-row" x="16" y="140">ER-3 every ending once, debts due</text>
@@ -52,7 +55,7 @@
     <rect class="use" x="596" y="122" width="54" height="26" rx="3"/><text class="t-use" x="602" y="139">uses</text>
     <rect class="use" x="656" y="122" width="54" height="26" rx="3"/><text class="t-use" x="662" y="139">uses</text>
     <rect class="use" x="716" y="122" width="54" height="26" rx="3"/><text class="t-use" x="722" y="139">uses</text>
-    <rect class="use" x="836" y="122" width="54" height="26" rx="3"/><text class="t-use" x="842" y="139">uses</text>
+    <rect class="use" x="896" y="122" width="54" height="26" rx="3"/><text class="t-use" x="902" y="139">uses</text>
   </g>
   <g id="er4">
     <text class="t-row" x="16" y="172">ER-4 four filing settings</text>
@@ -69,7 +72,7 @@
     <rect class="use" x="656" y="186" width="54" height="26" rx="3"/><text class="t-use" x="662" y="203">uses</text>
     <rect class="use" x="716" y="186" width="54" height="26" rx="3"/><text class="t-use" x="722" y="203">uses</text>
     <rect class="use" x="776" y="186" width="54" height="26" rx="3"/><text class="t-use" x="782" y="203">uses</text>
-    <rect class="use" x="836" y="186" width="54" height="26" rx="3"/><text class="t-use" x="842" y="203">uses</text>
+    <rect class="use" x="896" y="186" width="54" height="26" rx="3"/><text class="t-use" x="902" y="203">uses</text>
   </g>
   <g id="er6">
     <text class="t-row" x="16" y="236">ER-6 retired rows, one map</text>

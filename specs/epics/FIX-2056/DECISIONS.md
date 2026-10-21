@@ -71,7 +71,7 @@ It comes down to a user's open task in a persistent store: read, it survives the
 
 ## Who owns what
 
-![Who owns what: six rules by ten issues and the closure, each rule with one owner](figures/ownership.svg)
+![Who owns what: six rules by eleven issues and the closure, each rule with one owner](figures/ownership.svg)
 
 A *uses* cell is a place a child must not re-decide. Board modes and delegates are FIX-2076's and
 FIX-2081's own scope.
@@ -79,18 +79,20 @@ FIX-2081's own scope.
 | # | Rule every child obeys | Owner | Checked at |
 |---|---|---|---|
 | ER-1 | Only the claim gate (a dispatched row) or the drain (an inline row) records a row's ending. No tool, worker block, wait or Workforce path does (rule 18) | FIX-2076 | Every spec review; the closure sweep |
-| ER-2 | One predicate for done (rule 6), in orchestration, checked after the request's background work and when a task it filed ends. Every wait, a plan board's drain included, wakes on the ending the gate writes; a deadline writes none. No Workforce code re-derives a request's kind from session state | FIX-2077 | FIX-2078's, FIX-2082's, FIX-2083's and FIX-2086's spec review |
+| ER-2 | One predicate for done (rule 6), in orchestration, checked after the request's background work and when a task it filed ends. Every wait, a plan board's drain included, wakes on the ending the gate writes; a deadline writes none. Code a child adds asks whether a request works a task through `isTaskTurn` or the gate, and finds a session's task from its server-set field or the row whose run link names the request; it never re-derives a request's kind from session state ([debt](#er-2-debt)) | FIX-2077 | FIX-2078's, FIX-2082's, FIX-2083's, FIX-2086's and FIX-2088's spec review |
 | ER-3 | Every ending of a delegated task reaches its filer once, through one path, and every debt has a due time with the sweeper as backstop. Shift Manager's error report rides that path, not a second one ([f](#f)) | FIX-2078 | FIX-2083's and FIX-2085's spec review; legs b and c |
 | ER-4 | Four filing settings. Start and attempts editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2083's and FIX-2086's spec review |
 | ER-5 | The four task tools are the only task surface, for models and screens, with identity from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
 | ER-6 | A retired row shape is read through FIX-2080's one map, never a child's own ([D3](#d3)) | FIX-2080 | FIX-2077's, FIX-2083's and FIX-2086's spec review |
+
+<a name="er-2-debt"></a>**ER-2's debt.** Workforce code on `main` that tells a task session from session state, each with an owner: the reach check (`workforce/src/conversation-board/board.ts:289`, FIX-2081) and the Error Reporter's held-or-request split (`workforce/src/error-reporter/reporter.ts:220`, FIX-2078) survive the set and move to `isTaskTurn` or the gate when their owner touches them; the piece owner (`conversation-board/split.ts:195-205`, FIX-2077) and the post session check (`coordinator/delegated-post.ts:189`, FIX-2083) go with the split settle and posts.
 
 ## Coordination seams
 
 | Seam | Owner, then who else touches it |
 |---|---|
 | The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait and FIX-2086's `message` land after it |
-| The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: the request's `onFinished`, run after background work drains on every terminal path (`engine/src/execution/runAction.ts:2447`→`:2630`, `:2773`→`:2918`). No engine hook needed. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
+| The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: the request's `onFinished`, run after background work drains on every terminal path (`engine/src/execution/runAction.ts:2447`→`:2630`, `:2773`→`:2918`). No engine hook needed. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends; FIX-2088 hands it the request's background failures at the seam after the last drain, and the check fails the attempt on any |
 | The wait (`tasks/helpers/wait-for-response.ts`) and its limits | FIX-2082 owns it and its limits: 5 waits deep; a tree 5 deep, 100 under its top task. FIX-2076 only sets which boards wait. A board's dispatch rides the row's wait. A bare `dispatcher({ wait: true })` has no row, and the engine awaits acceptance only (`core/src/blocks/dispatcher.ts:169-171`, `engine/src/context/dispatch-operation.ts:273-280`): FIX-2082 adds an engine wait that returns the result |
 | The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts |
 | `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times, removes the `reportOwed` marker and keeps Shift Manager's error route on the ending path ([f](#f)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
