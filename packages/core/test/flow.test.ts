@@ -64,9 +64,9 @@ describe("defineFlow", () => {
 
   // Definition-only instance options (FIX-1048); see `rejectDefinitionOnlyOptions`.
   //
-  // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
-  // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
-  // is never verified by anything. The `as any` below reaches the runtime guard.
+  // Runtime assertions, because the guard under test is the runtime one: the
+  // `as any` below gets past the types to reach it. (`pnpm typecheck` compiles
+  // this file, so a type-level assertion here would be checked too.)
   it.each(["webhooks", "schedules", "mcp"])(
     "fails closed when definition-only %s is passed to flow instance options",
     (option) => {

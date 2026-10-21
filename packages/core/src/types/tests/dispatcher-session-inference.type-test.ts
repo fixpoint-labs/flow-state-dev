@@ -2,8 +2,7 @@
  * Type-level tests for `dispatcher()`'s `{ key, state }` session: both
  * callbacks receive the input its `inputSchema` declares, with no annotation.
  *
- * Under `src/` so this package's `typecheck` (whose `include` is `src/**`)
- * checks it; vitest transpiles test files without checking types.
+ * `pnpm typecheck` compiles this file, as it does the package's `test/` files.
  */
 import { z } from "zod";
 import { dispatcher } from "../../blocks/dispatcher";
