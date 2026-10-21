@@ -92,7 +92,7 @@ describe.each([
     expect(admitted.leaseDurationMs).toBe(10_000);
   });
 
-  it("keeps the request's answer as the output while it waits, unless this attempt checkpointed", async () => {
+  it("keeps the request's answer as the output while it waits, unless a checkpoint was reported", async () => {
     const { collection, claim } = await claimed();
     await collection.setWaitingOn!("t", "queued", { claim, answer: { output: "the answer" } });
     expect(collection.get("t")?.output).toBe("the answer");

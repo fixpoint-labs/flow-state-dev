@@ -34,7 +34,8 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
-import type { BlockContext, DefinedCapability } from "@flow-state-dev/core/types";
+import type { DefinedCapability } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   DEFAULT_LEASE_DURATION_MS,
@@ -312,3 +313,16 @@ export const noteTaskAnswer = handler({
     await noteAnswer(ctx as never, output);
   },
 });
+
+/**
+ * Run `after` once the running request's task has been checked: at the
+ * request's end, right after the check, when the request was admitted for a
+ * task; at once otherwise. For a package's own step that reads the task's
+ * ending, such as a send of the notice it owes, from a hook like `onCompleted`
+ * that runs before the check.
+ */
+export async function afterTaskCheck(ctx: BlockContext, after: () => Promise<unknown>): Promise<void> {
+  const record = admitted.get(requestKey(ctx));
+  if (record !== undefined && !record.inline && onRequestEnded(ctx, async () => void (await after()))) return;
+  await after();
+}

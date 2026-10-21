@@ -1202,14 +1202,16 @@ export function waitingOnPatch(
     assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
     return { waitingOn: undefined, leaseUntil: options.leaseUntil };
   }
-  const ownCheckpoint = task.checkpointed === true && task.checkpointAttempt === task.attempts;
-  const kept =
-    options.answer === undefined || ownCheckpoint
-      ? {}
-      : {
-          output: options.answer.output,
-          ...(task.checkpointed === true ? { checkpointed: undefined, checkpointAttempt: undefined } : {}),
-        };
+  // The output a completion would write now, and only that (D3): a
+  // checkpoint stays the output, and the answer is kept only where the
+  // completion would write it. One rule, read from `completionPatch`.
+  const kept: Partial<Task> = {};
+  if (options.answer !== undefined) {
+    const done = completionPatch(task, options.answer.output, task.updatedAt);
+    for (const key of ["output", "checkpointed", "checkpointAttempt"] as const) {
+      if (key in done) (kept as Record<string, unknown>)[key] = done[key];
+    }
+  }
   return { waitingOn, leaseUntil: undefined, ...kept };
 }
 
