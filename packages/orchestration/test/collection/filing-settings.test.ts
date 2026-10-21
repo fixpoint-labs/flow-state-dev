@@ -513,3 +513,28 @@ describe("the debt an ending records (FIX-2080 D2)", () => {
     expect(tasks.get("t")).toMatchObject({ status: "pending", cascadeOwed: { due: 6_000 + CASCADE_DUE_MS, endedAt: 6_000 } });
   });
 });
+
+/**
+ * Two processes over one store (review finding 1, Codex A). A process's board
+ * reads its own mirror, so an ending in a process that has never seen the
+ * dependent records no debt for it. The next touch, in either process, reads
+ * the committed rows and cancels an open row whose dependency has ended.
+ */
+describe("a dependent another process filed (resource-backed)", () => {
+  it("is cancelled on the next touch after its dependency ends in a process that never saw it", async () => {
+    const store: ResourceCollectionRef<JsonObject> = createFakeResourceCollection();
+    // Each process holds its own handle on the one store, and so its own mirror.
+    const open = () => createResourceBackedTaskCollection({ collectionId: "tasks", collection: { ...store }, now: () => 1_000 });
+    const first = await open();
+    await first.addTask({ id: "a", goal: "a" });
+    // The second process loads the board before the dependent exists.
+    const second = await open();
+    await first.addTask({ id: "b", goal: "b", deps: ["a"] });
+    await second.cancel("a");
+    expect(second.get("a")?.cascadeOwed).toBeUndefined();
+
+    await second.payOwedCascades!();
+    const fresh = await open();
+    expect(fresh.get("b")).toMatchObject({ status: "cancelled", causedBy: "a", labels: ["skipped"] });
+  });
+});

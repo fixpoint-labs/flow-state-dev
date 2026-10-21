@@ -1212,6 +1212,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async payOwedCascades() {
+      // Read the committed rows first: another process may have filed rows
+      // this mirror has never seen, or ended ones it holds.
+      await reconcileTaskSet(mirror, options.collection);
       return payOwedCascades(cascadeWrites, now());
     },
 
