@@ -121,26 +121,37 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
     }
   });
 
-  it("cancels the open piece a running task filed when the conversation cancels the task", async () => {
+  it("cancels the open piece a running task filed within seconds of the conversation cancelling the task", async () => {
     const h = bootSplitHost();
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
-      h.controls.plans.s1 = [{ goal: "[slow:3000] Book the venue", assignee: "eng.tasker" }];
-      h.controls.holdAfterFiling.s1 = 1500;
+      h.controls.plans.s1 = [{ goal: "[slow:6000] Book the venue", assignee: "eng.tasker" }];
+      // The task's turn runs on long after the cancel, so nothing it does when
+      // it ends can be what cancels the piece.
+      h.controls.holdAfterFiling.s1 = 5000;
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
       // Wait until the piece is filed and the task is still running its turn.
-      expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:3000] Book the venue")).length === 1)).toBe(true);
+      expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:6000] Book the venue")).length === 1)).toBe(true);
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("in_progress");
 
       expect(await h.tool("alice", planner, "cancelTask", { taskId: top.id, reason: "not needed" })).toEqual({ ok: true });
+      const cancelledAt = Date.now();
+      const pieceCancelled = await h.until(
+        async () => (await one(h, "[slow:6000] Book the venue")).status === "cancelled",
+        2500
+      );
+      expect(pieceCancelled).toBe(true);
+      // Paid while the task's turn was still running, not when it ended.
+      expect(Date.now() - cancelledAt).toBeLessThan(4000);
+      expect(h.controls.turns.filter((turn) => turn.worker === "s1")).toHaveLength(1);
       await h.settled();
 
       expect((await one(h, "Plan the launch")).status).toBe("cancelled");
-      expect((await one(h, "[slow:3000] Book the venue")).status).toBe("cancelled");
+      expect((await one(h, "[slow:6000] Book the venue")).status).toBe("cancelled");
     } finally {
       await h.dispose();
     }
-  });
+  }, 20_000);
 });
