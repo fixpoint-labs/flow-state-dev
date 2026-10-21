@@ -32,7 +32,9 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
 | A split task's `{ answer, pieces }` output | The latest `reportProgress` checkpoint, else the worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks({ filedByTask })` | FIX-2077 |
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |
-| The agent worker's `run` entry | `respond` | FIX-2084 |
+| Every worker flow's door: `run` (agent, coordinator, Error Reporter), Shift Manager's EM and coder `message` | `respond` | FIX-2084 |
+| A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
+| A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |
 | `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
 
 Behaviour that changes without a removed name, carried by the owner's changeset the same way.
