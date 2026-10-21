@@ -21,6 +21,7 @@ import {
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
+import { recordEnding as recordNoticeOwed } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import type { TaskChangeKind } from "./change-event";
@@ -84,7 +85,8 @@ export function createTaskHandleWrapper<TInput, TOutput>(
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
   now: number,
-  createdBy?: string
+  createdBy?: string,
+  filer?: Task["filer"]
 ): Task<TInput, TOutput> {
   return {
     ...initialWriteProvenance(),
@@ -112,6 +114,8 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
+    // Server-written by the backing (FIX-2078), never from `init`.
+    ...(filer !== undefined ? { filer: { sessionId: filer.sessionId } } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -1392,6 +1396,15 @@ export interface EndingRecording {
    * (`cascadeFiled`). Omitted, no ending owes one.
    */
   readonly owesCascade?: (row: Task, ending: TaskEnding) => boolean;
+  /**
+   * The board hands rows out (FIX-2078): orchestration records the notice an
+   * ending owes its filer in the same write (`../notice/task-notice`).
+   */
+  readonly delivers?: boolean;
+  /** The filer made this cancel through its own model's task tool (D2): it owes no notice. */
+  readonly ownCancel?: boolean;
+  /** For a cascaded cancel: whether the row that caused it shares this row's filer (D2). */
+  readonly causeSharesFiler?: (row: Task) => boolean;
 }
 
 /**
@@ -1448,7 +1461,17 @@ function recordEnding<TInput, TOutput>(
   const resumed = recordResumeOwed(prev, next);
   const ending = endingOf(prev as Task, next as Task, recording?.quiet);
   if (ending === undefined) return resumed;
-  return applyEndingRecorder(recording?.recordEnding, recordCascadeOwed(resumed, ending, recording), ending);
+  const owed = recordCascadeOwed(resumed, ending, recording);
+  const noticed =
+    recording?.delivers === true
+      ? (recordNoticeOwed(owed as Task, ending, {
+          ...(recording.ownCancel === true ? { ownCancel: true } : {}),
+          ...(recording.causeSharesFiler !== undefined
+            ? { causeSharesFiler: recording.causeSharesFiler(owed as Task) }
+            : {}),
+        }) as Task<TInput, TOutput>)
+      : owed;
+  return applyEndingRecorder(recording?.recordEnding, noticed, ending);
 }
 
 /**

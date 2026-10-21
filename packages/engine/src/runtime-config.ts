@@ -105,6 +105,12 @@ export interface RuntimeConfig {
    * an operator's decision rather than a caller's.
    */
   maxChildSessionListLimit?: number;
+  /**
+   * How long past its due time a debt may stay outstanding before a pass
+   * ends it, settled undeliverable and logged (FIX-2078). Read by the wake
+   * verb (`RequestHost.wakes.maxDebtAgeMs`). Absent → 24 hours.
+   */
+  maxDebtAgeMs?: number;
 }
 
 /**
@@ -133,7 +139,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     requestHost: options.requestHost,
     queuedGraceMs: options.queuedGraceMs,
     publicReentrySources: options.publicReentrySources,
-    maxChildSessionListLimit: options.maxChildSessionListLimit
+    maxChildSessionListLimit: options.maxChildSessionListLimit,
+    maxDebtAgeMs: options.maxDebtAgeMs
   };
 }
 

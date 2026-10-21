@@ -2,6 +2,20 @@ import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import { inkTheme } from "./src/prismThemes";
 
+// Search is Algolia DocSearch. The Vercel Algolia integration puts the app id
+// and the search-only key into the build's environment; the search key is
+// meant for the browser (never use ALGOLIA_WRITE_API_KEY here). Without them,
+// as in a local or CI build, the site builds without a search bar instead of
+// failing. `indexName` must match the index the Algolia crawler writes to.
+const algolia: Preset.ThemeConfig["algolia"] =
+  process.env.ALGOLIA_APP_ID && process.env.ALGOLIA_SEARCH_API_KEY
+    ? {
+        appId: process.env.ALGOLIA_APP_ID,
+        apiKey: process.env.ALGOLIA_SEARCH_API_KEY,
+        indexName: "flow-state-dev",
+      }
+    : undefined;
+
 const config: Config = {
   title: "flow-state.dev",
   tagline: "Composable AI workflows for TypeScript. Blocks in. Streaming out.",
@@ -144,6 +158,11 @@ const config: Config = {
   ],
 
   themeConfig: {
+    ...(algolia && { algolia }),
+    // The Algolia crawler reads this to verify we own the domain it crawls.
+    metadata: [
+      { name: "algolia-site-verification", content: "9C3EE12F53D419A7" },
+    ],
     navbar: {
       title: "flow-state.dev",
       logo: {

@@ -1364,7 +1364,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
       if (input.status === "cancelled") {
         try {
-          const outcome: TaskWriteOutcome | undefined = await collection.cancel(input.id, undefined, { via });
+          // A model's own cancel in its own turn: the call's result tells its filer, so it owes no notice (FIX-2078 D2).
+          const outcome: TaskWriteOutcome | undefined = await collection.cancel(input.id, undefined, {
+            via,
+            ...(via === "tool" ? { viaTool: true } : {}),
+          });
           if (outcome != null && outcome.outcome === "declined") {
             const now = collection.get(input.id) ?? { ...current, status: outcome.status };
             return isTerminalStatus(outcome.status)

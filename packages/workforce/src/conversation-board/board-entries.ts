@@ -4,8 +4,21 @@
  * importing each other.
  */
 
-/** The internal entry a filing dispatches to run its session's board. */
+/** The internal entry a filing dispatches to run its session's board: the board's one pass. */
 export const RUN_BOARD_ENTRY = "runTaskBoard";
+
+/**
+ * The internal entry a task's notice arrives on in the session that filed it.
+ * **Pinned** (FIX-1780): a goal check reads notices by it. Orchestration's
+ * `onTaskSettled` (FIX-2078).
+ */
+export const TASK_SETTLED_ENTRY = "onTaskSettled";
+
+/**
+ * The internal entry a post row's notice arrives on instead: a delegate's
+ * answer lands while the coordinator's reply runs. Until FIX-2083.
+ */
+export const POST_SETTLED_ENTRY = "onPostSettled";
 
 /**
  * The internal entry a task session settles its parked task on, once none of

@@ -40,6 +40,7 @@ import {
 } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 const TASK_SOURCE = "task";
 const USER_ID = "u_run_link";
@@ -96,7 +97,7 @@ function buildFlow(options: {
     })),
   });
 
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: options.kind,
     actions: { start: { block: board.drain } },
     ...(options.mode === "dispatch" ? { task: { actions: { background: { block: worker } } } } : {}),

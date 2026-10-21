@@ -742,6 +742,12 @@ export type TaskBinding = {
   readonly boardId: string;
   /** Wrap an entry in this board's claim gate. The second argument is the entry's name on the flow. */
   readonly gate: (entry: ActionCore, target: string) => ActionCore;
+  /**
+   * Internal entries the flow holding this board must declare (FIX-2078: a
+   * board that hands rows out is heard back on `onTaskSettled`). `defineFlow`
+   * refuses a flow that reaches the board and lacks one, by name.
+   */
+  readonly requiresInternal?: readonly string[];
 };
 
 /**

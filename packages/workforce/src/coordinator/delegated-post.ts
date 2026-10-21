@@ -52,7 +52,6 @@ import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestratio
 import { taskClaimTicketSchema, type TaskClaimTicket, type TaskCollectionRef, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
-import { owedReports, sendOwedReports } from "../conversation-board/report-owed";
 import { sendOwedNotices } from "../conversation-board/notice-delivery";
 import { delegateRefSchema } from "../delegates/delegate-list";
 import { DELEGATED_POST_ENTRY } from "../worker-task-entry";
@@ -416,11 +415,7 @@ async function tellCoordinator(ctx: BlockContext): Promise<number> {
   const ref = await conversationLedgerAt(ctx, taken.partition);
   const row = ref?.get(taken.taskId);
   if (ref === undefined || row === undefined) return 0;
-  // What an errored post owes the Error Reporter goes out on the ending itself, not on the board's next touch.
-  // Best effort: a send that throws leaves the mark for that touch, and the coordinator is still told.
-  if (owedReports(row).length > 0) {
-    await sendOwedReports(ctx, ref, [row], { boardId: CONVERSATION_LEDGER_ID, partition: taken.partition }, "delegated-post-report").catch(() => 0);
-  }
+  // An errored post's report rides its notice, on `onPostSettled` (FIX-2078).
   return sendOwedNotices(ctx, row, { session: { from: true }, flowKind: COORDINATOR_FLOW, from: "delegated-post-tell" });
 }
 

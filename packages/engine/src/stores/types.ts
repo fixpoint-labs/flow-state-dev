@@ -1558,6 +1558,74 @@ export interface LeaseStore {
   pruneExpired(): Promise<void>;
 }
 
+/**
+ * Where a wake is kept: one per session and internal entry (FIX-2078 D1).
+ * `tenantId` is part of the key, so two tenants' sessions under one id never
+ * share a wake.
+ */
+export type WakeKey = {
+  readonly tenantId?: string;
+  /** The session the wake runs its entry in (the session id, not its storage key). */
+  readonly sessionId: string;
+  /** The internal entry the wake dispatches in that session. */
+  readonly entry: string;
+};
+
+/** What a writer owes a wake: the key, its owner and its due time, all server-written. */
+export type WakeInput = WakeKey & {
+  /** The flow instance the session belongs to: its exact `id`. */
+  readonly flowKind: string;
+  /** The session's owner, as the wake's dispatch runs as. */
+  readonly userId: string;
+  readonly orgId: string;
+  /** When the debt is due (epoch ms). */
+  readonly dueAt: number;
+  /**
+   * When the write the wake guards must have landed by (epoch ms): the writer's
+   * request lease. A pass that finds nothing owed before this time moves the
+   * wake here rather than clearing it.
+   */
+  readonly landBy: number;
+};
+
+/**
+ * A wake (FIX-2078 D1): a debt's due time the engine keeps, fired by the
+ * durability sweeper until a pass in its session clears it. Written before the
+ * write that owes, so a crash between the two leaves a wake that pays nothing,
+ * never a debt with no wake.
+ */
+export type WakeRecord = WakeInput & {
+  /** Bumped by every {@link WakeStore.owe}, so a pass clears only what it read. */
+  readonly version: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+};
+
+/**
+ * Wake persistence (FIX-2078 D1). Optional on the store registry: an adapter
+ * written before it still type-checks and loads, and a host whose stores keep
+ * no wakes logs once and pays debts on its fast paths only.
+ *
+ * - {@link owe} writes or coalesces: one wake per key, keeping the EARLIER due
+ *   time and the LATER `landBy`, and bumping the version.
+ * - {@link move} and {@link clear} are conditional on the version a pass read,
+ *   so a wake written during the pass survives it. Neither bumps the version.
+ */
+export interface WakeStore {
+  /** Write the wake, or coalesce into the one already kept under its key. */
+  owe(input: WakeInput): Promise<WakeRecord>;
+  /** The wake kept under `key`, or `null`. */
+  get(key: WakeKey): Promise<WakeRecord | null>;
+  /** Move the wake to `dueAt`, if it is still at `version`. `true` when moved. */
+  move(key: WakeKey, version: number, dueAt: number): Promise<boolean>;
+  /** Delete the wake, if it is still at `version`. `true` when cleared. */
+  clear(key: WakeKey, version: number): Promise<boolean>;
+  /** Wakes due at or before `now`, earliest first, at most `limit`. */
+  listDue(now: number, limit: number): Promise<WakeRecord[]>;
+  /** The earliest due time of any wake, or `null` when none is kept. */
+  earliestDueAt(): Promise<number | null>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
@@ -1570,6 +1638,11 @@ export type StoreRegistry = {
   traces: TraceStore;
   suspensions: SuspensionStore;
   leases: LeaseStore;
+  /**
+   * Debts' due times (FIX-2078 D1). Optional: a host checks for it once at
+   * start, and without it keeps the fast paths only.
+   */
+  wakes?: WakeStore;
 };
 
 /**

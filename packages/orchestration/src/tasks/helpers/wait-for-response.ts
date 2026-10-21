@@ -5,7 +5,7 @@
  * The turn files one row on its conversation's board, or readies one it
  * recorded earlier, marked as waited-on, and parks on a wait gate. When the
  * row ends, whoever ends it, the same write leaves a resume-owed marker on it
- * ({@link resumeOwedWaits} replays it), and the turn resumes with the row's
+ * (the filer's pass pays it, `../notice/pass`), and the turn resumes with the row's
  * output as the call's answer, or with an error naming how it ended. Nothing
  * holds a request open while it waits.
  *
@@ -22,14 +22,14 @@
  *   timeout, it cancels its row. It clears the marker itself once it has the
  *   outcome, so a resume whose marker clear was lost to a crash is still
  *   settled.
- * - {@link resumeOwedWaits}, the waker: a touch of the board resumes every
+ * - {@link payOwedResumes}, the waker: the filer's pass (FIX-2078) resumes every
  *   turn its rows are owed, through `ctx.requestHost.resumeWait`. It stops at
  *   once when no row owes one. Never called inside the waiting turn.
  *
  * The `wait` field is the task tools' (`../../skills/task-tools-capability.ts`):
  * the schema it appears in and the check on who may be assigned are theirs.
  * This module is the mechanism under them, and the notice entry that hears a
- * waited-on row end calls {@link resumeOwedWaits}.
+ * waited-on row end is the pass, which calls {@link payOwedResumes}.
  */
 import {
   WaitEndedError,
@@ -494,7 +494,7 @@ const WAIT_TIMED_OUT_REASON = "The wait timed out before the task finished.";
  * {@link cancelIfOpen} for a wait that is over, which never fails the turn
  * (FIX-1844): a cancel that throws is recorded on the row as owed
  * (`Task.cancelOwed`), and the next touch of the board pays it
- * ({@link resumeOwedWaits}). A mark that throws too leaves the row open.
+ * ({@link payOwedResumes}, in the pass). A mark that throws too leaves the row open.
  *
  * @returns Whether this call's cancel ended the row; `false` when it threw.
  */
@@ -548,7 +548,7 @@ function answerOf(taskId: string, outcome: Exclude<WaitOutcome, { stopped: true 
   return { ok: false, error: outcome.error.code, taskId, message: outcome.error.message };
 }
 
-/** What {@link resumeOwedWaits} did, per row. */
+/** What {@link payOwedResumes} did, per row. */
 export type ResumeOwedReport = {
   /** Rows whose turn was resumed by this touch. */
   readonly resumed: readonly string[];
@@ -575,7 +575,7 @@ const WAIT_OVER_REASON = "The wait was over (stopped or timed out) before the ta
  * parked yet, and clears it itself on reaching the ended row) or another
  * resume holds the turn (`busy`); the next touch tries again.
  */
-export async function resumeOwedWaits(
+export async function payOwedResumes(
   ctx: BlockContext,
   collection: TaskCollectionRef
 ): Promise<ResumeOwedReport> {

@@ -22,6 +22,7 @@ import type { SessionRecord, StoreRegistry } from "@flow-state-dev/engine";
 import { defineTaskCollection } from "../../src/tasks";
 import { taskBoard } from "../../src/task-board";
 import type { TaskWorker } from "../../src/tasks";
+import { heard } from "../fixtures/heard";
 
 const BOARD_ID = "session-scoped-dispatch";
 
@@ -92,7 +93,7 @@ describe("FIX-1068: session-scoped dispatching boards", () => {
       }
     });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "session-dispatch-flow",
       actions: {
         run: {

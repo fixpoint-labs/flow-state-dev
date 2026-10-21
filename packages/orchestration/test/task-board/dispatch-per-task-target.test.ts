@@ -23,6 +23,7 @@ import {
   type TaskWorkerInput,
 } from "../../src/tasks";
 import { taskBoard, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_per_task_target";
 const LEDGER_ID = "per-task-list";
@@ -30,7 +31,7 @@ const LEDGER = Object.assign(defineTaskCollection({ id: LEDGER_ID, scope: "user"
 
 /** A flow that takes tasks off the shared ledger and records which flow ran each. */
 function takerFlow(id: string, ran: Array<{ flow: string; taskId: string; session: string }>) {
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: id,
     actions: {},
     resources: { [LEDGER_ID]: LEDGER },
@@ -87,7 +88,7 @@ function senderFlow(options: {
     }),
     initialTasks: options.tasks.map((t) => ({ id: t.id, goal: `do ${t.id}`, input: {}, ...(t.assignee ? { assignee: t.assignee } : {}) })),
   });
-  return defineFlow({ kind: "per-task-sender", actions: { start: { block: board.drain } } })({
+  return defineFlow({ internal: { actions: { ...heard } }, kind: "per-task-sender", actions: { start: { block: board.drain } } })({
     id: "per-task-sender",
   });
 }

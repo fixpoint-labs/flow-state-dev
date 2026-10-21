@@ -33,6 +33,7 @@ import {
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 /** Terminal transport provenance for a task dispatch. Internal to `engine`; a wire value. */
 const TASK_SOURCE = "task";
@@ -110,7 +111,7 @@ function buildNestedFlow() {
     ],
   });
 
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "nested-dispatch",
     actions: { start: { block: outerBoard.drain } },
     // Both boards' entries — neither is discovered through the other's
@@ -146,8 +147,15 @@ describe("a dispatched worker can run its own dispatched board", () => {
     expect(Object.keys(flow.task?.actions ?? {}).sort()).toEqual(["deep", "top"]);
 
     const dispatched: RecordedDispatch[] = [];
+    const notices: Array<{ taskId: string; ending: string }> = [];
     const record = {
       dispatchOperation: async (spec: { sessionId: string; action: string; input: unknown }) => {
+        // An ending's notice to its filer goes through the same seam (FIX-2078);
+        // this scenario counts the hand-overs.
+        if (spec.action === "onTaskSettled") {
+          notices.push(spec.input as { taskId: string; ending: string });
+          return { requestId: `notice_${notices.length}` };
+        }
         dispatched.push({
           sessionId: spec.sessionId,
           actionName: spec.action,
@@ -192,6 +200,8 @@ describe("a dispatched worker can run its own dispatched board", () => {
     expect(outerChild.error).toBeUndefined();
     expect(ran).toContain("outer:o1");
     expect(dispatched).toHaveLength(2);
+    // The outer row ended in its child, and its filer is told.
+    expect(notices).toEqual([expect.objectContaining({ taskId: "o1", ending: "completed" })]);
 
     // 3. The inner child session. Its envelope names `inner-board`, and the
     //    flow's `tasks` map has to have a route for it — which is the whole

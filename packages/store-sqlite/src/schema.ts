@@ -538,6 +538,27 @@ CREATE TABLE IF NOT EXISTS leases (
 CREATE INDEX IF NOT EXISTS idx_leases_expires_at ON leases(expires_at);
 `;
 
+// FIX-2078 D1: wakes, a debt's due time kept until a pass in its session
+// clears it. One row per (tenant, session, entry); `tenant_key` is '' for no
+// tenant so the key has no NULL. `due_at` is indexed for the sweeper's read.
+const WAKES_TABLE = `
+CREATE TABLE IF NOT EXISTS wakes (
+  tenant_key TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  entry      TEXT NOT NULL,
+  flow_kind  TEXT NOT NULL,
+  user_id    TEXT NOT NULL,
+  org_id     TEXT NOT NULL,
+  due_at     INTEGER NOT NULL,
+  land_by    INTEGER NOT NULL,
+  version    INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (tenant_key, session_id, entry)
+);
+CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at);
+`;
+
 /**
  * One-shot rename migrations for databases initialised under the pre-FIX-428
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
@@ -708,6 +729,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(SCHEDULE_INDEX_TABLE);
   db.exec(SUSPENSION_RECORDS_TABLE);
   db.exec(LEASES_TABLE);
+  db.exec(WAKES_TABLE);
 }
 
 /**

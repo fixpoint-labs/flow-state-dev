@@ -23,6 +23,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineTaskCollection, type Task, type TaskWorkerInput } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 const BOARD_ID = "org-work";
 const LEDGER_ID = "org-work-ledger";
@@ -63,7 +64,7 @@ function assigneeKind(ran: string[]) {
       work: dispatcher<TaskWorkerInput>({ name: "assignee-dispatch", action: "work", session: "per-task" }),
     },
   });
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: "assignee",
     cardinality: "collection",
     actions: { drain: { block: board.drain } },
@@ -91,7 +92,7 @@ function boardFlow() {
       { id: "t-ghost", goal: "work for nobody", assignee: "ghost", input: {} },
     ],
   });
-  return defineFlow({ kind: "board", actions: { start: { block: board.drain } } })({ id: "board" });
+  return defineFlow({ internal: { actions: { ...heard } }, kind: "board", actions: { start: { block: board.drain } } })({ id: "board" });
 }
 
 async function boot() {

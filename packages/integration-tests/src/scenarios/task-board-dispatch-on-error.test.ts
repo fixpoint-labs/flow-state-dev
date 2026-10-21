@@ -29,6 +29,7 @@ import {
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
+import { heard } from "../helpers/heard";
 
 const TASK_SOURCE = "task";
 const USER_ID = "u_onerror";
@@ -67,7 +68,7 @@ function buildFlow(kind: string, onError: "skip" | "fail") {
     ],
   });
 
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind,
     actions: { start: { block: board.drain } },
     task: { actions: { background: { block: alwaysThrows } } },

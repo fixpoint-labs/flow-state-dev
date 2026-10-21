@@ -832,6 +832,19 @@ function resolveDispatchTargets(
     if (address === undefined) continue;
     const label = `${address.type}:${describeAction(address)}`;
 
+    // A board that hands rows out is heard back on an internal entry of the
+    // flow that holds it (FIX-2078), whichever flow its rows run on.
+    const requires = address.type === "task" ? taskBindingOf(block)?.requiresInternal : undefined;
+    for (const needed of requires ?? []) {
+      if (internal !== undefined && Object.hasOwn(internal, needed)) continue;
+      throw new Error(
+        `Flow "${kind}" holds board "${taskBindingOf(block)!.boardId}", which hands rows out through ` +
+          `block "${block.name}", but the flow declares no \`${needed}\` entry, so it would never hear ` +
+          `how a task it handed out ended. Add \`internal: { actions: { ${needed}: taskSettledEntry({ block }) } }\` ` +
+          `(from @flow-state-dev/orchestration).`
+      );
+    }
+
     // A cross-flow address names an entry on a flow this `defineFlow` does
     // not hold — `internal` or `task`. Skipped rather than guessed: the seam
     // resolves it against the flows the process actually registered and

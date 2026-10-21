@@ -26,6 +26,7 @@
  * Run: pnpm tsx goals/task-board/hands-a-row-to-a-worker-in-its-own-session/run.mts
  */
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
@@ -102,9 +103,12 @@ await runGoal(async (failures, tell) => {
     maxIterations: 200,
   });
 
+  // The board hands rows out, so the flow hears each ending (FIX-2078); this goal grades something else.
+  const heard = taskSettledEntry({ block: handler({ name: "goal-heard", inputSchema: z.unknown(), outputSchema: z.unknown(), execute: () => ({}) }) });
   const flow = defineFlow({
     kind: KIND,
     actions: { run: { block: board.drain } },
+    internal: { actions: { onTaskSettled: heard } },
     task: { actions: { [fixture.entry]: { block: worker } } },
   })({ id: KIND });
 

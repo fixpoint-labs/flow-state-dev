@@ -35,6 +35,7 @@ import type { TaskEnding, TaskEndingRecorder } from "./ending";
 import type { TaskSettingsSupport } from "./filing";
 import type { TaskPartitionFn } from "./partition";
 import { assertSafeCollectionId } from "./safe-key";
+import type { DeclaredDelivery } from "../notice/delivery";
 
 /**
  * Build the resource-instance schema for a durable task: the whole `Task`
@@ -62,6 +63,12 @@ export type DefinedTaskCollection = DefinedResourceCollection & {
     readonly settings?: TaskSettingsSupport;
     /** Present when the ledger's tasks file work elsewhere that a cascade cancels. */
     readonly cascadeFiled?: DeclaredFiledCascade;
+    /**
+     * Present when a board hands the ledger's rows out (FIX-2078): each ending
+     * owes its filer a notice. Declared, or set by a board with a task
+     * dispatcher (`markDelegating`).
+     */
+    delivery?: DeclaredDelivery;
   };
 };
 
@@ -155,6 +162,13 @@ export interface DefineTaskCollectionOptions<
    */
   cascadeFiled?: DeclaredFiledCascade;
   /**
+   * How the ledger's endings reach the sessions that filed them (FIX-2078):
+   * the pass a wake runs, the entry a notice arrives on, how a filer is
+   * reached, and what a notice nobody can take does. A board with a task
+   * dispatcher gives its ledger the defaults when it declares none.
+   */
+  delivery?: DeclaredDelivery;
+  /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
    * task — the rest of the `Task` envelope is validated automatically.
@@ -217,6 +231,7 @@ export function defineTaskCollection<
       ...(options.recordEnding !== undefined ? { recordEnding: options.recordEnding } : {}),
       ...(options.settings !== undefined ? { settings: options.settings } : {}),
       ...(options.cascadeFiled !== undefined ? { cascadeFiled: options.cascadeFiled } : {}),
+      ...(options.delivery !== undefined ? { delivery: options.delivery } : {}),
     },
   }) as unknown as DefinedTaskCollection;
 }

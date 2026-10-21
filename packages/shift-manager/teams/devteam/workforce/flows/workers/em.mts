@@ -323,9 +323,9 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     .step(prepareAsk)
     .step(askGate)
     .tapIf((decision) => decision.approved, fileApproved)
-    // The board runs inside the approved branch of the same request, so
-    // Approve starts the coder's run without a second call.
-    .tapIf((decision) => decision.approved, () => ({}), kit.board.runBoard)
+    // The approved branch runs the board's pass, through its entry (one at a
+    // time, FIX-2078), so Approve starts the coder's run without a second call.
+    .tapIf((decision) => decision.approved, () => ({}), kit.board.triggerPass)
     .tapIf((decision) => !decision.approved, refuseAsked);
 
   /**
@@ -357,7 +357,7 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     request: { onStarted: resolveEmWorker, onFinished: delegatedPostOnFinished },
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on this session's board." },
-      [DRAIN_ENTRY]: { block: kit.board.runBoard, description: "Run this session's board until nothing it can start is waiting." },
+      [DRAIN_ENTRY]: { block: kit.board.triggerPass, description: "Run this session's board until nothing it can start is waiting." },
       // A third action rather than a flag on `file`: `file` is the direct door
       // a check drives, and a flag that made it wait would change what that
       // check proves. Durable, because the answer arrives in a later request

@@ -192,6 +192,12 @@ export type RequestHostConstructionInputs = {
    * execution. Absent → a parked request answers `"already-finished"`.
    */
   parkedStop?: SuspendedStopDeps;
+  /**
+   * Debts' due times (FIX-2078 D1, `RequestHost.wakes`). Installed beside
+   * `waitResume`, only when the host has durable execution and its stores keep
+   * wakes. Absent → the verb is absent, and debts are paid on fast paths only.
+   */
+  wakes?: { readonly maxDebtAgeMs: number };
   /** The stale-request sweeper's threshold. */
   staleThresholdMs?: number;
   /** The sweeper's cadence. Undefined or 0 → liveness is refused. */

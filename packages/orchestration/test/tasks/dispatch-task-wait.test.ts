@@ -5,7 +5,7 @@
  * The waiting turn is a generator holding the task tools capability over a
  * durable board, the shape a coordinator's turn has. "The colleague" is a
  * later request in the same conversation that claims and settles the row, and
- * the board touch is a request that calls `resumeOwedWaits`: in Workforce the
+ * the board touch is a request that calls `payOwedResumes`: in Workforce the
  * notice and the board run make that call (see Workforce's wait tests).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,12 +18,13 @@ import {
   defineTaskCollection,
   getOrCreateTaskCollection,
   resolveResourceCollection,
-  resumeOwedWaits,
   type TaskClaimTicket,
   type TaskCollectionRef
 } from "../../src";
+import { payOwedResumes } from "../../src/tasks/helpers/wait-for-response";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 import { act, statusOf, stepModel, toolResults, until, type StepFn } from "./wait-fixture";
+import { heard } from "../fixtures/heard";
 
 const BOARD = "waits";
 
@@ -64,7 +65,7 @@ function toolFlow(
     name: "touch",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => resumeOwedWaits(ctx, (await boardOf(ctx))!)
+    execute: async (_input, ctx) => payOwedResumes(ctx, (await boardOf(ctx))!)
   });
   const list = handler({
     name: "list",
@@ -73,7 +74,7 @@ function toolFlow(
     execute: async (_input, ctx) =>
       (await boardOf(ctx))!.list().map((t) => ({ id: t.id, status: t.status, wait: t.wait, createdAt: t.createdAt }))
   });
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: "wait-board",
     resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
     actions: {

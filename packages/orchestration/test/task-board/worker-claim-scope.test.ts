@@ -18,6 +18,7 @@ import {
 } from "../../src/tasks";
 import { currentWorkerClaim, isTaskTurn, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
 import { createFakeSequencerState } from "../helpers";
+import { heard } from "../fixtures/heard";
 
 function boardCollection(collectionId: string): TaskCollectionRef {
   return createStateBackedTaskCollection({
@@ -119,7 +120,7 @@ describe("a dispatched worker behind the claim gate", () => {
         session: "per-task",
       });
 
-    const recipient = defineFlow({
+    const recipient = defineFlow({ internal: { actions: { ...heard } },
       kind: "claim-recipient",
       actions: {
         drain: {
@@ -135,7 +136,7 @@ describe("a dispatched worker behind the claim gate", () => {
       task: { actions: { work: { block: recipientWorker } } },
     })({ id: "claim-recipient" });
 
-    const sender = defineFlow({
+    const sender = defineFlow({ internal: { actions: { ...heard } },
       kind: "claim-sender",
       actions: {
         start: {
@@ -224,7 +225,7 @@ describe("a request a claimed worker starts in-process", () => {
       },
     }) as TaskWorker;
 
-    flowRef = defineFlow({
+    flowRef = defineFlow({ internal: { actions: { ...heard } },
       kind: "claim-starter",
       actions: {
         drain: {

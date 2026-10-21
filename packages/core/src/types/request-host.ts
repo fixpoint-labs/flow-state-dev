@@ -25,11 +25,12 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at five verbs**. The fifth, `resumeWait`, was added by a
+ * The seam is **closed at six verbs**. The fifth, `resumeWait`, was added by a
  * reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
- * here. Adding a sixth verb is a decision someone reviews, not a surface that
- * grows by transitivity.
+ * here. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
+ * wake the engine keeps). Adding a seventh verb is a decision someone reviews,
+ * not a surface that grows by transitivity.
  */
 
 import type { WaitOutcome } from "./wait-gate";
@@ -99,6 +100,56 @@ export type ResumeWaitResult =
       readonly refused: "gate-not-found" | "already-resolved" | "busy" | "ambiguous";
       readonly detail: string;
     };
+
+/** A wake as a pass reads it: when it is due, its fence, and the version a settle is conditional on. */
+export type WakeView = {
+  readonly dueAt: number;
+  /** When the write the wake guards must have landed by (the writer's request lease). */
+  readonly landBy: number;
+  readonly version: number;
+};
+
+/** What {@link RequestWakes.settle} did. */
+export type WakeSettleResult = "moved" | "cleared" | "stale";
+
+/**
+ * A debt's due time, kept by the engine (FIX-2078 D1): one wake per session
+ * and internal entry, fired by the durability sweeper as its owner until a pass
+ * in that session clears it. A writer owes the wake BEFORE the write that owes
+ * the debt, so a crash between them leaves a wake that pays nothing, never a
+ * debt with no wake.
+ *
+ * The owner, its org and tenant, and the session's flow are never parameters:
+ * they come from the running request's identity, or, for another session, from
+ * that session's stored record after it is checked to be this principal's.
+ */
+export interface RequestWakes {
+  /**
+   * Owe the wake that runs `entry` in `sessionId` (this request's own session
+   * when omitted) at `dueAt`: written, or coalesced into the one kept there
+   * (the earlier due time wins). Its fence is this request's lease.
+   *
+   * @returns `false` when the session is not one this request may reach: gone,
+   *   another principal's, another tenant's or another org's. Nothing is written.
+   */
+  owe(spec: { readonly entry: string; readonly dueAt: number; readonly sessionId?: string }): Promise<boolean>;
+  /** This session's wake for `entry`, as a pass reads it at its start, or `undefined`. */
+  read(entry: string): Promise<WakeView | undefined>;
+  /**
+   * After a pass: move this session's wake for `entry` to `next`, or clear it
+   * when `next` is `null`, if it is still the version the pass read. A clear
+   * before the wake's fence (`landBy`) moves it to the fence instead, so a
+   * writer still landing its write can't lose it. `stale` when a write landed
+   * during the pass: the wake stays as that write left it.
+   */
+  settle(entry: string, read: WakeView, next: number | null): Promise<WakeSettleResult>;
+  /**
+   * How long past its due time a debt may stay outstanding before a pass ends
+   * it (settles it undeliverable and logs it): a host setting, 24 hours by
+   * default.
+   */
+  readonly maxDebtAgeMs: number;
+}
 
 /**
  * Request-bound operations the engine binds to the running request and attaches
@@ -180,6 +231,14 @@ export interface RequestHost {
    * (`resumeWait`) does not depend on it.
    */
   readonly hasWaitSweeper?: boolean;
+
+  /**
+   * Debts' due times (FIX-2078 D1). **Absent when the host keeps no wakes**:
+   * its stores have none, or it has no durable execution. A debt is then paid
+   * on its fast paths only, and a consumer that needs a due time either keeps a
+   * fast path or is refused when its flow is built.
+   */
+  readonly wakes?: RequestWakes;
 }
 
 /**

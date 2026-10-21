@@ -94,6 +94,8 @@ import { pinRejectsCaller } from "./instance-pin";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
+import { createRequestWakes } from "../durability/request-wakes";
+import type { WakeStore } from "../stores/types";
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -154,6 +156,11 @@ export type RequestHostInputs = {
   waitResume?: WaitResumeOperation;
   /** Whether a sweeper bounds waits in this process; see `RequestHost.hasWaitSweeper`. */
   waitSweeper?: () => boolean;
+  /**
+   * The store debts' due times are kept in, and how they are bounded
+   * (`RequestHost.wakes`, FIX-2078 D1). Absent when the host keeps none.
+   */
+  wakes?: { store: WakeStore; maxDebtAgeMs: number; fenceMs: number };
   /**
    * The running request's trusted dispatch stamp, already read through
    * {@link readDispatchStamp}. A `{ from: true }` target delivers into
@@ -722,6 +729,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           flow
         }
       });
+  }
+
+  // The sixth verb (FIX-2078 D1): present only where the host keeps wakes.
+  // The owner and the target session's flow come from here, never the block.
+  if (inputs.wakes !== undefined) {
+    (host as { wakes?: RequestHost["wakes"] }).wakes = createRequestWakes({
+      store: inputs.wakes.store,
+      sessions: stores.session,
+      identity: {
+        userId: identity.userId,
+        tenantId: identity.tenantId,
+        orgId: identity.orgId,
+        sessionId: identity.sessionId
+      },
+      flowId: flow.id,
+      fenceMs: inputs.wakes.fenceMs,
+      maxDebtAgeMs: inputs.wakes.maxDebtAgeMs,
+      now: nowMs
+    });
   }
 
   if (gate.enabled) {

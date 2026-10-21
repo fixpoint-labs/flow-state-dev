@@ -189,7 +189,19 @@ export {
   type TaskNotice,
   type NoticePolicy,
   type NoticeDecision,
+  NOTICE_DUE_MS,
+  noticeDueAt,
+  cancelledDependents,
+  type NoticeRecording,
 } from "./notice/task-notice";
+// The one delivery of a delegated row's ending (FIX-2078).
+export {
+  TASK_SETTLED_ENTRY,
+  markDelegating,
+  undeliverableRecord,
+  type DeclaredDelivery,
+  type NoticeAddress,
+} from "./notice/delivery";
 
 // Filed work still holding a task (FIX-2077, rule 6).
 export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";

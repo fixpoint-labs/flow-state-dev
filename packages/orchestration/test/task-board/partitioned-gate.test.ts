@@ -22,6 +22,7 @@ import {
 } from "../../src/tasks";
 import { createTaskGate, taskLedgers, taskWorkerInputSchema } from "../../src/task-board";
 import { createFakeResourceCollection } from "../helpers";
+import { heard } from "../fixtures/heard";
 
 const LEDGER = "gate-ledger";
 const USER_ID = "alice";
@@ -64,7 +65,7 @@ async function harness() {
 
   const flowFor = (gate: ReturnType<typeof taskLedgers>["gate"]) => {
     const entry = gate({ block: worker } as unknown as ActionCore, "work");
-    return defineFlow({ kind: "gate-flow", actions: { work: entry } } as never)({ id: "gate-flow" });
+    return defineFlow({ internal: { actions: { ...heard } }, kind: "gate-flow", actions: { work: entry } } as never)({ id: "gate-flow" });
   };
   const runStores = createInMemoryStores();
   /** Dispatch `rowOf`'s claim identity, naming `named` as the partition. */

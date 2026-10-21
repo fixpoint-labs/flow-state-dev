@@ -35,6 +35,7 @@ import { z } from "zod";
 import { taskBoard } from "../../src/task-board";
 import { defineTaskCollection, type TaskWorker, type TaskWorkerInput } from "../../src/tasks";
 import { assertJsonSafe } from "../../src/task-board/blocks/json-safe";
+import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_dispatch_routing";
 
@@ -75,7 +76,7 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
     });
 
     const dispatched: { action: string; sessionId: string; source: string }[] = [];
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "dispatch-routing-table",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: implement } } },
@@ -136,7 +137,7 @@ describe("a dispatched assignee routes to the dispatch seam, not to the worker",
       workers: { implement: assignee("implement") },
     });
 
-    const flow = defineFlow({
+    const flow = defineFlow({ internal: { actions: { ...heard } },
       kind: "board",
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block: implement } } },

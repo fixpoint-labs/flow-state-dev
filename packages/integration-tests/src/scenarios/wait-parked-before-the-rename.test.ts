@@ -26,7 +26,7 @@ import type {
   GeneratorModelResult
 } from "@flow-state-dev/core/types";
 import { createFlowState, runAction, type FlowState } from "@flow-state-dev/engine";
-import { resumeOwedWaits } from "@flow-state-dev/orchestration";
+import { payBoardDebts } from "@flow-state-dev/orchestration";
 import { dispatchAndWait } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
@@ -112,7 +112,7 @@ function upgradeFlow(model: GeneratorModel): FlowInstance {
     name: "touch",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => resumeOwedWaits(ctx, await boardOf(ctx))
+    execute: async (_input, ctx) => payBoardDebts(ctx, await boardOf(ctx))
   });
   const list = handler({
     name: "list",
@@ -247,7 +247,8 @@ describe("a wait parked before the rename, across a SQLite restart", () => {
     ]);
     await act(after, flowAfter, "settle", { output: "Yes, renewed 2026-08" });
     const touched = await act(after, flowAfter, "touch");
-    expect(touched.output).toMatchObject({ resumed: [expect.any(String)], stillOwed: [] });
+    // The pass's repairs resumed it: nothing is left outstanding but the settled row.
+    expect(touched.error).toBeUndefined();
     await until(after, requestId, "completed");
 
     expect(seen).toHaveLength(2);

@@ -32,6 +32,7 @@ import type { BlockContext, ResourceCollectionRef, ResourceRef } from "@flow-sta
 import { TaskCapExceededError } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { retryOnConflict } from "../projects/cas-retry";
+import { isResourceDeleted } from "../projects/store-errors";
 import { TASK_CHAIN_STATE_KEY } from "../workers/keys";
 
 /** The deepest board a chain reaches: the top's board is the first. Fixed. */
@@ -192,22 +193,27 @@ export async function reserveInChain(
 /**
  * Mark the tasks at `entries` added in their chain's record: their adds
  * committed. Only a reserved entry moves: writes nothing when none is, and
- * never brings back a record its top's ending deleted.
+ * never brings back a record its top's ending deleted, also when the delete
+ * lands while this write runs (an ending heard late, FIX-2078).
  */
 export async function markAddedInChain(ctx: BlockContext, top: ChainTop, entries: readonly string[]): Promise<void> {
   if (entries.length === 0) return;
   const record = await chainsOf(ctx).getOptional(await chainKey(top));
   if (record === undefined) return;
   if (!entries.some((entry) => record.state.entries[entry]?.state === "reserved")) return;
-  await retryOnConflict(() =>
-    updateStateWith(record, (state: ChainRecord) => {
-      const reserved = entries.filter((entry) => state.entries[entry]?.state === "reserved");
-      if (reserved.length === 0) return { state, result: undefined };
-      const next = { ...state.entries };
-      for (const entry of reserved) next[entry] = { state: "added", at: next[entry]!.at };
-      return { state: { ...state, entries: next }, result: undefined };
-    })
-  );
+  try {
+    await retryOnConflict(() =>
+      updateStateWith(record, (state: ChainRecord) => {
+        const reserved = entries.filter((entry) => state.entries[entry]?.state === "reserved");
+        if (reserved.length === 0) return { state, result: undefined };
+        const next = { ...state.entries };
+        for (const entry of reserved) next[entry] = { state: "added", at: next[entry]!.at };
+        return { state: { ...state, entries: next }, result: undefined };
+      })
+    );
+  } catch (error) {
+    if (!isResourceDeleted(error)) throw error;
+  }
 }
 
 /** Delete a chain's record: its top task ended. */
