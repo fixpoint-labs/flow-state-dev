@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 296" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: six rules by ten issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the four tools. Other cells use the rule or are blank.">
+     aria-label="Who owns what: six rules by ten issues and the closure FIX-2087, each rule with one owner. FIX-2076 owns who records an ending. FIX-2077 owns the one answer for done. FIX-2078 owns one ending path and due debts. FIX-2080 owns the filing settings and the one map for retired rows. FIX-2081 owns the five tools. Other cells use the rule or are blank.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; }

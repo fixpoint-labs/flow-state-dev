@@ -81,8 +81,8 @@ FIX-2081's own scope.
 | ER-1 | Only the claim gate (a dispatched row) or the drain (an inline row) records a row's ending. No tool, worker block, wait or Workforce path does (rule 18) | FIX-2076 | Every spec review; the closure sweep |
 | ER-2 | One predicate for done (rule 6), in orchestration, checked after the request's background work and when a task it filed ends. Every wait, a plan board's drain included, wakes on the ending the gate writes; a deadline writes none. No Workforce code re-derives a request's kind from session state | FIX-2077 | FIX-2078's, FIX-2082's, FIX-2083's and FIX-2086's spec review |
 | ER-3 | Every ending of a delegated task reaches its filer once, through one path, and every debt has a due time with the sweeper as backstop. Shift Manager's error report rides that path, not a second one ([f](#f)) | FIX-2078 | FIX-2083's and FIX-2085's spec review; legs b and c |
-| ER-4 | Four filing settings. Start and attempts editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2083's and FIX-2086's spec review |
-| ER-5 | The five task tools (the filer's four and the worker's `reportProgress`) are the only task surface, for models and screens, with identity from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
+| ER-4 | Four filing settings. Start and attempts editable until a task starts; session and result never change | FIX-2080 | FIX-2081's, FIX-2082's, FIX-2083's and FIX-2086's spec review |
+| ER-5 | The five task tools are the only task surface: the filer's four, for models and as a screen's actions, and the worker's `reportProgress`, for models only; identity comes from the server (BP-031) | FIX-2081 | Every later spec review; the closure sweep |
 | ER-6 | A retired row shape is read through FIX-2080's one map, never a child's own ([D3](#d3)) | FIX-2080 | FIX-2077's, FIX-2083's and FIX-2086's spec review |
 
 ## Coordination seams
@@ -90,6 +90,7 @@ FIX-2081's own scope.
 | Seam | Owner, then who else touches it |
 |---|---|
 | The task tool list (`orchestration/src/skills/task-tools-capability.ts`) | FIX-2081 owns the list and field rules. FIX-2080's settings, FIX-2082's wait and FIX-2086's `message` land after it |
+| Who a filing can reach (`workforce/src/conversation-board/board.ts`, `reach()`) | FIX-2081 replaces a task session's roster arm with the self-step grant, after FIX-2076's plan rows land, so a worker files its own steps with or without delegates |
 | The claim gate (`task-board/task-entry.ts`, `blocks/record-result.ts`) and the request's end | FIX-2077 owns the predicate and where it runs: after the engine's last drain on every terminal path, which follows `onFinished` (`engine/src/execution/runAction.ts:2447`→`:2630`→`:2641`, `:2773`→`:2918`→`:2936`), through an engine seam for framework packages, not an author hook. FIX-2082's waits wake on its ending; FIX-2078 calls it when a filed task ends |
 | The wait (`tasks/helpers/wait-for-response.ts`) and its limits | FIX-2082 owns it and its limits: 5 waits deep; a tree 5 deep, 100 under its top task. FIX-2076 only sets which boards wait. A board's dispatch rides the row's wait. A bare `dispatcher({ wait: true })` has no row, and the engine awaits acceptance only (`core/src/blocks/dispatcher.ts:169-171`, `engine/src/context/dispatch-operation.ts:273-280`): FIX-2082 adds an engine wait that returns the result |
 | The sweeper (`engine/src/durability/durability-sweeper.ts:40-50`), re-armed only from wait gates | FIX-2078 adds a due-time source the re-arm reads and a step that pays board debts |
@@ -117,7 +118,7 @@ FIX-2081's own scope.
   2026-10-21). Every surface in [`migration.md`](migration.md) goes in the owning child's PR, in a
   minor bump (pre-1.0). That child's changeset carries the removal's one line from `migration.md`.
   No child ships a deprecated alias, wrapper or warning, and the closure's tool sweep allows none:
-  the only task tool besides the five is `answerTask` ([D2](#d2)), and `dispatchTask` until FIX-2082
+  the only task tools besides the five are `answerTask` and `parkOnQuestion` until FIX-2058 ([D2](#d2)), and `dispatchTask` until FIX-2082
   and FIX-2083 replace its wait and its post form, the sweep naming it ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1), amended at that
   gate). The cost, accepted: teams
   outside the repo calling them rewrite at upgrade.

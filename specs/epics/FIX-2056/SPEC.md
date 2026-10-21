@@ -30,7 +30,7 @@ The scope is every phase 1 and phase 3 row of
 | Is it the right goal? | |
 |---|---|
 | **Smaller, and rejected** | Posts become tasks alone: FIX-2058 would build on a gate that lets a waiting task run twice |
-| **Not done if** | An ending is recorded outside the gate or the drain · a sixth task tool is exported, deprecated ones included, `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` aside ([D2](DECISIONS.md#d2), [(e)](DECISIONS.md#e)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
+| **Not done if** | An ending is recorded outside the gate or the drain · a sixth task tool is exported, deprecated ones included, `answerTask` and `parkOnQuestion` until FIX-2058 and, until FIX-2082 and FIX-2083, `dispatchTask` aside ([D2](DECISIONS.md#d2), [(e)](DECISIONS.md#e)) · a row misses its target · a coordinator or hand-off goal regresses · a closure bug is open |
 
 ```mermaid
 flowchart LR
@@ -69,10 +69,10 @@ The reviewed snapshot; live state, and each issue's gap rows, are in Linear.
 | Issue | Delivers | Blocked by |
 |---|---|---|
 | [FIX-2076](https://linear.app/fixpoint-labs/issue/FIX-2076) · board modes | Plan and delegation boards; wrong boards refused | — |
-| [FIX-2077](https://linear.app/fixpoint-labs/issue/FIX-2077) · when a task is done | Rule 6 at the claim gate, after background work; a wait leaves a task running | FIX-2078, FIX-2080 |
+| [FIX-2077](https://linear.app/fixpoint-labs/issue/FIX-2077) · when a task is done | Rule 6 at the claim gate, after background work; a wait leaves a task running | FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2078](https://linear.app/fixpoint-labs/issue/FIX-2078) · endings and debts | Every ending to its filer once; due times and the sweeper | — |
 | [FIX-2080](https://linear.app/fixpoint-labs/issue/FIX-2080) · filing settings | Start, session, result, attempts; cascades; the one read for retired rows ([D3](DECISIONS.md#d3)) | — |
-| [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · five tools | Five task tools, one rule per field; delegates as authority | FIX-2080 |
+| [FIX-2081](https://linear.app/fixpoint-labs/issue/FIX-2081) · five tools | Five task tools, one rule per field; delegates as authority | FIX-2076, FIX-2080 |
 | [FIX-2082](https://linear.app/fixpoint-labs/issue/FIX-2082) · waits | `getTask` and the waited dispatch as one wait; 5 deep, 100 under a top task | FIX-2076, FIX-2077, FIX-2081 |
 | [FIX-2083](https://linear.app/fixpoint-labs/issue/FIX-2083) · routed tasks | Posts become routed tasks; one fit check; the stopgap goes | FIX-2078, FIX-2080, FIX-2081 |
 | [FIX-2084](https://linear.app/fixpoint-labs/issue/FIX-2084) · worker contract | Roles checked at hire; `respond` and `dispatch` | FIX-2078, FIX-2083 |
@@ -94,6 +94,8 @@ flowchart LR
   B -->|"a steer is no ending"| S["FIX-2086 · steer and follow-up"]
   M["FIX-2076 · board modes"] -->|"a plan board's drain waits"| W
   L -->|"held, settings"| T["FIX-2081 · five tools"]
+  M -->|"plan rows"| T
+  T -->|"reportProgress, filedByTask"| B
   T -->|"getTask"| W
   T -->|"updateTask"| S
   T -->|"createTask, delegates"| R["FIX-2083 · routed tasks"]

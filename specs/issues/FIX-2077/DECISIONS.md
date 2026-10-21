@@ -40,7 +40,7 @@ to move it off a worker pool being retired. Then a row with `waitingOn` keeps a 
 |---|---|
 | **Instead of** | Keeping [FIX-1802](../FIX-1802/DECISIONS.md#d3)'s rule: the output is `{ answer, pieces }`, and a piece that failed for good fails the task unless the next turn files it again |
 | **Because** | Rule 6 is one rule for every task: done when a request for it ends with a result and nothing open. A second rule for tasks that filed tasks is the second answer for done the epic's POC refuted. Every piece's ending, a failure included, already reaches the worker's turn ([rule 7](../../../docs/internal/design/workforce-coordination-concept.md#the-rules)), so that turn decides what a failed piece means, and the retry marker goes |
-| **Locks in** | The output of a task that split is its worker's last answer, and a failed piece fails the task only if the worker's turn throws. A worker that ignores a failed piece completes its task without saying so; the changeset says that. A filer that read `.pieces` reads the pieces' rows. In the repo only the split's own tests, its goal (`goals/workforce/split-to-roster/`), the workforce README and the *Delegating work* page read it, all rewritten here. Teams outside the repo rewrite at upgrade |
+| **Locks in** | The output of a task that split is its latest `reportProgress` checkpoint, else its worker's last answer ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3)), and a failed piece fails the task only if the worker's turn throws. A worker that ignores a failed piece completes its task without saying so; the changeset says that. A filer that read `.pieces` reads the pieces' rows. In the repo only the split's own tests, its goal (`goals/workforce/split-to-roster/`), the workforce README and the *Delegating work* page read it, all rewritten here. Teams outside the repo rewrite at upgrade |
 
 ![D3: a split task ends as its worker's last request ends, chosen, beside keeping answer-and-pieces and the automatic failure rule. Decides it: one rule for done. The price: filers reading pieces rewrite](figures/d3-last-request.svg)
 
@@ -87,7 +87,7 @@ without its worker restating it. Then the gate appends the pieces' outputs, as d
   claim may checkpoint `output` and set a `statusNote`, a queued `receive` included. A terminal request that errors fails the attempt, keeping the checkpoint for the
   next. A notice landed as a line keeps the last answer.
 - **A task's pieces** are read through FIX-2081's tools: a filter by the filing task on
-  `listTasks` is FIX-2081's, since ER-5 makes its four tools the only task surface.
+  `listTasks` (`filedByTask`) is FIX-2081's, since ER-5 makes its five tools the only task surface.
 - **Cancelling a split task** cancels its pieces through FIX-2080's cascade; the split's own cascade
   only fired on the park this removes.
 - **Upgrade:** a split parked at upgrade reads as running with `waitingOn` set, through FIX-2080's map entry,
@@ -149,7 +149,9 @@ For the implementer, recorded verbatim, not baked into the design.
   its rules are FIX-2081's; the goal check's leg c follows. No change to the approach.
 - **Amendment, after merge (2)** — output precedence and who may checkpoint follow the owner's
   sign-off ([#3596](https://github.com/fixpoint-labs/flow-state-dev/pull/3596#issuecomment-6317555200), [#3593](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6317553797)), carried in
-  [#3596](https://github.com/fixpoint-labs/flow-state-dev/pull/3596) with FIX-2081's D3. No change
+  [#3596](https://github.com/fixpoint-labs/flow-state-dev/pull/3596) with FIX-2081's D3, through the
+  rest of this spec: the split row, the message row and *Not done if*, leg b, the filer's diff and
+  the docs line, D3's *Locks in* and figure, and the epic's split-output migration row. No change
   to the approach.
 
 Open: none.

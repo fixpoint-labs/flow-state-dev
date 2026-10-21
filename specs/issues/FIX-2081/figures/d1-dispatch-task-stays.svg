@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, when dispatchTask goes. Chosen: keep it until its wait and its post form are replaced. Instead of: removing it here. It comes down to the first row: a release between this issue and FIX-2082 and FIX-2083. Kept, coordinators still route and workers still wait; removed, both break. The price is the second row: two ways to file and start a task, for one to two issues. Third row, a tie: the closure still allows no fifth tool. Locks in: the later of FIX-2082 and FIX-2083 removes it. Flips if both land in the same release as this issue."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, when dispatchTask goes. Chosen: keep it until its wait and its post form are replaced. Instead of: removing it here. It comes down to the first row: a release between this issue and FIX-2082 and FIX-2083. Kept, coordinators still route and workers still wait; removed, both break. The price is the second row: two ways to file and start a task, for one to two issues. Third row, a tie: the closure still allows no task tool beyond the five but answerTask. Locks in: the later of FIX-2082 and FIX-2083 removes it. Flips if both land in the same release as this issue."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -77,10 +77,10 @@
     <text class="t-lbl" x="32" y="280">THE CLOSURE</text>
     <text class="t-lbl" x="32" y="293">SWEEP</text>
     <text class="mark tie" x="228" y="282">=</text>
-    <text class="t-b" x="248" y="281">No fifth tool but answerTask</text>
+    <text class="t-b" x="248" y="281">Only the five and answerTask</text>
     <text class="t-s" x="248" y="299">checked once every child has merged</text>
     <text class="mark tie" x="592" y="282">=</text>
-    <text class="t-b" x="612" y="281">No fifth tool but answerTask</text>
+    <text class="t-b" x="612" y="281">Only the five and answerTask</text>
     <text class="t-s" x="612" y="299">checked once every child has merged</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
