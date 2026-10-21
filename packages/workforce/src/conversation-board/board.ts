@@ -668,7 +668,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if (isAnsweringTurn(ctx)) {
         throw new TaskWriteRefusedError(
           "no_step_while_answering",
-          "your steps have ended and this turn gives your answer: do the work yourself, or answer. A task for a delegate is still handed off. Nothing was filed."
+          "your steps have ended and this turn gives your answer: do the work yourself, or answer. A task for a delegate is still dispatched. Nothing was filed."
         );
       }
       if (init.wait != null) {

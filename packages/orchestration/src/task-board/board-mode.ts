@@ -38,10 +38,10 @@ export function runsElsewhereFor(mode: TaskBoardMode): ((task: Task) => boolean)
  * The mode's construction-time refusals, by name and loud.
  *
  * - A plan board holding a dispatcher: its drain would not wait on the row it
- *   handed off. Refused until a dispatch can be waited on (FIX-2082).
+ *   dispatched. Refused until a dispatch can be waited on (FIX-2082).
  * - A delegation board with an assignee that runs in the drain (named, uniform
  *   or floor): the drain would not wait on work running in it.
- * - A delegation board with no dispatcher: nothing on it is handed off.
+ * - A delegation board with no dispatcher: nothing on it is dispatched.
  *
  * @param inline The named assignees that run in the drain.
  * @param uniformInline Whether `workers` is one block that runs in the drain.

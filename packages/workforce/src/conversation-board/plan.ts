@@ -17,7 +17,7 @@
  *   step runs the turn alone and costs nothing more.
  * - **The answering turn files no step for itself.** Its filing is refused,
  *   telling it to do the work or answer (`PLAN_ANSWERING_STATE`). A task it
- *   files for a delegate is handed off as usual.
+ *   files for a delegate is dispatched as usual.
  *
  * Until FIX-2080 lands, a failed attempt's open steps stay open and the next
  * attempt adopts them; that issue's cascade is what will cancel them.
@@ -47,7 +47,7 @@ export const PLAN_LEDGER_ID = "plan";
 /**
  * The plan ledger's one declaration. A browser may read it as it reads the
  * conversation ledger: the user's own rows, each under its session's partition,
- * so a screen lists a worker's steps beside the tasks it handed off.
+ * so a screen lists a worker's steps beside the tasks it dispatched.
  */
 export const planLedger = Object.assign(
   defineTaskCollection({ id: PLAN_LEDGER_ID, scope: "user", partitionBy: conversationPartition }),
@@ -129,7 +129,7 @@ export function answerMessage(steps: readonly Task[]): string {
   return [
     "The steps you filed for yourself have ended:",
     endings.join("\n"),
-    "Now give your answer. Finish anything left yourself rather than filing another step for yourself; a task for a delegate is still handed off."
+    "Now give your answer. Finish anything left yourself rather than filing another step for yourself; a task for a delegate is still dispatched."
   ].join("\n\n");
 }
 

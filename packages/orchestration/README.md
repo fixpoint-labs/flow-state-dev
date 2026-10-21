@@ -464,7 +464,7 @@ const issueLedger = defineTaskCollection({
 const board = taskBoard({
   name: "issue-work",
   boardId: "issue-work",               // required once any assignee dispatches
-  mode: "delegation",                  // every row is handed off; the drain waits on none
+  mode: "delegation",                  // every row is dispatched; the drain waits on none
   collection: issueLedger,             // must be a defineTaskCollection()
   workers: {
     implement: dispatcher({            // dispatches to flow.task.actions.implement
