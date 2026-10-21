@@ -12,7 +12,7 @@ these three carry it out.
 flowchart TD
   I["FIX-2076"] --> D1["D1 · a step for itself is a plan row, worked in the same request"]
   D1 -.->|"rejected · a new session per step, and a parked task"| X1["a new session of itself"]
-  I --> D2["D2 · after the drain, one more turn, and its answer is the result"]
+  I --> D2["D2 · after the drain, one more turn, and it finalizes the result"]
   D2 -.->|"rejected · a failed last step leaves no answer"| X2["the last row's output is the result"]
   I --> D3["D3 · until FIX-2082, a plan board refuses a dispatched row"]
   D3 -.->|"rejected · a second wait, or a plan board that doesn't wait"| X3["an interim wait in this issue"]
@@ -37,13 +37,13 @@ It comes down to the next step: inline, it sees the one before; in a child sessi
 delegate, or FIX-2082's dispatched plan row, carries them.
 
 <a name="d2"></a>
-## D2 · After its plan drains, the worker answers once more, and that answer is the request's result
+## D2 · After its plan drains, the worker answers once more, and that turn finalizes the request's result
 
 | | |
 |---|---|
 | **Instead of** | The output of the plan's last row (or rows) as the result, with no further model call |
 | **Because** | A plan row can fail for good. Last-row-wins fails the task for one step or returns a hole; a turn that sees every ending can redo the step itself, explain or carry on. Today's split already answers from the turn after its pieces |
-| **Locks in** | Exactly one more model call per request that planned, none otherwise. That turn files no step for itself: such a filing is refused, telling it to do the work or answer; a task it files for a delegate is handed off as usual. The result is that turn's answer, not `{ answer, pieces }`; the rows stay listable |
+| **Locks in** | Exactly one more model call per request that planned, none otherwise. That turn files no step for itself: such a filing is refused, telling it to do the work or answer; a task it files for a delegate is handed off as usual. That turn finalizes: a non-empty answer, plain text included, is the result, not `{ answer, pieces }`; an answer that is nothing or an empty string leaves the worker's latest `output` checkpoint as the result ([FIX-2081's D3](../FIX-2081/DECISIONS.md#d3), settled on the [epic thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315204382)). The rows stay listable |
 
 ![D2 trade-off: one more turn after the drain, chosen, beside the last row's output. Decides it: a step that failed for good. Price: one model call per planned request](figures/d2-final-turn.svg)
 
@@ -110,6 +110,8 @@ long, and the interim wait is worth weighing against it.
 - **Review round 1** — the interim dispatcher `wait` dropped (FIX-2082 owns it, and the refusal
   needs only `mode`); the answering turn files no step for itself, so D2's one call stays one;
   `goalSeekLoop` also refuses a park-exit board, which could hand its judge a parked row.
+- **Cross-spec** — D2's answering turn finalizes; a checkpoint set through `updateTask({ id, output })`
+  stands when it returns nothing or an empty string (FIX-2081's D3).
 
 ## Notes from review
 
