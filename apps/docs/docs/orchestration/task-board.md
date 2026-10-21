@@ -5,6 +5,9 @@ sidebar_label: Task board
 description: A pool of workers that claim ready tasks from a shared TaskCollection, respect dependencies, and drain until a termination rule you choose says stop.
 ---
 
+import Figure from "@site/src/components/Figure";
+import TaskBoardPartsDrawing from "./task-board-parts.svg";
+
 # Task board
 
 Task board is the building block underneath Parallel Tasks, Supervisor, and Plan and Execute. It runs a pool of workers that pull from a shared `TaskCollection`, respects task dependencies, and drains until the collection is finished: either every task completed, or nothing left can run.
@@ -33,7 +36,7 @@ Drop to the board only when none of those fit.
 
 The board is a handle you drain. Its tasks are rows in a collection. Workers are blocks keyed by assignee.
 
-![The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee](./task-board-parts.svg)
+<Figure svg={TaskBoardPartsDrawing} caption="Board, task collection, worker: where each lives" description={"The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee"} />
 
 ## One task, five tools
 

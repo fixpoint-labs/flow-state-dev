@@ -1,0 +1,6 @@
+<!-- Breaks every diagram rule on purpose; scripts/lint-brand.mjs fails unless each one fires. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80">
+<title>An in-drawing title</title>
+<rect class="sold" x="10" y="10" width="80" height="40" fill="#e3e8f2" stroke="#2c4f8c" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="20" y="34" font-family="Space Grotesk, sans-serif" style="fill: green">A category hue</text>
+</svg>
