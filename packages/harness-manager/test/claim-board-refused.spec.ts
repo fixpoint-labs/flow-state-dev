@@ -50,6 +50,17 @@ describe("a refused run on a board read from the claim", () => {
     expect(row.error).toContain("the task names no project");
     expect(refusing.seen).toHaveLength(0);
   }, 60_000);
+
+  it("cancels a task that depends on the refused row, as any failed task's dependent is", async () => {
+    const lab = claimHost({ mode: "claim" });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t1", goal: "half a feature", input: { issue: "FIX-1" }, maxAttempts: 2 });
+    await lab.seed({ ledgerId: CONVERSATIONS, partition: "conv-a", id: "t2", goal: "after it", input: {}, deps: ["t1"] });
+
+    await lab.runAttempt(CONVERSATIONS, "t1", "conv-a");
+
+    expect(await lab.row(CONVERSATIONS, "t1", "conv-a")).toMatchObject({ status: "errored", attempts: 1 });
+    expect((await lab.row(CONVERSATIONS, "t2", "conv-a")).status).toBe("cancelled");
+  }, 60_000);
 });
 
 describe("a refused run on a fixed board", () => {

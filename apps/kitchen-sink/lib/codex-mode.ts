@@ -20,18 +20,29 @@
  * `/proc`). Run the server as a separate OS user or in a container when that
  * matters.
  *
+ * Codex mode takes nothing from your own Codex settings (`config.toml`) that
+ * changes what a run is: not its model, not its service tier, not its MCP
+ * servers, the way Claude Code mode loads no settings files. A model set there
+ * may be one the signed-in account can't use, a tier like Fast (`priority`)
+ * spends more of the account's usage, and a server signed in for your own use
+ * fails to start inside the sandbox. Codex reads the file either way; the run
+ * overrides each of those (`codexClientOptions`). Sign-in, history and every
+ * other setting still come from Codex's home.
+ *
  * Under `KITCHEN_SINK_TEST_MODE=1` the SDK is replaced by the scripted Codex
  * (`lib/scripted-codex.ts`) and the check passes, unless
  * `KITCHEN_SINK_REAL_HARNESS=1` asks for the real one, which the goal check
  * does so its controls apply to a real run.
  */
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { delimiter } from "node:path";
 import { harnessEnv } from "@flow-state-dev/core";
 import {
   assertTestedSdkVersion,
+  CodexAgentAbortedError,
   codexAgent,
+  createDefaultResolveCodexClient,
   readInstalledCodexSdkVersion,
   TESTED_SDK_VERSION,
   type CodexAgentOptions,
@@ -67,9 +78,17 @@ export const CODEX_MODELS: readonly HarnessModel[] = [
   { id: "gpt-5.2", label: "GPT-5.2" },
 ];
 
+/**
+ * The model a Codex mode session runs when it names none: the list's first,
+ * which is also what New session preselects. A session from before models
+ * could be picked runs on it rather than on whatever model your own Codex
+ * settings name, which may be one this account can't use.
+ */
+export const CODEX_DEFAULT_MODEL = CODEX_MODELS[0]!.id;
+
 /** What Codex mode's New session offers: the list above, its first entry preselected. */
 export async function codexModelChoices(): Promise<ModelChoices> {
-  return { models: CODEX_MODELS, defaultId: CODEX_MODELS[0]!.id, reason: null, fallbackId: null };
+  return { models: CODEX_MODELS, defaultId: CODEX_DEFAULT_MODEL, reason: null, fallbackId: CODEX_DEFAULT_MODEL };
 }
 
 /**
@@ -132,16 +151,73 @@ export function codexThreadOptions(): CodexThreadOptions {
 
 /**
  * The SDK's client options Codex mode runs with: the allowlisted environment,
- * and the sandbox's writable list narrowed to the run's own directory.
- * Codex's `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by
- * default, where a repository or another session's files may sit.
+ * the standard service tier, every MCP server in `mcpServers` turned off, and
+ * the sandbox's writable list narrowed to the run's own directory.
+ *
+ * Codex's overrides add to its settings rather than replace them (an empty
+ * `mcp_servers` leaves every configured server on), so each server is turned
+ * off by name, and the tier is set to `default`, which sends none. Codex's
+ * `workspace-write` also lets a run write in `/tmp` and `$TMPDIR` by default,
+ * where a repository or another session's files may sit.
+ *
+ * @param mcpServers The MCP servers Codex's settings name (`userMcpServers`).
  */
-export function codexClientOptions(env: Record<string, string | undefined> = process.env): CodexClientOptions {
+export function codexClientOptions(
+  env: Record<string, string | undefined> = process.env,
+  mcpServers: readonly string[] = [],
+): CodexClientOptions {
   return {
     env: codexEnv(env),
-    ...(codexSandboxed()
-      ? { config: { sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } } }
-      : {}),
+    config: {
+      service_tier: "default",
+      ...(mcpServers.length > 0
+        ? { mcp_servers: Object.fromEntries(mcpServers.map((name) => [name, { enabled: false }])) }
+        : {}),
+      ...(codexSandboxed()
+        ? { sandbox_workspace_write: { exclude_slash_tmp: true, exclude_tmpdir_env_var: true } }
+        : {}),
+    },
+  };
+}
+
+/**
+ * The SDK's own client, built with {@link codexClientOptions} once Codex has
+ * said which MCP servers its settings name. Asked once per server process, on
+ * the first run: a server added to your settings later stays on until restart.
+ * A run stopped while the list is still coming stops then; the list goes on
+ * for the next run.
+ */
+export function codexClient(
+  listMcpServers: (env: Record<string, string>) => Promise<readonly string[]> = userMcpServers,
+): ResolveCodexClient {
+  let resolver: Promise<ResolveCodexClient> | undefined;
+  return async (ctx) => {
+    resolver ??= listMcpServers(codexEnv()).then(
+      (names) => createDefaultResolveCodexClient(codexClientOptions(process.env, names)),
+      (error: unknown) => {
+        // Not kept: the next run asks again. This one starts with whatever
+        // servers Codex has, and the session says so, so it is never silent.
+        resolver = undefined;
+        ctx.emit.status(
+          `Codex's MCP servers could not be listed, so this run may start the ones your Codex settings name: ${error instanceof Error ? error.message : String(error)}`,
+          { transient: false },
+        );
+        return createDefaultResolveCodexClient(codexClientOptions(process.env));
+      },
+    );
+    const stopped = ctx.signal;
+    if (stopped === undefined) return (await resolver)(ctx);
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(new CodexAgentAbortedError(null));
+      if (stopped.aborted) onAbort();
+      else stopped.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+      return (await Promise.race([resolver, aborted]))(ctx);
+    } finally {
+      stopped.removeEventListener("abort", onAbort!);
+    }
   };
 }
 
@@ -153,15 +229,13 @@ export interface CodexSeams {
 
 /** The Codex block's options, built from the session flow's feeds. */
 export function codexBlockOptions(feeds: HarnessFeeds, seams: CodexSeams = {}): CodexAgentOptions {
-  const resolveCodexClient = seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : undefined);
   return {
     cwd: feeds.cwd,
     resume: feeds.resume,
     onSession: feeds.onSession,
     model: feeds.model,
     thread: codexThreadOptions(),
-    client: codexClientOptions(),
-    ...(resolveCodexClient !== undefined ? { resolveCodexClient } : {}),
+    resolveCodexClient: seams.resolveCodexClient ?? (codexIsScripted() ? scriptedCodex() : codexClient()),
     name: "codex",
   };
 }
@@ -180,9 +254,11 @@ export function codexBlock(feeds: HarnessFeeds, seams: CodexSeams = {}): Harness
 
 /** Codex mode's session flow. `seams` is for tests. */
 export function codexSessionFlow(seams: CodexSeams = {}) {
-  // No `defaultModel`: a session from before models could be picked runs on
-  // Codex's own default, as it did.
-  return harnessSessionFlow({ kind: CODEX_SESSION, agent: (feeds) => codexBlock(feeds, seams) });
+  return harnessSessionFlow({
+    kind: CODEX_SESSION,
+    defaultModel: CODEX_DEFAULT_MODEL,
+    agent: (feeds) => codexBlock(feeds, seams),
+  });
 }
 
 /** The Codex program the SDK runs, and the directories it puts on the program's `PATH`. */
@@ -244,6 +320,30 @@ function failureOf(result: ReturnType<typeof spawnSync>): string {
     .filter((line) => line !== "" && !line.startsWith("WARNING:"));
   if (said.length > 0) return said.at(-1)!;
   return result.signal !== null ? `it was ended by ${result.signal}` : `it exited with code ${String(result.status)}`;
+}
+
+/**
+ * The MCP servers Codex's settings name, as Codex itself lists them
+ * (`codex mcp list --json`) over `env`. Throws when Codex can't say.
+ */
+export async function userMcpServers(env: Record<string, string>): Promise<readonly string[]> {
+  // Not `runCodex`: listing asks each server how it signs in, and this runs
+  // on a turn, where a blocking wait would stall every other request.
+  const program = await codexProgram(env);
+  const PATH = [...program.pathDirs, env.PATH ?? ""].filter((dir) => dir !== "").join(delimiter);
+  const stdout = await new Promise<string>((resolve, reject) =>
+    execFile(
+      program.path,
+      ["mcp", "list", "--json"],
+      { env: { ...env, PATH } as Record<string, string> as NodeJS.ProcessEnv, encoding: "utf8", timeout: 30_000 },
+      (error, out) => (error ? reject(error) : resolve(out)),
+    ),
+  );
+  const listed = JSON.parse(stdout) as unknown;
+  if (!Array.isArray(listed)) throw new Error("`codex mcp list --json` did not print a list");
+  return listed.flatMap((server) =>
+  typeof (server as { name?: unknown })?.name === "string" ? [(server as { name: string }).name] : [],
+  );
 }
 
 /** The host's own answers. */

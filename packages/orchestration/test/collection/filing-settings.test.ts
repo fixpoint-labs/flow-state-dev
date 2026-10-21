@@ -532,6 +532,9 @@ describe("a dependent another process filed (resource-backed)", () => {
     await first.addTask({ id: "b", goal: "b", deps: ["a"] });
     await second.cancel("a");
     expect(second.get("a")?.cascadeOwed).toBeUndefined();
+    // Until a touch cancels it, the claim itself never starts a row behind an
+    // ended dependency: a board's drain pays its debts after its workers.
+    expect(await first.claim("w")).toBeNull();
 
     await second.payOwedCascades!();
     const fresh = await open();
