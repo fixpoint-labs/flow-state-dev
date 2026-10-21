@@ -19,7 +19,7 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
-| `blockTask` | `updateTask({ taskId, patch: { status: "held" } })` and `"pending"` before it starts (flattened by FIX-2081); `waitForUser` after | FIX-2080 |
+| `blockTask` | `updateTask({ id, status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
 | `TaskCollection.block`, `unblock` | `TaskCollection.hold`, `release` | FIX-2080 |
 | The `"blocked"` task status, and `"blocked"` in `listTasks`' status filter | `"held"` | FIX-2080 |
 | `Task.undispatched`, `TaskInit.undispatched` | `held` | FIX-2080 |

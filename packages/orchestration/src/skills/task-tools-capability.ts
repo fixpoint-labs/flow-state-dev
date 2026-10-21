@@ -1479,8 +1479,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   const getTask = defineTool({
     name: named("getTask"),
     description:
-      "Read one task on your delegation board in full: what it was asked to do (goal and " +
-      "input), how it stands, its worker's latest status note, and its output: the result " +
+      "Read one task on your delegation board in full: what it was asked to do (goal, " +
+      "context and input), every field you can edit before it starts, how it stands, its " +
+      "worker's latest status note, and its output: the result " +
       "when it completed, or, while it runs, the checkpoint its worker last reported " +
       "(checkpoint: true). Its error when it failed, the question it waits on when it is " +
       "parked. Use it to answer from what a task found, rather than from a line about it.",
@@ -1494,6 +1495,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           title: z.string().optional(),
           status: z.string(),
           assignee: z.string().optional(),
+          context: z.string().optional(),
+          deps: z.array(z.string()).optional(),
+          priority: z.number().optional(),
+          labels: z.array(z.string()).optional(),
+          /** Its metadata; a string, cut, when it was too long to return. */
+          metadata: z.unknown().optional(),
+          /** True when `metadata` was cut to {@link READ_OUTPUT_LIMIT} characters. */
+          metadataCut: z.literal(true).optional(),
+          attempts: z.number(),
+          maxAttempts: z.number().optional(),
           input: z.unknown().optional(),
           /** True when `input` was cut to {@link READ_OUTPUT_LIMIT} characters. */
           inputCut: z.literal(true).optional(),
@@ -1523,6 +1534,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (t === undefined) return taskNotFoundError(input.id);
       const taskInput = t.input === undefined ? undefined : readable(t.input);
       const output = t.output === undefined ? undefined : readable(t.output);
+      const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
       return {
         ok: true as const,
         task: {
@@ -1531,6 +1543,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.title !== undefined ? { title: t.title } : {}),
           status: t.status,
           ...(t.assignee !== undefined ? { assignee: t.assignee } : {}),
+          ...(t.context !== undefined ? { context: t.context } : {}),
+          ...(t.deps !== undefined ? { deps: t.deps } : {}),
+          ...(t.priority !== undefined ? { priority: t.priority } : {}),
+          ...(t.labels !== undefined ? { labels: t.labels } : {}),
+          ...(metadata !== undefined ? { metadata: metadata.value, ...(metadata.cut ? { metadataCut: true as const } : {}) } : {}),
+          attempts: t.attempts,
+          ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
           ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
           ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
           ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
