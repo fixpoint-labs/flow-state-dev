@@ -23,8 +23,12 @@
 - `GOAL_CONTROL=roster-reach`: a task session's delegates are the whole roster again (`packages/workforce/src/delegates/worker-delegates.ts`). Must fail leg `c` on **"a piece for a non-delegate is refused"**.
 - `GOAL_CONTROL=edit-any-state`: the field table's state rule is off, in the tool's pre-check and in the guarded write (`task-tools-capability.ts`, `collection/internal.ts`, `collection/resource-backed.ts`). Must fail leg `b` on the **running** and **finished** columns.
 
-On `fix/FIX-2080` before FIX-2081 the check fails legs `a`, `b` and `c`: the removed tools are offered, `getTask` and `createTask` are not, `updateTask` takes `taskId` and `patch`, and a task session's piece reaches `eng.c`.
+On `fix/FIX-2080` before FIX-2081 the check fails before any leg runs: the host refuses the standard workers, since `managesOwnDelegates` isn't a coordinator setting and `delegates: all` isn't a list. The package tests that carry the same rules fail there too (see the verdict log).
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-21 | `fix/FIX-2080` at 0d5a235 (before FIX-2081), extracted with `git archive`, built | n/a | FAIL (expected) | The host refuses the workers: `managesOwnDelegates` is not a setting, and `delegates: all` is not an array. The new orchestration tests fail 20, the new workforce tests 4. |
+| 2026-10-21 | `fix/FIX-2081` at 8af3e44bd | n/a | PASS | Legs a, b and c. Every field in the pending and held columns reads back changed; the pending-after-retry, running and finished columns are refused with `field_locked_after_start` or `task_finished` and leave the row unchanged. |
+| 2026-10-21 | same, `GOAL_CONTROL=roster-reach` | n/a | FAIL (expected) | Only `c:a piece for a non-delegate is refused`. |
+| 2026-10-21 | same, `GOAL_CONTROL=edit-any-state` | n/a | FAIL (expected) | Leg b, the running, finished and pending-after-retry columns; the pending and held columns stay green. |

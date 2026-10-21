@@ -8,7 +8,7 @@
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.
 
-- `rec:not-started`: two tasks recorded through `addTask_tasks` (one for a delegate, one for nobody) are each `held` (FIX-2080; `pending` with the not-dispatched mark before it), with 0 attempts, no run and no task session, after 30 s in which the board is touched about once a second (`listTasks_tasks`).
+- `rec:not-started`: two tasks filed through `createTask_tasks` with `held: true` (`addTask_tasks` before FIX-2081; one for a delegate, one for nobody) are each `held` (FIX-2080; `pending` with the not-dispatched mark before it), with 0 attempts, no run and no task session, after 30 s in which the board is touched about once a second (`listTasks_tasks`).
 - `lineage:refused`: `dispatchTask_tasks` naming the recorded task, sent from Alice's other conversation with the same coordinator, answers `task_not_found`, and the stored row is byte-for-byte unchanged.
 - `disp:ref-runs`: `dispatchTask_tasks` with each recorded task's `taskId` (with an `assignee` for the one recorded for nobody) starts it: one task session, opened after the dispatch request, one attempt, `completed` for that delegate, and one `completed` notice in the conversation.
 - `disp:new-runs`: `dispatchTask_tasks` with a new `goal` and a delegate runs the same way: once, `completed`, one notice.

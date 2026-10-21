@@ -297,7 +297,7 @@ gate (present only with durable execution). Beside them, one fact:
 `hasWaitSweeper`, true when this process runs a durability sweeper that times
 waits out. `dispatchTask` offers `wait` only when both hold: the board
 opts in with `resumesWaits: true` (whatever runs it calls `resumeOwedWaits`), and
-the host reports `hasWaitSweeper`. `addTask` never waits. Identity is
+the host reports `hasWaitSweeper`. `createTask` never waits. Identity is
 never a parameter to any of them.
 
 ## The rule that decides everything

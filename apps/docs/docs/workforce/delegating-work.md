@@ -2,7 +2,7 @@
 title: Delegating work
 sidebar_position: 3.6
 sidebar_label: Delegating work
-description: "Any worker can file tasks for the workers on your roster that work for it, and a worker given a task can split it into pieces for any worker on your roster that takes tasks."
+description: "Any worker can file tasks for the workers on your roster that work for it, its delegates, and a worker given a task can split it into pieces for its own delegates."
 ---
 
 # Delegating work
@@ -26,9 +26,24 @@ delegates: [eng.coder, eng.reviewer]
 ---
 ```
 
-`delegates:` is who works for this worker. A coordinator hands posts to this list, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
+`delegates:` is who works for this worker, and the only workers it can give work to. A coordinator hands posts to this list, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
 
-When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `dispatchTask`, which starts work on a delegate now, and `addTask`, `assignTask`, `completeTask`, `failTask`, `cancelTask`, `updateTask`, `listTasks` and `answerTask`, which keep the board. `addTask` files a task held, so it doesn't start until `dispatchTask` names it by its `taskId`, or `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `dispatchTask_tasks`, `addTask_tasks` and so on.
+The worker itself changes its list only when it is a coordinator whose file sets `managesOwnDelegates: true`. Every worker with a board can read its list with `listDelegates`.
+
+`delegates: all` gives the worker every worker on your roster, itself included:
+
+```md title="workforce/org/workers/router/WORKER.md"
+---
+description: Hands any job to whoever does it.
+delegates: all
+---
+```
+
+The roster is read on every call, so a worker you hire partway through a conversation can be handed work on the next call, and a worker you fire drops off. Removing one delegate from such a session turns its list into the roster as it stands then, less that worker, and it stops following the roster. Only the worker's file sets `all`; no action or tool switches a list to it. `all` isn't bounded by the 25-delegate limit a written list has.
+
+When at least one of a session's delegates can take a task, the worker gets the [task board](../orchestration/task-board.md)'s task tools in that session: `createTask`, `getTask`, `listTasks` and `updateTask` ([one task, five tools](../orchestration/task-board.md#one-task-five-tools)), `answerTask`, and `dispatchTask`, which starts work on a delegate now. `createTask` with `held: true` files a task that doesn't start until `updateTask` releases it. Your app can send the same tools as actions on any of that worker's sessions, named for the board, `tasks`: `createTask_tasks`, `updateTask_tasks` and so on. They act as the signed-in user, and another user's call to them is refused.
+
+A worker working a task also gets `reportProgress`, which writes a status note and a checkpoint of its output on that task, and `parkOnQuestion`. Neither is an action.
 
 A worker whose delegates only take posts, like a coordinator that routes questions, has no one to hand a task to, and neither does a worker with no delegates. On a session of either, the app's actions answer:
 
@@ -38,7 +53,7 @@ A worker whose delegates only take posts, like a coordinator that routes questio
 
 The worker's own turn still gets the tools on the built-in and coordinator flows, for the steps it files for itself: see [Working in steps](#working-in-steps).
 
-In a task session the rule is wider: a worker working a task can hand pieces to any worker on the roster that takes tasks, delegates or not. See [Splitting a task](#splitting-a-task).
+A task session follows the same rule: a worker working a task hands pieces only to its own delegates. See [Splitting a task](#splitting-a-task).
 
 Add a delegate that takes tasks partway through a conversation and it can be handed tasks on the next call; remove the last one and the actions answer `no_delegation_board` again.
 
@@ -101,6 +116,8 @@ What the kit gives you, and where each piece goes:
 | `tools` | The `uses` of the block that runs the model. It carries the task tools only while the session files, and nothing otherwise. |
 | `messages` | The same `uses`. It carries `messageWorker`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
 | `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
+| `progress` | The same `uses`. It carries `reportProgress` on a turn working a task. |
+| `delegateTools` | The same `uses`. It carries `listDelegates`, and `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `managesOwnDelegates: true`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
@@ -123,7 +140,7 @@ A worker can plan its own work. A task it files naming **itself** is a **step**:
 { "goal": "Tighten the draft", "assignee": "eng.writer", "deps": ["<the draft's taskId>"] }
 ```
 
-A step filed with `addTask` is recorded, as any task is, and waits until `dispatchTask` names it by its `taskId`.
+A step can report its progress with `reportProgress`, on its own row: its checkpoint is that step's output. A step can't be held.
 
 A step that fails isn't tried again, and a step waiting on it is cancelled. The worker's last turn hears both, and can do the work itself, explain, or carry on. A request that files no step costs nothing extra. One that does costs a model turn for each step, and one more for the answer.
 
@@ -133,8 +150,8 @@ The worker gets the task tools for its steps on the built-in and coordinator flo
 - A step's own turn files no step for itself. A step that finds more work says so in its answer, and the answer after the steps deals with it.
 - A step depends only on other steps, and a delegate's task only on other tasks: a step whose `deps` names a delegate's task, or a delegate's task whose `deps` names a step, is refused when it is filed.
 - The turn that answers after the steps can't file another step for itself. It can still hand a task to a delegate.
-- A step can't be waited on (`dispatchTask` with `wait`), and it can't be completed, failed or blocked with a tool call: it ends when its turn answers. It can be changed with `updateTask` before it starts, or cancelled.
-- A step stays the worker's, and a delegate's task stays a delegate's: `assignTask` won't move one into the other. Cancel it and file it again.
+- A step can't be waited on (`dispatchTask` with `wait`) or held, and no tool call finishes it: it ends when its turn answers. It can be changed with `updateTask` before it starts, or cancelled.
+- A step stays the worker's, and a delegate's task stays a delegate's: `updateTask` won't move one into the other. Cancel it and file it again.
 
 The worker's `listTasks` lists the session's steps beside the tasks it dispatched; a step's `assignee` is the worker itself. Steps sit on a ledger of their own, `plan`, which your app reads the same way it reads `tasks` ([Showing a user's boards in your app](#showing-a-users-boards-in-your-app)). On a worker with no delegate that takes tasks, the app's `<tool>_tasks` actions answer `no_delegation_board`, so read the `plan` ledger to show its steps. They count toward [the 100 tasks under one top task](#how-far-it-goes), and add no depth.
 
@@ -184,7 +201,7 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it into pieces. It can hand a piece to any other worker on your roster that takes tasks, not only its own delegates, so a task that needs something another worker knows can get it from that worker. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
+A worker given a task can split it into pieces, for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed: when the task needs a worker that isn't a delegate, the worker says so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one. `listTasks({ filedByTask })` lists the pieces one task filed.
 
 The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
 
