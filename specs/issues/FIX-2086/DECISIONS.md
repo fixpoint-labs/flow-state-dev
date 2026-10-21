@@ -43,7 +43,7 @@ so a retry starts from the original brief. Then a steer is kept per attempt, as 
 |---|---|
 | **Instead of** | Settling the task when its request ends, with a late steer recorded as untaken |
 | **Because** | The filer was told the steer was accepted. A request that made its last model call before the steer landed, or one with no model call at all, never takes it, and a task settled over it silently ignores the redirect. The concept's rule 6 already keeps a task open for a queued message; an untaken steer is the same kind of owed work. The row knows it, so `orchestration` decides it with no Workforce read |
-| **Locks in** | Rule 6 (FIX-2077's predicate) gains *no steer untaken by this attempt*, read from the row. The gate admits one more `work` turn, same attempt, with the steer as its message, and re-checks. A steer to a task with no request on it (waiting on its filed tasks) starts that turn now. The output is that turn's answer, as for any last turn. The 20-steer cap bounds the extra turns |
+| **Locks in** | Rule 6 (FIX-2077's predicate) gains *no steer untaken by this attempt*, read from the row. The gate admits one more `work` turn, same attempt, with the steer as its message, and re-checks. A steer to a task with no request on it (waiting on its filed tasks) starts that turn now. The output is that turn's answer, as for any last turn. Each extra turn takes at least one steer no earlier turn took, so the 20-steer cap holds a task to at most 20 extra turns. A steer is not a message and is not paid from the message budget; the cap is its limit, as the budget is a queued message's |
 
 ![D2: a steer that arrives after the last model call. One more turn before it settles, chosen, beside settle anyway with the steer recorded untaken. Decides it: whether a redirect the filer was told was accepted is acted on. The price: one more model turn, and the task finishes later. A tie: no attempt is used either way. Locks in: rule 6 reads untaken steers. Flips if late steers are mostly noise](figures/d2-late-steer-turn.svg)
 
@@ -77,14 +77,21 @@ It comes down to a filer's model reading a corrected task: screens-only shows it
   tool or a screen action (FIX-2081's block), and a line typed in an open task's session. Readers:
   the brief a worker is handed (`taskMessage`, the worker input), a context entry re-read before
   each model step, and the harness manager's prompt. Each read marks the steers it took for the
-  current attempt.
+  current attempt, keeping the rule `turns` has today: a steer already taken by this attempt still
+  counts as its own, so a step that re-runs after a crash reads it again rather than losing it.
 - **A steer is no ending** (rule 6): it records nothing through `endingOf`, changes no status and no
   claim, uses no attempt and never cancels.
 - **A coding run:** the manager watches its row while the harness step runs, and a new steer aborts
-  that step, not the request. The same request runs the next step, resuming the confirmed coding
-  session with the steers in its prompt. The step already takes an abort signal
+  that step, not the request. The same request runs the next step only once the aborted step's
+  process has exited, resuming the confirmed coding session with the steers in its prompt; the
+  checkout keeps whatever the stopped step wrote, and the prompt says it was stopped for a steer.
+  The step already takes an abort signal
   ([`manager.ts:2738`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/harness-manager/src/manager.ts#L2738))
-  and resumes by session id (`:2630`).
+  and resumes by session id (`:2630`), but today its abort returns before the harness process is
+  down (Codex and Cursor race the signal against the stream and kill the process after,
+  [`codex/agent.ts:270-286`](https://github.com/fixpoint-labs/flow-state-dev/blob/96404d2519cd7848940de2857841b67adaf87646/packages/codex/src/agent.ts#L270-L286)).
+  A harness that can't confirm its process exited is not aborted: the steer waits for that step's
+  own end and the next step takes it, or D2's extra turn does.
 - **A line in a task's session** goes to the flow's own door (`run`, `respond` after FIX-2084).
   In an open task's session the door writes the steer as the user; in a finished one it is a
   reply with the session's history and the task is unchanged (M-10). The router that reopened goes;
@@ -117,11 +124,25 @@ It comes down to a filer's model reading a corrected task: screens-only shows it
 - **A context entry re-read before each step reaches a running generator.** Read from
   `binding-reader.ts` and `context-fn.ts`, where a skill activated mid-loop reaches the next step.
 - **The harness step stops on its signal and resumes by session id.** Read from `manager.ts`
-  (above) and the door's own continue path.
+  (above) and the door's own continue path. Its signal does not wait for the harness process to
+  exit (above), which is why the next step waits for that exit.
 
 ## Notes from review
 
-None yet.
+- "Three consumption sites each **mark** steers for the current attempt … **Simpler implement shape:** one orchestration boundary marks once per attempt/step; other readers consume read-only untaken steers." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#pullrequestreview-5595335794), [thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#discussion_r4333353844))
+- "A re-read that marks as a side effect is not idempotent under a step retry or replay: mark-then-crash loses the steer, read-without-mark double-delivers … worth a `settle-claim` POC (the generator-step path, with a steer arriving between steps)." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#issuecomment-6308800407))
+- "“Manager watches its row” during a harness step — please name expected freshness (subscription/SSE vs poll/backoff). Without that, implementers may copy door-style polling across multi-minute steps." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#discussion_r4333353851))
+- "what happens to the checkout and any uncommitted work when the step aborts mid-write, and what the next step's prompt says about the aborted one … restrict v1 to harnesses that confirm a session and say the others refuse." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#issuecomment-6308800407))
+- "`current` on **`listTasks`** implies follow-up chain resolution per row. Worth one line: batch/index at read (e.g. one pass keyed by `followUpOf`) or scope `current` to `getTask` if list views stay cheap. Deep chains have no cap unlike steers (20)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#discussion_r4333353838)); "State the bound (a chain is short, or the walk is indexed), or list views will pay a per-row read" — second-look
+- "Session line mirror on take duplicates `steers` on the row. If the only consumer is “what the person sees,” consider read-time projection in Shift Manager instead of a second write path on every take." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#discussion_r4333353866))
+- "Retry brief carries **every** steer taken or not (cap 20) … consider promoting the **20-cap** to its own “Decided” bullet with flip (“refile / follow-up”) … Optional: **untaken-only queue on row** + compact history for audit" — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#discussion_r4333353833))
+- "`steer` collection verb vs public `updateTask` — fine if FIX-2081 owns the verb; otherwise prose can say “guarded patch for `message`” and avoid a second symbol in this spec." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#pullrequestreview-5595335794))
+- "Delivery story appears here, in `what-changes.svg`, and again in DECISIONS + three D-figures. **Simplify option:** keep goal-check mermaid … and drop this flow **or** drop redundant D-SVGs" · "One **mechanism checklist** in DECISIONS with SPEC linking would cut drift risk for implementers." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#discussion_r4333353827))
+- "Suggest putting FIX-2071's number in the code comment at the entry too, so the removal is findable without this spec." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#issuecomment-6308800407))
+- "`door.ts`/`turns.ts` carry a lot of hard-won race handling (start-wait, withdraw, kept-is-never-reported-as-not-delivered). Before deleting them, the implementer should list each guarantee and where it lands in the new path, so none is lost silently." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/3603#issuecomment-6308800407))
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one.
 
 ## How it got here
 
