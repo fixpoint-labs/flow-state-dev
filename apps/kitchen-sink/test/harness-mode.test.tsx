@@ -22,12 +22,14 @@ import PickerPage from "@/app/page";
 import { HarnessFrame } from "@/components/harness-frame";
 import { HarnessModePage } from "@/components/harness-mode-page";
 import { resetModeAvailabilityForTests } from "@/lib/harness-gate";
+import { resetHarnessModelChoicesForTests, type ModelChoices } from "@/lib/harness-models";
 import { COORDINATOR_FLOWS, SHELL_FLOW, WORKER_FLOWS } from "@/lib/workforce-shell";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllEnvs();
   resetModeAvailabilityForTests();
+  resetHarnessModelChoicesForTests();
 });
 
 /** The harness flow kinds the spec pins, one per harness mode. */
@@ -97,6 +99,11 @@ describe("the picker, for a mode that runs without its sandbox", () => {
       codex: { available: false, reason: "Not built yet." },
       cursor: { available: true, note },
     });
+    // The lists as this server start read them, so the page asks no harness.
+    (globalThis as Record<symbol, unknown>)[Symbol.for("kitchen-sink.harness-models")] = new Map([
+      ["cursor", TWO_MODELS],
+      ["claude-code", TWO_MODELS],
+    ]);
     render(await HarnessModePage({ id: "cursor" }));
     expect(within(screen.getByTestId("rail")).getByTestId("mode-note").textContent).toBe(note);
     cleanup();
@@ -122,7 +129,7 @@ const entry = (kind: string): FlowListEntry => ({ id: kind, kind, cardinality: "
 
 /** A server holding two harness flow kinds and the sessions on each, newest first. */
 function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
-  const created: Array<{ flowKind: string; userId: string }> = [];
+  const created: Array<{ flowKind: string; userId: string; state?: Record<string, unknown> }> = [];
   return {
     created,
     flowSource: { listFlows: vi.fn(async () => [entry("codex-session"), entry("claude-code-session")]) },
@@ -132,8 +139,8 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
           .filter((row) => row.kind === (options?.flowId ?? options?.flowKind))
           .map((row) => ({ id: row.id, flowKind: row.kind, title: row.title }) as unknown as SessionSummary),
       ),
-      createSession: vi.fn(async (options: { flowKind: string; userId: string }) => {
-        created.push({ flowKind: options.flowKind, userId: options.userId });
+      createSession: vi.fn(async (options: { flowKind: string; userId: string; state?: Record<string, unknown> }) => {
+        created.push({ flowKind: options.flowKind, userId: options.userId, state: options.state });
         const row = { id: `new-${created.length}`, kind: options.flowKind, title: "fresh" };
         rows.unshift(row);
         return { id: row.id, flowKind: row.kind } as never;
@@ -142,11 +149,23 @@ function fakeServer(rows: Array<{ id: string; kind: string; title: string }>) {
   };
 }
 
-function mount(server: ReturnType<typeof fakeServer>) {
+/** A mode's models: two, the first preselected. */
+const TWO_MODELS: ModelChoices = {
+  models: [
+    { id: "model-a", label: "Model A" },
+    { id: "model-b", label: "Model B" },
+  ],
+  defaultId: "model-a",
+  reason: null,
+  fallbackId: null,
+};
+
+function mount(server: ReturnType<typeof fakeServer>, models: ModelChoices = TWO_MODELS) {
   return render(
     <HarnessFrame
       label="Codex"
       flowKind="codex-session"
+      models={models}
       flowSource={server.flowSource}
       sessionSource={server.sessionSource as never}
       stream={(sessionId) => <p data-testid="opened">{sessionId}</p>}
@@ -185,9 +204,36 @@ describe("V6 · a harness mode's frame", () => {
     await openKind("codex-session");
     fireEvent.click(screen.getByTestId("new-session"));
     await waitFor(() => expect(screen.getByTestId("opened").textContent).toBe("new-1"));
-    expect(server.created).toEqual([{ flowKind: "codex-session", userId: "devuser" }]);
+    expect(server.created).toEqual([{ flowKind: "codex-session", userId: "devuser", state: { model: "model-a" } }]);
     await waitFor(() => expect(within(screen.getByTestId("rail")).getByText("fresh")).toBeTruthy());
     expect(within(screen.getByTestId("rail")).queryByText("claude one")).toBeNull();
+  });
+
+  it("New session is born with the picked model, the mode's default preselected", async () => {
+    const server = fakeServer([]);
+    mount(server);
+    const picker = screen.getByTestId("model-picker") as HTMLSelectElement;
+    expect(picker.value).toBe("model-a");
+    expect(picker.selectedOptions[0]!.textContent).toBe("Model A (default)");
+    fireEvent.change(picker, { target: { value: "model-b" } });
+    fireEvent.click(screen.getByTestId("new-session"));
+    await waitFor(() => expect(server.created).toHaveLength(1));
+    expect(server.created[0]!.state).toEqual({ model: "model-b" });
+  });
+
+  it("with no model to offer, New session is off and the reason shows; a short list shows its reason too", async () => {
+    const server = fakeServer([]);
+    mount(server, { models: [], defaultId: null, reason: "The list can't be read.", fallbackId: null });
+    expect(screen.queryByTestId("model-picker")).toBeNull();
+    expect(screen.getByTestId("model-list-reason").textContent).toBe("The list can't be read.");
+    expect((screen.getByTestId("new-session") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("new-session"));
+    expect(server.created).toHaveLength(0);
+
+    cleanup();
+    mount(fakeServer([]), { ...TWO_MODELS, models: [TWO_MODELS.models[0]!], reason: "Only the default." });
+    expect(screen.getByTestId("model-list-reason").textContent).toBe("Only the default.");
+    expect((screen.getByTestId("new-session") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("BR-23: with no sessions, the rail says so and offers New session", async () => {

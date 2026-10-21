@@ -31,12 +31,14 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
   };
 });
 
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { useContinueRequest } from "../src/react/hooks/use-continue-request";
 
-function makeItem(id: string, itemIndex: number) {
+function makeItem(id: string, itemIndex: number): OutputItem {
   return {
     id,
     type: "message",
+    role: "assistant",
     status: "completed",
     requestId: "req_1",
     itemIndex,

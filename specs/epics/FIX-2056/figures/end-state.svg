@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, one task: two boards told apart by mode, a plan board that waits on every row and a delegation board that never waits; one completion rule at the claim gate; four filing settings, start, session, result and attempts. Four task tools, createTask, getTask with a wait, listTasks and updateTask with one rule per field, also public actions for screens, with delegates as authority. Every ending reaches the filer once and the sweeper pays every debt at its due time. Built on those: routed tasks, steering and follow-ups, schedules that file tasks, and roles checked at hire. Composed in by the app: worker flows from role factories, routing policy and rounds, delegate lists, schedules, the claim order. Replaced in one line: a post becomes a routed task, dispatchTask's wait becomes getTask's, addTask and readTask become createTask and getTask, cancelTask becomes an updateTask status, blockTask becomes held, reopen becomes a follow-up, completeTask and failTask are gone. Not built, below a fence: the Inbox and answering a question, FIX-2058; send, call and receive, FIX-2070; the renames, FIX-2071; the prune leftovers, FIX-2072; default worker instructions, FIX-2073.">
+     aria-label="What's in the box. In the box, one task: two boards told apart by mode, a plan board that waits on every row and a delegation board that never waits; one completion rule at the claim gate; four filing settings, start, session, result and attempts. Five task tools: the filer's createTask, getTask with a wait, listTasks and updateTask with one rule per field, also public actions for screens, and the worker's reportProgress on a task turn; delegates are authority. Every ending reaches the filer once and the sweeper pays every debt at its due time. Built on those: routed tasks, steering and follow-ups, schedules that file tasks, and roles checked at hire. Composed in by the app: worker flows from role factories, routing policy and rounds, delegate lists, schedules, the claim order. Replaced in one line: a post becomes a routed task, dispatchTask's wait becomes getTask's, addTask and readTask become createTask and getTask, cancelTask becomes an updateTask status, blockTask becomes held, reopen becomes a follow-up, completeTask and failTask are gone. Not built, below a fence: the Inbox and answering a question, FIX-2058; send, call and receive, FIX-2070; the renames, FIX-2071; the prune leftovers, FIX-2072; default worker instructions, FIX-2073.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -23,7 +23,7 @@
 
   <g id="in-the-box">
     <rect class="box" x="16" y="24" width="560" height="276" rx="5"/>
-    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE TASK, FOUR TOOLS</text>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE TASK, FIVE TOOLS</text>
     <rect class="held" x="32" y="56" width="256" height="104" rx="4"/>
     <text class="t-b" x="44" y="78">one task</text>
     <text class="t-s" x="44" y="96">plan board &#183; waits on every row</text>
@@ -31,11 +31,11 @@
     <text class="t-s" x="44" y="128">one done rule at the claim gate</text>
     <text class="t-s" x="44" y="144">start &#183; session &#183; result &#183; attempts</text>
     <rect class="held" x="300" y="56" width="260" height="104" rx="4"/>
-    <text class="t-b" x="312" y="78">four task tools</text>
+    <text class="t-b" x="312" y="78">five task tools</text>
     <text class="t-s" x="312" y="96">createTask &#183; getTask({ wait })</text>
     <text class="t-s" x="312" y="112">listTasks &#183; updateTask, one rule/field</text>
-    <text class="t-s" x="312" y="128">public actions for screens</text>
-    <text class="t-s" x="312" y="144">delegates are authority</text>
+    <text class="t-s" x="312" y="128">reportProgress, on a task turn</text>
+    <text class="t-s" x="312" y="144">public actions &#183; delegates are authority</text>
     <rect class="held" x="32" y="172" width="528" height="52" rx="4"/>
     <text class="t-b" x="44" y="194">every ending reaches the filer once</text>
     <text class="t-s" x="44" y="212">failures included &#183; every debt has a due time, the sweeper pays it</text>

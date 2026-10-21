@@ -12,6 +12,7 @@ import Link from "next/link";
 
 import { HarnessModeView } from "@/components/harness-mode-view";
 import { modeAvailability } from "@/lib/harness-gate";
+import { harnessModelChoices } from "@/lib/harness-models";
 import { flowKindOf, modeById, type HarnessModeId } from "@/lib/modes";
 
 /** The page for the harness mode `id`. */
@@ -19,7 +20,11 @@ export async function HarnessModePage({ id }: { id: HarnessModeId }) {
   const mode = modeById(id);
   const availability = (await modeAvailability())[id];
   // Trusted: the gate makes a harness mode available only once it has a flow kind.
-  if (availability.available) return <HarnessModeView label={mode.label} flowKind={flowKindOf(mode)} note={availability.note} />;
+  if (availability.available) {
+    // Asked on each request, so a list that couldn't be read is asked for again.
+    const models = await harnessModelChoices(id);
+    return <HarnessModeView label={mode.label} flowKind={flowKindOf(mode)} note={availability.note} models={models} />;
+  }
   const reason = availability.reason;
   return (
     <main className="min-h-[100dvh] bg-background px-4 py-10 sm:px-6" data-testid="mode-unavailable" data-mode-id={id}>

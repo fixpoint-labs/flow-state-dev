@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { workspaceManifests } from "./workspace-members.mjs";
 
 const rootDir = process.cwd();
 const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite", "store-postgres", "orchestration", "patterns", "workforce"];
@@ -232,6 +233,27 @@ for (const pkg of packages) {
 const cycles = detectCycles(graph);
 for (const cycle of cycles) {
   errors.push(`circular dependency detected: ${cycle.join(" -> ")}`);
+}
+
+// One compiler: only the members that import the TypeScript API declare it, at the root's range.
+// An `npm:` alias counts as the package it installs (`@typescript-eslint/*` is not `@typescript/`).
+const TYPESCRIPT_IMPORTERS = new Set(["packages/orchestration/package.json", "goals/package.json"]);
+const rootTypescript = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).devDependencies?.typescript;
+const isCompilerPackage = (name) => name === "typescript" || name.startsWith("@typescript/");
+const aliasTarget = (range) => (/^npm:(@?[^@]+)/.exec(range) ?? [])[1] ?? null;
+for (const manifestPath of workspaceManifests(rootDir)) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestPath), "utf8"));
+  for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const [name, range] of Object.entries(manifest[field] ?? {})) {
+      if (name === "typescript" && TYPESCRIPT_IMPORTERS.has(manifestPath)) {
+        if (range !== rootTypescript) {
+          errors.push(`${manifestPath}: declares typescript ${range} in ${field}; it must match the root's ${rootTypescript}`);
+        }
+      } else if (isCompilerPackage(name) || isCompilerPackage(aliasTarget(String(range)) ?? "")) {
+        errors.push(`${manifestPath}: declares ${name} (${range}) in ${field}; the compiler is declared only at the root`);
+      }
+    }
+  }
 }
 
 if (errors.length > 0) {
