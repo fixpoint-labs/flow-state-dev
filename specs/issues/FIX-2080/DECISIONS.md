@@ -23,7 +23,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Adding `held` beside `blocked` and the recorded-not-started mark, and leaving each to its own tool |
-| **Because** | All three mean "filed, not started, until someone says go". `blocked` has no way out (`unblock` has no caller), and the recorded mark is released only by `dispatchTask`, which FIX-2081 removes. Three words for one state is the incoherence the concept retires; one status is what a screen and a filter can show |
+| **Because** | All three mean "filed, not started, until someone says go". `blocked` has no way out (`unblock` has no caller), and the recorded mark is released only by `dispatchTask`, which goes with FIX-2082 and FIX-2083. Three words for one state is the incoherence the concept retires; one status is what a screen and a filter can show |
 | **Locks in** | The status `held`, the collection verbs `hold` and `release`, and change kinds `held` and `released`, all public. `blocked`, `block`, `unblock` and `blockTask` are removed outright ([(e)](../../epics/FIX-2056/DECISIONS.md#e)); the board's `counts.blocked` becomes `counts.held`. On a Workforce board, `addTask` files held and `dispatchTask { taskId }` releases, until `dispatchTask` goes (FIX-2082, FIX-2083). Rows of both old shapes in a store read as `held` through the map, entries turned on here |
 
 ![D1: one status for not started. Held replaces blocked and the recorded mark, chosen, beside held added beside them. Decides it: a screen listing work that has not started. The price: apps outside reading blocked rewrite at upgrade](figures/d1-one-held.svg)
@@ -75,7 +75,7 @@ cancel lands in the ending's write, and no debt is needed.
   and FIX-2076's plan board. Those are the only boards a task's session files on in the repo.
   Whichever of FIX-2076 and FIX-2080 lands second wires the plan board in.
 - **`held` means before a start, and nothing after.** FIX-2077's field naming what keeps a
-  running task open is not a form of "hold": FIX-2077 renames it (`waitingOn` proposed), and the
+  running task open is not a form of "hold": FIX-2077 names it `waitingOn`, and the
   parked-split entry below uses that name.
 - **One owner for the split's cascade.** This issue builds the general cascade; FIX-2077 deletes
   the split's own piece cancel along with the park it keys on.
@@ -83,7 +83,7 @@ cancel lands in the ending's write, and no debt is needed.
   supervisor outputs don't change when their step goes.
 - **The map.** One function at the read boundary, beside the `parked` and `wait` migrations, with a
   switch per entry and one test per shape. Five entries: blocked to held and recorded to held,
-  turned on here; a post to a routed task (FIX-2083), a parked split to running (FIX-2077) and a
+  turned on here; a post to a routed task (FIX-2083), a parked split to running, with `waitingOn` set (FIX-2077), and a
   reopened row to pending (FIX-2086), built here, turned on by their owners. The epic's D3 named
   four; this PR amends it to five: the recorded mark is the fifth, because D1 retires it here,
   so FIX-2080 owns that entry and FIX-2081 adds none. FIX-2077's entry needs the running-row field
