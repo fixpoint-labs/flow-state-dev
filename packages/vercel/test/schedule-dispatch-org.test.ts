@@ -42,8 +42,10 @@ function boot() {
       rows.push(row);
     },
     async remove() {},
+    // A real index returns only rows already due, carrying the scheduled time
+    // they were due at; a past Monday 09:00 is one of "0 9 * * MON".
     async claimDue() {
-      return rows;
+      return rows.map((row) => ({ ...row, nextFireAt: Date.parse("2026-06-01T09:00:00.000Z") }));
     },
   };
   const schedules = defineScheduleCollection({ pattern: "schedules/*", index });

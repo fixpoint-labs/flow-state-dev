@@ -29,7 +29,7 @@ import {
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const captured = vi.hoisted(() => ({
-  processor: undefined as undefined | ((job: { data: unknown; timestamp?: number }) => Promise<void>),
+  processor: undefined as undefined | ((job: { data: unknown; timestamp?: number; opts?: { prevMillis?: number } }) => Promise<void>),
 }));
 
 vi.mock("bullmq", () => ({
@@ -155,6 +155,30 @@ describe("the BullMQ dispatch worker", () => {
       }
     }
   );
+
+  // The scheduler computes each job's slot (`opts.prevMillis`); the job's own
+  // `timestamp` is when it was created, which is no scheduled time. The
+  // endpoint fires a scheduled time once, so the slot is what is sent.
+  it("fires a job for its scheduler slot, once, however late or often it is processed", async () => {
+    const h = boot();
+    try {
+      await h.planIn("globex");
+      // Monday 2026-06-01 09:00 UTC: a slot of "0 9 * * MON".
+      const slot = Date.parse("2026-06-01T09:00:00.000Z");
+      const job = { data: h.jobs[0], timestamp: slot - 7 * 86_400_000 + 1_234, opts: { prevMillis: slot } };
+      await h.processor(job);
+      // The same slot again, as a retried or second worker's job: answered
+      // as a duplicate, which the worker takes as done.
+      await h.processor(job);
+      expect(h.statuses).toEqual([202, 200]);
+      const fired = await h.fired();
+      expect((fired?.metadata as { schedule?: { nominalFireTime?: string } }).schedule?.nominalFireTime).toBe(
+        "2026-06-01T09:00:00.000Z"
+      );
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
 
   it("does not fire the same row under another org's dispatch", async () => {
     const h = boot();

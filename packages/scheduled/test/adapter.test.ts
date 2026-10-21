@@ -8,6 +8,7 @@ import {
 import {
   ConcurrencyRejectedError,
   PrincipalResolutionError,
+  createInMemoryResourceStateStore,
   type ActiveRequestRegistry
 } from "@flow-state-dev/engine";
 import {
@@ -94,8 +95,11 @@ function withActiveRegistry(
   host: ReturnType<typeof createMockTransportHost>,
   registry: ActiveRequestRegistry
 ) {
+  // A resource-state store too: the endpoint records each schedule's last
+  // fired time there.
   (host as unknown as { stores: { activeRequests: ActiveRequestRegistry } }).stores = {
     ...(host.stores ?? {}),
+    resourceState: host.stores?.resourceState ?? createInMemoryResourceStateStore(),
     activeRequests: registry
   } as unknown as typeof host.stores;
   return host;
@@ -175,8 +179,9 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(envelope?.action).toBe("noop");
     expect(schedMeta(envelope).scheduleId).toBe("monthly-invoices");
     expect(schedMeta(envelope).origin).toBe("static");
+    // The scheduled time the fire counts against, as the endpoint writes it.
     expect(schedMeta(envelope).nominalFireTime).toBe(
-      "2026-06-01T00:00:00Z"
+      "2026-06-01T00:00:00.000Z"
     );
   });
 
@@ -301,7 +306,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(response.status).toBe(401);
   });
 
-  it("dedupe: same idempotency key within window returns 200 duplicate", async () => {
+  it("answers a scheduled time already fired 200 duplicate", async () => {
     const adapter = createScheduledTransportAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
