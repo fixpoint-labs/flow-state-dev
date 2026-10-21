@@ -37,8 +37,8 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("the scheduled-work list", () => {
-  it("puts the soonest next run first, and a schedule with none last", () => {
-    expect(toScheduledWork({ schedules: [off, weekly, daily] }).map((s) => s.key)).toEqual(["standup", "adoption", "paused"]);
+  it("keeps the order the list answered, which is the server's soonest-first", () => {
+    expect(toScheduledWork({ schedules: [off, weekly, daily] }).map((s) => s.key)).toEqual(["paused", "adoption", "standup"]);
   });
 
   it("leaves out a row that isn't a schedule", () => {
@@ -54,7 +54,7 @@ describe("the scheduled-work list", () => {
 
 describe("the Scheduled work view", () => {
   it("lists each schedule with its next run and the task it files, read through the user's roster session", async () => {
-    runAction.mockResolvedValue({ output: { schedules: [weekly, daily, off] }, sessionId: "workforce-roster-own-u_1" });
+    runAction.mockResolvedValue({ output: { schedules: [daily, weekly, off] }, sessionId: "workforce-roster-own-u_1" });
     render(<Schedules snapshot={snapshot} />);
     const lines = await screen.findAllByTestId("schedule");
     expect(runAction.mock.calls[0]!.slice(1, 4)).toEqual(["workforce-roster", "workforce-roster-own-u_1", "listSchedules"]);

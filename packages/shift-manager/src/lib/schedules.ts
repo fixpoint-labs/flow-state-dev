@@ -5,7 +5,7 @@
  * is read, so it shows on any host, with or without a schedule index.
  */
 import { useCallback, useEffect, useState } from "react";
-import { LIST_SCHEDULES_ACTION, ROSTER_FLOW } from "@flow-state-dev/workforce/browser";
+import { LIST_SCHEDULES_ACTION, ROSTER_FLOW, listedScheduleSchema } from "@flow-state-dev/workforce/browser";
 import { runAction } from "./action";
 import { useLab } from "./lab-data";
 import { describeFailure, type Failure } from "./reads";
@@ -27,28 +27,33 @@ export type ScheduledWork = {
 
 const text = (value: unknown): string | null => (typeof value === "string" && value.length > 0 ? value : null);
 
-/** The schedules a list read answered, soonest next run first, those with none last. A row that isn't a schedule is left out. */
+/**
+ * The schedules a list read answered, in the order it answered them (soonest
+ * next run first). Each row is parsed by Workforce's own schema; a row that
+ * doesn't parse is left out.
+ */
 export function toScheduledWork(output: unknown): ScheduledWork[] {
   const rows = (output as { schedules?: unknown } | null | undefined)?.schedules;
   if (!Array.isArray(rows)) return [];
   const work: ScheduledWork[] = [];
-  for (const row of rows as Array<Record<string, unknown>>) {
-    if (typeof row?.key !== "string" || typeof row.cron !== "string") continue;
-    const input = (row.input ?? {}) as Record<string, unknown>;
+  for (const row of rows) {
+    const parsed = listedScheduleSchema.safeParse(row);
+    if (!parsed.success) continue;
+    const { input, description, ...schedule } = parsed.data;
+    const filing = (input ?? {}) as Record<string, unknown>;
     work.push({
-      key: row.key,
-      cron: row.cron,
-      timezone: text(row.timezone) ?? "UTC",
-      enabled: row.enabled !== false,
-      ...(text(row.description) === null ? {} : { description: row.description as string }),
-      nextRunAt: text(row.nextRunAt),
-      filer: text(input.filer),
-      goal: text(input.goal),
-      assignee: text(input.assignee)
+      key: schedule.key,
+      cron: schedule.cron,
+      timezone: schedule.timezone,
+      enabled: schedule.enabled,
+      ...(text(description) === null ? {} : { description: description! }),
+      nextRunAt: schedule.nextRunAt,
+      filer: text(filing.filer),
+      goal: text(filing.goal),
+      assignee: text(filing.assignee)
     });
   }
-  const at = (s: ScheduledWork) => (s.nextRunAt === null ? Number.POSITIVE_INFINITY : Date.parse(s.nextRunAt));
-  return work.sort((a, b) => at(a) - at(b) || a.key.localeCompare(b.key));
+  return work;
 }
 
 /**

@@ -108,6 +108,13 @@ export async function handleDispatch(
     });
   }
 
+  // The cell a collection that isolates nothing keeps a user's rows in,
+  // derived the way every other user-scoped read derives it. One derivation
+  // for the resolver's read and the fired record, so the record sits beside
+  // the row it guards.
+  const userStorageKey = (userId: string, orgId: string) =>
+    resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false });
+
   const schedules = (flow as { schedules?: SchedulesConfig }).schedules;
   let schedule: ScheduleConfig | null = schedules?.static?.[scheduleId] ?? null;
   let origin: "static" | "dynamic" = "static";
@@ -119,10 +126,7 @@ export async function handleDispatch(
         gatewayPrincipal,
         request: req,
         stores: host.stores as ScheduleResolutionStores,
-        // The cell a collection that isolates nothing keeps a user's rows in,
-        // derived the way every other user-scoped read derives it.
-        userStorageKey: (userId, orgId) =>
-          resolveUserStorageKey(userId, orgId, { id: flowKind, isolateUserState: false }),
+        userStorageKey,
         // The registered instance's pin, so a hired worker resolves only
         // schedules in its own org, and a private one only its user's. From
         // the registry, never the request.
@@ -218,7 +222,7 @@ export async function handleDispatch(
   }
   const claim = await claimScheduledTime(
     host.stores.resourceState,
-    firedRecordAddress(flowKind, scheduleId, effectivePrincipal),
+    firedRecordAddress(flowKind, scheduleId, effectivePrincipal, userStorageKey),
     { at: time.at }
   );
   if (claim.outcome === "duplicate") {

@@ -23,3 +23,28 @@ export function parseNextFireAt(cron: string, tz?: string): number | null {
     return null;
   }
 }
+
+/** The latest scheduled time of `cron` at or before `at`, in ms, or `null` when the cron doesn't parse. */
+export function latestFireAtOrBefore(cron: string, tz: string | undefined, at: number): number | null {
+  try {
+    // `prev()` is strictly before its current date, so start a millisecond on.
+    return CronExpressionParser.parse(cron, { tz, currentDate: new Date(at + 1) })
+      .prev()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}
+
+/** The first scheduled time of `cron` strictly after `at`, in ms, or `null` when the cron doesn't parse. */
+export function firstFireAfter(cron: string, tz: string | undefined, at: number): number | null {
+  try {
+    return CronExpressionParser.parse(cron, { tz, currentDate: new Date(at) })
+      .next()
+      .toDate()
+      .getTime();
+  } catch {
+    return null;
+  }
+}

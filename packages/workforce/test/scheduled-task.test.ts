@@ -153,6 +153,8 @@ describe("the user's list of schedules", () => {
     };
     const byKey = Object.fromEntries(listed.schedules.map((s) => [s.key, s]));
     expect(Object.keys(byKey).sort()).toEqual(["adoption", "daily"]);
+    // Soonest first: the daily one runs before next Monday, whatever their keys.
+    expect(listed.schedules.map((s) => s.key)).toEqual(["daily", "adoption"]);
     for (const schedule of listed.schedules) {
       const expected = CronExpressionParser.parse(schedule.cron, { tz: schedule.timezone, currentDate: new Date(before) })
         .next()

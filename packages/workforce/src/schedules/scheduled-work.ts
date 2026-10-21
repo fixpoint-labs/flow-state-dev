@@ -41,6 +41,7 @@ import { z } from "zod";
 import { deriveWorkerSessionId, criteriaState } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
 import { ROSTER_FLOW } from "../workers/keys";
+import { listedScheduleSchema, type ListedSchedule } from "./listed-schedule";
 import { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
 
 /** The accessor the roster flow declares the dispatch endpoint's fired records under. */
@@ -78,21 +79,6 @@ export const scheduledTaskInputSchema = z
 
 export type ScheduledTaskInput = z.infer<typeof scheduledTaskInputSchema>;
 
-/** One schedule as the list shows it. */
-export const listedScheduleSchema = z.object({
-  key: z.string(),
-  cron: z.string(),
-  timezone: z.string(),
-  kind: z.string(),
-  enabled: z.boolean(),
-  description: z.string().optional(),
-  input: z.unknown(),
-  /** When it is next due, worked out from its cron and time zone now; `null` when it is off or its cron doesn't parse. */
-  nextRunAt: z.string().nullable()
-});
-
-export type ListedSchedule = z.infer<typeof listedScheduleSchema>;
-
 const saveScheduleInputSchema = z
   .object({
     /** The schedule's key in the collection: saving an existing key replaces it. */
@@ -119,12 +105,6 @@ type ScheduleRow = {
   input?: unknown;
   description?: string;
   enabled?: boolean;
-};
-
-type ScheduleCollectionRef = {
-  list(): Promise<Array<{ path: string; state: unknown }>>;
-  create(key: string, state: Record<string, unknown>, options: { replace: true }): Promise<unknown>;
-  delete(key: string): Promise<void>;
 };
 
 /** A schedule row as the list shows it, its next run worked out from `now`. */
@@ -208,7 +188,6 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     stateSchema: z.object({ lastFiredAt: z.number() }).passthrough()
   });
   const resources = { ...installation.resources, [SCHEDULES_RESOURCE]: collection, [FIRED_RECORDS_RESOURCE]: firedRecords };
-  const collectionOf = (ctx: { resources: unknown }) => (ctx.resources as Record<string, ScheduleCollectionRef>)[SCHEDULES_RESOURCE]!;
   const prefix = SCHEDULES_PATTERN.slice(0, SCHEDULES_PATTERN.indexOf("*"));
   const keyOf = (path: string) => (path.startsWith(prefix) ? path.slice(prefix.length) : path);
 
@@ -225,11 +204,13 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     outputSchema: z.object({ schedules: z.array(listedScheduleSchema) }),
     resources,
     execute: async (_input, ctx) => {
-      const rows = await collectionOf(ctx).list();
+      const rows = await ctx.resources[SCHEDULES_RESOURCE].list();
+      // Soonest next run first, a schedule with none last, then by key.
+      const due = (s: ListedSchedule) => (s.nextRunAt === null ? Number.POSITIVE_INFINITY : Date.parse(s.nextRunAt));
       return {
         schedules: rows
           .map((ref) => listed(keyOf(ref.path), ref.state as ScheduleRow))
-          .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+          .sort((a, b) => due(a) - due(b) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
       };
     }
   });
@@ -256,7 +237,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
         ...(input.timezone === undefined ? {} : { timezone: input.timezone }),
         ...(input.description === undefined ? {} : { description: input.description })
       };
-      await collectionOf(ctx).create(input.key, row, { replace: true });
+      await ctx.resources[SCHEDULES_RESOURCE].create(input.key, row, { replace: true });
       return { ok: true as const, schedule: listed(input.key, row) };
     }
   });
@@ -267,14 +248,13 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     outputSchema: z.object({ ok: z.literal(true) }),
     resources,
     execute: async (input, ctx) => {
-      await collectionOf(ctx).delete(input.key);
+      await ctx.resources[SCHEDULES_RESOURCE].delete(input.key);
       // The fired record goes with the schedule, so the key saved again is a
       // new schedule. Its dispatch id is the one the endpoint keyed it by: the
       // org and user this run is admitted as, never the input.
       const identity = ctx.session.identity as { userId?: string; orgId?: string };
       if (identity.userId !== undefined && identity.orgId !== undefined) {
-        const records = (ctx.resources as Record<string, { delete(key: string): Promise<void> }>)[FIRED_RECORDS_RESOURCE]!;
-        await records.delete(firedRecordCollectionKey(ROSTER_FLOW, formatScheduleId(identity.orgId, identity.userId, input.key)));
+        await ctx.resources[FIRED_RECORDS_RESOURCE].delete(firedRecordCollectionKey(ROSTER_FLOW, formatScheduleId(identity.orgId, identity.userId, input.key)));
       }
       return { ok: true as const };
     }

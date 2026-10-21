@@ -15,10 +15,10 @@
  * Postgres). On the memory store, and on the filesystem store, whose lock is
  * per store instance, it holds per process only.
  */
-import { CronExpressionParser } from "cron-parser";
-import { resolveUserStorageKey, type ResourceStateStore } from "@flow-state-dev/engine";
+import type { ResourceStateStore } from "@flow-state-dev/engine";
 import type { ResolvedPrincipal } from "@flow-state-dev/core/types";
 import { firedRecordKey } from "./firedRecords";
+import { firstFireAfter as firstAfter, latestFireAtOrBefore as latestAtOrBefore } from "./parseNextFireAt";
 
 /**
  * How far a sender's clock may sit from ours and still land on the time it
@@ -40,31 +40,6 @@ export type ScheduledTimeResult =
       stale: boolean;
     }
   | { ok: false; error: "invalid_nominal_fire_time" | "not_a_scheduled_time" | "not_yet_due"; message: string };
-
-/** The latest scheduled time at or before `at`, or `null` when the cron has none. */
-function latestAtOrBefore(cron: string, timezone: string, at: number): number | null {
-  try {
-    // `prev()` is strictly before its current date, so start a millisecond on.
-    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at + 1) })
-      .prev()
-      .toDate()
-      .getTime();
-  } catch {
-    return null;
-  }
-}
-
-/** The first scheduled time strictly after `at`, or `null` when the cron has none. */
-function firstAfter(cron: string, timezone: string, at: number): number | null {
-  try {
-    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: new Date(at) })
-      .next()
-      .toDate()
-      .getTime();
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The scheduled time a fire counts against.
@@ -148,15 +123,20 @@ export interface FiredRecordAddress {
 }
 
 /**
- * The record's address: the user cell of the principal the schedule runs as
- * (the cell a resource-collection schedule's own row is in), under a key named
- * for the flow and the schedule id.
+ * The record's address: the user cell of the principal the schedule runs as,
+ * under a key named for the flow and the schedule id.
+ *
+ * @param userStorageKey The cell derivation the endpoint hands the resolver
+ *   (`ScheduleResolutionContext.userStorageKey`), so the record lands in the
+ *   cell a resource-collection schedule's own row is read from, by one rule.
  */
-export function firedRecordAddress(flowKind: string, scheduleId: string, principal: ResolvedPrincipal): FiredRecordAddress {
-  return {
-    scopeId: resolveUserStorageKey(principal.userId, principal.orgId, { id: flowKind, isolateUserState: false }),
-    key: firedRecordKey(flowKind, scheduleId)
-  };
+export function firedRecordAddress(
+  flowKind: string,
+  scheduleId: string,
+  principal: ResolvedPrincipal,
+  userStorageKey: (userId: string, orgId: string) => string
+): FiredRecordAddress {
+  return { scopeId: userStorageKey(principal.userId, principal.orgId), key: firedRecordKey(flowKind, scheduleId) };
 }
 
 /** What a claim came to. */

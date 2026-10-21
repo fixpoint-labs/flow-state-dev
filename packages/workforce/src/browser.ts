@@ -60,6 +60,7 @@ export { COORDINATOR_JUDGMENT, COORDINATOR_FLOW, COORDINATOR_ROUTE } from "./coo
 export { ERROR_REPORTER_FLOW } from "./error-reporter/keys";
 export { MESSAGE_WORKER_TOOL, WORKER_MESSAGE_ENTRY } from "./messages/keys";
 export { LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN } from "./schedules/keys";
+export { listedScheduleSchema, type ListedSchedule } from "./schedules/listed-schedule";
 export {
   WORKER_MESSAGES_PATTERN,
   WORKER_MESSAGES_RESOURCE,
