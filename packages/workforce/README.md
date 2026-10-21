@@ -1883,14 +1883,18 @@ given `wait: true`. Unless
 it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
 [Handing out tasks](https://flow-state.dev/docs/workforce/coordinators#handing-out-tasks). On a host
 with durable execution, an ending whose notice was lost (a crash right after the task ended) is
-still heard within seconds, with no touch, through the session's wake.
+heard within seconds, without anyone opening the conversation, through the session's wake.
 
-**After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report or a
-split's settle with no wake to pay it. Call `backfillBoardWakes(stores, { userCell })` once at host
+**After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
+settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
+whose pieces have all ended but which hasn't completed, with no wake to pay it. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
 orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
 now, in each session holding such a debt, and returns how many. It is safe to run again, and
-answers `0` on a store without wakes. A Shift Manager Lab runs it at start. Types:
+answers `0` on a store without wakes. A Shift Manager Lab runs it at start. `userCell` maps a
+user and org to the storage key of that user's state, where conversation boards keep their rows;
+those rows stay in the user's shared state even on a flow with `isolateUserState`, so a
+flow-isolated key (`{ id: flowId, isolateUserState: true }`) finds nothing. Types:
 `BoardWakeBackfillStores`, `BoardWakeBackfillOptions`.
 
 A worker files tasks when its `WORKER.md`'s `delegates:` names one that takes tasks, on a flow

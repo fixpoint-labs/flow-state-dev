@@ -333,7 +333,7 @@ When you run multiple hosts against a shared store, the sweeper takes a single l
 
 ### Wakes
 
-A wake is a time by which some work must run in a session. The engine keeps it in the store, so it survives a crash. When the time comes, the sweeper runs the internal entry the wake names in that session, as the session's owner, the way a dispatched request runs. The task board is what owes them: each time a task it handed out ends, it keeps a wake for the session that filed the task, due about two seconds later. If the notice of that ending went out, the run finds nothing to do and clears the wake. If it was lost, the run sends it. See [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended).
+A wake is a time by which some work must run in a session. The engine keeps it in the store, so it survives a crash. When the time comes, the sweeper runs the internal entry the wake names in that session, as the session's owner, the way a dispatched request runs. The task board creates them: each time a task it handed out ends, it sets a wake for the filing session, due about two seconds later. A wake that fell due while the server was down fires as soon as it is running again. If the notice of that ending went out, the run finds nothing to do and clears the wake. If it was lost, the run sends it. See [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended).
 
 A host keeps wakes when it has durable execution and its store has a `wakes` store, which all four built-in adapters do. A host without either logs one line at start, `this host keeps no wakes: debts are paid on their fast paths only`. On such a host, a task's notice is sent once, when the task ends, and a lost one isn't sent again.
 
@@ -353,7 +353,7 @@ export const flowstate = createFlowState({
 
 A notice given up on is recorded on its task as undeliverable, and logged.
 
-`dispose()` waits for the requests wakes started to finish before it closes the stores.
+Before it closes the stores, `dispose()` waits for any request a wake started to finish.
 
 ## Managing suspensions in the DevTool
 

@@ -516,14 +516,16 @@ task tool in its turn. The block runs once per ending; if it throws, the notice 
 sent again. The entry queues on the session unless `concurrency` says otherwise.
 
 A notice that couldn't be sent when the row ended (the process died, the send failed) is sent
-about two seconds later: on a host with durable execution and a store that keeps wakes, the
+about two seconds later, or as soon as the server is running again if it was down then: on a host with durable execution and a store that keeps wakes, the
 durability sweeper runs `onTaskSettled` in the filing session with an empty input, which sends
 what that session's boards still owe (`payBoardDebts`) and never calls `block`. A filer whose
 session is gone, or a notice still owed past the host's `maxDebtAgeMs`, is recorded on the row's
 `metadata` under `noticeUndeliverable:<attempt>:<ending>` as `{ at, detail }`. User docs:
 [Hearing how a task ended](https://flow-state.dev/docs/orchestration/task-board#hearing-how-a-task-ended).
 
-That pass is built from two exports, for a flow that runs its own on another entry (named as
+That empty-input `onTaskSettled` request is the board's **pass**: it pays, in the filing session,
+whatever the session's boards still owe. It is built from two exports, for a flow that runs its
+own pass on another entry (named as
 `passEntry` in a `defineTaskCollection({ delivery })`): `payBoardDebts(ctx, ref, options?)` pays,
 in the running session, what a board's rows owe (cancels, cascades, resumes, notices past due) and
 answers `{ nextDue }`, the time the next debt falls due; `settlePassWake(ctx, entry, wake, nextDue)`
@@ -953,9 +955,9 @@ for limits and errors.
 `wait` and `timeoutMs` are in the schema only on a board that dispatches, also resumes waits,
 and runs on a host that can hold a wait: pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true, resumesWaits: true })` only when
-the board hands its rows out, so the flow holding it declares `onTaskSettled` (whose pass in the
-filing session resumes a waiting turn when its task ends, and runs again from the session's wake
-after a crash), and the host has durable execution and a running durability sweeper
+the board hands its rows out, so the flow holding it declares `onTaskSettled` (the filing
+session's `onTaskSettled` request resumes the waiting turn when its task ends; after a crash the
+session's wake sends it again), and the host has durable execution and a running durability sweeper
 (`canHoldWait`). `resumesWaits` defaults to `false`. A composing layer that builds its own
 capability gets the same per-turn list from
 `taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`. On a task turn a wait is
@@ -981,6 +983,10 @@ One function sits under the option, for a layer that builds its own board surfac
 A waiting turn whose task has ended is resumed by the board's pass (`payBoardDebts`, above),
 which also cancels each task whose wait was stopped or timed out while its own cancel failed
 (`Task.cancelOwed`). Until that pass runs, that task's worker may keep running.
+
+**Migrating from `resumeOwedWaits`.** `resumeOwedWaits(ctx, collection)` is no longer exported.
+The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make
+sure the flow holding the board declares `onTaskSettled`.
 
 #### When a task stops on a question
 

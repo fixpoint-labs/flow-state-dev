@@ -152,8 +152,18 @@ A user can send a running coding run a message. The run stops where it is, and i
 The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
 
 ```ts
+import { handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
+import { z } from "zod";
+
 const manager = harnessManager({ /* … */ });
 const board = taskBoard({ /* … the board whose rows the manager works */ });
+const onEnding = handler({
+  name: "on-coder-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
 
 defineFlow({
   kind: "coder",

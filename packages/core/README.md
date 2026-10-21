@@ -657,9 +657,10 @@ export default defineFlow({
 A `task` dispatcher's input is the claim envelope, `taskDispatchInputSchema` / `TaskDispatchInput`: `{ boardId, assignee, taskId, attempt, createdAt, incarnationId?, payload }`; `assignee` names the entry the board routed the row to. Only a task board mints one, from the row it claimed. Put the block under a board's `workers` wherever an ordinary block would go:
 
 ```ts
-import { defineFlow, dispatcher } from "@flow-state-dev/core";
-import { taskSettledEntry } from "@flow-state-dev/orchestration";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { z } from "zod";
 
 const board = taskBoard({
   name: "issue-work",
@@ -675,15 +676,23 @@ const board = taskBoard({
   },
 });
 
+// Hears each ending of a task the board handed out.
+const onEnding = handler({
+  name: "on-issue-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
+
 export default defineFlow({
   kind: "issues",
   actions: { drain: { block: board.drain } },
-  internal: { actions: { onTaskSettled: taskSettledEntry({ block: onEnding }) } }, // a handler over taskSettledInputSchema
+  internal: { actions: { onTaskSettled: taskSettledEntry({ block: onEnding }) } },
   task: { actions: { implement: { block: implementWorker } } },  // what runs in the child session
 })();
 ```
 
-A flow that holds a board that dispatches must declare `onTaskSettled` under `internal.actions`, where the session that filed a row hears how it ended. `defineFlow` throws without it, naming the board: the board's dispatcher carries `requiresInternal: ["onTaskSettled"]` on its `TaskBinding`. Build the entry with `taskSettledEntry({ block })` from `@flow-state-dev/orchestration`; see [Hearing how a task ended](https://flow-state.dev/docs/orchestration/task-board#hearing-how-a-task-ended).
+A flow that holds a board that dispatches must declare `onTaskSettled` under `internal.actions`, where the session that filed a row hears how it ended. `defineFlow` throws without it, naming the board. Build the entry with `taskSettledEntry({ block })` from `@flow-state-dev/orchestration`; see [Hearing how a task ended](https://flow-state.dev/docs/orchestration/task-board#hearing-how-a-task-ended).
 
 The block returns a `DispatchHandle` (`dispatchHandleSchema`): `{ sessionId, requestId, adopted }`, the session the dispatch runs in, the request it became, and whether a `key` landed on a child that already existed. It returns once the runtime has accepted the request and does not wait for the work; read the child's progress from that session's own request history.
 

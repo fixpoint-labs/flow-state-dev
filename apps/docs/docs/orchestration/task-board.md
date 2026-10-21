@@ -659,7 +659,7 @@ A cancel from anywhere else does send one: a person, an app calling the board's 
 
 Your block runs once per ending. If it throws, the notice stays owed and is sent again, so the same ending can reach the block a second time after a failure. The entry queues on the session by default, so two notices run one after the other; pass `concurrency` to `taskSettledEntry` to change that.
 
-A notice that can't be sent when the task ends, because the process died first or the send failed, is sent about two seconds later, with no request from anyone. The [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) wakes the filing session and runs `onTaskSettled` there with an empty input, which sends whatever the session's boards still owe. Your block isn't called for that request, only for the notices it sends. This needs a host with durable execution (`durable: true` on `createFlowState`) and a store that keeps wakes, which every built-in store does. Without them, a notice is sent once, when the task ends, and a lost one isn't sent again.
+A notice that can't be sent when the task ends, because the process died first or the send failed, is sent about two seconds later, or as soon as the server is running again if it was down then. The [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) runs `onTaskSettled` in the filing session with an empty input, which sends whatever the session's boards still owe. You may see an extra `onTaskSettled` request with empty input in the session; your block isn't called for it. This needs a host with durable execution (`durable: true` on `createFlowState`) and a store that keeps wakes, which every built-in store does. Without them, a notice is sent once, when the task ends, and a lost one isn't sent again.
 
 If the filing session no longer exists, the notice can't be delivered. The task records that in its `metadata`, under `noticeUndeliverable:<attempt>:<ending>`, as `{ at, detail }`. A notice still owed a day after it fell due is given up the same way; the host's [`maxDebtAgeMs`](../advanced/durable-execution.md#retention-and-cleanup) sets that limit.
 
@@ -713,9 +713,11 @@ wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }`
 `createTaskToolsCapability` only when something starts a ready row as soon as it's written,
 the way a Workforce conversation does, and add `resumesWaits: true` only when the board also
 hands its tasks out, so the flow holding it declares [`onTaskSettled`](#hearing-how-a-task-ended).
-When a waited-on task ends, that entry's pass in the filing session resumes the waiting turn, and
-after a crash the [wake](/docs/advanced/durable-execution#wakes) runs the same pass. On any other
+When a waited-on task ends, the filing session's `onTaskSettled` request resumes the waiting
+turn; after a crash, the [wake](/docs/advanced/durable-execution#wakes) sends it again. On any other
 board, a waiting turn isn't woken when its task ends and sits out its whole `timeoutMs`.
+
+**Moving from `resumeOwedWaits`.** `resumeOwedWaits` is no longer exported. The filing session's `onTaskSettled` request resumes owed waits itself, so drop the call and declare `onTaskSettled` on the flow that holds the board.
 
 | Input | |
 |---|---|
