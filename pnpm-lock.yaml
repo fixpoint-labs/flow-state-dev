@@ -984,7 +984,7 @@ importers:
         specifier: ^7.0.133
         version: 7.0.138(zod@3.25.76)
       cron-parser:
-        specifier: ^5.0.0
+        specifier: ^5.5.0
         version: 5.5.0
       gray-matter:
         specifier: ^4.0.3
@@ -1412,7 +1412,7 @@ importers:
         specifier: workspace:*
         version: link:../engine
       cron-parser:
-        specifier: ^5.0.0
+        specifier: ^5.5.0
         version: 5.5.0
       zod:
         specifier: ^3.25.76
@@ -1908,7 +1908,7 @@ importers:
         specifier: ^22.0.0
         version: 22.19.13
       cron-parser:
-        specifier: ^5.0.0
+        specifier: ^5.5.0
         version: 5.5.0
       vitest:
         specifier: ^3.2.4

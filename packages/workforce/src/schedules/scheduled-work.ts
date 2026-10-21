@@ -27,7 +27,7 @@
  * a row is written.
  */
 import { defineResourceCollection, handler } from "@flow-state-dev/core";
-import { dispatchThroughSeam, isFiveFieldCron, type ActionConfig, type BlockContext, type SchedulesConfig } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, isFiveFieldCron, isKnownTimeZone, type ActionConfig, type BlockContext, type SchedulesConfig } from "@flow-state-dev/core/types";
 import {
   FIRED_RECORDS_PATTERN,
   createResourceCollectionScheduleResolver,
@@ -221,6 +221,16 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
     outputSchema: saveScheduleOutputSchema,
     resources,
     execute: async (input, ctx) => {
+      // The zone check dispatch runs (`validateScheduleConfig`), so a row this
+      // saves never fails every fire as `invalid_schedule`.
+      if (input.timezone !== undefined && !isKnownTimeZone(input.timezone)) {
+        return {
+          ok: false as const,
+          error:
+            `invalid_schedule: ${JSON.stringify(input.timezone)} is not a known time zone. ` +
+            'Use an IANA time zone such as "Europe/London", or omit it for UTC. Nothing was saved.'
+        };
+      }
       if (!isFiveFieldCron(input.cron) || parseNextFireAt(input.cron, input.timezone ?? "UTC") === null) {
         return {
           ok: false as const,

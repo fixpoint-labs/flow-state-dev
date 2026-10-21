@@ -191,6 +191,15 @@ describe("the user's list of schedules", () => {
     expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
   });
 
+  it("refuses a time zone the dispatch would refuse, so no saved schedule fails every fire", async () => {
+    const h = boot();
+    // cron-parser accepts "UTC+5"; the endpoint's zone check doesn't.
+    const saved = (await roster(h, "saveSchedule", { ...weekly, timezone: "UTC+5" })).output as { ok: boolean; error?: string };
+    expect(saved.ok).toBe(false);
+    expect(saved.error).toMatch(/time zone/);
+    expect(((await roster(h, "listSchedules", {})).output as { schedules: unknown[] }).schedules).toEqual([]);
+  });
+
   it("takes its fired record with it when deleted, so the key saved again starts fresh", async () => {
     const h = boot();
     await roster(h, "saveSchedule", weekly);

@@ -255,8 +255,11 @@ export function isFiveFieldCron(cron: string): boolean {
   return cron.trim().split(/\s+/).length === 5;
 }
 
-/** Whether `timezone` is an IANA time zone this runtime knows. */
-function isKnownTimeZone(timezone: string): boolean {
+/**
+ * Whether `timezone` is an IANA time zone this runtime knows: the check
+ * `validateScheduleConfig` runs, for a write path to run before it saves one.
+ */
+export function isKnownTimeZone(timezone: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone });
     return timezone.length > 0;
