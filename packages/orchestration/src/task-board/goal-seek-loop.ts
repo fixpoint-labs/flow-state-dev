@@ -116,8 +116,9 @@ export interface GoalSeekLoopConfig {
    */
   seed?: BlockDefinition<any, any> | SequencerDefinition<any, any>;
   /**
-   * Runs as a `.tap` immediately AFTER each drain, BEFORE the judge — the seam
-   * plan-and-execute uses for `cascadeSkipDependents`.
+   * Runs as a `.tap` immediately AFTER each drain, BEFORE the judge. (A failed
+   * or cancelled row's dependents need no step here: the board cancels them on
+   * that row's ending.)
    */
   afterDrain?: BlockDefinition<any, any>;
   /** Evaluated after `afterDrain` → `Verdict`. MANDATORY. */

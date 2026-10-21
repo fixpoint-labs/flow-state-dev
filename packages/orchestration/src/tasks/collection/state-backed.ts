@@ -23,6 +23,8 @@ import {
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
+import { withRetiredShapes } from "../schema/retired-shapes";
+import type { TaskSettingsPatch } from "./internal";
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
@@ -56,6 +58,10 @@ import {
   transitionDeclineReason,
   assigneeChangeDecline,
   dispatchWrite,
+  settingsWrite,
+  settingsDecline,
+  settingsChangeKind,
+  type EndingRecording,
   parkPatch,
   unparkPatch,
   reopenPatch,
@@ -65,6 +71,15 @@ import {
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
+import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
+import {
+  cascadeCancelPatch,
+  endsDependents,
+  openDependentsOf,
+  payCascadeAfterWrite,
+  payOwedCascades,
+  type CascadeWrites,
+} from "./cascade";
 import {
   TaskCapExceededError,
   validateTaskCaps,
@@ -107,6 +122,11 @@ export interface StateBackedOptions extends TaskCapOptions {
    * no filer.
    */
   createdBy?: string;
+  /**
+   * The filing settings this board honours (FIX-2080). Omitted, only the
+   * defaults: a filing with any other `session` or `resultTo` is refused.
+   */
+  settings?: TaskSettingsSupport;
 }
 
 /**
@@ -143,9 +163,10 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
   /**
    * The read boundary for this backing — same job as the resource backing's
    * `readTaskState`. Atomic state is stored, not parsed, so a row written
-   * before the `parked` rename arrives carrying the legacy status, and one
-   * written before the wait rename its legacy wait mark; both are mapped
-   * forward here, before any filter or the transition guard sees it.
+   * before the `parked` rename arrives carrying the legacy status, one
+   * written before the wait rename its legacy wait mark, and one in a shape
+   * the retired-shape map reads (`withRetiredShapes`, FIX-2080); all are
+   * mapped forward here, before any filter or the transition guard sees it.
    *
    * The map is rebuilt only when a legacy row is actually present, so the
    * common path returns the stored object itself.
@@ -155,7 +176,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     const stored = slot as Record<string, Task<TInput, TOutput>>;
     let migrated: Record<string, Task<TInput, TOutput>> | undefined;
     for (const [id, task] of Object.entries(stored)) {
-      const next = withMigratedWait(withMigratedStatus(task));
+      const next = withRetiredShapes(withMigratedWait(withMigratedStatus(task)));
       if (next === task) continue;
       migrated ??= { ...stored };
       migrated[id] = next;
@@ -172,6 +193,19 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     options.collectionId,
     onChange
   );
+
+  /**
+   * What an ending write records besides the ending (FIX-2080 D2): a cascade
+   * is owed when a failed or cancelled row has an open dependent on this
+   * board, read from the committed map the write runs against. A state-held
+   * board files no task elsewhere, so it owes no filed half.
+   */
+  function recordingFor(tasks: Readonly<Record<string, Task<TInput, TOutput>>>): EndingRecording {
+    return {
+      owesCascade: (row, ending) =>
+        endsDependents(ending) && openDependentsOf(Object.values(tasks) as Task[], row.id).length > 0,
+    };
+  }
 
   /** The tasks map `casWrite` hands to its mutator and expects back. */
   type TasksMap<I, O> = Record<string, Task<I, O>>;
@@ -356,7 +390,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         // map and there is nothing to reset (FIX-989).
         const next = stampWrite(
           task,
-          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          applyTransition(task, { ...patch(task), status: targetStatus }, now(), recordingFor(tasks)),
           guards?.write
         );
         return {
@@ -371,26 +405,30 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     if (outcome.changeKind !== null) {
       emit(outcome.changeKind, outcome.task, outcome.prevStatus);
     }
+    // The ending's own pass pays the cascade it owes (FIX-2080 D2).
+    await payCascadeAfterWrite(cascadeWrites, outcome.task as Task);
     return { outcome: "recorded" };
   }
 
   /**
    * Patch a task's fields inside the CAS, returning what it did (FIX-976).
    *
-   * `declineOnTerminal` is the **assignment-only** terminal guard (epic
-   * constraint A1). It is keyed by operation and passed by `setAssignee` alone —
-   * the four sibling patch methods pass nothing and keep writing to terminal
-   * tasks, which two first-party blocks depend on (the supervisor's
-   * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
-   * this helper-wide would break both.
+   * `declineOnTerminal` is the terminal guard for the writes that change a
+   * task's future (epic constraint A1): `setAssignee`, the settings write and
+   * `dispatch` pass it. The four sibling patch methods pass nothing and keep
+   * writing to terminal tasks, which a first-party block depends on (the
+   * supervisor's failure-category audit). Making this helper-wide would break it.
    *
    * Evaluated against the freshest committed task from inside the mutator, so
    * the decision is race-free rather than a caller-side pre-check.
    */
   async function patchOne(
     id: string,
-    kind: TaskChangeKind,
-    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
+    kind: TaskChangeKind | null | ((prev: Task<TInput, TOutput>, next: Task<TInput, TOutput>) => TaskChangeKind),
+    patch: (
+      task: Task<TInput, TOutput>,
+      tasks: Readonly<Record<string, Task<TInput, TOutput>>>
+    ) => Partial<Task<TInput, TOutput>> | undefined,
     options?: {
       declineOnTerminal?: boolean;
       /** A refusal decided on the freshest committed task, inside the write. */
@@ -401,7 +439,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     type PatchResult =
       | { kind: "declined"; verdict: TaskWriteOutcome }
       | { kind: "unchanged" }
-      | { kind: "recorded"; task: Task<TInput, TOutput> };
+      | { kind: "recorded"; task: Task<TInput, TOutput>; prev: Task<TInput, TOutput> };
 
     const outcome = await withOutcome(
       casWrite,
@@ -426,23 +464,66 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             result: { kind: "declined", verdict: { outcome: "declined", reason: refused, status: task.status } },
           };
         }
-        const update = patch(task);
+        const update = patch(task, tasks);
         if (update === undefined) return { state: undefined, result: { kind: "unchanged" } };
         // No token: these five methods take no options object, so they bump the
         // revision and mint no receipt (FIX-989).
         const next = stampWrite(task, applyTransition(task, update, now()));
         return {
           state: { ...tasks, [id]: next },
-          result: { kind: "recorded", task: next },
+          result: { kind: "recorded", task: next, prev: task },
         };
       }
     );
 
     if (outcome === undefined || outcome.kind === "unchanged") return { outcome: "unchanged" };
     if (outcome.kind === "declined") return outcome.verdict;
-    emit(kind, outcome.task);
+    const changeKind = typeof kind === "function" ? kind(outcome.prev, outcome.task) : kind;
+    if (changeKind !== null) {
+      emit(changeKind, outcome.task, outcome.prev.status !== outcome.task.status ? outcome.prev.status : undefined);
+    }
     return { outcome: "recorded" };
   }
+
+  /**
+   * The guarded settings write (FIX-2080, ER-4): `patchSettings`, and `hold`
+   * and `release` under their own names. Decided on the committed row inside
+   * the write, dependencies against the committed map.
+   */
+  function writeSettings(id: string, settings: TaskSettingsPatch): Promise<TaskWriteOutcome> {
+    return patchOne(
+      id,
+      (prev, next) => settingsChangeKind(prev.status, next.status),
+      (task, tasks) => {
+        const decided = settingsWrite(task as Task, settings, (other) => ownTask(tasks, other) as Task | undefined);
+        return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+      },
+      {
+        declineOnTerminal: true,
+        decline: (task) => settingsDecline(task as Task),
+      }
+    );
+  }
+
+  /** The reads and writes a cascade is paid with on this board (FIX-2080 D2). */
+  const cascadeWrites: CascadeWrites = {
+    get: (id) => ownTask(readTasks(), id) as Task | undefined,
+    list: () => Object.values(readTasks()) as Task[],
+    cancelDependent: async (id, cause) => {
+      await transitionTo(
+        id,
+        "cancelled",
+        "cancelled",
+        (dependent) => cascadeCancelPatch(dependent as Task, cause, now()) as Partial<Task<TInput, TOutput>>,
+        { ifAllowed: true }
+      );
+    },
+    settle: async (id, due) => {
+      await patchOne(id, null, (task) =>
+        task.cascadeOwed != null && task.cascadeOwed.due === due ? { cascadeOwed: undefined } : undefined
+      );
+    },
+  };
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
@@ -454,6 +535,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     maxTotalRetries: maxTotalRetries ?? null,
 
     async addTask(init) {
+      assertFilingSettings(init, options.settings, collectionId);
       // Build the task once — id and createdAt are stable across CAS retries
       // so the emitted item matches what's in state on a successful write.
       const task = buildInitialTask<TInput, TOutput>(init, now(), options.createdBy);
@@ -461,6 +543,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
         }
+        // Against the committed map, inside the write (FIX-2080).
+        assertDepsFileable([task as Task], (id) => ownTask(tasks, id) as Task | undefined);
         const next = { ...tasks, [task.id]: task };
         assertWithinCaps(next);
         return next;
@@ -470,9 +554,12 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async addTasks(inits) {
+      for (const init of inits) assertFilingSettings(init, options.settings, collectionId);
       const built = inits.map((init) => buildInitialTask<TInput, TOutput>(init, now(), options.createdBy));
       if (built.length === 0) return [];
       await casWrite((tasks) => {
+        // Ids filed in the same batch count (FIX-2080).
+        assertDepsFileable(built as Task[], (id) => ownTask(tasks, id) as Task | undefined);
         const next = { ...tasks };
         for (const task of built) {
           if (ownTask(next, task.id) !== undefined) {
@@ -521,8 +608,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           // for why replacement made recovery opt-out-by-accident.
           const narrow = claimOptions?.eligibility;
           const at = now();
+          const rows = Object.values(tasks) as Task[];
           const admits = (task: Task): boolean =>
-            isClaimable(task, lookup, at) && (narrow === undefined || narrow(task));
+            isClaimable(task, lookup, at) && (narrow === undefined || narrow(task, rows));
           const order = claimOptions?.order ?? defaultOrder;
 
           const candidates = Object.values(tasks)
@@ -557,7 +645,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             // advances the record the same way (FIX-989).
             const settled = stampWrite(
               candidate,
-              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS)
+              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS, recordingFor(tasks))
             );
             next[settled.id] = settled;
             pass.settled.push({ task: settled, prevStatus: candidate.status });
@@ -575,6 +663,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // streamed UI keeps showing `in_progress` on a row storage terminalized.
       for (const settled of captured.settled) {
         emit("errored", settled.task, settled.prevStatus);
+      }
+      for (const settled of captured.settled) {
+        await payCascadeAfterWrite(cascadeWrites, settled.task as Task);
       }
       if (captured.claimed === undefined) return null;
       emit("claimed", captured.claimed.task, captured.claimed.prevStatus);
@@ -682,30 +773,16 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       );
     },
 
-    async block(id, reason, options) {
-      return transitionTo(
-        id,
-        "blocked",
-        "blocked",
-        () => (reason !== undefined ? { error: reason } : {}),
-        options
-      );
+    async hold(id) {
+      return writeSettings(id, { held: true });
     },
 
-    async unblock(id, options) {
-      return transitionTo(
-        id,
-        "pending",
-        "unblocked",
-        () => ({ error: undefined }),
-        options,
-        // `blocked` is the ONLY status this may run from. The other two paths
-        // to `pending` have their own verbs (`reclaim`, and `unpark` with its
-        // own fence), and those clear the lease and the claim coordinate; this
-        // one has nothing to clear because `blocked` is reachable only from
-        // `pending`.
-        "blocked"
-      );
+    async release(id) {
+      return writeSettings(id, { held: false });
+    },
+
+    async patchSettings(id, settings) {
+      return writeSettings(id, settings);
     },
 
     async awaitReview(id, feedback, options) {
@@ -890,7 +967,8 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // dispatch that lands first is read here, never raced.
       return patchOne(
         id,
-        "dispatched",
+        // Every release of a held row publishes `released` (FIX-2080 D1).
+        "released",
         (task) => {
           const decided = dispatchWrite(task as Task, dispatchOptions);
           return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
@@ -903,6 +981,10 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           },
         }
       );
+    },
+
+    async payOwedCascades() {
+      return payOwedCascades(cascadeWrites, now());
     },
 
     get(id) {

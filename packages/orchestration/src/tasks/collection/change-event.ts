@@ -19,8 +19,12 @@ export type TaskChangeKind =
   | "completed"
   | "errored"
   | "retried"
-  | "blocked"
-  | "unblocked"
+  /** A task that hadn't started was held: it won't start until released (FIX-2080). */
+  | "held"
+  /** A held task was released: it starts once its dependencies have finished (FIX-2080). */
+  | "released"
+  /** A task's start or attempts settings changed before it started (FIX-2080). */
+  | "settings_changed"
   | "review_requested"
   | "resumed"
   | "cancelled"
@@ -40,9 +44,7 @@ export type TaskChangeKind =
   /** A finished row went back to the queue: a person picked it up again (FIX-1764). */
   | "reopened"
   /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
-  | "cancel_owed"
-  /** A recorded row was dispatched: it is ready to start now (FIX-1875). */
-  | "dispatched";
+  | "cancel_owed";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the

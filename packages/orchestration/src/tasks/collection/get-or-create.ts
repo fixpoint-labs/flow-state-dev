@@ -21,7 +21,7 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import type { TaskCollectionRef } from "./types";
-import type { TaskClaimIdentity } from "../schema/task";
+import type { Task, TaskClaimIdentity } from "../schema/task";
 import { toEmittedTask, type TaskChangeEvent } from "./change-event";
 import { createStateBackedTaskCollection } from "./state-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
@@ -208,6 +208,10 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
   const recordEnding = isDefinedTaskCollection(declared)
     ? declared.__taskCollection.recordEnding
     : undefined;
+  const settings = isDefinedTaskCollection(declared) ? declared.__taskCollection.settings : undefined;
+  // The ledger's filed-task payer, bound to this context (FIX-2080 D2).
+  const filed = isDefinedTaskCollection(declared) ? declared.__taskCollection.cascadeFiled : undefined;
+  const ctx = options.ctx;
   return await createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection:
@@ -222,6 +226,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     immutableAssignee: options.immutableAssignee,
     ...(partition !== undefined ? { partition } : {}),
     ...(recordEnding !== undefined ? { recordEnding } : {}),
+    ...(settings !== undefined ? { settings } : {}),
+    ...(filed !== undefined ? { cascadeFiled: { owes: filed.owes, pay: (row: Task) => filed.pay(ctx, row) } } : {}),
   });
 }
 

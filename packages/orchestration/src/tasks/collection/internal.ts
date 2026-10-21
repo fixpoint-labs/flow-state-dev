@@ -20,7 +20,8 @@ import {
   isTransitionAllowed,
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
-import { applyEndingRecorder, endingOf, type TaskEndingRecorder } from "./ending";
+import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
+import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -91,9 +92,11 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     title: init.title,
     context: init.context,
-    status: init.status ?? "pending",
+    status: init.held === true ? "held" : (init.status ?? "pending"),
     attempts: 0,
-    maxAttempts: init.maxAttempts,
+    // A conversation-result task has one attempt: unset reads as 1. Any other
+    // value was refused at filing (`assertFilingSettings`).
+    maxAttempts: init.resultTo === "conversation" ? (init.maxAttempts ?? 1) : init.maxAttempts,
     assignee: init.assignee,
     deps: init.deps,
     priority: init.priority,
@@ -101,8 +104,9 @@ export function buildInitialTask<TInput, TOutput>(
     labels: init.labels,
     metadata: init.metadata,
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
+    ...(init.session !== undefined ? { session: init.session } : {}),
+    ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
     ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
-    ...(init.undispatched === true ? { undispatched: true } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
@@ -253,10 +257,11 @@ export function assigneeChangeDecline(task: Task, assignee: string): TaskWriteDe
 }
 
 /**
- * The one rule for readying a recorded row (`TaskCollectionRef.dispatch`,
- * FIX-1875), decided on the freshest committed row, inside the write. Both
- * backings run it, so they refuse identically. Terminal rows are refused by
- * the caller's `declineOnTerminal` before this runs.
+ * The one rule for a dispatch's release of a held row
+ * (`TaskCollectionRef.dispatch`, FIX-1875; a release since FIX-2080 D1),
+ * decided on the freshest committed row, inside the write. Both backings run
+ * it, so they refuse identically. Terminal rows are refused by the caller's
+ * `declineOnTerminal` before this runs.
  *
  * @returns The patch to write, `undefined` for the same call replayed (its
  *   own write already landed), or the reason it is refused.
@@ -265,10 +270,9 @@ export function dispatchWrite(
   task: Task,
   options: TaskDispatchOptions,
 ): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
-  if (task.undispatched !== true) {
+  if (task.status !== "held") {
     return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
   }
-  if (task.status !== "pending") return { decline: "disallowed" };
   if (options.wait !== undefined && task.wait != null) return { decline: "disallowed" };
   if (options.assignee !== undefined) {
     const refused = assigneeChangeDecline(task, options.assignee);
@@ -276,12 +280,90 @@ export function dispatchWrite(
   }
   return {
     patch: {
-      undispatched: undefined,
+      status: "pending",
       dispatchCall: options.call,
       ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
       ...(options.wait !== undefined ? { wait: { gateId: options.wait.gateId, deadline: options.wait.deadline } } : {}),
     },
   };
+}
+
+/** The fields a filing may change until the task first starts (FIX-2080, ER-4). */
+export interface TaskSettingsPatch {
+  /** Hold the task (`true`) or release it (`false`). */
+  held?: boolean;
+  /** Its dependencies, replaced whole. Checked as a filing's are. */
+  deps?: string[];
+  /** Its attempts. */
+  maxAttempts?: number;
+}
+
+/**
+ * Whether the row has ever started: claimed at least once. A retry's return
+ * to `pending` does not make it unstarted again.
+ */
+export function hasStarted(task: Task): boolean {
+  return task.startedAt != null || task.attempts > 0;
+}
+
+/** Why a settings edit is refused on `task` before anything is checked: it has started. */
+export function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
+}
+
+/**
+ * The one guard on editing a filing (FIX-2080, ER-4), decided on the
+ * freshest committed row, inside the write: `held`, `deps` and
+ * `maxAttempts` change while the row has never started, and not after.
+ * Both backings run it. Terminal rows are refused by the caller's
+ * `declineOnTerminal` before this runs.
+ *
+ * @param lookup The board's committed row by id, for the dependency check.
+ * @returns The patch to write, `undefined` when nothing changes, or the
+ *   reason it is refused.
+ * @throws {TaskFilingRefusedError} for dependencies a filing couldn't name,
+ *   or an attempts value the task's result setting refuses.
+ */
+export function settingsWrite(
+  task: Task,
+  patch: TaskSettingsPatch,
+  lookup: (id: string) => Task | undefined,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  const declined = settingsDecline(task);
+  if (declined !== undefined) return { decline: declined };
+  const update: Partial<Task> = {};
+  if (patch.held === true && task.status === "pending") update.status = "held";
+  if (patch.held === false && task.status === "held") update.status = "pending";
+  if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
+    assertDepsEditable(task.id, patch.deps, lookup);
+    update.deps = [...patch.deps];
+  }
+  if (patch.maxAttempts !== undefined && patch.maxAttempts !== task.maxAttempts) {
+    if (!Number.isInteger(patch.maxAttempts) || patch.maxAttempts < 1) {
+      throw new Error(`[tasks] maxAttempts must be a positive integer, got ${String(patch.maxAttempts)}.`);
+    }
+    if (task.resultTo === "conversation" && patch.maxAttempts !== 1) {
+      throw new TaskFilingRefusedError({
+        rule: "conversation_result_one_attempt",
+        taskId: task.id,
+        detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
+      });
+    }
+    update.maxAttempts = patch.maxAttempts;
+  }
+  return Object.keys(update).length === 0 ? undefined : { patch: update };
+}
+
+/** The change kind a settings write publishes: a hold or a release, else a settings change. */
+export function settingsChangeKind(prev: TaskStatus, next: TaskStatus): TaskChangeKind {
+  if (prev === "pending" && next === "held") return "held";
+  if (prev === "held" && next === "pending") return "released";
+  return "settings_changed";
+}
+
+function sameIds(a: readonly string[], b: readonly string[] | undefined): boolean {
+  const other = b ?? [];
+  return a.length === other.length && a.every((id, i) => id === other[i]);
 }
 
 /**
@@ -850,11 +932,9 @@ export function isReady(
  * would make an ordinary task unrecoverable after its first attempt — the
  * feature off by default unless every caller opted into retries.
  *
- * A row recorded but not dispatched (`Task.undispatched`, FIX-1875) is never
- * admitted, whichever board or dispatcher drains the collection: the mark
- * decides whether a row may start, so it is read here, where every claimer
- * reads, and not only on the board that writes it. Absent on every row filed
- * before the mark existed, so those rows are admitted as before (BP-030).
+ * A held row (FIX-2080) is never admitted, whichever board or dispatcher
+ * drains the collection: `held` is not `pending`, so it starts only once
+ * something releases it.
  *
  * `now` is a parameter rather than a captured clock because the wake probe has
  * none of its own.
@@ -864,7 +944,6 @@ export function isClaimable(
   lookup: (id: string) => Task | undefined,
   now: number
 ): boolean {
-  if (task.undispatched === true) return false;
   if (task.status !== "pending" && !leaseLapsed(task, now)) return false;
   return depsSatisfied(task, lookup);
 }
@@ -1162,6 +1241,35 @@ export interface EndingRecording {
    * for a person's turn is quiet on its own, read off the row.
    */
   readonly quiet?: boolean;
+  /**
+   * Whether this ending owes a cascade (FIX-2080 D2), answered by the backing
+   * from the committed board inside the write: a failed or cancelled row with
+   * an open dependent, or a task whose board pays the tasks it filed
+   * (`cascadeFiled`). Omitted, no ending owes one.
+   */
+  readonly owesCascade?: (row: Task, ending: TaskEnding) => boolean;
+}
+
+/**
+ * How long after its ending a cascade falls due (FIX-2080 D2): the ending's
+ * own pass pays it at once, and a touch of the board pays it once this has
+ * passed, so a touch never races the pass that is still paying it.
+ */
+export const CASCADE_DUE_MS = 2_000;
+
+/**
+ * Orchestration's cascade recorder (FIX-2080 D2): stamp the cascade owed,
+ * due {@link CASCADE_DUE_MS} after the write, on an ending that owes one.
+ * Recorded in the ending's own write, so a crash between the ending and the
+ * cascade leaves it owed, not lost.
+ */
+export function recordCascadeOwed<TInput, TOutput>(
+  row: Task<TInput, TOutput>,
+  ending: TaskEnding,
+  recording: EndingRecording | undefined
+): Task<TInput, TOutput> {
+  if (recording?.owesCascade?.(row as Task, ending) !== true) return row;
+  return { ...row, cascadeOwed: { due: row.updatedAt + CASCADE_DUE_MS } };
 }
 
 /**
@@ -1171,7 +1279,9 @@ export interface EndingRecording {
  * every recorder runs, in that same write:
  *
  * 1. Orchestration's own: {@link recordResumeOwed}, which writes the typed
- *    `Task.resumeOwed` on a waited-on row's ending.
+ *    `Task.resumeOwed` on a waited-on row's ending, and
+ *    {@link recordCascadeOwed}, which writes `Task.cascadeOwed` on one that
+ *    owes a cascade.
  * 2. The ledger's declared `recordEnding`, handed the {@link endingOf} this
  *    write, metadata only.
  *
@@ -1184,7 +1294,8 @@ function recordEnding<TInput, TOutput>(
 ): Task<TInput, TOutput> {
   const resumed = recordResumeOwed(prev, next);
   const ending = endingOf(prev as Task, next as Task, recording?.quiet);
-  return ending === undefined ? resumed : applyEndingRecorder(recording?.recordEnding, resumed, ending);
+  if (ending === undefined) return resumed;
+  return applyEndingRecorder(recording?.recordEnding, recordCascadeOwed(resumed, ending, recording), ending);
 }
 
 /**
