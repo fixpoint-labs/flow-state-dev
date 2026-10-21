@@ -13,6 +13,8 @@ import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
 import type { DispatchAddress, DispatchSeam } from "./dispatch";
 import { DISPATCH_SEAM } from "./dispatch";
+import type { RequestEndSeam } from "./request-end";
+import { REQUEST_END_SEAM } from "./request-end";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -559,6 +561,13 @@ export interface BlockContext<
    * call — the blocks that carry a `DispatchAddress`. See `types/dispatch.ts`.
    */
   [DISPATCH_SEAM]?: DispatchSeam;
+
+  /**
+   * @internal The running request's request-end registry (FIX-2077), under a
+   * symbol key. Read only by `onRequestEnded`, which a framework package calls
+   * to run after the request's last drain. See `types/request-end.ts`.
+   */
+  [REQUEST_END_SEAM]?: RequestEndSeam;
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {

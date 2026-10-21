@@ -81,6 +81,10 @@ export type {
   TaskTargetQuery
 } from "./dispatch";
 
+/** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
+export { REQUEST_END_SEAM, onRequestEnded } from "./request-end";
+export type { RequestEndHook, RequestEndSeam, RequestEndStatus, RequestEnding } from "./request-end";
+
 export {
   DISPATCH_SEAM,
   DISPATCH_TYPES,

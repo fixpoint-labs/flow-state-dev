@@ -151,6 +151,18 @@ export function owedNotices(row: Task, boardId: string): TaskNotice[] {
   return notices.sort((a, b) => a.attempt - b.attempt);
 }
 
+/**
+ * Whether `row` still owes any notice. The boolean form of
+ * {@link owedNotices}, with an early exit and no notice built: what a check
+ * run at every request's end asks of every row a task filed (FIX-2077).
+ */
+export function owesAnyNotice(row: Task): boolean {
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (isMarker(key, value)) return true;
+  }
+  return false;
+}
+
 /** Whether `row` still owes `notice`: its marker is there and not cleared. */
 export function isNoticeOwed(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): boolean {
   const value = (row.metadata ?? {})[markerKey(notice.attempt, notice.ending)];

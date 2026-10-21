@@ -459,6 +459,21 @@ export const taskSchema = z.object({
   resumeOwed: z.boolean().optional(),
 
   /**
+   * What keeps this running task open while no worker holds it (FIX-2077 D1):
+   * `"person"`, a stop to ask a person; `"wait"`, any other suspension (a
+   * webhook, a call); `"filed"`, work it filed that still holds it; `"queued"`,
+   * work queued for it that has not run. Only on an `in_progress` row, and a
+   * row with it set has no lease, so the reclaim leaves it alone: a waiting
+   * task is never run again by a lapse. The request admitted for it next
+   * clears it and starts a lease; every ending clears it.
+   *
+   * Not FIX-2080's `held`, which is a status before a start: this applies only
+   * after one. Server-written by the claim gate (`setWaitingOn`), never by a
+   * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030).
+   */
+  waitingOn: z.enum(["person", "wait", "filed", "queued"]).nullable().optional(),
+
+  /**
    * The wait on this row is over (its turn was stopped, or it timed out) but
    * the cancel that should have ended the row failed (FIX-1844). A touch of
    * the board pays it by cancelling the row. Whatever ends the row pays it,

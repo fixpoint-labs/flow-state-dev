@@ -1,0 +1,202 @@
+/**
+ * The request-end seam (FIX-2077): a hook a framework package registers from a
+ * block runs once the request's work is over, after the drain of what
+ * `onFinished` started, on every way a request ends.
+ *
+ * Why it matters: the claim gate settles a dispatched task here. A hook that
+ * ran before the last drain would tell a task's filer "done" while background
+ * work the flow's end hooks started was still writing.
+ */
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
+import { z } from "zod";
+import { describe, expect, it } from "vitest";
+import { createInMemoryStores, runAction } from "../src";
+import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A tap that registers a hook recording how the request ended, and what had happened by then. */
+function registering(log: string[], endings: RequestEnding[]) {
+  return handler({
+    name: "register-end",
+    inputSchema: z.any(),
+    execute: (_input, ctx) => {
+      const registered = onRequestEnded(ctx, (ending) => {
+        endings.push(ending);
+        log.push(`end:${ending.status}`);
+      });
+      log.push(`registered:${registered}`);
+    }
+  });
+}
+
+/** Background work that writes after a delay, the way a side chain outlives its request's return. */
+function slowWrite(log: string[], label: string) {
+  return handler({
+    name: `slow-${label}`,
+    inputSchema: z.any(),
+    execute: async () => {
+      await sleep(40);
+      log.push(`wrote:${label}`);
+    }
+  });
+}
+
+describe("request-end seam", () => {
+  it("runs after the action's side chain and after the side chain onFinished starts", async () => {
+    const log: string[] = [];
+    const endings: RequestEnding[] = [];
+    const flow = defineFlow({
+      kind: "request-end-success",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(registering(log, endings))
+            .sideChain(slowWrite(log, "action"))
+            .step(handler({ name: "answer", inputSchema: z.any(), execute: () => ({ ok: true }) }))
+        }
+      },
+      request: {
+        onFinished: sequencer({ name: "finished" }).sideChain(slowWrite(log, "on-finished"))
+      }
+    })();
+
+    await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(log).toEqual(["registered:true", "wrote:action", "wrote:on-finished", "end:completed"]);
+    expect(endings).toEqual([{ status: "completed" }]);
+  });
+
+  it("runs on a failed request, after the side chain onErrored starts", async () => {
+    const log: string[] = [];
+    const endings: RequestEnding[] = [];
+    const flow = defineFlow({
+      kind: "request-end-failure",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(registering(log, endings))
+            .step(
+              handler({
+                name: "boom",
+                inputSchema: z.any(),
+                execute: () => {
+                  throw new Error("boom");
+                }
+              })
+            ),
+          onErrored: sequencer({ name: "errored" }).sideChain(slowWrite(log, "on-errored"))
+        }
+      }
+    })();
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error?.message).toBe("boom");
+    expect(log).toEqual(["registered:true", "wrote:on-errored", "end:failed"]);
+    expect(endings).toEqual([{ status: "failed", error: { message: "boom" } }]);
+  });
+
+  it("runs on a suspended request and names the suspension's reason", async () => {
+    const log: string[] = [];
+    const endings: RequestEnding[] = [];
+    const flow = defineFlow({
+      kind: "request-end-suspended",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          durable: true,
+          block: sequencer({ name: "run", durable: true })
+            .tap(registering(log, endings))
+            .step(
+              handler({
+                name: "ask",
+                inputSchema: z.any(),
+                outputSchema: z.unknown(),
+                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+              })
+            )
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+
+    await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    expect(endings).toEqual([{ status: "suspended", suspension: { reason: "human_input" } }]);
+  });
+
+  it("a hook that throws leaves the request's outcome as it was", async () => {
+    const flow = defineFlow({
+      kind: "request-end-throws",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(
+              handler({
+                name: "register",
+                inputSchema: z.any(),
+                execute: (_input, ctx) => {
+                  onRequestEnded(ctx, () => {
+                    throw new Error("hook failed");
+                  });
+                }
+              })
+            )
+            .step(handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }))
+        }
+      }
+    })();
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe("fine");
+  });
+});

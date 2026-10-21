@@ -154,10 +154,11 @@ describe("a task entry served by a partitioned ledger (taskLedgers)", () => {
 });
 
 describe("settling through a taskLedgers resolver", () => {
-  it("refuses a re-resolution at another partition before the recorders write", async () => {
+  it("settles through the ledger it admitted the row on, never a re-resolution (FIX-2077)", async () => {
     const h = await harness();
-    // Right at admission, then ignores the partition it is handed: the settle
-    // path's re-resolution lands on conv-b's row of the same task id.
+    // Right at admission, then wrong: a second resolution would land on conv-b's
+    // row of the same task id. The settle at the request's end writes through
+    // the ledger the admission verified, so it never asks again.
     let calls = 0;
     const flow = h.flowFor(
       taskLedgers({
@@ -166,10 +167,9 @@ describe("settling through a taskLedgers resolver", () => {
       }).gate
     );
     const result = await h.run(flow, "conv-a", "conv-a");
-    expect(calls).toBeGreaterThan(1);
-    const cause = (result.error as { cause?: { code?: string; message?: string } } | undefined)?.cause;
-    expect(cause?.code).toBe("stale-task-claim");
-    expect(cause?.message).toMatch(/resolver answered with "conv-b"/);
+    expect(result.error).toBeUndefined();
+    expect(calls).toBe(1);
+    expect((await h.row("conv-a")).status).toBe("completed");
     // Nothing was settled on the other conversation's row.
     const other = await h.row("conv-b");
     expect(other.status).toBe("in_progress");

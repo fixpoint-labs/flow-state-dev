@@ -1182,6 +1182,33 @@ export function requireClaimTicket(
   }
 }
 
+/**
+ * The patch `setWaitingOn` writes (FIX-2077): set, with no lease and the
+ * request's answer kept by {@link completionPatch}'s output rule; or cleared,
+ * with the lease the admission starts.
+ *
+ * @throws when clearing without a finite `leaseUntil`: a programming error.
+ */
+export function waitingOnPatch(
+  task: Task,
+  waitingOn: Task["waitingOn"],
+  options: { leaseUntil?: number; answer?: { output: unknown } }
+): Partial<Task> {
+  if (waitingOn == null) {
+    assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
+    return { waitingOn: undefined, leaseUntil: options.leaseUntil };
+  }
+  const ownCheckpoint = task.checkpointed === true && task.checkpointAttempt === task.attempts;
+  const kept =
+    options.answer === undefined || ownCheckpoint
+      ? {}
+      : {
+          output: options.answer.output,
+          ...(task.checkpointed === true ? { checkpointed: undefined, checkpointAttempt: undefined } : {}),
+        };
+  return { waitingOn, leaseUntil: undefined, ...kept };
+}
+
 /** Whether a progress report names anything to write. */
 export function reportsProgress(progress: { statusNote?: string; output?: unknown }): boolean {
   return progress.statusNote !== undefined || progress.output !== undefined;
@@ -1459,15 +1486,11 @@ export function applyTransition<TInput, TOutput>(
   now: number,
   recording?: EndingRecording
 ): Task<TInput, TOutput> {
-  return recordEnding(
-    task,
-    {
-      ...task,
-      ...patch,
-      updatedAt: now,
-    },
-    recording
-  );
+  const next = { ...task, ...patch, updatedAt: now };
+  // A row waits on something only while it runs (FIX-2077): every write that
+  // moves it off `in_progress` clears the field.
+  if (next.waitingOn != null && next.status !== "in_progress") next.waitingOn = undefined;
+  return recordEnding(task, next, recording);
 }
 
 /** Filter and clone tasks for query results — keeps consumers from mutating internal state. */

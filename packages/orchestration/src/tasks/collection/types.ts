@@ -30,6 +30,9 @@ export type CancelOptions = TaskTransitionOptions & {
 };
 
 /** What a running task's worker reports (FIX-2081, `reportProgress`). */
+/** What a running task waits on (`Task.waitingOn`, FIX-2077). */
+export type TaskWaitingOn = NonNullable<Task["waitingOn"]>;
+
 export interface TaskProgress {
   /** A one-line note for task views. Never the task's status. */
   readonly statusNote?: string;
@@ -855,6 +858,32 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     id: string,
     run: TaskRunLink,
     options: TaskTransitionOptions & { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
+  /**
+   * Record what a running task waits on, or that it waits on nothing again
+   * (FIX-2077 D1). The claim gate calls it for the request it admitted: at the
+   * request's end when the task is not done, and at the next request's
+   * admission.
+   *
+   * - `waitingOn` set: the row keeps its claim and drops its lease
+   *   (`leaseUntil`), so no reclaim takes it back. `options.answer` is that
+   *   request's result, kept as the output (unless this attempt reported a
+   *   checkpoint, which stays the output), for the settle that follows.
+   * - `null`: the field clears and the row holds a lease again, to
+   *   `options.leaseUntil` (required then). The committed span
+   *   (`leaseDurationMs`) is the claim's, unchanged.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, the row must be
+   * `in_progress`, and the write declines `terminal`, `not-my-task` or
+   * `lost-claim` otherwise. Publishes no `task-change`, as a renewal doesn't.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); the gate
+   * then keeps the lease as before.
+   */
+  setWaitingOn?(
+    id: string,
+    waitingOn: TaskWaitingOn | null,
+    options: { claim: TaskClaimTicket; leaseUntil?: number; answer?: { output: unknown } }
   ): Promise<TaskWriteOutcome>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned

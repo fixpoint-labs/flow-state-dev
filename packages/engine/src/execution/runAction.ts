@@ -83,6 +83,7 @@ import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { noteWaitDeadline } from "../durability/wait-deadlines";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
+import { requestEndRegistryOf } from "./request-end-hooks";
 import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
@@ -2380,6 +2381,13 @@ async function runActionAttempt<
           }
         }
 
+        // A suspended request's work is over for now; the hooks registered
+        // for its end are told why it stopped (FIX-2077).
+        await requestEndRegistryOf(ctx)?.run(
+          { status: "suspended", suspension: { reason: String(suspendError.reason) } },
+          { requestId, logger }
+        );
+
         return {
           output: undefined,
           // Return the same merged list we persist (FIX-811): in replay mode
@@ -2639,6 +2647,10 @@ async function runActionAttempt<
     // under the id; wait for it, as for `onCompleted`'s above, and for any
     // item or event writes it and `onFinished` left pending.
     await drainRequestSideChainPool(ctx);
+    // The request's work is over: the hooks framework packages registered for
+    // its end run now, before the pending writes settle, so what they write
+    // is flushed with the rest (FIX-2077).
+    await requestEndRegistryOf(ctx)?.run({ status: terminalStatus }, { requestId, logger });
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // The run has nothing left to write under this id.
@@ -2934,6 +2946,15 @@ async function runActionAttempt<
     // run writing under the id, as are the item and event writes they left
     // pending.
     await drainRequestSideChainPool(ctx);
+    // As on the success path (FIX-2077).
+    await requestEndRegistryOf(ctx)?.run(
+      wasIntentionalAbort
+        ? { status: "aborted" }
+        : signalAborted
+          ? { status: "interrupted" }
+          : { status: "failed", error: { message: normalizedError?.message ?? String(error) } },
+      { requestId, logger }
+    );
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // As on the success path: only the last live attempt stamps.
