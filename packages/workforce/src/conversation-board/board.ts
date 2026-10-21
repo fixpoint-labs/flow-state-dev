@@ -251,7 +251,7 @@ function claimOf(ctx: BlockContext): { assignee?: string; followUpOf?: string } 
  * ongoing session for the conversation. `undefined` for a post row, which
  * is not a task of a session yet (FIX-2083 routes it).
  */
-export function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "sealed">): string | undefined {
+function sessionKeyOf(task: Pick<Task, "id" | "assignee" | "followUpOf" | "session" | "sealed">): string | undefined {
   if (isPostRow(task as Task) || task.assignee === undefined) return undefined;
   if (task.session === "ongoing") return `delegate:${delegateKey({ worker: task.assignee })}`;
   return taskSessionKey(task.followUpOf ?? task.id, task.assignee);
