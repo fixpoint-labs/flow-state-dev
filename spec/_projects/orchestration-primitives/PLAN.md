@@ -20,7 +20,13 @@ is today.
 | FIX-980 · honest substrate | The claim ticket | Versioned task writes; park and unpark; settles a caller can trust |
 | FIX-1320 · flow instances | — | A global address for each flow instance |
 | FIX-1312 · dispatch protocol | An address | `dispatcher()` with reply-to-sender, as transport for flow code |
-| FIX-1870 · dispatchTask | The honest board, reply-to-sender, FIX-1815's ask and assign behaviour, FIX-1816's ask (its D3 amended by PD-3), FIX-1786's task envelope and assignee | One worker-to-worker dispatch tool; every post that expects an answer as a task, the claim ticket its only answer-once fence; "ask" and "hand-off" narrowed to one meaning each |
+| FIX-1870 · dispatchTask, canceled Oct 21 | The honest board, reply-to-sender | `dispatchTask`; coordinator posts as task rows, with `handOff` and the delivery ledger gone. Superseded by FIX-2056 before it wrapped |
+| FIX-2056 · one task primitive | The honest board, reply-to-sender, FIX-1047's claim in task tools, FIX-1870's D2, the coordination model ([#3534](https://github.com/fixpoint-labs/flow-state-dev/pull/3534)) | One task with plan and delegation boards; one completion rule at the claim gate; four task tools, `createTask` and `getTask({ id, wait })` replacing `dispatchTask`; posts as routed tasks; every ending to its filer once |
+| FIX-2058 · one Inbox | FIX-2056's claim gate and steer, durable execution by default (FIX-2063) | One Inbox item per stop for a person; the answer by steer; `answerTask` and the parks retired ([*decided once*](DECISIONS.md)) |
+| FIX-2070 · messages | FIX-2056's task and its sessions | Send and call, delivery and budget; `receive` in place of today's message entry |
+| FIX-2071 · coordination renames | FIX-2058, FIX-2070 | One term per thing; FIX-2056's read for retired rows removed no earlier than here |
+
+FIX-2058 and FIX-2070 run side by side once FIX-2056 wraps; neither waits on the other.
 
 ## Milestones
 
@@ -33,8 +39,9 @@ catalog shipped) were deleted on Oct 12 when their issues moved out.
 | v2 · Existing patterns migrated | Board-based patterns reshaped onto the primitive (FIX-447, FIX-448) | Reached with the Plan/Task series, May 1. Patterns off the board are outside it |
 | v4 · Skills declare patterns | Skills naming a pattern in `SKILL.md` frontmatter (FIX-450) | Shipped May 20, then reversed by FIX-918 in July ([PD-2](DECISIONS.md)). The milestone's name and description still describe the reversed design |
 
-FIX-1870 waits on FIX-1820, the restart closure in Workforce: Shift Manager, which is Done. Its
-checks, with FIX-1816's and FIX-1817's, are FIX-1870's regression gate.
+FIX-2056 waits on nothing open: FIX-1047, which carries a worker's claim to its task tools, merged
+Oct 20. Its closure, FIX-2087, runs the coordinator and hand-off goals on one `main` commit, and is
+the project's next regression gate.
 
 ## Deliberately not next
 
@@ -45,8 +52,8 @@ checks, with FIX-1816's and FIX-1817's, are FIX-1870's regression gate.
   outcome; FIX-922 decides whether they stay patterns ([Decisions](DECISIONS.md) → *decided once*).
 - **A "question" task class shown differently in the UI, and a model-facing tool for tells.**
   The first is deferred until something needs it; the second is not added ([PD-3](DECISIONS.md)).
-- **Waiting on several tasks at once, and a row-less question tool for workers.** FIX-1870 rules
-  both out of scope; neither has an epic.
+- **Waiting on several tasks at once, and a row-less question tool for workers.** FIX-1870 ruled
+  both out and FIX-2056's four task tools add neither; neither has an epic.
 - **Spend caps on delegated work (FIX-933).** Filed under FIX-930, never started.
-- **Anything after dispatchTask.** No epic is filed after FIX-1870. The project's remaining life
-  is that epic.
+- **Anything after the renames.** No epic is filed after FIX-2071. The project's remaining life
+  is FIX-2056, then FIX-2058 and FIX-2070 side by side, then FIX-2071.

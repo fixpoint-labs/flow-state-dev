@@ -6,18 +6,18 @@ Each rule has one owner: the epic that implements and proves it. The others inhe
 
 | | Rule | Owner | Checked where |
 |---|---|---|---|
-| **PR-1** | When one worker gives another work, then that work is a Task row on a board, never a payload on a side channel | FIX-1870 | FIX-1875's goal check, once its spec lands |
-| **PR-2** | When a post between workers expects an answer, then it is a task through `dispatchTask`, claimed once and ended done or failed to the caller, with the claim ticket the only once-only check; when it expects none, it is a plain message with no row, deadline or check | FIX-1870 | FIX-1872's goal check, once its spec lands |
+| **PR-1** | When one worker gives another work, then that work is a Task row on a board, never a payload on a side channel | FIX-2056, by FIX-2083 | FIX-2083's acceptance check; FIX-2087's closure run |
+| **PR-2** | When a post between workers expects an answer, then it is a task filed with `createTask` and waited on through `getTask({ id, wait })`, claimed once and ended to its filer once, with the claim ticket the only once-only check; when it expects none, it is a plain message with no row, deadline or check | FIX-2056, by FIX-2081 | FIX-2081's acceptance check; FIX-2087's tool sweep |
 
-FIX-1870 passed its objective gate on Oct 12; the checks that prove both rules belong to its
-children, still in spec review. The board and its claim ticket shipped under the Plan/Task
-series and FIX-939; FIX-1870 owns both rules because it removes the exceptions, the coordinator's
-`handOff` and its delivery ledger.
+Both rules moved from FIX-1870, canceled Oct 21, to FIX-2056 at its approval
+([#3588](https://github.com/fixpoint-labs/flow-state-dev/pull/3588)). FIX-1870's children already
+removed the coordinator's `handOff` and its delivery ledger; FIX-2083 removes the last exception,
+the post row kind, and FIX-2081 ships the four task tools PR-2 names.
 
-PR-2 is [PD-3](DECISIONS.md), which amends FIX-1816's D3: the coordinator delivery ledger goes
-with FIX-1872, whose spec first checks whether any coordinator post today is a tell.
+PR-2 is [PD-3](DECISIONS.md), which amends FIX-1816's D3.
 
-**No epic may** add a model-facing tool that dispatches work to another worker beside the one
-FIX-1870 ships, or a model-facing tool for tells ([PD-3](DECISIONS.md)); add a second once-only
-check beside the claim ticket; add a task store or status vocabulary outside TaskCollection
-([PD-1](DECISIONS.md)); or let a skill pick how its work executes ([PD-2](DECISIONS.md)).
+**No epic may** add a model-facing tool that gives work to another worker beside FIX-2056's four
+task tools (`answerTask` stays until FIX-2058 retires it), or a model-facing tool for tells
+([PD-3](DECISIONS.md)); add a second once-only check beside the claim ticket; add a task store or
+status vocabulary outside TaskCollection ([PD-1](DECISIONS.md)); or let a skill pick how its work
+executes ([PD-2](DECISIONS.md)).
