@@ -195,8 +195,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
       onPost?: BlockDefinition<any, any>
     ) {
       return {
-        // One pass at a time per session (FIX-2078): a second is refused, and
-        // the first's last ready check, or the wake, covers it.
+        // One pass at a time per session (FIX-2078): a second waits its turn,
+        // and runs once the first ends.
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
         [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),

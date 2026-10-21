@@ -59,13 +59,17 @@
  *   flow, in the session written on the row, never a task session, after the
  *   delegate check for a post. Its assignee can't be changed.
  * - **The pass** (FIX-2078). One run of the board, `runTaskBoard`, one at a
- *   time per session (`reject`): repairs first (orchestration's
- *   `payBoardDebts`: cancels, cascades, resumes, notices past due; reports
- *   stored before the upgrade; the settles owed down the chain), then the
- *   drain, then the repairs again, whose last ready check is the last step
- *   before the session's wake moves to the next debt's due time or clears.
- *   Every write that owes a start (a filing, an assign, an answer, a release)
- *   owes that wake first, then runs the pass. A touch of the board runs the
+ *   time per session (`defer`: a second waits its turn): repairs first
+ *   (orchestration's `payBoardDebts`: cancels, cascades, resumes, notices past
+ *   due; reports stored before the upgrade; the settles owed down the chain),
+ *   then the drain, then the repairs again and a last ready check, before the
+ *   session's wake moves to the next debt's due time or clears. That check
+ *   reads this request's snapshot, so it can't see a concurrent write. What
+ *   keeps such a debt is the wake's version: every writer that can make a row
+ *   ready or end one (a filing, an assign, an answer, a release, a reopen, a
+ *   claim at its lease's end, an ending) owes the session's wake before it
+ *   writes, which bumps the version, so the pass's settle comes back stale
+ *   and the wake stays. Each then runs the pass. A touch of the board runs the
  *   pass only when something is startable or past due; it resends nothing.
  */
 import {
@@ -386,8 +390,8 @@ async function owePass(ctx: BlockContext): Promise<void> {
 /**
  * Run the session's pass: dispatch `runTaskBoard` into the running session, as
  * a request of its own, owing its wake first. Never waits for it, and never
- * fails the caller: a pass already running refuses it (one at a time), and
- * its last ready check, or the wake, covers what it would have done.
+ * fails the caller: while a pass runs it waits its turn (one at a time), and
+ * past the line's cap the wake covers what it would have done.
  */
 export async function triggerPass(ctx: BlockContext): Promise<void> {
   await owePass(ctx);
@@ -419,11 +423,18 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
 /** The most rounds of drain and repair one pass runs. */
 const MAX_PASS_ROUNDS = 3;
 
-/** Rounds run so far, by pass request. */
-const passRounds = new Map<string, number>();
-
-/** The pass's wake as read at its start, by request: settled at its end against that version. */
-const passWakes = new Map<string, Awaited<ReturnType<NonNullable<NonNullable<BlockContext["requestHost"]>["wakes"]>["read"]>>>();
+/**
+ * What one pass keeps between its steps, in its own request's state (so a
+ * failed or aborted pass leaves nothing behind, and a pass resumed elsewhere
+ * reads it back): the wake as read at its start, settled at its end against
+ * that version, and the rounds run so far.
+ */
+const passStateSchema = z.object({
+  passWake: z.object({ dueAt: z.number(), landBy: z.number(), version: z.number() }).optional(),
+  passRounds: z.number().optional()
+});
+type PassState = z.infer<typeof passStateSchema>;
+const passStateOf = (ctx: BlockContext): PassState => (ctx.request.state ?? {}) as PassState;
 
 /**
  * Build a conversation's task board and everything a flow carrying it
@@ -1092,8 +1103,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     inputSchema: z.unknown(),
     outputSchema: z.object({}),
     resources: { ...conversationLedgerResources, ...taskChainResources },
+    requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
-      passWakes.set(ctx.request.identity.id, await ctx.requestHost?.wakes?.read(RUN_BOARD_ENTRY));
+      const wake = await ctx.requestHost?.wakes?.read(RUN_BOARD_ENTRY);
+      await ctx.request.patchState({ passWake: wake === undefined ? undefined : { dueAt: wake.dueAt, landBy: wake.landBy, version: wake.version }, passRounds: 0 });
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
       if (ref !== undefined) await repairs(ctx as never, ref, partition);
@@ -1105,15 +1118,16 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * A round's last half: repair again (what the drain's own endings owe),
    * mark each of this board's pieces added in its chain (a crash between an
    * add and its mark leaves it reserved, and the lease must never drop a
-   * piece that landed), and the last ready check: a row startable now (one a
-   * retry or an ending made ready while this pass held its place, whose own
-   * trigger was refused) runs another round, up to {@link MAX_PASS_ROUNDS}.
+   * piece that landed), and the last ready check: a row startable now (one
+   * this pass's own drain or repairs made ready) runs another round, up to
+   * {@link MAX_PASS_ROUNDS}.
    */
   const afterRound = handler({
     name: "conversation-board-after-run",
     inputSchema: z.unknown(),
     outputSchema: z.object({ again: z.boolean(), nextDue: z.number().optional() }),
     resources: { ...conversationLedgerResources, ...taskChainResources },
+    requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
@@ -1121,8 +1135,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const nextDue = await repairs(ctx as never, ref, partition, false);
       const top = taskChainOf(ctx)?.top;
       if (top !== undefined) await markAddedInChain(ctx, top, ref.list().map((row) => chainEntryKey(partition, row.id)));
-      const rounds = (passRounds.get(ctx.request.identity.id) ?? 0) + 1;
-      passRounds.set(ctx.request.identity.id, rounds);
+      const rounds = (passStateOf(ctx as never).passRounds ?? 0) + 1;
+      await ctx.request.patchState({ passRounds: rounds });
       const again = hasStartable(ref) && rounds < MAX_PASS_ROUNDS;
       return nextDue === undefined ? { again } : { again, nextDue };
     }
@@ -1133,11 +1147,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     name: "conversation-board-settle-wake",
     inputSchema: z.object({ again: z.boolean(), nextDue: z.number().optional() }),
     outputSchema: z.object({ nextDue: z.number().optional() }),
+    requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
-      const read = passWakes.get(ctx.request.identity.id);
-      passWakes.delete(ctx.request.identity.id);
-      passRounds.delete(ctx.request.identity.id);
-      await settlePassWake(ctx as never, RUN_BOARD_ENTRY, read, round.nextDue);
+      await settlePassWake(ctx as never, RUN_BOARD_ENTRY, passStateOf(ctx as never).passWake, round.nextDue);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
   });

@@ -51,13 +51,15 @@ function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * the internal entry it names, in its session, as its owner, the way the
  * dispatch seam starts a dispatched request. Resolves once the host accepted
  * it; rejects when the host refused or failed to. `onStarted` receives the
- * run's completion, so a host that closes its stores can wait for it.
+ * run's completion and a way to abort it, so a host that closes its stores can
+ * wait for it, for a while.
  */
 export async function fireWakeThrough(
   host: Pick<InboundTransportHost, "dispatch">,
   wake: WakeRecord,
-  onStarted?: (finished: Promise<unknown>) => void
+  onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
+  const controller = new AbortController();
   const handle = host.dispatch({
     source: INTERNAL_SOURCE,
     flowKind: wake.flowKind,
@@ -68,9 +70,10 @@ export async function fireWakeThrough(
     orgId: wake.orgId,
     ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
-    responseEmitter: null
+    responseEmitter: null,
+    signal: controller.signal
   });
-  onStarted?.(handle.finished);
+  onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
   if (handle.accepted !== undefined) await handle.accepted;
 }
 
