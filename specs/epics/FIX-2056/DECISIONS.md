@@ -97,6 +97,7 @@ FIX-2081's own scope.
 | `afterRun`, the notice and `runTaskBoard` (`workforce/src/conversation-board/board.ts`) | FIX-2078 moves the notice, replaces resends with due times, removes the `reportOwed` marker and keeps Shift Manager's error route on the ending path ([f](#f)); FIX-2077 removes the split settle; FIX-2084 renames the entry `dispatch` |
 | The collection read (`tasks/collection/`) | FIX-2080 owns the map; the retiring children turn entries on |
 | Queued messages | FIX-2077 runs them through today's message entry; FIX-2070 makes it `receive` |
+| The filer on a task row (`tasks/schema/task.ts`) | FIX-2078 owns the server-written filer fields, session and flow, under rule 4 (a user's follow-up copies the original's). FIX-2082 and FIX-2086 read them; FIX-2081's filing-task link is its own |
 
 ## Decided in review, recorded so no child reopens them
 
