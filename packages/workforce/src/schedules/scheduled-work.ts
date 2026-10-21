@@ -8,7 +8,7 @@
  *   `input` is the task, as the board's filing takes it.
  * - **The fire.** The roster flow resolves a dispatch id to its row
  *   (`createResourceCollectionScheduleResolver`), and the endpoint fires each
- *   scheduled time at most once. The handler for kind `task` runs as the
+ *   scheduled time at most once. The `task` handler runs as the
  *   row's user: it finds the filer on their roster, then dispatches the
  *   filer's flow's {@link FILE_SCHEDULED_TASK_ENTRY} into the user's own
  *   conversation with the filer, the address their own message reaches
@@ -37,7 +37,7 @@ import {
 import { z } from "zod";
 import { deriveWorkerSessionId, criteriaState } from "../workers/derive-session-id";
 import type { WorkerInstallation } from "../workers/installation";
-import { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_KIND } from "./keys";
+import { FILE_SCHEDULED_TASK_ENTRY, LIST_SCHEDULES_ACTION, SCHEDULES_PATTERN, SCHEDULES_RESOURCE, TASK_SCHEDULE_HANDLER } from "./keys";
 
 /** What `hireWorkforce` takes for recurring work. */
 export interface ScheduledWorkOptions {
@@ -93,7 +93,7 @@ const saveScheduleInputSchema = z
     cron: z.string().min(1),
     /** An IANA time zone. Omitted, UTC. */
     timezone: z.string().min(1).optional(),
-    kind: z.literal(TASK_SCHEDULE_KIND).optional(),
+    kind: z.literal(TASK_SCHEDULE_HANDLER).optional(),
     input: scheduledTaskInputSchema,
     description: z.string().optional(),
     enabled: z.boolean().optional()
@@ -138,7 +138,7 @@ function listed(key: string, row: ScheduleRow): ListedSchedule {
 }
 
 /**
- * The schedule handler for kind `task`: file the row's task on its filer's
+ * The `task` schedule handler: file the row's task on its filer's
  * board, in the user's conversation with the filer, as the user.
  */
 function scheduledTaskBlock(installation: WorkerInstallation) {
@@ -201,7 +201,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
   const schedules: SchedulesConfig = {
     resolve: createResourceCollectionScheduleResolver({
       collection,
-      blocks: { [TASK_SCHEDULE_KIND]: scheduledTaskBlock(installation) }
+      blocks: { [TASK_SCHEDULE_HANDLER]: scheduledTaskBlock(installation) }
     })
   };
 
@@ -236,7 +236,7 @@ export function defineScheduledWork(installation: WorkerInstallation, options: S
       }
       const row: ScheduleRow = {
         cron: input.cron,
-        kind: TASK_SCHEDULE_KIND,
+        kind: TASK_SCHEDULE_HANDLER,
         input: input.input,
         enabled: input.enabled ?? true,
         ...(input.timezone === undefined ? {} : { timezone: input.timezone }),

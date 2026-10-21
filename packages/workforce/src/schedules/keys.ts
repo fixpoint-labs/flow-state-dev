@@ -1,9 +1,9 @@
 /**
  * The names recurring work pins (FIX-2085): where a user's schedules are
  * stored, the accessor the roster flow declares them under, the one schedule
- * kind Workforce handles, and the internal entry a fire files its task
- * through. A leaf module with no imports, so the session board and the roster
- * flow share one spelling of each.
+ * handler Workforce keeps (a row's `kind: "task"`), and the internal entry a
+ * fire files its task through. A leaf module with no imports, so the session
+ * board and the roster flow share one spelling of each.
  */
 
 /**
@@ -17,10 +17,11 @@ export const SCHEDULES_PATTERN = "workforce/schedules/*";
 export const SCHEDULES_RESOURCE = "workforceSchedules";
 
 /**
- * The schedule kind Workforce handles: a fire files an ordinary task on the
- * board of the worker its `input.filer` names. **Pinned**: persisted on each row.
+ * The schedule handler Workforce keeps, a row's `kind: "task"`: a fire files an
+ * ordinary task on the board of the worker its `input.filer` names. **Pinned**:
+ * persisted on each row.
  */
-export const TASK_SCHEDULE_KIND = "task";
+export const TASK_SCHEDULE_HANDLER = "task";
 
 /**
  * The internal entry on a worker flow that files a scheduled task in the
