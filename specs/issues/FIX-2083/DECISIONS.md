@@ -92,7 +92,12 @@ whether the lead can manage the workers under it. Then the vet keeps its own cal
   stays what it is today: the coordinator answers, and nothing is filed.
 - **Endings.** One entry, `onTaskSettled`, through FIX-2078's path. A conversation-result ending
   lands as a line under the delegate's name and feeds the rounds; nothing wakes a judgment turn
-  for it. A failure's error report rides it ([(f)](../../epics/FIX-2056/DECISIONS.md#f)).
+  for it. A failure's error report rides it ([(f)](../../epics/FIX-2056/DECISIONS.md#f)). A
+  delegate's failed after-answer memory save is logged and does not fail its routed task, so the
+  user still gets the answer: the owner's decision of 2026-10-21
+  ([audit thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3598#issuecomment-6320943151)).
+  The rule and its carve-out for conversation-result tasks are FIX-2088's D1
+  ([#3602](https://github.com/fixpoint-labs/flow-state-dev/pull/3602)); this issue builds nothing for it.
 - **Rounds, deadlines and the routing record key on task ids.** A round holds the ids it filed.
   A routed task's id stays derived from the message, the round and the delegate record, so the
   same pick twice files one task. Stored routing records and round state naming a post id are
@@ -165,5 +170,9 @@ Recorded for the implementer, not baked into the design. Round 1, on `48372389`.
 - **Draft** — framed as the epic's R-01 to R-05: a post becomes a task with FIX-2080's settings
   on `work`, its ending on FIX-2078's path, its round deadline on FIX-2078's wake, and the two
   fit calls folded into one.
+- **Owner decision (2026-10-21)** — on the cross-spec audit's F1
+  ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/3598#issuecomment-6320943151)):
+  for a conversation-result task, a failed after-answer memory save is logged, not a failed
+  task; every other task keeps FIX-2088 D1. Recorded under *Endings*, citing FIX-2088.
 
 **Open: none.**
