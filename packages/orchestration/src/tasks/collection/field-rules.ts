@@ -1,23 +1,13 @@
 /**
- * The task field table (FIX-2081): which fields of a task its filer, or the
- * user from a screen, may change, and until when. One rule per field, and
- * one place for it.
+ * Which fields of a task its filer may change, and until when. `patchSettings`
+ * reads {@link lockedFields} inside the write, so a task that starts between
+ * a read and the write is refused. `updateTask` reads the same answer to name
+ * the refusal.
  *
- * The collection's guarded patch (`patchSettings`, FIX-2080) reads it inside
- * the write, so a task that starts between a caller's read and the write is
- * refused, not edited. The `updateTask` tool and its action read it to name a
- * refusal. Nothing else decides a field's rule.
- *
- * | Field | Allowed |
- * | -- | -- |
- * | `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
- * | `held` (a hold, or a release) | Before the task first starts |
- * | a cancel | Until the task finishes |
- *
- * *Before it first starts* means never claimed: a task pending again after a
- * retry stays locked. Never editable: any other status, `followUpOf`, the
- * attempts used, and the `session` and `resultTo` settings. A finished task
- * refuses everything.
+ * *Before it first starts* means never claimed ({@link hasStarted}): a task
+ * pending again after a retry stays locked. Never editable, in any state:
+ * `followUpOf`, `session`, `resultTo`, and the attempts used. A finished task
+ * refuses every field.
  */
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
