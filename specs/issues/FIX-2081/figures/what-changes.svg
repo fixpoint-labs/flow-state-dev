@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="Two panels. Today: eleven task tools; addTask, readTask, assignTask, cancelTask, completeTask and failTask leave here, blockTask with FIX-2080, while answerTask and dispatchTask stay for now; and updateTask patches four fields in any state. After: four tools, createTask, getTask, listTasks and updateTask, with updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel; after, nothing. A strip below: who a task can reach. Today the session's delegates, and in a task session anyone on the roster. After, the filer's delegates, or anyone with delegates all; only the user changes the list, unless a coordinator is set to change its own."
+<svg viewBox="0 0 940 470" role="img" aria-label="Two panels. Today: eleven task tools; addTask, readTask, assignTask, cancelTask, completeTask and failTask leave here, blockTask with FIX-2080, while answerTask and dispatchTask stay for now; and updateTask patches four fields in any state. After: four tools, createTask, getTask, listTasks and updateTask, with updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel, and while it runs the assignee's output checkpoint; after, nothing. A strip below: who a task can reach. Today the session's delegates, and in a task session anyone on the roster. After, the filer's delegates, or anyone with delegates all; only the user changes the list, unless a coordinator is set to change its own."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -60,7 +60,7 @@
     <text class="t-s" x="512" y="165">metadata, assignee, maxAttempts · hold and release</text>
     <rect class="band" x="500" y="178" width="408" height="44" rx="4"/>
     <text class="t-b" x="512" y="198">Until it finishes</text>
-    <text class="t-s" x="512" y="214">status: "cancelled" · message is FIX-2086's</text>
+    <text class="t-s" x="512" y="214">status: "cancelled" · message (FIX-2086) · output while running</text>
     <rect class="none" x="500" y="230" width="408" height="44" rx="4"/>
     <text class="t-b" x="512" y="250">After</text>
     <text class="t-s" x="512" y="266">nothing: a follow-up instead</text>

@@ -7,7 +7,7 @@
 | Someone who… | Today | After |
 |---|---|---|
 | **builds a worker that hands out work** | Eleven task tools: three of them reassign, two settle a task by hand | Four: `createTask`, `getTask`, `listTasks`, `updateTask`. A task ends when its worker returns or throws |
-| **edits a task after filing it** | Only priority, metadata, assignee and a label change, and they land in any state, a finished task included | Every field changes until the task starts. After that, only a cancel. A finished task refuses everything, and each refusal names its rule |
+| **edits a task after filing it** | Only priority, metadata, assignee and a label change, and they land in any state, a finished task included | Every field changes until the task starts. After that, only a cancel, and the assignee's checkpoint of `output` while it runs ([D3](DECISIONS.md#d3)). A finished task refuses everything, and each refusal names its rule |
 | **reassigns a task a worker is running** | It lands, and the old worker's result still counts (FIX-1659) | Refused: cancel it and file it again. A running task keeps one accountable worker |
 | **is a user deciding who gives work to whom** | A worker running a task hands pieces to anyone on the roster, and any worker with the delegate tools changes its own list | Tasks go only to the filer's delegates, or to anyone with `delegates: all`. Only the user changes a list, unless a coordinator was set at hire to change its own |
 | **runs a screen: the DevTool, an app** | Eleven `<tool>_tasks` actions, two that settle a task by hand | The same four, called as the signed-in user: cancel, hold, release or edit a task |
@@ -24,7 +24,7 @@ to.**
 | **The real need** | *"One tool per job, and a refusal that names the rule … they decide who gives work to whom, and can cancel, release or edit tasks from a screen"* (the issue). The epic's [ER-5](../../epics/FIX-2056/DECISIONS.md#who-owns-what): the four task tools are the only task surface, for models and screens, with identity from the server |
 | **Smaller, and rejected** | Rename `addTask` and `readTask`, drop the settle tools. `updateTask` still writes a finished task, a running task is still reassigned, and pieces still reach anyone on the roster |
 | **Bigger, and not this issue's** | `getTask`'s wait (FIX-2082) · `updateTask`'s `message` (FIX-2086) · routed tasks (FIX-2083) · held on questions and `answerTask` (FIX-2058) · `sendMessage`, and reading any of the user's tasks by id (FIX-2070) |
-| **Not done if** | A removed tool or its action is still exported, apart from `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` ([D1](DECISIONS.md#d1)) · an edit lands on a started or finished task, through `updateTask` or `dispatchTask`'s reassign and release · a task or a piece reaches a worker that is not its filer's delegate · a worker not set to change its delegates changes them · an action as another user lands · a rule holds through the tool but not through the action |
+| **Not done if** | A removed tool or its action is still exported, apart from `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` ([D1](DECISIONS.md#d1)) · an edit lands on a started or finished task, through `updateTask` or `dispatchTask`'s reassign and release · a task or a piece reaches a worker that is not its filer's delegate · a worker not set to change its delegates changes them · an `output` checkpoint writes status, or lands from anyone but the assignee or outside its running task · an action as another user lands · a rule holds through the tool but not through the action |
 
 ```mermaid
 flowchart LR
@@ -52,7 +52,7 @@ puts back today's reach, and it must fail.
 
 ## What changes
 
-![Two panels. Today: eleven task tools, six of them crossed out here, and an updateTask with no state rule. After: four tools, and updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel; after, nothing. A strip below: who a task can reach, today the delegates and in a task session anyone on the roster; after, the filer's delegates, or anyone with delegates all](figures/what-changes.svg)
+![Two panels. Today: eleven task tools, six of them crossed out here, and an updateTask with no state rule. After: four tools, and updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel, and while it runs the assignee's output checkpoint; after, nothing. A strip below: who a task can reach, today the delegates and in a task session anyone on the roster; after, the filer's delegates, or anyone with delegates all](figures/what-changes.svg)
 
 Six tools leave, `updateTask` gets a rule per field, and the delegate list becomes the only reach.
 
@@ -71,7 +71,14 @@ Six tools leave, `updateTask` gets a rule per field, and the delegate list becom
 + updateTask({ id, status: "cancelled" })                // until it finishes
 - completeTask({ taskId, output }) / failTask({ taskId, error })
 + // return or throw: the claim gate records the ending
++ updateTask({ id, output })                            // the assignee, while it runs: a checkpoint, not done
 ```
+
+One row joins the concept's field table ([D3](DECISIONS.md#d3)):
+
+| Field | Means | Allowed |
+| -- | -- | -- |
+| `output` | **Checkpoint** it: the latest output so far, read by `getTask` and `listTasks` as progress. Writes `output` only, never status, and wakes no waiter. A non-empty final result replaces it; an empty one leaves it as the output. A failed attempt or a reclaimed lease keeps it | While it runs, by its assignee only; the filer can't |
 
 ```diff
   # WORKER.md of a coordinator
@@ -152,6 +159,9 @@ table and two settings arrive. If wrong: `dispatchTask` outlives its two replace
    #3102's re-home; approving D1 approves those three lines.
 2. **[D2](DECISIONS.md#d2) · `delegates: all` follows the roster as it changes.** If wrong: a
    worker hired for one job starts getting work from an `all` worker nobody pointed at it.
+3. **[D3](DECISIONS.md#d3) · the assignee may checkpoint `output` on its own running task.**
+   Your proposal, settled on the epic thread. If wrong: one row comes back out; nothing else
+   builds on it but FIX-2086's caller line and FIX-2076's D2.
 
 **Open: none.**
 

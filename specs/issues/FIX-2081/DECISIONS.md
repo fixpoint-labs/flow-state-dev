@@ -4,7 +4,7 @@
 
 The owner decided the tools, the field rule and delegates as authority in the concept
 ([rules 3, 13, 20](../../../docs/internal/design/workforce-coordination-concept.md#the-rules)).
-These two carry it out where the concept and the epic's order meet the code.
+D1 and D2 carry it out where the concept and the epic's order meet the code.
 
 ## The tree
 
@@ -14,6 +14,8 @@ flowchart TD
   D1 -.->|"rejected"| X1["remove it here · routing and waiting break until FIX-2082 and FIX-2083"]
   I --> D2["D2 · delegates all follows the roster as it changes"]
   D2 -.->|"rejected"| X2["a copy of the roster taken at the first read"]
+  I --> D3["D3 · the assignee may checkpoint output on its own running task"]
+  D3 -.->|"rejected"| X3["completeTask under a new name · a write that also sets status"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -50,6 +52,18 @@ It comes down to a worker hired mid-conversation: a copy of the roster never rea
 **What would change my mind:** users reading `all` as *everyone I had when I set it*. Then `all`
 is copied at first read, like a listed `delegates:`.
 
+<a name="d3"></a>
+## D3 · The assignee may checkpoint `output` on its own running task
+
+| | |
+|---|---|
+| **Instead of** | The answering turn's last reply being the only way a task gets its output (FIX-2077's output line, FIX-2076's D2) |
+| **Because** | The owner asked for a way to set a task's output on purpose, and settled it on the epic thread ([architect](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315193445), [settlement](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315204382)). It reuses `updateTask` and adds no setter. Done still follows the return (rule 6), and a worker still never settles its own row (rule 18) |
+| **Locks in** | Five points. **(1) Precedence:** a non-empty final result, plain text included, replaces the checkpoint; a final result that is nothing or an empty string leaves the latest checkpoint as the output. **(2) Running only, assignee only:** checked inside FIX-2080's guarded write, from this table's `output` row; the filer can't write it, and rule 20 still freezes the output once the task finishes. **(3) Waiters:** `getTask({ wait: true })` and ER-2 still wake only on done; `getTask` and `listTasks` show the latest checkpoint as progress. **(4) Retries:** a failed attempt or a lease reclaim keeps the checkpoint, so the next attempt resumes from it. **(5) Output only, never status:** this is not `completeTask` under a new name. FIX-2086 adds the assignee to `updateTask`'s callers for this row only; FIX-2077's output line is amended in a follow-up PR; FIX-2076's D2 reduces to "the answering turn finalizes". The output's shape is not part of FIX-2084's worker contract |
+
+**What would change my mind:** a worker needing a checkpoint to also mean done. Then it is a
+settle tool again, which rule 18 rules out.
+
 ## Decided, not asked
 
 - **One point decides who a task can reach:** the board's roster check, per call. Every assignee
@@ -66,7 +80,7 @@ is copied at first read, like a listed `delegates:`.
   refused, not edited. The per-field setters stay unguarded. The table also carries FIX-2080's
   `held`, `deps` and `maxAttempts` rows, so once this lands FIX-2080's guard reads its until-start
   check from it rather than keeping its own beside it: one rule source inside the one patch.
-- **The field table is the concept's,** unchanged. `message` is FIX-2086's row. A cancel sent with
+- **The field table is the concept's,** plus one row, `output` ([D3](#d3)). `message` is FIX-2086's row. A cancel sent with
   anything else is refused. A refusal names field, state and next move: steer (FIX-2086), cancel
   and refile, or a follow-up.
 - **A started task can't be reassigned,** closing FIX-1659 with neither of its options. The
@@ -124,5 +138,7 @@ Recorded for the implementer, not folded into the design.
   recorded row's map entry left to FIX-2080; D1's three epic lines amended; migration rows added.
 - **Round 2** — the field table carries FIX-2080's rows too, so the patch has one rule source; a
   cancel records its ending through `endingOf`, with no write path of its own.
+- **Cross-spec** — the owner's checkpoint `output` row ([D3](#d3)), settled on the epic thread;
+  FIX-2086, FIX-2076 and FIX-2077 amended to match.
 
 Open: none.
