@@ -12,6 +12,7 @@
  *   - leave `env` unset in real mode: the options case finds no allowlist.
  *   - refuse with an error code other than the SDK's `agent_not_found`: the BR-3 case reads as an error.
  *   - record a failure only on a throw: the errored-run case reads "continued".
+ *   - record a failed run with a fixed line, not the handle's `failureMessage`: the errored-run case loses Cursor's words.
  * The notice's own red states (a cleared id, a notice from session-wide
  * fields) are FIX-1915's, on the same shared flow (`harness-session.test.ts`).
  */
@@ -25,7 +26,7 @@ import { createInMemoryStores } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import type { ResolveCursorClient } from "@flow-state-dev/cursor";
 
-import { CURSOR_MODEL, CURSOR_SESSION, cursorBlockOptions, cursorSessionFlow } from "@/lib/cursor-mode";
+import { CURSOR_DEFAULT_MODEL, CURSOR_SESSION, cursorBlockOptions, cursorSessionFlow } from "@/lib/cursor-mode";
 import { harnessFeeds } from "@/lib/harness-session-flow";
 import { turnNotice, UNKNOWN_CONVERSATION, type HarnessSessionState } from "@/lib/harness-turn";
 import { sessionBranch, worktreeRoot } from "@/lib/harness-worktree";
@@ -179,7 +180,9 @@ describe("which agent a turn continues (V5)", () => {
     const errored = await turn(stores, recorder, "s-errored", "[errored] go on");
     const record = (await stateOf(stores, "s-errored")).turns?.[errored.requestId];
     expect(record).toMatchObject({ asked: bound, confirmed: bound, failure: null });
-    expect(record?.error).toEqual(expect.any(String));
+    // Cursor's own words for the failure, not a line Kitchen Sink makes up, so
+    // the person reads why the harness failed the run (a refused model, say).
+    expect(record?.error).toBe("scripted run Cursor reports as errored");
     expect(await noticeOf(stores, "s-errored", errored.requestId, errored.status as "completed" | "failed")).toMatchObject({
       kind: "error",
       conversation: bound,
@@ -259,7 +262,7 @@ describe("Cursor's to-do list in the plan record (V5, BR-8 to BR-11, BR-15a, BR-
 });
 
 describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
-  it("a real run gets the allowlisted environment, Cursor's model in agent mode, its sandbox on, and the plan recorded", () => {
+  it("a real run gets the allowlisted environment, the session's model in agent mode, its sandbox on, and the plan recorded", () => {
     vi.stubEnv("KITCHEN_SINK_PLANTED_SECRET", "do-not-hand-this-over");
     vi.stubEnv("CURSOR_API_KEY", "key");
     const options = cursorBlockOptions(harnessFeeds(CURSOR_SESSION));
@@ -270,7 +273,8 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     expect(options.env!.HOME).toBe(process.env.HOME);
     expect(options.env!.CURSOR_API_KEY).toBe("key");
     expect(options.recordPlan).toBe(true);
-    expect(options.agent).toEqual({ model: { id: CURSOR_MODEL }, mode: "agent", local: { sandboxOptions: { enabled: true } } });
+    expect(options.agent).toEqual({ mode: "agent", local: { sandboxOptions: { enabled: true } } });
+    expect(options.model).toBeTypeOf("function");
   });
 
   it("KITCHEN_SINK_HARNESS_UNSANDBOXED=1 turns Cursor's sandbox off, and nothing else does", () => {
@@ -306,6 +310,7 @@ describe("what Kitchen Sink hands the Cursor block (S5, BR-19, BR-23)", () => {
     });
     expect(recorder.opens[0]).toMatchObject({ resumed: null });
     expect(recorder.opens[0]!.cwd).not.toBe(repo);
-    expect(recorder.opens[0]!.options.model).toEqual({ id: CURSOR_MODEL });
+    // A session stored with no model runs on the mode's default; the caller's `agent.model` goes nowhere.
+    expect(recorder.opens[0]!.options.model).toEqual({ id: CURSOR_DEFAULT_MODEL });
   });
 });
