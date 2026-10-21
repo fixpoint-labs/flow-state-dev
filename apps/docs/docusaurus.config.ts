@@ -1,6 +1,6 @@
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
-import { nightTheme, paperTheme } from "./src/prismThemes";
+import { inkTheme } from "./src/prismThemes";
 
 const config: Config = {
   title: "flow-state.dev",
@@ -184,12 +184,12 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
-      theme: paperTheme,
-      darkTheme: nightTheme,
+      theme: inkTheme,
+      darkTheme: inkTheme,
       additionalLanguages: ["bash", "json"],
     },
     colorMode: {
-      defaultMode: "dark",
+      defaultMode: "light",
       respectPrefersColorScheme: true,
     },
   } satisfies Preset.ThemeConfig,

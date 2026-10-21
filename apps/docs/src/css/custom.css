@@ -1,107 +1,126 @@
 /* ══════════════════════════════════════════════════════════════
-   flow-state.dev — the Flow State brand, as Shift Manager and the
-   DevTool wear it.
+   flow-state.dev — the docs in the Drafting System's page register.
 
-   `@flow-state-dev/design-system` holds every value (day on `:root`,
-   night on `.dark` and on Docusaurus's `html[data-theme=dark]`) and
-   brings Space Grotesk and IBM Plex Mono with it; this file only points
-   Infima's `--ifm-*` variables at those tokens.
+   `@flow-state-dev/design-system/page.css` holds every value and draws
+   the register's parts: paper with the 24px grid, the `.label` rule,
+   sheet headings, figure frames and the drawing classes. This file
+   points Infima's `--ifm-*` variables at those tokens and fits
+   Docusaurus's own markup to them.
 
-   Rules the brand keeps: blueprint (`--info`) means interactive or
-   live, the highlighter (`--attention`) is reserved for "a person must
-   act" (here: text selection only), and corners are square.
+   Paper and Night both ship. Docusaurus puts `data-theme="light"` or
+   `"dark"` on the root; page.css reads `"dark"` as Night.
+
+   Colour marks emphasis, never category: links, active states, the
+   table of contents and breadcrumbs are ink. The highlighter is text
+   selection only; red is the danger admonition only. Corners are
+   square and nothing casts a shadow.
+
+   `shift-manager.css` (the app register) is still imported for the
+   landing page, which reads its tokens; no rule in this file does.
    ══════════════════════════════════════════════════════════════ */
 
 @import "@flow-state-dev/design-system/shift-manager.css";
+@import "@flow-state-dev/design-system/page.css";
 
-/* Night's values come from the design system, whose night block matches
-   `html[data-theme=dark]` as well as `.dark`. This mapping sits on the same
-   selector so it recomputes from night's tokens and wins over Infima's own
-   dark block (same specificity, loaded earlier). */
+/* The mapping sits on the same selector as Infima's dark block so it
+   recomputes from Night's tokens and wins over Infima (same specificity,
+   loaded later). */
 :root,
 html[data-theme="dark"] {
-  /* Blueprint drives links, active nav items and focus. */
-  --ifm-color-primary: var(--info);
-  --ifm-color-primary-dark: color-mix(in oklab, var(--info) 90%, var(--foreground));
-  --ifm-color-primary-darker: color-mix(in oklab, var(--info) 85%, var(--foreground));
-  --ifm-color-primary-darkest: color-mix(in oklab, var(--info) 70%, var(--foreground));
-  --ifm-color-primary-light: color-mix(in oklab, var(--info) 90%, var(--background));
-  --ifm-color-primary-lighter: color-mix(in oklab, var(--info) 85%, var(--background));
-  --ifm-color-primary-lightest: color-mix(in oklab, var(--info) 70%, var(--background));
-  --ifm-color-primary-contrast-background: color-mix(in oklab, var(--info) 10%, var(--card));
-  --ifm-color-primary-contrast-foreground: var(--foreground);
+  /* Ink drives links, active items and focus. */
+  --ifm-color-primary: var(--ink1);
+  --ifm-color-primary-dark: var(--ink1);
+  --ifm-color-primary-darker: var(--ink1);
+  --ifm-color-primary-darkest: var(--ink1);
+  --ifm-color-primary-light: var(--ink2);
+  --ifm-color-primary-lighter: var(--ink2);
+  --ifm-color-primary-lightest: var(--ink3);
+  --ifm-color-primary-contrast-background: var(--paper-card);
+  --ifm-color-primary-contrast-foreground: var(--ink1);
+  --ifm-link-color: var(--ink1);
+  --ifm-link-hover-color: var(--ink1);
+  --ifm-link-decoration: none;
+  --ifm-link-hover-decoration: none;
 
-  /* Admonitions: a tinted card with a coloured rule, never the highlighter. */
-  --ifm-color-secondary-dark: var(--border);
-  --ifm-color-secondary-contrast-background: var(--muted);
-  --ifm-color-secondary-contrast-foreground: var(--foreground);
-  --ifm-color-info: var(--info);
-  --ifm-color-info-dark: var(--info);
-  --ifm-color-info-contrast-background: color-mix(in oklab, var(--info) 10%, var(--card));
-  --ifm-color-info-contrast-foreground: var(--foreground);
-  --ifm-color-success: var(--foreground);
-  --ifm-color-success-dark: var(--foreground);
-  --ifm-color-success-contrast-background: var(--muted);
-  --ifm-color-success-contrast-foreground: var(--foreground);
-  --ifm-color-warning: var(--warning);
-  --ifm-color-warning-dark: var(--warning);
-  --ifm-color-warning-contrast-background: color-mix(in oklab, var(--warning) 10%, var(--card));
-  --ifm-color-warning-contrast-foreground: var(--foreground);
-  --ifm-color-danger: var(--destructive);
-  --ifm-color-danger-dark: var(--destructive);
-  --ifm-color-danger-contrast-background: color-mix(in oklab, var(--destructive) 10%, var(--card));
-  --ifm-color-danger-contrast-foreground: var(--foreground);
-  --ifm-alert-border-left-width: 3px;
+  /* Admonitions: one ink card for every kind; see the rules below. */
+  --ifm-color-secondary-dark: var(--hairline-structural);
+  --ifm-color-secondary-contrast-background: var(--paper-card);
+  --ifm-color-secondary-contrast-foreground: var(--ink2);
+  --ifm-color-info: var(--ink1);
+  --ifm-color-info-dark: var(--ink1);
+  --ifm-color-info-contrast-background: var(--paper-card);
+  --ifm-color-info-contrast-foreground: var(--ink2);
+  --ifm-color-success: var(--ink1);
+  --ifm-color-success-dark: var(--ink1);
+  --ifm-color-success-contrast-background: var(--paper-card);
+  --ifm-color-success-contrast-foreground: var(--ink2);
+  --ifm-color-warning: var(--ink1);
+  --ifm-color-warning-dark: var(--ink1);
+  --ifm-color-warning-contrast-background: var(--paper-card);
+  --ifm-color-warning-contrast-foreground: var(--ink2);
+  --ifm-color-danger: var(--red);
+  --ifm-color-danger-dark: var(--red);
+  --ifm-color-danger-contrast-background: var(--paper-card);
+  --ifm-color-danger-contrast-foreground: var(--ink2);
+  --ifm-alert-border-left-width: 1px;
 
-  /* Grounds and ink. Infima's grey scale becomes ink mixed into the page, so
-     every border and hover it draws stays in the warm neutrals. */
-  --ifm-color-emphasis-0: var(--background);
-  --ifm-color-emphasis-100: color-mix(in oklab, var(--foreground) 5%, var(--background));
-  --ifm-color-emphasis-200: color-mix(in oklab, var(--foreground) 12%, var(--background));
-  --ifm-color-emphasis-300: color-mix(in oklab, var(--foreground) 20%, var(--background));
-  --ifm-color-emphasis-400: color-mix(in oklab, var(--foreground) 30%, var(--background));
-  --ifm-color-emphasis-500: color-mix(in oklab, var(--foreground) 45%, var(--background));
-  --ifm-color-emphasis-600: color-mix(in oklab, var(--foreground) 60%, var(--background));
-  --ifm-color-emphasis-700: color-mix(in oklab, var(--foreground) 72%, var(--background));
-  --ifm-color-emphasis-800: color-mix(in oklab, var(--foreground) 85%, var(--background));
-  --ifm-color-emphasis-900: color-mix(in oklab, var(--foreground) 94%, var(--background));
-  --ifm-color-emphasis-1000: var(--foreground);
-  --ifm-background-color: var(--background);
-  --ifm-background-surface-color: var(--card);
-  --ifm-font-color-base: var(--foreground);
-  --ifm-font-color-secondary: var(--muted-foreground);
-  --ifm-heading-color: var(--foreground);
-  --ifm-color-content: var(--foreground);
-  --ifm-color-content-secondary: var(--muted-foreground);
-  --ifm-toc-border-color: var(--border);
-  --ifm-hr-background-color: var(--border);
-  --ifm-table-border-color: var(--border);
-  --ifm-table-stripe-background: color-mix(in oklab, var(--foreground) 3%, transparent);
-  --ifm-navbar-background-color: var(--background);
-  --ifm-navbar-link-color: var(--foreground);
-  --ifm-footer-background-color: var(--sidebar);
-  --ifm-footer-color: var(--muted-foreground);
-  --ifm-footer-link-color: var(--foreground);
-  --ifm-footer-title-color: var(--muted-foreground);
-  --ifm-menu-color: var(--muted-foreground);
-  --ifm-menu-color-active: var(--foreground);
-  --ifm-menu-color-background-active: color-mix(in oklab, var(--info) 10%, transparent);
-  --ifm-menu-color-background-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
-  --ifm-code-background: var(--muted);
-  --ifm-dropdown-background-color: var(--popover);
-  --docusaurus-highlighted-code-line-bg: color-mix(in oklab, var(--info) 12%, transparent);
-  --docusaurus-collapse-button-bg-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
+  /* Grounds and ink. Infima's grey scale becomes ink mixed into paper, so
+     every border and hover it draws stays in the inks. */
+  --ifm-color-emphasis-0: var(--paper);
+  --ifm-color-emphasis-100: color-mix(in oklab, var(--ink1) 5%, var(--paper));
+  --ifm-color-emphasis-200: color-mix(in oklab, var(--ink1) 12%, var(--paper));
+  --ifm-color-emphasis-300: color-mix(in oklab, var(--ink1) 20%, var(--paper));
+  --ifm-color-emphasis-400: color-mix(in oklab, var(--ink1) 30%, var(--paper));
+  --ifm-color-emphasis-500: color-mix(in oklab, var(--ink1) 45%, var(--paper));
+  --ifm-color-emphasis-600: var(--ink4);
+  --ifm-color-emphasis-700: var(--ink3);
+  --ifm-color-emphasis-800: var(--ink2);
+  --ifm-color-emphasis-900: var(--ink1);
+  --ifm-color-emphasis-1000: var(--ink1);
+  --ifm-background-color: var(--paper);
+  --ifm-background-surface-color: var(--paper-card);
+  --ifm-font-color-base: var(--ink2);
+  --ifm-font-color-secondary: var(--ink3);
+  --ifm-heading-color: var(--ink1);
+  --ifm-color-content: var(--ink2);
+  --ifm-color-content-secondary: var(--ink3);
+  --ifm-toc-border-color: var(--hairline-internal);
+  --ifm-hr-background-color: var(--hairline-structural);
+  --ifm-table-border-color: var(--hairline-internal);
+  --ifm-table-stripe-background: color-mix(in oklab, var(--ink1) 3%, transparent);
+  --ifm-navbar-background-color: var(--paper);
+  --ifm-navbar-link-color: var(--ink2);
+  --ifm-navbar-link-hover-color: var(--ink1);
+  --ifm-navbar-link-active-color: var(--ink1);
+  --ifm-footer-background-color: var(--paper-band);
+  --ifm-footer-color: var(--ink3);
+  --ifm-footer-link-color: var(--ink1);
+  --ifm-footer-link-hover-color: var(--ink1);
+  --ifm-footer-title-color: var(--ink3);
+  --ifm-menu-color: var(--ink3);
+  --ifm-menu-color-active: var(--ink1);
+  --ifm-menu-color-background-active: transparent;
+  --ifm-menu-color-background-hover: color-mix(in oklab, var(--ink1) 5%, transparent);
+  --ifm-breadcrumb-color-active: var(--ink1);
+  --ifm-breadcrumb-item-background-active: transparent;
+  --ifm-tabs-color: var(--ink3);
+  --ifm-tabs-color-active: var(--ink1);
+  --ifm-tabs-color-active-border: var(--ink1);
+  --ifm-code-background: var(--paper-card);
+  --ifm-dropdown-background-color: var(--paper-card);
+  --docusaurus-highlighted-code-line-bg: color-mix(in oklab, var(--ink1) 8%, transparent);
+  --docusaurus-collapse-button-bg-hover: color-mix(in oklab, var(--ink1) 5%, transparent);
 
   /* Type. */
   --ifm-font-family-base: var(--font-sans);
-  --ifm-heading-font-family: var(--font-display);
+  --ifm-heading-font-family: var(--font-sans);
   --ifm-font-family-monospace: var(--font-mono);
   --ifm-code-font-size: 92%;
-  --ifm-heading-font-weight: 600;
-  --ifm-font-weight-bold: 600;
+  --ifm-heading-font-weight: 700;
+  --ifm-font-weight-bold: 700;
   --ifm-line-height-base: 1.65;
 
-  /* Square corners everywhere. */
+  /* Square corners and no shadows, everywhere. */
   --ifm-global-radius: 0;
   --ifm-code-border-radius: 0;
   --ifm-button-border-radius: 0;
@@ -110,6 +129,10 @@ html[data-theme="dark"] {
   --ifm-badge-border-radius: 0;
   --ifm-alert-border-radius: 0;
   --ifm-breadcrumb-border-radius: 0;
+  --ifm-global-shadow-lw: none;
+  --ifm-global-shadow-md: none;
+  --ifm-global-shadow-tl: none;
+  --ifm-navbar-shadow: none;
 }
 
 /* ── Global base styles ── */
@@ -124,11 +147,43 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── Labels: one style for every label Docusaurus draws ── */
+
+.markdown th,
+.menu__list-item-collapsible > .menu__link--sublist,
+.menu__link--sublist-caret,
+.footer__title,
+.theme-admonition [class*="admonitionHeading"],
+.pagination-nav__sublabel {
+  font-family: var(--font-mono);
+  font-size: var(--label-size);
+  font-weight: 500;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+
+/* ── Links: ink with a 1px underline; focus is a 2px ink outline ── */
+
+.markdown a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.markdown a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink1);
+  outline-offset: 2px;
+}
+
 /* ── Navbar ── */
 
 .navbar {
-  box-shadow: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline-structural);
 }
 
 .navbar__title {
@@ -136,6 +191,7 @@ body {
   font-weight: 600;
   font-size: 0.9rem;
   letter-spacing: -0.01em;
+  color: var(--ink1);
 }
 
 .navbar__link {
@@ -143,18 +199,16 @@ body {
   font-size: 0.875rem;
 }
 
+/* Active: weight and a 2px ink rule. */
+.navbar__link--active {
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--ink1);
+}
+
 /* ── Footer ── */
 
 .footer {
-  border-top: 1px solid var(--border);
-}
-
-.footer__title {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  border-top: 1px solid var(--hairline-structural);
 }
 
 .footer__link-item {
@@ -166,7 +220,7 @@ body {
   font-size: 0.75rem;
 }
 
-/* ── Docs page refinements ── */
+/* ── Headings: 700 throughout; h2 is a sheet (page.css) ── */
 
 .markdown h1 {
   font-weight: 700;
@@ -174,97 +228,124 @@ body {
 }
 
 .markdown h2 {
-  letter-spacing: -0.02em;
-  padding-top: 0.5rem;
+  margin-top: 3rem;
 }
 
 .markdown h3 {
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
-/* Inline code: a paper chip with a hairline. */
+/* ── Code ── */
+
+/* Inline code: a card chip with an internal hairline. */
 .markdown :not(pre) > code {
-  border: 1px solid var(--border);
-  background: var(--muted);
+  border: 1px solid var(--hairline-internal);
+  background: var(--paper-card);
+  color: var(--ink1);
 }
 
-/* Code blocks: background is owned by the Prism theme (src/prismThemes.ts);
-   this adds the hairline the app draws around every panel. */
-.prism-code {
-  border: 1px solid var(--border);
-}
-
+/* Code blocks: the Prism theme (src/prismThemes.ts) owns the card ground;
+   this adds the structural frame figures wear too. */
 .theme-code-block {
-  box-shadow: none;
+  border: 1px solid var(--hairline-structural);
 }
 
-/* Table of contents */
+/* ── Table of contents and breadcrumbs ── */
+
 .table-of-contents__link {
+  display: block;
+  padding-left: 8px;
   font-size: 0.825rem;
+  color: var(--ink3);
 }
 
-/* Sidebar */
+/* Active: weight and a 2px ink rule. */
+.table-of-contents__link--active {
+  font-weight: 700;
+  color: var(--ink1);
+  box-shadow: inset 2px 0 0 var(--ink1);
+}
+
+.breadcrumbs__link {
+  color: var(--ink3);
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+  font-weight: 700;
+  color: var(--ink1);
+}
+
+/* ── Sidebar ── */
+
+.menu__link,
+.menu__list-item-collapsible,
+.menu__caret,
+.clean-btn {
+  border-radius: 0;
+}
+
 .menu__link {
   font-size: 0.875rem;
   font-weight: 400;
 }
 
+/* Active: weight and a 2px ink rule. */
 .menu__link--active:not(.menu__link--sublist) {
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: inset 2px 0 0 var(--ink1);
 }
 
-/* Section labels in the sidebar read as the app's mono metadata. */
-.menu__list-item-collapsible > .menu__link--sublist,
-.menu__caret {
-  font-weight: 500;
+/* ── Admonitions: an ink card with a structural frame and a mono label.
+   Caution and warning take a dashed frame; only danger is red. ── */
+
+.theme-admonition.alert {
+  background: var(--paper-card);
+  border: 1px solid var(--hairline-structural);
+  color: var(--ink2);
+  --ifm-alert-foreground-color: var(--ink1);
 }
 
-/* Admonitions: hairline box with the coloured rule on the left. */
-.alert {
-  box-shadow: none;
-  border: 1px solid var(--border);
-  border-left-width: var(--ifm-alert-border-left-width);
-  border-left-color: var(--ifm-alert-border-color);
+.theme-admonition.alert--warning {
+  border-style: dashed;
 }
 
-/* Cards, pagination, tabs */
+.theme-admonition.alert--danger {
+  border-color: var(--red);
+  --ifm-alert-foreground-color: var(--red);
+}
+
+.theme-admonition.alert--danger [class*="admonitionHeading"] {
+  color: var(--red);
+}
+
+/* ── Pagination and tabs ── */
+
 .pagination-nav__link {
-  border-color: var(--border);
+  border-color: var(--hairline-structural);
 }
 
 .pagination-nav__link:hover {
-  border-color: var(--info);
-}
-
-.pagination-nav__sublabel {
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.7rem;
+  border-color: var(--ink1);
 }
 
 .tabs__item {
   border-radius: 0;
 }
 
-/* Focus: a 2px blueprint halo. */
-:focus-visible {
-  outline: 2px solid var(--info);
-  outline-offset: 2px;
-}
-
-/* ── Scrollbars: a thin thumb in the border colour on a clear track ── */
+/* ── Scrollbars: a thin hairline thumb on a clear track ── */
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--hairline-structural) transparent;
 }
 
 /* ── Selection: the highlighter, ink on yellow ── */
 
 ::selection {
-  background: var(--attention);
-  color: var(--attention-foreground);
+  background: var(--highlighter);
+  color: var(--on-highlighter);
 }
 
 /* ── Animations ── */
