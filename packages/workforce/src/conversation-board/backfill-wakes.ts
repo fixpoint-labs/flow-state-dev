@@ -53,6 +53,10 @@ export interface BoardWakeBackfillOptions {
   /**
    * The storage key of a user's cell, where user-scoped rows are kept: the
    * engine's `resolveUserStorageKey(userId, orgId, { id, isolateUserState: false })`.
+   * The shared cell is the only one to read: the conversation ledger is
+   * partitioned, and a partitioned ledger is never isolated per flow
+   * (`defineTaskCollection` sets `flowIsolation: false`), also on a flow that
+   * isolates its user state.
    */
   readonly userCell: (userId: string, orgId: string) => string;
   /** When the wakes fall due. Defaults to now. */

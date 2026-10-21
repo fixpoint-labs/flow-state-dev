@@ -35,6 +35,7 @@ import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
 import { fireWakeThrough } from "../durability/request-wakes";
+import type { WakeRecord } from "../stores/types";
 import type { MatchFunction } from "path-to-regexp";
 import {
   compileTransportPattern,
@@ -548,8 +549,11 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           // through this router's host (FIX-1816).
           continueRequest: (opts) => handlers.host.continueRequest(opts),
           // A due wake's entry runs through this router's host, as a dispatched
-          // internal request in its session, as its owner (FIX-2078 D1).
-          fireWake: (wake) => fireWakeThrough(handlers.host, wake, holdFiredWake)
+          // internal request in its session, as its owner (FIX-2078 D1). Off
+          // where the host offers no wakes, a store that can't read them included.
+          ...(runtimeConfig.requestHost?.wakes !== undefined
+            ? { fireWake: (wake: WakeRecord) => fireWakeThrough(handlers.host, wake, holdFiredWake) }
+            : {})
         })
       : { dispose: () => {}, timesOutWaits: () => false };
   // Requests this router serves are offered a wait only while its own sweeper

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores } from "../src/stores";
-import { createRequestWakes, onWakeOwed } from "../src/durability/request-wakes";
+import { createRequestWakes, installWakes, onWakeOwed, probeWakes } from "../src/durability/request-wakes";
 
 const identity = { userId: "u1", tenantId: undefined, orgId: "o1", sessionId: "own" };
 
@@ -120,5 +120,23 @@ describe("RequestHost.wakes", () => {
     await wakes.owe({ entry: "runTaskBoard", dueAt: 1_009_000 });
     stop();
     expect(heard).toEqual([1_001_000]);
+  });
+
+  it("is withdrawn at start when the store can't read its wakes, as a database not migrated for them", async () => {
+    const { stores } = await setup();
+    const broken = { ...stores.wakes!, earliestDueAt: async () => { throw new Error('relation "wakes" does not exist'); } };
+    const requestHost: { wakes?: { maxDebtAgeMs: number } } = {};
+    const logged: string[] = [];
+    const logger = { info: (m: string) => logged.push(m), warn: (m: string) => logged.push(m), error: (m: string) => logged.push(m), debug: () => {} };
+    installWakes(requestHost, { stores: { wakes: broken }, durable: true, logger: logger as never });
+    expect(requestHost.wakes).toBeDefined();
+    await probeWakes(requestHost, { wakes: broken }, logger as never);
+    expect(requestHost.wakes).toBeUndefined();
+    expect(logged.some((m) => m.includes("migration"))).toBe(true);
+    // A store that reads its wakes keeps the verb.
+    const healthy: { wakes?: { maxDebtAgeMs: number } } = {};
+    installWakes(healthy, { stores, durable: true, logger: logger as never });
+    await probeWakes(healthy, stores, logger as never);
+    expect(healthy.wakes).toBeDefined();
   });
 });

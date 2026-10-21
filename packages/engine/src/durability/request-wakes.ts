@@ -110,6 +110,37 @@ export function installWakes(
   });
 }
 
+/** Process-wide, like {@link warnedNoWakes}: an unreadable wake store is said once. */
+let warnedUnreadable = false;
+
+/**
+ * Read the wake store once as the host starts, and withdraw the verb when it
+ * can't: a database upgraded without the schema migration that adds wakes
+ * (a host that runs its migrations itself) has the store and no table. Logged
+ * once; debts are then paid on their fast paths only, as on a host that keeps
+ * none, and the sweeper's wake step stays off.
+ */
+export async function probeWakes(
+  requestHost: { wakes?: { readonly maxDebtAgeMs: number } },
+  stores: { readonly wakes?: WakeStore },
+  logger: RuntimeLogger
+): Promise<void> {
+  if (requestHost.wakes === undefined || stores.wakes === undefined) return;
+  try {
+    await stores.wakes.earliestDueAt();
+  } catch (error) {
+    requestHost.wakes = undefined;
+    if (warnedUnreadable) return;
+    warnedUnreadable = true;
+    logRuntimeEvent(
+      logger,
+      "warn",
+      "[flow-state] this host's wake store can't be read, so it keeps no wakes: debts are paid on their fast paths only. Rerun your store's schema migration (or let it initialize its schema) after upgrading",
+      { error: (error as Error).message }
+    );
+  }
+}
+
 /** What {@link createRequestWakes} is built from. */
 export type RequestWakesInputs = {
   store: WakeStore;

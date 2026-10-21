@@ -91,3 +91,39 @@ describe("the upgrade's backfill of wakes", () => {
     expect(await backfillBoardWakes({ ...runtime.stores, wakes: undefined } as never, { userCell })).toBe(0);
   }, 20_000);
 });
+
+describe("the backfill's other two old debts", () => {
+  /** Stores holding one conversation row, and the sessions it names. */
+  function stores(row: Record<string, unknown>) {
+    const owed: Array<{ sessionId: string; entry: string }> = [];
+    const session = (id: string) => ({ id, flowKind: "desk", flowId: "desk", userId: "alice", orgId: "org" });
+    return {
+      owed,
+      registry: {
+        session: { list: async () => [session("conv"), session("task-session")] },
+        resourceState: {
+          getByPrefix: async (_scope: "user", cell: string, prefix: string) =>
+            cell === userCell("alice", "org") && prefix === "tasks/" ? { "tasks/conv~l1/t1": { state: row } } : {}
+        },
+        wakes: {
+          owe: async (input: { sessionId: string; entry: string }) => {
+            owed.push({ sessionId: input.sessionId, entry: input.entry });
+            return input;
+          }
+        }
+      }
+    };
+  }
+
+  it("owes the filing conversation's pass for a report marker stored before wakes", async () => {
+    const { owed, registry } = stores({ id: "t1", goal: "g", status: "errored", metadata: { "reportOwed:1": { attempt: 1, error: "x" } } });
+    expect(await backfillBoardWakes(registry, { userCell, now: 5 })).toBe(1);
+    expect(owed).toEqual([{ sessionId: "conv", entry: RUN_BOARD_ENTRY }]);
+  });
+
+  it("owes the task session's pass for a split parked on its pieces, which settles it", async () => {
+    const { owed, registry } = stores({ id: "t1", goal: "g", status: "parked", run: { sessionId: "task-session", requestId: "r" } });
+    expect(await backfillBoardWakes(registry, { userCell, now: 5 })).toBe(1);
+    expect(owed).toEqual([{ sessionId: "task-session", entry: RUN_BOARD_ENTRY }]);
+  });
+});

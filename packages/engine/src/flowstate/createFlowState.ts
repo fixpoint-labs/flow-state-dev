@@ -54,7 +54,7 @@ import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher"
 import { createWaitResumeOperation, type WaitResumeOperation } from "../context/wait-resume-operation";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
-import { installWakes } from "../durability/request-wakes";
+import { installWakes, probeWakes } from "../durability/request-wakes";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1022,6 +1022,11 @@ class InternalFlowState<TSettings extends object>
     // of `requestHost` carries it. See `#installDispatchOperation`.
     this.#installDispatchOperation(runtimeConfig, stores);
     this.#installWaitResume(runtimeConfig, stores);
+    // Before any router builds its sweeper: a wake store that can't be read
+    // withdraws the verb, and the sweeper's wake step with it (FIX-2078).
+    if (runtimeConfig.requestHost !== undefined) {
+      await probeWakes(runtimeConfig.requestHost, stores, runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER);
+    }
 
     this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
