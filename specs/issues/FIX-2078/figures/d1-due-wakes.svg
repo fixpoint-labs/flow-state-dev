@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a debt's due time lives. Chosen: a wake the engine keeps, one per session, fired until a pass clears it. Instead of: a hook orchestration registers that scans boards, or in-process timers. It comes down to the first row: after a crash following an ending, the wake is still in the store and the sweeper fires it, while a timer is gone and a scan must read every user's boards to find the debt. The price is the second row: every built-in store keeps one more record kind and a custom adapter may, where a scan adds no record. Third row: the engine stays free of orchestration either way, but a scan runs orchestration code on every tick. Locks in: a record kind in the store contract. Flips if: a store already indexes rows by a time field the sweeper can query."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, where a debt's due time lives. Chosen: a wake the engine keeps, one per session and entry, fired until a pass clears it. Instead of: a hook orchestration registers that scans boards, or in-process timers. It comes down to the first row: after a crash following an ending, the wake is still in the store and the sweeper fires it, while a timer is gone and a scan must read every user's boards to find the debt. The price is the second row: every built-in store keeps one more record kind and a custom adapter may, where a scan adds no record. Third row: the engine stays free of orchestration either way, but a scan runs orchestration code on every tick. Locks in: a record kind in the store contract. Flips if: a store already indexes rows by a time field the sweeper can query."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -41,7 +41,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">A wake the engine keeps, per session</text>
+    <text class="t-h c-code" x="228" y="112">A kept wake, one per session and entry</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">A hook that scans boards · or timers</text>

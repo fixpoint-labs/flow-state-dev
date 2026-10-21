@@ -17,7 +17,7 @@ until then; FIX-2077 keeps the replay on a touch, which this removes.
 | **runs Workforce on a host that restarts** | An ending or a ready row waits for someone to touch the board; in a quiet conversation, for good | Paid within seconds of its due time, by the sweeper if nothing else ([D1](DECISIONS.md#d1)). On a host whose sweeper is an external cron, by its next run |
 | **has a task waiting on a dependency** | Starts on the next touch after the dependency ends | Starts within seconds |
 | **runs Shift Manager with the Error Reporter** | A task's failure goes out on a marker of its own, resent on every touch | Goes out with the ending's one delivery; reports keep coming |
-| **maintains a store adapter** | Nothing to add | Keeps one more record kind, the wake, or its hosts keep the fast paths only ([D1](DECISIONS.md#d1)) |
+| **maintains a store adapter** | Nothing to add | Keeps one more record kind, the wake, or its hosts keep the fast paths only, and from FIX-2082 on refuse waits ([D1](DECISIONS.md#d1)) |
 
 ## The goal, and how we'll know it's met
 
@@ -89,15 +89,16 @@ sweeper pays what they missed.
 ```
 
 A Workforce worker flow writes nothing new: `defineSessionBoard().entries(turn)` builds on the
-same factory. A board that hands rows out from a flow with no such entry is refused when built.
+same factory. A board that hands rows out from a flow with no such entry is refused when the flow
+is built.
 
 **Docs:** update *Orchestration → Task board* (`onTaskSettled`, every ending; a ready row starts
-on its own; one pass at a time; the `resumeOwedWaits` paragraph says it's optional), *Workforce → Delegating
+on its own; one pass at a time; the `resumeOwedWaits` paragraph goes), *Workforce → Delegating
 work*, *Workforce → Error Reporter* (a failure goes out with its ending), *Advanced → Durable
 execution → Retention and cleanup* (the sweeper pays due wakes) and *Persistence → Store
 adapters* (the wake record). Update the orchestration, workforce, engine, SQLite and Postgres
 READMEs. Amend the internal concept, gaps and stories lines that [(f)](../../epics/FIX-2056/DECISIONS.md#f)
-names. No new page.
+names, and the concept's rule 8 to "a pass or a touch resends what is past due". No new page.
 
 ## How a debt is paid
 
@@ -145,8 +146,8 @@ the sweeper fires it again. A debt that can't be paid ends, so every wake clears
 
 | The debt | |
 |---|---|
-| **Removes** | The report marker, its sends and its 5-minute resend · the resend of every owed notice on every run · the post-drain repair pass (repairs now run before the drain) · a waiter's resume carried by an `onTaskSettled` request |
-| **Adds** | The wake: a record kind in the built-in stores, optional for custom ones, and one sweeper step. Permanent by design: how a debt survives a crash. The refusal of a board that hands rows out with no `onTaskSettled`. A one-off backfill of wakes at upgrade |
+| **Removes** | The report marker, its sends and its 5-minute resend · `resumeOwedWaits`, whose cancel-owed payment becomes a debt · the resend of every owed notice on every run · the post-drain repair pass (repairs now run before the drain) · a waiter's resume carried by an `onTaskSettled` request |
+| **Adds** | The wake: a record kind in the built-in stores, optional for custom ones, and one sweeper step. Permanent by design: how a debt survives a crash. The server-written filer fields on a delegated row. The refusal of a board that hands rows out with no `onTaskSettled`. A one-off backfill of wakes at upgrade |
 | **Leaves** | An error in background work doesn't fail the attempt (FIX-2088) · an Error Reporter only a filer messages (deferred by the owner) |
 
 **Net: down at runtime, up in the store contract.** A marker, two resend loops and a
@@ -162,8 +163,8 @@ sweeper. If wrong: FIX-2083 and FIX-2084 build on endings that wait for a touch.
 resend loops go; the wake arrives in the store contract. If wrong: a record kind every store
 adapter keeps for nothing.
 
-1. **[D1](DECISIONS.md#d1) · A debt's due time is a wake the engine keeps, one per session,
-   fired until a pass clears it, and the engine's one due-time source.** If wrong: store
+1. **[D1](DECISIONS.md#d1) · A debt's due time is a wake the engine keeps, one per session and
+   entry, fired until a pass clears it, and the engine's one due-time source.** If wrong: store
    adapters add a record kind a scan could have spared them, and FIX-2082 builds its waits on it.
 2. **[D2](DECISIONS.md#d2) · An ending the filer already knows of reaches it inside what told
    it.** If wrong: a filer misses a dependent's cancel it needed as its own notice.

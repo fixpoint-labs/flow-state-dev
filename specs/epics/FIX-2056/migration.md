@@ -20,3 +20,4 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
 | The agent worker's `run` entry | `respond` | FIX-2084 |
+| `resumeOwedWaits` | Nothing: the board's due-time wake pays an owed resume and a cancel owed | FIX-2078 |
