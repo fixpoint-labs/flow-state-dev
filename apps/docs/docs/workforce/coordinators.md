@@ -444,11 +444,15 @@ A task with no assignee goes to the conversation's only delegate that takes task
 
 `dispatchTask_tasks` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts at once: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
 
-`addTask_tasks` records a task and answers `{ ok: true, taskId, status: "recorded" }`. It doesn't start it, even with an assignee. A recorded task with no assignee, in a conversation with several delegates, waits on the board unassigned. To have a delegate start a recorded task, send `dispatchTask_tasks` with its `taskId`, and an `assignee` if it has none:
+`addTask_tasks` files a task **held** and answers `{ ok: true, taskId, status: "held" }`. A held task doesn't start, even with an assignee, until it is released. A held task with no assignee, in a conversation with several delegates, waits on the board unassigned. To have a delegate start a held task, send `dispatchTask_tasks` with its `taskId`, and an `assignee` if it has none:
 
 ```ts
 await help.sendAction("dispatchTask_tasks", { taskId }, { sessionId: session.id });
 ```
+
+`updateTask_tasks` with `patch: { status: "pending" }` releases it the same way, and `patch: { status: "held" }` holds a task that hasn't started yet. A task that has started can't be held; cancel it instead.
+
+A task's `deps` must name tasks on this conversation's board that haven't failed or been cancelled, and must not loop back to the task. Anything else is refused when you file it, and nothing is stored. When a task fails for good or is cancelled, every open task that depends on it is cancelled too, labelled `skipped`.
 
 ### Hearing how it went
 
@@ -465,8 +469,9 @@ It hears when a task completes, with what came back; when it fails for good, wit
 | Action | What it does |
 | --- | --- |
 | `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
-| `dispatchTask_tasks` | Starts a new task, or one you recorded, on a delegate now |
-| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A recorded task stays recorded until `dispatchTask_tasks` |
+| `dispatchTask_tasks` | Starts a new task, or a held one, on a delegate now |
+| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A held task stays held until it is released |
+| `updateTask_tasks` | Changes a task's details. Before the task starts, `patch.status` holds it (`"held"`) or releases it (`"pending"`) |
 | `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
 
 A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
@@ -524,10 +529,10 @@ await help.sendAction(
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. `dispatchTask` refuses the follow-up, as `addTask` does, filing nothing, if the task it names isn't finished or never ran, if that session still has an unfinished task, or if you pass an `assignee`:
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `addTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
 
 ```json
-{ "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" is in_progress. A follow-up names a finished task. Nothing was filed." }
+{ "ok": false, "error": "follow_up_of_unfinished: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }
 ```
 
 ## Making your own flow a delegate

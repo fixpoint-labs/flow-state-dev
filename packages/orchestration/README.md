@@ -27,7 +27,7 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
 `attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
-`pending | in_progress | blocked | parked | completed | errored | cancelled`.
+`pending | in_progress | held | parked | completed | errored | cancelled`.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -39,8 +39,8 @@ pending ─┬─→ in_progress ─┬─→ completed
          │                            ├─→ errored
          │                            ├─→ pending    (unpark)
          │                            └─→ cancelled
-         ├─→ blocked ─┬─→ pending               (unblock)
-         │            └─→ cancelled
+         ├─→ held ─┬─→ pending                  (release)
+         │         └─→ cancelled
          └─→ cancelled
 ```
 
@@ -167,13 +167,12 @@ Removals reconcile when you resolve. A task the running request removed (an expl
 from the next resolution onward. A ref you are already holding keeps reporting such
 a task until it resolves again.
 
-Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
+Every lifecycle transition — `complete`, `fail`, `awaitReview`,
 `unpark`, `reopen`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
-one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
-and no other, and `unpark` on a `parked` task and no other. Like `cancel`, `unpark`
+one edge runs only from that edge's source status: `unpark` runs on a `parked` task and no other. Like `cancel`, `unpark`
 declines without options: `disallowed` for a live task, `terminal` once settled, and a
 second answer to an already-queued task is refused. `reopen` runs on a finished task
 (`completed`, `errored` or `cancelled`) and no other, and declines without options:
@@ -662,7 +661,7 @@ state on the task.
 A board that dispatches anything fixes a task's assignee while an attempt holds it:
 the worker name is what a running row is routed by, so `setAssignee` on an
 `in_progress` or `parked` task declines with reason `immutable-assignee`. A pending
-or blocked task can still change hands, and a parked one can once `unpark` has
+or held task can still change hands, and a parked one can once `unpark` has
 ended its attempt. The rule belongs to the collection rather than
 the board, so a second board over the same `defineTaskCollection` value declines too.
 
@@ -769,8 +768,8 @@ refused when it loads; give the work to workers on a task board instead.
 
 ### Task tools
 
-`taskTools` are the ten tools a model uses to plan on a task board: `addTask`,
-`assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
+`taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
+`assignTask`, `completeTask`, `failTask`, `cancelTask`, `updateTask`,
 `listTasks`, `readTask`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
 `createTaskToolsCapability(resolver, roster?)` points them at a
 board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse

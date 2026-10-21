@@ -229,7 +229,7 @@ function buildHost(filename: string) {
     }
   });
 
-  const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: typeof deskTurn) =>
+  const flowOf = (kind: string, board: ReturnType<typeof defineSessionBoard>, turn: typeof deskTurn | typeof doerTurn) =>
     defineFlow({
       kind,
       configSchema: workerConfigSchema(),

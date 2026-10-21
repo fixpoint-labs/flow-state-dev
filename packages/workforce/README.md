@@ -1835,7 +1835,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   answer lands under the delegate's name once. Each
   delegate's task runs in its own session per conversation, created naming the delegate as its
   worker, and reused for that conversation's later posts. A post's task can be cancelled from the
-  board, but not reassigned, completed, failed or blocked. The board answers task actions only
+  board, but not reassigned, completed, failed or held. The board answers task actions only
   while one of the conversation's delegates takes tasks, and `no_delegation_board` otherwise. The
   session carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
@@ -1874,9 +1874,10 @@ An assignee must be one of the conversation's delegates whose flow takes tasks (
 pieces can go further; see below). Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
-`addTask` records a task; `dispatchTask` starts it in its task session, which belongs to you.
-Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. A recorded task starts
-when `dispatchTask` names its `taskId`; `assignTask` changes its owner and leaves it recorded.
+`addTask` files a task held; `dispatchTask` starts it in its task session, which belongs to you.
+Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. A held task starts
+when `dispatchTask` names its `taskId`, or `updateTask` releases it (`patch.status: "pending"`);
+`assignTask` changes its owner and leaves it held.
 `dispatchTask` returns once the task is stored, without waiting for it to run, unless it is
 given `wait: true`. Unless
 it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
@@ -1905,6 +1906,15 @@ and its next attempt runs in that session without spending a retry. The worker a
 everything the session holds, and the conversation that filed it hears the new ending. While the task or a
 follow-up of it is unfinished, a message there is an ordinary turn. To file new work on a finished
 task, use `dispatchTask`'s `followUpOf`, which runs in the same session with the same worker.
+A follow-up can be filed while that task still runs: a session works one task at a time, so it
+waits until the task ends.
+
+Code filing through the board's ref chooses, per task, `session: "new" | "ongoing"` (its own task
+session, or the session where that delegate works for this conversation) and
+`resultTo: "filer" | "conversation"`. A conversation-result task takes one attempt, and a wait on
+it is refused. Both are a conversation's settings: from a task session the filing is refused
+(`setting_not_from_task_session`). When a task fails, is retried or is cancelled, the open pieces
+it filed are cancelled within seconds.
 
 A browser reads its user's boards through the ordinary collection read: `tasks`, fetched through
 any of that user's sessions on a flow that carries the session board, answers every one of their
