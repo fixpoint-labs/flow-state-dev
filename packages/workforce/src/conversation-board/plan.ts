@@ -42,14 +42,14 @@ import { taskMessage } from "./task-message";
 /**
  * The plan ledger's id: its resource key. **Pinned**: rows are stored under it.
  */
-export const PLAN_LEDGER_ID = "plan";
+const PLAN_LEDGER_ID = "plan";
 
 /**
  * The plan ledger's one declaration. A browser may read it as it reads the
  * conversation ledger: the user's own rows, each under its session's partition,
  * so a screen lists a worker's steps beside the tasks it dispatched.
  */
-export const planLedger = Object.assign(
+const planLedger = Object.assign(
   defineTaskCollection({ id: PLAN_LEDGER_ID, scope: "user", partitionBy: conversationPartition }),
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
@@ -68,7 +68,7 @@ export async function planLedgerAt(ctx: BlockContext, partition: string): Promis
 }
 
 /** The running session's own plan ledger. */
-export async function ownPlanLedger(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
+async function ownPlanLedger(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
   return planLedgerAt(ctx, await filingSessionIdOf(ctx.session));
 }
 
@@ -80,7 +80,7 @@ export const STEP_ATTEMPTS = 1;
  * A step it files for itself is refused. Request-scoped, so it ends with the
  * request.
  */
-export const PLAN_ANSWERING_STATE = "planAnswering";
+const PLAN_ANSWERING_STATE = "planAnswering";
 
 /** Request state: the steps already ended when this request's drain began, so the answer reports only the rest. */
 const PLAN_SEEN_STATE = "planSeen";
@@ -107,7 +107,7 @@ function shown(value: unknown): string {
  * A step as its turn reads it: the task message, then the results of the
  * steps it depends on.
  */
-export function stepMessage(task: TaskWorkerInput): string {
+function stepMessage(task: TaskWorkerInput): string {
   const lines = [
     `You are working a step you filed for yourself, and it is running now, so don't file or dispatch it again. Do this step's work in this answer, and answer with its result.\n\n${taskMessage(task)}`
   ];
@@ -119,7 +119,7 @@ export function stepMessage(task: TaskWorkerInput): string {
 }
 
 /** What the answering turn is told: how each step this request worked ended. */
-export function answerMessage(steps: readonly Task[]): string {
+function answerMessage(steps: readonly Task[]): string {
   const endings = steps.map((row, index) => {
     const label = `${index + 1}. "${row.title ?? row.goal}" (${row.id})`;
     if (row.status === "completed") return `${label} completed: ${shown(row.output ?? null)}`;
