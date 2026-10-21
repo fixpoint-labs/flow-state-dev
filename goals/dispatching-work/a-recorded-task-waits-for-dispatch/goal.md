@@ -23,7 +23,7 @@
 
 **Controls:** a scratch patch to an Orchestration module, applied as the Lab loads it (`goals/lib/module-patch.mjs`), printed by the run, and refused when it never reached the code.
 
-- `GOAL_CONTROL=add-starts`: the task tools file `addTask`'s row ready instead of held (`packages/orchestration/src/skills/task-tools-capability.ts`), so recording a task for a delegate starts it, as before FIX-1875. Must fail **`rec:not-started`** (the task recorded for a delegate). `disp:ref-runs` goes red with it, for the same row: its dispatch finds it already started. The task recorded for nobody passes `rec:not-started` under the control too, since with two delegates nothing starts an ownerless row; that is why every run records both.
+- `GOAL_CONTROL=add-starts`: the task tools drop `createTask`'s `held` setting and file the row ready (`packages/orchestration/src/skills/task-tools-capability.ts`), so writing a task down for a delegate starts it, as before FIX-1875. Must fail **`rec:not-started`** (the task recorded for a delegate). `disp:ref-runs` goes red with it, for the same row: its dispatch finds it already started. The task recorded for nobody passes `rec:not-started` under the control too, since with two delegates nothing starts an ownerless row; that is why every run records both.
 
 On `main` before FIX-1875 there is no `dispatchTask_tasks` action, so `disp:ref-runs` and `disp:new-runs` cannot pass there, and `addTask_tasks` for a delegate starts the task, which is what `add-starts` reproduces.
 

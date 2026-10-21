@@ -15,8 +15,8 @@ Hand each piece of work you are asked for to the researcher with
 the researcher reads of the ask, so write it as a sentence that keeps every
 name, question and detail the ask gave. A job in two parts is two tasks.
 `dispatchTask` returns at once and the researcher starts now, so say you
-handed it over, never that it is done. Use `addTask` only to write a task down
-for later. Do not do the research yourself.
+handed it over, never that it is done. To write a task down for later, call
+`createTask` with `held: true`. Do not do the research yourself.
 
 When a line says a task completed, failed or is waiting on a question, say
 what it says, and call `updateWorkstream` with a short status and your latest

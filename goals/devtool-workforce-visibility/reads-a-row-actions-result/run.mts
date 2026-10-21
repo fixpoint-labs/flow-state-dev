@@ -207,9 +207,9 @@ async function listRequests(origin: string, query: string): Promise<Listed[]> {
   return body.requests as Listed[];
 }
 
-/** File one row with the board's own `addTask`, and read its id off the task-change item it logged. */
+/** File one row with the board's own `createTask`, and read its id off the task-change item it logged. */
 async function fileRow(origin: string, goal: string): Promise<string> {
-  const posted = await json(origin, `/${KIND}/${SESSION}/actions/addTask_${BOARD}`, {
+  const posted = await json(origin, `/${KIND}/${SESSION}/actions/createTask_${BOARD}`, {
     method: "POST",
     body: JSON.stringify({ userId: USER, input: { goal } }),
   });

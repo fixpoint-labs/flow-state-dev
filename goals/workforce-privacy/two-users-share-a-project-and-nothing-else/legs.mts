@@ -41,8 +41,8 @@ const PROJECTS = "projects";
 const COORDINATOR = "coordinator";
 const CHIEF = "chief-of-staff";
 const PROJECT_COORDINATOR = "project-coordinator";
-/** Orchestration's eight `taskTools` (b6), by the names a turn calls them. */
-export const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "updateTask", "listTasks"] as const;
+/** Orchestration's task tools (b6), by the names a turn calls them: the filer's four (FIX-2081). */
+export const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask"] as const;
 
 /** An engineering ask on a research fork fits no delegate, so a4 is NOT RUN when the fork has none of these. */
 const feature = (w: string) => `Please get this feature filed for the engineering team (${w}): ${pick(["a gift-wrap option at checkout", "a recently-viewed strip on the product page", "a back-in-stock email signup on sold-out items", "a size guide link beside each size picker"])}.`;
@@ -641,7 +641,7 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
         const at = (i: { ts?: number; createdAt?: number }) => i.ts ?? i.createdAt ?? 0;
         const lastAdd = Math.max(...adds.map(at));
         const after = updates.filter((i) => at(i) > lastAdd);
-        if (after.length === 0) r.fail("b5", `the EM never updated the workstream entry after filing (no \`updateWorkstream\` after its last \`addTask\` at ${lastAdd}; updates at ${show(updates.map(at))})`);
+        if (after.length === 0) r.fail("b5", `the EM never updated the workstream entry after filing (no \`updateWorkstream\` after its last \`createTask\` at ${lastAdd}; updates at ${show(updates.map(at))})`);
         const entry = (await entriesOf(alice, S)).find((e) => e.owner === A.userId && e.id === ws!.id);
         const drawn = await projectWorkstreams(o.browser, origin(), A, true, r, "b5-alice-workstreams", S);
         const shown = drawn.value?.entries.find((x) => x.owner === A.userId && x.id === ws!.id);
@@ -685,14 +685,14 @@ export async function legsAB(o: LegOptions): Promise<LegFacts> {
       const hit = TASK_TOOLS.filter((n) => [...offered, ...called].some((x) => x === n || x.endsWith(`_${n}`) || x.endsWith(`.${n}`) || x.endsWith(`/${n}`)));
       if (offered.size === 0) r.notRun("b6", `the turn's items carry no tool list to read (${traces.length} trace items); graded on the tools it called only: ${show(called)}`);
       if (hit.length > 0) r.fail("b6", `the turn's tool list holds task tools: ${hit.join(", ")}`);
-      else r.saw("b6", `the turn offered ${offered.size === 0 ? "(unread)" : show([...offered])} and called ${show(called)}: none of the eight task tools`);
+      else r.saw("b6", `the turn offered ${offered.size === 0 ? "(unread)" : show([...offered])} and called ${show(called)}: none of the task tools`);
       r.via("b6", "action");
       const tasksBefore = taskRows(o.store).length;
       const refused = await act(alice, COORDINATOR, s.id, "dispatchTask_tasks", { goal: `b6 ${hex()}`, assignee: "eng.coder" });
       const declined = (refused.output as { ok?: boolean } | undefined)?.ok === false;
-      if (refused.status === "completed" && declined) r.saw("b6", `the app's addTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
-      else if (refused.status === "completed") r.fail("b6", `the app's addTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
-      else r.saw("b6", `the app's addTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
+      if (refused.status === "completed" && declined) r.saw("b6", `the app's dispatchTask on \`${s.id}\`: refused in its output: ${show(refused.output)}`);
+      else if (refused.status === "completed") r.fail("b6", `the app's dispatchTask on \`${s.id}\` was accepted: ${show(refused.output)}`);
+      else r.saw("b6", `the app's dispatchTask on \`${s.id}\`: refused (${refused.status}: ${String(refused.error).slice(0, 160)})`);
       if (taskRows(o.store).length !== tasksBefore) r.fail("b6", "a task row was stored");
     }
   }

@@ -299,7 +299,7 @@ try {
   // Leg b. A post to the first delegate, held 3 s; its task cancelled while it works.
   const cancelPost = await judge.send("run", { message: `[judge] [slow:${first}] ${words.cancel} take your time.` });
   const working = await until(async () => (await rowsNow(judge.id)).find((r) => r.sealed.postId === cancelPost.requestId && r.status === "in_progress"), 10_000);
-  const cancelled = working === undefined ? undefined : await judge.act("cancelTask_tasks", { taskId: working.id });
+  const cancelled = working === undefined ? undefined : await judge.act("updateTask_tasks", { id: working.id, status: "cancelled" });
   const cancelledAt = Date.now();
   await quiet();
   await sleep(GRACE_MS);

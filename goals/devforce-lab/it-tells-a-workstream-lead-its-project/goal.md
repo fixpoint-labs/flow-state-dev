@@ -17,7 +17,7 @@ as the lab's owner. The owner has a workstream in Storefront led by `eng.em`, an
 and the second project, both with a repository. The ask goes to the owner's Storefront project
 coordinator, which hands it on. Read from the workstream session's `tool_output` items:
 
-- `files-for-coder`: the EM made at least one `dispatchTask` or `addTask` call for `eng.coder`.
+- `files-for-coder`: the EM made at least one `dispatchTask` or `createTask` call for `eng.coder`.
 - `names-no-other-project`: every such call's `input.project` is Storefront, or absent.
 
 **Anti-game:** graded on the arguments the model wrote, not on the stored row, because the board

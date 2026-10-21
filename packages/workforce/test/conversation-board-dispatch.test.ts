@@ -82,8 +82,8 @@ describe("a recorded row on a conversation's board (V4)", () => {
   });
 });
 
-describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, V5)", () => {
-  it("addTask_tasks records a row for a delegate, and 20 touches of the board start nothing (BR-1, BR-27)", async () => {
+describe("createTask held and updateTask on a conversation's board (FIX-1875 S7, V5, FIX-2081)", () => {
+  it("createTask_tasks held files a row for a delegate, and 20 touches of the board start nothing (BR-1, BR-27)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
@@ -105,7 +105,7 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     }
   });
 
-  it("an unassigned addTask_tasks takes the only delegate and is still recorded (BR-2)", async () => {
+  it("an unassigned held createTask_tasks takes the only delegate and is still held (BR-2)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -122,7 +122,7 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     }
   });
 
-  it("assignTask on a ready, unclaimed row moves it and starts it, as before (BR-4)", async () => {
+  it("updateTask({ assignee }) on a ready, unclaimed row moves it and starts it, as before (BR-4)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");
@@ -158,7 +158,7 @@ describe("addTask and assignTask record on a conversation's board (FIX-1875 S7, 
     }
   });
 
-  it("cancelTask on a recorded row ends it with no run", async () => {
+  it("a cancel of a held row ends it with no run", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "pm");

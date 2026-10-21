@@ -40,7 +40,7 @@ export type TaskInit<TInput = unknown> = {
   metadata?: Record<string, unknown>;
   /**
    * The finished task this one follows up, already resolved to its root (see
-   * `Task.followUpOf`). Set by the `addTask` tool after it checked the named
+   * `Task.followUpOf`). Set by the `createTask` tool after it checked the named
    * task; a caller filing directly through a ref is trusted with it.
    */
   followUpOf?: string;

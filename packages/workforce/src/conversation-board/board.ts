@@ -566,7 +566,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     defaultWorker: dispatchToDelegate as never,
     dispatcher: startableOnly,
     // Exit once nothing this run can start is waiting. An unassigned row
-    // waits on the board for `assignTask`, so a run must not wait on it.
+    // waits on the board for `updateTask({ assignee })`, so a run must not wait on it.
     onIdle: "wait",
     shouldExit: (collection) => !hasStartable(collection)
   });

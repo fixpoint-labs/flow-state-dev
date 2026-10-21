@@ -341,7 +341,7 @@ await runGoal(async (failures, tell) => {
       if (heldRow?.status !== "held" || proofsOf(heldId).length !== 0) {
         failures.push(`a:held starts only on release — before the release it is ${heldRow?.status} with ${proofsOf(heldId).length} run(s)`);
       }
-      const released = await h.act(conversation, "updateTask_tasks", { taskId: heldId, patch: { status: "pending" } });
+      const released = await h.act(conversation, "updateTask_tasks", { id: heldId, status: "pending" });
       await h.idle();
       const ran = proofsOf(heldId);
       if (released?.ok !== true || (await h.byId(heldId))?.status !== "completed" || ran.length !== 1) {
@@ -465,7 +465,7 @@ await runGoal(async (failures, tell) => {
       const name1 = `cancelled-${RUN_STAMP}`;
       const cancelled = await h.act(conversation, "dispatchTask_tasks", { goal: word(`[file:${name1}][slow:5000] cancelled`) });
       await h.until(async () => (await piece(name1, 1)).length === 1, 5000);
-      await h.act(conversation, "cancelTask_tasks", { taskId: cancelled.taskId, reason: "not needed" });
+      await h.act(conversation, "updateTask_tasks", { id: cancelled.taskId, status: "cancelled" });
       const paid = await h.until(async () => (await piece(name1, 1))[0]?.status === "cancelled", 2500);
       if (!paid) failures.push(`d:the open filed task is cancelled — by a cancel: the piece is ${(await piece(name1, 1))[0]?.status ?? "missing"} 2.5 s on, its task's turn still running`);
 
@@ -496,7 +496,7 @@ await runGoal(async (failures, tell) => {
         ]
       });
       if (chains?.ok !== true) failures.push(`d:the dependent chain is cancelled — the chains weren't filed: ${JSON.stringify(chains)}`);
-      await h.act(conversation, "cancelTask_tasks", { taskId: `c0-${RUN_STAMP}`, reason: "not needed" });
+      await h.act(conversation, "updateTask_tasks", { id: `c0-${RUN_STAMP}`, status: "cancelled" });
       await h.idle();
       await h.until(async () => (await h.byId(`f2-${RUN_STAMP}`))?.status === "cancelled", 4000);
       for (const [cause, ids] of [["failed", ["f1", "f2"]], ["cancelled", ["c1", "c2"]]] as const) {
@@ -531,7 +531,7 @@ await runGoal(async (failures, tell) => {
       for (const [id, stored] of [[`post-${RUN_STAMP}`, "completed"], [`split-${RUN_STAMP}`, "parked"], [`turn-${RUN_STAMP}`, "parked"]] as const) {
         if (listed.get(id) !== stored) failures.push(`e:an entry still off reads as stored — ${id} reads ${listed.get(id)}, stored ${stored}`);
       }
-      for (const id of [blocked, recorded]) await h.act(conversation, "updateTask_tasks", { taskId: id, patch: { status: "pending" } });
+      for (const id of [blocked, recorded]) await h.act(conversation, "updateTask_tasks", { id, status: "pending" });
       await h.idle();
       for (const id of [blocked, recorded]) {
         const row = await h.byId(id);

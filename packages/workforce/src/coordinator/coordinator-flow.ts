@@ -1610,8 +1610,8 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
     resources: { ...resources, ...(turn.bound.resources ?? {}), ...sessionBoard.resources },
     isolateUserState: options.agent?.isolateUserState ?? false,
     actions: {
-      // The eight task tools, as actions on this conversation's board
-      // (`addTask_tasks` and the rest, checked against its delegates), and
+      // The task tools, as actions on this conversation's board
+      // (`updateTask_tasks` and the rest, checked against its delegates), and
       // the four delegate actions.
       ...sessionBoard.actions,
       // The session names its worker, so a turn whose input carries any other key is refused.

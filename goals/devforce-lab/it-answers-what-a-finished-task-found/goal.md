@@ -22,7 +22,7 @@ the lab's owner. A conversation with the chief of staff is opened; the scan is d
 coder's run (the lab's stub) answers with the report, and the task completes. Once the lab is
 quiet, the ask is sent as one turn.
 
-- the turn read that task with `readTask` (`reads-the-task`), graded on the tool's own output
+- the turn read that task with `getTask` (`reads-the-task`, `readTask` before FIX-2081), graded on the tool's own output
 - the reply names the picked item (`names-the-item`) and two of the plan's words (`names-the-plan`)
 - the reply says the plan waits on approval (`says-it-waits-on-approval`)
 - the reply names the task's id or `eng.coder` (`cites-the-task`)

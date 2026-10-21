@@ -1330,7 +1330,7 @@ function defineAgentFlowAround(
         concurrency: REPLY_CONCURRENCY
       },
       [STANDING_RULES_ACTION]: standingRulesAction,
-      // On an installation: the eight task actions (`addTask_tasks` and the
+      // On an installation: the task actions (`updateTask_tasks` and the
       // rest) over this session's board, and the four delegate actions. A
       // session whose delegates take no task answers `no_delegation_board`.
       ...(board?.actions ?? {})

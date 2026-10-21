@@ -39,7 +39,7 @@ const word = () => `${["heron", "copper", "lantern", "saffron", "willow", "glaci
 
 /**
  * How the asker waited: `dispatchTask` with `wait` on a new task (`goal`), or on
- * a task it recorded first with `addTask` (`taskId`). `none` when it never did.
+ * a task it filed held first with `createTask` (`taskId`). `none` when it never did.
  */
 type WaitPath = "new" | "recorded" | "none";
 

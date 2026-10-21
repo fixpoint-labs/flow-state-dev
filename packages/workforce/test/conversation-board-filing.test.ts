@@ -3,7 +3,7 @@
  * BR-1 to BR-9 and the task tools' own reassign and cancel contract).
  *
  * Each leg files through the coordinator flow's public actions
- * (`addTask_tasks` and the rest), as an app does; the tool legs file through
+ * (`createTask_tasks` and the rest), as an app does; the tool legs file through
  * the coordinator's own turn, scripted. Both reach the same resolver and the
  * same roster, so an answer is the same either way. What a leg asserts is
  * read back from the store, never from the action's own say-so.

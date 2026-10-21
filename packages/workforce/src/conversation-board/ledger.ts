@@ -49,7 +49,7 @@ import { markReportOwed, withoutReportMarkers } from "./report-owed";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
- * over under. **Pinned**: the task actions are named for it (`addTask_tasks`).
+ * over under. **Pinned**: the task actions are named for it (`updateTask_tasks`).
  */
 export const CONVERSATION_LEDGER_ID = "tasks";
 
