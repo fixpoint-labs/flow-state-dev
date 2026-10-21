@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, how a task that split into pieces ends. Chosen: as its worker&#x27;s last request for it ends, with that answer as output. Instead of: an output of answer and pieces, and a rule that a failed piece fails the task unless re-filed. It comes down to the first row: the chosen option is the one rule for done that every task follows, while the other keeps a second rule for split tasks, the second answer the epic&#x27;s POC refuted. The price is the second row: filers that read pieces from the output rewrite at upgrade. Third row: a failed piece fails the task only if the worker&#x27;s turn throws, where the other fails it by rule. Locks in: a split task&#x27;s output is its worker&#x27;s last answer. Flips if: a filer needs every piece&#x27;s output in the parent&#x27;s."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, how a task that split into pieces ends. Chosen: as its worker&#x27;s last request for it ends, with its latest reportProgress checkpoint, else that answer, as output. Instead of: an output of answer and pieces, and a rule that a failed piece fails the task unless re-filed. It comes down to the first row: the chosen option is the one rule for done that every task follows, while the other keeps a second rule for split tasks, the second answer the epic&#x27;s POC refuted. The price is the second row: filers that read pieces from the output rewrite at upgrade. Third row: a failed piece fails the task only if the worker&#x27;s turn throws, where the other fails it by rule. Locks in: a split task&#x27;s output is its latest reportProgress checkpoint, else its worker&#x27;s last answer. Flips if: a filer needs every piece&#x27;s output in the parent&#x27;s."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -88,7 +88,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A split task&#x27;s output is its worker&#x27;s last answer</text>
+    <text class="t-b" x="32" y="371">Output: latest checkpoint, else last answer</text>
     <text class="t-s" x="32" y="389">teams outside the repo rewrite; the changeset says so</text>
   </g>
   <g id="flips-if">

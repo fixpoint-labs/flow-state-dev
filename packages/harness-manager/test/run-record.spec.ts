@@ -24,6 +24,8 @@ const PHASE = "implement";
 const EPIC = "conductor-tasks-test-epic";
 const TOPIC = runTopic(EPIC, ISSUE, PHASE);
 const TASK = "task_1";
+/** What every run here opens with; these tests read the keys and the fence, not these values. */
+const OPENED = { workspacePath: "/w/a", branch: "b", childSessionId: "sess_run" };
 
 /**
  * A collection that keys and merges the way a real one does.
@@ -76,7 +78,7 @@ describe("the run record — the two key vocabularies", () => {
     await board.upsert(TASK, claimed(1));
     const ctx = contextWith(runs, board);
 
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
 
     // Written and read by the BARE topic.
     expect(await runs.getOptional(TOPIC)).toBeDefined();
@@ -121,7 +123,7 @@ describe("the run record — obligation A", () => {
 
     // Attempt 1 claims and opens the row.
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
 
     // The lease lapses and attempt 2 is claimed. The board's counter moves; the
     // run row does not, because attempt 2 is still waiting for the checkout.
@@ -152,9 +154,9 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, claimed(2));
-    await openRunRow(ctx, identity(2), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(2), OPENED);
     await writeRunRow(ctx, identity(2), { sessionId: "sess_live" });
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "sess_stale" })).toBe(
@@ -173,7 +175,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(3));
-    expect(await openRunRow(ctx, identity(3), { workspacePath: "/w/a", branch: "b" })).toBe(
+    expect(await openRunRow(ctx, identity(3), OPENED)).toBe(
       "applied",
     );
     expect(await writeRunRow(ctx, identity(3), { sessionId: "s" })).toBe("applied");
@@ -189,7 +191,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, claimed(1, "pending"));
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("refused");
@@ -207,7 +209,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, claimed(1, "awaiting_review"));
 
     expect(await writeRunRow(ctx, identity(1), { sessionId: "s" })).toBe("applied");
@@ -228,7 +230,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() - 1_000 });
 
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("refused");
@@ -243,7 +245,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, { ...claimed(1), leaseUntil: Date.now() + 60_000 });
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
 
     expect(await writeRunRow(ctx, identity(1), { outcome: "succeeded" })).toBe("applied");
   });
@@ -258,7 +260,7 @@ describe("the run record — obligation A", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await board.upsert(TASK, {
       ...claimed(1, "parked"),
       leaseUntil: Date.now() - 1_000,
@@ -279,7 +281,7 @@ describe("the run record — the clearing rule", () => {
     const ctx = contextWith(runs, board);
 
     await board.upsert(TASK, claimed(1));
-    await openRunRow(ctx, identity(1), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(1), OPENED);
     await writeRunRow(ctx, identity(1), {
       sessionId: "sess_one",
       finalMessage: "attempt one said this",
@@ -289,7 +291,7 @@ describe("the run record — the clearing rule", () => {
     });
 
     await board.upsert(TASK, claimed(2));
-    await openRunRow(ctx, identity(2), { workspacePath: "/w/a", branch: "b" });
+    await openRunRow(ctx, identity(2), OPENED);
 
     const row = (await runs.getOptional(TOPIC))!.state as RunRecordState;
     expect(row.sessionId).toBeNull();
