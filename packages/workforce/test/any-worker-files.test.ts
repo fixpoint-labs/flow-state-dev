@@ -5,9 +5,10 @@
  * The grant is the session's delegate list, read per call: a worker whose
  * session lists a delegate that takes a task gets Orchestration's eight task
  * tools on its turn and the `<tool>_tasks` actions on its session, on any
- * flow that carries them. With none, its turn has none of the eight and the
- * actions answer `no_delegation_board`. A task session still can't file
- * (P2 lifts that with the split).
+ * flow that carries them. With none, the actions answer `no_delegation_board`;
+ * on a flow that plans its turns (the built-in `agent` and the coordinator) its
+ * turn still gets the tools, for the steps it files for itself (FIX-2076 D1),
+ * and their roster names only itself.
  *
  * Each leg acts through the flows' public actions and their scripted turns,
  * and reads what it asserts back from the store or from the tools the model
@@ -253,7 +254,7 @@ describe("a worker with no delegate that takes a task (BR-2, BR-3, BR-4)", () =>
     { name: "a routing coordinator whose delegates take only posts", worker: "router", flow: "coordinator", block: "coordinator-judgment" }
   ];
   for (const { name, worker: workerId, flow, block } of cases) {
-    it(`gets none of the eight task tools, and its app's addTask answers no_delegation_board: ${name}`, async () => {
+    it(`gets the task tools for its own steps only, and its app's addTask answers no_delegation_board: ${name}`, async () => {
       const h = host();
       try {
         const sessionId = flow === "agent" ? await agentSession(h, "alice", workerId) : await h.conversation("alice", workerId);
@@ -262,7 +263,8 @@ describe("a worker with no delegate that takes a task (BR-2, BR-3, BR-4)", () =>
         await h.settled();
         const turns = turnsAbout(h.seen, "anything to file?").filter((entry) => entry.block === block);
         expect(turns.length).toBeGreaterThan(0);
-        for (const entry of turns) expect(taskToolsIn(entry.names)).toEqual([]);
+        // Offered for the steps it files for itself (FIX-2076 D1), not for a delegate.
+        for (const entry of turns) expect(taskToolsIn(entry.names).sort()).toEqual([...TASK_TOOLS].sort());
 
         const refused = await file(h, "alice", sessionId, { goal: "do it", assignee: "eng.tasker" }, flow);
         expect(refused).toMatchObject({ ok: false, error: "no_delegation_board" });
@@ -290,7 +292,7 @@ describe("a worker with no delegate that takes a task (BR-2, BR-3, BR-4)", () =>
 });
 
 describe("the grant follows the session's delegates, read per call (BR-5)", () => {
-  it("shows the tools after an add, hides them after removing the last, and the filed row still runs and is heard", async () => {
+  it("files for a delegate after an add, and not after removing the last, and the filed row still runs and is heard", async () => {
     const h = host();
     try {
       const talk = await agentSession(h, "alice", "solo");
@@ -308,8 +310,9 @@ describe("the grant follows the session's delegates, read per call (BR-5)", () =
       expect(removed.error, messageOf(removed.error)).toBeUndefined();
 
       expect((await h.act("alice", talk, "run", { message: "turn after the remove" }, "agent")).error).toBeUndefined();
+      // The tools stay on the turn, for its own steps (FIX-2076 D1); the actions file for no delegate.
       const gone = turnsAbout(h.seen, "turn after the remove").at(-1)!;
-      expect(taskToolsIn(gone.names)).toEqual([]);
+      expect(taskToolsIn(gone.names).sort()).toEqual([...TASK_TOOLS].sort());
       expect((await file(h, "alice", talk, { goal: "late", assignee: "eng.tasker" }, "agent")).error).toBe("no_delegation_board");
 
       // The row filed while it could still file runs, settles and is heard.

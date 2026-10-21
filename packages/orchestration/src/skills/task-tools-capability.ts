@@ -75,6 +75,7 @@ import {
   isTransitionAllowed,
   taskSchema,
   TaskCapExceededError,
+  TaskWriteRefusedError,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
@@ -212,6 +213,16 @@ export function checkAssignee(
   if (roster.has(assignee)) return undefined;
   return unknownAssigneeError(assignee, roster);
 }
+
+/**
+ * A wrapping ref's own refusal (FIX-2076) as the soft error the tools answer:
+ * its code and its message, naming the task when the write named one.
+ */
+const refusedError = (err: TaskWriteRefusedError) => ({
+  ok: false as const,
+  error: `${err.code}: ${err.message}`,
+  ...(err.taskId !== undefined ? { taskId: err.taskId } : {}),
+});
 
 /** Map a creation-cap breach (FIX-931) onto its distinct soft-error code. */
 const capError = (err: TaskCapExceededError) => ({
@@ -875,6 +886,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // (no mutator transitions a task other than the one it was handed).
         return illegalTransitionToolError(err, collection.get(err.taskId), nameSuffixForGuidance);
       }
+      // A wrapping ref's own rule refused the write (FIX-2076): nothing was written.
+      if (err instanceof TaskWriteRefusedError) return refusedError(err);
       throw err;
     }
     // Read this precisely: `ok: true` means **the backing reported no decline**,
@@ -1036,6 +1049,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // A creation cap (FIX-931) is a soft error the model can act on — drain
       // to free enqueue slots, or stop planning at the lifetime ceiling.
       if (err instanceof TaskCapExceededError) return capError(err);
+      // A wrapping ref's own rule refused the filing (FIX-2076).
+      if (err instanceof TaskWriteRefusedError) return refusedError(err);
       // A follow-up's id was taken by one filed at the same moment: that
       // one holds the session now (see `resolveFollowUp`).
       if (followUp !== undefined && isTakenTaskId(err)) {
@@ -1347,12 +1362,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         // over the later dispatch (BR-25). Only an inherited owner is left out.
         const assignee =
           input.assignee !== undefined || decided.owner !== row.assignee ? decided.owner : undefined;
-        if (input.wait === true) {
-          return waitAnswer(
-            await dispatchAndWait(ctx, collection, { taskId, ...(assignee !== undefined ? { assignee } : {}) }, timeout),
-          );
-        }
-        if (collection.dispatch === undefined) {
+        if (collection.dispatch === undefined && input.wait !== true) {
           return {
             ok: false as const,
             taskId,
@@ -1360,10 +1370,22 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           };
         }
         const call = toolCallOf(ctx)?.logicalId ?? `call_${crypto.randomUUID()}`;
-        const outcome: TaskWriteOutcome = await collection.dispatch(taskId, {
-          call,
-          ...(assignee !== undefined ? { assignee } : {}),
-        });
+        let outcome: TaskWriteOutcome;
+        try {
+          if (input.wait === true) {
+            return waitAnswer(
+              await dispatchAndWait(ctx, collection, { taskId, ...(assignee !== undefined ? { assignee } : {}) }, timeout),
+            );
+          }
+          outcome = await collection.dispatch!(taskId, {
+            call,
+            ...(assignee !== undefined ? { assignee } : {}),
+          });
+        } catch (err) {
+          // A wrapping ref's own rule refused the dispatch (FIX-2076).
+          if (err instanceof TaskWriteRefusedError) return refusedError(err);
+          throw err;
+        }
         if (outcome.outcome === "declined") {
           return { ok: false as const, taskId, error: `task_not_dispatchable: ${notDispatchableMessage(taskId, outcome)}` };
         }

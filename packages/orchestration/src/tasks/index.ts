@@ -115,6 +115,8 @@ export {
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";
+// A wrapping ref's own refusal, answered by the task tools as a soft error (FIX-2076).
+export { TaskWriteRefusedError } from "./collection/refused-write";
 export {
   getOrCreateTaskCollection,
   TASK_CHANGE_COMPONENT_TYPE,
