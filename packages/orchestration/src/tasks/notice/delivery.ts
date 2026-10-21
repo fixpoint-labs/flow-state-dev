@@ -82,8 +82,14 @@ export interface DeliveryHooks {
   filerOf(row: Task): string | undefined;
   /** Before a write that may end `row`: owe the wake. */
   beforeEnding(row: Task): Promise<void>;
+  /** Owe the filer's pass at `dueAt` for `row`: a claim's lease end. */
+  owePassAt(row: Task, dueAt: number): Promise<void>;
   /** After the write: deliver what `row` owes now, at once. */
-  afterEnding(row: Task, rows: readonly Task[], patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>): Promise<void>;
+  afterEnding(
+    row: Task,
+    rows: readonly Task[],
+    patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>
+  ): Promise<void>;
 }
 
 /** The refusal that says the filer's session is gone: it can never be told. */
@@ -132,53 +138,59 @@ export function createDelivery(
 
   return {
     filerOf,
-
-    async beforeEnding(row) {
-      const filer = filerOf(row);
-      const wakes = ctx.requestHost?.wakes;
-      if (filer === undefined || wakes === undefined) return;
-      try {
-        await wakes.owe({ entry: passEntry, dueAt: Date.now() + NOTICE_DUE_MS, sessionId: filer });
-      } catch (error) {
-        // The fast path still runs; a debt with no wake waits for the filer's
-        // next pass, so say so.
-        console.warn("[orchestration] an ending's wake couldn't be written: its debt waits for the filer's next pass", {
-          boardId: board.collectionId,
-          taskId: row.id,
-          error: (error as Error).message
-        });
-      }
-    },
-
-    async afterEnding(row, rows, patchMetadata) {
-      try {
-        const filer = filerOf(row);
-        const notices = owedNotices(row, board.collectionId, rows, filerOf);
-        if (filer === undefined) {
-          for (const notice of notices) await settleUndeliverable(row, notice, "no session is known to have filed it", patchMetadata);
-          return;
-        }
-        const address = addressOf(filer);
-        if (address === undefined) return;
-        // A waited-on row's turn is resumed, and a retry's next attempt
-        // started, by the filer's pass.
-        const runsPass =
-          row.resumeOwed === true || (row.status === "pending" && declared.passEntry !== undefined && row.attempts > 0);
-        // Inside the filer's own pass that trigger waits its turn (one pass at
-        // a time), and runs once the running pass ends.
-        if (runsPass) await send(address, passEntry, {});
-        const entry = declared.noticeEntry?.(row) ?? TASK_SETTLED_ENTRY;
-        for (const notice of notices) {
-          const outcome = await send(address, entry, notice);
-          if (outcome !== undefined && !outcome.ok && outcome.refused === FILER_GONE) {
-            await settleUndeliverable(row, notice, outcome.detail, patchMetadata);
-          }
-        }
-      } catch {
-        // Never fails the write that committed: the wake pays what is left.
-      }
-    }
+    beforeEnding: (row) => owePassAt(row, Date.now() + NOTICE_DUE_MS),
+    owePassAt,
+    afterEnding
   };
+
+  async function owePassAt(row: Task, dueAt: number): Promise<void> {
+    const filer = filerOf(row);
+    const wakes = ctx.requestHost?.wakes;
+    if (filer === undefined || wakes === undefined) return;
+    try {
+      await wakes.owe({ entry: passEntry, dueAt, sessionId: filer });
+    } catch (error) {
+      // The fast path still runs; a debt with no wake waits for the filer's
+      // next pass, so say so.
+      console.warn("[orchestration] a wake for the filer's pass couldn't be written: its debt waits for the filer's next pass", {
+        boardId: board.collectionId,
+        taskId: row.id,
+        error: (error as Error).message
+      });
+    }
+  }
+
+  async function afterEnding(
+    row: Task,
+    rows: readonly Task[],
+    patchMetadata: (id: string, patch: Record<string, unknown>) => Promise<void>
+  ): Promise<void> {
+    try {
+      const filer = filerOf(row);
+      const notices = owedNotices(row, board.collectionId, rows, filerOf);
+      if (filer === undefined) {
+        for (const notice of notices) await settleUndeliverable(row, notice, "no session is known to have filed it", patchMetadata);
+        return;
+      }
+      const address = addressOf(filer);
+      if (address === undefined) return;
+      // A waited-on row's turn is resumed, and a retry's next attempt
+      // started, by the filer's pass.
+      const runsPass = row.resumeOwed === true || (row.status === "pending" && declared.passEntry !== undefined && row.attempts > 0);
+      // Inside the filer's own pass that trigger waits its turn (one pass at
+      // a time), and runs once the running pass ends.
+      if (runsPass) await send(address, passEntry, {});
+      const entry = declared.noticeEntry?.(row) ?? TASK_SETTLED_ENTRY;
+      for (const notice of notices) {
+        const outcome = await send(address, entry, notice);
+        if (outcome !== undefined && !outcome.ok && outcome.refused === FILER_GONE) {
+          await settleUndeliverable(row, notice, outcome.detail, patchMetadata);
+        }
+      }
+    } catch {
+      // Never fails the write that committed: the wake pays what is left.
+    }
+  }
 }
 
 /** A declared ledger, as {@link markDelegating} reads it. */

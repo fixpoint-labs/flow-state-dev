@@ -748,6 +748,20 @@ describe("taskTools — writes to a terminal task are refused, not silently acce
     expect(statusOfA(ctx)).toBe("cancelled");
   });
 
+  // A model's own cancel owes no notice for it or for the dependents it takes
+  // along (FIX-2078 D2), so the call's result is where it learns of them.
+  it("cancelTask names the dependents its cancel cancelled", async () => {
+    const now = Date.now();
+    const ctx = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: now, updatedAt: now },
+        b: { id: "b", goal: "y", status: "pending", attempts: 0, deps: ["a"], createdAt: now, updatedAt: now },
+      },
+    }).ctx;
+    const result = await runForTest(findTool("cancelTask"), { taskId: "a" }, ctx);
+    expect(result).toEqual({ ok: true, cancelled: ["b"] });
+  });
+
   it("assignTask still succeeds on a live task", async () => {
     const ctx = ctxWithTask("pending", { assignee: "researcher" });
     const result = await runForTest(

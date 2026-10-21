@@ -64,7 +64,7 @@
  * take for it by name, rather than letting the schema drop them.
  */
 
-import { defineCapability, handler, parseBlockInstanceId, type DefinedCapability } from "@flow-state-dev/core";
+import { defineCapability, handler, isToolInvocationPath, parseBlockInstanceId, type DefinedCapability } from "@flow-state-dev/core";
 import type { ActionConfig, BlockContext } from "@flow-state-dev/core/types";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -476,7 +476,8 @@ const claimGuard = (
 function isModelToolCall(ctx: BlockContext): boolean {
   const instanceId = ctx._blockIdentity?.blockInstanceId;
   if (instanceId === undefined) return false;
-  return parseBlockInstanceId(instanceId)?.path.includes("/tool[") === true;
+  const path = parseBlockInstanceId(instanceId)?.path;
+  return path !== undefined && isToolInvocationPath(path);
 }
 
 // ---------------------------------------------------------------------------
@@ -1444,15 +1445,29 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "has already finished cannot be cancelled — you get told so rather than a " +
       "silent success.",
     inputSchema: z.object({ taskId: z.string(), reason: z.string().optional() }),
-    outputSchema: okOrError,
-    execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c, claim) =>
+    outputSchema: z.union([
+      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional() }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
+    execute: async (input, ctx) => {
+      let board: TaskCollectionRef | undefined;
+      const result = await withTask(ctx, input.taskId, (c, claim) => {
+        board = c;
         // A model's own cancel: its result tells the filer, so it owes no notice.
-        c.cancel(input.taskId, input.reason, {
+        return c.cancel(input.taskId, input.reason, {
           ...(claimGuard(claim) ?? {}),
           ...(isModelToolCall(ctx as BlockContext) ? { viaTool: true } : {}),
-        }),
-      ),
+        });
+      });
+      if (!result.ok || board === undefined) return result;
+      // The dependents the cancel took along, which owe no notice of their own
+      // when the filer cancelled through its own tool (FIX-2078 D2): named here.
+      const cancelled = board
+        .list()
+        .filter((row) => row.causedBy === input.taskId && row.status === "cancelled")
+        .map((row) => row.id);
+      return cancelled.length > 0 ? { ok: true as const, cancelled } : result;
+    },
   });
 
   const updateTask = defineTool({
