@@ -316,6 +316,22 @@ function sharedTaskSet(
 }
 
 /**
+ * Add the stored task rows `mirror` doesn't hold yet (FIX-2080 D2), for a
+ * touch's sweep: rows another process filed after this mirror was hydrated.
+ * Never replaces or retires an entry; construction's {@link reconcileTaskSet}
+ * owns that, for the reasons it lists.
+ */
+async function adoptUnknownRows(
+  mirror: Map<string, ResourceRef<JsonObject>>,
+  collection: ResourceCollectionRef<JsonObject>
+): Promise<void> {
+  for (const ref of await collection.list()) {
+    const id = readTaskState(ref).id;
+    if (typeof id === "string" && id.length > 0 && !mirror.has(id)) mirror.set(id, ref);
+  }
+}
+
+/**
  * Bring the shared record in line with the store: adopt every task the store
  * lists, and drop every task the store no longer has.
  *
@@ -1212,9 +1228,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async payOwedCascades() {
-      // Read the committed rows first: another process may have filed rows
-      // this mirror has never seen, or ended ones it holds.
-      await reconcileTaskSet(mirror, options.collection);
+      // Another process may have filed rows this mirror has never seen, whose
+      // dependency has since ended: adopt them first, so the sweep can cancel
+      // them. Only unknown rows: a ref the mirror already holds is live, and
+      // replacing it with a listed one could read back what this request has
+      // already moved past.
+      await adoptUnknownRows(mirror, options.collection);
       return payOwedCascades(cascadeWrites, now());
     },
 
