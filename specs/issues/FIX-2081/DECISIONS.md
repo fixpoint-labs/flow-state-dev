@@ -85,12 +85,14 @@ tool again, which rule 18 rules out.
   *started*; this table says which fields need it. The per-field setters stay unguarded. The table also carries FIX-2080's
   `held`, `deps` and `maxAttempts` rows, so once this lands FIX-2080's guard reads its until-start
   check from it rather than keeping its own beside it: one rule source inside the one patch.
-- **The field table is the concept's,** with three notes where it is silent. *An inline plan row:*
-  edits and hold before it starts; a cancel ends the row, the drain's late record of it is dropped
+- **The field table is the concept's,** with four notes where it is silent. *An inline plan row:*
+  edits before it starts; a hold is refused, naming FIX-2076's rule (file it for a delegate,
+  held); a cancel ends the row, the drain's late record of it is dropped
   and the parent carries on; `message` follows FIX-2086. *An assignee change that crosses the
   worker itself* (a plan row to a delegate, or a delegated row to the worker) is refused, naming the
   move: a step for itself and a task for a delegate are filed apart, so cancel and file again; a
-  change between delegates stands. *`maxAttempts` on a task whose result goes to the conversation*
+  change between delegates stands. *The `held` row, on a plan row:* refused in every state, naming FIX-2076's rule, since the drain
+  doesn't wait on a held row. *`maxAttempts` on a task whose result goes to the conversation*
   is refused in every state, naming FIX-2080's rule (one attempt). `message` is FIX-2086's row. A cancel sent with
   anything else is refused. A refusal names field, state and next move: steer (FIX-2086), cancel
   and refile, or a follow-up.
@@ -168,8 +170,9 @@ Recorded for the implementer, not folded into the design.
   may checkpoint `output`, a queued `receive` included. FIX-2077's output line and its goal check's
   leg c are amended to match in this PR.
 - **Cross-spec audit** — the set's coherence audit aligned this spec with its siblings: the row
-  `reportProgress` acts on, list rows without output, *before it starts* as never started, three
-  field-table notes (inline plan rows, a cross-ledger reassign, a conversation result's attempts),
+  `reportProgress` acts on, list rows without output, *before it starts* as never started, four
+  field-table notes (inline plan rows, a plan row's hold, a cross-ledger reassign, a conversation
+  result's attempts),
   a claimless self-filing refused, `filedByTask`, the self-step grant in `reach()`, the cancel's
   notice marker, the goals it rewrites, and FIX-2077's output line carried through the rest of its
   spec. FIX-2076 now lands before this issue, and this before FIX-2077. No change to D1-D3.
