@@ -109,14 +109,14 @@ suspends, or ends with work still open, records the hold instead.
 | The message entry, deferred behind the task's turn | **Builds on.** Admitted for the task; FIX-2070 renames it `receive` |
 | Whatever else decides a task is done | **Three today** (the epic POC's census of every `complete`/`fail`/settle write in `orchestration` and `workforce`): the gate's recorders, `completeTask`/`failTask`, the split settle. The settle goes here, the tools in FIX-2081, a wait's cancel in FIX-2082 |
 | [FIX-1802 D3](../FIX-1802/DECISIONS.md#d3) and its BR-16: a failed piece fails the parent unless re-filed | **Superseded.** The worker's last request decides ([D3](DECISIONS.md#d3)) |
-| [FIX-1802](../FIX-1802/DECISIONS.md) S4: the park, the parent binding, the settle, its replay and the cancel that reaches the pieces | **Superseded.** The task stays running; the end of the next request for it settles it. FIX-2080's cascade cancels its pieces. Parked rows in flight are read through FIX-2080's map |
+| [FIX-1802](../FIX-1802/DECISIONS.md) S4: the park, the parent binding, the settle and the cancel that reaches the pieces | **Superseded.** The task stays running; the end of the next request for it settles it. FIX-2080's cascade cancels its pieces. Parked rows in flight are read through FIX-2080's map. The settle's replay on a later touch is not this issue's: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) removes it |
 | The epic's [ER-2](../../epics/FIX-2056/DECISIONS.md#who-owns-what) and [D3](../../epics/FIX-2056/DECISIONS.md#d3) | **Kept.** This issue owns ER-2 and turns on the parked-split entry of D3's map |
 
 | The debt | |
 |---|---|
 | **Removes** | The split park, its parent binding and its settle entry (`settleSplitTask`) · its cancel cascade (FIX-2080's replaces it) · the `{ answer, pieces }` output · the automatic piece-failure rule and the retry marker · the settle at the entry's last step |
 | **Adds** | A hold on a running row: what keeps it open (a person, filed tasks, or another wait). It outlives the review park, which FIX-2058 retires. One engine seam after the last drain. The parked-split entry in FIX-2080's map, removed with the map no earlier than FIX-2071 |
-| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded hold is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch goes: a crash between the last piece ending and its notice strands the parent until FIX-2078 · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
+| **Leaves** | An error in background work is logged and does not fail the attempt (FIX-2088) · a stranded hold is paid only by the sweeper (FIX-2078), so this ships with or after it · the split's replay on a later touch: FIX-2078 ([#3594](https://github.com/fixpoint-labs/flow-state-dev/pull/3594)) owns removing it, not this issue · the claim's two copies (FIX-1024): the settle reads the row, not either copy |
 
 **Net: down.** A park, a settle entry, a cascade, an output shape and a failure rule go; one hold
 field and one engine seam arrive.
