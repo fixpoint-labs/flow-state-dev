@@ -638,13 +638,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * Every check a row passes before anything is written (FIX-2080): the
      * worker isn't its own delegate, a task's session asks for neither
      * conversation setting, and the board takes the settings asked for. A
-     * batch runs these for every row before its first add.
+     * batch runs these for every row before its first add, and passes its
+     * rows as `filedWith`: a follow-up's root filed in the same batch has
+     * never run.
      */
-    const checkFiling = (init: TaskInit): void => {
+    const checkFiling = (init: TaskInit, filedWith?: ReadonlyMap<string, TaskInit & { id: string }>): void => {
       if (self !== undefined && init.assignee === self) throw stepFromItsOwnTurn(self);
       assertFilingCallerContext(init, { fromTaskSession });
       assertFilingSettings(init, CONVERSATION_BOARD_SETTINGS, ref.collectionId);
-      assertFollowUpHasRun(init, (id) => ref.get(id));
+      assertFollowUpHasRun(init, (id) => filedWith?.get(id) ?? ref.get(id));
     };
     /** Add one checked row under its chain reservation. */
     const fileReserved = async (init: TaskInit, reserved: { id: string; markFiled: () => Promise<void> }): Promise<Task> => {
@@ -766,7 +768,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         // with its lease. Then each row is added after the rows it depends on.
         assertUniqueIds(inits);
         const batch = dependencyOrder(inits.map((init) => ({ ...init, id: init.id ?? newTaskId() })));
-        for (const init of batch) checkFiling(init);
+        const filedWith = new Map(batch.map((init) => [init.id, init]));
+        for (const init of batch) checkFiling(init, filedWith);
         assertDepsFileable(batch, (id) => ref.get(id));
         const reserved: Array<{ id: string; markFiled: () => Promise<void> }> = [];
         for (const init of batch) reserved.push(await reserveFiling(ctx, ref, partition, init, true));
@@ -865,9 +868,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         );
       }
     };
-    const fileStep: TaskCollectionRef["addTask"] = async (init) => {
-      checkStep(init);
-      const { id, markFiled } = await reserveFiling(ctx, plan, partition, init, false);
+    /** Add one checked step under its chain reservation. */
+    const fileReservedStep = async (init: TaskInit, reserved: { id: string; markFiled: () => Promise<void> }): Promise<Task> => {
+      const { id, markFiled } = reserved;
       const metadata = callerMetadata(init.metadata);
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       const added = await plan.addTask({
@@ -880,6 +883,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       });
       await markFiled();
       return added;
+    };
+    const fileStep: TaskCollectionRef["addTask"] = async (init) => {
+      checkStep(init);
+      return fileReservedStep(init, await reserveFiling(ctx, plan, partition, init, false));
     };
     /**
      * Each ledger resolves `deps` only among its own rows, so a dep on the
@@ -931,21 +938,31 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       ...board,
       addTask,
       async addTasks(inits) {
-        // A refused batch files nothing (FIX-2080): the steps' checks and each
-        // row's ledger come first, and the delegates' tasks go to the board as
-        // one batch, which checks them whole before its first add.
-        for (const init of inits) {
+        // A refused batch files nothing (FIX-2080). Before the first add: each
+        // row's ledger, and for the steps everything the plan ledger's own add
+        // would check (the step rules, the settings, the dependencies, where
+        // the batch's steps count) and every step's place in the chain. The
+        // delegates' tasks go to the board as one batch, which checks them
+        // whole before its first add; then the steps are added, each after
+        // the steps it depends on. A reservation a later refusal strands
+        // lapses with its lease.
+        assertUniqueIds(inits);
+        const batch = inits.map((init) => ({ ...init, id: init.id ?? newTaskId() }));
+        for (const init of batch) {
           const step = isStepFiling(init);
           depsOnOneLedger(init, step);
           if (step) checkStep(init);
         }
-        const tasks = await board.addTasks(inits.filter((init) => !isStepFiling(init)));
+        const stepInits = dependencyOrder(batch.filter(isStepFiling));
+        for (const init of stepInits) assertFilingSettings(init, undefined, plan.collectionId);
+        assertDepsFileable(stepInits, (id) => plan.get(id));
+        const reserved: Array<{ id: string; markFiled: () => Promise<void> }> = [];
+        for (const init of stepInits) reserved.push(await reserveFiling(ctx, plan, partition, init, false));
+        const tasks = await board.addTasks(batch.filter((init) => !isStepFiling(init)));
         const steps: Task[] = [];
-        for (const init of inits.filter(isStepFiling)) steps.push(await fileStep(init));
-        const byInit = new Map<TaskInit, Task>();
-        inits.filter((init) => !isStepFiling(init)).forEach((init, i) => byInit.set(init, tasks[i]!));
-        inits.filter(isStepFiling).forEach((init, i) => byInit.set(init, steps[i]!));
-        return inits.map((init) => byInit.get(init)!);
+        for (const [i, init] of stepInits.entries()) steps.push(await fileReservedStep(init, reserved[i]!));
+        const byId = new Map([...tasks, ...steps].map((row) => [row.id, row]));
+        return batch.map((init) => byId.get(init.id)!);
       },
       // Merged reads rely on task ids being unique across the two ledgers: both mint `task_<random>` ids.
       get: (id) => board.get(id) ?? plan.get(id),

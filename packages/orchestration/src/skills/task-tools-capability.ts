@@ -98,7 +98,7 @@ import { isTaskTurn } from "../task-board/task-turn";
 // Imported from the module rather than the package barrel so the recovery
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
-import { shouldRetryOnFail } from "../tasks/collection/internal";
+import { releaseDecline, shouldRetryOnFail } from "../tasks/collection/internal";
 import {
   dispatchAndWait,
   canHoldWait,
@@ -1478,7 +1478,16 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           // started, before anything else is written. A release runs last:
           // it is what lets the task start, so everything else lands on the
           // held task first, and a refused reassignment leaves it held rather
-          // than started under the worker it was meant to leave.
+          // than started under the worker it was meant to leave. Whether the
+          // release will decline is decided here, before any write, on the
+          // row as it stands, so its decline too means nothing was written.
+          // A row that moves between this read and the release (a claim in
+          // between) still declines there, after the other writes.
+          if (patch.status === "pending") {
+            const row = c.get(input.taskId);
+            const reason = row === undefined ? undefined : releaseDecline(row);
+            if (reason !== undefined) return { outcome: "declined", reason, status: row!.status };
+          }
           if (patch.status === "held") {
             const outcome: TaskWriteOutcome | undefined = await c.hold(input.taskId);
             if (outcome != null && outcome.outcome === "declined") return outcome;

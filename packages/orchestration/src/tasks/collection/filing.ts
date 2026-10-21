@@ -163,11 +163,15 @@ function reaches(from: readonly string[], target: string, depsOf: DepsOf): boole
  * that is held, or still waiting to start, has no session yet, and a
  * follow-up that took it would run first, in the root's place.
  *
- * @param lookup The board's committed row by id.
+ * @param lookup The board's committed row by id. A batch passes its own
+ *   rows too: a root filed beside its follow-up has never run.
  * @throws {TaskFilingRefusedError} with rule `follow_up_of_unrun`; a
  *   follow-up naming no task here is left to the caller's own lookup.
  */
-export function assertFollowUpHasRun(init: TaskInit, lookup: (id: string) => Task | undefined): void {
+export function assertFollowUpHasRun(
+  init: TaskInit,
+  lookup: (id: string) => Pick<Task, "id" | "assignee" | "run" | "followUpOf"> | undefined
+): void {
   if (init.followUpOf === undefined) return;
   const named = lookup(init.followUpOf);
   if (named === undefined) return;

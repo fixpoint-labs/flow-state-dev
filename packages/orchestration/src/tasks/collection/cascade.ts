@@ -78,13 +78,17 @@ export function openDependentsOf<T extends Pick<Task, "deps" | "status">>(rows: 
 export function cascadeCancelPatch(dependent: Task, cause: Task, now: number): Partial<Task> {
   const labels = dependent.labels ?? [];
   return {
-    error: `dep ${cause.id} ${cause.status === "cancelled" ? "was cancelled" : "failed"}`,
-    causedBy: cause.id,
+    ...skippedFor(cause),
     labels: labels.includes(SKIPPED_LABEL) ? labels : [...labels, SKIPPED_LABEL],
     completedAt: now,
     leaseUntil: undefined,
     claimedBy: undefined,
   };
+}
+
+/** Why a row is skipped for `cause`'s ending: the `error` and `causedBy` a skip carries. */
+export function skippedFor(cause: Pick<Task, "id" | "status">): { error: string; causedBy: string } {
+  return { error: `dep ${cause.id} ${cause.status === "cancelled" ? "was cancelled" : "failed"}`, causedBy: cause.id };
 }
 
 /** What a backing hands {@link payCascade}: its committed reads and its own writes. */
@@ -166,6 +170,27 @@ async function cancelDeadDependents(writes: CascadeWrites, now: number): Promise
     }
   }
   return cancelled;
+}
+
+/**
+ * Whether the rows a caller already holds show something a touch would pay: a
+ * recorded debt, or an unstarted row (pending or held) behind a failed or
+ * cancelled dependency. An in-memory read, so a hot path (a drain's idle
+ * worker) calls {@link payOwedCascades} only when this is `true` and costs
+ * nothing extra otherwise. It can't see a row another process filed that
+ * these rows don't include; whoever needs those pays unconditionally.
+ */
+export function owesATouch(rows: readonly Pick<Task, "id" | "deps" | "status" | "cascadeOwed">[]): boolean {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return rows.some(
+    (row) =>
+      row.cascadeOwed != null ||
+      ((row.status === "pending" || row.status === "held") &&
+        (row.deps ?? []).some((id) => {
+          const dep = byId.get(id)?.status;
+          return dep === "errored" || dep === "cancelled";
+        }))
+  );
 }
 
 /**

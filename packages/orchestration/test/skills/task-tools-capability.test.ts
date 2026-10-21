@@ -817,6 +817,22 @@ describe("taskTools — updateTask that releases and reassigns at once", () => {
     expect(result).toEqual({ ok: true });
     expect(taskA(ctx)).toMatchObject({ status: "pending", assignee: "writer" });
   });
+
+  it("writes nothing when the release is refused: a retried task has started", async () => {
+    // The release would decline last, after the reassignment and the priority
+    // landed, while the tool reports that the assignee won't change.
+    const ctx = ctxWithTask("pending", { assignee: "researcher", attempts: 1, priority: 1 });
+
+    const result = await runForTest(
+      findTool("updateTask"),
+      { taskId: "a", patch: { status: "pending", assignee: "writer", priority: 9 } },
+      ctx,
+    );
+
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("Its assignee will not change.");
+    expect(taskA(ctx)).toMatchObject({ status: "pending", assignee: "researcher", priority: 1 });
+  });
 });
 
 /**

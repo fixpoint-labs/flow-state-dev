@@ -149,6 +149,30 @@ describe("filing settings on a conversation's board (FIX-2080)", () => {
     }
   });
 
+  it("refuses a follow-up whose root is filed in the same batch, and files none of it", async () => {
+    // A root filed beside its follow-up has never run either: the follow-up
+    // would run first, in the root's session, while the root stays held.
+    const h = bootSplitHost();
+    try {
+      h.controls.plans.s1 = [
+        { goal: "Draft the brief", assignee: "eng.tasker", id: "task_brief", held: true },
+        { goal: "Polish the brief", assignee: "eng.tasker", followUpOf: "task_brief" }
+      ];
+      h.controls.batch.add("s1");
+      const conversation = await h.open("alice", "s1");
+      await h.turn("alice", conversation);
+      await h.settled();
+
+      const refused = h.controls.refusals.filter((r) => r.worker === "s1");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.message).toMatch(/^follow_up_of_unrun: task "task_brief" never ran/);
+      expect(await h.rowsNamed("alice", "Polish the brief")).toHaveLength(0);
+      expect(await h.rowsNamed("alice", "Draft the brief")).toHaveLength(0);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("gives a conversation-result task one attempt", async () => {
     const h = bootSplitHost();
     try {

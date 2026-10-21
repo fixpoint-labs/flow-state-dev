@@ -32,6 +32,8 @@ type Controls = {
   /** Steps whose turn tries to file one more step for itself. */
   stepFiles: Set<string>;
   answerFiles: Set<string>;
+  /** Workers whose turn files its whole plan in one `addTasks` batch. */
+  batches: Set<string>;
   /** A worker whose plan turn also tries the writes a step refuses. */
   probes: Set<string>;
   refusals: Array<{ worker: string; error: string }>;
@@ -77,10 +79,10 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         return `answered: ${input.message}`;
       }
       if (input.message.startsWith('Task "')) return `${worker} heard: ${input.message}`;
-      for (const step of controls.plans[worker] ?? []) {
-        await refused(() =>
-          ref!.addTask({ id: step.id, goal: step.goal, assignee: step.assignee ?? worker, ...(step.deps ? { deps: step.deps } : {}) })
-        );
+      const asInit = (step: Step) => ({ id: step.id, goal: step.goal, assignee: step.assignee ?? worker, ...(step.deps ? { deps: step.deps } : {}) });
+      if (controls.batches.has(worker)) await refused(() => ref!.addTasks((controls.plans[worker] ?? []).map(asInit)));
+      else for (const step of controls.plans[worker] ?? []) {
+        await refused(() => ref!.addTask(asInit(step)));
       }
       if (controls.probes.has(worker)) {
         const first = (controls.plans[worker] ?? [])[0]!;
@@ -117,7 +119,7 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 
 function host(options: { taskChainLimit?: number } = {}) {
-  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), probes: new Set(), refusals: [], turns: [] };
+  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), batches: new Set(), probes: new Set(), refusals: [], turns: [] };
   const h = bootBoardHost({
     standard: [
       ...boardWorkers(),
@@ -286,6 +288,51 @@ describe("a step and a delegate's task don't wait on each other: each ledger's d
       expect(h.controls.refusals).toEqual([{ worker: "editor", error: "deps_across_ledgers" }]);
       expect(await h.rows("alice")).toEqual([]);
       expect((await h.steps("alice")).map((row) => [row.id, row.status])).toEqual([["e-outline", "completed"]]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a batch of steps and delegates' tasks is filed whole or not at all", () => {
+  it("files nothing, not even the delegate's task, when a step in the batch is refused", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [
+        { id: "w-draft", goal: "Draft the post", assignee: "writer" },
+        { id: "e-review", goal: "Review the draft", deps: ["e-ghost"] }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.refusals).toEqual([{ worker: "editor", error: "TaskFilingRefusedError" }]);
+      // The refused step's batch reached neither ledger: the delegate never ran the draft.
+      expect(await h.rows("alice")).toEqual([]);
+      expect(await h.steps("alice")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("files a valid batch whose step comes before the step it depends on", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [
+        { id: "w-draft", goal: "Draft the post", assignee: "writer" },
+        { id: "e-review", goal: "Review the outline", deps: ["e-outline"] },
+        { id: "e-outline", goal: "Outline the post" }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.refusals).toEqual([]);
+      expect((await h.rows("alice")).map((row) => [row.id, row.status])).toEqual([["w-draft", "completed"]]);
+      expect((await h.steps("alice")).map((row) => [row.id, row.status]).sort()).toEqual([
+        ["e-outline", "completed"],
+        ["e-review", "completed"]
+      ]);
     } finally {
       await h.dispose();
     }
