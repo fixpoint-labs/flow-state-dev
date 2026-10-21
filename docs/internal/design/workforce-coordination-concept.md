@@ -156,7 +156,8 @@ as current, the original as history.
 **The worker reports progress with `reportProgress({ statusNote?, output? })`,** its own tool, not
 the filer's `updateTask`. It's offered only on a task turn, acts on the task the request holds
 through its claim (so it takes no `id`), and is refused once the task finishes. Any request holding
-the claim may call it, a queued `receive` included. It is not a public action: screens don't
+the claim may set `statusNote`, a queued `receive` included, but only a `work` or `onTaskSettled`
+request checkpoints `output`, so a message never changes the task's output. It is not a public action: screens don't
 checkpoint. `statusNote` is a one-line note for task views; it never changes the task's status, done
 stays rule 6, and a worker never settles its own row (rule 18). `output` is a checkpoint of the
 result so far, by rule 22. A `percent` may come later. Found work still goes to the filer as a
@@ -422,9 +423,11 @@ A behavior none of these rules explains is a bug in the model.
     never a raw session; the server resolves the session. It never steers a task; to a finished one
     it is talk in its session, which outlives the task.
 22. Only a request holding a task's claim reports its progress, with `reportProgress`, until the
-    task finishes; its `statusNote` never changes the task's status. A non-empty final result
-    replaces the `output` checkpoint; an empty or missing one leaves it as the output, and a failed
-    attempt keeps it for the retry.
+    task finishes; its `statusNote` never changes the task's status, and only a `work` or
+    `onTaskSettled` request checkpoints `output`. A final result replaces the checkpoint unless it
+    is missing (`undefined`) or an empty string, which leave the checkpoint as the output; any other
+    value, `null`, `false`, `0`, `{}` and `[]` included, replaces it. A failed attempt keeps the
+    checkpoint for the retry.
 
 ## Vocabulary
 
