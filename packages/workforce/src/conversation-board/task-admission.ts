@@ -25,7 +25,7 @@ import { FILING_SESSION_STATE_KEY } from "../workers/keys";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
 
 /** The running row this session works, on the ledger of the conversation it was opened for, or none. */
-export async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
+async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
   const filing = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
   if (typeof filing !== "string") return undefined;
   const ref = await conversationLedgerAt(ctx, filing);

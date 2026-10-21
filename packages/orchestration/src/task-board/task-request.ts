@@ -171,7 +171,7 @@ export async function admitClaimedTask(
  * result can be (see {@link Admitted.answerCounts}). With no request-end seam,
  * the task is checked here.
  */
-export async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
+async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
   const key = requestKey(ctx);
   const record = admitted.get(key);
   if (record === undefined) return;
