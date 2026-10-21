@@ -54,7 +54,8 @@ const config: Config = {
         // between two figures on one page; `prefixIds` prefixes each id with
         // its file's name instead. Class names are left alone: they are the
         // page's drawing classes. `descProp` lets a figure pass its long
-        // description as the SVG's <desc>.
+        // description as the SVG's <desc>. Any <title> is stripped, as the
+        // brand lint requires: the figure's caption names the drawing.
         svgr: {
           svgrConfig: {
             descProp: true,
@@ -64,7 +65,7 @@ const config: Config = {
                   name: "preset-default",
                   params: {
                     overrides: {
-                      removeTitle: false,
+                      removeTitle: true,
                       removeViewBox: false,
                       cleanupIds: false,
                     },

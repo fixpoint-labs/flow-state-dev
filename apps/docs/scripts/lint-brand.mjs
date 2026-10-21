@@ -158,8 +158,9 @@ function svgsUnder(dir) {
       if (statSync(full).isDirectory()) files = files.concat(svgsUnder(full));
       else if (entry.endsWith(".svg")) files.push(full);
     }
-  } catch {
-    // A missing directory has no diagrams.
+  } catch (err) {
+    // A missing directory has no diagrams; any other failure must not skip a tree silently.
+    if (err?.code !== "ENOENT") throw err;
   }
   return files;
 }
