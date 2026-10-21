@@ -55,8 +55,7 @@ describe("defineResource", () => {
   });
 
   it("throws when render is used with contentTemplate", () => {
-    // Only the runtime refuses this pair. The typed `c` keeps the call compiling on
-    // every TS version: inside expect(() => …) an untyped one defeats inference.
+    // Typed `c`: an untyped callback inside expect(() => …) defeats inference.
     expect(() => defineResource({
       scope: "session",
       stateSchema: z.object({}),

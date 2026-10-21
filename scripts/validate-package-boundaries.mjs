@@ -235,9 +235,7 @@ for (const cycle of cycles) {
   errors.push(`circular dependency detected: ${cycle.join(" -> ")}`);
 }
 
-// One compiler: `tsc` comes from the root. A workspace member may declare
-// `typescript` only because it imports it, and then at the root's exact
-// range; `@typescript/*` never.
+// A member may declare `typescript` at the root's range only because it imports it; `@typescript/*` never.
 const rootTypescript = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).devDependencies?.typescript;
 for (const manifestPath of workspaceManifests(rootDir)) {
   const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, manifestPath), "utf8"));

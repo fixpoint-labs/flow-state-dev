@@ -214,8 +214,7 @@ describe("validateClientProjection", () => {
 
 describe("defineResource client projection validation", () => {
   it("rejects `expose` + `data`", () => {
-    // Only the runtime refuses this pair. The typed `s` keeps the call compiling on
-    // every TS version: inside expect(() => …) an untyped one defeats inference.
+    // Typed `s`: an untyped callback inside expect(() => …) defeats inference.
     expect(() =>
       defineResource({
         ref: "memo",
