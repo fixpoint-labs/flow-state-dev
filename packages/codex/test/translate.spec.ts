@@ -12,7 +12,7 @@
  * that demonstrably ended must not read that way.
  */
 import { describe, it, expect } from "vitest";
-import { translateCodexEvent } from "../src/translate";
+import { readableFailure, translateCodexEvent } from "../src/translate";
 import type { CodexThreadEvent } from "../src/types";
 
 const tr = (event: CodexThreadEvent) => translateCodexEvent(event);
@@ -60,6 +60,16 @@ describe("translateCodexEvent — lifecycle", () => {
     expect(tr({ type: "turn.completed" } as CodexThreadEvent)).toEqual([
       { kind: "turn_completed", usage: null },
     ]);
+  });
+
+  it("turn.failed reads the API's JSON error body down to its one line", () => {
+    // What Codex passed through for a model a ChatGPT account can't use.
+    const body = JSON.stringify({ detail: "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account." });
+    expect(tr({ type: "turn.failed", error: { message: body } })).toEqual([
+      { kind: "turn_failed", message: "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account." },
+    ]);
+    expect(readableFailure('{"error":{"message":"quota"}}')).toBe("quota");
+    expect(readableFailure("{not json")).toBe("{not json");
   });
 
   it("turn.failed carries the model's failure message", () => {
@@ -198,10 +208,17 @@ describe("translateCodexEvent — items", () => {
     ).toEqual(["tool_call", "tool_result"]);
   });
 
-  it("the non-fatal error item becomes an error event; nothing about it ends the run", () => {
+  it("the non-fatal error item is a kept notice, not an error: it is a warning and the run goes on", () => {
+    // Codex's own words at 0.152.1, for a `service_tier` its model does not advertise.
+    const warning = "Configured service tier `priority` is not advertised as supported for model `x` and will be omitted from requests.";
     expect(
-      tr({ type: "item.completed", item: { id: "i6", type: "error", message: "transient" } }),
-    ).toEqual([{ kind: "error", message: "transient" }]);
+      tr({ type: "item.completed", item: { id: "i6", type: "error", message: warning } }),
+    ).toEqual([{ kind: "notice", message: warning }]);
+  });
+
+  it("the stream's own error is a stream_error the block shows as status and keeps for the end", () => {
+    const retry = "Reconnecting... 2/5 (stream disconnected before completion: error sending request)";
+    expect(tr({ type: "error", message: retry })).toEqual([{ kind: "stream_error", message: retry }]);
   });
 
   it("item.updated is not re-emitted — the started/completed pair is the whole record", () => {
