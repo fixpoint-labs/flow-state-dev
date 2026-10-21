@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | A `roles:` key in each `WORKER.md`, as the concept's parts table places it (*Stored: the worker's configuration*) · roles read off whichever entries a flow happens to have |
 | **Because** | A role's entries live on the flow, so the flow is where a role is true or false. A worker's file could only narrow its flow, and what narrowing would carry, whether the worker files, its delegate list decides: [FIX-1802 D1](../FIX-1802/DECISIONS.md#d1) rejected a filing flag beside delegates because the two could disagree. Reading roles off the entries present would catch a half-wired flow, but not a manager kit spread with none of its entries, the W-01 failure; only the factory's mark catches that, declared or not. The concept's rule 15, the owner's call, says roles are declared, so they stay declared. 164 worker files stay as they are |
-| **Locks in** | `roles` on `workerFlow(build, { roles })` and on a `workerFlows` entry (`{ flow, roles }`), a public option. Omitted, a flow has no role beyond every worker's. The check runs both ways: a declared role missing an entry is refused, and so is a piece of a role's factory on a flow that doesn't declare that role (its entries; for a manager, also the kit's actions and resources). Both ways read the factory's mark, not a bare name: a declared role's entry must carry it, and a flow's own unmarked `dispatch` or `work` is its own action, never a role's. The built-ins declare theirs: agent, contributor and manager; coordinator, all three. The concept's parts-table row moves to *the worker flow's registration*; *whether a coordinator may change its own delegates* stays worker configuration (rule 13) |
+| **Locks in** | `roles` on `workerFlow(build, { roles })` and on a `workerFlows` entry (`{ flow, roles }`), a public option. Omitted, a flow has no role beyond every worker's. The check runs both ways: a declared role missing an entry is refused, and so is a piece of a role's factory on a flow that doesn't declare that role (its entries; for a manager, the delegation board's pieces: its ledger, `dispatch`, `onTaskSettled` and the delegate actions. The plan ledger and a worker's tools for its own steps carry no manager mark). Both ways read the factory's mark, not a bare name: a declared role's entry must carry it, and a flow's own unmarked `dispatch` or `work` is its own action, never a role's. The built-ins declare theirs: agent, contributor and manager; coordinator, all three. The concept's parts-table row moves to *the worker flow's registration*; *whether a coordinator may change its own delegates* stays worker configuration (rule 13) |
 
 **What would change my mind:** an app that needs two workers on one flow to differ by role in a
 way their delegate lists can't say. Then a worker's file narrows its flow's roles, never widens
@@ -46,8 +46,9 @@ It comes down to the delegate list: a role per worker is a second grant beside i
 | **Locks in** | A worker flow whose user-message action has any other name is refused, the problem naming the action to rename. A second public action that declares `userMessage` is still refused. The inventory's `door` stays and reads `respond`. The changeset carries the epic's `run` → `respond` line widened to *every worker flow's door* |
 
 **What would change my mind:** a worker flow whose door must keep another name for a caller we
-can't change. None in the repo: the doors are the agent's and coordinator's `run` and Shift
-Manager's EM `message` and coder `message`, all ours.
+can't change. None in the repo: the doors are the agent's, coordinator's and Error Reporter's
+`run`, Shift Manager's EM `message` and coder `message`, and the goal fixtures' `run` doors, all
+ours.
 
 ![D2: the door found by name, chosen, beside by shape; decided by rule 15 checking entries by name](figures/d2-door-by-name.svg)
 
@@ -66,18 +67,24 @@ It comes down to rule 15: every other entry is found by name, and a door found b
   `work` must be `workerTaskEntry`'s, so a `work` gated by another binding is refused at hire,
   not at the claim gate. The manager's factory gets the same kind of mark.
 - **The delegate check reads the declared role**; the hire guarantees the entry behind it. A
-  delegate list on a flow that isn't a manager stays accepted (FIX-1802 D1).
-- **Requests in flight at upgrade.** A request running under `run` or `runTaskBoard` isn't
-  recovered after the rename: the loss the epic accepted for durable keys. No task row names
-  either entry. A lost pass is re-run by the next ending, touch or wake. FIX-2078 is unreleased; if a
-  release carries it before this, a wake naming the old pass is lost the same way and the
-  sweeper (rule 8) re-runs what the board owes. No migration code.
-- **Shift Manager**: EM's and coder's `message` become `respond`, behaviour unchanged; each
-  declares the roles its entries give it after FIX-2083.
+  delegate list on a flow that isn't a manager stays accepted (FIX-1802 D1). It is the one answer
+  to which flows take routed or filed work; FIX-2083 removes `delegateFlows` and `listDelegates`'
+  `posts`/`both`. The contributor guarantee covers a dispatched plan row through FIX-2082's check.
+- **Requests and wakes stored at upgrade (BP-030).** A stored request under `run`, running or
+  parked (today every parked `dispatchTask` wait), resumes as `respond` in the resume path: an
+  internal read of an old record, not an [(e)](../../epics/FIX-2056/DECISIONS.md#e) alias, and
+  callers can't send `run`. A stored request under `runTaskBoard` resumes as `dispatch` the same
+  way. Beside FIX-2078's one-off wake backfill, host start rewrites any stored wake naming
+  `runTaskBoard` to `dispatch`, a no-op when there is none. No task row names either entry.
+- **Shift Manager**: EM's and coder's `message` become `respond`. EM's behaviour is unchanged;
+  the coder's is whatever its door does when this lands (FIX-2086's steer door if that landed
+  first). Each declares the roles its entries give it after FIX-2083. EM's `drain` runs the
+  board pass outside `dispatch`; it is removed, or becomes a screen that triggers `dispatch`, so
+  FIX-2078's one pass at a time holds.
 - **What this takes from FIX-2078 and FIX-2083**, neither on `main`: their specs as reviewed
   (#3594, #3598). FIX-2078 brings the `onTaskSettled` factory and the board pass this names
   `dispatch`; FIX-2083 removes posts, so `onDelegatedPost` and the post ending leave the table.
-- **Changesets**: workforce, minor; migration rows for the door and `roles`. No POC and no
+- **Changesets**: workforce, minor; the epic's migration rows for every worker flow's door, `runTaskBoard` → `dispatch`, and `roles`. No POC and no
   checker: premises read from `main` at `96404d25`, and the spec rests on no count.
 
 ## Considered and dropped
@@ -86,7 +93,7 @@ It comes down to rule 15: every other entry is found by name, and a door found b
 |---|---|
 | Rename `defineSessionBoard` and `workerTaskEntry` to role names | A rename with no behaviour; FIX-2071's retired-terms pass owns names |
 | Run each entry once with a probe input | Writes state and needs a session; rule 15 says probe the schema, as the door check does |
-| Keep `run` and `runTaskBoard` as hidden aliases for requests in flight | [(e)](../../epics/FIX-2056/DECISIONS.md#e): no aliases; the loss is one reply turn at the upgrade moment |
+| Keep `run` and `runTaskBoard` as hidden aliases callers can still send | [(e)](../../epics/FIX-2056/DECISIONS.md#e): no aliases. Stored records are read under the new names instead (BP-030) |
 | Check one way: only a declared role's entries | Hires a manager kit spread with neither its entries nor `roles`, the W-01 failure |
 | Refuse every public action but `respond` | Polices a flow's own screens (EM's `file`, `ask`); the concept's line is about where a user's message arrives |
 
@@ -121,5 +128,9 @@ Recorded for the implementer, verbatim; not baked into the design.
   `dispatch` or `work`. The goal's *one factory per role* narrowed to the entries; the
   conditional wake rename dropped. Roles stay declared (rule 15) against the architect's lean
   to infer them.
+- **Cross-spec audit** — stored `run` requests and board-pass wakes carried across the rename
+  instead of lost; the door inventory completed; leg a's fixtures reshaped so FIX-2078's build
+  check can't refuse them first; the manager mark scoped to the delegation board; Shift
+  Manager's `drain` and coder door named; the migration rows widened.
 
 Open: none.

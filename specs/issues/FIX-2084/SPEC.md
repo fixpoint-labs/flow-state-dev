@@ -16,7 +16,7 @@ nothing else of them.
 | **spreads a role's factory and doesn't say so** | Takes tasks once named a delegate; a manager kit spread without its entries files tasks whose endings never arrive | Refused until it declares the role ([D1](DECISIONS.md#d1)) |
 | **sends a user's message by action name** | `run` on the agent and coordinator, `message` on Shift Manager's EM | `respond` on every worker ([D2](DECISIONS.md#d2)); apps reading `door` change nothing |
 | **reads a trace of a board pass** | Sees `runTaskBoard` | Sees `dispatch` |
-| **upgrades a host mid-reply** | — | That one turn isn't recovered; the user resends it |
+| **upgrades a host mid-reply or mid-wait** | — | A stored `run` request resumes as `respond`, and a stored board-pass wake is rewritten to `dispatch` at host start; nothing is lost |
 
 ## The goal, and how we'll know it's met
 
@@ -52,8 +52,8 @@ must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/workers/roles-checked-at-hire/` · no model · run by the implementer · verdict in the implementation PR |
-| **Signal** | a: six flows with one fault each (contributor without `work`; a `work` not built by `workerTaskEntry`; manager without `onTaskSettled`; a `workerTaskEntry` with `contributor` undeclared; the manager kit spread with neither its entries nor `roles`; door named `run`), each refused with one problem naming flow, role and entry; nothing hired. b: a flow wired only from the two factories plus `respond` is hired as both; a task it files starts through `dispatch` and its ending arrives on `onTaskSettled`. c: agent, coordinator and Shift Manager's devteam host hire; every worker flow has `respond`, no `run`; every manager `dispatch`, no `runTaskBoard` |
-| **Anti-game** | Refusals from `hireWorkforce`, not `workerFlowProblems`; leg c reads registered action maps, not source; leg b reads the engine's request store |
+| **Signal** | a: six flows with one fault each, each one only the role check can refuse (contributor without `work`; a `work` not built by `workerTaskEntry`; manager without its marked `dispatch`; a `workerTaskEntry` with `contributor` undeclared; the manager kit spread with its `onTaskSettled` but neither `dispatch` nor `roles`; door named `run`), each refused with one problem naming flow, role and entry; nothing hired. b: a flow wired only from the two factories plus `respond` is hired as both; a task it files starts through `dispatch` and its ending arrives on `onTaskSettled`. c: agent, coordinator and Shift Manager's devteam host hire; every worker flow has `respond`, no `run`; every manager `dispatch`, no `runTaskBoard` |
+| **Anti-game** | A manager without `onTaskSettled` is refused when built, by FIX-2078's check, before the hire runs; that case is FIX-2078's, so no fixture lacks it · Refusals from `hireWorkforce`, not `workerFlowProblems`; leg c reads registered action maps, not source; leg b reads the engine's request store |
 | **Control that must fail** | `GOAL_CONTROL=no-role-check` must FAIL leg a on *each broken flow refused*. Today's `main` must FAIL all three legs |
 
 ## What changes
@@ -91,8 +91,10 @@ A flow passed built declares in its entry, `{ flow, roles }`. One that also take
 **Docs:** update *Workforce → Workers on disk* (*Which flows can run workers*: roles, the entries
 checked, the door named `respond`), *Workforce → Delegating work* (*On your own worker flow*:
 `roles`, `dispatch`), and the `run` examples on *Code on disk*, *Built-in worker* and
-*Coordinators*. Update the workforce README (*Hiring a workforce*, *What a hireable worker flow
-must admit*). Amend the concept's parts table for [D1](DECISIONS.md#d1). No new page; FIX-2081
+*Coordinators*. Every example of a worker flow of your own gains its `roles`: *Coordinators*'
+two own-delegate sections, *Overview*'s task-entry paragraph, *Shift Coordinator*, and the
+workforce README's row. Update the workforce README (*Hiring a workforce*, *What a hireable
+worker flow must admit*). Amend the concept's parts table for [D1](DECISIONS.md#d1). No new page; FIX-2081
 publishes the task-board story.
 
 ## What the hire checks
@@ -119,7 +121,8 @@ is its own action.
 ## What stays as it is
 
 - **The contract's checks** of configuration, attribution and one user-message action.
-- **Who files:** a worker whose delegates take a task ([FIX-1802 D1](../FIX-1802/DECISIONS.md#d1)).
+- **Who files for others:** a worker whose delegates take a task ([FIX-1802 D1](../FIX-1802/DECISIONS.md#d1)).
+  A worker's own plan row needs no delegate and no manager role (FIX-2076).
 - **The inventory's `door`**, now always `respond`, and what `respond` does: today's `run`,
   reopen included until FIX-2086.
 - **`defineSessionBoard` and `workerTaskEntry`**, as the manager's and contributor's factories.
@@ -134,7 +137,7 @@ is its own action.
 | [FIX-1802 D1](../FIX-1802/DECISIONS.md#d1): delegates are the whole grant to file, no flag | **Kept**, and why roles live on the flow ([D1](DECISIONS.md#d1)) |
 | The delegate check: a delegate takes tasks when its flow has a marked `work` | **Reads the role.** The mark stays inside the contributor check |
 | `defineSessionBoard`, `workerTaskEntry` | **Kept** as the factories the check names |
-| The epic's [migration row](../../epics/FIX-2056/migration.md): the agent's `run` → `respond` | **Delivered**, widened to every worker flow's door |
+| The epic's [migration row](../../epics/FIX-2056/migration.md): the agent's `run` → `respond` | **Delivered**, widened to every worker flow's door; rows added for `runTaskBoard` → `dispatch` and for `roles` |
 
 | The debt | |
 |---|---|

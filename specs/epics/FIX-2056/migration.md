@@ -19,4 +19,6 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `TaskCollection.reopen` | A follow-up: `createTask` in the task's session | FIX-2086 |
 | `DELEGATED_POST_ENTRY` | A routed task through `WORKER_TASK_ENTRY` | FIX-2083 |
 | `settleSplitTask` | Nothing: the claim gate settles a split when its pieces end | FIX-2077 |
-| The agent worker's `run` entry | `respond` | FIX-2084 |
+| Every worker flow's door: `run` (agent, coordinator, Error Reporter), Shift Manager's EM and coder `message` | `respond` | FIX-2084 |
+| A manager's `runTaskBoard` entry | `dispatch` | FIX-2084 |
+| A worker flow with a role's entries and no declared role | Declare it: `workerFlow(build, { roles })` or `{ flow, roles }` in `workerFlows` | FIX-2084 |
