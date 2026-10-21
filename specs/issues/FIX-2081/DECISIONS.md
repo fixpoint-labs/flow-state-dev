@@ -14,8 +14,8 @@ flowchart TD
   D1 -.->|"rejected"| X1["remove it here · routing and waiting break until FIX-2082 and FIX-2083"]
   I --> D2["D2 · delegates all follows the roster as it changes"]
   D2 -.->|"rejected"| X2["a copy of the roster taken at the first read"]
-  I --> D3["D3 · the assignee may checkpoint output on its own running task"]
-  D3 -.->|"rejected"| X3["completeTask under a new name · a write that also sets status"]
+  I --> D3["D3 · a worker reports progress through reportProgress, the fifth task tool"]
+  D3 -.->|"rejected · a second caller with opposite rules"| X3["an output row on updateTask"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | Removing it here, as the epic's [migration lines](../../epics/FIX-2056/migration.md) assign it |
 | **Because** | It does two jobs nothing else does yet: its `wait` is how a request waits on a task (`getTask`'s wait is FIX-2082's), and `post: true` is how a judgment coordinator hands a message on (routed tasks are FIX-2083's). This issue blocks both. Removed here, any release in between ships coordinators that can't route and workers that can't wait; the epic counts a regressed coordinator goal as *not done* |
-| **Locks in** | FIX-2082 removes the wait form, FIX-2083 the post form, and the later one the tool, its action and its migration line (amended in this PR). Meanwhile `dispatchTask({ goal })` duplicates `createTask`, `{ taskId }` releases a held task, and `{ taskId, assignee }` obeys the field table; the goal check's leg b covers both. Amended with it, in this PR: the epic's [(e)](../../epics/FIX-2056/DECISIONS.md#e) allows `dispatchTask` until then, #3102's PR-2 rides its wait until FIX-2082, and FIX-2087's tool sweep names it. At the closure, still no task tool but the four and `answerTask` |
+| **Locks in** | FIX-2082 removes the wait form, FIX-2083 the post form, and the later one the tool, its action and its migration line (amended in this PR). Meanwhile `dispatchTask({ goal })` duplicates `createTask`, `{ taskId }` releases a held task, and `{ taskId, assignee }` obeys the field table; the goal check's leg b covers both. Amended with it, in this PR: the epic's [(e)](../../epics/FIX-2056/DECISIONS.md#e) allows `dispatchTask` until then, #3102's PR-2 rides its wait until FIX-2082, and FIX-2087's tool sweep names it. At the closure, still no task tool but the five and `answerTask` |
 
 ![D1: when dispatchTask goes. Keep it until its wait and post form are replaced, chosen, beside removing it here. Decides it: a release between this issue and FIX-2082 and FIX-2083. Kept, coordinators still route and workers still wait; removed, both break. The price: a second way to file and start a task for one to two issues. A tie: the closure still allows no fifth tool. Locks in: the later of FIX-2082 and FIX-2083 removes it. Flips if both land in the same release as this one](figures/d1-dispatch-task-stays.svg)
 
@@ -53,16 +53,16 @@ It comes down to a worker hired mid-conversation: a copy of the roster never rea
 is copied at first read, like a listed `delegates:`.
 
 <a name="d3"></a>
-## D3 · The assignee may checkpoint `output` on its own running task
+## D3 · A worker reports progress through `reportProgress`, the fifth task tool
 
 | | |
 |---|---|
-| **Instead of** | The answering turn's last reply being the only way a task gets its output (FIX-2077's output line, FIX-2076's D2) |
-| **Because** | The owner asked for a way to set a task's output on purpose, and settled it on the epic thread ([architect](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315193445), [settlement](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315204382)). It reuses `updateTask` and adds no setter. Done still follows the return (rule 6), and a worker still never settles its own row (rule 18) |
-| **Locks in** | Five points. **(1) Precedence:** a non-empty final result, plain text included, replaces the checkpoint; a final result that is nothing or an empty string leaves the latest checkpoint as the output. **(2) Running only, assignee only:** checked inside FIX-2080's guarded write, from this table's `output` row; the filer can't write it, and rule 20 still freezes the output once the task finishes. **(3) Waiters:** `getTask({ wait: true })` and ER-2 still wake only on done; `getTask` and `listTasks` show the latest checkpoint as progress. **(4) Retries:** a failed attempt or a lease reclaim keeps the checkpoint, so the next attempt resumes from it. **(5) Output only, never status:** this is not `completeTask` under a new name. FIX-2086 adds the assignee to `updateTask`'s callers for this row only; FIX-2077's output line is amended in a follow-up PR; FIX-2076's D2 reduces to "the answering turn finalizes". The output's shape is not part of FIX-2084's worker contract |
+| **Instead of** | An `output` row on `updateTask` the assignee writes while its task runs, as [first settled](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315204382); or the answering turn's last reply as the only way a task gets its output |
+| **Because** | The owner decided it ([decision](https://github.com/fixpoint-labs/flow-state-dev/pull/3593#issuecomment-6315764765)). `updateTask` is the filer's tool: only the filer, or the user from a screen, calls it, and its fields change only before a start. A worker writing `output` while the task runs is a second caller with opposite rules on one tool, the overload the four tools removed. Done still follows the return (rule 6), and a worker still never settles its own row (rule 18) |
+| **Locks in** | `reportProgress({ statusNote?, output? })`. **Where:** offered only on a task turn; it acts on the task the worker holds through its claim (FIX-1047), so it takes no `id`. Any request holding the claim may report, a queued `receive` included: the claim decides, not the entry. Refused once the task has finished. **Fields:** `statusNote` is a one-line progress note for task views; `output` is a checkpoint of the result so far. **Never status:** neither field changes the task's status. Done stays rule 6, and a worker never settles its own row (rule 18); the name is `statusNote`, not `status`, so no one reads it as a way to complete a task ([owner](https://github.com/fixpoint-labs/flow-state-dev/pull/3596#issuecomment-6315808568)). **The checkpoint rule:** a non-empty final result, plain text included, replaces it; an empty or missing one leaves the latest checkpoint as the output; a failed attempt or a lease reclaim keeps it for the next attempt. **Waiters:** `getTask({ wait: true })` and ER-2 still wake only on done; `getTask` and `listTasks` show the latest checkpoint as progress. **Counts:** five task tools (the filer's four and this) and seven model tools. **Later:** `percent`. **Held:** `followUps`; found work still goes to the filer as a message. `updateTask` keeps one caller and its rules; FIX-2076's D2 and FIX-2077's output line point here |
 
-**What would change my mind:** a worker needing a checkpoint to also mean done. Then it is a
-settle tool again, which rule 18 rules out.
+**What would change my mind:** a worker needing a report to also mean done. Then it is a settle
+tool again, which rule 18 rules out.
 
 ## Decided, not asked
 
@@ -80,7 +80,7 @@ settle tool again, which rule 18 rules out.
   refused, not edited. The per-field setters stay unguarded. The table also carries FIX-2080's
   `held`, `deps` and `maxAttempts` rows, so once this lands FIX-2080's guard reads its until-start
   check from it rather than keeping its own beside it: one rule source inside the one patch.
-- **The field table is the concept's,** plus one row, `output` ([D3](#d3)). `message` is FIX-2086's row. A cancel sent with
+- **The field table is the concept's,** unchanged. `message` is FIX-2086's row. A cancel sent with
   anything else is refused. A refusal names field, state and next move: steer (FIX-2086), cancel
   and refile, or a follow-up.
 - **A started task can't be reassigned,** closing FIX-1659 with neither of its options. The
@@ -138,7 +138,8 @@ Recorded for the implementer, not folded into the design.
   recorded row's map entry left to FIX-2080; D1's three epic lines amended; migration rows added.
 - **Round 2** — the field table carries FIX-2080's rows too, so the patch has one rule source; a
   cancel records its ending through `endingOf`, with no write path of its own.
-- **Cross-spec** — the owner's checkpoint `output` row ([D3](#d3)), settled on the epic thread;
-  FIX-2086, FIX-2076 and FIX-2077 amended to match.
+- **Cross-spec** — the owner's checkpoint, first as an `output` row on `updateTask`, then, on the
+  owner's revision, as the worker's own `reportProgress` ([D3](#d3)); FIX-2076 and FIX-2077 point
+  at it, and FIX-2086's caller line is back to the filer and the user.
 
 Open: none.

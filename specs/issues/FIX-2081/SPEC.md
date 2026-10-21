@@ -1,4 +1,4 @@
-# FIX-2081 · Four task tools with one rule per field, as public actions, and delegates as authority
+# FIX-2081 · Five task tools with one rule per field, as public actions, and delegates as authority
 
 **Spec** · [Decisions](DECISIONS.md)
 
@@ -6,8 +6,8 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **builds a worker that hands out work** | Eleven task tools: three of them reassign, two settle a task by hand | Four: `createTask`, `getTask`, `listTasks`, `updateTask`. A task ends when its worker returns or throws |
-| **edits a task after filing it** | Only priority, metadata, assignee and a label change, and they land in any state, a finished task included | Every field changes until the task starts. After that, only a cancel, and the assignee's checkpoint of `output` while it runs ([D3](DECISIONS.md#d3)). A finished task refuses everything, and each refusal names its rule |
+| **builds a worker that hands out work** | Eleven task tools: three of them reassign, two settle a task by hand | Five: the filer's `createTask`, `getTask`, `listTasks`, `updateTask`, and the worker's `reportProgress` ([D3](DECISIONS.md#d3)). A task ends when its worker returns or throws |
+| **edits a task after filing it** | Only priority, metadata, assignee and a label change, and they land in any state, a finished task included | Every field changes until the task starts. After that, only a cancel. A finished task refuses everything, and each refusal names its rule |
 | **reassigns a task a worker is running** | It lands, and the old worker's result still counts (FIX-1659) | Refused: cancel it and file it again. A running task keeps one accountable worker |
 | **is a user deciding who gives work to whom** | A worker running a task hands pieces to anyone on the roster, and any worker with the delegate tools changes its own list | Tasks go only to the filer's delegates, or to anyone with `delegates: all`. Only the user changes a list, unless a coordinator was set at hire to change its own |
 | **runs a screen: the DevTool, an app** | Eleven `<tool>_tasks` actions, two that settle a task by hand | The same four, called as the signed-in user: cancel, hold, release or edit a task |
@@ -15,7 +15,7 @@
 
 ## The goal, and how we'll know it's met
 
-**A worker or a screen changes a task through four task tools; every field of `updateTask`
+**A worker or a screen changes a task through five task tools; every field of `updateTask`
 follows one rule, which a refusal names; and a task reaches only a worker its filer may give work
 to.**
 
@@ -24,7 +24,7 @@ to.**
 | **The real need** | *"One tool per job, and a refusal that names the rule … they decide who gives work to whom, and can cancel, release or edit tasks from a screen"* (the issue). The epic's [ER-5](../../epics/FIX-2056/DECISIONS.md#who-owns-what): the four task tools are the only task surface, for models and screens, with identity from the server |
 | **Smaller, and rejected** | Rename `addTask` and `readTask`, drop the settle tools. `updateTask` still writes a finished task, a running task is still reassigned, and pieces still reach anyone on the roster |
 | **Bigger, and not this issue's** | `getTask`'s wait (FIX-2082) · `updateTask`'s `message` (FIX-2086) · routed tasks (FIX-2083) · held on questions and `answerTask` (FIX-2058) · `sendMessage`, and reading any of the user's tasks by id (FIX-2070) |
-| **Not done if** | A removed tool or its action is still exported, apart from `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` ([D1](DECISIONS.md#d1)) · an edit lands on a started or finished task, through `updateTask` or `dispatchTask`'s reassign and release · a task or a piece reaches a worker that is not its filer's delegate · a worker not set to change its delegates changes them · an `output` checkpoint writes status, or lands from anyone but the assignee or outside its running task · an action as another user lands · a rule holds through the tool but not through the action |
+| **Not done if** | A removed tool or its action is still exported, apart from `answerTask` and, until FIX-2082 and FIX-2083, `dispatchTask` ([D1](DECISIONS.md#d1)) · an edit lands on a started or finished task, through `updateTask` or `dispatchTask`'s reassign and release · a task or a piece reaches a worker that is not its filer's delegate · a worker not set to change its delegates changes them · `reportProgress` is offered off a task turn, takes an `id`, changes the task's status, or lands once the task has finished · an action as another user lands · a rule holds through the tool but not through the action |
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ flowchart LR
   L1 --> R["tools as the model got them · rows read through getTask"]
   L2 --> R
   L3 --> R
-  R -->|"four task tools · every rule held and named · no reach past delegates"| P["PASS · goal met"]
+  R -->|"five task tools · every rule held and named · no reach past delegates"| P["PASS · goal met"]
   C["control · a task session reaches the roster again"] -.-> L3
   L3 -.->|"under the control"| F["must FAIL · a piece reaches a non-delegate"]
 ```
@@ -45,14 +45,14 @@ puts back today's reach, and it must fail.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-tools/four-tools-one-rule-per-field/` · no model: scripted turns on the real Workforce flows · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | a: workers are offered the four, `listDelegates`, and `answerTask` and `dispatchTask` while they stand; only a configured coordinator gets `addDelegate`, `removeDelegate`, `setFallback`. b: each field in each state (pending, held, running, finished), by tool, by `updateTask_tasks` as the user, and by `dispatchTask`'s reassign and release while it stands: allowed writes read back changed; refused ones leave the row unchanged and name field and state; a cancel with an edit is refused; a running task's reassign is refused and its first worker's result lands. c: a piece for a non-delegate is refused; under `all`, a worker hired mid-session is reachable; Bob's call to Alice's action is refused |
+| **Signal** | a: workers are offered the four, `reportProgress` on a task turn only, `listDelegates`, and `answerTask` and `dispatchTask` while they stand; only a configured coordinator gets `addDelegate`, `removeDelegate`, `setFallback`. b: each field in each state (pending, held, running, finished), by tool, by `updateTask_tasks` as the user, and by `dispatchTask`'s reassign and release while it stands: allowed writes read back changed; refused ones leave the row unchanged and name field and state; a cancel with an edit is refused; a running task's reassign is refused and its first worker's result lands. c: a piece for a non-delegate is refused; under `all`, a worker hired mid-session is reachable; Bob's call to Alice's action is refused |
 | **Input** | Deterministic workers and scripted tool calls. Other worker names and another field order must pass too |
 | **Anti-game** | Tools from the model request; rows through the public read actions, not the collection |
 | **Control that must fail** | `GOAL_CONTROL=roster-reach` must FAIL leg c on *a piece for a non-delegate is refused*. `GOAL_CONTROL=edit-any-state` must FAIL leg b on the running and finished columns. Today's `main` also fails legs a and b |
 
 ## What changes
 
-![Two panels. Today: eleven task tools, six of them crossed out here, and an updateTask with no state rule. After: four tools, and updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel, and while it runs the assignee's output checkpoint; after, nothing. A strip below: who a task can reach, today the delegates and in a task session anyone on the roster; after, the filer's delegates, or anyone with delegates all](figures/what-changes.svg)
+![Two panels. Today: eleven task tools, six of them crossed out here, and an updateTask with no state rule. After: the filer's four tools, and updateTask's three bands: before a task starts, edits, the assignee, hold and release; until it finishes, a cancel; after, nothing. Beside them, the worker's reportProgress, on a task turn. A strip below: who a task can reach, today the delegates and in a task session anyone on the roster; after, the filer's delegates, or anyone with delegates all](figures/what-changes.svg)
 
 Six tools leave, `updateTask` gets a rule per field, and the delegate list becomes the only reach.
 
@@ -71,14 +71,16 @@ Six tools leave, `updateTask` gets a rule per field, and the delegate list becom
 + updateTask({ id, status: "cancelled" })                // until it finishes
 - completeTask({ taskId, output }) / failTask({ taskId, error })
 + // return or throw: the claim gate records the ending
-+ updateTask({ id, output })                            // the assignee, while it runs: a checkpoint, not done
++ reportProgress({ statusNote: "Drafting the summary", output }) // on a task turn: a checkpoint, not done
 ```
 
-One row joins the concept's field table ([D3](DECISIONS.md#d3)):
+The worker's one task tool, `reportProgress`, is offered only on a task turn and acts on the task
+its claim holds, so it takes no `id`; once the task finishes it is refused ([D3](DECISIONS.md#d3)):
 
-| Field | Means | Allowed |
-| -- | -- | -- |
-| `output` | **Checkpoint** it: the latest output so far, read by `getTask` and `listTasks` as progress. Writes `output` only, never status, and wakes no waiter. A non-empty final result replaces it; an empty one leaves it as the output. A failed attempt or a reclaimed lease keeps it | While it runs, by its assignee only; the filer can't |
+| Field | Means |
+| -- | -- |
+| `statusNote` | A one-line progress note for task views. It never changes the task's status: done stays rule 6, and a worker never settles its own row (rule 18) |
+| `output` | A checkpoint of the result so far, read by `getTask` and `listTasks` as progress. Wakes no waiter. A non-empty final result replaces it; an empty or missing one leaves it as the output. A failed attempt or a reclaimed lease keeps it |
 
 ```diff
   # WORKER.md of a coordinator
@@ -86,7 +88,7 @@ One row joins the concept's field table ([D3](DECISIONS.md#d3)):
 + managesOwnDelegates: true             # only then addDelegate, removeDelegate, setFallback
 ```
 
-**Docs:** *Orchestration → Task board* opens by teaching one task: the four tools and the field
+**Docs:** *Orchestration → Task board* opens by teaching one task: the five tools and the field
 table (the epic's shared opening). *Workforce → Delegating work* and *Coordinators* take delegates
 as authority, `all` and the new setting. Every other page, guide and README naming a removed tool
 is updated (*Task substrate*, *Overview*, *Goal-seek loop*, *Shift Coordinator*, *Projects*, the
@@ -139,14 +141,14 @@ field's rule, FIX-2080's included; the block maps the input and names the refusa
 | The debt | |
 |---|---|
 | **Removes** | Six tools and their actions · the settle tools' claim guard · unguarded edits on the tool path · the task-session roster reach · delegate tools on every coordinator |
-| **Adds** | The field table, read by FIX-2080's guarded patch · `delegates: all` · `managesOwnDelegates` · a filer filter · `dispatchTask` beside `createTask` for one or two issues, paid by FIX-2082 and FIX-2083 ([D1](DECISIONS.md#d1)) |
+| **Adds** | The field table, read by FIX-2080's guarded patch · `reportProgress` ([D3](DECISIONS.md#d3)) · `delegates: all` · `managesOwnDelegates` · a filer filter · `dispatchTask` beside `createTask` for one or two issues, paid by FIX-2082 and FIX-2083 ([D1](DECISIONS.md#d1)) |
 | **Leaves** | Reading any of the user's tasks by id, across boards: FIX-2070's `{ task }` addressing · the raw collection's unguarded setters, the substrate's escape hatch |
 
-**Net: down.** Six tools, a guard and a reach go; one table, two settings and a filter arrive.
+**Net: down.** Six tools, a guard and a reach go; one table, a worker tool, two settings and a filter arrive.
 
 ## Sign off
 
-**[The goal](#the-goal-and-how-well-know-its-met), at that size:** four tools, every field's rule
+**[The goal](#the-goal-and-how-well-know-its-met), at that size:** five tools, every field's rule
 held and named for a model and a screen alike, and no reach past the delegates. If wrong: FIX-2082,
 FIX-2083 and FIX-2086 build on a tool surface that moves again.
 
@@ -154,14 +156,14 @@ FIX-2083 and FIX-2086 build on a tool surface that moves again.
 table and two settings arrive. If wrong: `dispatchTask` outlives its two replacements.
 
 1. **[D1](DECISIONS.md#d1) · `dispatchTask` stays until its wait and its post form are replaced.**
-   If wrong: a task tool beyond the four and `answerTask` for one or two issues longer than the
+   If wrong: a task tool beyond the five and `answerTask` for one or two issues longer than the
    epic planned. **The one to weigh:** it amends your epic decision (e), its migration line and
    #3102's re-home; approving D1 approves those three lines.
 2. **[D2](DECISIONS.md#d2) · `delegates: all` follows the roster as it changes.** If wrong: a
    worker hired for one job starts getting work from an `all` worker nobody pointed at it.
-3. **[D3](DECISIONS.md#d3) · the assignee may checkpoint `output` on its own running task.**
-   Your proposal, settled on the epic thread. If wrong: one row comes back out; nothing else
-   builds on it but FIX-2086's caller line and FIX-2076's D2.
+3. **[D3](DECISIONS.md#d3) · a worker reports progress through `reportProgress`, not `updateTask`.**
+   Your decision on the epic thread. If wrong: a fifth task tool where a field would do; only
+   FIX-2076's D2 and FIX-2077's output line build on it.
 
 **Open: none.**
 
