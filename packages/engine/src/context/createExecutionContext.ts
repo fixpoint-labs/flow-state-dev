@@ -3590,9 +3590,14 @@ export async function createExecutionContext<
           // flows resume one gate at a time without a shared "consumed" flag.
           // A resolution with no `pendingBlockLogicalId` matches no gate: there
           // is no first-reached-gate fallback (FIX-1707).
+          // A block that parks again on a new gate (a wait that waits again
+          // at its deadline, FIX-2082) reaches this from the same path: a
+          // gate that names its own id is resolved only by its own
+          // resolution.
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
-            resumeCtx.pendingBlockLogicalId === callerLogicalId;
+            resumeCtx.pendingBlockLogicalId === callerLogicalId &&
+            (suspendOpts.suspensionId === undefined || suspendOpts.suspensionId === resumeCtx.suspensionId);
 
           if (isResolvingGate) {
             if (resumeCtx.action === "reject") {
