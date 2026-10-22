@@ -47,6 +47,7 @@ import { z } from "zod";
 import {
   defineSessionBoard,
   projectAddressSchema,
+  routedTaskHistory,
   workerConfigOf,
   WORKSTREAM_OPENED_ENTRY,
   workstreamOpenedEntry,
@@ -178,13 +179,15 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   /**
    * The turn: one model call, as the worker the session names, with its
    * file's instructions and model, the session board's task tools, and the
-   * tools its `tools:` line names. Its history is the conversation's.
+   * tools its `tools:` line names. Its history is the session's, with a
+   * routed task's recent lines from the conversation that routed it shown
+   * just before the message, on that turn only.
    */
   const turn = generator({
     name: EM_TURN,
     inputSchema: z.object({ message: z.string() }),
     itemVisibility: { client: true, history: true },
-    history: true,
+    history: routedTaskHistory,
     uses: [kit.tools, kit.messages],
     prompt: [
       (_input: unknown, ctx: BlockContext) => settingsOf(ctx).teamInstructions,

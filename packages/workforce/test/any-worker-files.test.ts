@@ -405,6 +405,17 @@ describe("the grant is server-written, never input (BR-6)", () => {
     }
   });
 
+  it("refuses a coordinator session create that names the conversation a routed task came from, as an `agent` one (FIX-2083)", async () => {
+    const h = host();
+    try {
+      const created = await h.create("alice", "coordinator", { state: { workerId: "router", [ROUTED_FROM_STATE_KEY]: "s-someone-else" } });
+      expect(created.status).toBe(400);
+      expect(created.body.error).toMatch(/"routedFrom"/);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("ignores a delegate list on an action's input: a worker the session doesn't list is refused", async () => {
     const h = host();
     try {

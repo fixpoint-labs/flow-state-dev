@@ -56,6 +56,7 @@ import * as workforce from "@flow-state-dev/workforce";
 import { createWorkforceClient } from "@flow-state-dev/workforce/browser";
 import { readWorkforce } from "@flow-state-dev/workforce/loader";
 import { z } from "zod";
+import { boardRowPrefix, isRoutedTask } from "../../lib/routed-tasks.mts";
 
 const ORG = "goal-org";
 const ALICE = "u_alice";
@@ -297,14 +298,11 @@ async function quiet(): Promise<void> {
   throw new Error("something kept running for a minute");
 }
 
-const boardPrefix = (sessionId: string) =>
-  `tasks/${[...`${sessionId}~`].map((c) => (/[a-z0-9-]/.test(c) ? c : `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`)).join("")}`;
-
 /** The routed tasks on conversation `sessionId`'s board now, read from the store: a read only, as Alice. */
 async function rowsNow(sessionId: string): Promise<Array<Record<string, any>>> {
   const runtime = await state.getRuntime();
-  const rows = Object.values(await runtime.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG}`, boardPrefix(sessionId))) as Array<{ state: Record<string, any> }>;
-  return rows.map((row) => row.state).filter((row) => typeof row?.sealed?.postId === "string");
+  const rows = Object.values(await runtime.stores.resourceState.getByPrefix("user", `${ALICE}:~org:${ORG}`, boardRowPrefix(sessionId))) as Array<{ state: Record<string, any> }>;
+  return rows.map((row) => row.state).filter(isRoutedTask);
 }
 
 type OpenRound = { postId: string; round: number; deadlineAt: number | null };
@@ -553,7 +551,7 @@ try {
   await quiet();
   const runtime = await state.getRuntime();
   const scope = `${ALICE}:~org:${ORG}`;
-  const entries = (await runtime.stores.resourceState.getByPrefix("user", scope, boardPrefix(legacy.id))) as Record<string, { state: Record<string, any> }>;
+  const entries = (await runtime.stores.resourceState.getByPrefix("user", scope, boardRowPrefix(legacy.id))) as Record<string, { state: Record<string, any> }>;
   const warm = Object.entries(entries).find(([, value]) => typeof value.state?.sealed?.postId === "string");
   let seeded: { id: string; ok: boolean } | undefined;
   if (warm !== undefined) {

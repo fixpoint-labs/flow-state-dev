@@ -155,6 +155,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { startOwedSteerTurn } from "./steer-turn-start";
+import { routedSessionResources, sessionsHeldElsewhere } from "./routed-session";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
 import { pieceOwnerOf } from "./held-task";
@@ -232,6 +233,40 @@ function dependencyOrder<T extends { id: string; deps?: string[] }>(batch: reado
   };
   for (const row of batch) place(row);
   return ordered;
+}
+
+/**
+ * The workstream rule for a row's assignee (FIX-2083): a row naming a target
+ * goes only to the worker whose record names it; a row naming none goes to
+ * no worker that is only a workstream here.
+ *
+ * @throws TaskWriteRefusedError naming the rule.
+ */
+function assertTargetFits(
+  records: readonly { readonly worker: string; readonly target?: string }[],
+  assignee: string | undefined,
+  target: string | undefined,
+  how: "filed" | "reassigned"
+): void {
+  if (assignee === undefined) return;
+  const written = how === "filed" ? "Nothing was filed." : "Nothing was changed.";
+  if (target !== undefined) {
+    if (!records.some((record) => record.worker === assignee && record.target === target)) {
+      throw new TaskWriteRefusedError(
+        "target_not_a_delegate",
+        `the task is for workstream "${target}", and "${assignee}" doesn't lead it here. ${written}`
+      );
+    }
+    return;
+  }
+  const led = records.filter((record) => record.worker === assignee);
+  if (led.length > 0 && led.every((record) => record.target !== undefined)) {
+    throw new TaskWriteRefusedError(
+      "target_required",
+      `"${assignee}" leads ${led.length === 1 ? "a workstream" : "workstreams"} here (${led.map((record) => record.target).join(", ")}), ` +
+        `so a task for it names one with target. ${written}`
+    );
+  }
 }
 
 /** Write the session's project over a named `project`, so a guess isn't refused `other-project`. */
@@ -370,26 +405,61 @@ function isStartable(task: Task, rows: readonly Task[]): boolean {
   return !rows.some((other) => other.id !== task.id && holdsSession(other) && sessionKeyOf(other) === key);
 }
 
-/** Claims only rows that may start: an unassigned row, or one whose session is busy, waits on the board. */
+/**
+ * The sessions by id another board's routed task holds now, by board, as its
+ * pass last read them (`./routed-session`): a routed task for one of them
+ * waits on its board, as rule 5 has it. Kept for the checks a pass makes
+ * without a read of its own (its drain's exit, on another instance of the
+ * same ledger), and dropped once a board's read finds none held.
+ */
+const heldElsewhere = new Map<string, ReadonlySet<string>>();
+
+const heldKeyOf = (collection: TaskCollectionRef): string => `${collection.collectionId}\u0000${collection.partition ?? ""}`;
+
+/** Keep what a board's pass just read: the sessions held elsewhere, or none. */
+function noteHeldElsewhere(collection: TaskCollectionRef, held: ReadonlySet<string>): void {
+  if (held.size === 0) heldElsewhere.delete(heldKeyOf(collection));
+  else heldElsewhere.set(heldKeyOf(collection), held);
+}
+
+/** Whether `task` would run in a session another board's routed task holds. */
+function heldByAnotherBoard(task: Task, held: ReadonlySet<string> | undefined): boolean {
+  return task.targetSessionId !== undefined && held?.has(task.targetSessionId) === true;
+}
+
+/**
+ * Claims only rows that may start: an unassigned row, or one whose session is
+ * busy, on this board or (a session by id) on another, waits on the board.
+ */
 const startableOnly: TaskDispatcher = {
-  claim: (collection, workerId) => collection.claim(workerId, { eligibility: isStartable })
+  claim: async (collection, workerId, ctx) => {
+    // Read again at each claim; where the claim's block can't read the
+    // records, as the pass last read them.
+    const read = await sessionsHeldElsewhere(ctx, collection);
+    if (read !== undefined) noteHeldElsewhere(collection, read);
+    const held = read ?? heldElsewhere.get(heldKeyOf(collection));
+    return collection.claim(workerId, { eligibility: (task, rows) => isStartable(task, rows) && !heldByAnotherBoard(task, held) });
+  }
 };
 
 /**
  * Whether a row this board can start is waiting: startable ({@link isStartable})
  * and claimable now (a dead run's row included). Such a row is owed a run of
  * the board; this is the whole of a start's debt (`./ledger`). With `id`, only
- * that row.
+ * that row. A row for a session another board's routed task holds, as this
+ * ledger's pass last read it, isn't, unless `heldToo`.
  */
-function hasStartable(collection: TaskCollectionRef, id?: string): boolean {
+function hasStartable(collection: TaskCollectionRef, id?: string, heldToo = false): boolean {
   const now = collection.now();
   const lookup = (taskId: string): Task | undefined => collection.get(taskId);
   const rows = collection.list();
+  const held = heldToo ? undefined : heldElsewhere.get(heldKeyOf(collection));
   return rows.some(
     (task) =>
       (task.status === "pending" || task.status === "in_progress") &&
       (id === undefined || task.id === id) &&
       isStartable(task, rows) &&
+      !heldByAnotherBoard(task, held) &&
       isClaimable(task, lookup, now)
   );
 }
@@ -552,6 +622,13 @@ function hasPastDue(rows: readonly Task[], now: number): boolean {
 
 /** The most rounds of drain and repair one pass runs. */
 const MAX_PASS_ROUNDS = 3;
+
+/**
+ * How long a routed task waits before its board looks again at a session
+ * another board's routed task holds (FIX-2083): that board, not this one,
+ * hears the holder end.
+ */
+const HELD_ELSEWHERE_RETRY_MS = 5_000;
 
 /**
  * What one pass keeps between its steps, in its own request's state (so a
@@ -798,16 +875,11 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      */
     const withTarget = async (init: TaskInit): Promise<TaskInit> => {
       const { records } = await reach(ctx);
-      const assignee = init.assignee;
+      // The assignee the row will have: the one named, or the one the board
+      // gives a row with none (the conversation's only task-taking delegate).
+      const assignee = init.assignee ?? (await soleDelegate());
       if (init.target === undefined) {
-        const led = assignee === undefined ? [] : records.filter((record) => record.worker === assignee);
-        if (led.length > 0 && led.every((record) => record.target !== undefined)) {
-          throw new TaskWriteRefusedError(
-            "target_required",
-            `"${assignee}" leads ${led.length === 1 ? "a workstream" : "workstreams"} here (${led.map((record) => record.target).join(", ")}), ` +
-              `so a task for it names one with target. Nothing was filed.`
-          );
-        }
+        assertTargetFits(records, assignee, undefined, "filed");
         return init;
       }
       if (!records.some((record) => record.target !== undefined)) {
@@ -827,7 +899,23 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       if ("problem" in resolved) {
         throw new TaskWriteRefusedError("target_unreachable", `workstream "${init.target}" can't take it now: ${resolved.problem}. Nothing was filed.`);
       }
-      return { ...init, targetSessionId: resolved.sessionId };
+      return { ...init, assignee, targetSessionId: resolved.sessionId };
+    };
+    /** The conversation's only task-taking delegate, which a row filed with no assignee goes to; none with none or several. */
+    const soleDelegate = async (): Promise<string | undefined> => {
+      const delegates = await options.delegates(ctx);
+      return delegates.available.size === 1 ? [...delegates.available.keys()][0]! : undefined;
+    };
+    /**
+     * A reassign keeps the row's workstream rule (FIX-2083): a row naming a
+     * target goes only to that target's lead, and a row naming none to no
+     * worker that is only a workstream here.
+     */
+    const assertReassignable = async (id: string, assignee: string): Promise<void> => {
+      const row = ref.get(id);
+      if (row === undefined || row.assignee === assignee) return;
+      const { records } = await reach(ctx);
+      assertTargetFits(records, assignee, row.target, "reassigned");
     };
     /** Add one checked row under its chain reservation. */
     const fileReserved = async (init: TaskInit, reserved: { id: string; markAdded: () => Promise<void> }): Promise<Task> => {
@@ -970,6 +1058,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       },
       async setAssignee(id, assignee) {
         if (self !== undefined && assignee === self) throw filedApart(id);
+        await assertReassignable(id, assignee);
         await owePass(ctx);
         const outcome = await ref.setAssignee(id, assignee);
         // `unchanged` too: an assign retried after a lost wake starts the row.
@@ -984,6 +1073,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         : {
             async dispatch(id: string, dispatchOptions: Parameters<NonNullable<TaskCollectionRef["dispatch"]>>[1]) {
               if (self !== undefined && dispatchOptions.assignee === self) throw filedApart(id);
+              if (dispatchOptions.assignee !== undefined) await assertReassignable(id, dispatchOptions.assignee);
               await owePass(ctx);
               const outcome = await ref.dispatch!(id, dispatchOptions);
               if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
@@ -1278,8 +1368,13 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const later = (at: number) => {
       next = next === undefined ? at : Math.min(next, at);
     };
-    // The last ready check: a row still startable is a start owed.
+    // The last ready check: a row still startable is a start owed. One whose
+    // session another board's routed task holds is looked at again later:
+    // nothing on this board hears that task end.
+    const held = await sessionsHeldElsewhere(ctx, ref);
+    if (held !== undefined) noteHeldElsewhere(ref, held);
     if (hasStartable(ref)) later(Date.now() + NOTICE_DUE_MS);
+    else if (hasStartable(ref, undefined, true)) later(Date.now() + HELD_ELSEWHERE_RETRY_MS);
     return next;
   };
 
@@ -1288,7 +1383,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     name: "conversation-board-before-drain",
     inputSchema: z.unknown(),
     outputSchema: z.object({}),
-    resources: { ...conversationLedgerResources, ...taskChainResources },
+    resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources },
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       notePassStarted(ctx as never);
@@ -1313,7 +1408,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     name: "conversation-board-after-run",
     inputSchema: z.unknown(),
     outputSchema: z.object({ again: z.boolean(), nextDue: z.number().optional() }),
-    resources: { ...conversationLedgerResources, ...taskChainResources },
+    resources: { ...conversationLedgerResources, ...taskChainResources, ...routedSessionResources },
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
       const partition = await filingSessionIdOf(ctx.session);
@@ -1418,10 +1513,20 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * @throws when the conversation keeps no board, or the add is refused (a
    *   full board): the message wasn't handed on.
    */
-  const fileRouted = async (ctx: BlockContext, init: TaskInit & { id: string }): Promise<"filed" | "exists"> => {
+  const fileRouted = async (ctx: BlockContext, filing: TaskInit & { id: string }): Promise<"filed" | "exists"> => {
     const ref = await conversationLedgerAt(ctx, await filingSessionIdOf(ctx.session));
     if (ref === undefined) throw new Error("this conversation keeps no board to hand the message on through");
-    if (ref.get(init.id) !== undefined) return "exists";
+    if (ref.get(filing.id) !== undefined) return "exists";
+    // What a model asked beside the message is a caller's, as on any filing:
+    // no board marker in its metadata, and the session's own project in its input.
+    const metadata = callerMetadata(filing.metadata);
+    const input = ownProjectIn(filing.input, filingProjectAddressOf(ctx.session.state));
+    const { metadata: _metadata, input: _input, ...rest } = filing;
+    const init: TaskInit & { id: string } = {
+      ...rest,
+      ...(metadata !== undefined && Object.keys(metadata).length > 0 ? { metadata } : {}),
+      ...(input !== undefined ? { input } : {})
+    };
     await owePass(ctx);
     let added: Task;
     try {
@@ -1474,8 +1579,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     planned: planning.planned,
     /** The task tools as public actions, `<tool>_tasks`, `dispatchTask_tasks` among them. */
     actions: taskToolActions(CONVERSATION_LEDGER_ID, resolver, roster, { dispatches: true }),
-    /** The ledger, the plan ledger and the chain records, for the flow's `resources`. */
-    resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources }
+    /** The ledger, the plan ledger, the chain records and the routed-session records, for the flow's `resources`. */
+    resources: { ...conversationLedgerResources, ...planLedgerResources, ...taskChainResources, ...routedSessionResources }
   };
 }
 

@@ -42,7 +42,7 @@ import {
 } from "../src/coordinator/coordinator-rounds";
 import type { RoundPost, RoundRows } from "../src/coordinator/coordinator-rounds";
 import type { OpenRound } from "../src/coordinator/coordinator-state";
-import { bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
+import { ORG, bootHost, messageOf, quiet, standardWorkers } from "./coordinator-harness";
 
 type Host = ReturnType<typeof bootHost>;
 
@@ -456,6 +456,30 @@ describe("rounds (V5)", () => {
     expect(failed).toMatchObject({ status: "errored", error: expect.stringMatching(/eng\.coder could not answer/) });
   });
 
+  it("closes a round without a delegate whose answer was empty, at once, and sends the other's answer on (BR-24b)", async () => {
+    // A deadline far off: only the empty answer, counted as none, can close the round in time.
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
+    const id = await host.conversation("alice", "desk");
+    await post(host, id, "status? [empty:eng.coder]");
+    await quiet(host);
+
+    // The coder heard the post, then the EM's answer in round 1; the EM heard nothing of the coder's.
+    expect(host.heard.map((h) => [h.worker, h.message.split(":")[0]])).toEqual(
+      expect.arrayContaining([
+        ["eng.em", "alice, through desk"],
+        ["eng.coder", "alice, through desk"],
+        ["eng.coder", "eng.em, through desk"]
+      ])
+    );
+    expect(host.heard).toHaveLength(3);
+    const { records } = await host.items(id);
+    expect(records[1]).toMatchObject({ round: 1, by: "everyone" });
+    expect(records[1].delegates).toEqual([
+      { worker: "eng.coder", outcome: "delivered" },
+      { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
+    ]);
+  });
+
   it("closes a round at its deadline without a slow delegate; its late answer lands once and goes no further (BR-24b)", async () => {
     const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 500 });
     const id = await host.conversation("alice", "desk");
@@ -483,6 +507,133 @@ describe("rounds (V5)", () => {
     expect((await answers(host, id)).map((line) => line.agentName)).toEqual(["eng.em", "eng.coder", "eng.coder"]);
     const late = (await host.routedRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
     expect(late).toMatchObject({ status: "completed" });
+  });
+
+  it("files nothing for a pick a coordinator before the upgrade already handed the message, as a post row (BP-030)", async () => {
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
+    const id = await host.conversation("alice", "desk");
+    // The coder answers late, so round 0 is still open when the post row is seeded.
+    expect((await host.act("alice", id, "run", { message: "status? [slow:eng.coder]" })).error).toBeUndefined();
+    let em: any;
+    for (let i = 0; i < 300 && em === undefined; i += 1) {
+      em = (await host.routedRows("alice")).find((row) => row.assignee === "eng.em" && row.status === "completed");
+      if (em === undefined) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(em).toBeDefined();
+    // Round 1's message to the coder, the EM's answer, as the coordinator before FIX-2083 stored it, already answered.
+    const runtime = await host.state.getRuntime();
+    const scope = `alice:~org:${ORG}`;
+    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
+    const [key] = Object.entries(entries).find(([, value]) => (value.state as { id?: string }).id === em.id)!;
+    const legacyId = `post:${[em.sealed.postId, "1", "eng.coder"].map(encodeURIComponent).join(":")}`;
+    const now = Date.now();
+    const legacy = {
+      ...em,
+      id: legacyId,
+      assignee: "eng.coder",
+      status: "completed",
+      output: "an answer from before the upgrade",
+      createdAt: now,
+      updatedAt: now,
+      incarnationId: "legacy-incarnation",
+      // Its ending was heard before the upgrade: its notice is paid.
+      metadata: { "noticeOwed:1:completed": null },
+      sealed: { ...em.sealed, kind: "post", round: 1, delegate: { worker: "eng.coder" } }
+    };
+    for (const field of ["session", "resultTo", "run", "filer"]) delete legacy[field];
+    // The row's key ends in its id, as the store writes it, encoded or not.
+    const legacyKey = key.includes(encodeURIComponent(em.id))
+      ? key.replace(encodeURIComponent(em.id), encodeURIComponent(legacyId))
+      : key.replace(em.id, legacyId);
+    expect(legacyKey).not.toBe(key);
+    expect((await runtime.stores.resourceState.set("user", scope, legacyKey, legacy, "any")).ok).toBe(true);
+    await quiet(host);
+
+    // The coder heard the post only: round 1's pick of it was the post row, and nothing was filed again.
+    expect(host.heard.filter((h) => h.worker === "eng.coder").map((h) => h.message.split(":")[0])).toEqual(["alice, through desk"]);
+    const { records } = await host.items(id);
+    const roundOne = records.find((record: any) => record.round === 1);
+    expect(roundOne.delegates).toEqual(
+      expect.arrayContaining([{ worker: "eng.coder", outcome: "skipped", reason: "it was already handed this message in this round" }])
+    );
+    expect((await host.routedRows("alice")).filter((row) => row.sealed.round === 1 && row.assignee === "eng.coder").map((row) => row.id)).toEqual([legacyId]);
+  });
+
+  it("closes a round open across the upgrade whose post row was still running: the row lapses, runs once more, and both answers go on (BP-030)", async () => {
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
+    const id = await host.conversation("alice", "desk");
+    // A post that leaves one row on the board to read the board's key off; both answers empty, so nothing goes on.
+    await post(host, id, "warm up [empty]");
+    const runtime = await host.state.getRuntime();
+    const scope = `alice:~org:${ORG}`;
+    const entries = await runtime.stores.resourceState.getByPrefix("user", scope, "tasks/");
+    const [key, entry] = Object.entries(entries).find(([, value]) => (value.state as { sealed?: unknown }).sealed !== undefined)!;
+    const warm = entry.state as Record<string, any>;
+    const keyFor = (taskId: string) =>
+      key.includes(encodeURIComponent(warm.id)) ? key.replace(encodeURIComponent(warm.id), encodeURIComponent(taskId)) : key.replace(warm.id, taskId);
+    const now = Date.now();
+    const brief = (worker: string) => ({
+      kind: "post",
+      postId: "legacy",
+      round: 0,
+      delegate: { worker },
+      session: { key: `delegate:["${worker}",null]` },
+      body: "the old post",
+      from: "alice",
+      coordinator: "desk"
+    });
+    const base = { ...warm };
+    for (const field of ["session", "resultTo", "run", "output", "startedAt", "completedAt", "leaseUntil", "claimedBy", "metadata", "filer", "waitingOn"]) {
+      delete base[field];
+    }
+    // As a coordinator before FIX-2083 left them: the EM's post answered and heard, the coder's still running
+    // on the entry the upgrade removed, its lease lapsing.
+    const em = { ...base, id: "post:legacy:0:eng.em", goal: "alice, through desk: the old post", assignee: "eng.em", status: "completed",
+      attempts: 1, maxAttempts: 1, output: "eng.em heard: the old post", completedAt: now - 5_000, createdAt: now - 10_000, updatedAt: now - 5_000,
+      incarnationId: "legacy-em", metadata: { "noticeOwed:1:completed": null }, sealed: brief("eng.em") };
+    const coder = { ...base, id: "post:legacy:0:eng.coder", goal: "alice, through desk: the old post", assignee: "eng.coder", status: "in_progress",
+      attempts: 1, maxAttempts: 1, claimedBy: "conversation-tasks", leaseUntil: now - 1_000, startedAt: now - 10_000,
+      run: { sessionId: "s-before-the-upgrade", requestId: "req-before-the-upgrade", attempt: 1, startedAt: now - 10_000 },
+      createdAt: now - 10_000, updatedAt: now - 10_000, incarnationId: "legacy-coder", sealed: brief("eng.coder") };
+    for (const row of [em, coder]) {
+      expect((await runtime.stores.resourceState.set("user", scope, keyFor(row.id), row, "any")).ok).toBe(true);
+    }
+    // The round both were filed in, still open, with the EM's answer landed in it.
+    const session = (await runtime.stores.session.get(id))!;
+    await runtime.stores.session.set(
+      id,
+      {
+        ...session,
+        state: {
+          ...session.state,
+          openRounds: [{ postId: "legacy", round: 0, opening: 0, begun: 1, deadlineAt: now + 60_000, answers: [{ worker: "eng.em", body: "eng.em heard: the old post" }] }]
+        },
+        version: session.version + 1,
+        updatedAt: now
+      } as never,
+      "any"
+    );
+
+    // The next touch of the board.
+    await act(host, id, "listTasks_tasks", {});
+    await quiet(host);
+
+    // The coder's post ran again once its lease lapsed, as a routed task, and answered.
+    expect(host.heard.filter((h) => h.message.includes("the old post")).map((h) => [h.worker, h.message.split(":")[0]])).toEqual([
+      ["eng.coder", "alice, through desk"],
+      ["eng.em", "eng.coder, through desk"],
+      ["eng.coder", "eng.em, through desk"]
+    ]);
+    const rows = await host.routedRows("alice");
+    expect(rows.find((row) => row.id === coder.id)).toMatchObject({ status: "completed", output: "eng.coder heard: alice, through desk: the old post" });
+    // The round closed on both answers, and each went on once to the other delegate.
+    expect((await host.sessionState(id)).openRounds).toEqual([]);
+    const roundOne = (await host.items(id)).records.find((record: any) => record.postId === "legacy" && record.round === 1);
+    expect(roundOne.delegates).toEqual([
+      { worker: "eng.em", outcome: "delivered" },
+      { worker: "eng.coder", outcome: "delivered" }
+    ]);
+    expect(rows.filter((row) => row.sealed.postId === "legacy" && row.sealed.round === 1).map((row) => row.status)).toEqual(["completed", "completed"]);
   });
 
   it("goes back out once for an ending sent twice (BR-21, BR-22)", async () => {

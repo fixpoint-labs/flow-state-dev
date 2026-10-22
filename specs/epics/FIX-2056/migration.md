@@ -34,7 +34,9 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | A board's `reopenIn` (harness manager) | A follow-up: `createTask({ followUpOf })` | FIX-2086 |
 | `harnessMessageDoor`, `messageDoorInputSchema`, `messageDoorOutputSchema`, a manager's `messageDoor` | `updateTask({ id, message })` on the run's task; a line in an open task's session is a steer through the coding flow's own door (`message`, `respond` after FIX-2084) | FIX-2086 |
 | `TurnRefused`, `TurnRefusalReason`, and the types `HarnessMessageDoorOptions`, `MessageDoorAction`, `MessageDoorBoard`, `MessageDoorOptions`, `MessageDoorOutput`, `DoorRunIdentity` | `updateTask`'s refusal, which names the rule | FIX-2086 |
-| `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostHistory`, `delegatedPostOnFinished`, `delegatedPostSchema`, `DelegatedPost` | A routed task through `WORKER_TASK_ENTRY`: declare `work` with `workerTaskEntry`; the turn still gets `{ message }` | FIX-2083 |
+| `DELEGATED_POST_ENTRY`, `delegatedPostEntry`, `delegatedPostOnFinished`, `delegatedPostSchema`, `DelegatedPost` | A routed task through `WORKER_TASK_ENTRY`: declare `work` with `workerTaskEntry`; the turn still gets `{ message }` | FIX-2083 |
+| `delegatedPostHistory` | `routedTaskHistory`, as the `work` turn's generator `history`: the routed task's recent lines, just before the message | FIX-2083 |
+| `DispatchPostForm`, `dispatchTask`'s `post: true` | `createTask` with the routing settings (`session: "ongoing"`, `resultTo: "conversation"`, `target` for a workstream's record) on a turn routing a message | FIX-2083 |
 | `taskLedgers({ taskTurn })` | Nothing: a routed turn is a task turn | FIX-2083 |
 | `defineCoordinatorFlow`'s `delegateFlows`; `defineSessionBoard`'s `postFlows` and `posts`; `posts` and `both` in `listDelegates`' takes | Nothing: a delegate is a worker whose flow takes tasks, checked by its roles at hire | FIX-2083 |
 | `TaskCollectionRef.dispatch`, `TaskDispatchOptions`, `Task.dispatchCall`, the `already-dispatched` decline | `createTask`, and `updateTask({ id, status: "pending" })` to release a held row | The later of FIX-2082 and FIX-2083, with `dispatchTask` |

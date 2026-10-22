@@ -132,7 +132,7 @@ type Route = { by?: string; round?: number; postId?: string; delegates?: Array<{
 type Heard = { worker: string; message: string; sessionId: string; at: number };
 
 /** Grade what the host reported and the file it left. */
-function grade(o: any, restart: { kill: any; restart: any } | undefined): { failures: string[]; notes: string[] } {
+function grade(o: any, restart: { kill: any; restart: any }): { failures: string[]; notes: string[] } {
   const failures: string[] = [];
   const notes: string[] = [];
   const fail = (assertion: string, why: string) => failures.push(`${assertion} — ${why}`);
@@ -217,8 +217,7 @@ function grade(o: any, restart: { kill: any; restart: any } | undefined): { fail
   } else notes.push(`Alice's cancel: the task ended cancelled, and the round closed ${rnd.deadlineAt - rnd.closedAt} ms before its deadline`);
 
   // ---- b: the restart --------------------------------------------------------
-  if (restart === undefined) fail("b:restart", "the restart was not run");
-  else if (restart.kill.setup !== undefined || restart.restart.setup !== undefined) fail("b:restart", `setup: ${restart.kill.setup ?? restart.restart.setup}`);
+  if (restart.kill.setup !== undefined || restart.restart.setup !== undefined) fail("b:restart", `setup: ${restart.kill.setup ?? restart.restart.setup}`);
   else {
     const k = restart.kill;
     const r = restart.restart;

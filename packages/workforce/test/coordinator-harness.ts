@@ -110,8 +110,8 @@ function helperFlow(installation: WorkerInstallation, heard: Heard[]) {
           });
         });
       }
-      // `[empty]`: the turn answers nothing.
-      if (input.message.includes("[empty]")) return "";
+      // `[empty]`: the turn answers nothing; `[empty:<worker>]`, only that worker's.
+      if (input.message.includes("[empty]") || input.message.includes(`[empty:${worker.id}]`)) return "";
       return `${worker.id} heard: ${input.message}`;
     }
   });

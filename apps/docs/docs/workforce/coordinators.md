@@ -606,9 +606,9 @@ const researchFlow = defineFlow({
 });
 ```
 
-A routed task's turn is handed `{ message }`, where the message reads `<from>, through <coordinator>: <message>`: who wrote it (the user's id, or the delegates whose answers it passes on), the coordinator's worker id, and the message as written. When the coordinator's own turn filed it with a goal of its own, `Your task: <goal>` follows on a line of its own. Whatever the turn returns, a string or `{ text }`, is the answer. An answer that is empty lands nothing. The built-in `agent` flow also shows its model the conversation's [recent lines](#follow-ups-and-recent-lines) on that turn; a flow built this way is handed the message only.
+A routed task's turn is handed `{ message }`, where the message reads `<from>, through <coordinator>: <message>`: who wrote it (the user's id, or the delegates whose answers it passes on), the coordinator's worker id, and the message as written. When the coordinator's own turn filed it with a goal of its own, `Your task: <goal>` follows on a line of its own. Whatever the turn returns, a string or `{ text }`, is the answer. An answer that is empty lands nothing. The built-in `agent` flow also shows its model the conversation's [recent lines](#follow-ups-and-recent-lines) on that turn. A flow built this way is handed the message only; to show its model the lines too, give its generator `history: routedTaskHistory` (from `@flow-state-dev/workforce`).
 
-A worker file whose `tools:` names `handOff` is refused when the app loads, with a message pointing at `createTask` and the routing settings.
+**Upgrading:** a worker file whose `tools:` names `handOff` is refused when the app loads, with a message pointing at `createTask` and the routing settings.
 
 ### Taking a conversation's tasks
 

@@ -1731,9 +1731,10 @@ const coordinatorFlow = defineCoordinatorFlow({
 ```
 
 A routed task's turn is handed `{ message }`: `<from>, through <coordinator>: <message>`, and,
-when the coordinator's turn filed it with a goal of its own, `Your task: <goal>` after it. A
-worker whose `tools:` names `handOff` is refused at load, with a message naming `createTask` and
-the routing settings.
+when the coordinator's turn filed it with a goal of its own, `Your task: <goal>` after it.
+
+Upgrading: a worker whose `tools:` names `handOff` is refused at load, with a message naming
+`createTask` and the routing settings.
 
 The judgment turn is the built-in agent's own turn. A coordinator worker's `model`, `tools`,
 `skills` and `capabilities` read the way an `agent` worker's do, against the catalog and
@@ -1788,10 +1789,11 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   reads the message with them, so a follow-up to a delegate's answer can go back to that delegate; the
   other policies don't route by them. An evaluation model passed as `routeModel` (a scripted one
   in a test, say) is handed `{ recent, post }`, each line and the message as `{ from, text }`.
-  The lines ride the routed task's server-written brief. Whatever the policy, a delegate on the
-  built-in `agent` flow is shown them as one user-role message just before the message, never
-  system text, for that turn only; a flow of your own built with `workerTaskEntry({ turn })` is
-  handed the message only. The delegate's own session never keeps them.
+  Whatever the policy, a delegate on the built-in `agent` flow is shown them as one user-role
+  message just before the message, never system text, for that turn only. A flow of your own
+  built with `workerTaskEntry({ turn })` is handed the message only; to show its model the lines
+  too, give its generator `history: routedTaskHistory`. The delegate's own session never keeps
+  them.
 - **Rounds.** With `rounds:` above 0, a delegate's answer goes back out, at most that many times.
   `best-fit` and `round-robin` route each answer again as it lands, never to its own author.
   `everyone` waits for the round to close, then sends each delegate the other delegates' answers
@@ -1801,12 +1803,10 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   passes (`roundDeadlineMs`, five minutes by default). A delegate that answers after that has its
   answer land once, and the answer goes no further. Each delegate gets a message at most once per
   round, so a message costs at most delegates × (rounds + 1) delegate turns.
-- **The deadline.** A round's deadline is due time on a wake on the coordinator's session
-  (internal entry `roundDeadline`), on a host that keeps wakes (durable execution and a store with
-  a wake store), so a round closes on time across a restart. On a host that keeps none, an
-  in-process timer stands in, which a restart loses: the round then closes at the conversation's
-  next wake after the deadline, and with no later activity the answers that landed stay and
-  nothing goes on.
+- **The deadline.** On a host that keeps wakes (durable execution and a store with a wake store),
+  a round closes at its deadline even across a restart. On a host that keeps none, it closes at its
+  deadline while the process runs; after a restart it closes at the conversation's next activity
+  past the deadline, and with none the answers that landed stay and nothing goes on.
 - **Open rounds.** A conversation keeps at most 50 rounds open at once. A message that would open one
   more is still delivered, but its round isn't opened: its answers land once and go no further,
   and its routing record's `note` says so. The rounds already open go on.
@@ -1847,9 +1847,9 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   message keeps its routed task open until that work ends, and answers from the turn that hears it
   end. A routed task is listed, read and cancelled like any task; its `session`, `resultTo` and
   `target` are set at filing and refused on `updateTask` (`filing_setting_fixed`). A routed task
-  to a workstream's record runs in the workstream's session (server-written `targetSessionId`),
-  which notes the routing conversation in its server-owned `routedFrom` while it works it. A post
-  row stored before routed tasks reads as one (FIX-2080's retired-shape map). The
+  to a workstream's record runs in that workstream's session, one at a time there too: one from
+  another conversation's board waits until the open one ends. Upgrading: a message an earlier
+  version stored for a delegate is read as a routed task and worked once. The
   session carries the conversation's `filingSessionId`, which `listDelegates` returns, so an app finds it
   with `findWorkerSession({ worker, filingSessionId })`. A conversation deleted and created again
   under the same id has a new `filingSessionId`, and its delegates get new sessions. A lookup

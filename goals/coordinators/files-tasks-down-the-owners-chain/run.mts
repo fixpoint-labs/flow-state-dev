@@ -72,10 +72,11 @@ const CONTROLS: Record<string, Control> = {
         from: String.raw`collection,\s*partition,`,
         to: 'collection, partition: "one-ledger",',
       },
+      // The task entry's check that a task session works only its own conversation's partition.
       {
         module: "packages/workforce/src/conversation-board/task-entry.ts",
-        from: String.raw`partition === (?:undefined|void 0) \|\| filingPartitionOf\(ctx\) !== partition`,
-        to: "partition === undefined",
+        from: String.raw`if \(filingPartitionOf\(ctx\) === partition\) return conversationLedgerAt\(ctx, partition\);`,
+        to: "return conversationLedgerAt(ctx, partition);",
       },
     ],
     does: "one ledger for all of a user's conversations: every conversation's board reads and writes one partition, and a task session takes its task from it whichever conversation opened it",

@@ -412,6 +412,16 @@ describe("a routed task (BR-24 to BR-27, V5)", () => {
     ]);
   });
 
+  it("refuses a task with no assignee and no target when her only delegate is a workstream's lead, rather than run it outside the workstream (FIX-2083)", async () => {
+    const h = await boot();
+    await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    const filed = await h.act("alice", COORDINATOR_FLOW, id, "createTask_tasks", { goal: "Look at the cart" });
+    expect(filed.output).toEqual({ ok: false, error: expect.stringMatching(/^target_required: "alice-lead" leads a workstream here \(shared\/apollo\/checkout\)/) });
+    await h.settled();
+    expect(h.heard).toEqual([]);
+  });
+
   it("refuses Bob's workstream like a missing delegate (BR-26)", async () => {
     const judgment = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "bob-lead", target: "shared/apollo/billing", session: "ongoing", resultTo: "conversation" } }]);
     const h = await boot({ judgment });

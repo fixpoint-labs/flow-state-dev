@@ -122,7 +122,9 @@ function routedLinesMessage(ctx: { readonly request: { readonly state: unknown }
  * one user-role message between the earlier turns and this turn's own items,
  * so just before the message. Resolved for each model call and never stored;
  * on any other turn, and on a routed task with no lines, it is the session's
- * history unchanged. The built-in `agent` flow's turn uses it.
+ * history unchanged. The built-in `agent` flow's turn uses it; a flow of
+ * your own whose `work` turn is a generator passes it as that generator's
+ * `history` to show its model the same lines.
  */
 export async function routedTaskHistory(_input: unknown, ctx: BlockContext): Promise<LLMMessage[]> {
   const lines = routedLinesMessage(ctx);

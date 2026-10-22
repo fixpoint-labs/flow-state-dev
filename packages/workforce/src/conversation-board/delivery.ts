@@ -25,6 +25,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { DeclaredDelivery, Task, TaskNotice } from "@flow-state-dev/orchestration/tasks";
 import { COORDINATOR_FLOW } from "../coordinator/coordinator-keys";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, WORKSTREAM_STATE_KEY } from "../workers/keys";
+import { boardAboveOf } from "./board-above";
 import { RUN_BOARD_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { sendTaskReport } from "./report-owed";
@@ -53,9 +54,10 @@ export function conversationDelivery(ledgerId: string): DeclaredDelivery {
     onUndeliverable: async (ctx: BlockContext, row: Task, notice: TaskNotice, detail: string) => {
       // The task's ending stands; the conversation that filed it can't be told.
       ctx.emit.message(`The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${detail}`);
-      const state = (ctx.session.state ?? {}) as Record<string, unknown>;
-      const partition = state[FILING_SESSION_STATE_KEY];
-      if (notice.ending === "errored" && typeof partition === "string") {
+      // The board the task is on: the conversation this session was opened
+      // for, or, in a workstream's session, the one whose routed task it works.
+      const partition = boardAboveOf(ctx);
+      if (notice.ending === "errored" && partition !== undefined) {
         await sendTaskReport(
           ctx,
           row,

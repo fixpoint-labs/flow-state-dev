@@ -54,6 +54,7 @@ import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
+import { noteRoutedSession, routedSessionResources } from "./routed-session";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
@@ -85,7 +86,7 @@ function taskTurnMessage(task: TaskWorkerInput): string {
  * for, as its board's hand-over named it at birth (a readonly field). The
  * conversation ledger's partition is that same value.
  */
-export function filingPartitionOf(ctx: BlockContext): string | undefined {
+function filingPartitionOf(ctx: BlockContext): string | undefined {
   const filing = (ctx.session.state as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
   return typeof filing === "string" ? filing : undefined;
 }
@@ -184,21 +185,25 @@ export async function conversationLedgers(
 /**
  * In a session no conversation owns (a workstream's), name the conversation
  * whose task the gate just let in, from the claim it verified, so the
- * requests that follow find that task on its board (`./board-above`). A
- * session opened for a conversation names it at birth, and writes nothing.
+ * requests that follow find that task on its board (`./board-above`), and
+ * record the task as the one this session works, so no other conversation's
+ * board starts one here while it is open (`./routed-session`). A session
+ * opened for a conversation names it at birth, and writes nothing.
  */
 const noteRoutedFrom = handler({
   name: "worker-task-note-routed-from",
   inputSchema: z.unknown(),
   outputSchema: z.object({}),
+  resources: { ...routedSessionResources },
   sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional() }),
   execute: async (_task: unknown, ctx) => {
     const state = (ctx.session.state ?? {}) as Record<string, unknown>;
     if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};
     const claim = currentWorkerClaim(ctx as never);
     const partition = claim?.collectionId === CONVERSATION_LEDGER_ID ? claim.partition : undefined;
-    if (partition === undefined || state[ROUTED_FROM_STATE_KEY] === partition) return {};
-    await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
+    if (partition === undefined) return {};
+    await noteRoutedSession(ctx as never, ctx.session.identity.id, { partition, taskId: claim!.taskId });
+    if (state[ROUTED_FROM_STATE_KEY] !== partition) await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
     return {};
   }
 });
@@ -262,7 +267,7 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   const from = markConversationTaskDoor(taskLedgers({
     name: `${name}-tasks`,
     resolve: conversationLedgers,
-    uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources } })],
+    uses: [defineCapability({ name: `${name}-ledgers`, resources: { ...conversationLedgerResources, ...routedSessionResources } })],
     // The turn keeps the worker's skill state on the session, the same shape
     // for every task, and each task runs in a session of its own.
     allowSessionState: true,

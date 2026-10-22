@@ -1,11 +1,11 @@
 /**
- * A steer reaches a routed task that runs in a workstream's session, on the
- * Lab as served.
+ * A routed task that runs in a workstream's session, on the Lab as served
+ * (FIX-2083). Alice's Storefront project coordinator hands a job to her
+ * `feature` workstream as a routed task. The workstream session was not
+ * opened for the conversation, so it finds the task's board through the
+ * conversation the task came from.
  *
- * Alice's Storefront project coordinator hands a job to her `feature`
- * workstream as a routed task, and then steers it with `updateTask`'s
- * `message`. The workstream session was not opened for the conversation, so
- * it finds the task's board through the conversation the task came from:
+ * Steered with `updateTask`'s `message`:
  *
  * - led by the General Lead (the built-in `agent` flow) and steered while the
  *   lead's turn still runs, the lead's next model call carries the steer;
@@ -14,6 +14,17 @@
  *   the steer is owed, with the steer, while the coder still runs, and the
  *   routed task still ends only after that work.
  *
+ * Routed to from another conversation's board (her project coordinator
+ * conversation deleted and opened again) while the first board's task is
+ * open there, the second task waits, and starts once the first has ended
+ * (one open task per session); both end.
+ *
+ * Routed to the EM, a custom flow, it shows the EM's model the conversation's
+ * recent lines just before the message, as the built-in agent's turn does.
+ *
+ * Failed while its conversation is gone, its final failure goes to the Error
+ * Reporter from the workstream's session.
+ *
  * The models are scripted by block, as in `devteam-em-workstream.test.ts`.
  * The coder's harness is a stub that holds its run until the test lets it go.
  */
@@ -21,7 +32,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
+import type { GeneratorModel, HarnessBlock, ModelResolver } from "@flow-state-dev/core/types";
+import { handler, harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { runAction } from "../src/lib/action";
 import { createLabClients, type LabClients } from "../src/lib/connection";
@@ -40,6 +52,8 @@ const EM = "eng.em";
 const GENERAL_LEAD = "general-lead";
 const CODER = "eng.coder";
 const STEER = "Keep the guest cart badge in the header too.";
+const FIRST_ASK = "Add guest checkout.";
+const SECOND_ASK = "Add a wishlist too.";
 
 type ToolCall = { toolName: string; args: Record<string, unknown> };
 type Row = Record<string, any>;
@@ -64,8 +78,8 @@ function stepping(id: string, calls: ToolCall[], closing: string): GeneratorMode
 /** What the EM's model was handed: each turn's first call. */
 type EmSeen = { turns: string[] };
 
-/** The EM: its first turn files the coder's task; every later one calls nothing. */
-function emModel(seen: EmSeen): GeneratorModel {
+/** The EM: its first turn files the coder's task, unless `files` is false; every later one calls nothing. */
+function emModel(seen: EmSeen, files = true): GeneratorModel {
   let queue: ToolCall[] = [];
   let step = 0;
   return {
@@ -78,7 +92,7 @@ function emModel(seen: EmSeen): GeneratorModel {
       const last = options.messages.at(-1) as { role?: string } | undefined;
       if (last?.role !== "tool") {
         seen.turns.push(text);
-        queue = seen.turns.length === 1 ? [{ toolName: "dispatchTask", args: { goal: "Build the guest cart.", assignee: CODER } }] : [];
+        queue = files && seen.turns.length === 1 ? [{ toolName: "dispatchTask", args: { goal: "Build the guest cart.", assignee: CODER } }] : [];
       }
       const call = queue.shift();
       step += 1;
@@ -127,13 +141,34 @@ const judge = {
 /** The lead's model: the EM's for its own turn, the General Lead's for the `agent` flow's. */
 type Lead = { readonly id: string; readonly em?: GeneratorModel; readonly agent?: GeneratorModel };
 
-function scripted(lead: Lead): ModelResolver {
-  const judgment = stepping("test/judgment", [
-    {
-      toolName: "createTask",
-      args: { goal: "Add guest checkout", assignee: lead.id, target: "shared/storefront/feature", session: "ongoing", resultTo: "conversation" },
+/** The coordinators' judgment: each turn hands its message to the lead's workstream, then says so. */
+function judgmentModel(lead: string): GeneratorModel {
+  let call = 0;
+  return {
+    modelId: "test/judgment",
+    async generate() {
+      throw new Error("the owned tool loop calls generateStep");
     },
-  ], "Handed on.");
+    async generateStep(options: { messages: unknown[] }) {
+      const last = options.messages.at(-1) as { role?: string } | undefined;
+      if (last?.role === "tool") return { text: "Handed on.", finishReason: "stop" };
+      call += 1;
+      return {
+        toolCalls: [
+          {
+            toolCallId: `judgment-${call}`,
+            toolName: "createTask",
+            args: { goal: "Do what the message asks", assignee: lead, target: "shared/storefront/feature", session: "ongoing", resultTo: "conversation" },
+          },
+        ],
+        finishReason: "tool-calls",
+      };
+    },
+  };
+}
+
+function scripted(lead: Lead): ModelResolver {
+  const judgment = judgmentModel(lead.id);
   const helper = stepping("test/helper", [], "On it.");
   const pick = (block?: string) =>
     block?.startsWith("coordinator-judgment")
@@ -156,6 +191,18 @@ function gate() {
   return { open, wait: () => opened };
 }
 
+/** The Error Reporter's harness: it never drafts, and stops when its run is cancelled. */
+const reportHarness = (): HarnessBlock =>
+  handler({
+    name: "workstream-routed-report-harness",
+    inputSchema: harnessRunInputSchema,
+    outputSchema: harnessRunHandleSchema,
+    execute: async (_input, ctx) => {
+      await new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve(), { once: true }));
+      throw new Error("cancelled");
+    },
+  }) as unknown as HarnessBlock;
+
 let lab: Lab | undefined;
 let served: ServedLab | undefined;
 let root: string | undefined;
@@ -177,7 +224,7 @@ afterEach(async () => {
  * coordinator's message handed on to it. The coder's run holds until
  * `coderRuns` opens.
  */
-async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>) {
+async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>, options: { reporter?: boolean } = {}) {
   const remote = createBareRemote("em-workstream-steer", { seed: { "README.md": "storefront\n" } });
   const stub = harnessStub({
     finalMessage: "Done.",
@@ -198,6 +245,7 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>) {
     inventory: true,
     projects: [{ id: STOREFRONT.id, title: "Storefront", repository: remote.url, members: [LAB_USERS.member.userId] }],
     workstreams: [{ as: "member", input: { project: STOREFRONT, id: "feature", title: "Feature", lead: EM } }],
+    ...(options.reporter === true ? { errorReporter: { harness: reportHarness, cwd: root } } : {}),
   });
   served = await serveLab(lab.state);
   const clients: LabClients = createLabClients({ userId: ALICE.userId, baseUrl: served.baseUrl, bearerToken: ALICE.bearer });
@@ -207,13 +255,14 @@ async function handOn(lead: Lead, coderRuns: ReturnType<typeof gate>) {
   const workstream = (await readProject(clients, reader, STOREFRONT))!.entries.find((e) => e.owner === ALICE.userId && e.id === "feature")!
     .sessionId!;
   const pc = (await workforceClientFor(clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
-  await runAction(clients, "coordinator", pc, "run", { message: "Add guest checkout." });
+  await runAction(clients, "coordinator", pc, "run", { message: FIRST_ASK });
   const rows = async () => Object.values(await lab!.stored("user", "tasks/")) as Row[];
-  const routedRow = async () => (await rows()).find((r) => r.sealed?.postId !== undefined);
+  const routedRow = async (body?: string) =>
+    (await rows()).find((r) => r.sealed?.postId !== undefined && (body === undefined || r.sealed.body === body));
   const coderRow = async () => (await rows()).find((r) => r.sealed?.postId === undefined);
   const steer = async (id: string) =>
     expect((await runAction(clients, "coordinator", pc, "updateTask_tasks", { id, message: STEER })).output).toEqual({ ok: true });
-  return { workstream, routedRow, coderRow, steer };
+  return { clients, workstream, pc, routedRow, coderRow, steer };
 }
 
 describe("a steer on a routed task in a workstream's session", () => {
@@ -278,5 +327,103 @@ describe("a steer on a routed task in a workstream's session", () => {
     const coder = (await host.coderRow())!;
     expect(coder.status).toBe("completed");
     expect(done.completedAt).toBeGreaterThanOrEqual(coder.completedAt);
+  }, 120_000);
+});
+
+describe("a routed task to a workstream from another conversation's board", () => {
+  it("waits while the first conversation's routed task is open there, then starts in the same session, and both end", async () => {
+    const seen: EmSeen = { turns: [] };
+    const coderRuns = gate();
+    release.push(coderRuns.open);
+    const host = await handOn({ id: EM, em: emModel(seen) }, coderRuns);
+    const first = await eventually(async () => {
+      const [task, coder] = [await host.routedRow(FIRST_ASK), await host.coderRow()];
+      return coder?.status === "in_progress" && task?.waitingOn === "filed" ? task : undefined;
+    }, "the first routed task waits on the coder's task", 60_000);
+
+    // Alice's project coordinator conversation is one per project: deleted and opened again, it is a new
+    // conversation with a board of its own, and the first one's task is still open in the workstream.
+    const runtime = await lab!.state.getRuntime();
+    await runtime.stores.session.delete(host.pc);
+    const again = (await workforceClientFor(host.clients).ensureWorkerSession({ worker: "project-coordinator", projectId: STOREFRONT })).id;
+    await runAction(host.clients, "coordinator", again, "run", { message: SECOND_ASK });
+    const waiting = await eventually(async () => host.routedRow(SECOND_ASK), "the second routed task filed", 30_000);
+    expect(waiting.targetSessionId).toBe(host.workstream);
+
+    // While the first is open, the second doesn't start, however long it waits.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect((await host.routedRow(SECOND_ASK))?.status).toBe("pending");
+    expect(seen.turns).toHaveLength(1);
+
+    // The coder's work ends; the first task ends; then the second starts there and ends.
+    coderRuns.open();
+    const firstDone = await eventually(async () => {
+      const task = await host.routedRow(FIRST_ASK);
+      return task?.status === "completed" ? task : undefined;
+    }, "the first routed task completed", 60_000);
+    const secondDone = await eventually(async () => {
+      const task = await host.routedRow(SECOND_ASK);
+      return task?.status === "completed" ? task : undefined;
+    }, "the second routed task completed", 60_000);
+    expect(first.run?.sessionId).toBe(host.workstream);
+    expect(secondDone.run?.sessionId).toBe(host.workstream);
+    expect(secondDone.run.startedAt).toBeGreaterThanOrEqual(firstDone.completedAt);
+  }, 180_000);
+});
+
+describe("a routed task in a workstream's session that fails once its conversation is gone", () => {
+  it("is said in the workstream's session, and its final failure goes to the Error Reporter", async () => {
+    const atCall = gate();
+    const fail = gate();
+    const coderRuns = gate();
+    release.push(fail.open, coderRuns.open);
+    const em: GeneratorModel = {
+      modelId: "test/em",
+      async generate() {
+        throw new Error("the owned tool loop calls generateStep");
+      },
+      async generateStep() {
+        atCall.open();
+        await fail.wait();
+        throw new Error("the EM's model is down");
+      },
+    };
+    const host = await handOn({ id: EM, em }, coderRuns, { reporter: true });
+    await atCall.wait();
+    const routed = (await host.routedRow(FIRST_ASK))!;
+    const runtime = await lab!.state.getRuntime();
+    await runtime.stores.session.delete(host.pc);
+    fail.open();
+
+    await eventually(async () => {
+      const task = await host.routedRow(FIRST_ASK);
+      return task?.status === "errored" || task?.status === "failed" ? task : undefined;
+    }, "the routed task failed", 30_000);
+    const intake = await eventually(async () => {
+      const requests = await runtime.stores.request.list({ withItems: false } as never);
+      const taken = requests.filter((request) => request.actionName === "intake" && JSON.stringify(request).includes(routed.id));
+      return taken.length > 0 ? taken : undefined;
+    }, "the failure at the Error Reporter's intake", 30_000);
+    expect(intake).toHaveLength(1);
+    const said = (await runtime.stores.request.list({ sessionId: host.workstream, withItems: true }))
+      .flatMap((request) => ((request as { items?: Array<Record<string, unknown>> }).items ?? []))
+      .filter((item) => item.type === "message")
+      .map((item) => JSON.stringify(item));
+    expect(said.some((text) => text.includes("couldn't be told it errored"))).toBe(true);
+  }, 120_000);
+});
+
+describe("a routed task to the DevTeam's EM", () => {
+  it("shows the EM's model the conversation's recent lines just before the message", async () => {
+    const seen: EmSeen = { turns: [] };
+    const coderRuns = gate();
+    release.push(coderRuns.open);
+    const host = await handOn({ id: EM, em: emModel(seen, false) }, coderRuns);
+    await eventually(async () => ((await host.routedRow(FIRST_ASK))?.status === "completed" ? true : undefined), "the first routed task completed", 30_000);
+    await runAction(host.clients, "coordinator", host.pc, "run", { message: SECOND_ASK });
+    await eventually(async () => ((await host.routedRow(SECOND_ASK))?.status === "completed" ? true : undefined), "the second routed task completed", 30_000);
+    expect(seen.turns).toHaveLength(2);
+    expect(seen.turns[1]).toContain("Recent lines in the conversation with project-coordinator before this message, oldest first:");
+    expect(seen.turns[1]).toContain(FIRST_ASK);
   }, 120_000);
 });

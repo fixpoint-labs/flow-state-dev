@@ -228,6 +228,66 @@ describe("the judgment turn's filing on a turn routing a message", () => {
     expect(host.heard).toEqual([]);
   });
 
+  it("answers a replayed call with the task its first run filed, and records the delivery once (BR-15)", async () => {
+    // The same call twice in one step shares its `runOnce` record, as a call
+    // replayed after a crash does: the second run is the replay.
+    const args = { goal: "Draft it", assignee: "eng.em", session: "ongoing", resultTo: "conversation" };
+    const judgment = mockGenerator({
+      script: [
+        {
+          toolCalls: [
+            { toolCallId: "d1", toolName: "createTask", args },
+            { toolCallId: "d1", toolName: "createTask", args }
+          ]
+        },
+        { text: "Handed on." }
+      ]
+    });
+    const host = bootHost({ judgment });
+    const id = await host.conversation("alice", "chief");
+    await post(host, id, "Draft it: the word is amber-77");
+    const outputs = (await host.items(id)).all.filter((item: any) => item.type === "tool_output").map((item: any) => item.output);
+    expect(outputs).toEqual([
+      { ok: true, taskId: expect.stringMatching(/^routed:/) },
+      { ok: true, taskId: outputs[0].taskId }
+    ]);
+    expect(host.heard).toHaveLength(1);
+    expect((await host.routedRows("alice")).map((row) => row.id)).toEqual([outputs[0].taskId]);
+    const [record] = (await host.items(id)).records;
+    expect(record.delegates).toEqual([{ worker: "eng.em", outcome: "delivered" }]);
+  });
+
+  it("refuses a session other than the delegate's ongoing one, and files nothing", async () => {
+    const { host, outputs } = await toolSaid({ goal: "Draft it", assignee: "eng.em", session: "new", resultTo: "conversation" });
+    expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(/^routed_session_ongoing: /) }]);
+    expect(await host.routedRows("alice")).toEqual([]);
+    expect(host.heard).toEqual([]);
+  });
+
+  it("refuses held and deps by name, rather than starting the task anyway, and files nothing", async () => {
+    for (const extra of [{ held: true }, { deps: ["task_elsewhere"] }]) {
+      const { host, outputs } = await toolSaid({ goal: "Draft it", assignee: "eng.em", session: "ongoing", resultTo: "conversation", ...extra });
+      expect(outputs).toEqual([{ ok: false, error: expect.stringMatching(new RegExp(`^routed_task_starts_now: .*takes no ${Object.keys(extra)[0]}`)) }]);
+      expect(await host.routedRows("alice")).toEqual([]);
+      expect(host.heard).toEqual([]);
+    }
+  });
+
+  it("keeps none of the board's own markers a model writes in the task's metadata", async () => {
+    const { host, outputs } = await toolSaid({
+      goal: "Draft it",
+      assignee: "eng.em",
+      session: "ongoing",
+      resultTo: "conversation",
+      metadata: { pieceOf: "task_someone_elses", retryOf: "task_other", note: "kept" }
+    });
+    expect(outputs).toEqual([{ ok: true, taskId: expect.stringMatching(/^routed:/) }]);
+    const [row] = await host.routedRows("alice");
+    expect(row.metadata?.note).toBe("kept");
+    expect(row.metadata).not.toHaveProperty("pieceOf");
+    expect(row.metadata).not.toHaveProperty("retryOf");
+  });
+
   it("refuses dispatchTask's retired post form by name, and files nothing", async () => {
     const judgment = mockGenerator({
       script: [{ toolCalls: [{ toolCallId: "d1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }] }, { text: "Tried." }]
@@ -254,7 +314,11 @@ describe("a post row stored before the upgrade", () => {
     const [key, entry] = Object.entries(entries).find(([, value]) => (value.state as { sealed?: unknown }).sealed !== undefined)!;
     const stored = entry.state as Record<string, any>;
     const now = Date.now();
-    const legacyKey = key.replace(encodeURIComponent(stored.id), encodeURIComponent("post:legacy:0:eng.coder"));
+    // The row's key ends in its id, as the store writes it, encoded or not.
+    const legacyKey = key.includes(encodeURIComponent(stored.id))
+      ? key.replace(encodeURIComponent(stored.id), encodeURIComponent("post:legacy:0:eng.coder"))
+      : key.replace(stored.id, "post:legacy:0:eng.coder");
+    expect(legacyKey).not.toBe(key);
     const legacy = {
       ...stored,
       id: "post:legacy:0:eng.coder",
