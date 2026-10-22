@@ -1072,6 +1072,8 @@ class InternalFlowState<TSettings extends object>
     if (requestHost.dispatchOperation !== undefined) return;
 
     let operation: DispatchOperation | undefined;
+    // Read per request: the worker's dispatcher is wired after this.
+    requestHost.dispatchRunsHere ??= () => isInProcessDispatcher(this.#options.dispatcher ?? this.#workerDispatcher);
     requestHost.dispatchOperation = (spec) => {
       if (this.#disposed) {
         return Promise.resolve({

@@ -233,6 +233,15 @@ export interface RequestHost {
   readonly hasWaitSweeper?: boolean;
 
   /**
+   * Whether a request this one dispatches runs in this process (the host's
+   * in-process dispatcher), rather than on another one's worker (a queue).
+   * A fact read when the request starts. Absent or `false` when it may run
+   * elsewhere, or the host can't say: a caller that keeps process-local
+   * bookkeeping about what it dispatched relies on it only when `true`.
+   */
+  readonly dispatchRunsHere?: boolean;
+
+  /**
    * Debts' due times (FIX-2078 D1). **Absent when the host keeps no wakes**:
    * its stores have none, or it has no durable execution. A debt is then paid
    * on its fast paths only, and a consumer that needs a due time either keeps a

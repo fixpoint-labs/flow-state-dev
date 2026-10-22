@@ -87,6 +87,64 @@ describe("a claim on a board that hands rows out", () => {
     }
   });
 
+  it("leaves the filer's own earlier wake as it is: a drain in the filer's session doesn't make its pass stale", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const worker = handler({
+      name: "own-wake-work",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({}),
+      execute: async () => {
+        await held;
+        return {};
+      },
+    });
+    const board = taskBoard({
+      name: "own-wake-board",
+      boardId: LEDGER.id,
+      mode: "delegation",
+      collection: LEDGER,
+      workers: { work: dispatcher<TaskWorkerInput>({ name: "own-wake-dispatch", action: "work", session: "per-task" }) },
+      initialTasks: [{ id: "t1", goal: "slow", assignee: "work", input: {} }],
+    });
+    const flow = defineFlow({
+      kind: "own-wake",
+      actions: { start: { block: board.drain } },
+      internal: { actions: { ...heard } },
+      task: { actions: { work: { block: worker } } },
+    })({ id: "own-wake" });
+    const state = createFlowState({
+      flows: { [flow.id]: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: createMockModelResolver({}),
+      durable: true,
+    });
+    try {
+      const runtime = await state.getRuntime();
+      const key = { sessionId: "filer", entry: "onTaskSettled" };
+      // The session's pass already owes a wake, due before any lease's end.
+      await runtime.stores.session.set("filer", { id: "filer", state: {}, version: 0, createdAt: 0, updatedAt: 0, flowKind: "own-wake", flowId: "own-wake", userId: USER_ID, orgId: DEFAULT_ORG_ID, journal: [] } as never, "any");
+      const owed = await runtime.stores.wakes!.owe({ ...key, flowKind: "own-wake", userId: USER_ID, orgId: DEFAULT_ORG_ID, dueAt: Date.now() + 60_000, landBy: Date.now() + 60_000 });
+      const drained = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow,
+        actionName: "start",
+        input: {},
+        userId: USER_ID,
+        sessionId: "filer",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+      });
+      expect(drained.error).toBeUndefined();
+      const after = await runtime.stores.wakes!.get(key);
+      expect(after?.version).toBe(owed.version);
+      expect(after?.dueAt).toBe(owed.dueAt);
+    } finally {
+      release();
+      await state.dispose();
+    }
+  });
+
   it("owes the filer's pass a wake when a finished row is reopened, so it starts with no touch", async () => {
     const worker = handler({
       name: "reopen-wake-work",

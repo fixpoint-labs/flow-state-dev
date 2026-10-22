@@ -156,6 +156,8 @@ export type RequestHostInputs = {
   waitResume?: WaitResumeOperation;
   /** Whether a sweeper bounds waits in this process; see `RequestHost.hasWaitSweeper`. */
   waitSweeper?: () => boolean;
+  /** Whether what this request dispatches runs in this process; see `RequestHost.dispatchRunsHere`. */
+  dispatchRunsHere?: () => boolean;
   /**
    * The store debts' due times are kept in, and how they are bounded
    * (`RequestHost.wakes`, FIX-2078 D1). Absent when the host keeps none.
@@ -709,6 +711,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   };
 
   const host: RequestHost = { parentTask, settleParentTask };
+  // Read once, as the request starts.
+  if (inputs.dispatchRunsHere?.() === true) (host as { dispatchRunsHere?: boolean }).dispatchRunsHere = true;
 
   // The fifth verb: present only where a host wired the resume, which it does
   // only with durable execution — nothing can park on a wait without it. The

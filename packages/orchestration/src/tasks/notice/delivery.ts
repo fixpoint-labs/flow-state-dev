@@ -82,7 +82,13 @@ export interface DeliveryHooks {
   filerOf(row: Task): string | undefined;
   /** Before a write that may end `row`: owe the wake. */
   beforeEnding(row: Task): Promise<void>;
-  /** Owe the filer's pass at `dueAt` for `row`: a claim's lease end. */
+  /**
+   * Owe the filer's pass at `dueAt` for `row`: a claim's lease end. In the
+   * filer's own session, a wake already due by then is left as it is: owing
+   * would only bump its version and make the pass that read it settle stale,
+   * costing one more pass. It stays covered, since a pass that finds the row
+   * still claimed owes its lease end, and the fence keeps the wake until then.
+   */
   owePassAt(row: Task, dueAt: number): Promise<void>;
   /** After the write: deliver what `row` owes now, at once. */
   afterEnding(
@@ -139,7 +145,18 @@ export function createDelivery(
   return {
     filerOf,
     beforeEnding: (row) => owePassAt(row, Date.now() + NOTICE_DUE_MS),
-    owePassAt,
+    owePassAt: async (row, dueAt) => {
+      const wakes = ctx.requestHost?.wakes;
+      if (wakes !== undefined && filerOf(row) === ctx.session.identity.id) {
+        try {
+          const kept = await wakes.read(passEntry);
+          if (kept !== undefined && kept.dueAt <= dueAt) return;
+        } catch {
+          // Owe it, then.
+        }
+      }
+      await owePassAt(row, dueAt);
+    },
     afterEnding
   };
 
