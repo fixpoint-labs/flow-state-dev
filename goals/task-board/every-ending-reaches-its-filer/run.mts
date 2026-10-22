@@ -402,7 +402,7 @@ await runGoal(async (failures, tell) => {
           { id: waited, goal: word("[slow:300] waited on"), held: true }
         ]
       });
-      await h.act("desk", conversation, "cancelTask_tasks", { taskId: cancelled, reason: "a person cancelled it" });
+      await h.act("desk", conversation, "updateTask_tasks", { id: cancelled, status: "cancelled" });
       // Over HTTP the waiting turn suspends (the helper says so by throwing); its
       // answer is its finished request's result.
       await h.script(conversation, { op: "wait", taskId: waited }).catch(() => undefined);

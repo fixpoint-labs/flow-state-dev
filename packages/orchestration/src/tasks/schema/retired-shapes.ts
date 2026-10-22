@@ -63,7 +63,9 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
     owner: "FIX-2080",
     read: (row) => {
       if (row.status !== "blocked") return undefined;
-      const rest = without(row, "error");
+      // `heldFromBlocked` marks the row for the one release a started held
+      // row may take (FIX-2081): nothing else makes such a row.
+      const rest = { ...without(row, "error"), heldFromBlocked: true };
       if (typeof row.error !== "string") return { ...rest, status: "held" };
       const metadata = row.metadata !== null && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : {};
       return { ...rest, status: "held", metadata: { ...metadata, heldReason: row.error } };

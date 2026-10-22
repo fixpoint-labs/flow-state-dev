@@ -6,8 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createMockModelResolver, runForTest, testBlock } from "@flow-state-dev/testing";
-import type { GeneratorTool } from "@flow-state-dev/core";
+import { createMockModelResolver, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createStateBackedTaskCollection,
@@ -18,7 +17,6 @@ import {
   type TaskWorkerInput,
 } from "../../src/tasks";
 import { currentWorkerClaim, isTaskTurn, taskBoard, taskWorkerInputSchema } from "../../src/task-board";
-import { buildTaskToolsList } from "../../src/skills/task-tools-capability";
 import { createFakeSequencerState } from "../helpers";
 import { heard } from "../fixtures/heard";
 
@@ -88,48 +86,6 @@ describe("an inline board worker", () => {
     expect(result.error).toBeNull();
     expect(Object.keys(seen).sort()).toEqual(["a", "b"]);
     expect(seen).toEqual({ a: "a", b: "b" });
-  });
-
-  it("is refused when a task tool writes to a task it does not hold", async () => {
-    // The point of the seam: the tool presents the worker's ticket, so the
-    // substrate refuses a write aimed at any other task. Without the ticket the
-    // tool writes as a coordinator and the sibling task is cancelled.
-    const collection = boardCollection("tool-claim");
-    const cancelTask = buildTaskToolsList(async () => collection).find(
-      (tool) => tool.config?.name === "cancelTask"
-    ) as GeneratorTool;
-    let toolResult: unknown;
-
-    const worker = handler({
-      name: "overreaching-worker",
-      inputSchema: taskWorkerInputSchema,
-      outputSchema: z.object({ done: z.boolean() }),
-      execute: async (input, ctx) => {
-        if (input.taskId === "mine") {
-          toolResult = await runForTest(cancelTask, { taskId: "theirs" }, ctx);
-        }
-        return { done: true };
-      },
-    }) as TaskWorker;
-
-    const board = taskBoard({
-      name: "tool-claim-board",
-      collection: () => collection,
-      concurrency: 1,
-      initialTasks: [
-        { id: "mine", goal: "do my task", priority: 10 },
-        { id: "theirs", goal: "someone else's task", priority: 0 },
-      ],
-      workers: worker,
-    });
-
-    const result = await testBlock(board.drain, { input: undefined });
-
-    expect(result.error).toBeNull();
-    expect(toolResult).toMatchObject({ ok: false, taskId: "theirs" });
-    expect((toolResult as { error: string }).error).toContain('you hold task "mine"');
-    // Refused, so the other task was left for its own worker to run.
-    expect(collection.get("theirs")?.status).toBe("completed");
   });
 });
 

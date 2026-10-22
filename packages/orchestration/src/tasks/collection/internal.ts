@@ -23,6 +23,7 @@ import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
 import { recordEnding as recordNoticeOwed } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
+import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -107,6 +108,7 @@ export function buildInitialTask<TInput, TOutput>(
     labels: init.labels,
     metadata: init.metadata,
     ...(init.followUpOf !== undefined ? { followUpOf: init.followUpOf } : {}),
+    ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
     ...(init.session !== undefined ? { session: init.session } : {}),
     ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
     ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
@@ -282,6 +284,12 @@ export function dispatchWrite(
   if (task.status !== "held") {
     return task.dispatchCall === options.call ? undefined : { decline: "already-dispatched" };
   }
+  // A dispatch releases, so it takes the field table's rule for a release,
+  // with the same one exception for a legacy blocked row; a reassignment is
+  // never allowed once the row has started.
+  if (hasStarted(task) && (task.heldFromBlocked !== true || options.assignee !== undefined)) {
+    return { decline: "started" };
+  }
   if (options.wait !== undefined && task.wait != null) return { decline: "disallowed" };
   if (options.assignee !== undefined) {
     const refused = assigneeChangeDecline(task, options.assignee);
@@ -291,13 +299,18 @@ export function dispatchWrite(
     patch: {
       status: "pending",
       dispatchCall: options.call,
+      ...(task.heldFromBlocked === true ? { heldFromBlocked: undefined } : {}),
       ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
       ...(options.wait !== undefined ? { wait: { gateId: options.wait.gateId, deadline: options.wait.deadline } } : {}),
     },
   };
 }
 
-/** The fields a filing may change until the task first starts (FIX-2080, ER-4). */
+/**
+ * The fields a filing may change until the task first starts (FIX-2080,
+ * ER-4; the brief's fields and the assignee since FIX-2081). Each field's rule
+ * is the field table's (`./field-rules`), read inside the write.
+ */
 export interface TaskSettingsPatch {
   /** Hold the task (`true`) or release it (`false`). */
   held?: boolean;
@@ -305,42 +318,63 @@ export interface TaskSettingsPatch {
   deps?: string[];
   /** Its attempts. */
   maxAttempts?: number;
+  /** What it is for. */
+  goal?: string;
+  /** Its short label. */
+  title?: string;
+  /** What its worker is told beside the goal. */
+  context?: string;
+  /** Its structured input. */
+  input?: unknown;
+  /** Its priority. */
+  priority?: number;
+  /** Its labels, replaced whole. */
+  labels?: string[];
+  /** Metadata keys merged over its own. */
+  metadata?: Record<string, unknown>;
+  /** Who works it. A follow-up keeps its root's worker. */
+  assignee?: string;
 }
 
+export { hasStarted };
+
 /**
- * Whether the row has ever started: claimed at least once. A retry's return
- * to `pending` does not make it unstarted again.
+ * A release and nothing else, of a row stored `blocked` before FIX-2080
+ * (`heldFromBlocked`, set only at the read boundary). Such a row may have
+ * started before it was blocked, and a release is how it runs again
+ * (BP-030). No current path holds a started row, so any other started held
+ * row keeps the field table's rule: no release. Field edits stay locked.
  */
-export function hasStarted(task: Task): boolean {
-  return task.startedAt != null || task.attempts > 0;
+function legacyReleaseOnly(task: Task, patch: TaskSettingsPatch): boolean {
+  return task.status === "held" && task.heldFromBlocked === true && patch.held === false && patchFields(patch).length === 1;
 }
 
 /**
- * Why a settings edit is refused on `task` before anything is checked: it has
- * started. A release alone is never refused for that: leaving `held` is how a
- * row starts again, and a row stored `blocked` after a retry reads as held
- * with attempts already spent (BP-030). Editing what it was filed with is.
+ * The status check the field table leaves: a settings edit lands only on a
+ * pending or held row. Which fields a started row still takes is the
+ * table's call (`lockedFields`), not this one's.
  */
-export function settingsDecline(task: Task, patch: TaskSettingsPatch): TaskWriteDeclineReason | undefined {
-  const releaseOnly = task.status === "held" && patch.held === false && patch.deps === undefined && patch.maxAttempts === undefined;
-  if (releaseOnly) return undefined;
-  return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
+function settingsDecline(task: Task): TaskWriteDeclineReason | undefined {
+  return task.status !== "pending" && task.status !== "held" ? "started" : undefined;
+}
+
+/** The fields a patch names, in the field table's words. */
+function patchFields(patch: TaskSettingsPatch): TaskEditField[] {
+  return (Object.keys(patch) as Array<keyof TaskSettingsPatch>).filter(
+    (field) => patch[field] !== undefined,
+  ) as TaskEditField[];
 }
 
 /**
- * Why a release of `task` would be refused, decided from the row before
- * anything is written: it has ended, or it has started and isn't held.
- */
-export function releaseDecline(task: Task): TaskWriteDeclineReason | undefined {
-  return isTerminalStatus(task.status) ? "terminal" : settingsDecline(task, { held: false });
-}
-
-/**
- * The one guard on editing a filing (FIX-2080, ER-4), decided on the
- * freshest committed row, inside the write: `held`, `deps` and
- * `maxAttempts` change while the row has never started, and not after.
- * Both backings run it. Terminal rows are refused by the caller's
+ * The one guard on editing a filing (FIX-2080, ER-4; every field since
+ * FIX-2081), decided on the freshest committed row, inside the write: each
+ * field the patch names changes only while the field table allows it
+ * (`TASK_FIELD_RULES`), which for every field here is until the row first
+ * starts. Both backings run it. Terminal rows are refused by the caller's
  * `declineOnTerminal` before this runs.
+ *
+ * A conversation-result task's attempts are refused first, in every state:
+ * it has one, whenever it is asked.
  *
  * @param lookup The board's committed row by id, for the dependency check.
  * @returns The patch to write, `undefined` when nothing changes, or the
@@ -353,11 +387,24 @@ export function settingsWrite(
   patch: TaskSettingsPatch,
   lookup: (id: string) => Task | undefined,
 ): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
-  const declined = settingsDecline(task, patch);
+  if (patch.maxAttempts !== undefined && task.resultTo === "conversation" && patch.maxAttempts !== 1) {
+    throw new TaskFilingRefusedError({
+      rule: "conversation_result_one_attempt",
+      taskId: task.id,
+      detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
+    });
+  }
+  const locked = legacyReleaseOnly(task, patch) ? [] : lockedFields(task, patchFields(patch));
+  if (locked.length > 0) return { decline: "started" };
+  const declined = settingsDecline(task);
   if (declined !== undefined) return { decline: declined };
   const update: Partial<Task> = {};
   if (patch.held === true && task.status === "pending") update.status = "held";
-  if (patch.held === false && task.status === "held") update.status = "pending";
+  if (patch.held === false && task.status === "held") {
+    update.status = "pending";
+    // The legacy mark serves one release; a later hold is an ordinary one.
+    if (task.heldFromBlocked === true) update.heldFromBlocked = undefined;
+  }
   if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
     assertDepsEditable(task.id, patch.deps, lookup);
     update.deps = [...patch.deps];
@@ -366,14 +413,21 @@ export function settingsWrite(
     if (!Number.isInteger(patch.maxAttempts) || patch.maxAttempts < 1) {
       throw new Error(`[tasks] maxAttempts must be a positive integer, got ${String(patch.maxAttempts)}.`);
     }
-    if (task.resultTo === "conversation" && patch.maxAttempts !== 1) {
-      throw new TaskFilingRefusedError({
-        rule: "conversation_result_one_attempt",
-        taskId: task.id,
-        detail: `task "${task.id}" sends its result to the conversation, so it has one attempt. Nothing was written.`,
-      });
-    }
     update.maxAttempts = patch.maxAttempts;
+  }
+  if (patch.assignee !== undefined && patch.assignee !== task.assignee) {
+    const assigneeDeclined = assigneeChangeDecline(task, patch.assignee);
+    if (assigneeDeclined !== undefined) return { decline: assigneeDeclined };
+    update.assignee = patch.assignee;
+  }
+  if (patch.goal !== undefined && patch.goal !== task.goal) update.goal = patch.goal;
+  if (patch.title !== undefined && patch.title !== task.title) update.title = patch.title;
+  if (patch.context !== undefined && patch.context !== task.context) update.context = patch.context;
+  if (patch.input !== undefined) update.input = patch.input;
+  if (patch.priority !== undefined && patch.priority !== task.priority) update.priority = patch.priority;
+  if (patch.labels !== undefined && !sameIds(patch.labels, task.labels)) update.labels = [...patch.labels];
+  if (patch.metadata !== undefined && Object.keys(patch.metadata).length > 0) {
+    update.metadata = { ...(task.metadata ?? {}), ...patch.metadata };
   }
   return Object.keys(update).length === 0 ? undefined : { patch: update };
 }
@@ -1147,6 +1201,52 @@ export function requireClaimTicket(
   if (claim === undefined) {
     throw new Error(`[tasks] ${verb} requires the claim ticket ${detail}`);
   }
+}
+
+/** Whether a progress report names anything to write. */
+export function reportsProgress(progress: { statusNote?: string; output?: unknown }): boolean {
+  return progress.statusNote !== undefined || progress.output !== undefined;
+}
+
+/** The patch a progress report writes (FIX-2081): the note, and the output marked a checkpoint. */
+export function progressPatch(progress: { statusNote?: string; output?: unknown }): Partial<Task> {
+  return {
+    ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
+    ...(progress.output !== undefined ? { output: progress.output, checkpointed: true as const } : {}),
+  };
+}
+
+/**
+ * The patch a completion writes (FIX-2081, D3): the latest checkpoint is the
+ * output, so the final result is written only when no checkpoint was ever
+ * made. A failed attempt or a reclaim keeps the checkpoint.
+ */
+export function completionPatch(task: Task, output: unknown, completedAt: number): Partial<Task> {
+  return {
+    ...(task.checkpointed === true ? {} : { output }),
+    completedAt,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    error: undefined,
+  };
+}
+
+/**
+ * The patch a cancel writes. `via` is how it was made, when the caller says
+ * (FIX-2081): server-set, never input.
+ */
+export function cancelPatch(
+  reason: string | undefined,
+  via: Task["cancelledVia"],
+  completedAt: number,
+): Partial<Task> {
+  return {
+    ...(reason !== undefined ? { error: reason } : {}),
+    completedAt,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    ...(via !== undefined ? { cancelledVia: via } : {}),
+  };
 }
 
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */

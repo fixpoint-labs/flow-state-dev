@@ -190,7 +190,7 @@ describe("a new task's input is an object, never its JSON as a string", () => {
     throw new Error("unused");
   }, () => team(["eng.coder"]).roster, { dispatches: true })({});
 
-  for (const name of ["dispatchTask", "addTask"]) {
+  for (const name of ["dispatchTask", "createTask"]) {
     it(`${name} refuses the payload as a string, so the model is told to send the object`, () => {
       const tool = tools.find((t) => (t as { name?: string }).name === name);
       if (tool === undefined) throw new Error(`${name} is not offered`);
@@ -232,7 +232,7 @@ describe("dispatchTask title", () => {
     const tools = taskToolsForTurn(async () => {
       throw new Error("unused");
     }, () => team(["eng.coder"]).roster, { dispatches: true })({});
-    for (const name of ["dispatchTask", "addTask"]) {
+    for (const name of ["dispatchTask", "createTask"]) {
       const tool = tools.find((t) => (t as { name?: string }).name === name)!;
       const base = { goal: "Audit licenses", assignee: "eng.coder" };
       expect(tool.inputSchema.safeParse({ ...base, title: "" }).success).toBe(false);
@@ -248,8 +248,8 @@ describe("dispatchTask title", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("dispatch_ref_takes_no_task_fields");
     expect(result.error).toContain("title");
-    // updateTask can't set a title, so it is not offered as the way to.
-    expect(result.error).not.toContain("updateTask");
+    // updateTask sets a title before the task starts, so it is the way to.
+    expect(result.error).toContain("updateTask");
   });
 
   it("still points to updateTask for fields it can change, when a title comes with them", async () => {

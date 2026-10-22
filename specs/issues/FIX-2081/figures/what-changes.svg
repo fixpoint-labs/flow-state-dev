@@ -77,7 +77,7 @@
     <text class="t-s" x="32" y="412">on the roster · any coordinator edits its own list</text>
     <text class="t-b" x="484" y="380">After</text>
     <text class="t-s" x="484" y="398">the filer's delegates, or the roster with delegates: all</text>
-    <text class="t-s" x="484" y="412">only the user changes the list, unless managesOwnDelegates</text>
+    <text class="t-s" x="484" y="412">only the user changes the list, unless editsOwnDelegates</text>
     <text class="t-s" x="484" y="436">a worker's step for itself is a plan row (FIX-2076)</text>
   </g>
 </svg>

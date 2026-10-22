@@ -24,8 +24,8 @@
 **Controls:** each is a scratch patch to `packages/orchestration/src/tasks/helpers/wait-for-response.ts`, applied as the server loads it (`goals/lib/module-patch.mjs`), printed by the run, and refused when it never reached the code.
 
 - `GOAL_CONTROL=no-run-once`: the ask records neither its filing nor its row's id with `runOnce` (two patches), so the replay after the resume files again. What that breaks depends on how the asker waited, which the run reads from the asking request's own `dispatchTask` call and prints:
-  - On a new task (`goal`), the replay reaches `addTask` with a new id and files a second row. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
-  - On a task it recorded first with `addTask` (`taskId`), the replay dispatches that row again, and the board declines it, since it was already dispatched. No second row can exist on this path, and the answer never reaches the turn. Must fail **`a:word`**, and `one-row` must stay green: if it fails, something other than the control broke the run.
+  - On a new task (`goal`), the replay reaches the collection's add with a new id and files a second row. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
+  - On a task it filed held first with `createTask` (`taskId`), the replay dispatches that row again, and the board declines it, since it was already dispatched. No second row can exist on this path, and the answer never reaches the turn. Must fail **`a:word`**, and `one-row` must stay green: if it fails, something other than the control broke the run.
   - When the asker never dispatched with `wait`, or waited both ways in one turn, the control fails as ungraded.
 - `GOAL_CONTROL=no-waker`: nothing resumes a waiting turn; a touch of the board finds no owed resume. Must fail **`a:completed`** (the request stays `suspended`). `a:word` goes red with it.
 

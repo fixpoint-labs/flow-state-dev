@@ -94,7 +94,7 @@ describe("the post form of dispatchTask (V3, BR-5)", () => {
 });
 
 describe("a post row on the board (BR-21)", () => {
-  it("can't be reassigned, completed, failed or blocked; a cancel ends it, and the late answer lands nowhere", async () => {
+  it("can't be reassigned or held, and no action settles it; a cancel ends it, and the late answer lands nowhere", async () => {
     // eng.lead takes tasks, so this conversation files and its board answers the task tools.
     const host = bootHost({ standard: standardWorkers({ desk: { delegates: ["eng.em", "eng.coder", "support.general", "eng.lead"] } }) });
     const id = await host.conversation("alice", "desk");
@@ -106,15 +106,17 @@ describe("a post row on the board (BR-21)", () => {
     }
     expect(row).toMatchObject({ status: "in_progress", assignee: "eng.coder" });
     const write = async (action: string, input: Record<string, unknown>) => {
-      const result = await host.act("alice", id, `${action}_tasks`, { taskId: row.id, ...input });
+      const result = await host.act("alice", id, `${action}_tasks`, { id: row.id, ...input });
       expect(result.error, messageOf(result.error)).toBeUndefined();
       return JSON.stringify(result.output);
     };
-    expect(await write("assignTask", { assignee: "eng.lead" })).toMatch(/immutable-assignee/);
-    expect(await write("completeTask", { output: "a forged answer" })).toMatch(/disallowed/);
-    expect(await write("failTask", { error: "x" })).toMatch(/disallowed/);
-    expect(await write("updateTask", { patch: { status: "held" } })).toMatch(/disallowed|started/);
-    expect(JSON.parse(await write("cancelTask", {}))).toEqual({ ok: true });
+    expect(await write("updateTask", { assignee: "eng.lead" })).toMatch(/field_locked_after_start|immutable-assignee/);
+    expect(await write("updateTask", { status: "held" })).toMatch(/field_locked_after_start|disallowed/);
+    // No action settles a task: there is none to forge an answer with.
+    await expect(host.act("alice", id, "completeTask_tasks", { taskId: row.id, output: "a forged answer" })).rejects.toThrow(
+      /does not define action "completeTask_tasks"/
+    );
+    expect(JSON.parse(await write("updateTask", { status: "cancelled" }))).toEqual({ ok: true });
 
     // The coder finishes after the cancel: its settle is refused, so nothing lands.
     await new Promise((resolve) => setTimeout(resolve, SLOW_MS + 200));

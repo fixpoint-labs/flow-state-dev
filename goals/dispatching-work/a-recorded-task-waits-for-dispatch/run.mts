@@ -55,11 +55,11 @@ const CONTROLS: Record<string, Control> = {
     patches: [
       {
         module: "packages/orchestration/src/skills/task-tools-capability.ts",
-        from: String.raw`addTask\(\{ \.\.\.checked\.init, held: true \}\)`,
-        to: "addTask({ ...checked.init })",
+        from: String.raw`\.\.\.\(input\.held === true \? \{ held: true \} : \{\}\),`,
+        to: "",
       },
     ],
-    does: "the task tools file addTask's row ready instead of held, so recording a task for a delegate starts it, as before FIX-1875",
+    does: "the task tools drop createTask's held setting and file the row ready, so writing a task down for a delegate starts it, as before FIX-1875",
   },
 };
 
@@ -136,9 +136,9 @@ async function drive(origin: string, store: string) {
   const conv = await conversation();
   const elsewhere = await conversation();
 
-  // rec: record both through the app's addTask_tasks, then touch the board for 30 s.
-  const assigned = await act(conv, "addTask_tasks", { goal: drill(`${word}-a`), assignee: delegate });
-  const unassigned = await act(conv, "addTask_tasks", { goal: drill(`${word}-u`) });
+  // rec: record both through the app's createTask_tasks, held, then touch the board for 30 s.
+  const assigned = await act(conv, "createTask_tasks", { held: true, goal: drill(`${word}-a`), assignee: delegate });
+  const unassigned = await act(conv, "createTask_tasks", { held: true, goal: drill(`${word}-u`) });
   const assignedId = assigned.output?.taskId as string | undefined;
   const unassignedId = unassigned.output?.taskId as string | undefined;
   let touches = 0;
@@ -197,7 +197,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
     // A recorded row is held (FIX-2080): filed, and not started until released.
     if (rec === undefined || rec.status !== "held" || rec.attempts !== 0 || rec.run !== undefined || after.sessions !== 0) {
       failures.push(
-        `rec:not-started — wanted the row addTask_tasks recorded ${form} to be held with no run after ${o.touches} touches over ${TOUCH_MS / 1000} s; ` +
+        `rec:not-started — wanted the row createTask_tasks filed held ${form} to be held with no run after ${o.touches} touches over ${TOUCH_MS / 1000} s; ` +
           `recording answered ${show(filed.output ?? filed.error)}, the row ${show(rec && { status: rec.status, attempts: rec.attempts, run: rec.run, assignee: rec.assignee })}, task sessions ${after.sessions}`,
       );
     }

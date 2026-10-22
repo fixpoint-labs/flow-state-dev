@@ -44,7 +44,7 @@ import { taskMessage } from "./task-message";
 /**
  * The plan ledger's id: its resource key. **Pinned**: rows are stored under it.
  */
-const PLAN_LEDGER_ID = "plan";
+export const PLAN_LEDGER_ID = "plan";
 
 /**
  * The plan ledger's one declaration. A browser may read it as it reads the

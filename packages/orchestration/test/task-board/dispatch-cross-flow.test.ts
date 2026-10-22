@@ -450,7 +450,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       expect(JSON.stringify(listed.output)).toContain('"a1"');
       expect(JSON.stringify(listed.output)).not.toContain('"b1"');
       // A cancel naming conv_b's task from conv_a reaches nothing.
-      await h.act(ALICE, "conv_a", "cancelTask_partition-tasks", { taskId: "b1" });
+      await h.act(ALICE, "conv_a", "updateTask_partition-tasks", { id: "b1", status: "cancelled" });
       expect((await h.row(ALICE, "conv_b#0", "b1"))?.status).toBe("pending");
 
       // The task session ran on the agent flow, as alice, a child of conv_a.

@@ -301,7 +301,7 @@ export async function hireTeam(world: World): Promise<string[]> {
     id: HELPER_A,
     flow: "agent",
     description: "Helper A: a teammate other workers can ask quick questions.",
-    instructions: `You are Helper A. Answer other workers' questions briefly and directly. Your favourite colour is ${colourA}. When you are asked to have helper-b do something, start helper-b on a task for it with dispatchTask (not addTask).`,
+    instructions: `You are Helper A. Answer other workers' questions briefly and directly. Your favourite colour is ${colourA}. When you are asked to have helper-b do something, start helper-b on a task for it with dispatchTask.`,
     settings: { delegates: [HELPER_B], model: HIRE_MODEL },
   });
   await hire(world.alice, {

@@ -14,12 +14,12 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `dispatchTask` | `createTask`; `{ taskId }` is `updateTask({ id, status: "pending" })`; `{ taskId, assignee }` is `updateTask({ id, assignee })`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task: `createTask` with `target` and the routing settings | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
 | `readTask({ taskId })` | `getTask({ id })` | FIX-2081 |
 | `updateTask`'s `taskId`, `patch` (FIX-2080's interim `patch.status` included), `addLabel`, `removeLabel` | Flat input: `updateTask({ id, priority, labels, status, … })`; `labels` replaces the list | FIX-2081 |
-| `addDelegate`, `removeDelegate`, `setFallback` on every coordinator | `managesOwnDelegates: true` in the coordinator's `WORKER.md`; otherwise the user edits the list | FIX-2081 |
+| `addDelegate`, `removeDelegate`, `setFallback` on every coordinator | `editsOwnDelegates: true` in the coordinator's `WORKER.md`; otherwise the user edits the list | FIX-2081 |
 | A task session's reach to the whole roster | `delegates: [ … ]`, or `delegates: all` | FIX-2081 |
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
-| `blockTask` | `updateTask({ taskId, patch: { status: "held" } })` and `"pending"` before it starts (flattened by FIX-2081); `waitForUser` after | FIX-2080 |
+| `blockTask` | `updateTask({ id, status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
 | `TaskCollection.block`, `unblock` | `TaskCollection.hold`, `release` | FIX-2080 |
 | The `"blocked"` task status, and `"blocked"` in `listTasks`' status filter | `"held"` | FIX-2080 |
 | `Task.undispatched`, `TaskInit.undispatched` | `held` | FIX-2080 |
@@ -41,6 +41,10 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `createScheduledTransportAdapter`'s `idempotencyWindowMs` | Nothing: the dispatch endpoint fires each scheduled time at most once, recorded in the host's store | FIX-2085 |
 | `createScheduledTransportAdapter`'s `idempotencyOptions` (the cache's test seam) | Nothing: it goes with the cache | FIX-2085 |
 | The dispatch request body's `idempotencyKey` | Nothing: the scheduled time is the key. A body that sends one is refused with `400` | FIX-2085 |
+| A fixed `nominalFireTime` in a scheduler's body | Remove the body: a fire with none counts against the latest scheduled time already due. A fixed time fires once, then answers `200 duplicate`, with `reason: "stale"` and a server warning once it is more than one period old | FIX-2085 |
+| A cron of more than five fields (a sixth is seconds) | Five fields. One with six is refused at registration, at dispatch (`400 invalid_schedule`) and by `saveSchedule` | FIX-2085 |
+| A schedule `timezone` that isn't an IANA zone | A known IANA zone, or none for UTC. An unknown one is refused at registration and at dispatch (`400 invalid_schedule`) | FIX-2085 |
+| A `ScheduleResolutionContext` built by hand (a test calling a resolver directly) | Pass `userStorageKey(userId, orgId)`, which the dispatch endpoint supplies; the resource-collection resolver reads a user's row through it | FIX-2085 |
 | `settleSplitTask` | Nothing: a split task stays running, and the claim gate settles it when a request for it ends with no piece open | FIX-2077 |
 | A split task's `{ answer, pieces }` output | The latest `reportProgress` checkpoint, else the worker's last answer; a piece's result from its own row, through FIX-2081's `listTasks({ filedByTask })` | FIX-2077 |
 | A failed piece failing its task, and the retry marker (`retryOf`) | The worker's turn decides: throw to fail the task, or file a new piece. A turn that ignores a failed piece completes the task | FIX-2077 |

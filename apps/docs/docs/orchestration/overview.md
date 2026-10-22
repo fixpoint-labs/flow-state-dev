@@ -43,9 +43,9 @@ Which path you take depends on who decides the shape of the work.
 
 **Code-first.** You define the board in TypeScript: its workers, its initial tasks, its dependency graph. Then you mount it as a step in a flow. You know the shape of the work up front, or your code decides it. This is the `taskBoard(...)` factory.
 
-**Agent-first.** A generator decides what work to run at runtime. Give it the task tools over a board with `createTaskToolsCapability(resolver)` (ten tools, `addTask` and `completeTask` among them) and it plans the work as tasks, with an `assignee` and `deps` on each, for the board's workers to take.
+**Agent-first.** A generator decides what work to run at runtime. Give it the task tools over a board with `createTaskToolsCapability(resolver)` (`createTask`, `getTask`, `listTasks` and `updateTask`, with `answerTask`) and it plans the work as tasks, with an `assignee` and `deps` on each, for the board's workers to take.
 
-Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. A model calls the `addTask` task tool.
+Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. A model calls the `createTask` task tool.
 
 ## Where work blocks, and where it doesn't
 

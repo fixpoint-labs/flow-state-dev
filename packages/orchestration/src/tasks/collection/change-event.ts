@@ -39,6 +39,8 @@ export type TaskChangeKind =
    * read of the row.
    */
   | "run_linked"
+  /** A running task's worker reported its progress: a status note, a checkpoint of its output, or both (FIX-2081). */
+  | "progress_reported"
   /** A waited-on row's resume-owed marker was cleared: its waiting turn has its answer (FIX-1816). */
   | "resume_settled"
   /** A finished row went back to the queue: a person picked it up again (FIX-1764). */

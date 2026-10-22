@@ -71,6 +71,7 @@ import { parseProjectRef, parseWorkstreamRef } from "../projects/workstream-ref"
 import { defineStandardWorkerCollection, standardWorkerFlow } from "./standard-workers";
 import { defineWorkerCollection, parseWorkerRow, type WorkerRow } from "./worker-row";
 import { grantedAccessOf, markVerifiedWorker, type GrantedAccess } from "./verified-worker";
+import { ALL_DELEGATES } from "../delegates/delegate-keys";
 
 export { verifiedWorkerOf } from "./verified-worker";
 
@@ -182,8 +183,12 @@ export interface RosterWorker {
   flow: string;
   /** Its description, or `null`. */
   description: string | null;
-  /** The delegates its configuration lists (`delegates:`), by worker id; empty when it lists none. */
-  delegates: readonly string[];
+  /**
+   * The delegates its configuration lists (`delegates:`), by worker id; empty
+   * when it lists none. `"all"` when its file says `delegates: all`: the
+   * whole roster, read when it is used (FIX-2081 D2).
+   */
+  delegates: readonly string[] | typeof ALL_DELEGATES;
   /** Why it can't run, when its row can't be read or names a flow kept for standard workers. */
   problem?: string;
 }
@@ -326,9 +331,10 @@ export interface WorkerInstallation extends WorkerGrants {
   standardWorkerProblems(): string[];
 }
 
-/** The worker ids a configuration's `delegates:` lists, or none. */
-function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[] {
+/** The worker ids a configuration's `delegates:` lists, `"all"` for the whole roster, or none. */
+function declaredDelegates(declared: Readonly<Record<string, unknown>>): string[] | typeof ALL_DELEGATES {
   const listed = declared.delegates;
+  if (listed === ALL_DELEGATES) return ALL_DELEGATES;
   return Array.isArray(listed) ? listed.filter((name): name is string => typeof name === "string") : [];
 }
 
@@ -551,6 +557,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     return minted.ok ? [] : minted.problems;
   };
 
+  // A standard worker with `delegates: all` passes here, and reaches the
+  // user's own workers too: `all` is the user's whole roster, not the files'.
   const standardWorkerProblems = (): string[] =>
     [...standard.values()].flatMap((manifest) => {
       const minted = mint(manifest);

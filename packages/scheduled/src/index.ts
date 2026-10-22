@@ -9,7 +9,7 @@
  * EventBridge, GitHub Actions, `node-cron`) and POST to this endpoint
  * when a schedule is due. The framework owns the configuration model
  * (`schedules` on `defineFlow`), dispatch contract, two-phase auth
- * (gateway → schedule.principal), idempotency dedupe, and provenance
+ * (gateway → schedule.principal), one firing per scheduled time, and provenance
  * stamping (`source: 'scheduled'`).
  *
  *   import { createFlowApiRouter } from "@flow-state-dev/engine";

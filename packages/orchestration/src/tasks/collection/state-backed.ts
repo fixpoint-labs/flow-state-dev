@@ -37,6 +37,10 @@ import {
   applyTransition,
   assertValidLeaseDeadline,
   linkRunGuards,
+  completionPatch,
+  cancelPatch,
+  progressPatch,
+  reportsProgress,
   RENEW_LEASE_TICKET_DETAIL,
   requireClaimTicket,
   runLinkPatch,
@@ -59,7 +63,6 @@ import {
   assigneeChangeDecline,
   dispatchWrite,
   settingsWrite,
-  settingsDecline,
   settingsChangeKind,
   type EndingRecording,
   parkPatch,
@@ -432,7 +435,10 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     options?: {
       declineOnTerminal?: boolean;
       /** A refusal decided on the freshest committed task, inside the write. */
-      decline?: (task: Task<TInput, TOutput>) => TaskWriteDeclineReason | undefined;
+      decline?: (
+        task: Task<TInput, TOutput>,
+        tasks: Readonly<Record<string, Task<TInput, TOutput>>>
+      ) => TaskWriteDeclineReason | undefined;
     }
   ): Promise<TaskWriteOutcome> {
     /** What one `patchOne` invocation did — returned, never captured outward. */
@@ -457,7 +463,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
             },
           };
         }
-        const refused = options?.decline?.(task);
+        const refused = options?.decline?.(task, tasks);
         if (refused !== undefined) {
           return {
             state: undefined,
@@ -500,7 +506,11 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       },
       {
         declineOnTerminal: true,
-        decline: (task) => settingsDecline(task as Task, settings),
+        // The field table's refusal, decided on the same committed row the patch reads.
+        decline: (task, tasks) => {
+          const decided = settingsWrite(task as Task, settings, (other) => ownTask(tasks, other) as Task | undefined);
+          return decided !== undefined && "decline" in decided ? decided.decline : undefined;
+        },
       }
     );
   }
@@ -695,18 +705,30 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async complete(id, output, options) {
+      // A checkpoint the worker reported stays the output (FIX-2081).
       return transitionTo(
         id,
         "completed",
         "completed",
-        () => ({
-          output,
-          completedAt: now(),
-          leaseUntil: undefined,
-          claimedBy: undefined,
-          error: undefined,
-        }),
+        (task) => completionPatch(task as Task, output, now()) as Partial<Task<TInput, TOutput>>,
         options
+      );
+    },
+
+    async reportProgress(id, progress, progressOptions) {
+      requireClaimTicket(
+        progressOptions?.claim,
+        "reportProgress",
+        "of the attempt it reports on. Only the request holding a task's claim reports its progress."
+      );
+      if (!reportsProgress(progress)) return { outcome: "unchanged" };
+      // Same-status, fenced like a run link: a finished, recreated or reclaimed row declines.
+      return transitionTo(
+        id,
+        "in_progress",
+        "progress_reported",
+        () => progressPatch(progress) as Partial<Task<TInput, TOutput>>,
+        linkRunGuards(progressOptions)
       );
     },
 
@@ -843,19 +865,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "cancelled",
         "cancelled",
-        () =>
-          reason !== undefined
-            ? {
-                error: reason,
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-              }
-            : {
-                completedAt: now(),
-                leaseUntil: undefined,
-                claimedBy: undefined,
-              },
+        () => cancelPatch(reason, options?.via, now()) as Partial<Task<TInput, TOutput>>,
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it

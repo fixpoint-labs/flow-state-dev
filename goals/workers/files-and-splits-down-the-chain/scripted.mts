@@ -181,7 +181,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       ] as const) {
         const conv = await alice.conversation(flowKind, worker);
         const turn = await alice.act(flowKind, conv, "run", { message: `[tools] [try-file] Sort the ${w} pile` });
-        const app = await alice.act(flowKind, conv, "addTask_tasks", { goal: `Sort the ${w} pile` });
+        const app = await alice.act(flowKind, conv, "createTask_tasks", { held: true, goal: `Sort the ${w} pile` });
         c[label] = { conv, flowKind, worker, turn, app };
       }
       c.quietAt = await quiet(o.store);
@@ -204,7 +204,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:101] Count the ${fw} beans` }, 180_000);
       await quiet(o.store, 300_000);
       const fan = sessionOf(o.store, "wide.fan", fanConv);
-      const fanApp = fan === null ? null : await alice.act("agent", fan, "addTask_tasks", { goal: `Count the ${fw} beans again` });
+      const fanApp = fan === null ? null : await alice.act("agent", fan, "createTask_tasks", { held: true, goal: `Count the ${fw} beans again` });
       const quietAt = await quiet(o.store);
       out.d = { word: w, conv, turn, d5, deepApp, fanWord: fw, fanConv, fanTurn, fan, fanApp, quietAt };
     });
@@ -223,7 +223,7 @@ export async function capLeg(o: { origin: string; store: string; shipped: Shippe
   const fanTurn = await alice.act("agent", fanConv, "run", { message: `[file:wide.fan] [fan:${o.cap + 1}] Count the ${fw} beans` });
   await quiet(o.store);
   const fan = sessionOf(o.store, "wide.fan", fanConv);
-  const fanApp = fan === null ? null : await alice.act("agent", fan, "addTask_tasks", { goal: `Count the ${fw} beans again` });
+  const fanApp = fan === null ? null : await alice.act("agent", fan, "createTask_tasks", { held: true, goal: `Count the ${fw} beans again` });
   await quiet(o.store);
   await sleep(GRACE_MS);
   const quietAt = await quiet(o.store);

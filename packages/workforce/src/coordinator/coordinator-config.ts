@@ -15,6 +15,9 @@
  *   `delegates`.
  * - `minConfidence`: under `best-fit` only, the lowest confidence, from 0 to
  *   1, at which a delegate pick is used. No default: without it, any pick is.
+ * - `editsOwnDelegates`: whether the coordinator's model gets
+ *   `addDelegate`, `removeDelegate` and `setFallback` and may change its own
+ *   delegates (FIX-2081, rule 13). Default `false`: only the user changes them.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
  *   {@link MAX_ROUNDS}.
  * - `model`, `tools`, `skills` and the rest: the agent turn's own, read the
@@ -58,6 +61,7 @@ function coordinatorShape() {
   return {
     routing: z.enum(COORDINATOR_ROUTING).default("judgment"),
     fallback: z.string().min(1).optional(),
+    editsOwnDelegates: z.boolean().default(false),
     minConfidence: z
       .number({ invalid_type_error: MIN_CONFIDENCE_RANGE })
       .min(0, { message: MIN_CONFIDENCE_RANGE })
@@ -74,7 +78,8 @@ function coordinatorShape() {
 
 /** The keys every coordinator configuration carries, whatever its base. */
 export type CoordinatorConfig = z.infer<z.ZodObject<ReturnType<typeof coordinatorShape>>> & {
-  delegates: string[];
+  /** Its default delegates, or `"all"`: the whole roster, read per call (FIX-2081 D2). */
+  delegates: string[] | "all";
   model?: string;
   instructions?: string;
 };
@@ -90,11 +95,14 @@ export function coordinatorConfigProblems(
   config: Pick<CoordinatorConfig, "delegates" | "fallback"> & Partial<Pick<CoordinatorConfig, "routing" | "minConfidence">>
 ): string[] {
   const problems: string[] = [];
-  const twice = config.delegates.filter((name, index) => config.delegates.indexOf(name) !== index);
+  // `all` names no one twice, and its fallback is any worker the roster has when it is read.
+  if (!Array.isArray(config.delegates)) return problems;
+  const named = config.delegates;
+  const twice = named.filter((name, index) => named.indexOf(name) !== index);
   if (twice.length > 0) {
     problems.push(`names ${[...new Set(twice)].map((name) => `"${name}"`).join(", ")} twice in \`delegates:\``);
   }
-  if (config.fallback !== undefined && !config.delegates.includes(config.fallback)) {
+  if (config.fallback !== undefined && !named.includes(config.fallback)) {
     problems.push(`names "${config.fallback}" as \`fallback:\`, which isn't one of its \`delegates:\``);
   }
   if (config.minConfidence !== undefined && config.routing !== "best-fit") {

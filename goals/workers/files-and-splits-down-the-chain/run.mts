@@ -45,7 +45,7 @@ const SCRIPTED_LEGS = new Set(["a", "b", "c", "d"]);
 /** The app's own chain cap on leg d's second Lab. */
 const APP_CAP = 3;
 /** The task tools (the pinned eight, and `answerTask`): none may be on the turn of a worker with no task-taking delegate. */
-const TASK_TOOLS = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
+const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"];
 const say = (s: string) => console.error(`[split ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 
@@ -171,8 +171,8 @@ function chainUnder(all: StoredSession[], root: string): StoredSession[] {
   return all.filter((s) => ids.has(s.id));
 }
 
-/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. Each leg reads exactly the tool it proves: `dispatchTask` starts work, `addTask` records it. */
-function addTasks(tool: "addTask" | "dispatchTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
+/** The `tool` calls a session's turns made, each one's answer; only one request's when `requestId` is given. Each leg reads exactly the tool it proves: `dispatchTask` starts work, `createTask` with `held` holds it. */
+function addTasks(tool: "createTask" | "dispatchTask", store: string, sessionId: string | null | undefined, requestId?: string | null): any[] {
   if (sessionId == null) return [];
   return items(store, sessionId, "tool_output")
     .filter((i) => i.toolCall?.name === tool && (requestId === undefined || i.requestId === requestId))
@@ -202,14 +202,14 @@ function gradeA(o: any, store: string): LegResult {
   const top = rows.find((x) => x.id === topId);
 
   if (refusalOf(A.hired.alice) !== undefined || top === undefined || top.assignee !== "crew.planner" || !top.partition.startsWith(`${A.conv}~`)) {
-    r.failures.push(`a:filed — wanted Alice's worker's own addTask to store a task for crew.planner on her conversation's board; hired ${show(A.hired.alice.output ?? A.hired.alice.error)}, the turn ${A.turn.status}, its addTask answered ${show(filed)}, row ${show(top)}`);
+    r.failures.push(`a:filed — wanted Alice's worker's own createTask to store a task for crew.planner on her conversation's board; hired ${show(A.hired.alice.output ?? A.hired.alice.error)}, the turn ${A.turn.status}, its createTask answered ${show(filed)}, row ${show(top)}`);
   }
   const plannerSessions = all.filter((s) => topId !== null && s.state.taskId === topId);
   const planner = plannerSessions[0];
   const pieceCalls = addTasks("dispatchTask", store, planner?.id);
   const pieces = planner === undefined ? [] : onBoardOf(rows, planner.id);
   if (plannerSessions.length !== 1 || pieceCalls.filter((x) => x?.ok === true).length !== 2 || pieces.length !== 2 || show(pieces.map((p) => p.assignee).sort()) !== show(["crew.one", "crew.two"])) {
-    r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own addTask; sessions ${plannerSessions.length}, its addTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
+    r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own createTask; sessions ${plannerSessions.length}, its createTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
   }
   const chain = chainUnder(all, A.conv);
   const pieceSessions = pieces.map((p) => all.filter((s) => s.state.taskId === p.id));
@@ -285,7 +285,7 @@ function gradeB(o: any, store: string): LegResult {
   const id = (filed.find((x) => x?.ok === true)?.taskId as string | undefined) ?? null;
   const row = rows.find((x) => x.id === id);
   if (conv?.flowKind !== "foreman" || conv.state.workerId !== "shop.foreman" || row === undefined || row.assignee !== "crew.one" || !row.partition.startsWith(`${B.conv}~`)) {
-    r.failures.push(`b:filed — wanted shop.foreman, on its own flow, to store a task for crew.one on its session's board by its own addTask; session ${show(conv && [conv.flowKind, conv.state.workerId])}, the turn ${B.turn.status} ${B.turn.error ?? ""}, its addTask answered ${show(filed)}, row ${show(row)}`);
+    r.failures.push(`b:filed — wanted shop.foreman, on its own flow, to store a task for crew.one on its session's board by its own createTask; session ${show(conv && [conv.flowKind, conv.state.workerId])}, the turn ${B.turn.status} ${B.turn.error ?? ""}, its createTask answered ${show(filed)}, row ${show(row)}`);
   }
   const ran = all.filter((s) => id !== null && s.state.taskId === id);
   const lines = id === null ? [] : completedLines(store, B.conv, id, "crew.one");
@@ -314,12 +314,12 @@ function gradeC(o: any, store: string): LegResult {
     if (tools === null || onTurn.length > 0) {
       r.failures.push(`c:no-task-tool — wanted ${X.worker}'s turn handed none of the task tools; ${tools === null ? `it said no tool list (the turn ${X.turn.status}: ${show(said || X.turn.error)})` : `it was handed ${show(onTurn)}`}`);
     }
-    const tried = addTasks("addTask", store, X.conv, X.turn.requestId);
+    const tried = addTasks("createTask", store, X.conv, X.turn.requestId);
     const stored = onBoardOf(rows, X.conv);
     if (tried.some((x) => x?.ok === true) || !refusedWith(X.app.output ?? X.app.error, "no_delegation_board") || stored.length > 0) {
-      r.failures.push(`c:files-nothing — wanted ${X.worker}, with no task-taking delegate, to file nothing: its turn's addTask answered ${show(tried)}, the app's addTask ${show(X.app.output ?? X.app.error ?? X.app.status)}, rows on its board ${stored.length}`);
+      r.failures.push(`c:files-nothing — wanted ${X.worker}, with no task-taking delegate, to file nothing: its turn's createTask answered ${show(tried)}, the app's createTask ${show(X.app.output ?? X.app.error ?? X.app.status)}, rows on its board ${stored.length}`);
     }
-    r.notes.push(`${X.worker}: tools ${show(tools)}; its addTask ${show(tried)}; the app's ${show(X.app.output ?? X.app.status)}`);
+    r.notes.push(`${X.worker}: tools ${show(tools)}; its createTask ${show(tried)}; the app's ${show(X.app.output ?? X.app.status)}`);
   }
   return r;
 }
@@ -345,24 +345,24 @@ function gradeD(o: any, store: string, cap: any, capStore: string | undefined): 
     boards.some((s) => onBoardOf(rows, s.id).length !== 1)
   ) {
     r.failures.push(
-      `d:depth — wanted the filing onto the sixth board refused, by deep.d5's own addTask and by the app, total_task_cap_exceeded, and five boards holding one row each; deep.d5's session ${D.d5 ?? "missing"}, its addTask answered ${show(deepTried)}, the app's ${show(D.deepApp?.output ?? D.deepApp?.error)}, rows for deep.d6 ${toD6.length}, boards ${show(boards.map((s) => [s.state.workerId, onBoardOf(rows, s.id).length]))}`,
+      `d:depth — wanted the filing onto the sixth board refused, by deep.d5's own createTask and by the app, total_task_cap_exceeded, and five boards holding one row each; deep.d5's session ${D.d5 ?? "missing"}, its createTask answered ${show(deepTried)}, the app's ${show(D.deepApp?.output ?? D.deepApp?.error)}, rows for deep.d6 ${toD6.length}, boards ${show(boards.map((s) => [s.state.workerId, onBoardOf(rows, s.id).length]))}`,
     );
   }
-  const fanCalls = addTasks("addTask", store, D.fan);
+  const fanCalls = addTasks("createTask", store, D.fan);
   const fanOk = fanCalls.filter((x) => x?.ok === true).length;
   const fanRefused = fanCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
   const fanRows = D.fan === null ? [] : onBoardOf(rows, D.fan);
   if (D.fan === null || fanOk !== 100 || fanRefused !== 1 || fanCalls.length !== 101 || fanRows.length !== 100 || !refusedWith(D.fanApp?.output ?? D.fanApp?.error, "total_task_cap_exceeded")) {
-    r.failures.push(`d:fan-at-101 — wanted 100 pieces accepted and the 101st refused, total_task_cap_exceeded, by the fan's addTask and by the app; ${fanCalls.length} calls, ${fanOk} accepted, ${fanRefused} refused, ${fanRows.length} rows, the app's ${show(D.fanApp?.output ?? D.fanApp?.error)}`);
+    r.failures.push(`d:fan-at-101 — wanted 100 pieces accepted and the 101st refused, total_task_cap_exceeded, by the fan's createTask and by the app; ${fanCalls.length} calls, ${fanOk} accepted, ${fanRefused} refused, ${fanRows.length} rows, the app's ${show(D.fanApp?.output ?? D.fanApp?.error)}`);
   }
-  r.notes.push(`depth: boards ${boards.length}, deep.d5's addTask ${show(deepTried)}, app ${show(D.deepApp?.output)}; fan: ${fanOk} ok, ${fanRefused} refused, app ${show(D.fanApp?.output)}`);
+  r.notes.push(`depth: boards ${boards.length}, deep.d5's createTask ${show(deepTried)}, app ${show(D.deepApp?.output)}; fan: ${fanOk} ok, ${fanRefused} refused, app ${show(D.fanApp?.output)}`);
   if (cap !== undefined && capStore !== undefined) {
     const capRows = cap.fan === null ? [] : onBoardOf(taskRows(capStore, alice, cap.org), cap.fan);
-    const capCalls = addTasks("addTask", capStore, cap.fan);
+    const capCalls = addTasks("createTask", capStore, cap.fan);
     const capOk = capCalls.filter((x) => x?.ok === true).length;
     const capRefused = capCalls.filter((x) => refusedWith(x, "total_task_cap_exceeded")).length;
     if (cap.fan === null || capOk !== APP_CAP || capRefused !== 1 || capRows.length !== APP_CAP || !refusedWith(cap.fanApp?.output ?? cap.fanApp?.error, "total_task_cap_exceeded")) {
-      r.failures.push(`d:app-cap — wanted, with the app's cap at ${APP_CAP}, ${APP_CAP} pieces accepted and the ${APP_CAP + 1}th refused, total_task_cap_exceeded, by the fan's addTask and by the app; ${capOk} accepted, ${capRefused} refused, ${capRows.length} rows, the app's ${show(cap.fanApp?.output ?? cap.fanApp?.error)}`);
+      r.failures.push(`d:app-cap — wanted, with the app's cap at ${APP_CAP}, ${APP_CAP} pieces accepted and the ${APP_CAP + 1}th refused, total_task_cap_exceeded, by the fan's createTask and by the app; ${capOk} accepted, ${capRefused} refused, ${capRows.length} rows, the app's ${show(cap.fanApp?.output ?? cap.fanApp?.error)}`);
     }
     r.notes.push(`app cap ${APP_CAP}: ${capOk} ok, ${capRefused} refused, app ${show(cap.fanApp?.output)}`);
   }

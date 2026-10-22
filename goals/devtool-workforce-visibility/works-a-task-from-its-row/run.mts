@@ -53,7 +53,7 @@ const SHOTS = goalTmpDir("works-a-task-from-its-row");
 /** The legs each control must redden, and only those. None is named since the mailbox's board actions retired (goal.md). */
 const EXPECTED: Record<string, readonly string[]> = {};
 
-/** The conversation ledger's resource key, which names the board's task actions (`cancelTask_tasks`). */
+/** The conversation ledger's resource key, which names the board's task actions (`updateTask_tasks`). */
 const LEDGER_KEY = "tasks";
 
 /** The window the whole check runs at: a laptop, where the reason used to fall off screen. */
@@ -320,14 +320,20 @@ async function runFromRow(
   const button = group.getByRole("button", { name: action, exact: true });
   if ((await button.count()) === 0) return { problem: `the row does not offer "${action}"` };
   if ((await button.getAttribute("aria-pressed")) !== "true") await button.click();
-  const idField = row.locator('[data-field="taskId"] input').first();
-  if ((await idField.count()) === 0) return { problem: `"${action}"'s form has no taskId field` };
+  // The task tools name their task `id` (FIX-2081); answerTask and an app's own action, `taskId`.
+  const idField = row.locator('[data-field="id"] input, [data-field="taskId"] input').first();
+  if ((await idField.count()) === 0) return { problem: `"${action}"'s form has no id or taskId field` };
   const idValue = await idField.inputValue();
   const locked = (await idField.getAttribute("readonly")) !== null || (await idField.isDisabled());
   if (idValue !== taskId || !locked) {
     return { problem: `"${action}"'s form carries taskId ${JSON.stringify(idValue)} (${locked ? "locked" : "editable"}), not the row's ${taskId}, locked` };
   }
   for (const [field, value] of Object.entries(fill)) {
+    const select = row.locator(`[data-field="${field}"] select`).first();
+    if ((await select.count()) > 0) {
+      await select.selectOption(value);
+      continue;
+    }
     const input = row.locator(`[data-field="${field}"] input, [data-field="${field}"] textarea`).first();
     if ((await input.count()) === 0) return { problem: `"${action}"'s form has no ${field} field` };
     await input.fill(value);
@@ -391,7 +397,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
   const [owner] = owners[0]!;
   const plannerFlow = tree.workerFlows[tree.plannerId]!;
   const answer = `answerTask_${taskToolSuffix(LEDGER_KEY)}`;
-  const tool = `cancelTask_${taskToolSuffix(LEDGER_KEY)}`;
+  const tool = `updateTask_${taskToolSuffix(LEDGER_KEY)}`;
 
   const served = await serveLab({ control: CONTROL, workDir: join(SHOTS, "server") });
   // The app's own desk -> delegate map.
@@ -561,7 +567,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     // ---- tool: a board task tool, from a row on the planner's conversation --------
     // The spare row is filed for nobody, so the board keeps it waiting for an
     // assignee and nothing runs it: it stays open for the tool to settle.
-    const spare = await lab.onConversation("addTask_tasks", { goal: fixture.spare.goal });
+    const spare = await lab.onConversation("createTask_tasks", { held: true, goal: fixture.spare.goal });
     const spareId = typeof spare.output?.taskId === "string" ? (spare.output.taskId as string) : undefined;
     if (spare.status !== "completed" || spareId === undefined) {
       throw new Error(`filing the spare row on the planner's conversation ended ${spare.status ?? spare.refusal}: ${JSON.stringify(spare.output)}`);
@@ -580,7 +586,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       if (!offered.includes(tool)) {
         fail("tool", `the planner's row offers [${offered.join(", ")}], not the board's "${tool}"`);
       } else {
-        const ran = await runFromRow(page, spareId, tool, { reason: fixture.cancelReason });
+        const ran = await runFromRow(page, spareId, tool, { status: "cancelled" });
         await page.screenshot({ path: join(SHOTS, "tool.png") });
         if (ran.problem !== undefined) {
           fail("tool", ran.problem);
@@ -610,7 +616,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       } else if (settled === undefined) {
         fail("refuse", `the row never settled, so there is no settled row to refuse on`);
       } else {
-        const ran = await runFromRow(page, spareId, tool, { reason: fixture.cancelReason });
+        const ran = await runFromRow(page, spareId, tool, { status: "cancelled" });
         await page.screenshot({ path: join(SHOTS, "refuse.png") });
         await page.waitForTimeout(500);
         const after = JSON.stringify(lab.rows().find((row) => row.id === spareId));

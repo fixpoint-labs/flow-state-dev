@@ -64,8 +64,18 @@ export const delegateSessionStateSchema = z.object(delegateStateShape);
 /**
  * A worker's defaults: the worker ids its configuration lists, and its
  * fallback; and the records the flow seeds this session with, beside them.
+ *
+ * `all` (FIX-2081 D2): the configuration says `delegates: all`, and
+ * `delegates` holds the roster as it stands, read for this call. Such a list
+ * is never copied into the session on a read, so it follows the roster; a
+ * change writes it, and from then on it is a written list.
  */
-export type DelegateDefaults = { delegates: readonly string[]; fallback?: string; records?: readonly DelegateRecord[] };
+export type DelegateDefaults = {
+  delegates: readonly string[];
+  all?: boolean;
+  fallback?: string;
+  records?: readonly DelegateRecord[];
+};
 
 /** The conversation's delegates and fallback, seeded from the defaults when never set. */
 export type DelegateList = { delegates: DelegateRecord[]; fallback: DelegateRef | null };
@@ -191,7 +201,8 @@ export async function readDelegates(session: StateWriter, defaults: DelegateDefa
     (state: Readonly<Record<string, unknown>>) => {
       const list = currentDelegates(state, defaults);
       const seeded = state[DELEGATES_STATE] !== null && state[DELEGATES_STATE] !== undefined;
-      return { state: seeded ? {} : listPatch(list), result: list };
+      // `all` follows the roster: a read never pins it (FIX-2081 D2).
+      return { state: seeded || defaults.all === true ? {} : listPatch(list), result: list };
     }
   );
   if (outcome === undefined) throw new Error("This conversation's delegates could not be read.");

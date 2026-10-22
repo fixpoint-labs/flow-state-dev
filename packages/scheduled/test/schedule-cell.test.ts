@@ -159,7 +159,7 @@ function boot() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
-          body: JSON.stringify({ idempotencyKey: `${flowId}:${scheduleId}` }),
+          // No time: the latest scheduled time already due.
         }
       ),
       { params: { path: [flowId, "schedules", scheduleId, "dispatch"] } }

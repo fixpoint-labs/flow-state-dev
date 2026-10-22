@@ -123,6 +123,10 @@ export {
   // A task turn's question park and the rule for offering it (FIX-1817).
   createParkOnQuestion,
   type ParkOnQuestionOptions,
+  // A task turn's own progress report and the rule for offering it (FIX-2081).
+  createReportProgress,
+  type ReportProgressOptions,
+  STATUS_NOTE_LIMIT,
 } from "./task-tools-capability";
 
 export {

@@ -40,9 +40,9 @@ async function refusingBoard(): Promise<TaskCollectionRef> {
       if (init.assignee === "boom") throw new Error("storage down");
       return inner.addTask(init);
     },
-    setAssignee: async (id, assignee) => {
-      if (assignee === "me") throw new TaskWriteRefusedError("crossing", "cancel and file again", id);
-      return inner.setAssignee(id, assignee);
+    patchSettings: async (id, patch) => {
+      if (patch.assignee === "me") throw new TaskWriteRefusedError("crossing", "cancel and file again", id);
+      return inner.patchSettings(id, patch);
     },
     dispatch: async (id) => {
       throw new TaskWriteRefusedError("no_dispatch", "not by id", id);
@@ -60,10 +60,10 @@ const run = (t: GeneratorTool, input: Record<string, unknown>) =>
   runForTest(t as never, input as never, boardCtx()) as Promise<{ ok: boolean; error?: string; taskId?: string }>;
 
 describe("the task tools answer a ref's own refusal as a soft error", () => {
-  it("addTask and dispatchTask answer it by code and message, and file nothing", async () => {
+  it("createTask and dispatchTask answer it by code and message, and file nothing", async () => {
     const board = await refusingBoard();
     const tools = taskToolsForTurn(async () => board, roster, { dispatches: true })({});
-    expect(await run(tool(tools, "addTask"), { goal: "x", assignee: "me" })).toEqual({
+    expect(await run(tool(tools, "createTask"), { goal: "x", assignee: "me" })).toEqual({
       ok: false,
       error: "not_here: file it elsewhere",
     });
@@ -74,11 +74,11 @@ describe("the task tools answer a ref's own refusal as a soft error", () => {
     expect(board.list()).toEqual([]);
   });
 
-  it("assignTask answers it naming the task, and the row keeps its owner", async () => {
+  it("updateTask answers it naming the task, and the row keeps its owner", async () => {
     const board = await refusingBoard();
     const tools = taskToolsForTurn(async () => board, roster, { dispatches: true })({});
-    const filed = await run(tool(tools, "addTask"), { goal: "x", assignee: "ops" });
-    const refused = await run(tool(tools, "assignTask"), { taskId: filed.taskId!, assignee: "me" });
+    const filed = await run(tool(tools, "createTask"), { goal: "x", assignee: "ops" });
+    const refused = await run(tool(tools, "updateTask"), { id: filed.taskId!, assignee: "me" });
     expect(refused).toEqual({ ok: false, error: "crossing: cancel and file again", taskId: filed.taskId });
     expect(board.get(filed.taskId!)!.assignee).toBe("ops");
   });
@@ -86,7 +86,7 @@ describe("the task tools answer a ref's own refusal as a soft error", () => {
   it("dispatchTask by id answers it", async () => {
     const board = await refusingBoard();
     const tools = taskToolsForTurn(async () => board, roster, { dispatches: true })({});
-    const filed = await run(tool(tools, "addTask"), { goal: "x", assignee: "ops" });
+    const filed = await run(tool(tools, "createTask"), { goal: "x", assignee: "ops" });
     expect(await run(tool(tools, "dispatchTask"), { taskId: filed.taskId! })).toEqual({
       ok: false,
       error: "no_dispatch: not by id",
@@ -97,6 +97,6 @@ describe("the task tools answer a ref's own refusal as a soft error", () => {
   it("still lets any other throw through", async () => {
     const board = await refusingBoard();
     const tools = taskToolsForTurn(async () => board, { ...roster, has: () => true }, { dispatches: true })({});
-    await expect(run(tool(tools, "addTask"), { goal: "x", assignee: "boom" })).rejects.toThrow(/storage down/);
+    await expect(run(tool(tools, "createTask"), { goal: "x", assignee: "boom" })).rejects.toThrow(/storage down/);
   });
 });
