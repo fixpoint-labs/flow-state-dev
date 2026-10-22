@@ -610,7 +610,7 @@ worker.
 | Option | What it does |
 | --- | --- |
 | `uses` | Capabilities attached to every worker's answer generator. The skills binding stays first and is never displaced. A capability passed as a plain ref brings its own storage with it; one passed as a `(ctx) => refs` resolver brings none, so anything it needs has to be declared statically somewhere. |
-| `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string, it cannot change the answer, and a failure in it does not fail the turn. Absent, nothing runs after the answer. |
+| `afterAnswer` | A block run after the answer as a side-chain. It receives the reply text as a string and cannot change the answer. A failure in it never fails a conversation turn; in a task it fails the attempt, except in a task whose result goes to the conversation (`resultTo: "conversation"`), where it is logged and the task keeps its answer. Absent, nothing runs after the answer. |
 | `isolateUserState` | Forwarded to `defineFlow`. Keys the flow's user-scoped storage by its copy, apart from the user's other flows. Every worker on `agent` shares the one copy, so a user's workers on it still share the same user-scoped storage. Default `false`. |
 
 **The tools fence.** A worker that writes a `tools:` line can call exactly the tools it lists,

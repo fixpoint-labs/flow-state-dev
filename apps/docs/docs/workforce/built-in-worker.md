@@ -90,7 +90,7 @@ const flows = hireWorkforce(installation);
 | `classifierModel` | The model behind `skills.enableLlmClassifier`, an optional per-turn check that decides whether a skill applies. [Using them](#using-them) covers what it costs. |
 | `confidenceThreshold` | How sure that check must be before it counts a skill as matching. Defaults to `0.65`. |
 | `uses` | Capabilities every worker on this flow carries, attached to the generator that answers. |
-| `afterAnswer` | A block that runs after the worker answers, without changing the reply. |
+| `afterAnswer` | A block that runs after the worker answers, without changing the reply. In a conversation its failure is only logged; in a task it fails the attempt, unless the task's result goes back to the conversation. |
 | `isolateUserState` | Keep this flow's user-scoped storage apart from other flows'. Every worker on `agent` shares one copy, so a user's workers on it still share the same user-scoped storage. |
 
 `classifierModel` and `confidenceThreshold` belong to the worker flow: nothing reads either until a worker turns `skills.enableLlmClassifier` on, and a `WORKER.md` that names one is refused at the hire, by name, along with any other setting the flow does not declare. `uses` and `afterAnswer` are what [Giving workers memory](#giving-workers-memory) uses.
@@ -236,6 +236,8 @@ Tell a worker something in one conversation and it knows it in the next. Memory 
 **Reach for `system()`, not `createMemoryCapability`.** The latter builds the read side only. Attach it and you get a worker that recites facts someone else stored and records nothing from its own conversations — a worker that looks like it remembers.
 
 **`afterAnswer` is the write side.** Leave it out and the durable stores stay empty. It runs beside the answer rather than in front of it, so it cannot change what the worker said, and a capture that fails is not a failed conversation.
+
+In a task, a capture that fails does fail the attempt, the same as any other background step, so the task runs again while it has attempts left. The exception is a task filed with `resultTo: "conversation"`. It gets one attempt, so there the failed capture is logged and the task keeps its answer. To make the capture best-effort everywhere, give `afterAnswer` a block that catches its own errors.
 
 **Turn `semantic` and `episodic` on.** They are off by default. Skip them and the durable stores fill up and are never read back, which is the failure that looks fine until someone starts a second conversation.
 

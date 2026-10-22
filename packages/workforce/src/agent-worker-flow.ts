@@ -335,7 +335,10 @@ export interface AgentWorkerFlowOptions {
   isolateUserState?: boolean;
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
-   * the answer, and a failure in it does not fail the turn.
+   * the answer, and a failure in it never fails a conversation turn. In a
+   * task it fails the attempt, as any background step's failure does, except
+   * in a task whose result goes to the conversation, where it is logged and
+   * the task keeps its answer (FIX-2088).
    *
    * **It receives the answer generator's output: the assistant's reply text,
    * as a string.** `.sideChain` with no connector passes the preceding step's

@@ -294,7 +294,7 @@ pipeline
   .step(nextStep);
 ```
 
-By default, the sequencer auto-awaits work tasks before it returns, so you only need `.waitForSideChain()` if you need to wait *mid-chain* (because a later step depends on side-effects the work tasks produced) or if you want to surface work errors as a step error rather than letting them be recorded silently.
+By default, the sequencer auto-awaits work tasks before it returns, so you only need `.waitForSideChain()` if you need to wait *mid-chain* (because a later step depends on side-effects the work tasks produced) or if you want to surface work errors as a step error rather than letting them be recorded silently. In a request working a dispatched task, a work error never stays silent: it fails the task's attempt even after a default wait has drained it (see [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done)).
 
 **When to reach for this**: a later step needs to read state that a `.sideChain()` task wrote, or you want explicit failure semantics on background work. See [Side Chains](/docs/advanced/sequencer-side-chains) for the full story.
 
