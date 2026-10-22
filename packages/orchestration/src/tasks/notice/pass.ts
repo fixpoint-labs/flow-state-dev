@@ -26,7 +26,7 @@ import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
-import { payOwedResumes } from "../helpers/wait-for-response";
+import { payOwedResumes } from "../helpers/wait-on-task";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";

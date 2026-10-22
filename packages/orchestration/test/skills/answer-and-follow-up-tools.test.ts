@@ -259,17 +259,23 @@ describe("createTask's followUpOf (S4)", () => {
     expect(b.ref.list()).toHaveLength(0);
   });
 
-  it("allows wait beside followUpOf on dispatchTask, and refuses before anything is filed, so nothing parks (BR-22a)", async () => {
-    const b = await board([row("root", { status: "in_progress", assignee: "researcher", attempts: 1 })]);
-    // A host that can hold a wait, so dispatchTask carries wait.
-    const ctx = { ...(b.ctx as object), requestHost: { resumeWait: async () => undefined, hasWaitSweeper: true } } as never;
+  it("dispatchTask refuses wait beside followUpOf by name, before anything is filed, so nothing parks (FIX-2082)", async () => {
+    const b = await board([row("root", { status: "completed", assignee: "researcher", attempts: 1 })]);
+    // A host that can hold a wait: the wait is getTask's, never dispatchTask's.
+    const ctx = {
+      ...(b.ctx as object),
+      requestHost: {
+        resumeWait: async () => undefined,
+        hasWaitSweeper: true,
+        waits: { deadlines: { defaultMs: 300_000, minMs: 1_000, maxMs: 86_400_000 }, depth: async () => 1 }
+      }
+    } as never;
     const tools = taskToolsForTurn(ownStateResolver, undefined, { resumesWaits: true, dispatches: true })(ctx);
     const dispatchTask = toolNamed(tools, "dispatchTask");
-    expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toEqual(expect.arrayContaining(["followUpOf", "wait"]));
-    const unfinished = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
-    expect(unfinished).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_of_unrun/) });
-    const assigned = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", assignee: "x", wait: true }, ctx)) as any;
-    expect(assigned).toMatchObject({ ok: false, error: expect.stringMatching(/^follow_up_takes_no_assignee/) });
+    expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).toContain("followUpOf");
+    expect(Object.keys((dispatchTask as any).config.inputSchema.shape)).not.toContain("wait");
+    const waiting = (await runForTest(dispatchTask, { goal: "next", followUpOf: "root", wait: true }, ctx)) as any;
+    expect(waiting).toMatchObject({ ok: false, error: expect.stringMatching(/^dispatch_task_does_not_wait:.*getTask/) });
     expect(b.ref.list()).toHaveLength(1);
   });
 

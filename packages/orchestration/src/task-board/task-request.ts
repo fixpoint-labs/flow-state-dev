@@ -101,6 +101,17 @@ function requestKey(ctx: BlockContext): string {
   return ctx.request.identity.id;
 }
 
+/**
+ * The task the running request was admitted for in this process, and the
+ * ledger it is on: what a wait reads its request's own task from (FIX-2082).
+ * `undefined` when the request was admitted for no task.
+ */
+export function admittedTaskOf(ctx: BlockContext): { readonly ref: TaskCollectionRef; readonly taskId: string } | undefined {
+  const requestId = ctx.request?.identity?.id;
+  const record = requestId === undefined ? undefined : admitted.get(requestId);
+  return record === undefined ? undefined : { ref: record.ref, taskId: record.ticket.taskId };
+}
+
 /** Whether the row is still on the claim `ticket` names: same row, same attempt, running. */
 function holds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | undefined): row is Task {
   return (

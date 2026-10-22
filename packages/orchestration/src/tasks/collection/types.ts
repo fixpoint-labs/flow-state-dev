@@ -189,8 +189,16 @@ export interface TaskDispatchOptions {
   call: string;
   /** The owner, set in the same write. Omitted, the row keeps its own. */
   assignee?: string;
-  /** Mark the row waited-on in the same write (see `Task.wait`). */
-  wait?: { gateId: string; deadline: number };
+}
+
+/** What {@link TaskCollectionRef.markWait} takes the row's wait slot with (FIX-2082; see `Task.wait`). */
+export interface TaskWaitSlot {
+  /** The gate the waiting request parks on: unique within its session. */
+  readonly gateId: string;
+  /** When the wait resumes with the row still running (epoch ms). */
+  readonly deadline: number;
+  /** The waiting request, server-derived (`ctx.request.identity.id`). */
+  readonly requestId: string;
 }
 
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
@@ -993,16 +1001,47 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   filerOf?(row: Task): string | undefined;
   /**
+   * Take the row's wait slot for a request about to wait on it (FIX-2082):
+   * one conditional write, so of two requests that read the slot free, one
+   * takes it and the other is refused. A lapsed slot, or a live one this same
+   * request holds (a drain waiting again at its deadline), is taken over; the
+   * same gate replayed is `unchanged`. Publishes `wait_changed`.
+   *
+   * Declines `terminal` on a row that has ended (the waiting call reads its
+   * ending at once instead), and `disallowed` while another request's wait
+   * holds the slot.
+   *
+   * Optional, like the other wait writes: both built-in backings implement
+   * them, and a ref without them can't host a wait, which refuses there.
+   */
+  markWait?(id: string, slot: TaskWaitSlot): Promise<TaskWriteOutcome>;
+  /**
+   * At a wait's deadline (FIX-2082): lapse the slot `gateId` holds for
+   * `requestId`, the waiting request, in one conditional write that loses to
+   * an ending already written. Declines `terminal` on a row that has ended
+   * (the ending reached the waiting request, and it reads that instead);
+   * `unchanged` when the slot is another gate's or already lapsed. An ending
+   * written after this is held for that request, until {@link releaseWait}.
+   */
+  lapseWait?(id: string, gateId: string, requestId: string): Promise<TaskWriteOutcome>;
+  /**
+   * Release a lapsed slot (FIX-2082) for the request it was lapsed for: that
+   * request read the row (`read`), so an ending it held is delivered; or it
+   * ended without reading it, so the held ending is owed to the filer's
+   * notice, its wake owed first. The slot clears either way. `unchanged` when
+   * the slot is not a lapsed one that request holds.
+   */
+  releaseWait?(id: string, release: { readonly requestId: string; readonly read: boolean }): Promise<TaskWriteOutcome>;
+  /**
    * Release a held row for a dispatch (FIX-1875; a release since FIX-2080):
    * `held → pending` in one conditional write, recording the call that made
-   * it (`Task.dispatchCall`), with `assignee` and `wait` set in the same
-   * write. Publishes `released`, as every release of a held row does.
+   * it (`Task.dispatchCall`), with `assignee` set in the same write.
+   * Publishes `released`, as every release of a held row does.
    *
    * Declines `terminal` on an ended row, `already-dispatched` on a row that
-   * isn't held (started, or released already), `disallowed` for a `wait` on
-   * a row already waited on, and an assignee `setAssignee` would refuse
-   * (`follow-up`, `awaiting-answer`) for the same reason. The same call
-   * replayed is answered `unchanged`, never `already-dispatched`.
+   * isn't held (started, or released already), and an assignee `setAssignee`
+   * would refuse (`follow-up`, `awaiting-answer`) for the same reason. The
+   * same call replayed is answered `unchanged`, never `already-dispatched`.
    *
    * Optional: both built-in backings implement it.
    */
@@ -1017,6 +1056,17 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * cascade in that ending's own pass besides.
    */
   payOwedCascades?(): Promise<number>;
+
+  /**
+   * Bring one row up to its committed state (FIX-2082). A request reads a
+   * durable board as the snapshot it first took, so an ending another request
+   * wrote since is invisible to {@link get} until this runs. Reading a task
+   * whole (`getTask`) calls it first. Writes nothing.
+   *
+   * Optional: the resource-backed board implements it. A board kept in the
+   * request's own state is never behind.
+   */
+  refresh?(id: string): Promise<void>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;

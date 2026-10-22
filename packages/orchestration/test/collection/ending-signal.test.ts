@@ -8,9 +8,9 @@
  * `Task.resumeOwed`), then the ledger's declared `recordEnding`, metadata
  * only. Nothing else records an ending, so none is recorded twice.
  *
- * The resume recorder must fire on every way a waited-on row ends, a cancel and
- * the cancel its wait's timeout writes among them (`dispatchAndWait` cancels
- * the row with {@link TIMEOUT_REASON} when its gate resumes it timed out).
+ * The resume recorder must fire on every way a waited-on row ends, a cancel
+ * among them, and never on a row whose wait lapsed at its deadline (FIX-2082):
+ * nobody is parked on that one.
  */
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
@@ -26,12 +26,12 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-/** The reason `dispatchAndWait` cancels its row with when the wait times out. */
-const TIMEOUT_REASON = "The wait timed out before the task finished.";
+/** A cancel someone else made. */
+const CANCEL_REASON = "not needed any more";
 
 const NOW = 1_000_000;
 
-/** A row a turn is waiting on, as `dispatchAndWait` files it, now running. */
+/** A row a request is waiting on, its slot taken when the wait started, now running. */
 function waitedRow(patch: Partial<Task> = {}): Task {
   return {
     id: "t1",
@@ -40,7 +40,7 @@ function waitedRow(patch: Partial<Task> = {}): Task {
     attempts: 1,
     createdAt: 1,
     updatedAt: 2,
-    wait: { gateId: "g1", deadline: NOW + 60_000 },
+    wait: { gateId: "g1", deadline: NOW + 60_000, requestId: "r1" },
     ...patch,
   } as Task;
 }
@@ -56,10 +56,11 @@ describe("the choke point both backings write through", () => {
     });
   }
 
-  it("owes the resume when the wait's timeout cancels its row", () => {
-    const timedOut = waitedRow({ wait: { gateId: "g1", deadline: NOW - 1 } });
-    const next = applyTransition(timedOut, { status: "cancelled", error: TIMEOUT_REASON }, NOW);
-    expect(next).toMatchObject({ status: "cancelled", error: TIMEOUT_REASON, resumeOwed: true });
+  it("owes no resume when the row's wait lapsed at its deadline: nobody is parked on it", () => {
+    const lapsed = waitedRow({ wait: { gateId: "g1", deadline: NOW - 1, requestId: "r1", lapsed: true } });
+    const next = applyTransition(lapsed, { status: "completed", output: "late" }, NOW);
+    expect(next.status).toBe("completed");
+    expect(next.resumeOwed).toBeUndefined();
   });
 
   it("owes the resume when the board settles a waited-on row whose worker died too often", () => {
@@ -74,13 +75,13 @@ describe("the choke point both backings write through", () => {
 
   it("runs the resume recorder first and the declared one after it, in the same write; the declared one keeps only metadata", () => {
     const seen: Array<{ resumeOwed: unknown; ending: TaskEnding }> = [];
-    const next = applyTransition(waitedRow(), { status: "cancelled", error: TIMEOUT_REASON }, NOW, {
+    const next = applyTransition(waitedRow(), { status: "cancelled", error: CANCEL_REASON }, NOW, {
       recordEnding: (row, ending) => {
         seen.push({ resumeOwed: row.resumeOwed, ending });
         return { ...row, resumeOwed: false, metadata: { told: ending.kind } };
       },
     });
-    expect(seen).toEqual([{ resumeOwed: true, ending: { kind: "cancelled", reason: TIMEOUT_REASON } }]);
+    expect(seen).toEqual([{ resumeOwed: true, ending: { kind: "cancelled", reason: CANCEL_REASON } }]);
     expect(next).toMatchObject({ resumeOwed: true, metadata: { told: "cancelled" } });
   });
 
@@ -141,7 +142,8 @@ async function stateLedger(): Promise<TaskCollectionRef> {
 describe("a waited-on row's ending, on each backing", () => {
   it("resource: a cancel writes the resume and the declared recorder's marker in one write, told once", async () => {
     const { ref, told } = await resourceLedger();
-    await ref.addTask({ id: "t1", goal: "find out", wait: { gateId: "g1", deadline: Date.now() + 60_000 } });
+    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     const before = ref.get("t1")!.revision!;
     await ref.cancel("t1", "not needed");
     expect(ref.get("t1")).toMatchObject({ status: "cancelled", resumeOwed: true, metadata: { told: "cancelled" } });
@@ -149,30 +151,35 @@ describe("a waited-on row's ending, on each backing", () => {
     expect(told).toEqual(["cancelled"]);
   });
 
-  it("resource: the wait's timeout cancel owes the resume too", async () => {
+  it("resource: a cancel of a running waited-on row owes the resume too", async () => {
     const { ref } = await resourceLedger();
-    await ref.addTask({ id: "t1", goal: "find out", wait: { gateId: "g1", deadline: Date.now() - 1 } });
+    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     const task = (await ref.claim("w"))!;
     expect(task.id).toBe("t1");
-    await ref.cancel("t1", TIMEOUT_REASON);
+    await ref.cancel("t1", CANCEL_REASON);
     expect(ref.get("t1")).toMatchObject({ status: "cancelled", resumeOwed: true });
   });
 
   it("resource: a completion is told once, with the resume beside it", async () => {
     const { ref, told } = await resourceLedger();
-    await ref.addTask({ id: "t1", goal: "find out", wait: { gateId: "g1", deadline: Date.now() + 60_000 } });
+    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
     const task = (await ref.claim("w"))!;
     await ref.complete("t1", "the answer", { claim: ticketForClaim(ref.collectionId, task) });
     expect(ref.get("t1")).toMatchObject({ status: "completed", resumeOwed: true, metadata: { told: "completed" } });
     expect(told).toEqual(["completed"]);
   });
 
-  it("state: a cancel, and the wait's timeout cancel, each owe the resume", async () => {
+  it("state: a cancel of a waited-on row owes the resume, pending or running", async () => {
     const ref = await stateLedger();
-    await ref.addTask({ id: "t1", goal: "find out", wait: { gateId: "g1", deadline: Date.now() + 60_000 } });
-    await ref.addTask({ id: "t2", goal: "find out too", wait: { gateId: "g2", deadline: Date.now() - 1 } });
+    await ref.addTask({ id: "t1", goal: "find out" });
+    await ref.addTask({ id: "t2", goal: "find out too" });
+    await ref.markWait!("t1", { gateId: "g1", deadline: Date.now() + 60_000, requestId: "r1" });
+    await ref.markWait!("t2", { gateId: "g2", deadline: Date.now() + 60_000, requestId: "r2" });
+    await ref.claim("w", { eligibility: (row) => row.id === "t2" });
     await ref.cancel("t1", "not needed");
-    await ref.cancel("t2", TIMEOUT_REASON);
+    await ref.cancel("t2", CANCEL_REASON);
     expect(ref.get("t1")).toMatchObject({ status: "cancelled", resumeOwed: true });
     expect(ref.get("t2")).toMatchObject({ status: "cancelled", resumeOwed: true });
   });

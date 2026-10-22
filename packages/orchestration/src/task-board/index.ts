@@ -258,21 +258,17 @@ export {
   type TaskBoardCapabilityAccessor,
 } from "./capability";
 export { currentWorkerClaim, type WorkerClaimReader } from "./flow-policy-wiring";
-// The wait under `dispatchTask({ wait })` (FIX-1816, FIX-1875): the call that
-// dispatches a task and waits for its answer, whether this turn's host can
-// hold one, and the bounds. Node-only, like the claim seam it reads.
+// The wait on a task (FIX-1816; one wait since FIX-2082): under `getTask({ wait })`
+// and a plan board's drain on a row it handed to another session, and whether
+// this request's host can hold one. Node-only, like the claim seam it reads.
 export {
-  dispatchAndWait,
+  waitOnTask,
   canHoldWait,
   waitGateId,
-  DEFAULT_WAIT_TIMEOUT_MS,
-  MIN_WAIT_TIMEOUT_MS,
-  MAX_WAIT_TIMEOUT_MS,
-  type DispatchAndWaitOptions,
-  type DispatchAndWaitResult,
-  type DispatchRef,
-  type DispatchTarget,
-} from "../tasks/helpers/wait-for-response";
+  type TaskWaitRefusal,
+  type TaskWaitResult,
+  type WaitOnTaskOptions,
+} from "../tasks/helpers/wait-on-task";
 export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-turn";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
 export { assertParkExitSupported } from "./park-exit";

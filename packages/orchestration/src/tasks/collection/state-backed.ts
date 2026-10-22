@@ -25,6 +25,7 @@ import {
 } from "../schema/task-status";
 import { withRetiredShapes } from "../schema/retired-shapes";
 import type { TaskSettingsPatch } from "./internal";
+import { NOTICE_DUE_MS } from "../notice/task-notice";
 import type {
   TaskCollectionRef,
   TaskTransitionOptions,
@@ -63,6 +64,9 @@ import {
   transitionDeclineReason,
   assigneeChangeDecline,
   dispatchWrite,
+  lapseWaitWrite,
+  markWaitWrite,
+  releaseWaitWrite,
   settingsWrite,
   settingsChangeKind,
   type EndingRecording,
@@ -988,6 +992,41 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           ? { cancelOwed: true }
           : undefined
       );
+    },
+
+    async markWait(id, slot) {
+      // One CAS write: of two requests that read the slot free, one takes it.
+      return patchOne(
+        id,
+        "wait_changed",
+        (task) => {
+          const decided = markWaitWrite(task as Task, slot);
+          return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        {
+          decline: (task) => {
+            const decided = markWaitWrite(task as Task, slot);
+            return decided !== undefined && "decline" in decided ? decided.decline : undefined;
+          },
+        }
+      );
+    },
+
+    async lapseWait(id, gateId, requestId) {
+      return patchOne(
+        id,
+        "wait_changed",
+        (task) => {
+          const decided = lapseWaitWrite(task as Task, gateId, requestId);
+          return decided === undefined || "decline" in decided ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        { declineOnTerminal: true }
+      );
+    },
+
+    async releaseWait(id, release) {
+      const dueAt = now() + NOTICE_DUE_MS;
+      return patchOne(id, "wait_changed", (task) => releaseWaitWrite(task as Task, { ...release, dueAt })?.patch as Partial<Task<TInput, TOutput>> | undefined);
     },
 
     async dispatch(id, dispatchOptions) {

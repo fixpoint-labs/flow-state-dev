@@ -46,7 +46,9 @@ export type TaskChangeKind =
   /** A finished row went back to the queue: a person picked it up again (FIX-1764). */
   | "reopened"
   /** A waited-on row's wait is over and its cancel failed: the row owes that cancel (FIX-1844). */
-  | "cancel_owed";
+  | "cancel_owed"
+  /** A request took the row's wait slot, the slot lapsed at its deadline, or it was released (FIX-2082). */
+  | "wait_changed";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the
