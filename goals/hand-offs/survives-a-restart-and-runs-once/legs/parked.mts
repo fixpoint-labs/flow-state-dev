@@ -222,9 +222,8 @@ async function attempt(o: { serve: (label: string, store: string) => Promise<Ser
     calls.push("findWorkerSession");
     const asked = found?.id === undefined ? null : await alice.act("agent", found.id, "run", { message: LEG_B_QUESTION });
     if (asked !== null) calls.push(`run "${LEG_B_QUESTION}"`);
-    // The question reopens the finished task (FIX-1764): wait for its next attempt to end.
-    const reopenedEnded = () => (row(storeAfter, taskId)?.attempts ?? 0) > (finished?.attempts ?? 0) && ENDED.has(row(storeAfter, taskId)?.status ?? "");
-    for (const until = Date.now() + 120_000; asked !== null && !reopenedEnded() && Date.now() < until; ) await sleep(500);
+    // The question is talk in a finished task's session (FIX-2086): its reply is
+    // the action's answer, and the task is left as it ended.
     await quiet(storeAfter);
     await sleep(5_000);
     await quiet(storeAfter);
@@ -266,7 +265,7 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
   if (!same) failures.push(`j:one-draw — wanted the one draw persisted at the kill (${show(drawn)}) to be the only draw after the restart; the store holds ${show(draws)}`);
 
   const keys = (all.find((s) => s.id === o.conv)?.state.taskNotices as string[] | undefined) ?? [];
-  // Keys are `taskId:attempt:ending`; the question below reopens the task, so count up to the answered attempt.
+  // Keys are `taskId:attempt:ending`; count up to the answered attempt.
   const completedNotices = keys.filter((k) => o.taskId !== undefined && k.startsWith(`${o.taskId}:`) && k.endsWith(":completed") && Number(k.split(":").at(-2)) <= (task?.attempts ?? 0));
   if (completedNotices.length !== 1) failures.push(`j:one-completed — wanted one completed notice for the answered attempt; ${show(completedNotices)}`);
 
@@ -274,13 +273,14 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
     failures.push(`j:second-answer — wanted a second answer declined with nothing written; it answered ${show(o.second.output ?? o.second.error)}, rows ${o.secondWroteNothing ? "unchanged" : "CHANGED"}`);
   }
 
-  // The question reopens the finished task (FIX-1764); its next attempt answers it, as the task's output.
-  const reopenOutput = outputText(o.afterAll);
-  if (o.found?.id !== parkedSession || o.asked?.status !== "completed" || o.asked?.output?.reopened !== o.taskId || !names(reopenOutput, ticket)) {
-    failures.push(`j:still-answers — wanted "${LEG_B_QUESTION}" in the task's own session (${parkedSession}, found ${o.found?.id}) to reopen it (${show(o.asked?.output ?? o.asked?.error)}, ${o.asked?.status}) and answer with ${ticket}; it said ${show(o.afterAll?.output)}`);
+  // The question is talk in the finished task's session (FIX-2086): the reply
+  // names the ticket from the session's history, and the task is as it ended.
+  if (o.found?.id !== parkedSession || o.asked?.status !== "completed" || !names(JSON.stringify(o.asked?.output ?? ""), ticket)) {
+    failures.push(`j:still-answers — wanted "${LEG_B_QUESTION}" in the task's own session (${parkedSession}, found ${o.found?.id}) answered with ${ticket}; it answered ${show(o.asked?.output ?? o.asked?.error)}, ${o.asked?.status}`);
   }
-  if (o.afterAll?.status !== "completed" || o.afterAll?.attempts !== (task?.attempts ?? 0) + 1 || o.afterAll?.run?.sessionId !== parkedSession) {
-    failures.push(`j:reopened — wanted the reopened task completed again after one more attempt (${(task?.attempts ?? 0) + 1}) in the session that parked (${parkedSession}); it is ${o.afterAll?.status} after ${o.afterAll?.attempts} in ${o.afterAll?.run?.sessionId}`);
+  const standing = (t: StoredTask | undefined) => show(t && { status: t.status, attempts: t.attempts, output: t.output, session: t.run?.sessionId });
+  if (task === undefined || standing(o.afterAll) !== standing(task)) {
+    failures.push(`j:unchanged — wanted the task as it ended after the question, its output included; ${standing(task)} → ${standing(o.afterAll)}`);
   }
 
   const notes = [
@@ -288,7 +288,7 @@ function grade(o: Awaited<ReturnType<typeof attempt>>, region: string): { failur
     `restarted on ${o.storeAfter}; answer: ${show(o.answered.output ?? o.answered.error)}; region ${region}; ticket ${ticket}; draws ${draws.length}`,
     `task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} ${o.endedIn} ms after the answer, attempts ${task?.attempts}; output ${show(task?.output)}`,
     `second answer: ${show(o.second.output ?? o.second.error)}, rows ${o.secondWroteNothing ? "unchanged" : "changed"}`,
-    `still answers: ${show(o.afterAll?.output)}; row after: ${o.afterAll?.status}, attempts ${o.afterAll?.attempts}`,
+    `still answers: ${show(o.asked?.output)}; row after: ${o.afterAll?.status}, attempts ${o.afterAll?.attempts}`,
     `Alice's calls: ${o.calls.join(", ")}`,
   ];
   return { failures, notes };

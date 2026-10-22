@@ -20,8 +20,8 @@
 - `j:names-ticket` · `j:names-region` its output names the ticket the store held at the kill, and the answered region.
 - `j:one-draw` · `j:one-completed` at the end of the run the store holds exactly one `drawTicket` output, and it is the same record (session, item and ticket) the store held at the kill; one `completed` notice for the answered attempt.
 - `j:second-answer` a second `answerTask_tasks` is declined (`ok: false`), and every task row is byte-for-byte as before it.
-- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked; "Which ticket did you draw?" through its `run` door ends `completed`, reopens the task (`{ reopened: <taskId> }`, FIX-1764), and the task's next output names the ticket.
-- `j:reopened` after that, the row is `completed` again, one attempt later, in the session that parked.
+- `j:still-answers` the session `findWorkerSession({ worker, taskId, filingSessionId })` returns is the one that parked; "Which ticket did you draw?" through its `run` door ends `completed` with a reply naming the ticket (a line in a finished task's session is talk, FIX-2086).
+- `j:unchanged` after that, the row's status, attempts, output and session are as the task ended.
 
 The runner prints one verdict per check, each with the commit's SHA. It exits non-zero when a plain check fails, or when a control's red tags are not exactly its expected set (see **Controls**).
 

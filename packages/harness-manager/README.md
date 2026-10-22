@@ -150,8 +150,8 @@ apart by board and partition (`runBoardSegment`), so two conversations that file
 id never share a tree. Pass `boardCollectionId` and `boardCollection` too and that board's rows
 run exactly as before.
 
-The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. A manager
-built with `ledgers` and no fixed board has no `messageDoor`: that door reads one board's rows. Build one with [`harnessMessageDoor`](#one-door-for-runs-from-more-than-one-board) instead.
+The manager calls `ledgers` on every checked write, not once per run, so keep it cheap. For a
+user's line into such a run, declare [`harnessSessionDoor`](#talking-to-a-run) on the flow.
 
 On such a board, a task that names no `issue` or `phase` runs as the manager's phase, with its
 task id in their place, and a task naming only one of the two is refused. A task naming both is
@@ -242,7 +242,7 @@ Collections a phase reads ride the standard `uses` option:
 harnessManager({ …, uses: [myPhaseCapability] });
 ```
 
-A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turns`, the board's ledger) is refused when you build the manager, naming the key.
+A capability claiming one of the manager's own accessors (`runs`, `inbox`, the board's ledger) is refused when you build the manager, naming the key.
 
 ## Continuing a run
 
@@ -252,83 +252,77 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 
 ## Talking to a run
 
-`manager.messageDoor({ drain })` builds a public action a coding flow declares. `drain` names the flow's `internal` entry that runs the drain of the board whose rows the manager works:
+A user talks to a coding run by typing in the run's own session. `harnessSessionDoor` builds the public action a coding flow declares for that line. One door serves every manager on the flow, and the board the calling session's run is on is resolved per request, from server state:
 
 ```ts
-import { defineFlow, handler } from "@flow-state-dev/core";
-import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
-import { z } from "zod";
+import { defineFlow } from "@flow-state-dev/core";
+import { harnessManager, harnessSessionDoor } from "@flow-state-dev/harness-manager";
+import {
+  conversationLedgers,
+  filingConversationBoard,
+  startOwedSteerTurn,
+  STEER_TURN_ENTRY,
+  steerTurnEntry,
+  workerTaskEntry,
+} from "@flow-state-dev/workforce";
 
-// `manager` is this package's harnessManager(); `board` is the taskBoard whose rows it works.
-const onEnding = handler({
-  name: "on-coder-ending",
-  inputSchema: taskSettledInputSchema,
-  outputSchema: z.object({}),
-  execute: async () => ({}),
-});
-
-defineFlow({
-  kind: "coder",
-  internal: {
-    actions: {
-      resume: { block: board.drain },
-      // Required of a flow holding a board that hands rows out: where the filer hears each task end.
-      onTaskSettled: taskSettledEntry({ block: onEnding }),
-    },
-  },
-  actions: { message: manager.messageDoor({ drain: "resume" }) },
-  task: { actions: { work: { block: manager } } },
-});
-```
-
-Sent `{ message }` on a run's own session, it writes the message into that session as a user item and keeps it in the manager's `turns` collection. A running attempt stops, and the next attempt resumes the same coding session with the message appended to its prompt, marked as the user's words. The message doesn't count against `maxAttempts`.
-
-The door starts that next attempt by dispatching `drain` into the session that claimed the row, which keeps every attempt in the run's own session. `defineFlow` refuses a flow that doesn't declare the entry. When another flow drains the board and hands rows to this one, declare the entry on that flow and pass that flow's id as `flowKind` (for a flow with one instance, its name).
-
-It answers `{ outcome: "continuing" | "kept", taskId }`:
-
-- **running** → `continuing`.
-- **running, but its harness hasn't named its coding session yet** → held for up to a minute while the attempt starts. `continuing` once the attempt takes the message into its prompt, or names its session (then as **running**). Refused as still starting if it does neither in that time, and as a harness that can't continue if the attempt ends without naming one.
-- **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
-- **claimed, with its run not started yet** → `kept` for that attempt.
-- **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
-- **finished (`completed`, `errored` or `cancelled`), on a board with `reopenIn`** → `continuing`. The door keeps the message for the next attempt, [reopens](https://flow-state.dev/docs/orchestration/task-substrate#putting-a-finished-task-back-in-the-queue) the row and runs the board's drain in the `reopenIn` session, so the task reads in progress again and the next attempt resumes the same coding session with the message in its prompt. `kept` if another message reopened it first.
-- **finished, on a board without `reopenIn`** → refused: "This task has finished and can't take a message here." The manager's own `messageDoor` has no `reopenIn`, so it always refuses a finished task.
-- **never started in this session, or on a harness that named no session** → refused. A refusal fails the request, with the reason in words as the error's message and the door's `TurnRefused` error as its cause, so only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
-
-The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.
-
-### One door for runs from more than one board
-
-A manager built with `ledgers` and no fixed board has no `messageDoor`, and a flow with two managers wants one `message` action, not two. Build that door with `harnessMessageDoor`, and say which boards the calling session's run may be on:
-
-```ts
-import { harnessMessageDoor } from "@flow-state-dev/harness-manager";
+// `harness` is the slot both the manager and the door are given.
+const manager = harnessManager({ ledgers: conversationLedgers, harness /* , phase, workspace, … */ });
+const runOf = (row) => ({ issue: row.id, phase: "answer" });
 
 defineFlow({
   kind: "coder",
   actions: {
-    message: harnessMessageDoor({
-      boards: async (ctx) => [
-        { tasks: await featureBoard(ctx), orgScoped: true, drain: { drain: "resume", flowKind: "em" } },
-        // A conversation's board, for a task session opened for one.
-        ...(await conversationBoardFor(ctx)),
-      ],
+    message: harnessSessionDoor({
+      name: "coder",
+      harness,
+      board: async (ctx) => {
+        const filed = await filingConversationBoard(ctx);
+        return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
+      },
+      // A steer to a task running nothing (waiting on work it filed) starts the turn it is owed.
+      onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
     }),
   },
-  // ...
+  internal: {
+    // The turn a steer that missed the run's last step is owed: the task again, on its attempt.
+    actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ name: "coder-steer-turn", block: manager }) },
+  },
+  task: { actions: { work: workerTaskEntry({ name: "coder-work", block: manager }) } },
 });
 ```
 
-Resolve each board from server state, such as the session's own fields, never from the request. For each board you give:
+The session's task is the board row whose run link names the session: the task, or the latest of its follow-ups. Sent `{ message }`, the door writes the line into the session as the user's message, then:
 
-- `tasks`: its rows, as the substrate resolves them. The door keys run records by the board's ledger id and partition, the same way the manager did.
-- `orgScoped`: the board is kept per organization, so only the run's own user may talk to it.
-- `drain`: the `internal` entry that runs this board's drain, and the flow that declares it. After a stop the door dispatches it into the session that claimed the row.
-- `reopenIn` (optional): the session that runs this board's drain. With it, a message on a finished task reopens the task and drains there; without it, the message is refused. For a Workforce conversation's board, `filingConversationBoard(ctx)` returns this session as `filingSession`.
-- `runOf` (optional): the `issue` and `phase` a row's run is keyed by. Leave it out for a fixed board's rows, which carry an `{ issue, phase }` payload. For a board read from the claim, return the task id with its payload's phase, or for a task with neither, the phase of the manager that runs it.
+- **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. Answers `{ steered: <taskId> }`.
+- **finished task** → talk. One harness run resumes the task's confirmed coding session with the line, outside any attempt, and its answer is the reply. The task, its output and its attempts don't change. Answers `{ reply, taskId }`.
 
-The door takes the first board whose row links the calling session. It then behaves exactly like `messageDoor`, with the same answers and the same refusals.
+A refusal fails the request, with the reason in words as the error's message and `SessionDoorRefused` as its cause, so only a delivered line ever completes:
+
+- `not-started`: no task started in this session.
+- `cannot-continue`: the task finished and its harness never confirmed a coding session.
+- `steer-refused`: the task can take no more messages.
+
+The door reads nothing from the request but `message`. `board` must resolve from the session's own fields, never from the request. `runOf` names the `issue` and `phase` a row's run is keyed by, as the manager keyed its run record, or `undefined` for a row no manager behind the door runs.
+
+### Stopping a step for a steer
+
+By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and a steer no request of the attempt took stops that step, not the request. The checkout keeps what the stopped step wrote, and the next step resumes the session with the steer. Leave it off for a harness whose abort can return while its process still runs.
+
+### Upgrading kept lines
+
+A line kept in the `turns/**` collection by an earlier door is not read by this one. Run `upgradeKeptTurns` once at host start, before the first request:
+
+```ts
+import { upgradeKeptTurns } from "@flow-state-dev/harness-manager";
+
+const written = await upgradeKeptTurns(runtime.stores, {
+  userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "coder", isolateUserState: false }),
+  ledgers: ["tasks"],
+});
+```
+
+It writes each kept line no attempt took onto its task as an untaken steer from the user, keyed so a second run adds nothing. A line whose task has finished is left.
 
 ## The deadline
 
@@ -338,7 +332,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessMessageDoor`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** is the supported host API, and what this package versions: `harnessManager` and its options, `harnessSessionDoor` and `SessionDoorRefused`, `upgradeKeptTurns`, `STEER_POLL_MS`, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. `run` and the git timeouts it re-exports come from `@flow-state-dev/workspace`. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
@@ -371,7 +365,8 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **A repository on the host's own disk is never saved.** A run cut from a repository listed in `localRepositories` on `localWorkspaceHost` works in that repository directly, and its work stays on that machine.
 - **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. Each acquisition carries its own token, so a displaced process never removes its replacement's lock. The token gives no stronger cross-process exclusion than that.
 - **No retention policy.** Run records and question rows grow without bound.
-- **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, with *this run's harness can't continue with a message*.
+- **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
+- **A steer waits for the step to end** unless the manager is built with `stopsOnAbort: true`.
 - **Git worktrees specifically**, as above.
 
 ## Running tests

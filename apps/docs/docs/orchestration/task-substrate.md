@@ -71,7 +71,7 @@ pending ─┬─→ in_progress ─┬─→ completed
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there, every write treats it as final except one: `reopen` puts a finished task back in `pending` ([below](#putting-a-finished-task-back-in-the-queue)). A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `held`, and `parked` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there, every write treats it as final, and its output never changes. To correct or extend finished work, file a follow-up task (`followUpOf`); see [Task board](./task-board.md#which-session-a-task-runs-in). A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `held`, and `parked` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
 
 Any other move not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
@@ -141,8 +141,8 @@ A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is co
 The mutation surface:
 
 - **Create** — `addTask`, `addTasks`.
-- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `awaitReview` / `unpark`, `cancel`, `reopen`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
-- **Mutate** — `patchSettings` (until the task starts), `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
+- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `hold` / `release`, `awaitReview` / `unpark`, `cancel`, `reclaim` (reset stale leases back to `pending`), `payOwedCascades`.
+- **Mutate** — `patchSettings` (until the task starts), `steer` / `takeSteers` (until the task finishes; [below](#messages-on-an-open-task)), `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
 
 A task board handles expired leases for you — see [the lease](#the-lease). `reclaim` is there for the case where you want to reset leases yourself, on your own schedule.
@@ -234,28 +234,25 @@ A legal status transition is necessary but not sufficient. A verb that owns a si
 | `held` | `release(id)` |
 | `parked` | `unpark(id, feedback?)` |
 | `in_progress`, once its lease has expired | `reclaim()` |
-| `completed`, `errored` or `cancelled` | `reopen(id)` |
+
+A finished task (`completed`, `errored` or `cancelled`) has no path back.
 
 `release` on a task that isn't held reports `unchanged` and writes nothing. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `unpark`, which clears its lease on the way. `unpark` runs on a parked task and refuses every other status whether or not you pass options: `{ outcome: "declined", reason: "disallowed", status }` for a live task, `reason: "terminal"` for a settled one, and nothing written either way. A task that has already been answered is `pending`, so a second answer is refused and the first stands. To re-queue and run the answered task in one request, use the board's `unparkAndDrain` step; see [Task board](./task-board.md#picking-it-back-up).
 
-#### Putting a finished task back in the queue
+#### Messages on an open task
 
-`reopen(id, options?)` takes a `completed`, `errored` or `cancelled` task back to `pending`, for when a person picks finished work up again. It is the only write that moves a task out of a finished status. Every other write treats finished as final: a late `fail` on a completed task throws, and `unpark` declines with `terminal`.
+`steer(id, { message, from, by?, key? })` keeps a message on a task that hasn't finished. It is the write behind `updateTask({ message })` on a [task board](./task-board.md#sending-a-message-to-an-open-task). `from` is `"filer"` or `"user"`, `by` names the person, and a `key` makes a repeated write a no-op.
 
 ```ts
-const outcome = await tasks.reopen("release-note");
+await tasks.steer("release-note", { message: "Mention the new flag too.", from: "user", by: "alice" });
 // { outcome: "recorded" }
-// or, for a task that isn't finished:
-// { outcome: "declined", reason: "disallowed", status: "in_progress" }
+// on a finished task:
+// { outcome: "declined", reason: "terminal", status: "completed" }
+// past the 20th message:
+// { outcome: "declined", reason: "steer-limit", status: "in_progress" }
 ```
 
-Like `unpark`, it needs no options to be advisory. A task that isn't finished is refused as a value, `{ outcome: "declined", reason: "disallowed", status }`, and nothing is written. A `claim` you pass is honoured.
-
-The reopened task keeps its id and `attempts`, and its `output` stays until the next attempt writes its own. Its `error` and `completedAt` are cleared, and it carries `reopened: true`, which a later park, `unpark` or retrying failure clears. The next attempt is not charged against `maxAttempts`, and the worker input for it carries `reopened: true`, so a worker can tell it is picking the task up again rather than starting it. Reopening is not an ending: a collection's `recordEnding` is not called for it, and the reopened attempt's own completion or failure is recorded as a new ending.
-
-Reopening touches no other task. A task that `deps` on it and already started ran on the first result and is not re-run. One that hasn't started yet waits again, since a dependency only counts once it is `completed`, and starts after the reopened attempt completes. A cancelled task reopens like any other finished one, so reopen only what a person has chosen to pick up again.
-
-`reopen` only re-queues. Nothing runs the task until something drains the board.
+Messages are appended in order on the task's `steers`. Each one records the attempt that took it (`takenBy`) and the read that took it (`takenIn`). A claim takes every message on the task into the new attempt, and its worker input carries them as `steers`. A request already working the task takes later ones with `takeSteers(id, { claim, takenIn })`, which needs the claim's ticket, so only the attempt holding the task takes its messages. A steer changes no status, uses no attempt and records no ending. A steer to a task waiting on work it filed sets its `waitingOn` to `"steer"`, so the turn that takes it can start.
 
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `parked`). Two refusals come out of it, and they mean different things:
 
@@ -274,7 +271,7 @@ One caller is entitled to more than that: a worker that has not started yet. If 
 
 The lease answers one question: is a live worker on this right now? A task in `parked` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: an `unpark` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
 
-With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel`, `unpark` and `reopen` are the exceptions and need nothing: `cancel` runs the terminal check whether you pass options or not, `unpark` refuses anything not parked, and `reopen` anything not finished (see above).
+With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` and `unpark` are the exceptions and need nothing: `cancel` runs the terminal check whether you pass options or not, and `unpark` refuses anything not parked (see above).
 
 
 ### What a write reports
@@ -322,7 +319,7 @@ if (outcome.outcome === "declined") {
 }
 ```
 
-`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. `unpark` and `reopen` behave the same way: `unpark` declines on anything not parked, `reopen` on anything not finished. The remaining lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
+`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. `unpark` behaves the same way: it declines on anything not parked. The remaining lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to a terminal task, which is how a post-drain audit labels what went wrong, so those four answer only `recorded` or `unchanged`. `patchMetadata` merges the patch rather than comparing it, so it answers `recorded` even for a patch that changes nothing.
 
@@ -535,7 +532,7 @@ Every mutation that changes a field emits a `task-change` component item onto th
                              // review_requested | resumed |
                              // cancelled | label_changed | metadata_changed |
                              // priority_changed | assignee_changed |
-                             // run_linked | reopened
+                             // run_linked | steered
   task: { /* the post-mutation Task, minus server-only fields */ },
   prevStatus: "in_progress", // omitted when the mutation didn't change status
 }

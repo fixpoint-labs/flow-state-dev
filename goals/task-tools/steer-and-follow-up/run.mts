@@ -237,7 +237,7 @@ const stepModel: GeneratorModel = {
 
 function modelResolver() {
   const base = createMockModelResolver({
-    generators: { "coordinator-judgment": mockGenerator({ script: [{ when: () => true, then: { text: "Noted." } }] }) },
+    generators: { "coordinator-judgment": mockGenerator({ name: "steer-goal-judgment", script: [{ when: () => true, then: { text: "Noted." } }] }) },
     policy: "default",
     unmockedDefault: { text: "ok" }
   });
