@@ -4,8 +4,8 @@
  *
  * **Done** means: a request for the task ended with a result, its background
  * work ended too, no steer is untaken by its attempt, no filed work still
- * holds the task, and nothing is queued for it. The claim gate admits the task's own entry (`work`, and its resume);
- * {@link taskRequestAdmission} admits the other requests for it a package
+ * holds the task, and nothing is queued for it. The claim gate admits the
+ * task's own entry (`work`, and its resume); {@link taskRequestAdmission} admits the other requests for it a package
  * runs in the task's session (a notice of a piece's ending, a queued
  * message). Every one of them ends at the same check, which runs after the
  * engine's last drain through its request-end seam (`onRequestEnded`), on every

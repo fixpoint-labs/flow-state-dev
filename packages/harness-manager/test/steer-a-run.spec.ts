@@ -344,7 +344,7 @@ describe("a steer reaches a coding run", () => {
   it.each([
     ["cancelled", "the task is cancelled"],
     ["claimed again", "another attempt claims the task"],
-  ] as const)("runs no more steps for a stopped step once its task is %s", async (what) => {
+  ] as const)("runs no more steps for a stopped step once its task is %s", async (what, _how) => {
     const h = host({ script: ["until-stopped", "finished", "finished"], stopsOnAbort: true });
     try {
       h.whenStopped.push(async () => {

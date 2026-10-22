@@ -714,13 +714,13 @@ describe("a line the coder's door kept before lines became steers (FIX-2086)", (
     const segment = runBoardSegment("tasks", conv);
     const rowKey = `tasks/${encodeUserSegment(conv)}/task_kept`;
     // The store the Lab's runtime resolves, the same across both starts.
-    const registry = await stores.resolve();
-    const seed = async (key: string, state: Record<string, unknown>) => registry.resourceState.set("user", cell, key, state as never, "any" as never);
+    const resourceState = (await stores.resolve(["primary"])).resourceState!;
+    const seed = async (key: string, state: Record<string, unknown>) => resourceState.set("user", cell, key, state as never, "any" as never);
     await seed(rowKey, { id: "task_kept", goal: "look at the repo", status: "parked", parkedForTurn: true, attempts: 1, assignee: CODER, createdAt: 1, updatedAt: 1, revision: 1 });
     await seed(`runs/${segment}/task_kept/answer`, { taskId: "task_kept", sessionId: "sess_stub_1" });
     await seed("turns/task_kept/answer/2/k1", { message: "Check the tests too.", keptAt: 5, forAttempt: 2, deliveredTo: null, withdrawn: false });
 
-    const read = async () => (await registry.resourceState.get("user", cell, rowKey))?.state as { steers?: Array<Record<string, unknown>> };
+    const read = async () => (await resourceState.get("user", cell, rowKey))?.state as { steers?: Array<Record<string, unknown>> };
     for (let start = 0; start < 2; start += 1) {
       opened = await openLab({
         modelResolver: scriptedCoder([]),

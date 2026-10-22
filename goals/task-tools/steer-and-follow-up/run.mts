@@ -51,8 +51,13 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "drop-late-steer": [
     {
       module: "packages/orchestration/src/task-board/task-request.ts",
-      from: String.raw`if \(untakenSteers\(stored\)\.length > 0 && \(await oweSteerTurn\(record, row\)\)\) return undefined;`,
-      to: "void stored; void oweSteerTurn;"
+      from: String.raw`  if \(untakenSteers\(stored\)\.length > 0\) \{`,
+      to: "  if (false) {"
+    },
+    {
+      module: "packages/orchestration/src/task-board/task-request.ts",
+      from: String.raw`  const fenceSteers = !noProgress && !rechecked && record\.rules\.steerTurn !== undefined && ref\.setWaitingOn !== undefined;`,
+      to: "  const fenceSteers = false; void rechecked;"
     }
   ],
   // As before FIX-2086: a message on a finished task is taken, and the task
@@ -75,7 +80,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
     },
     {
       module: "packages/orchestration/src/tasks/collection/resource-backed.ts",
-      from: String.raw`(const decided = steerWrite\(task(?: as Task)?, input, steerId, now\(\)\);[\s\S]{0,600}?)\{ declineOnTerminal: true \}`,
+      from: String.raw`(const decided = steerWrite\(task(?: as Task)?, input, steerId, at\);[\s\S]{0,600}?)\{ declineOnTerminal: true \}`,
       to: "$1{ declineOnTerminal: false }"
     }
   ]

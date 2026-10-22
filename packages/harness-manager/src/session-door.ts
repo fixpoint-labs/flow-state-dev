@@ -120,7 +120,7 @@ function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefin
 }
 
 /** The default bound on one talk run. */
-const TALK_TIMEOUT_MS = 10 * 60_000;
+const DEFAULT_TALK_TIMEOUT_MS = 10 * 60_000;
 
 /** What the decide step hands on: a steer done, or the talk to run. */
 const decidedSchema = z.union([
@@ -151,7 +151,7 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     resources: { [RUNS]: runRecordCollection },
   }) as unknown as DefinedCapability;
   const uses = [capability, ...(options.uses ?? [])];
-  const talkTimeoutMs = options.talkTimeoutMs ?? TALK_TIMEOUT_MS;
+  const talkTimeoutMs = options.talkTimeoutMs ?? DEFAULT_TALK_TIMEOUT_MS;
   const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
   const releaseTalkLease = (ctx: { sequencer?: { state?: unknown } }) => {
     const state = stateOf(ctx);
