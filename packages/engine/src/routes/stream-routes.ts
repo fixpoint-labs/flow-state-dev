@@ -148,11 +148,14 @@ export async function handleRequestStream(
   const leaseHeld = lease !== null;
 
   // Live-tail branch: a known-in-flight request — or a suspended one with an
-  // active continuation — streams via subscribeToEvents.
+  // active continuation, or a terminal one whose run is still writing its
+  // terminal event (FIX-2077: held until its request-end hooks have run) —
+  // streams via subscribeToEvents.
   if (
     requestRecord !== undefined &&
     (!isTerminalRequestStatus(requestRecord.status) ||
-      (requestRecord.status === "suspended" && leaseHeld))
+      (requestRecord.status === "suspended" && leaseHeld) ||
+      (await terminalEventStillComing(ctx.stores, requestRecord)))
   ) {
     // The addressed instance must own the record — a same-kind peer's request
     // is as unknown here as another flow's.
@@ -291,6 +294,11 @@ export async function handleRequestStream(
   }
   if (replaySource.length === 0 && cursor.sequenceNumber === undefined) {
     replaySource = buildReplayEvents(requestRecord, session);
+  } else {
+    // A log its run left with no terminal event (it died, or stopped, before
+    // writing it) still ends: once, with the record's status (FIX-2077).
+    const terminal = await missingTerminalEvent(ctx.stores, requestRecord, replaySource, cursor.sequenceNumber);
+    if (terminal !== undefined) replaySource = [...replaySource, terminal];
   }
 
   let replay = replayRequestEvents({
@@ -510,5 +518,48 @@ export function voiceErrorToHttpStatus(kind: VoiceErrorKind): number {
     case "unknown":
       return 500;
   }
+}
+
+/**
+ * Whether a terminal record's own run is still writing its terminal event
+ * (FIX-2077): a request that owed request-end hooks settles its record first
+ * and emits its terminal status only once they have run. Until the run stamps
+ * `finalizedAtMs` and while its log has no terminal event, a reader tails it
+ * live; the live tail's liveness timeout ends it if that run died.
+ */
+async function terminalEventStillComing(stores: StoreRegistry, record: RequestRecord): Promise<boolean> {
+  if (record.status === "suspended" || record.heartbeatsUntilFinalized !== true || record.finalizedAtMs != null) return false;
+  return !(await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent);
+}
+
+/** The record statuses a request ends in for good: a replay of one ends with it. */
+const FINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "failed", "incomplete", "aborted", "interrupted"]);
+
+/**
+ * The terminal event a replay must end with when its log holds none: the
+ * record's own status, after the log's last event (FIX-2077). A run that died
+ * or stopped before writing its terminal event otherwise leaves every later
+ * reader without one. `undefined` when the log (before the cursor included)
+ * has one, or the record is not in a final state.
+ */
+async function missingTerminalEvent(
+  stores: StoreRegistry,
+  record: RequestRecord,
+  slice: readonly RequestStreamEvent[],
+  cursor: number | undefined
+): Promise<RequestStreamEvent | undefined> {
+  if (!FINAL_STATUSES.has(record.status)) return undefined;
+  if (slice.some(isTerminalRequestStreamEvent)) return undefined;
+  const log = cursor === undefined ? slice : await stores.request.getEvents(record.id);
+  if (log.some(isTerminalRequestStreamEvent)) return undefined;
+  const last = log.reduce((max, event) => Math.max(max, event.sequence_number ?? 0), cursor ?? 0);
+  return {
+    stream: "request",
+    type: `request.${record.status}`,
+    requestId: record.id,
+    sequence_number: last + 1,
+    status: record.status,
+    ts: record.completedAtMs ?? record.failedAtMs ?? record.updatedAt ?? Date.now()
+  } as RequestStreamEvent;
 }
 

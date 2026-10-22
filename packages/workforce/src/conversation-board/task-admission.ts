@@ -22,7 +22,7 @@
 import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
+import { afterTaskCheck, taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
 import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { messageLogOf } from "../messages/message-log";
 import { WORKER_MESSAGES_SEEN_STATE } from "../messages/keys";
@@ -94,13 +94,21 @@ export const conversationEndRules: TaskEndRules = {
  * or a message for the same task.
  */
 export function checkTaskEntry(concurrency: ConcurrencyConfig) {
+  // Cleared after the check, never before, and only once the check left the
+  // task settled or waiting on something that wakes it: a crash, or a write
+  // that failed (the task still running, waiting on nothing), leaves the wake
+  // to run the check again.
   const settleWake = handler({
     name: "conversation-check-task-settle-wake",
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      const wakes = ctx.requestHost?.wakes;
-      const read = await wakes?.read(CHECK_TASK_ENTRY);
-      if (wakes !== undefined && read !== undefined) await wakes.settle(CHECK_TASK_ENTRY, read, null);
+      await afterTaskCheck(ctx, async () => {
+        const own = await ownTaskRow(ctx);
+        if (own !== undefined && own.row.waitingOn == null) return;
+        const wakes = ctx.requestHost?.wakes;
+        const read = await wakes?.read(CHECK_TASK_ENTRY);
+        if (wakes !== undefined && read !== undefined) await wakes.settle(CHECK_TASK_ENTRY, read, null);
+      });
     }
   });
   return {

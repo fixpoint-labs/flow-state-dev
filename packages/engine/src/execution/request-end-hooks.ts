@@ -24,9 +24,18 @@ export interface RequestEndRegistry {
    * Run every hook added so far, in order, then forget them. A hook added while
    * the list runs runs too. A rejection is logged and the next hook still runs.
    *
+   * The request stays owed (shutdown waits for it) until the run ends, or,
+   * with `keepOwed`, until {@link release}: for a caller that still has the
+   * request's held terminal status to write.
+   *
    * @returns the first failure a hook handed back, for the caller to record as the request's own.
    */
-  run(ending: RequestEnding, context: { requestId: string; logger?: RuntimeLogger }): Promise<Error | undefined>;
+  run(
+    ending: RequestEnding,
+    context: { requestId: string; logger?: RuntimeLogger; keepOwed?: boolean }
+  ): Promise<Error | undefined>;
+  /** The request owes nothing more: a shutdown stops waiting for it. Idempotent. */
+  release(): void;
   /** Whether a hook is added and has not run yet: the request then holds back its terminal status until they have. */
   owes(): boolean;
 }
@@ -67,13 +76,16 @@ export function createRequestEndRegistry(): RequestEndRegistry {
       }
     },
     owes: () => hooks.length > 0,
+    release: () => {
+      owed.delete(registry);
+      release?.();
+      release = undefined;
+    },
     async run(ending, context) {
       try {
         return await runHooks(hooks, ending, context);
       } finally {
-        owed.delete(registry);
-        release?.();
-        release = undefined;
+        if (context.keepOwed !== true) registry.release();
       }
     }
   };

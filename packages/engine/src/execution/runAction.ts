@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import type { TaskEntry } from "@flow-state-dev/core/types";
+import type { RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -2673,7 +2673,12 @@ async function runActionAttempt<
     // `failed` with that error, and the run returns it (FIX-963's guarantee
     // that a run whose result the board could not record never reads as
     // success).
-    const endFailure = await requestEndRegistryOf(ctx)?.run({ status: terminalStatus }, { requestId, logger });
+    // Held, the request stays owed until its terminal status is flushed below:
+    // a shutdown that closed the stores first would leave its log without one.
+    const endFailure = await requestEndRegistryOf(ctx)?.run(
+      { status: terminalStatus },
+      { requestId, logger, keepOwed: holdsTerminalStatus }
+    );
     if (endFailure !== undefined) {
       const normalized = applyNormalizedErrorSeam(
         internalSeams,
@@ -2690,8 +2695,12 @@ async function runActionAttempt<
       endError = normalized;
     }
     if (holdsTerminalStatus) {
-      await response.emitRequestStatus(endError !== undefined ? "failed" : terminalStatus);
-      await options.stores.request.flushEvents(requestId);
+      try {
+        await response.emitRequestStatus(endError !== undefined ? "failed" : terminalStatus);
+        await options.stores.request.flushEvents(requestId);
+      } finally {
+        requestEndRegistryOf(ctx)?.release();
+      }
     }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
@@ -2989,20 +2998,18 @@ async function runActionAttempt<
     // run writing under the id, as are the item and event writes they left
     // pending.
     await drainRequestSideChainPool(ctx);
-    // As on the success path (FIX-2077). The request has already failed, so a
+    // As on the success path (FIX-2077). The request has already ended, so a
     // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
-    const endFailure = await requestEndRegistryOf(ctx)?.run(
-      wasIntentionalAbort
-        ? { status: "aborted" }
-        : signalAborted
-          ? { status: "interrupted" }
-          : { status: "failed", error: { message: normalizedError?.message ?? String(error) } },
-      { requestId, logger }
-    );
+    const ending: RequestEnding = wasIntentionalAbort
+      ? { status: "aborted" }
+      : signalAborted
+        ? { status: "interrupted" }
+        : { status: "failed", error: { message: normalizedError?.message ?? String(error) } };
+    const endFailure = await requestEndRegistryOf(ctx)?.run(ending, { requestId, logger });
     if (endFailure !== undefined) {
       logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
         requestId,
-        status: "failed",
+        status: ending.status,
         error: endFailure.message
       });
     }

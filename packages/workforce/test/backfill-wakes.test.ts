@@ -139,9 +139,21 @@ describe("a split parked before FIX-2077, every piece's notice already acted on"
     // As stored (the board reads it as running, waiting on its pieces).
     expect((await h.rowsNamed("alice", "Plan the launch"))[0]?.status).toBe("parked");
 
+    // The check entry's wake is cleared only after the check settled the split:
+    // a crash between the two must leave the wake to run the check again.
+    const clearedWith: string[] = [];
+    const wakeStore = runtime.stores.wakes!;
+    const clear = wakeStore.clear.bind(wakeStore);
+    wakeStore.clear = async (key, version) => {
+      if (key.entry === CHECK_TASK_ENTRY) clearedWith.push(String((await h.rowsNamed("alice", "Plan the launch"))[0]?.status));
+      return clear(key, version);
+    };
+
     expect(await backfillBoardWakes(runtime.stores, { userCell })).toBeGreaterThanOrEqual(1);
 
     expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "completed", 5_000)).toBe(true);
+    expect(await h.until(() => clearedWith.length > 0, 5_000)).toBe(true);
+    expect(clearedWith).toEqual(["completed"]);
   }, 30_000);
 });
 
