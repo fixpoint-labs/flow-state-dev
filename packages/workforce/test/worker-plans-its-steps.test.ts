@@ -32,6 +32,12 @@ type Controls = {
   /** Steps whose turn tries to file one more step for itself. */
   stepFiles: Set<string>;
   answerFiles: Set<string>;
+  /** Workers whose turn files its whole plan in one `addTasks` batch. */
+  batches: Set<string>;
+  /** A second batch a batching worker's turn files after its plan. */
+  secondBatch: Record<string, Step[]>;
+  /** The rule each refused filing named (`TaskFilingRefusedError.rule`), or its code. */
+  rules: string[];
   /** A worker whose plan turn also tries the writes a step refuses. */
   probes: Set<string>;
   refusals: Array<{ worker: string; error: string }>;
@@ -60,11 +66,13 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
           await write();
         } catch (error) {
           controls.refusals.push({ worker, error: error instanceof Error ? `${(error as { code?: string }).code ?? error.name}` : String(error) });
+          const named = error as { rule?: string; code?: string };
+          controls.rules.push(named.rule ?? named.code ?? String(error));
         }
       };
       if (kind === "step") {
         const brief = input.message.split("The results of the steps it depends on:")[0]!;
-        const step = (controls.plans[worker] ?? []).find((candidate) => brief.includes(candidate.goal));
+        const step = [...(controls.plans[worker] ?? []), ...(controls.secondBatch[worker] ?? [])].find((candidate) => brief.includes(candidate.goal));
         if (step === undefined) throw new Error(`no step matches: ${input.message}`);
         if (controls.failSteps.has(step.goal)) throw new Error(`${step.goal} could not be done`);
         if (controls.stepFiles.has(step.goal)) await refused(() => ref!.addTask({ goal: `after ${step.goal}`, assignee: worker }));
@@ -77,10 +85,14 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         return `answered: ${input.message}`;
       }
       if (input.message.startsWith('Task "')) return `${worker} heard: ${input.message}`;
-      for (const step of controls.plans[worker] ?? []) {
-        await refused(() =>
-          ref!.addTask({ id: step.id, goal: step.goal, assignee: step.assignee ?? worker, ...(step.deps ? { deps: step.deps } : {}) })
-        );
+      const asInit = (step: Step) => ({ id: step.id, goal: step.goal, assignee: step.assignee ?? worker, ...(step.deps ? { deps: step.deps } : {}) });
+      if (controls.batches.has(worker)) {
+        await refused(() => ref!.addTasks((controls.plans[worker] ?? []).map(asInit)));
+        const second = controls.secondBatch[worker];
+        if (second !== undefined) await refused(() => ref!.addTasks(second.map(asInit)));
+      }
+      else for (const step of controls.plans[worker] ?? []) {
+        await refused(() => ref!.addTask(asInit(step)));
       }
       if (controls.probes.has(worker)) {
         const first = (controls.plans[worker] ?? [])[0]!;
@@ -117,7 +129,7 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 
 function host(options: { taskChainLimit?: number } = {}) {
-  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), probes: new Set(), refusals: [], turns: [] };
+  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), batches: new Set(), secondBatch: {}, rules: [], probes: new Set(), refusals: [], turns: [] };
   const h = bootBoardHost({
     standard: [
       ...boardWorkers(),
@@ -286,6 +298,111 @@ describe("a step and a delegate's task don't wait on each other: each ledger's d
       expect(h.controls.refusals).toEqual([{ worker: "editor", error: "deps_across_ledgers" }]);
       expect(await h.rows("alice")).toEqual([]);
       expect((await h.steps("alice")).map((row) => [row.id, row.status])).toEqual([["e-outline", "completed"]]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a batch of steps and delegates' tasks is filed whole or not at all", () => {
+  it("files nothing, not even the delegate's task, when a step in the batch is refused", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [
+        { id: "w-draft", goal: "Draft the post", assignee: "writer" },
+        { id: "e-review", goal: "Review the draft", deps: ["e-ghost"] }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.refusals).toEqual([{ worker: "editor", error: "TaskFilingRefusedError" }]);
+      // The refused step's batch reached neither ledger: the delegate never ran the draft.
+      expect(await h.rows("alice")).toEqual([]);
+      expect(await h.steps("alice")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("files a valid batch whose step comes before the step it depends on", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [
+        { id: "w-draft", goal: "Draft the post", assignee: "writer" },
+        { id: "e-review", goal: "Review the outline", deps: ["e-outline"] },
+        { id: "e-outline", goal: "Outline the post" }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.refusals).toEqual([]);
+      expect((await h.rows("alice")).map((row) => [row.id, row.status])).toEqual([["w-draft", "completed"]]);
+      expect((await h.steps("alice")).map((row) => [row.id, row.status]).sort()).toEqual([
+        ["e-outline", "completed"],
+        ["e-review", "completed"]
+      ]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a batch is refused whole before anything is reserved or filed", () => {
+  it("refuses a step whose id is already on the plan ledger, and files none of its batch", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [{ id: "e-a", goal: "Outline the post" }];
+      h.controls.secondBatch.editor = [
+        { id: "w-new", goal: "Draft the post", assignee: "writer" },
+        { id: "e-a", goal: "Outline it again" }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.rules).toEqual(["duplicate_task_id"]);
+      expect(await h.rows("alice")).toEqual([]);
+      expect((await h.steps("alice")).map((row) => row.id)).toEqual(["e-a"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a step depending on a delegate's task in the same batch as across ledgers", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [
+        { id: "w-draft", goal: "Draft the post", assignee: "writer" },
+        { id: "e-review", goal: "Review the draft", deps: ["w-draft"] }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.rules).toEqual(["deps_across_ledgers"]);
+      expect(await h.rows("alice")).toEqual([]);
+      expect(await h.steps("alice")).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses a delegate's task depending on a step in the same batch as across ledgers", async () => {
+    const h = host();
+    try {
+      h.controls.batches.add("editor");
+      h.controls.plans.editor = [
+        { id: "e-outline", goal: "Outline the post" },
+        { id: "w-draft", goal: "Draft the post", assignee: "writer", deps: ["e-outline"] }
+      ];
+      const lead = await h.open("alice", "editor");
+      expect((await h.act("alice", lead, "run", { message: "plan it" }, "stepper")).error).toBeUndefined();
+      await h.settled();
+      expect(h.controls.rules).toEqual(["deps_across_ledgers"]);
+      expect(await h.rows("alice")).toEqual([]);
+      expect(await h.steps("alice")).toEqual([]);
     } finally {
       await h.dispose();
     }

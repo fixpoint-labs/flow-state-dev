@@ -133,6 +133,7 @@ import {
 import type { Task, TaskWriteOutcome } from "../tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
+import { owesATouch } from "../tasks/collection/cascade";
 import { createClaimTask } from "./blocks/claim-task";
 import { buildWorkerStep } from "./blocks/worker-step";
 import {
@@ -896,10 +897,12 @@ export function taskBoard<
 
   // A drain is a touch of the board (FIX-2080 D2): a cascade an ending still
   // owes past its due time (a crash between the ending and its cascade) is
-  // paid here, once the workers are done. Not before the first claim: this
-  // step resolves the collection again, and a resource-backed board's
-  // resolution reads the store, which would hold back every start behind it.
-  // A row behind a dead dependency isn't claimable meanwhile.
+  // paid by an idle worker before the exit check (`makeWorker`), from the
+  // rows it holds. This last step pays once more, unconditionally, for the
+  // rows only the store shows: a dependent another process filed. Not before
+  // the first claim: this step resolves the collection again, and a
+  // resource-backed board's resolution reads the store, which would hold
+  // back every start behind it.
   const payOwedCascades = handler({
     name: `${name}-pay-owed-cascades`,
     transient: true,
@@ -1237,6 +1240,15 @@ export function taskBoard<
           cell.collection = await collectionFactory(ctx);
           cell.wakeFilter = onTaskChangeFor(cell.collection.collectionId);
         }
+        // A drain is a touch of the board (FIX-2080 D2), and it must pay
+        // before the exit check reads the rows: a row behind a dead dependency
+        // is never claimable, so on `onIdle: "complete"` it would keep the
+        // drain waiting to `maxIterations`, and on the default the completion
+        // item would report it pending. Here, once nothing is claimable, on
+        // the ref this worker already holds, and only when the payer would
+        // cancel one of its rows now: paying before the first claim, or on
+        // every idle turn, reads the store and holds back the board's starts.
+        if (owesATouch(cell.collection.list(), cell.collection.now())) await cell.collection.payOwedCascades?.();
       })
       .waitForCondition(
         (items) =>

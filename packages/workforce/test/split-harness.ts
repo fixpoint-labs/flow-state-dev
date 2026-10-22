@@ -40,7 +40,8 @@ export type SplitControls = {
   plans: Record<string, Piece[]>;
   failNoticeTurn: Set<string>;
   onErrored: Record<string, Piece>;
-  onCompleted: Record<string, Piece>;
+  /** The piece (or pieces, filed together) a worker files once on a completion notice. */
+  onCompleted: Record<string, Piece | Piece[]>;
   /** What a worker's turn on a notice answers, in place of what it heard. */
   noticeAnswer: Record<string, unknown>;
   refusals: Array<{ worker: string; error: string; message?: string }>;
@@ -77,7 +78,7 @@ function splitterFlow(installation: WorkerInstallation, controls: SplitControls)
         delete controls.onErrored[worker];
       }
       if (notice && input.message.includes(" completed by ") && controls.onCompleted[worker] !== undefined) {
-        pieces.push(controls.onCompleted[worker]!);
+        pieces.push(...[controls.onCompleted[worker]!].flat());
         delete controls.onCompleted[worker];
       }
       if (pieces.length === 0) return notice && Object.hasOwn(controls.noticeAnswer, worker) ? controls.noticeAnswer[worker] : `${worker} heard: ${input.message}`;
