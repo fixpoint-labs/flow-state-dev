@@ -466,11 +466,11 @@ A task with no lease stays with its run. It isn't handed out again however long 
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 
-The task's output is the latest checkpoint its worker reported with `reportProgress`. With no checkpoint, it's the answer of the last request that counts: the entry's, or a later request admitted with `answerCounts: true` (below).
+The task's output is the latest checkpoint its worker reported with `reportProgress`. With no checkpoint, it's the last answer that counts: the entry's, or that of a later request [admitted for the task](#requests-that-work-on-a-waiting-task) with `answerCounts: true` and a `noteTaskAnswer` tap.
 
 If the board can't record the result, the dispatch run's request reports `failed`. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
 
-Stopping the host waits for these end-of-request checks, within the same `shutdownDrainMs` budget (default 10 seconds) it gives requests that [wakes](../advanced/durable-execution.md#wakes) started. Past that budget the host shuts down anyway and logs how many requests were still owed their check.
+Before it closes the stores, stopping the host waits for a request working a dispatched task, until it has recorded that task's outcome (settled, failed, or waiting on something). It shares the `shutdownDrainMs` budget (default 10 seconds) it gives requests that [wakes](../advanced/durable-execution.md#wakes) started. Past that budget the host shuts down anyway and logs how many such requests hadn't recorded an outcome.
 
 #### Requests that work on a waiting task
 
@@ -478,24 +478,33 @@ On a [Workforce](../workforce/delegating-work.md#splitting-a-task) board, the no
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { noteTaskAnswer, taskRequestAdmission } from "@flow-state-dev/orchestration/task-board";
+import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 
-// findWaitingTask: your lookup, returning { ref, row } for the task this session runs, or undefined.
-// readThePiece: the step that does the request's work.
+// Your lookup: the waiting task whose run is this session, and the ledger it's on.
+async function findWaitingTask(
+  ctx: BlockContext
+): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
+  // e.g. resolve the ledger, then ref.list({ status: "in_progress" })
+  //   .find((task) => task.run?.sessionId === ctx.session.identity.id)
+}
+
+// readThePiece is your own block: whatever this request does with the notice.
 const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: taskSettledInputSchema })
   .tap(
     taskRequestAdmission({
       name: "on-piece-ended-admission",
       answerCounts: true,
-      find: findWaitingTask,
+      find: (ctx) => findWaitingTask(ctx),
     })
   )
   .step(readThePiece)
   .tap(noteTaskAnswer);
 ```
 
-`find` returns the task's ledger (`ref`, a `TaskCollectionRef`) and its row, or `undefined`. Read it from server-set state, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. Set `answerCounts: false` on an entry whose answer must never become the task's output, such as a message.
+`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output, such as a message.
 
 By default, the tasks a task filed hold it, and nothing counts as queued. To change either, pass `endRules: { filedWorkHolds, workQueued }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. Each is an async predicate over the context and the task row; `workQueued` should read a durable record, so a restart doesn't lose what it reports.
 
