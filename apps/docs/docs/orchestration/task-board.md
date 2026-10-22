@@ -488,6 +488,14 @@ A task with no lease stays with its run. It isn't handed out again however long 
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 
+Background work counts as part of the request. If a `.sideChain()` step throws in any request working the task, the attempt fails just as if the request had thrown. That covers steps your `onCompleted` or `onFinished` hooks start, and a step a plain `.waitForSideChain()` already waited on. The task runs again while it has attempts left. Otherwise it fails, and its error names the step, as in `Background work "notify" failed: ...`. The request itself still reports `completed`, so read the task, not the request, to see how the work went.
+
+A few cases don't fail the attempt:
+
+- **A cancel.** Once the task's request is stopped, nothing its steps do afterwards fails the task. A dropped client connection is not a cancel, so a step that throws after one still fails the attempt.
+- **A stop and resume.** A step that failed before the request stopped runs again on the resume, and that run's outcome is the one that counts.
+- **A step that catches its own error.** To make a step best-effort, catch inside it. A step that never throws never fails the task.
+
 The task's output is the latest checkpoint its worker reported with `reportProgress`. With no checkpoint, it's the last answer that counts: the entry's, or that of a later request whose answer [counts toward the output](#requests-that-work-on-a-waiting-task).
 
 If the board can't record the result, the dispatch run's request reports `failed`. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).

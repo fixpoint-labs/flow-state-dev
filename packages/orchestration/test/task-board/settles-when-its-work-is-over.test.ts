@@ -50,6 +50,10 @@ async function harness(
     steerTurn?: boolean;
     /** What the gate's `complete` does after the store answers, with that answer. */
     afterComplete?: (outcome: TaskWriteOutcome) => Promise<void>;
+    /** What the background step of the task's own work throws, if anything (FIX-2088). */
+    workWriteFails?: () => string | undefined;
+    /** What the background step of a later request throws, if anything (FIX-2088). */
+    laterWriteFails?: () => string | undefined;
   } = {}
 ) {
   const store = createFakeResourceCollection();
@@ -80,6 +84,8 @@ async function harness(
         inputSchema: z.any(),
         execute: async () => {
           await sleep(30);
+          const failure = options.workWriteFails?.();
+          if (failure !== undefined) throw new Error(failure);
           log.push("wrote:work");
         },
       })
@@ -147,6 +153,18 @@ async function harness(
             return row === undefined ? undefined : { ref, row };
           },
           endRules,
+        })
+      )
+      // Background work the later request starts before its turn, so a turn that throws still leaves it running.
+      .sideChain(
+        handler({
+          name: "later-write",
+          inputSchema: z.any(),
+          execute: async () => {
+            await sleep(10);
+            const failure = options.laterWriteFails?.();
+            if (failure !== undefined) throw new Error(failure);
+          },
         })
       )
       .step(
@@ -225,7 +243,8 @@ async function harness(
     leases: stores.leases,
   });
   const runtimeConfig = { durabilityProvider: provider };
-  const run = () =>
+  /** Run the task's entry on `claim`: the harness's first claim, or a reclaim's. */
+  const run = (claim: Task = claimed) =>
     runAction({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -234,10 +253,10 @@ async function harness(
         boardId: "settle-board",
         assignee: "coder",
         taskId: "t1",
-        attempt: claimed.attempts,
-        createdAt: claimed.createdAt,
-        incarnationId: claimed.incarnationId,
-        payload: { taskId: "t1", goal: "do it", attempts: claimed.attempts, input: {} },
+        attempt: claim.attempts,
+        createdAt: claim.createdAt,
+        incarnationId: claim.incarnationId,
+        payload: { taskId: "t1", goal: "do it", attempts: claim.attempts, input: {} },
       },
       userId: "u1",
       sessionId: "s_task",
@@ -691,5 +710,79 @@ describe("a steer no request took gives the task one more turn before it settles
     await h.run();
 
     expect(await h.row()).toMatchObject({ status: "completed", output: "first answer" });
+  });
+});
+
+/**
+ * A task's background work that errors fails its attempt (FIX-2088), exactly
+ * as if its request had thrown: it retries while attempts are left, otherwise
+ * it fails, with the step named. The request itself stays completed (D2).
+ */
+describe("a task's background error fails its attempt", () => {
+  it("a background step of the task's own work that throws fails the attempt, and the retry's result is the output", async () => {
+    let fails: string | undefined = "capture timed out";
+    const h = await harness({ workWriteFails: () => fails });
+
+    const first = await h.run();
+
+    expect(first.error).toBeUndefined();
+    const retried = await h.row();
+    expect(retried).toMatchObject({ status: "pending", attempts: 1 });
+    expect(retried?.feedback).toContain('"work-write"');
+    expect(retried?.feedback).toContain("capture timed out");
+    // The attempt's answer is never recorded: the attempt failed.
+    expect(retried?.output).toBeUndefined();
+
+    fails = undefined;
+    h.setBehaviour(async () => "the second answer");
+    await h.run((await h.reclaim())!);
+
+    expect(await h.row()).toMatchObject({ status: "completed", attempts: 2, output: "the second answer" });
+  });
+
+  it("a background step that always throws fails the task after its last attempt, with the step named", async () => {
+    const h = await harness({ workWriteFails: () => "capture timed out" });
+
+    await h.run();
+    await h.run((await h.reclaim())!);
+
+    const row = await h.row();
+    expect(row).toMatchObject({ status: "errored", attempts: 2 });
+    expect(row?.error).toContain('"work-write"');
+    expect(row?.error).toContain("capture timed out");
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+  });
+
+  it("a background step of a queued message's request that throws fails the attempt", async () => {
+    let queued = true;
+    const h = await harness({ queued: () => queued, laterWriteFails: () => "the message's write failed" });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "queued" });
+
+    queued = false;
+    await h.runLater("message");
+
+    const row = await h.row();
+    expect(row).toMatchObject({ status: "pending", attempts: 1 });
+    expect(row?.feedback).toContain('"later-write"');
+  });
+
+  it("when the request also threw, the request's own error is the one recorded", async () => {
+    // A message's request: no gate rescue fails the attempt in-band, so the
+    // check at its end is the one that records which error failed it.
+    let queued = true;
+    const h = await harness({ queued: () => queued, laterWriteFails: () => "the message's write failed" });
+    await h.run();
+
+    queued = false;
+    h.setLaterTurn(async () => {
+      throw new Error("the message broke");
+    });
+    await h.runLater("message");
+
+    const row = await h.row();
+    expect(row).toMatchObject({ status: "pending", attempts: 1 });
+    expect(row?.feedback).toContain("the message broke");
+    expect(row?.feedback).not.toContain("the message's write failed");
   });
 });

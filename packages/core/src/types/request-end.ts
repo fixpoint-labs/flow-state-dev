@@ -18,6 +18,14 @@
 /** How a request ended, as a request-end hook is told. */
 export type RequestEndStatus = "completed" | "incomplete" | "failed" | "aborted" | "interrupted" | "suspended";
 
+/** One step of a request's background work that failed (FIX-2088). */
+export interface BackgroundFailure {
+  /** The step's name, as `.sideChain()` recorded it. */
+  readonly step: string;
+  /** Its error's message. */
+  readonly message: string;
+}
+
 /** What a request-end hook is handed. */
 export interface RequestEnding {
   /** How the request ended. */
@@ -26,6 +34,22 @@ export interface RequestEnding {
   readonly suspension?: { readonly reason: string };
   /** On `failed`: the request's error message, as its record carries it. */
   readonly error?: { readonly message: string };
+  /**
+   * The steps of the request's background work that failed, gathered across
+   * every drain, in the order they were drained: work the action started,
+   * work its end hooks started, and work a default `.waitForSideChain()`
+   * drained. Absent when none failed.
+   *
+   * Never handed on for a request whose cancel fired (the explicit abort),
+   * whatever its steps did after it; a dropped connection is not a cancel.
+   * Never handed on at `suspended` either: the resume reruns a step that has
+   * no completed trace, and the rerun's outcome is the one handed on.
+   *
+   * The request's own status never depends on these: the runtime only hands
+   * them on. A hook that must fail something on them (the claim gate fails a
+   * task's attempt) does so itself.
+   */
+  readonly backgroundFailures?: readonly BackgroundFailure[];
 }
 
 /**
