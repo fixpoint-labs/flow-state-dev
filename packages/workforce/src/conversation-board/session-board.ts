@@ -54,6 +54,7 @@ import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/wor
 import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
 import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
+import { takesConversationTasks } from "../worker-task-entry";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
 import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY } from "./board-entries";
@@ -133,6 +134,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
   const board = defineConversationBoard({
     delegates: delegates.taskDelegates,
     flowKind: options.flowKind,
+    // A worker's step filed `session: "new"` runs through its own `work` entry (FIX-2082 D2).
+    takesOwnTasks: () => takesConversationTasks(options.installation.workerFlows()[options.flowKind]?.flow),
     chainLimit: () => taskChainLimitOf(options.installation),
     ...(options.posts === undefined ? {} : { posts: options.posts }),
     // A post row's delegate is checked again at hand-over, for a post: one

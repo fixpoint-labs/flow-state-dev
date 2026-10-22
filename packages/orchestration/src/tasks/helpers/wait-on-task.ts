@@ -214,6 +214,25 @@ async function check(
   taskId: string,
   options: WaitOnTaskOptions
 ): Promise<TaskWaitResult | Checked> {
+  // What the task says first: the most specific refusal names the rule.
+  const row = collection.get(taskId);
+  if (row === undefined) throw new Error(`[tasks] task "${taskId}" not found`);
+  const filer = collection.filerOf?.(row) ?? row.filer?.sessionId;
+  if (options.ownBoard !== true && (filer === undefined || filer !== ctx.session.identity.id)) {
+    return refused(
+      "wait_not_filer",
+      `task "${taskId}" wasn't filed by this session, so this session can't wait on it: only the session that ` +
+        "filed a task hears its ending. Nothing was written."
+    );
+  }
+  if (row.resultTo === "conversation") {
+    return refused(
+      "wait_on_conversation_result",
+      `task "${taskId}"'s result goes to the conversation, so no request waits on it: the conversation hears it ` +
+        "when it ends. Nothing was written."
+    );
+  }
+
   const waits = ctx.requestHost?.waits;
   if (
     waits === undefined ||
@@ -237,23 +256,6 @@ async function check(
     return refused(
       "wait_deadline_out_of_range",
       `deadline must be from ${minMs} to ${maxMs} ms; ${deadlineMs} is outside it. Nothing was written.`
-    );
-  }
-  const row = collection.get(taskId);
-  if (row === undefined) throw new Error(`[tasks] task "${taskId}" not found`);
-  const filer = collection.filerOf?.(row) ?? row.filer?.sessionId;
-  if (options.ownBoard !== true && (filer === undefined || filer !== ctx.session.identity.id)) {
-    return refused(
-      "wait_not_filer",
-      `task "${taskId}" wasn't filed by this session, so this session can't wait on it: only the session that ` +
-        "filed a task hears its ending. Nothing was written."
-    );
-  }
-  if (row.resultTo === "conversation") {
-    return refused(
-      "wait_on_conversation_result",
-      `task "${taskId}"'s result goes to the conversation, so no request waits on it: the conversation hears it ` +
-        "when it ends. Nothing was written."
     );
   }
 

@@ -154,7 +154,7 @@ import { sendPostCancelled } from "./notice-delivery";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
 import { pieceOwnerOf } from "./held-task";
-import { STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
+import { PLAN_LEDGER_ID, STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
 
 /**
@@ -177,6 +177,13 @@ export interface ConversationBoardOptions {
    * hands over sends its notice back, as the task session's `filingFlow`.
    */
   flowKind: string;
+  /**
+   * Whether the worker flow takes tasks through its own `work` entry, the one
+   * a conversation hands tasks to: then a step it files for itself may run in
+   * a new session of its own (`session: "new"`, FIX-2082 D2). Omitted, it
+   * can't, and such a step is refused.
+   */
+  takesOwnTasks?: () => boolean;
   /** The most tasks under one top task, read on every filing. Omitted, {@link DEFAULT_TASK_CHAIN_LIMIT}. */
   chainLimit?: () => number | undefined;
   /**
@@ -580,8 +587,50 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    */
   const files = async (ctx: BlockContext): Promise<boolean> => (await reach(ctx)).available.size > 0;
 
+  /**
+   * The hand-over of a step filed `session: "new"` (FIX-2082 D2): to the
+   * worker's own `work` entry, in a session keyed by the step and the worker,
+   * born naming the worker, the conversation its steps are filed in, this
+   * flow, the step, and its place in the chain, one board deeper. All
+   * server-written: the claim the plan board took, and this session's state.
+   */
+  const stepAddress: DispatchAddress = {
+    type: "task",
+    action: WORKER_TASK_ENTRY,
+    session: {
+      by: async (task) => ({ key: taskSessionKey(task.taskId, task.assignee) })
+    },
+    state: async (task, ctx) => {
+      const partition = await filingSessionIdOf(ctx.session);
+      const workstream = filingWorkstreamOf(ctx.session.state);
+      const project = filingProjectOf(ctx.session.state);
+      return {
+        [WORKER_ID_STATE_KEY]: task.assignee,
+        [FILING_SESSION_STATE_KEY]: partition,
+        [FILING_FLOW_STATE_KEY]: options.flowKind,
+        [TASK_ID_STATE_KEY]: task.taskId,
+        [TASK_CHAIN_STATE_KEY]: chainOfFiling(ctx, partition, task.taskId).birth,
+        ...carriedHopState(ctx.session.state),
+        [TASK_FLOW_STATE_KEY]: options.flowKind,
+        ...(workstream === undefined ? {} : { [FILING_WORKSTREAM_STATE_KEY]: workstream }),
+        ...(project === undefined ? {} : { [FILING_PROJECT_STATE_KEY]: project })
+      };
+    }
+  };
+  const stepToOwnSession = markDispatcher(
+    handler({
+      name: "plan-step-dispatch",
+      inputSchema: z.unknown(),
+      outputSchema: z.unknown(),
+      execute: () => {
+        throw new Error("A step's hand-over runs through its plan board, never on its own.");
+      }
+    }),
+    stepAddress
+  );
+
   /** The flow's planning: its turns, wrapped so the steps they file run in their request (FIX-2076). */
-  const planning = definePlanning();
+  const planning = definePlanning({ newSession: stepToOwnSession });
 
   /** The worker this request's turn was verified to run as, when steps are worked on this flow. */
   const stepper = (ctx: BlockContext): string | undefined => (planning.wired() ? verifiedWorkerOf(ctx.session) : undefined);
@@ -1011,6 +1060,20 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           "a step for yourself runs here, in this request, and follows up no task. File it without followUpOf. Nothing was filed."
         );
       }
+      // A step runs here, or, filed `session: "new"`, in a new session of this
+      // worker (FIX-2082 D2): never in an ongoing one.
+      if (init.session === "ongoing") {
+        throw new TaskWriteRefusedError(
+          "step_session_ongoing",
+          'a step for yourself runs in this session, or, filed session: "new", in a new session of yours: never in an ongoing one. Nothing was filed.'
+        );
+      }
+      if (init.session === "new" && options.takesOwnTasks?.() !== true) {
+        throw new TaskWriteRefusedError(
+          "step_session_new_unsupported",
+          'a step filed session: "new" runs in a new session of yours, through the entry your flow takes tasks through, and your flow declares none. File it without session to run it here. Nothing was filed.'
+        );
+      }
       // A step runs in this request, after this turn, so nothing would release
       // one filed held (FIX-2080).
       if (init.held === true) {
@@ -1041,7 +1104,8 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     };
     const fileStep: TaskCollectionRef["addTask"] = async (init) => {
       checkStep(init);
-      return fileReservedStep(init, await reserveFiling(ctx, plan, partition, init, false));
+      // A step in a session of its own is one board deeper (FIX-2082 D2).
+      return fileReservedStep(init, await reserveFiling(ctx, plan, partition, init, init.session === "new"));
     };
     /**
      * Each ledger resolves `deps` only among its own rows, so a dep on the
@@ -1116,7 +1180,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         for (const init of stepInits) assertFilingSettings(init, undefined, plan.collectionId);
         assertDepsFileable(stepInits, (id) => plan.get(id));
         const reserved: Array<{ id: string; markAdded: () => Promise<void> }> = [];
-        for (const init of stepInits) reserved.push(await reserveFiling(ctx, plan, partition, init, false));
+        for (const init of stepInits) reserved.push(await reserveFiling(ctx, plan, partition, init, init.session === "new"));
         const tasks = await board.addTasks(batch.filter((init) => !isStepFiling(init)));
         const steps: Task[] = [];
         for (const [i, init] of stepInits.entries()) steps.push(await fileReservedStep(init, reserved[i]!));
@@ -1224,6 +1288,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
 
   /** The repairs a pass runs before its drain, and again after (`payBoardDebts`). */
   const delivery = conversationDelivery(CONVERSATION_LEDGER_ID);
+  const planDelivery = conversationDelivery(PLAN_LEDGER_ID);
   const repairs = async (ctx: BlockContext, ref: TaskCollectionRef, partition: string, resend = true): Promise<number | undefined> => {
     const debts = await payBoardDebts(ctx, ref, {
       noticeEntry: delivery.noticeEntry!,
@@ -1257,6 +1322,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       const partition = await filingSessionIdOf(ctx.session);
       const ref = await conversationLedgerAt(ctx, partition);
       if (ref !== undefined) await repairs(ctx as never, ref, partition);
+      // A step handed to a session of its own resumes the drain that waits on
+      // it from here (FIX-2082 D2): the plan ledger owes no notice, only that.
+      const plan = planning.wired() ? await planLedgerAt(ctx as never, partition) : undefined;
+      if (plan !== undefined) await payBoardDebts(ctx as never, plan, { filerOf: filerResolver(planDelivery, plan.partition), resend: false });
       return {};
     }
   });

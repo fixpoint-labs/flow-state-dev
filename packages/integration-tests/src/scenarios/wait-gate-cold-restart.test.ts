@@ -74,12 +74,15 @@ function waitFlow(model: GeneratorModel): FlowInstance {
     name: "wait_on_colleague",
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.object({ answer: z.unknown() }),
-    execute: async (_input, ctx) => ({
-      answer: await parkOnWait(ctx, {
+    execute: async (_input, ctx) => {
+      // The deadline is a wake on the session (FIX-2082), far off here: the touch resumes it first.
+      const outcome = await parkOnWait(ctx, {
         gateId: GATE_ID,
-        binding: { board: "conversation", taskId: "task_restart" }
-      })
-    })
+        binding: { board: "conversation", taskId: "task_restart" },
+        deadline: Date.now() + 3_600_000
+      });
+      return { answer: outcome.answered ? outcome.answer : outcome };
+    }
   });
   const touch = handler({
     name: "touch",

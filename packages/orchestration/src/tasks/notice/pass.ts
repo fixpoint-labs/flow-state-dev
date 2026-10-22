@@ -205,10 +205,11 @@ export async function settlePassWake(
 /**
  * The boards this flow hands rows out from, at this session's partition: every
  * declared task collection with a delivery (FIX-2078). What the plain
- * `onTaskSettled` entry pays on a wake.
+ * `onTaskSettled` entry pays on a wake. With `only`, just that ledger.
  */
 export async function delegatingBoardsOf(
-  ctx: BlockContext
+  ctx: BlockContext,
+  only?: string
 ): Promise<Array<{ ref: TaskCollectionRef; delivery: DeclaredDelivery }>> {
   const registry = ctx.resources as { list?: () => unknown[] } | undefined;
   const found: Array<{ ref: TaskCollectionRef; delivery: DeclaredDelivery }> = [];
@@ -216,6 +217,9 @@ export async function delegatingBoardsOf(
     const config = (entry as { config?: unknown }).config;
     if (!isDefinedTaskCollection(config) || config.__taskCollection.delivery === undefined) continue;
     const id = config.__taskCollection.id;
+    // Resolving a ledger reads it as this request's snapshot: resolve only
+    // the one asked for, so a later read of another sees its rows as they are then.
+    if (only !== undefined && id !== only) continue;
     const collection = resolveResourceCollection(ctx, id);
     if (collection === undefined) continue;
     const partitionBy = config.__taskCollection.partitionBy;

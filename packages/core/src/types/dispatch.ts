@@ -754,6 +754,17 @@ export type TaskBinding = {
    * refuses a flow that reaches the board and lacks one, by name.
    */
   readonly requiresInternal?: readonly string[];
+  /**
+   * The board hands its rows to an entry that declares where it takes tasks
+   * from (`TaskEntry.from`) through that entry's own gate, which reads the row
+   * off this board's ledger by id (FIX-2082: a worker's step filed
+   * `session: "new"`, handed to its own `work` entry). Without it, an entry
+   * with `from` that this board also dispatches to is refused. An entry
+   * without `from` still runs behind this board's gate, and a flow that
+   * declares no such entry is not refused: it files no row for it, and a
+   * dispatch to it is refused `no-entry`.
+   */
+  readonly viaEntrySource?: boolean;
 };
 
 /**

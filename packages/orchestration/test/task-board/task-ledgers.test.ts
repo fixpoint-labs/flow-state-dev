@@ -162,6 +162,37 @@ describe("a task entry served by many ledgers", () => {
     ).toThrow(/declares where it takes tasks from .*board "own".*One entry runs behind one gate/s);
   });
 
+  it("takes a plan board's rows filed session: \"new\" through its own gate, not the board's (FIX-2082)", () => {
+    const door = taskLedgers({ name: "door", resolve: async () => undefined });
+    const board = taskBoard({
+      name: "own-plan",
+      boardId: "own-plan",
+      collection: LEDGER_A,
+      workers: workWorker([]),
+      newSession: dispatcher<TaskWorkerInput>({ name: "own-session", action: "work", session: "per-task" }),
+    });
+    const flow = defineFlow({ internal: { actions: { ...heard } },
+      kind: "plan-and-door",
+      actions: { drain: { block: board.drain } },
+      task: { actions: { work: { block: workWorker([]), from: door } } },
+    }) as unknown as { task: { actions: Record<string, { gatedBy?: unknown }> } };
+    // One entry, one gate: its own.
+    expect(flow.task.actions.work!.gatedBy).toBe(door);
+  });
+
+  it("accepts a plan board whose newSession entry its flow doesn't declare: it files no such row", () => {
+    const board = taskBoard({
+      name: "plan-no-entry",
+      boardId: "plan-no-entry",
+      collection: LEDGER_A,
+      workers: workWorker([]),
+      newSession: dispatcher<TaskWorkerInput>({ name: "no-entry-session", action: "work", session: "per-task" }),
+    });
+    expect(() =>
+      defineFlow({ internal: { actions: { ...heard } }, kind: "plan-no-entry", actions: { drain: { block: board.drain } } })
+    ).not.toThrow();
+  });
+
   it("takes tasks from two ledgers it never built a board for, each settled on its own ledger", async () => {
     const ran: string[] = [];
     const reads: string[] = [];
