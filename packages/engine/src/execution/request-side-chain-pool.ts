@@ -88,10 +88,22 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
       return { completed: [], failed: [] };
     }
 
-    // The keep runs as the entries settle, whether or not the caller still waits.
+    // The keep runs as the entries settle, whether or not the caller still
+    // waits. A caller that gave up can no longer throw or log what failed, so
+    // then the pool keeps and logs it, `failOnError` or not.
     const drain: Promise<RequestSideChainPoolResult> = this.awaitEntries(matching).then((settled) => {
       this.scopeDrains.delete(drain);
-      if (options?.failOnError !== true) this.kept.push(...settled.failed);
+      const abandoned = options?.abandoned?.aborted === true;
+      if (options?.failOnError !== true || abandoned) this.kept.push(...settled.failed);
+      if (abandoned) {
+        for (const f of settled.failed) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[runAction] Background work "${f.meta.name}" failed:`,
+            (f.reason as { message?: string } | undefined)?.message ?? f.reason
+          );
+        }
+      }
       return settled;
     });
     this.scopeDrains.add(drain);

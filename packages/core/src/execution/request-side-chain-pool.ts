@@ -37,6 +37,13 @@ export interface RequestSideChainPoolResult {
 export interface RequestSideChainPoolDrainOptions {
   /** Throw the first failure instead of returning a settled result. */
   failOnError?: boolean;
+  /**
+   * Fires when the caller stops waiting on this drain (a `.waitForSideChain()`
+   * whose `timeoutMs` ran out). Failures that settle after it fired have no
+   * caller to throw or log to, so the pool keeps and logs them itself,
+   * whatever `failOnError` says.
+   */
+  abandoned?: AbortSignal;
 }
 
 export interface RequestSideChainPoolDrainAllOptions {

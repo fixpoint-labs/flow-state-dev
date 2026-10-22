@@ -7,7 +7,7 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { abortRequest, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 
@@ -132,10 +132,79 @@ describe("request-end seam · background failures", () => {
       }
     })();
 
-    const { result } = await run(flow);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { result } = await run(flow);
 
-    expect(result.output).toBe("fine");
-    expect(endings).toEqual([{ status: "completed", backgroundFailures: [{ step: "slow-write", message: "late boom" }] }]);
+      expect(result.output).toBe("fine");
+      expect(endings).toEqual([{ status: "completed", backgroundFailures: [{ step: "slow-write", message: "late boom" }] }]);
+      // Logged once: the wait that gave up never logs it, and the request's drain never saw it.
+      expect(logged.mock.calls.map((call) => call.join(" ")).filter((line) => line.includes("late boom"))).toHaveLength(1);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it("hands on a late failure after a rescued .waitForSideChain({ failOnError: true, timeoutMs }) gave up: its throw has no caller left", async () => {
+    const endings: RequestEnding[] = [];
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const strict = sequencer({ name: "strict" })
+      .sideChain(throwingStep("slow-write", "late boom", 80))
+      .waitForSideChain({ timeoutMs: 10, failOnError: true })
+      .rescue([{ block: handler({ name: "gave-up", inputSchema: z.any(), execute: () => "gave up waiting" }) }]);
+    const flow = defineFlow({
+      kind: "bg-failures-strict-wait-timeout",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" }).tap(registering(endings)).step(strict).step(answer)
+        }
+      }
+    })();
+
+    try {
+      const { result } = await run(flow);
+
+      expect(result.output).toBe("fine");
+      expect(endings).toEqual([{ status: "completed", backgroundFailures: [{ step: "slow-write", message: "late boom" }] }]);
+      // Logged once, as the request's drain logs a failure: no caller is left to log it.
+      const lines = logged.mock.calls.map((call) => call.join(" ")).filter((line) => line.includes("late boom"));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('Background work "slow-write" failed');
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it("still hands on the failures when reading the durable cancel throws: a store blink is not a cancel", async () => {
+    const endings: RequestEnding[] = [];
+    const stores = createInMemoryStores();
+    const read = stores.request.isAbortRequested.bind(stores.request);
+    let blinking = false;
+    stores.request.isAbortRequested = async (requestId: string) => {
+      if (blinking) throw new Error("the store blinked");
+      return read(requestId);
+    };
+    const startBlinking = handler({
+      name: "start-blinking",
+      inputSchema: z.any(),
+      execute: () => {
+        blinking = true;
+      }
+    });
+    const flow = defineFlow({
+      kind: "bg-failures-cancel-read-throws",
+      actions: {
+        run: { inputSchema: z.any(), block: sequencer({ name: "run" }).tap(registering(endings)).step(answer), onCompleted: startBlinking }
+      },
+      request: { onFinished: sequencer({ name: "finished" }).sideChain(throwingStep("notify", "notify failed")) }
+    })();
+
+    const { result, record } = await run(flow, {}, stores);
+
+    expect(result.error).toBeUndefined();
+    expect(record?.status).toBe("completed");
+    expect(endings).toEqual([{ status: "completed", backgroundFailures: [{ step: "notify", message: "notify failed" }] }]);
   });
 
   it("hands on nothing when the request was cancelled, whether a step settled on the cancel or threw anyway", async () => {

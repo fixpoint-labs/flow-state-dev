@@ -125,6 +125,8 @@ pipeline
 
 With `failOnError: true`, if any work task rejects, the sequencer throws and the pipeline aborts. Use this when background work is required for correctness (e.g., persisting a critical record) rather than optional (e.g., analytics).
 
+`timeoutMs` bounds the wait, not the request. The request still ends only once its background steps settle, as with an unwaited `.sideChain()`.
+
 ## failOnError option
 
 ```ts
