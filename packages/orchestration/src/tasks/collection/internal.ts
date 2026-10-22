@@ -1219,7 +1219,7 @@ export function waitingOnPatch(
   // completion would write it. One rule, read from `completionPatch`.
   const kept: Partial<Task> = {};
   if (options.answer !== undefined) {
-    const done = completionPatch(task, options.answer.output, task.updatedAt);
+    const done = completionPatch(task, options.answer.output, task.updatedAt) as Record<string, unknown>;
     for (const key of ["output", "checkpointed", "checkpointAttempt"] as const) {
       if (key in done) (kept as Record<string, unknown>)[key] = done[key];
     }
