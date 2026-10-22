@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { TaskCollectionRef } from "../../src/tasks";
-import { payOwedResumes } from "../../src/tasks/helpers/wait-for-response";
+import { payOwedResumes } from "../../src/tasks/helpers/wait-on-task";
 
 const row = (id: string) => ({ id, status: "completed", output: id, wait: { gateId: `ask:b:${id}`, deadline: 1 }, resumeOwed: true });
 

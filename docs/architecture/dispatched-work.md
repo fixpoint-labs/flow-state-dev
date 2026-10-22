@@ -289,17 +289,23 @@ exposes, so an argument would let a displaced child read the successor's
 attempt and settle over work it no longer owns. A settlement whose ticket no
 longer matches the row refuses `fence-rejected`.
 
-The request host the child sees is four verbs, closed: `parentTask()` reads
-the one row this request was dispatched for, `settleParentTask()` settles it,
-`livenessOf?()` asks whether requests this session dispatched are still
-running, and `resumeWait?()` resumes a turn in this session parked on a wait
-gate (present only with durable execution). Beside them, one fact:
-`hasWaitSweeper`, true when this process runs a durability sweeper that times
-waits out. `dispatchTask` offers `wait` only when both hold: the board
-opts in with `resumesWaits: true` (the filing session's `onTaskSettled` pass
-resumes an owed wait when its task ends), and
-the host reports `hasWaitSweeper`. `createTask` never waits. Identity is
-never a parameter to any of them.
+The request host the child sees is a closed set of verbs: `parentTask()`
+reads the one row this request was dispatched for, `settleParentTask()`
+settles it, `livenessOf?()` asks whether requests this session dispatched are
+still running, `resumeWait?()` resumes a turn in this session parked on a wait
+gate (present only with durable execution), `wakes?` keeps the session's due
+times, and `waits?` (FIX-2082) holds a wait's deadline bounds, the live depth
+of the chain a new wait would join, and whether a request has ended. Beside
+them, one fact: `hasWaitSweeper`, true when this process runs a durability
+sweeper, which fires the wake that resumes a wait at its deadline.
+
+Waiting on a task is `getTask({ id, wait: true })`, offered only when the
+host can hold a wait (`canHoldWait`: `resumeWait`, `hasWaitSweeper` and
+`waits`) and the board opts in with `resumesWaits: true` (the filing
+session's `onTaskSettled` pass resumes an owed wait when its task ends).
+Waiting on a request this one dispatched is `dispatcher({ wait: true })`.
+`createTask` and `dispatchTask` never wait. A wait's deadline cancels
+nothing: the work runs on. Identity is never a parameter to any of them.
 
 ## The rule that decides everything
 

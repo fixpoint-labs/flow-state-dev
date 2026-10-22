@@ -321,7 +321,7 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
     }
   });
 
-  it("refuses a wait the action can't hold, read before the schema would drop it, and files nothing (BR-18, BR-20)", async () => {
+  it("refuses a wait, which is getTask's since FIX-2082, read before the schema would drop it, and files nothing (BR-18, BR-20)", async () => {
     const host = bootBoardHost();
     try {
       const conv = await host.conversation("alice", "desk");
@@ -331,7 +331,7 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
       ]) {
         expect(await act(host, conv, "dispatchTask_tasks", input)).toMatchObject({
           ok: false,
-          error: expect.stringMatching(/^wait_unavailable: /)
+          error: expect.stringMatching(/^dispatch_task_does_not_wait: /)
         });
       }
       await host.settled();

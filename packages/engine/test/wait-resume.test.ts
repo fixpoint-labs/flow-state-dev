@@ -12,7 +12,7 @@
  * durability provider, not a durable sequencer.
  */
 import {
-  WaitEndedError,
+  WAIT_DEADLINE_ENTRY,
   defineFlow,
   generator,
   handler,
@@ -81,6 +81,13 @@ function toolResults(messages: unknown[]): string[] {
 
 const GATE_ID = "gate_wait_1";
 
+/** The answer, or a tool error naming how the wait ended, as a waiting tool turns one into its result. */
+function answerOrThrow(outcome: WaitOutcome): unknown {
+  if (outcome.answered) return outcome.answer;
+  if ("error" in outcome) throw new Error(`${outcome.error.code}: ${outcome.error.message}`);
+  throw new Error("deadline" in outcome ? "wait_deadline: the work is still running" : "wait_stopped");
+}
+
 /**
  * A flow with a waiting turn and a `touch` action that resumes a wait gate,
  * standing in for the board touch that will call the verb.
@@ -95,13 +102,13 @@ function waitFlow(
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.object({ answer: z.unknown() }),
     execute: async (_input, ctx) => {
-      const answer = await parkOnWait(ctx, {
+      const outcome = await parkOnWait(ctx, {
         gateId: GATE_ID,
         binding: { board: "conversation", taskId: "task_1" },
-        ...(options.deadline !== undefined ? { deadline: options.deadline() } : {})
+        deadline: options.deadline !== undefined ? options.deadline() : Date.now() + 3_600_000
       });
       sideEffects.count += 1;
-      return { answer };
+      return { answer: answerOrThrow(outcome) };
     }
   });
   const agent = generator({ name: "agent", model, prompt: "p", tools: [wait] });
@@ -276,7 +283,6 @@ describe("wait gate: park, and resume from the waiting turn's own conversation",
     expect(sent).toContain("The colleague's task failed.");
     // Read as a failed tool, not handed over as an answer.
     expect(sent).not.toContain('"answer"');
-    expect(new WaitEndedError("wait_task_failed", "x").code).toBe("wait_task_failed");
   });
 
   it("resumes once: a second resume of the same gate is refused and changes nothing", async () => {
@@ -603,7 +609,17 @@ describe("wait gate on the shipped runtime, with no router (the colocated-worker
   });
 });
 
-describe("wait gate past its deadline: the durability sweep resumes it with wait_timed_out", () => {
+/**
+ * Store the parked gate as one parked before FIX-2082 left it: its deadline
+ * was its expiry, already past, and its data held no deadline.
+ */
+async function storeAsParkedBeforeWakes(h: Harness, requestId: string): Promise<void> {
+  const gate = await h.provider.loadSuspension(requestId, GATE_ID);
+  const { deadline: _deadline, ...data } = (gate!.data ?? {}) as Record<string, unknown>;
+  await h.stores.suspensions.set({ ...gate!, data, expiresAt: Date.now() - 1 });
+}
+
+describe("wait gate parked before FIX-2082, past its expiry: the durability sweep resumes it with wait_timed_out", () => {
   function tick(h: Harness, withContinue = true, logs: Array<[string, string, unknown]> = []) {
     const record = (level: string) => (message: string, context: Record<string, unknown>) =>
       logs.push([level, message, context]);
@@ -645,10 +661,8 @@ describe("wait gate past its deadline: the durability sweep resumes it with wait
         const h = setup(flow);
         const parked = await startTurn(h, flow);
         const requestId = parked.requestId!;
-        const gate = await h.provider.loadSuspension(requestId, GATE_ID);
-        expect(gate?.expiresAt).toBeDefined();
+        await storeAsParkedBeforeWakes(h, requestId);
         if (legacy) await storeUnderOldReason(h, requestId);
-        await new Promise((r) => setTimeout(r, 20));
 
         await tick(h);
 
@@ -661,11 +675,13 @@ describe("wait gate past its deadline: the durability sweep resumes it with wait
     );
   }
 
-  it("a wait gate not yet past its deadline is left alone", async () => {
+  it("a wait gate not yet past its expiry is left alone", async () => {
     const { model } = waitingModel();
     const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 600_000 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
+    const gate = await h.provider.loadSuspension(parked.requestId!, GATE_ID);
+    await h.stores.suspensions.set({ ...gate!, expiresAt: Date.now() + 600_000 });
 
     await tick(h);
 
@@ -678,7 +694,7 @@ describe("wait gate past its deadline: the durability sweep resumes it with wait
     const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
-    await new Promise((r) => setTimeout(r, 20));
+    await storeAsParkedBeforeWakes(h, parked.requestId!);
 
     const logs: Array<[string, string, unknown]> = [];
     await tick(h, false, logs);
@@ -695,7 +711,7 @@ describe("wait gate past its deadline: the durability sweep resumes it with wait
     const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
     const h = setup(flow);
     const parked = await startTurn(h, flow);
-    await new Promise((r) => setTimeout(r, 20));
+    await storeAsParkedBeforeWakes(h, parked.requestId!);
     // The record and its request disagree: the gate reads pending, the turn does not.
     const request = await h.stores.request.get(parked.requestId!);
     await h.stores.request.set(parked.requestId!, { ...request!, status: "in_progress" }, "any");
@@ -708,5 +724,87 @@ describe("wait gate past its deadline: the durability sweep resumes it with wait
     const warned = logs.filter(([, m]) => m.includes("overdue wait gate already resolved"));
     expect(warned).toHaveLength(1);
     expect(warned[0]![0]).toBe("warn");
+  });
+});
+
+describe("a wait's deadline is a wake on its session (FIX-2082 D1)", () => {
+  const KEY = { sessionId: "s_asker", entry: WAIT_DEADLINE_ENTRY };
+
+  /** The harness with wakes kept: the host owes a parked wait's deadline as one. */
+  function withWakes(flow: FlowInstance): Harness {
+    const h = setup(flow);
+    h.runtimeConfig.requestHost!.wakes = { maxDebtAgeMs: 86_400_000 };
+    return h;
+  }
+
+  function sweep(h: Harness) {
+    return runTick({
+      provider: h.provider,
+      stores: h.stores,
+      holder: "sweeper-test",
+      sweepIntervalMs: 600_000,
+      checkpointMaxAgeMs: 86_400_000,
+      suspensionTerminalMaxAgeMs: 604_800_000,
+      orphanCheckpointThresholdMs: 86_400_000,
+      batchLimit: 1000,
+      continueRequest: async (opts: Parameters<typeof continueRequest>[0]) => {
+        const result = await continueRequest({ ...opts, stores: h.stores, flowRegistry: h.registry, runtimeConfig: h.runtimeConfig });
+        h.continued.push(result.finished);
+        return result;
+      }
+    } as never);
+  }
+
+  it("parking owes the session's waitDeadline wake at the deadline, and the gate carries no expiry", async () => {
+    const { model } = waitingModel();
+    const deadline = Date.now() + 600_000;
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => deadline });
+    const h = withWakes(flow);
+    const parked = await startTurn(h, flow);
+
+    const gate = await h.provider.loadSuspension(parked.requestId!, GATE_ID);
+    expect(gate?.status).toBe("pending");
+    expect(gate?.expiresAt).toBeUndefined();
+    expect(gate?.data).toMatchObject({ deadline });
+    expect((await h.stores.wakes!.get(KEY))?.dueAt).toBe(deadline);
+  });
+
+  it("a sweep past the deadline resumes the turn with the work still running, expires nothing, and lets the wake go", async () => {
+    const { model, seen } = waitingModel();
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => Date.now() + 5 });
+    const h = withWakes(flow);
+    const parked = await startTurn(h, flow);
+    await new Promise((r) => setTimeout(r, 20));
+
+    await sweep(h);
+
+    expect(h.continued).toHaveLength(1);
+    await h.continued[0];
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("completed");
+    expect((await h.provider.loadSuspension(parked.requestId!, GATE_ID))?.status).not.toBe("expired");
+    const sent = toolResults(seen[1]!.messages).join("");
+    expect(sent).toContain("wait_deadline");
+    expect(sent).not.toContain("wait_timed_out");
+    // Nothing else is parked in the session: the wake is cleared, or held at
+    // its landBy (the parking request's lease) while that has not passed.
+    const wake = await h.stores.wakes!.get(KEY);
+    expect(wake === null || wake.dueAt === wake.landBy).toBe(true);
+  });
+
+  it("a sweep before the deadline leaves the turn parked and the wake at the deadline", async () => {
+    const { model } = waitingModel();
+    const deadline = Date.now() + 600_000;
+    const flow = waitFlow(model, { count: 0 }, { deadline: () => deadline });
+    const h = withWakes(flow);
+    const parked = await startTurn(h, flow);
+    // The wake read as due now, as a sweep that came early would find it.
+    const wake = await h.stores.wakes!.get(KEY);
+    await h.stores.wakes!.move(KEY, wake!.version, Date.now() - 1);
+
+    await sweep(h);
+
+    expect(h.continued).toHaveLength(0);
+    expect((await h.stores.request.get(parked.requestId!))?.status).toBe("suspended");
+    expect((await h.stores.wakes!.get(KEY))?.dueAt).toBe(deadline);
   });
 });

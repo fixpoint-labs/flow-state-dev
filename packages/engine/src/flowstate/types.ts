@@ -289,6 +289,14 @@ export interface CreateFlowStateOptions<
    * with durable execution and a store that keeps wakes. Default 24 hours.
    */
   maxDebtAgeMs?: RuntimeConfig["maxDebtAgeMs"];
+
+  /**
+   * A wait's deadline bounds (FIX-2082): the deadline a wait that names none
+   * gets (default five minutes), and the shortest and longest one may name
+   * (default one second and 24 hours). Only takes effect with durable
+   * execution and a store that keeps wakes.
+   */
+  waitDeadlines?: RuntimeConfig["waitDeadlines"];
   
   /**
    * Low-level escape hatch: a pre-built FlowDispatcher controlling where

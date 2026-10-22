@@ -9,7 +9,7 @@ import {
 } from "../../src/skills/task-tools-capability";
 import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
-import { notDispatchableMessage } from "../../src/tasks/helpers/wait-for-response";
+import { notDispatchableMessage } from "../../src/skills/task-tools-capability";
 
 const taskTools = createTaskToolsCapability(ownStateResolver);
 

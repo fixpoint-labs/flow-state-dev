@@ -20,7 +20,7 @@ import {
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder } from "./ending";
-import { recordEnding as recordNoticeOwed } from "../notice/task-notice";
+import { droppedHeldNotices, recordEnding as recordNoticeOwed, releasedHeldNotices } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
 import { steersForAttempt, untakenSteers } from "../steers";
@@ -30,6 +30,7 @@ import type {
   TaskDispatchOptions,
   TaskHandle,
   TaskTransitionOptions,
+  TaskWaitSlot,
   TaskWriteDeclineReason,
 } from "./types";
 
@@ -111,7 +112,6 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
     ...(init.session !== undefined ? { session: init.session } : {}),
     ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
-    ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
     // Only a row stored cancelled (a replan's skip) names a cause: `held` wins
@@ -227,7 +227,6 @@ export function dispatchWrite(
   if (hasStarted(task) && (task.heldFromBlocked !== true || options.assignee !== undefined)) {
     return { decline: "started" };
   }
-  if (options.wait !== undefined && task.wait != null) return { decline: "disallowed" };
   if (options.assignee !== undefined) {
     const refused = assigneeChangeDecline(task, options.assignee);
     if (refused !== undefined) return { decline: refused };
@@ -238,7 +237,77 @@ export function dispatchWrite(
       dispatchCall: options.call,
       ...(task.heldFromBlocked === true ? { heldFromBlocked: undefined } : {}),
       ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
-      ...(options.wait !== undefined ? { wait: { gateId: options.wait.gateId, deadline: options.wait.deadline } } : {}),
+    },
+  };
+}
+
+/**
+ * The one rule for taking a row's wait slot (`TaskCollectionRef.markWait`,
+ * FIX-2082), decided on the freshest committed row, inside the write, so two
+ * requests that read the slot free can't both take it. Both backings run it.
+ *
+ * A request takes a free slot, a lapsed one (the request that waited before
+ * is no longer parked on it), or one it already holds: the same gate (a
+ * replay of the call that took it) or the same request (a drain waiting again
+ * at its deadline). Any other live slot is another request's wait.
+ *
+ * @returns The patch to write, `undefined` when the slot is already this gate's,
+ *   or the reason it is refused: `terminal` for a row that has ended (the
+ *   caller reads its ending at once), `disallowed` for another request's wait.
+ */
+export function markWaitWrite(
+  task: Task,
+  slot: TaskWaitSlot,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  if (isTerminalStatus(task.status)) return { decline: "terminal" };
+  const held = task.wait;
+  if (held != null && held.gateId === slot.gateId && held.lapsed !== true) return undefined;
+  if (held != null && held.lapsed !== true && held.requestId !== slot.requestId) return { decline: "disallowed" };
+  return { patch: { wait: { gateId: slot.gateId, deadline: slot.deadline, requestId: slot.requestId } } };
+}
+
+/**
+ * The one rule for lapsing a wait slot at its deadline
+ * (`TaskCollectionRef.lapseWait`, FIX-2082), inside the write that loses to an
+ * ending already written: a row that has ended is refused `terminal`, and its
+ * caller reads the ending instead. The slot names the request that lapsed it,
+ * the one an ending is then held for: a slot a filing wrote before FIX-2082
+ * named none.
+ *
+ * @returns The patch to write, `undefined` when the slot is another gate's or
+ *   already lapsed, or the `terminal` refusal.
+ */
+export function lapseWaitWrite(
+  task: Task,
+  gateId: string,
+  requestId: string,
+): { patch: Partial<Task> } | { decline: TaskWriteDeclineReason } | undefined {
+  if (isTerminalStatus(task.status)) return { decline: "terminal" };
+  if (task.wait == null || task.wait.gateId !== gateId || task.wait.lapsed === true) return undefined;
+  return { patch: { wait: { ...task.wait, requestId, lapsed: true } } };
+}
+
+/**
+ * The one rule for releasing a lapsed wait slot (`TaskCollectionRef.releaseWait`,
+ * FIX-2082): the request it was lapsed for read the row (`read`), so an ending
+ * it held is delivered and owes nothing; or that request ended without reading
+ * it, so the held ending goes to the filer's notice, due `dueAt`. Either way the
+ * slot clears, and a later ending owes the filer's notice as any other does.
+ *
+ * @returns The patch to write, or `undefined` when the slot is not a lapsed one
+ *   that request holds.
+ */
+export function releaseWaitWrite(
+  task: Task,
+  release: { readonly requestId: string; readonly read: boolean; readonly dueAt: number },
+): { patch: Partial<Task> } | undefined {
+  const held = task.wait;
+  if (held == null || held.lapsed !== true || held.requestId !== release.requestId) return undefined;
+  const notices = release.read ? droppedHeldNotices(task) : releasedHeldNotices(task, release.dueAt);
+  return {
+    patch: {
+      wait: undefined,
+      ...(Object.keys(notices).length > 0 ? { metadata: { ...(task.metadata ?? {}), ...notices } } : {}),
     },
   };
 }
@@ -1453,7 +1522,9 @@ function recordResumeOwed<TInput, TOutput>(
   prev: Task<TInput, TOutput>,
   next: Task<TInput, TOutput>
 ): Task<TInput, TOutput> {
-  if (prev.wait == null || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
+  // A lapsed slot has nobody parked on it (FIX-2082): its ending is held for
+  // the request that waited instead (`recordNoticeOwed`).
+  if (prev.wait == null || prev.wait.lapsed === true || isTerminalStatus(prev.status) || !isTerminalStatus(next.status)) {
     return next;
   }
   if (prev.cancelOwed === true) return { ...next, cancelOwed: undefined };

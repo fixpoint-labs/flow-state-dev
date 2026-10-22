@@ -1,11 +1,12 @@
 /**
- * Wait across a SQLite cold restart (FIX-1816 P2, V3 and V4).
+ * Wait across a SQLite cold restart (FIX-1816 P2, V3 and V4; a wait on a filed
+ * task since FIX-2082).
  *
- * The turn dispatches and parks; the waited-on row ends; the runtime is thrown away
- * after the ending's write and before anything resumed the turn. A second
- * runtime opens a fresh store registry on the same file, and the next touch
- * of the board resumes the turn once. The resumed turn replays to the waiting
- * call, which reads its first filing back: one row.
+ * The request files a task and waits on it; the waited-on row ends; the runtime
+ * is thrown away after the ending's write and before anything resumed the
+ * request. A second runtime opens a fresh store registry on the same file, and
+ * the next touch of the board resumes the request once. The resumed request
+ * replays to the waiting call, which reads its first filing back: one row.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,5 +1,6 @@
 /**
- * `dispatcher()` — a block that sends one dispatch to one declared entry.
+ * `dispatcher()` — a block that sends one dispatch to one declared entry, and
+ * with `wait: true` waits for what it started (FIX-2082).
  *
  * A **router** picks a block to run *here*. A **dispatcher** names an entry to
  * run *elsewhere*: in a child session it derives, or in a session that already
@@ -84,9 +85,21 @@
  * verified claim on a durable row is the trust a `task` dispatch carries, and
  * only a board holds one. Run anywhere else it dispatches an envelope no board
  * minted, and the entry's gate refuses it against the ledger.
+ *
+ * ## Waiting for the result (FIX-2082)
+ *
+ * An `internal` dispatcher with `wait: true` sends its dispatch, then parks its
+ * request on the one wait gate, bound to the request it started, and outputs
+ * how that request ended: `{ status: "completed", output }`,
+ * `{ status: "failed", error }`, or `{ status: "running" }` at the host's
+ * default deadline, which stops nothing. A durable host that keeps wakes is
+ * needed; elsewhere, and past five waits deep, the block refuses before it
+ * sends anything. A `task` dispatcher's `wait` is the board's to read: its drain
+ * waits on the row it hands over.
  */
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition } from "../types/block";
+import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "../types/wait-gate";
 import {
   DispatchRefusedError,
   dispatchThroughSeam,
@@ -104,6 +117,7 @@ import {
   type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
+import { logicalBlockIdOf } from "./internal/block-instance-id";
 
 /** What a dispatcher returns: enough to find the work it started. */
 export const dispatchHandleSchema = z.object({
@@ -116,6 +130,23 @@ export const dispatchHandleSchema = z.object({
 });
 
 export type DispatchHandle = z.infer<typeof dispatchHandleSchema>;
+
+/**
+ * What a dispatcher with `wait: true` outputs: how the request it started
+ * ended, or that it was still running at the deadline.
+ */
+export const dispatchWaitResultSchema = z.object({
+  /** `completed` or `failed` once the request ended; `running` at the deadline, nothing stopped. */
+  status: z.enum(["completed", "failed", "running"]),
+  /** The request's output, when it completed. */
+  output: z.unknown().optional(),
+  /** Why it failed, when it failed or was stopped. */
+  error: z.string().optional(),
+  /** The request the dispatch became: how to find it later. */
+  requestId: z.string()
+});
+
+export type DispatchWaitResult = z.infer<typeof dispatchWaitResultSchema>;
 
 /**
  * Which session an `internal` dispatch runs in, computed from the dispatcher's
@@ -190,6 +221,13 @@ export interface InternalDispatcherConfig<TInputSchema extends ZodTypeAny = ZodT
   payload?: (input: z.infer<TInputSchema>, ctx: BlockContext) => unknown | Promise<unknown>;
   /** Hide this block's trace from clients. Default: false. */
   transient?: boolean;
+  /**
+   * Wait for the request this dispatch starts, and output how it ended
+   * ({@link DispatchWaitResult}) instead of the handle. Default: `false`.
+   * Bounded by the host's default wait deadline, at which the output is
+   * `running` and nothing is stopped.
+   */
+  wait?: boolean;
 }
 
 /**
@@ -240,6 +278,12 @@ export interface TaskDispatcherConfig<TPayload = unknown> {
   state?: Readonly<Record<string, unknown>> | TaskStateTarget;
   /** Hide this block's trace from clients. Default: false. */
   transient?: boolean;
+  /**
+   * Whether the board's drain waits on each row it hands over. Unset follows
+   * the board's mode: a plan board waits on every row, a delegation board on
+   * none. A board refuses a dispatcher that contradicts its mode.
+   */
+  wait?: boolean;
 }
 
 /** Either dispatcher config; `session` (and an explicit `type`) discriminates. */
@@ -257,17 +301,23 @@ export type DispatcherConfig<TInputSchema extends ZodTypeAny = ZodTypeAny, TPayl
  * `(task: unknown)` would otherwise stick.
  */
 export function dispatcher<TInputSchema extends ZodTypeAny>(
+  config: InternalDispatcherConfig<TInputSchema> & { inputSchema: TInputSchema; wait: true }
+): BlockDefinition<TInputSchema, typeof dispatchWaitResultSchema>;
+export function dispatcher<TInputSchema extends ZodTypeAny>(
   config: InternalDispatcherConfig<TInputSchema> & { inputSchema: TInputSchema }
 ): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher<TPayload = unknown>(
   config: TaskDispatcherConfig<TPayload>
 ): BlockDefinition<typeof taskDispatchInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher<TInputSchema extends ZodTypeAny = ZodTypeAny>(
+  config: InternalDispatcherConfig<TInputSchema> & { wait: true }
+): BlockDefinition<TInputSchema, typeof dispatchWaitResultSchema>;
+export function dispatcher<TInputSchema extends ZodTypeAny = ZodTypeAny>(
   config: InternalDispatcherConfig<TInputSchema>
 ): BlockDefinition<TInputSchema, typeof dispatchHandleSchema>;
 export function dispatcher(
   config: DispatcherConfig
-): BlockDefinition<any, typeof dispatchHandleSchema> {
+): BlockDefinition<any, typeof dispatchHandleSchema | typeof dispatchWaitResultSchema> {
   const { name, description, action, transient } = config;
   const type = resolveDispatcherType(config);
   if (typeof action === "object" && action !== null && type === "task") {
@@ -334,12 +384,14 @@ export function dispatcher(
       );
     }
     const childState = (config as TaskDispatcherConfig).state;
+    const wait = (config as TaskDispatcherConfig).wait;
     const address: DispatchAddress = {
       type: "task",
       action,
       session,
       ...(flowKind !== undefined ? { flowKind } : {}),
-      ...(childState !== undefined ? { state: childState } : {})
+      ...(childState !== undefined ? { state: childState } : {}),
+      ...(wait !== undefined ? { wait } : {})
     };
     const block = handler({
       ...common,
@@ -381,26 +433,93 @@ export function dispatcher(
     ...(flowKind !== undefined ? { flowKind: flowKind as string } : {})
   };
   const inputSchema = internal.inputSchema ?? z.unknown();
+  const send = async (input: unknown, ctx: BlockContext, waits = false): Promise<DispatchHandle> => {
+    const sessionTarget = resolveSessionTarget(name, session, input, ctx);
+    const body = payload === undefined ? input : await payload(input, ctx);
+    const outcome = await dispatchThroughSeam(ctx, {
+      ...address,
+      session: sessionTarget,
+      payload: body,
+      from: name,
+      ...(waits ? { waits: true } : {})
+    });
+    if (!outcome.ok) {
+      throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
+    }
+    return handleOf(outcome);
+  };
+  if (internal.wait === true) {
+    const block = handler({
+      ...common,
+      inputSchema,
+      outputSchema: dispatchWaitResultSchema,
+      execute: (input, ctx) => sendAndWait(name, ctx, () => send(input, ctx, true))
+    });
+    return markDispatcher(block, address);
+  }
   const block = handler({
     ...common,
     inputSchema,
     outputSchema: dispatchHandleSchema,
-    execute: async (input, ctx): Promise<DispatchHandle> => {
-      const sessionTarget = resolveSessionTarget(name, session, input, ctx);
-      const body = payload === undefined ? input : await payload(input, ctx);
-      const outcome = await dispatchThroughSeam(ctx, {
-        ...address,
-        session: sessionTarget,
-        payload: body,
-        from: name
-      });
-      if (!outcome.ok) {
-        throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
-      }
-      return handleOf(outcome);
-    }
+    execute: (input, ctx) => send(input, ctx)
   });
   return markDispatcher(block, address);
+}
+
+/**
+ * Send the dispatch once, then wait for the request it started (FIX-2082).
+ *
+ * Every check comes before anything is sent: a host that can hold the wait,
+ * and a chain no deeper than {@link MAX_WAIT_DEPTH}. The dispatch and the
+ * wait's plan (its gate and deadline) are each kept by `runOnce`, so the replay
+ * after the park sends nothing again and parks on the same gate.
+ */
+async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<DispatchHandle>): Promise<DispatchWaitResult> {
+  const waits = ctx.requestHost?.waits;
+  if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) {
+    throw new Error(
+      `[dispatcher] "${name}": wait_unavailable: this host can't hold a wait (it needs a durable ` +
+        `action on a host whose store keeps wakes), so nothing was dispatched. Drop \`wait\` to get the handle back.`
+    );
+  }
+  const once = ctx.runOnce.bind(ctx);
+  const key = logicalBlockIdOf(ctx);
+  if (key === undefined) {
+    // A key by anything less (the block's name) would let a second send read back the first.
+    throw new Error(
+      `[dispatcher] "${name}": wait_unavailable: this block has no identity to keep its dispatch under, so ` +
+        "nothing was dispatched. Run it inside a request."
+    );
+  }
+  const handle = await once(`fsd.dispatch.send:${key}`, async () => {
+    const depth = await waits.depth({});
+    if (depth > MAX_WAIT_DEPTH) {
+      throw new Error(
+        `[dispatcher] "${name}": wait_too_deep: this wait would be ${depth} deep, and waits nest at most ` +
+          `${MAX_WAIT_DEPTH} deep. Nothing was dispatched.`
+      );
+    }
+    return send();
+  });
+  const planned = await once(`fsd.dispatch.wait:${key}`, async () => ({
+    gateId: `dispatch:${handle.requestId}`,
+    deadline: Date.now() + waits.deadlines.defaultMs
+  }));
+  const outcome = await parkOnWait(ctx, {
+    gateId: planned.gateId,
+    binding: { requestId: handle.requestId },
+    deadline: planned.deadline,
+    message: `Waiting on the request "${name}" dispatched`
+  });
+  const requestId = handle.requestId;
+  if (outcome.answered) return { status: "completed", output: outcome.answer, requestId };
+  if ("deadline" in outcome) return { status: "running", requestId };
+  if ("stopped" in outcome) {
+    // A person stopped this request: it ends, and the work it started runs on.
+    await ctx.session?.stopRequest?.(ctx.request.identity.id);
+    return { status: "running", requestId };
+  }
+  return { status: "failed", error: outcome.error.message, requestId };
 }
 
 function handleOf(outcome: { sessionId: string; requestId: string; adopted: boolean }): DispatchHandle {

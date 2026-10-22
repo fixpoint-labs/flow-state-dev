@@ -30,8 +30,19 @@
  *   shares its filer: that row's own notice names it ({@link TaskNotice.cancelled}).
  *
  * A retry owes none: it is the row's start, not its ending. A waited-on row
- * owes none either: the turn waiting on it is resumed instead
+ * owes none either: the request parked on it is resumed instead
  * (`Task.resumeOwed`), and no notice runs for it.
+ *
+ * ## An ending held for the request that waited (FIX-2082)
+ *
+ * A wait's deadline lapses the row's wait slot rather than clearing it. An
+ * ending written onto a lapsed slot owes the filer's notice, **held**: no fast
+ * path sends it and no pass resends it, while the request that waited runs.
+ * That request's next read of the row is its delivery, and drops the held
+ * marker ({@link droppedHeldNotices}). If it ends without reading the row, the
+ * held marker is released, due then ({@link releasedHeldNotices}), and the
+ * filer hears it once, as any other ending. A held marker still counts as owed
+ * ({@link owesAnyNotice}): the task that filed the row is not done.
  *
  * ## What an ending does
  *
@@ -78,6 +89,24 @@ export interface TaskNotice {
 /** How long after its ending's write a notice falls due: the fast path pays it first. */
 export const NOTICE_DUE_MS = 2_000;
 
+/**
+ * How often a filer's pass looks again at a wait slot that lapsed for a
+ * request still running or parked (FIX-2082): the slot is released by the
+ * pass after that request ends, so an ending held for it is never stranded.
+ * The release at the request's end in its own process comes first; this is
+ * what pays it when that process is gone. Thirty seconds, the age at which a
+ * request whose process died is marked interrupted. The first look; later
+ * ones come less often ({@link LAPSED_SLOT_CHECK_CAP_MS}).
+ */
+export const LAPSED_SLOT_CHECK_MS = 30_000;
+
+/**
+ * The longest the filer's pass goes between looks at a lapsed wait slot whose
+ * request still runs or is parked: one hour. The gap grows with the slot's
+ * age, from {@link LAPSED_SLOT_CHECK_MS}, until it reaches this.
+ */
+export const LAPSED_SLOT_CHECK_CAP_MS = 3_600_000;
+
 /** The marker each owed notice is kept under, in the row's metadata. */
 const OWED_PREFIX = "noticeOwed:";
 
@@ -99,6 +128,11 @@ interface OwedMarker {
   readonly question?: string;
   /** When it falls due (epoch ms). Absent on a marker stored before FIX-2078: due at once. */
   readonly due?: number;
+  /**
+   * Held for the request whose wait on the row lapsed (FIX-2082): sent by no
+   * fast path and no pass until it is released. Absent on every other marker.
+   */
+  readonly held?: true;
 }
 
 function markerKey(attempt: number, ending: NoticeEnding): string {
@@ -115,8 +149,14 @@ export interface NoticeRecording {
 
 /** The marker an ending owes, or `undefined` when it owes none (see the module header). */
 function markerFor(row: Task, ending: TaskEnding, recording: NoticeRecording = {}): OwedMarker | undefined {
-  // A waited-on row's turn is resumed instead.
-  if (row.wait != null) return undefined;
+  // A waited-on row's request is resumed instead; a lapsed wait's ending is
+  // held for the request that waited (FIX-2082).
+  if (row.wait != null && row.wait.lapsed !== true) return undefined;
+  const marker = plainMarkerFor(row, ending, recording);
+  return marker === undefined || row.wait == null ? marker : { ...marker, held: true };
+}
+
+function plainMarkerFor(row: Task, ending: TaskEnding, recording: NoticeRecording): OwedMarker | undefined {
   const due = row.updatedAt + NOTICE_DUE_MS;
   switch (ending.kind) {
     case "completed":
@@ -161,6 +201,46 @@ function isMarker(key: string, value: unknown): value is OwedMarker {
   return key.startsWith(OWED_PREFIX) && value !== null && typeof value === "object";
 }
 
+/** A marker a sender may send: owed, and not held for a request that waited (FIX-2082). */
+function isSendable(key: string, value: unknown): value is OwedMarker {
+  return isMarker(key, value) && value.held !== true;
+}
+
+/**
+ * The metadata patch that drops every held marker on `row` (FIX-2082): the
+ * request it was held for read the row, which delivered the ending.
+ */
+export function droppedHeldNotices(row: Task): Record<string, null> {
+  const patch: Record<string, null> = {};
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (isMarker(key, value) && value.held === true) patch[key] = null;
+  }
+  return patch;
+}
+
+/**
+ * The metadata patch that releases every held marker on `row`, due at `dueAt`
+ * (FIX-2082): the request it was held for ended without reading the row, so
+ * the filer is told now, as of any other ending.
+ */
+export function releasedHeldNotices(row: Task, dueAt: number): Record<string, OwedMarker> {
+  const patch: Record<string, OwedMarker> = {};
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (!isMarker(key, value) || value.held !== true) continue;
+    const { held: _held, ...marker } = value;
+    patch[key] = { ...marker, due: dueAt };
+  }
+  return patch;
+}
+
+/** Whether `row` holds an ending for the request whose wait on it lapsed (FIX-2082). */
+export function holdsAnEnding(row: Task): boolean {
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (isMarker(key, value) && value.held === true) return true;
+  }
+  return false;
+}
+
 /**
  * The notices a row still owes, oldest attempt first, each rebuilt from its
  * marker and the row: a completion's output is the row's own, which is final
@@ -180,7 +260,7 @@ export function owedNotices(
 ): TaskNotice[] {
   const notices: TaskNotice[] = [];
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
-    if (!isMarker(key, value)) continue;
+    if (!isSendable(key, value)) continue;
     const cancelled =
       rows !== undefined && (value.ending === "errored" || value.ending === "cancelled")
         ? cancelledDependents(row, rows, filerOf)
@@ -201,9 +281,10 @@ export function owedNotices(
 }
 
 /**
- * Whether `row` still owes any notice. The boolean form of
- * {@link owedNotices}, with an early exit and no notice built: what a check
- * run at every request's end asks of every row a task filed (FIX-2077).
+ * Whether `row` still owes any notice, one held for a request that waited
+ * included (FIX-2082). The boolean form of {@link owedNotices}, with an early
+ * exit and no notice built: what a check run at every request's end asks of
+ * every row a task filed (FIX-2077).
  */
 export function owesAnyNotice(row: Task): boolean {
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
@@ -219,7 +300,7 @@ export function owesAnyNotice(row: Task): boolean {
 export function noticeDueAt(row: Task): number | undefined {
   let due: number | undefined;
   for (const [key, value] of Object.entries(row.metadata ?? {})) {
-    if (!isMarker(key, value)) continue;
+    if (!isSendable(key, value)) continue;
     const at = nextSendAt(row, value);
     due = due === undefined ? at : Math.min(due, at);
   }
@@ -251,7 +332,7 @@ function nextSendAt(row: Task, marker: OwedMarker): number {
 export function noticeTimes(row: Task, notice: Pick<TaskNotice, "attempt" | "ending">): { due: number; next: number } | undefined {
   const key = markerKey(notice.attempt, notice.ending);
   const value = (row.metadata ?? {})[key];
-  if (!isMarker(key, value)) return undefined;
+  if (!isSendable(key, value)) return undefined;
   return { due: value.due ?? 0, next: nextSendAt(row, value) };
 }
 

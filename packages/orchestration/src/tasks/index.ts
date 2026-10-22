@@ -120,6 +120,7 @@ export type {
   TaskWriteOutcome,
   TaskWriteDeclineReason,
   TaskDispatchOptions,
+  TaskWaitSlot,
   TaskProgress,
   TaskWaitingOn,
   TaskCancelSource,

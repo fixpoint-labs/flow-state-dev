@@ -69,6 +69,13 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { ownRowOf, waitedByOf } from "../durability/wait-chain";
+
+/** The waiter a dispatched request was born with, as an optional field. */
+function waitedByStamp(source: string | undefined, metadata: unknown) {
+  const waitedBy = waitedByOf(source, metadata);
+  return waitedBy === undefined ? {} : { waitedBy };
+}
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
@@ -953,6 +960,19 @@ export async function createExecutionContext<
                   // A write this request owes has landed by the time the request
                   // would count as dead: its lease.
                   fenceMs: options.requestHost.staleThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS
+                }
+              }
+            : {}),
+          ...(options.requestHost.waits !== undefined
+            ? {
+                waits: {
+                  provider: options.requestHost.waits.provider,
+                  deadlines: options.requestHost.waits.deadlines,
+                  requestId: options.requestId,
+                  // The row a task dispatch started this request for (FIX-2082).
+                  own: ownRowOf(options.source, options.metadata, options.input),
+                  ...waitedByStamp(options.source, options.metadata),
+                  readRequest: (requestId: string) => stores.request.get(requestId)
                 }
               }
             : {}),
@@ -3578,9 +3598,14 @@ export async function createExecutionContext<
           // flows resume one gate at a time without a shared "consumed" flag.
           // A resolution with no `pendingBlockLogicalId` matches no gate: there
           // is no first-reached-gate fallback (FIX-1707).
+          // A block that parks again on a new gate (a wait that waits again
+          // at its deadline, FIX-2082) reaches this from the same path: a
+          // gate that names its own id is resolved only by its own
+          // resolution.
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
-            resumeCtx.pendingBlockLogicalId === callerLogicalId;
+            resumeCtx.pendingBlockLogicalId === callerLogicalId &&
+            (suspendOpts.suspensionId === undefined || suspendOpts.suspensionId === resumeCtx.suspensionId);
 
           if (isResolvingGate) {
             if (resumeCtx.action === "reject") {

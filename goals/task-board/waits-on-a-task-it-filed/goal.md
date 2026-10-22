@@ -1,0 +1,40 @@
+# task-board › a request waits on a task it filed
+
+**Issue:** FIX-2082 (epic FIX-2056). Its spec's goal: `specs/issues/FIX-2082/SPEC.md` → "The goal, and how we'll know it's met".
+
+**Outcome:** a request waits on a task it filed, or on work it dispatched, through one wait that returns when the task ends or the deadline passes, whichever is first. The deadline cancels nothing, and waits nest up to five deep.
+
+**Input:** a real `createFlowState` host on a SQLite store, its durability sweeper and its wakes in-process, with the Workforce session board on two flows: `desk`, where the person's conversation files, and `doer`, five workers in a chain (`doer.a` files for `doer.b`, and so on to `doer.e`). Every turn is a generator whose model is a deterministic script read from the turn's own message: it calls the real task tools (`createTask`, `getTask` with `wait` and `deadline`) and a real `dispatcher({ wait: true })` that runs a `probe` entry in a session of its own. Driven over the host's HTTP router as a verified caller. Leg d runs on a second host whose default wait deadline is one second, so a drain's check-ins come due inside the run. Each run picks its task words at run time, and each labelled answer carries a token only that turn made.
+
+**Signal:** each failure is tagged `<leg>:<assertion>`.
+
+- `a` A conversation files with `createTask` and its request ends. A later request of that conversation waits with `getTask` and parks; once the task ends it gets the task `completed`, with its worker's token, in that request, and no `onTaskSettled` runs for it. A second conversation of the same user is refused (on a per-conversation board it can't reach the row: `task_not_found`), and a second request of the filing conversation is refused `wait_taken` while the first waits.
+- `b` Five nested waits, four through task requests (the conversation, then `doer.a` to `doer.c`) and one waited dispatch (`doer.d`'s), each resume with the result below: the top request's answer carries the probe's token. The probe's own waited dispatch, a sixth, is refused `wait_too_deep` and dispatches nothing (one probe request). A chain of five parked waits built below a task nobody waited on, then a late wait on that task, is refused `wait_too_deep` and marks nothing. A task session's turn files 101 steps for itself: 100 land on the plan ledger and the 101st is refused at the chain's cap.
+- `c` A deadline shorter than the work resumes the request with the task `in_progress` on attempt 1, and a second wait gets it `completed`, still attempt 1. A task ending after the deadline while its request still runs reaches that request once, on its next `getTask`, and no `onTaskSettled` runs for it. A request that ends without waiting again hears the ending once, as `onTaskSettled`. An ending and a deadline due together resume the request once and deliver the ending once. A second process parks a wait and is killed with SIGKILL; reopened on the same store, the deadline resumes the wait within its due time plus 2 s. The task whose request waits is cancelled: that request makes no further model call and records no return.
+- `d` A worker's step filed `session: "new"` runs in a session of its own while its plan's drain parks on it, waiting again at each of two deadlines (at least three parks) and starting no later step; once it ends, the next step's turn reads a token only that session's turn produced.
+- `e` A `dispatcher({ wait: true })` action outputs `{ status: "completed", output }`, the probe's token in the output.
+
+**Anti-game:** rows are read from the store, requests and their tool results from the engine's store, and the tokens are made at run time inside the turn that answers, so a result passed down the chain or into the next step came through the wait. No gate, sweeper or clock is stubbed; the deadline legs run on the host's own sweeper. The kill leg dies in a real child process, with SIGKILL, after its wait reads `suspended`.
+
+**Model:** n/a (model-free: scripted turns).
+
+**Run:** `pnpm tsx goals/task-board/waits-on-a-task-it-filed/run.mts`. `GOAL_LEGS=a,c` runs some legs. On demand only, never a CI gate.
+
+**Controls:** a scratch patch to the code under test, applied as it loads (`goals/lib/module-patch.mts`), printed by the run, and refused when it never reached the code.
+
+- `GOAL_CONTROL=deadline-cancels`: the deadline cancels the waited-on task, as before FIX-2082 (`packages/orchestration/src/tasks/helpers/wait-on-task.ts`). Must FAIL leg `c` on *"at the deadline the task is in_progress on attempt 1"* and *"a second wait gets it completed"*.
+- `GOAL_CONTROL=drain-moves-on`: a plan drain takes its deadline as an ending and stops waiting on the row (`packages/orchestration/src/task-board/blocks/dispatch-row.ts`). Must FAIL leg `d`.
+
+On `main` before FIX-2082 legs `a` and `b` fail: `getTask` takes no `wait`, a task session's request is refused any wait, and no dispatcher waits.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a (model-free) | PASS | a: the later request read its worker's token; another session `task_not_found`; the filing session's second request `wait_taken`; 0 `onTaskSettled` for the waited task. b: the top request read the probe's token through five waits; the sixth answered `wait_too_deep` with 1 probe request; a late wait on five below `wait_too_deep`; 100 plan rows under one top task. c: first read `in_progress` on attempt 1, the second `completed`; together 1 resume, 1 delivery; after the SIGKILL the deadline resumed the wait 142 ms past due. d: the drain parked 3 times while step 2 ran in its own session; step 3 read step 2's token. e: the dispatcher output `completed` with the probe's token |
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a (model-free) | FAIL (control `deadline-cancels`, expected) | c: at the deadline the task is not `in_progress` on attempt 1, and a second wait does not get it `completed` (both required assertions), plus the held-ending and `onTaskSettled` assertions. d fails with it: the cancel reaches the step in its own session |
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a (model-free) | FAIL (control `drain-moves-on`, expected) | d only: the drain parked 1 time and moved on; step 3 ran before step 2 ended and did not read its token |
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a | not run | Legs a and b on `main`: not run. The before-state above is read from the code: `getTask` has no `wait` and `dispatcher` has no `wait` option on `main` |
+| 2026-10-22 | fix/FIX-2082, after 13088b0a5 with the run's type fix (a `prompt` on its two generators; the request read with no options) | n/a (model-free) | PASS; both controls FAIL as before (expected) | The same legs pass; the kill resumed 165 ms past due. `deadline-cancels` fails c (both required assertions) and d; `drain-moves-on` fails d only |
+| 2026-10-22 | fix/FIX-2082 fd85658ab (review round on #3653, main with FIX-2088 and FIX-2086 merged in) | n/a (model-free) | PASS | All legs. b: the sixth `wait_too_deep` with 1 probe request; a late wait on five below `wait_too_deep`. c: first read `in_progress` on attempt 1, the second `completed`; 1 resume, 1 delivery; after the SIGKILL the deadline resumed the wait 147 ms past due. d: the drain parked 3 times while step 2 ran in its own session; step 3 read step 2's token |
+| 2026-10-22 | fix/FIX-2082 fd85658ab (review round on #3653, main with FIX-2088 and FIX-2086 merged in) | n/a (model-free) | FAIL (control `deadline-cancels`, expected) | c: not `in_progress` on attempt 1 at the deadline, and a second wait doesn't get it `completed` (both required), with the held-ending, `onTaskSettled` and kill-leg reads; d fails with it |
+| 2026-10-22 | fix/FIX-2082 fd85658ab (review round on #3653, main with FIX-2088 and FIX-2086 merged in) | n/a (model-free) | FAIL (control `drain-moves-on`, expected) | d only: the drain parked 1 time and moved on, and its request never finished |

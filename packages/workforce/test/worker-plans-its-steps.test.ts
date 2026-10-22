@@ -24,7 +24,7 @@ import type { WorkerInstallation } from "../src/workers/installation";
 import { ORG, boardWorkers, bootBoardHost, messageOf } from "./conversation-board-harness";
 
 /** A row a turn files: a step for itself, or, with `assignee`, a task for that delegate. */
-type Step = { id: string; goal: string; deps?: string[]; assignee?: string };
+type Step = { id: string; goal: string; deps?: string[]; assignee?: string; session?: "new" | "ongoing" };
 
 type Controls = {
   plans: Record<string, Step[]>;
@@ -41,6 +41,8 @@ type Controls = {
   /** A worker whose plan turn also tries the writes a step refuses. */
   probes: Set<string>;
   refusals: Array<{ worker: string; error: string }>;
+  /** Goals a turn handed as its whole message does as a step in a session of its own (FIX-2082 D2). */
+  ownSession: Set<string>;
   turns: Array<{ worker: string; sessionId: string; kind: "turn" | "step" | "answer"; message: string }>;
 };
 
@@ -85,7 +87,15 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         return `answered: ${input.message}`;
       }
       if (input.message.startsWith('Task "')) return `${worker} heard: ${input.message}`;
-      const asInit = (step: Step) => ({ id: step.id, goal: step.goal, assignee: step.assignee ?? worker, ...(step.deps ? { deps: step.deps } : {}) });
+      // A step handed to a session of its own arrives as the task it is: a value only that session produced.
+      if (controls.ownSession.has(input.message.trim())) return `${input.message.trim()}#own@${ctx.session.identity.id}`;
+      const asInit = (step: Step) => ({
+        id: step.id,
+        goal: step.goal,
+        assignee: step.assignee ?? worker,
+        ...(step.deps ? { deps: step.deps } : {}),
+        ...(step.session ? { session: step.session } : {})
+      });
       if (controls.batches.has(worker)) {
         await refused(() => ref!.addTasks((controls.plans[worker] ?? []).map(asInit)));
         const second = controls.secondBatch[worker];
@@ -99,6 +109,8 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         await refused(() => ref!.complete(first.id, "done by hand"));
         await refused(() => ref!.fail(first.id, "failed by hand"));
         await refused(() => ref!.setAssignee(first.id, "someone.else"));
+        // A step runs after this turn, in this request: a wait on it would never end (FIX-2082).
+        await refused(() => ref!.markWait!(first.id, { gateId: "probe", deadline: Date.now() + 60_000, requestId: "probe" }));
       }
       return `${worker} planned`;
     }
@@ -128,8 +140,8 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
 
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 
-function host(options: { taskChainLimit?: number } = {}) {
-  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), batches: new Set(), secondBatch: {}, rules: [], probes: new Set(), refusals: [], turns: [] };
+function host(options: { taskChainLimit?: number; durable?: boolean } = {}) {
+  const controls: Controls = { plans: {}, failSteps: new Set(), stepFiles: new Set(), answerFiles: new Set(), batches: new Set(), secondBatch: {}, rules: [], probes: new Set(), refusals: [], turns: [], ownSession: new Set() };
   const h = bootBoardHost({
     standard: [
       ...boardWorkers(),
@@ -137,6 +149,7 @@ function host(options: { taskChainLimit?: number } = {}) {
       worker("editor", { flow: "stepper", delegates: ["writer"] })
     ],
     flows: (installation) => ({ stepper: stepperFlow(installation, controls) }),
+    ...(options.durable === true ? { durable: true } : {}),
     ...(options.taskChainLimit === undefined ? {} : { hire: { taskChainLimit: options.taskChainLimit } })
   });
   const open = async (userId: string, workerId: string): Promise<string> => {
@@ -440,14 +453,14 @@ describe("a step's own turn files no step: further work goes in its answer", () 
 });
 
 describe("a step is the worker's: the tools settle no step, and nothing else files one (rule 18)", () => {
-  it("refuses completing, failing or reassigning a step by a call: the drain records its turn's return", async () => {
+  it("refuses completing, failing, reassigning or waiting on a step by a call: the drain records its turn's return", async () => {
     const h = host();
     try {
       h.controls.plans.writer = [outline[0]!];
       h.controls.probes.add("writer");
       const talk = await h.open("alice", "writer");
       expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
-      expect(h.controls.refusals.map((r) => r.error)).toEqual(["step_settles_itself", "step_settles_itself", "step_and_task_filed_apart"]);
+      expect(h.controls.refusals.map((r) => r.error)).toEqual(["step_settles_itself", "step_settles_itself", "step_and_task_filed_apart", "step_cannot_wait"]);
       const [row] = await h.steps("alice");
       expect(row).toMatchObject({ id: "s-outline", status: "completed", output: "Outline the post#done", assignee: "writer" });
     } finally {
@@ -523,6 +536,61 @@ describe("a task session works its steps in its task's request (D1, D2)", () => 
       // Two steps fit under the limit of two; the third is refused, as a third piece would be.
       expect(h.controls.refusals).toEqual([{ worker: "writer", error: "TaskCapExceededError" }]);
       expect((await h.steps("alice")).map((row) => row.id)).toEqual(["s-outline", "s-draft"]);
+    } finally {
+      await h.dispose();
+    }
+  });
+});
+
+describe("a step filed session: \"new\" runs in a session of its own, and its drain waits on it (FIX-2082 D2)", () => {
+  const plan: Step[] = [
+    { id: "s-outline", goal: "Outline the post" },
+    { id: "s-check", goal: "Fact-check the outline", deps: ["s-outline"], session: "new" },
+    { id: "s-draft", goal: "Draft the post", deps: ["s-check"] }
+  ];
+
+  it("hands it to a new session of the same worker; the next step sees what that session produced", async () => {
+    const h = host({ durable: true });
+    try {
+      await h.state.getRouter();
+      h.controls.plans.writer = plan;
+      h.controls.ownSession.add("Fact-check the outline");
+      const talk = await h.open("alice", "writer");
+      const run = await h.act("alice", talk, "run", { message: "write a post" }, "stepper");
+      expect(run.error, messageOf(run.error)).toBeUndefined();
+      await h.settled(20_000);
+
+      const steps = await h.steps("alice");
+      expect(steps.map((row) => [row.id, row.status])).toEqual([
+        ["s-outline", "completed"],
+        ["s-check", "completed"],
+        ["s-draft", "completed"]
+      ]);
+      const check = steps.find((row) => row.id === "s-check")!;
+      const own = /#own@(\S+)$/.exec(String(check.output))![1]!;
+      // Its own session: not the conversation's, and a writer session born for this step.
+      expect(own).not.toBe(talk);
+      expect(h.controls.turns.filter((t) => t.sessionId === own).map((t) => t.worker)).toEqual(["writer"]);
+      // The inline steps ran in the conversation, the next one after it, seeing its result.
+      const draftTurn = h.controls.turns.find((t) => t.kind === "step" && t.message.includes("Draft the post"))!;
+      expect(draftTurn.sessionId).toBe(talk);
+      expect(draftTurn.message).toContain(own);
+      // The request answered once, after every step ended, and no notice of a step reached anyone.
+      expect(h.controls.turns.filter((t) => t.sessionId === talk && t.kind === "answer")).toHaveLength(1);
+      expect(h.controls.turns.filter((t) => t.message.startsWith('Task "'))).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  }, 30_000);
+
+  it("refuses a step filed session: \"ongoing\": a step runs here, or in a new session of its own", async () => {
+    const h = host({ durable: true });
+    try {
+      h.controls.plans.writer = [{ id: "s-ongoing", goal: "Keep at it", session: "ongoing" }];
+      const talk = await h.open("alice", "writer");
+      await h.act("alice", talk, "run", { message: "keep at it" }, "stepper");
+      expect(h.controls.rules).toEqual(["step_session_ongoing"]);
+      expect(await h.steps("alice")).toEqual([]);
     } finally {
       await h.dispose();
     }

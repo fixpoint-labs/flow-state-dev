@@ -55,6 +55,7 @@ import { createWaitResumeOperation, type WaitResumeOperation } from "../context/
 import { createParkedStopDeps } from "../durability/stop-suspended";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
 import { installWakes, probeWakes } from "../durability/request-wakes";
+import { installWaits } from "../durability/wait-chain";
 import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
@@ -1000,6 +1001,7 @@ class InternalFlowState<TSettings extends object>
       durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
       maxDebtAgeMs: this.#options.maxDebtAgeMs,
+      waitDeadlines: this.#options.waitDeadlines,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
@@ -1106,6 +1108,8 @@ class InternalFlowState<TSettings extends object>
       });
     }
     if (requestHost === undefined || provider === undefined) return;
+    // Waits (FIX-2082): offered where the wakes are, since a deadline is one.
+    installWaits(requestHost, provider, runtimeConfig.waitDeadlines);
     // How a block's `ctx.session.stopRequest` stops a parked request: the same
     // host, the same terms.
     // Whether a wait parked under this host is bounded: a durability sweeper

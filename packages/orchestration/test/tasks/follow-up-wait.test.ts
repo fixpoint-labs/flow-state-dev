@@ -1,9 +1,8 @@
 /**
- * A follow-up dispatched with `wait` keeps the follow-up's own id
- * (FIX-1817 BR-25 with FIX-1816's wait): the id a follow-up takes is what makes
- * "one unfinished task per session" one atomic write, so the wait path must
- * not replace it with one of its own. Two follow-ups of one task filed at
- * once, waiting or not, land one; the other is refused naming it.
+ * A follow-up waited on keeps the follow-up's own id (FIX-1817 BR-25 with the
+ * wait, `getTask` since FIX-2082): the id a follow-up takes is what makes "one
+ * unfinished task per session" one atomic write. Filing and waiting are two
+ * calls now, so the wait takes the row's slot and never files a row of its own.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
@@ -54,7 +53,7 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
   });
   return defineFlow({ internal: { actions: { ...heard } },
     kind: "wait-board",
-    resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
+    resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session", delivery: {} }) },
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(generator({ name: "agent", model, prompt: "p", uses: [tools] })),
@@ -66,62 +65,30 @@ function flowOf(model: ReturnType<typeof stepModel>["model"]): FlowInstance {
   })({ id: "wait-board" });
 }
 
-const followUp = (id: string, wait: boolean) => ({
-  toolCallId: id,
-  toolName: "dispatchTask",
-  args: { goal: `follow-up ${id}`, followUpOf: "root", ...(wait ? { wait: true } : {}) }
-});
-const calls =
-  (...list: Array<ReturnType<typeof followUp>>): StepFn =>
-  () => ({ toolCalls: list, finishReason: "tool-calls" });
+const call =
+  (toolCallId: string, toolName: string, args: Record<string, unknown>): StepFn =>
+  () => ({ toolCalls: [{ toolCallId, toolName, args }], finishReason: "tool-calls" });
 const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
-type Row = { id: string; followUpOf?: string; wait?: unknown };
+type Row = { id: string; followUpOf?: string; wait?: { requestId?: string } };
 
-describe("a waiting follow-up keeps its own id", () => {
-  it("files a waiting follow-up under the follow-up's id, waited on", async () => {
-    const { model } = stepModel([calls(followUp("w1", true)), finalAnswer]);
+describe("a follow-up waited on keeps its own id", () => {
+  it("files the follow-up under its own id with createTask, and getTask's wait takes that row's slot", async () => {
+    const { model, seen } = stepModel([
+      call("f1", "createTask", { goal: "follow-up", followUpOf: "root" }),
+      call("g1", "getTask", { id: "root-f1", wait: true }),
+      finalAnswer
+    ]);
     const flow = flowOf(model);
     const state = runtimeFor(flow);
     try {
       await act(state, flow, "seed");
-      await act(state, flow, "run");
+      const parked = await act(state, flow, "run");
+      expect(toolResults(seen[1]!.messages)).toContain('"taskId":"root-f1"');
       const rows = (await act(state, flow, "list")).output as Row[];
-      const follow = rows.find((r) => r.followUpOf === "root");
-      expect(follow).toMatchObject({ id: "root-f1" });
-      expect(follow!.wait).toBeDefined();
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("of one waiting and one plain follow-up filed in one step, lands one and refuses the other naming it", async () => {
-    const { model, seen } = stepModel([calls(followUp("w1", true), followUp("p1", false)), finalAnswer, finalAnswer]);
-    const flow = flowOf(model);
-    const state = runtimeFor(flow);
-    try {
-      await act(state, flow, "seed");
-      await act(state, flow, "run");
-      const rows = (await act(state, flow, "list")).output as Row[];
-      expect(rows.filter((r) => r.followUpOf === "root")).toHaveLength(1);
-      const results = seen.slice(1).map((s) => toolResults(s.messages)).join(" | ");
-      expect(results).toContain('task_id_taken: another task took the id \\"root-f1\\"');
-    } finally {
-      await state.dispose();
-    }
-  });
-
-  it("of two waiting follow-ups filed by two turns at once, lands one and refuses the other naming it", async () => {
-    const { model, seen } = stepModel([calls(followUp("w1", true)), calls(followUp("w2", true)), finalAnswer, finalAnswer]);
-    const flow = flowOf(model);
-    const state = runtimeFor(flow);
-    try {
-      await act(state, flow, "seed");
-      await Promise.all([act(state, flow, "run"), act(state, flow, "run")]);
-      const rows = (await act(state, flow, "list")).output as Row[];
-      expect(rows.filter((r) => r.followUpOf === "root")).toHaveLength(1);
-      const results = seen.slice(2).map((s) => toolResults(s.messages)).join(" | ");
-      expect(results).toContain('task_id_taken: another task took the id \\"root-f1\\"');
+      const follow = rows.filter((r) => r.followUpOf === "root");
+      expect(follow).toEqual([expect.objectContaining({ id: "root-f1" })]);
+      expect(follow[0]!.wait?.requestId).toBe(parked.requestId);
     } finally {
       await state.dispose();
     }

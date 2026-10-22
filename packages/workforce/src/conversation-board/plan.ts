@@ -19,6 +19,13 @@
  *   telling it to do the work or answer (`PLAN_ANSWERING_STATE`). A task it
  *   files for a delegate is dispatched as usual.
  *
+ * - **A step in a session of its own** (FIX-2082 D2). A step filed
+ *   `session: "new"` is handed to a new session of the same worker, through
+ *   its own `work` entry, and the drain waits on it until it ends, waiting
+ *   again at each deadline; the next step sees its result. Its ending
+ *   resumes the drain: the plan ledger owes no notice, only that resume,
+ *   paid by the worker's board pass.
+ *
  * A failed attempt's open steps stay open and the next attempt adopts them.
  * The task-ending cascade (FIX-2080) doesn't reach them: a request that
  * crashes mid-step records no ending, so its step stays `in_progress` until
@@ -39,6 +46,7 @@ import {
 import { z } from "zod";
 import { filingSessionIdOf } from "./filing-session";
 import { CONVERSATION_BOARD_CLIENT_FIELDS, conversationPartition } from "./ledger";
+import { conversationDelivery } from "./delivery";
 import { taskMessage } from "./task-message";
 
 /**
@@ -49,10 +57,17 @@ export const PLAN_LEDGER_ID = "plan";
 /**
  * The plan ledger's one declaration. A browser may read it as it reads the
  * conversation ledger: the user's own rows, each under its session's partition,
- * so a screen lists a worker's steps beside the tasks it dispatched.
+ * so a screen lists a worker's steps beside the tasks it dispatched. A step's
+ * ending owes no notice (FIX-2082): the drain that waits on it is resumed by
+ * it, through the worker's board pass, as a conversation's are.
  */
 const planLedger = Object.assign(
-  defineTaskCollection({ id: PLAN_LEDGER_ID, scope: "user", partitionBy: conversationPartition }),
+  defineTaskCollection({
+    id: PLAN_LEDGER_ID,
+    scope: "user",
+    partitionBy: conversationPartition,
+    delivery: { ...conversationDelivery(PLAN_LEDGER_ID), notices: false }
+  }),
   { client: { state: { read: true }, expose: CONVERSATION_BOARD_CLIENT_FIELDS } }
 );
 
@@ -159,8 +174,18 @@ export interface Planning {
   wired(): boolean;
 }
 
+/** What one flow's planning is built from. */
+export interface PlanningOptions {
+  /**
+   * The hand-over of a step filed `session: "new"` to a new session of the
+   * same worker (FIX-2082 D2): a dispatcher to its own `work` entry. Omitted,
+   * every step runs inline.
+   */
+  readonly newSession?: BlockDefinition<any, any>;
+}
+
 /** Build one flow's planning. */
-export function definePlanning(): Planning {
+export function definePlanning(options: PlanningOptions = {}): Planning {
   const byTurn = new WeakMap<object, BlockDefinition<any, any>>();
   const plannedBlocks = new WeakSet<object>();
   let wired = false;
@@ -249,6 +274,8 @@ export function definePlanning(): Planning {
       mode: "plan",
       collection: planLedger,
       workers: step,
+      // A step filed `session: "new"` goes to a session of its own, waited on.
+      ...(options.newSession !== undefined ? { boardId: PLAN_LEDGER_ID, newSession: options.newSession as never } : {}),
       // In order: each step sees the one before it end.
       concurrency: 1
     });

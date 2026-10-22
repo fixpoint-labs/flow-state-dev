@@ -66,7 +66,7 @@ export interface TaskSettledEntryOptions {
 
 /** The running session's board a notice names, at this session's partition. */
 async function boardOf(ctx: BlockContext, boardId: string) {
-  return (await delegatingBoardsOf(ctx)).find((board) => board.ref.collectionId === boardId);
+  return (await delegatingBoardsOf(ctx, boardId)).find((board) => board.ref.collectionId === boardId);
 }
 
 /**

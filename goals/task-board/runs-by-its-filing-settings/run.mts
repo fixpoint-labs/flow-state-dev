@@ -52,8 +52,8 @@ import {
   workerTaskEntry,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-// Today's wait, called as the task tools call it (FIX-2082 moves it to `getTask`).
-import { dispatchAndWait } from "../../../packages/orchestration/src/tasks/helpers/wait-for-response.ts";
+// The wait `getTask({ id, wait: true })` makes (FIX-2082), called as the task tools call it.
+import { waitOnTask } from "../../../packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 import {
   REPO_ROOT,
   RUN_STAMP,
@@ -177,7 +177,7 @@ function buildHost(filename: string) {
       try {
         if (script.op === "file") return { ok: true, ids: (await ref.addTasks(script.tasks)).map((t) => t.id) };
         if (script.op === "settings") return { ok: true, outcome: await ref.patchSettings(script.id, script.patch) };
-        return await dispatchAndWait(ctx as never, ref, { taskId: script.taskId });
+        return await waitOnTask(ctx as never, ref, script.taskId, { key: `goal.wait:${script.taskId}` });
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }

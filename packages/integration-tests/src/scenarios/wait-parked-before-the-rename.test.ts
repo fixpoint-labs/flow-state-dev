@@ -1,8 +1,8 @@
 /**
  * A wait parked before the rename resumes after it, on SQLite.
  *
- * A turn's tool waits on a colleague's task through `dispatchAndWait` and
- * parks. The stored records are then put back the way the build before the
+ * A turn's tool files a task for a colleague and waits on it through
+ * `waitOnTask`, as `createTask` then `getTask({ wait: true })` do, and parks. The stored records are then put back the way the build before the
  * rename wrote them: the gate's reason `"ask"` and the row's mark under `ask`.
  * The runtime is thrown away, and a second one opens the same SQLite file.
  *
@@ -27,7 +27,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { createFlowState, runAction, type FlowState } from "@flow-state-dev/engine";
 import { payBoardDebts } from "@flow-state-dev/orchestration";
-import { dispatchAndWait } from "@flow-state-dev/orchestration/task-board";
+import { waitOnTask } from "@flow-state-dev/orchestration/task-board";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
@@ -93,8 +93,17 @@ function upgradeFlow(model: GeneratorModel): FlowInstance {
     name: "wait_on_colleague",
     inputSchema: z.object({ question: z.string() }),
     outputSchema: z.any(),
-    execute: async (input, ctx) =>
-      dispatchAndWait(ctx, await boardOf(ctx), { goal: input.question, assignee: "researcher" })
+    execute: async (input, ctx) => {
+      const board = await boardOf(ctx);
+      // Filed once: the replay after the resume reads the filing back.
+      const taskId = await ctx.runOnce!("fixture.file:c1", async () =>
+        (await board.addTask({ goal: input.question, assignee: "researcher" })).id
+      );
+      const waited = await waitOnTask(ctx, board, taskId, { key: "fixture.wait:c1" });
+      return waited.ok
+        ? { taskId, status: waited.task.status, answer: waited.task.output }
+        : { taskId, error: `${waited.error}: ${waited.message}` };
+    }
   });
   const settle = handler({
     name: "settle",
@@ -123,7 +132,8 @@ function upgradeFlow(model: GeneratorModel): FlowInstance {
   });
   return defineFlow({
     kind: KIND,
-    resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session" }) },
+    // Each row names the session that filed it, which alone may wait on it (FIX-2078, FIX-2082).
+    resources: { [BOARD]: defineTaskCollection({ id: BOARD, scope: "session", delivery: {} }) },
     actions: {
       run: {
         block: sequencer({ name: "turn" }).step(generator({ name: "agent", model, prompt: "p", tools: [wait] })),

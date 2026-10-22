@@ -68,15 +68,6 @@ describe.each(BACKINGS)("dispatching a held row (%s)", (_name, makeBacking) => {
     expect(events.at(-1)).toMatchObject({ kind: "released", prevStatus: "held" });
   });
 
-  it("marks the row waited-on in the same write when the dispatch waits", async () => {
-    const { tasks } = await makeBacking();
-    await tasks.addTask({ id: "t", goal: "g", assignee: "ops", held: true });
-    await tasks.dispatch!("t", { call: "call-1", wait: { gateId: "ask:tasks:t#n", deadline: 5000 } });
-    const row = tasks.get("t") as Task;
-    expect(row.status).toBe("pending");
-    expect(row.wait).toEqual({ gateId: "ask:tasks:t#n", deadline: 5000 });
-  });
-
   it("answers a replay of the same call unchanged, not with the already-dispatched refusal", async () => {
     const { tasks } = await makeBacking();
     await tasks.addTask({ id: "t", goal: "g", assignee: "ops", held: true });
