@@ -898,7 +898,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (isPostRow(row)) {
           return { outcome: "declined", reason: patch.assignee !== undefined ? "immutable-assignee" : "disallowed", status: row!.status };
         }
-        await owePass(ctx);
         if (self !== undefined && patch.assignee === self) throw filedApart(id);
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
         await owePass(ctx);
