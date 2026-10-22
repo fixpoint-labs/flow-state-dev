@@ -54,3 +54,4 @@
 | 2026-10-22 | fix/FIX-2077 a53097bd1 + uncommitted | none (scripted) | FAIL (control `hands-to-a-non-delegate`, expected) | `c:reaches-no-delegate`: desk.router's held filing was assigned to desk.poster, which takes no task; crew.solo, with no delegate at all, unchanged |
 | 2026-10-22 | fix/FIX-2077 a53097bd1 + the review round, uncommitted | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`) | a: split, four sessions, the top task completed after both pieces with the woken turn's answer, one notice. b: the foreman's task completed, heard once. c: as above (FIX-2076's rule). d: depth, fan at 101 and the app's cap held |
 | 2026-10-22 | fix/FIX-2077 b08756fec | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); controls `hands-to-a-non-delegate` and `no-parent-settle` FAIL, as required | As before |
+| 2026-10-22 | fix/FIX-2077 6726e43b4 | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`) | As on b08756fec |

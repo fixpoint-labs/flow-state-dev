@@ -35,3 +35,4 @@ Before FIX-2077 the check fails legs b and d on `main`: a split task parks and s
 | 2026-10-22 | `main` b8328ccb3 (its packages, this goal copied in), `GOAL_LEGS=b,d` | n/a | FAIL (expected) | `b:waiting-while-open`, `b:last-turns-answer`, `b:settles-after-woken-turn`, `b:piece-ends-during-request`: the split task parks and settles as `{ answer, pieces }`. `d:keeps-its-claim`: both stops keep a lease (`leaseUntil` set); `d:not-run-twice`: the `human_input` stop ran again on attempt 2 after its lease lapsed |
 | 2026-10-22 | fix/FIX-2077 b08756fec (terminal status after the request-end hooks) | n/a | PASS | a: completed 3 ms after the last background write; b, c, d as before |
 | 2026-10-22 | fix/FIX-2077 b08756fec | n/a | FAIL (control `settle-at-return`, expected) | `a:after-the-side-chains`, `c:message-ends-first`, `c:output`, `c:once`, as before |
+| 2026-10-22 | fix/FIX-2077 6726e43b4 | n/a | PASS | As on b08756fec |
