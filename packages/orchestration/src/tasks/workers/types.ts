@@ -71,11 +71,12 @@ export const taskWorkerInputSchema = z.object({
    */
   answer: z.string().optional(),
   /**
-   * A person reopened this finished task (`Task.reopened`, FIX-1764), present
-   * only on the attempts that reopen queued. The person's message is in the
-   * task's session, written there by the door it came through.
+   * Every steer on the task (`Task.steers`, FIX-2086), oldest first: words sent
+   * into it while it was open, with who sent each. Part of the brief, taken or
+   * not, so a retry is never run as first filed. Absent on a task never
+   * steered.
    */
-  reopened: z.literal(true).optional(),
+  steers: z.array(z.object({ message: z.string(), from: z.enum(["filer", "user"]) })).optional(),
   /**
    * The finished task this one follows up (`Task.followUpOf`), present only
    * on a follow-up: a `per-task` dispatch runs it in that task's session.

@@ -104,7 +104,8 @@ import { markUserTurnStep } from "./standing-rules/user-turn";
 import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
-import { replyOrReopen } from "./conversation-board/reopen";
+import { steerOrTalk } from "./conversation-board/steer";
+import { worksConversationResultTask } from "./conversation-board/task-admission";
 
 /**
  * The worker flow name the hire step resolves a record to when it names none, and the
@@ -229,6 +230,25 @@ function activateToolOn(ctx: BlockContext): boolean {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
 }
 
+/** `afterAnswer`, rescuing only when the task row says the result goes to the conversation. */
+function afterAnswerStep(block: BlockDefinition<any, any>) {
+  const keepTheAnswer = handler({
+    name: "agent-after-answer-rescue",
+    inputSchema: z.unknown(),
+    execute: async (error, ctx) => {
+      if (!(await worksConversationResultTask(ctx as never))) throw error;
+      // eslint-disable-next-line no-console
+      console.error(
+        `[agent] Background work "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  });
+  return sequencer({ name: "agent-after-answer", inputSchema: z.unknown() })
+    .step(block)
+    .rescue([{ block: keepTheAnswer }]);
+}
+
 /** What the app supplies. Everything else is a worker's own setting. */
 export interface AgentWorkerFlowOptions {
   /**
@@ -308,7 +328,10 @@ export interface AgentWorkerFlowOptions {
   isolateUserState?: boolean;
   /**
    * A block run after the worker answers, as a side-chain — it cannot change
-   * the answer, and a failure in it does not fail the turn.
+   * the answer, and a failure in it never fails a conversation turn. In a
+   * task it fails the attempt, as any background step's failure does, except
+   * in a task whose result goes to the conversation, where it is logged and
+   * the task keeps its answer (FIX-2088).
    *
    * **It receives the answer generator's output: the assistant's reply text,
    * as a string.** `.sideChain` with no connector passes the preceding step's
@@ -968,7 +991,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     ...(options.uses ?? []),
     standingRulesCapability,
     ...(workerCapabilityCatalog.size > 0 ? [workerCapabilities] : []),
-    ...(board !== undefined ? [board.tools, board.questions, board.progress, board.delegateTools, board.messages] : [])
+    ...(board !== undefined ? [board.tools, board.questions, board.progress, board.steers, board.delegateTools, board.messages] : [])
   ];
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
@@ -1210,7 +1233,9 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
   // must not be able to change the answer, and a failure inside it — a capture
   // call that times out, say — is not a conversation failure.
-  const answeredRun = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+  const answeredRun = options.afterAnswer
+    ? answered.sideChain(afterAnswerStep(options.afterAnswer), { name: options.afterAnswer.name })
+    : answered;
   // On an installation, every turn runs with its plan (FIX-2076 D1, D2): a
   // step the worker files for itself is worked after the turn, in the same
   // request, one turn of `answeredRun` each, and the worker answers once more.
@@ -1322,10 +1347,11 @@ function defineAgentFlowAround(
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      // A reply: its notice waits for it to end. A finished task session reopens the task instead (FIX-1764).
+      // A reply: its notice waits for it to end. In a task session whose task
+      // is open, the line steers the task instead (FIX-2086).
       run: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
-        block: replyOrReopen(userTurn),
+        block: steerOrTalk(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY
       },

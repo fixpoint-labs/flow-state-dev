@@ -5,9 +5,13 @@
  * `getTask` reads one whole, `listTasks` lists them without results, and
  * `updateTask` changes one, each field by its one rule (the field table,
  * `TASK_FIELD_RULES`): edits, a hold and a release before the task first
- * starts; a cancel until it finishes; nothing after. Every refusal names the
- * field, the state and the next move. `answerTask` answers a task parked on
- * its worker's question, until FIX-2058.
+ * starts; a cancel and a message until it finishes; nothing after. A message
+ * steers (FIX-2086): it is kept on the task, joins its brief, and reaches a
+ * running request before its next model call, using no attempt. Every refusal
+ * names the field, the state and the next move. A finished task's output never
+ * changes: more work is a follow-up, and the task view reads the latest
+ * completed follow-up as `current`. `answerTask` answers a task parked on its
+ * worker's question, until FIX-2058.
  *
  * Nothing on this surface settles a task: a task ends when its worker returns
  * or throws, and the drain or the claim gate records that. The worker's own
@@ -71,6 +75,7 @@ import {
   type TaskWriteOutcome,
   withoutNoticeMarkers,
   cancelledDependents,
+  MAX_STEERS,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -130,6 +135,43 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
  * comes back as its JSON, cut, with `inputCut` or `outputCut` set.
  */
 export const READ_OUTPUT_LIMIT = 20_000;
+
+/**
+ * Each chain's latest completed follow-up, by its root's id, in one pass over
+ * the board (`listTasks` reads every row's from this, not a walk per row).
+ */
+function latestCompletedByRoot(rows: readonly Task[]): Map<string, Task> {
+  const latest = new Map<string, Task>();
+  for (const row of rows) {
+    if (row.followUpOf === undefined || row.status !== "completed") continue;
+    const seen = latest.get(row.followUpOf);
+    if (seen === undefined || laterThan(row, seen)) latest.set(row.followUpOf, row);
+  }
+  return latest;
+}
+
+/**
+ * Whether `a` completed after `b`, by completion time, then filing time, then
+ * id (a follow-up's numbered suffix, read as a number), so two that tie to the
+ * millisecond always order the same way.
+ */
+function laterThan(a: Task, b: Task): boolean {
+  const at = a.completedAt ?? a.updatedAt;
+  const bt = b.completedAt ?? b.updatedAt;
+  if (at !== bt) return at > bt;
+  if (a.createdAt !== b.createdAt) return a.createdAt > b.createdAt;
+  return a.id.localeCompare(b.id, undefined, { numeric: true }) > 0;
+}
+
+/** `current` as a task view names it: none when it is the task itself. */
+function currentFor(task: Task, latest: Task | undefined): Task | undefined {
+  return latest === undefined || latest.id === task.id ? undefined : latest;
+}
+
+/** `current` as a list row names it: its id only, never its output. */
+function withCurrentId(current: Task | undefined): { current?: { id: string } } {
+  return current === undefined ? {} : { current: { id: current.id } };
+}
 
 /** A value as `getTask` returns it: whole, or its JSON cut to {@link READ_OUTPUT_LIMIT}. */
 function readable(value: unknown): { value: unknown; cut: boolean } {
@@ -345,9 +387,8 @@ const okOrError = z.union([
 
 /**
  * Why `answerTask` can't answer `task`, or `undefined` when it is parked on a
- * question. A terminal row answers as every other write to one does; a park
- * for a person's turn has its own way back (FIX-1690); anything else isn't
- * waiting on an answer.
+ * question. A terminal row answers as every other write to one does; anything
+ * else isn't waiting on an answer.
  */
 function notParkedOnQuestion(task: Task) {
   if (isTerminalStatus(task.status)) {
@@ -365,15 +406,6 @@ function notParkedOnQuestion(task: Task) {
       error:
         `not_parked_on_question: task "${task.id}" is ${task.status}, so it isn't waiting ` +
         `on an answer. Nothing was written.`,
-    };
-  }
-  if (task.parkedForTurn === true) {
-    return {
-      ok: false as const,
-      taskId: task.id,
-      error:
-        `not_parked_on_question: task "${task.id}" is parked for a person's turn, not on a ` +
-        `question. Its run picks up again through that turn. Nothing was written.`,
     };
   }
   if (task.parkedOnQuestion !== true) {
@@ -1282,6 +1314,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   const fieldNames = (fields: readonly TaskEditField[]): string =>
     fields.map((field) => (field === "held" ? "a hold or a release" : field)).join(", ");
 
+  /** The refusal for a message on a finished task: the rule, then the move (FIX-2086). */
+  const FINISHED_TAKES_NO_MESSAGE = "a finished task takes no message; file a follow-up";
+
   /**
    * The refusal for an edit the field table no longer allows: every field on
    * a finished task, an until-start field on a started one. Names the
@@ -1289,14 +1324,12 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
    */
   const lockedError = (task: Task, fields: readonly TaskEditField[]) => {
     if (isTerminalStatus(task.status)) {
-      return {
-        ok: false as const,
-        taskId: task.id,
-        error:
-          `task_finished: task "${task.id}" is ${task.status}, so nothing about it changes, its output ` +
-          `included (${fieldNames(fields)}). File a follow-up with createTask({ followUpOf: "${task.id}" }) ` +
-          `for more work. Nothing was written.`,
-      };
+      const rule = fields.includes("message")
+        ? `${FINISHED_TAKES_NO_MESSAGE} with createTask({ followUpOf: "${task.id}" }) to correct or extend it. ` +
+          `Task "${task.id}" is ${task.status}, so nothing about it changes, its output included (${fieldNames(fields)}).`
+        : `task "${task.id}" is ${task.status}, so nothing about it changes, its output included (${fieldNames(fields)}). ` +
+          `File a follow-up with createTask({ followUpOf: "${task.id}" }) for more work.`;
+      return { ok: false as const, taskId: task.id, error: `task_finished: ${rule} Nothing was written.` };
     }
     const reassign = fields.includes("assignee")
       ? ` A started task keeps one accountable worker: to move it, cancel it and file it again.`
@@ -1318,11 +1351,19 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "title, context, input, deps, priority, labels (the full list), metadata, assignee (one of " +
       "your delegates) and maxAttempts; and status: \"held\" holds it, \"pending\" releases a held " +
       "task. status: \"cancelled\" cancels it, any time until it finishes, and is sent alone. " +
-      "A finished task changes no more: file a follow-up instead. A refusal names the rule.",
+      "message steers the task until it finishes, and is sent alone: the words join its brief, " +
+      "and a running task's worker reads them before its next model call. It uses none of the " +
+      "task's tries and never cancels it. A finished task changes no more, and takes no message: file a " +
+      "follow-up instead. A refusal names the rule.",
     inputSchema: z.object({
       id: z.string(),
       ...updateFields,
       status: z.enum(["held", "pending", "cancelled"]).optional(),
+      message: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Words for the task while it is open, sent alone: they join its brief. Uses no try, never cancels."),
     }),
     outputSchema: z.union([
       // A cancel names the dependents it took along (FIX-2078 D2).
@@ -1331,16 +1372,30 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     ]),
     execute: async (input, ctx) => {
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
-      if (input.status === "cancelled" && fields.length > 0) {
+      const message = input.message;
+      if (input.status === "cancelled" && (fields.length > 0 || message !== undefined)) {
+        const sent = [...fields, ...(message !== undefined ? ["message"] : [])];
         return {
           ok: false as const,
           taskId: input.id,
           error:
-            `cancel_takes_no_edits: a cancel is sent alone, and this one came with ${fields.join(", ")}. ` +
+            `cancel_takes_no_edits: a cancel is sent alone, and this one came with ${sent.join(", ")}. ` +
             `Cancel it, or edit it, not both. Nothing was written.`,
         };
       }
-      if (input.status === undefined && fields.length === 0) {
+      // A message is its own write: sent with an edit or a hold, one could land
+      // and the other be refused, so the pair is refused before either is written.
+      if (message !== undefined && input.status !== "cancelled" && (fields.length > 0 || input.status !== undefined)) {
+        const sent = [...fields, ...(input.status !== undefined ? ["status"] : [])];
+        return {
+          ok: false as const,
+          taskId: input.id,
+          error:
+            `message_takes_no_edits: a message is sent alone, and this one came with ${sent.join(", ")}. ` +
+            `Send the edit and the message as two calls. Nothing was written.`,
+        };
+      }
+      if (input.status === undefined && fields.length === 0 && message === undefined) {
         return {
           ok: false as const,
           taskId: input.id,
@@ -1381,7 +1436,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         return cancelled.length > 0 ? { ok: true as const, cancelled } : { ok: true as const };
       }
 
-      const edits: TaskEditField[] = [...fields, ...(input.status !== undefined ? (["held"] as const) : [])];
+      const edits: TaskEditField[] = [
+        ...fields,
+        ...(input.status !== undefined ? (["held"] as const) : []),
+        ...(message !== undefined ? (["message"] as const) : []),
+      ];
       // Refused before anything is checked when the state already rules it
       // out; decided again inside the write, so a start in between is refused too.
       // Two rules hold in every state and name their own refusal, so they go
@@ -1393,37 +1452,83 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // release a started held row may take (a legacy blocked row, BP-030).
       const locked = ownRule ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
+      // A message's own checks run before any write too (FIX-2086), so a call
+      // that edits and steers never half-applies: a finished task (the hold
+      // or release, decided by the write, aside) and the steer limit.
+      if (message !== undefined) {
+        if (isTerminalStatus(current.status)) return lockedError(current, ["message"]);
+        if ((current.steers?.length ?? 0) >= MAX_STEERS) return steerLimitError(input.id);
+        if (collection.steer === undefined) {
+          return {
+            ok: false as const,
+            taskId: input.id,
+            error: `message_not_supported: task "${input.id}"'s board takes no message. Nothing was written.`,
+          };
+        }
+      }
       if (input.assignee !== undefined && input.assignee !== current.assignee) {
         if (current.answered === true) return awaitingAnswerError(input.id);
         const bad = checkAssignee(input.assignee, await rosterFor(roster, ctx));
         if (bad) return bad;
       }
-      const patch: TaskSettingsPatch = {
-        ...(input.status === "held" ? { held: true } : {}),
-        ...(input.status === "pending" ? { held: false } : {}),
-        ...Object.fromEntries(fields.map((field) => [field, input[field]])),
-        // Nor can a patch forge, clear or settle a notice marker (BP-031, FIX-2078).
-        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
-      };
-      let outcome: TaskWriteOutcome | undefined;
-      try {
-        outcome = await collection.patchSettings(input.id, patch);
-      } catch (err) {
-        if (err instanceof TaskFilingRefusedError) return { ok: false as const, taskId: input.id, error: err.message };
-        if (err instanceof TaskWriteRefusedError) return refusedError(err);
-        throw err;
-      }
-      if (outcome != null && outcome.outcome === "declined") {
-        const now = collection.get(input.id) ?? { ...current, status: outcome.status };
-        if (outcome.reason === "started" || outcome.reason === "terminal") {
-          const lockedNow = lockedFields(now, edits);
-          return lockedError(now, lockedNow.length > 0 ? lockedNow : edits);
+      if (fields.length > 0 || input.status !== undefined) {
+        const patch: TaskSettingsPatch = {
+          ...(input.status === "held" ? { held: true } : {}),
+          ...(input.status === "pending" ? { held: false } : {}),
+          ...Object.fromEntries(fields.map((field) => [field, input[field]])),
+          // Nor can a patch forge, clear or settle a notice marker (BP-031, FIX-2078).
+          ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
+        };
+        let outcome: TaskWriteOutcome | undefined;
+        try {
+          outcome = await collection.patchSettings(input.id, patch);
+        } catch (err) {
+          if (err instanceof TaskFilingRefusedError) return { ok: false as const, taskId: input.id, error: err.message };
+          if (err instanceof TaskWriteRefusedError) return refusedError(err);
+          throw err;
         }
-        return declinedWriteToolError(input.id, outcome, "Nothing was written.");
+        if (outcome != null && outcome.outcome === "declined") {
+          const now = collection.get(input.id) ?? { ...current, status: outcome.status };
+          if (outcome.reason === "started" || outcome.reason === "terminal") {
+            const lockedNow = lockedFields(now, edits);
+            return lockedError(now, lockedNow.length > 0 ? lockedNow : edits);
+          }
+          return declinedWriteToolError(input.id, outcome, "Nothing was written.");
+        }
+      }
+      if (message !== undefined) {
+        // The filer's model through its own tool, or a person through the
+        // action (a screen): the sender is how the caller was built, never input.
+        const userId = (ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId;
+        const from = via === "tool" ? { from: "filer" as const } : { from: "user" as const, ...(userId !== undefined ? { by: userId } : {}) };
+        let steered: TaskWriteOutcome | undefined;
+        try {
+          steered = await collection.steer!(input.id, { message, ...from });
+        } catch (err) {
+          if (err instanceof TaskWriteRefusedError) return refusedError(err);
+          throw err;
+        }
+        if (steered != null && steered.outcome === "declined") {
+          if (steered.reason === "steer-limit") return steerLimitError(input.id);
+          const now = collection.get(input.id) ?? { ...current, status: steered.status };
+          if (steered.reason === "terminal") return lockedError(now, ["message"]);
+          return declinedWriteToolError(input.id, steered, "The message was not kept.");
+        }
       }
       return { ok: true as const };
     },
   });
+
+  /** The refusal past the most messages a task takes (FIX-2086 D1): names the limit and the move. */
+  function steerLimitError(id: string) {
+    return {
+      ok: false as const,
+      taskId: id,
+      error:
+        `steer_limit: task "${id}" has taken ${MAX_STEERS} messages, the most a task takes. Cancel it and ` +
+        `file it again with everything it needs, or file a follow-up once it ends. Nothing was written.`,
+    };
+  }
 
   const listTasks = defineTool({
     name: named("listTasks"),
@@ -1460,6 +1565,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             run: taskSchema.shape.run,
             /** A request is waiting on this task's ending (`getTask` with `wait`). */
             waitedOn: z.literal(true).optional(),
+            /** The latest completed follow-up in its chain, by id; read its output with getTask (FIX-2086). */
+            current: z.object({ id: z.string() }).optional(),
           }),
         ),
       }),
@@ -1474,6 +1581,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.filedByTask !== undefined ? { filedByTask: input.filedByTask } : {}),
       };
       const tasks = collection.list(Object.keys(filter).length > 0 ? filter : undefined);
+      // Every chain's current in one pass over the board, never a walk per row.
+      const latest = latestCompletedByRoot(collection.list());
       return {
         ok: true as const,
         tasks: tasks.map((t) => ({
@@ -1487,6 +1596,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           ...(t.wait != null && t.wait.lapsed !== true && !isTerminalStatus(t.status) ? { waitedOn: true as const } : {}),
+          ...withCurrentId(currentFor(t, latest.get(t.followUpOf ?? t.id))),
         })),
       };
     },
@@ -1506,7 +1616,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "worker's latest status note, and its output: the result so far while it runs, or its " +
       "result once it completed. checkpoint: true means the output came from a reported " +
       "checkpoint. Its error when it failed, the question it waits on when it is " +
-      "parked. Use it to answer from what a task found, rather than from a line about it. " +
+      "parked. current is the latest follow-up in its chain that completed, with its output: " +
+      "the version that stands now; output stays the task's own. steers are the messages sent " +
+      "into it, oldest first, each marked taken once its work read it. Use it to answer from what " +
+      "a task found, rather than from a line about it. " +
       "Don't poll a task you filed to see it end: end your turn, and its ending wakes you." +
       (wait ? getTaskWaitDescription : ""),
     // Passthrough, so a wait field this request can't use reaches `execute`
@@ -1562,6 +1675,26 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           filedByTask: z.string().optional(),
           run: taskSchema.shape.run,
           completedAt: z.number().optional(),
+          /**
+           * The latest follow-up in its chain that completed (FIX-2086 D3), with its
+           * output cut as `output` is; absent when none did.
+           */
+          current: z
+            .object({ id: z.string(), output: z.unknown().optional(), outputCut: z.literal(true).optional() })
+            .optional(),
+          /** The messages sent into it (FIX-2086 D1), oldest first; absent when none were. */
+          steers: z
+            .array(
+              z.object({
+                message: z.string(),
+                from: z.enum(["filer", "user"]),
+                by: z.string().optional(),
+                at: z.number(),
+                /** True once the task's current attempt read it. */
+                taken: z.boolean(),
+              }),
+            )
+            .optional(),
         }),
       }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
@@ -1627,6 +1760,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const taskInput = t.input === undefined ? undefined : readable(t.input);
       const output = t.output === undefined ? undefined : readable(t.output);
       const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
+      const current = currentFor(t, latestCompletedByRoot(collection.list()).get(t.followUpOf ?? t.id));
+      const currentOutput = current?.output === undefined ? undefined : readable(current.output);
       return {
         ok: true as const,
         task: {
@@ -1652,6 +1787,27 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
+          ...(t.steers !== undefined && t.steers.length > 0
+            ? {
+                steers: t.steers.map((steer) => ({
+                  message: steer.message,
+                  from: steer.from,
+                  ...(steer.by !== undefined ? { by: steer.by } : {}),
+                  at: steer.at,
+                  taken: steer.takenBy === t.attempts,
+                })),
+              }
+            : {}),
+          ...(current !== undefined
+            ? {
+                current: {
+                  id: current.id,
+                  ...(currentOutput !== undefined
+                    ? { output: currentOutput.value, ...(currentOutput.cut ? { outputCut: true as const } : {}) }
+                    : {}),
+                },
+              }
+            : {}),
         },
       };
     },

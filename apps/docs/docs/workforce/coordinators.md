@@ -481,9 +481,9 @@ It hears when a task completes, with what came back; when it fails for good, wit
 | `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
 | `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
 | `dispatchTask_tasks` | Starts a new task, or a held one, on a delegate now |
-| `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: cancels it (`status: "cancelled"`), with nothing said in the conversation |
+| `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: sends it a `message`, or cancels it (`status: "cancelled"`), with nothing said in the conversation |
 
-A task that has started can't be changed, only cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
+A task that has started can't be changed, only steered with a message or cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
 
 To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
 
@@ -513,22 +513,34 @@ An answer doesn't use up the task's retries, and the task can ask again. It has 
 
 A task a coordinator is [waiting on](../orchestration/task-board.md#waiting-on-a-task) (`getTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
 
-### After a task finishes
+### Steering a task while it runs
 
-A finished task's session stays open. For a worker on the built-in `agent` flow, a message to its worker in that session picks the task up again:
+Changed your mind, or forgot a detail? Send the task a message. It's kept on the task and reaches its delegate's work without starting over or using a retry:
+
+```ts
+await help.sendAction(
+  "updateTask_tasks",
+  { id: taskId, message: "Also flag anything under AGPL." },
+  { sessionId: session.id },
+)
+```
+
+A task that hasn't started gets every message in its brief. A running one takes it before its delegate's next model call. A task waiting on work it handed on gets a turn with the message right away. And a message that lands just after the delegate's last model call gets one more turn before the task finishes. The conversation hears one ending, after that turn. See [Sending a message to an open task](../orchestration/task-board.md#sending-a-message-to-an-open-task) for the rules.
+
+Typing in the task's own session does the same. For a worker on the built-in `agent` flow, or a coding worker built on a [harness manager](../orchestration/harness-manager.md#talking-to-a-run), a line there while the task is unfinished is a message to the task, and no separate reply runs:
 
 ```ts
 const run = await workforce.findWorkerSession({ worker: "licenses", taskId, filingSessionId })
 const licenses = createClient({ flowKind: run.flowKind, userId, baseUrl, fetcher })
 await licenses.sendAction("run", { message: "Also flag anything under AGPL." }, { sessionId: run.id })
-// output: { reopened: <id of the task it reopened> }
+// output: { steered: <the task's id> }
 ```
 
-The message reopens the task. It goes back on the conversation's board and reads in progress, under the same id, and its next attempt runs in the same session, where the worker answers from everything the session holds. The attempt doesn't use up the task's retries. When it ends, the conversation that filed the task hears the new ending, as it heard the first. If the task has follow-ups, the latest of them is the one reopened, and the output names it. A worker flow you build yourself handles the message however its `run` action does.
+### After a task finishes
 
-While the task or one of its follow-ups is still unfinished, a message in that session is an ordinary turn and the worker answers it directly.
+A finished task's session stays open, and the task stays as it ended. A line in that session is an ordinary turn: the worker answers from everything the session holds, and the task, its output and its retries don't change. A worker flow you build yourself handles the line however its `run` action does.
 
-To build on the work, dispatch a follow-up task that names it:
+A finished task takes no message: `updateTask_tasks` answers `task_finished`. To correct or build on the work, dispatch a follow-up task that names it:
 
 ```ts
 await help.sendAction(
@@ -538,7 +550,7 @@ await help.sendAction(
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `createTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. Once it completes, `getTask_tasks` on the original shows the follow-up's output as `current`, beside the original's own output, which never changes. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `createTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
 
 ```json
 { "ok": false, "error": "follow_up_of_unrun: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }

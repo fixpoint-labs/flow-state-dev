@@ -108,13 +108,6 @@ describe("answerTask (S2)", () => {
     expect(JSON.stringify(b.get("t"))).toBe(before);
   });
 
-  it("declines a task parked for a person's turn: that park re-enters through its own door (BR-10)", async () => {
-    const b = await board([row("t", { status: "parked", parkedForTurn: true, attempts: 1 })]);
-    const out = await b.call("answerTask", { taskId: "t", answer: "eu-west" });
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^not_parked_on_question: .*person's turn/) });
-    expect(b.get("t")).toMatchObject({ status: "parked", parkedForTurn: true });
-  });
-
   it.each(["completed", "errored", "cancelled"] as const)(
     "declines a %s task as terminal_task_write_declined (BR-9, BR-26)",
     async (status) => {

@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import type { RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
+import type { BackgroundFailure, RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -170,6 +170,26 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
   if (result.completed.length + result.failed.length > 0) {
     safeEmit(0);
   }
+}
+
+/**
+ * The pool's kept failures, shaped for `RequestEnding.backgroundFailures`.
+ * Nothing when none failed, or when `cancelled` says the request's cancel
+ * fired. `cancelled` is asked only when there is something to withhold, so a
+ * request with no failure never pays for its store read.
+ */
+async function backgroundFailuresOf(
+  ctx: ExecutionContext,
+  cancelled: () => Promise<boolean>
+): Promise<{ backgroundFailures?: BackgroundFailure[] }> {
+  const failed = getRequestSideChainPool(ctx)?.failures() ?? [];
+  if (failed.length === 0 || (await cancelled())) return {};
+  return {
+    backgroundFailures: failed.map((f) => ({
+      step: f.meta.name,
+      message: f.reason instanceof Error ? f.reason.message : String(f.reason)
+    }))
+  };
 }
 
 /**
@@ -2731,8 +2751,19 @@ async function runActionAttempt<
     // success).
     // Held, the request stays owed until its terminal status is flushed below:
     // a shutdown that closed the stores first would leave its log without one.
+    // A cancel accepted after the abort check above changes nothing else
+    // here, but it still keeps what its steps did after it from failing a task.
     const endFailure = await requestEndRegistryOf(ctx)?.run(
-      { status: terminalStatus },
+      {
+        status: terminalStatus,
+        // The error path's predicate. The abort poll is closed by now, so a
+        // cancel another instance recorded since is read from the record.
+        ...(await backgroundFailuresOf(
+          ctx,
+          async () =>
+            abortController.signal.aborted || deliveredAbort || (await abortRecordedForThisRun().catch(() => false))
+        ))
+      },
       { requestId, logger, keepOwed: holdsTerminalStatus }
     );
     if (endFailure !== undefined) {
@@ -3057,11 +3088,13 @@ async function runActionAttempt<
     await drainRequestSideChainPool(ctx);
     // As on the success path (FIX-2077). The request has already ended, so a
     // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
+    // The cancel is this flag, not the error's name. A disconnect is `interrupted` and still hands its failures on.
+    const handedOn = await backgroundFailuresOf(ctx, async () => wasIntentionalAbort || abortController.signal.aborted);
     const ending: RequestEnding = wasIntentionalAbort
       ? { status: "aborted" }
       : signalAborted
-        ? { status: "interrupted" }
-        : { status: "failed", error: { message: normalizedError?.message ?? String(error) } };
+        ? { status: "interrupted", ...handedOn }
+        : { status: "failed", error: { message: normalizedError?.message ?? String(error) }, ...handedOn };
     const endFailure = await requestEndRegistryOf(ctx)?.run(ending, { requestId, logger });
     if (endFailure !== undefined) {
       logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {

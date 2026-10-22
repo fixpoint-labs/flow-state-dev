@@ -45,7 +45,8 @@ pending ─┬─→ in_progress ─┬─→ completed
 ```
 
 `completed`, `errored`, and `cancelled` are terminal: every write treats them as
-final except `reopen`, which puts a finished task back in `pending` (see below).
+final, and a finished task's output never changes. A follow-up (`followUpOf`) corrects
+or extends one.
 A move to the status a task already holds is on the table, so a repeat write doesn't throw. Anything else
 throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
 writes nothing.
@@ -58,8 +59,7 @@ task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
 `granted` counts the failure retries this task was **authorized**, so it excludes
-the re-entries that do not spend the budget (`unblock`, `unpark`, `reopen`,
-`reclaim`) and includes a retry that was granted but never picked up.
+the re-entries that do not spend the budget (`unblock`, `unpark`, `reclaim`) and includes a retry that was granted but never picked up.
 `deniedByBudget` turns `true` once a retry was refused because the collection's
 budget was spent; the board's `terminationReason` reads that flag, so branch on it
 rather than parsing the error string.
@@ -168,22 +168,14 @@ from the next resolution onward. A ref you are already holding keeps reporting s
 a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `awaitReview`,
-`unpark`, `reopen`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+`unpark`, `cancel` — takes an optional trailing `TaskTransitionOptions`
 argument that makes the write advisory. `ifAllowed` skips the write when the task is
 already settled, or when the transition is one the state machine or the calling verb
 refuses. A legal status transition is necessary but not sufficient: a verb that owns
 one edge runs only from that edge's source status: `unpark` runs on a `parked` task and no other. Like `cancel`, `unpark`
 declines without options: `disallowed` for a live task, `terminal` once settled, and a
-second answer to an already-queued task is refused. `reopen` runs on a finished task
-(`completed`, `errored` or `cancelled`) and no other, and declines without options:
-`{ outcome: "declined", reason: "disallowed", status }` for any other status, nothing
-written. It is the only write that moves a task out of a finished status. The reopened
-task keeps its id, `attempts` and `output` (until the next attempt writes its own),
-clears its `error` and `completedAt`, and carries `reopened: true`, as does the worker
-input for the attempt it queues. That attempt is not charged against `maxAttempts`.
-`recordEnding` is not called for a reopen; the reopened attempt's own ending is a new
-one. The change event kind is `"reopened"`. Like `unpark`, it only re-queues: something
-must drain the board. `in_progress → pending` sits in the status table too,
+second answer to an already-queued task is refused. No write moves a task out of a
+finished status. `in_progress → pending` sits in the status table too,
 but it belongs to `reclaim()`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
@@ -886,12 +878,16 @@ is refused, not edited:
 | `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
 | `status: "held"` / `"pending"` | Before the task first starts |
 | `status: "cancelled"` | Until the task finishes, sent alone |
+| `message` | Until the task finishes, sent alone ([steers](#messages-on-an-open-task)) |
 
 *Before it first starts* means no attempt ever claimed it (`hasStarted(task)`), so a task back in
 `pending` after a failed attempt stays locked. `labels` replaces the list; `metadata` merges.
 `TASK_FIELD_RULES` and `lockedFields(task, fields)` export the table. The refusals are
-`field_locked_after_start` (naming the fields and the status), `task_finished`,
-`cancel_takes_no_edits` and `nothing_to_update`. A cancel through the tool writes
+`field_locked_after_start` (naming the fields and the status), `task_finished` (a message
+included: "a finished task takes no message; file a follow-up"), `cancel_takes_no_edits`,
+`message_takes_no_edits` (a message is its own write, so it is sent alone), `nothing_to_update`,
+`steer_limit` and `message_not_supported` (a board whose collection keeps no steers). Every
+check runs before the write, so a refused call writes nothing. A cancel through the tool writes
 `cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
 
 `dispatchTask` starts work now. Pass
@@ -910,7 +906,9 @@ claim clears it until the next run starts.
 task found rather than from its `listTasks` row: its goal, `context`, `input`, the fields
 `updateTask` edits (`deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts`),
 `status`, `attempts`, `statusNote`, `filedByTask`, `output` with `checkpoint: true` when it is a
-reported checkpoint, `error`, `question`, `followUpOf`, `run` and `completedAt`.
+reported checkpoint, `error`, `question`, `followUpOf`, `run` and `completedAt`, and `current`:
+the latest completed follow-up of the task's chain, `{ id, output, outputCut? }`, when one exists.
+A `listTasks` row names it by id only (`current: { id }`).
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
 comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
 `metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `question` is set only
@@ -1087,6 +1085,44 @@ keeps that worker: `updateTask` won't move it
 (`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running
 waits until that task ends, then runs. The task it follows never changes. If two
 follow-ups of the same task are filed at once, the second gets `task_id_taken` (file it again).
+
+#### Messages on an open task
+
+`updateTask({ id, message })` keeps a message on a task that hasn't finished: from the filer's
+model through the tool (`from: "filer"`), or from a person through the `updateTask_<board>` action
+(`from: "user"`, `by` their id from the request's verified identity). The collection write is
+`TaskCollectionRef.steer(id, { message, from, by?, key? })`, appended to `Task.steers` (at most
+`MAX_STEERS`, 20; past that it declines `steer-limit`; on a finished task, `terminal`). Its change
+event kind is `"steered"`. No status changes, no attempt is used, no ending is recorded.
+
+Where a message lands:
+
+- **Before the first claim**: the claim marks every steer taken by the attempt, and the worker
+  input carries them (`TaskWorkerInput.steers`), so the first brief has them.
+- **While a request runs the task**: `createSteerContext({ resolve })` is a context preset that,
+  before each model call, takes the steers no earlier read took (`takeSteers(id, { claim,
+  takenIn })`, fenced to the claim) and renders them. `renderSteers`, `runningTaskOf` and
+  `takeRunningSteers` are its parts, for a worker of your own.
+- **While the task waits on work it filed** (`waitingOn: "filed"`): the steer sets `waitingOn:
+  "steer"`, and the host starts the turn it is owed.
+- **After the request's last model call**: an untaken message gives the task one more turn on
+  the same attempt before it settles, run by the entry you name in
+  `taskLedgers({ endRules: { steerTurn: { entry } } })`. A message that lands while the task is
+  settling still gets it: the completion itself declines while one is untaken
+  (`refuseUntakenSteers`, reason `untaken-steers`). Without `steerTurn`, the task settles and the
+  message stays untaken, so on such a board a late message may not be acted on.
+
+`getTask` returns the messages as `steers` (`{ message, from, by?, at, taken }`). A message a
+request takes mid-run shows in the task's session as a line from its sender
+(`showTakenSteers`); a line typed in the session is there already.
+
+#### Upgrading from stores written by an older version
+
+Rows written before steers existed read in their new shape, with nothing to run. A row stored with
+`reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
+at the latest line in its session, so its next turn reads it. A row stored `parked` for a
+person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged. See
+`retired-shapes`.
 
 ### skillsManifestSource
 

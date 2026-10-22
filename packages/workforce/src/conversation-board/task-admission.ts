@@ -27,7 +27,7 @@ import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from
 import { messageLogOf } from "../messages/message-log";
 import { WORKER_MESSAGES_SEEN_STATE } from "../messages/keys";
 import { FILING_SESSION_STATE_KEY } from "../workers/keys";
-import { CHECK_TASK_ENTRY, PIECE_OF } from "./board-entries";
+import { CHECK_TASK_ENTRY, PIECE_OF, STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
 
 /** The running row this session works, on the ledger of the conversation it was opened for, or none. */
@@ -38,6 +38,11 @@ async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; 
   const sessionId = ctx.session.identity.id;
   const row = ref?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
   return ref === undefined || row === undefined ? undefined : { ref, row };
+}
+
+/** Whether this request's task row has `resultTo: "conversation"`. The row, never session state. */
+export async function worksConversationResultTask(ctx: BlockContext): Promise<boolean> {
+  return (await ownTaskRow(ctx))?.row.resultTo === "conversation";
 }
 
 /**
@@ -78,13 +83,17 @@ export function piecesHold(board: TaskCollectionRef, taskId: string): boolean {
   return board.list().some((row) => row.filedByTask == null && row.metadata?.[PIECE_OF] === taskId && holdsItsFiler(row));
 }
 
-/** What else holds a task session's task open, beside its own request (rule 6). */
+/**
+ * What else holds a task session's task open, beside its own request (rule
+ * 6), and the entry that runs the turn a late steer is owed (FIX-2086 D2).
+ */
 export const conversationEndRules: TaskEndRules = {
   filedWorkHolds: async (ctx, task) => {
     const own = await ownConversationLedger(ctx);
     return own !== undefined && piecesHold(own, task.id);
   },
-  workQueued: messageQueued
+  workQueued: messageQueued,
+  steerTurn: { entry: STEER_TURN_ENTRY }
 };
 
 /**

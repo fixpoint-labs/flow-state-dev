@@ -152,7 +152,7 @@ A refusal names its rule: "goal can't change after a task starts; steer it inste
 sent with a message or edits is refused; reassigning a started task is cancel and refile. Never
 editable: other statuses, `followUpOf` (the task a follow-up continues), attempts used, and the
 session and result settings. Finished output is fixed because its filer and dependents already used
-it; a correction or more tracked work is a follow-up, which a screen can offer. A task view shows the latest finished follow-up's output
+it; a correction or more tracked work is a follow-up, which a screen can offer. A task view shows the latest completed follow-up's output
 as current, the original as history.
 
 **The worker reports progress with `reportProgress({ statusNote?, output? })`,** its own tool, not

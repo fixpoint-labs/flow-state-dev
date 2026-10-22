@@ -97,7 +97,7 @@ export type {
 
 /** The request-end seam (FIX-2077): a framework package's hook after a request's last drain. */
 export { REQUEST_END_SEAM, onRequestEnded } from "./request-end";
-export type { RequestEndHook, RequestEndSeam, RequestEndStatus, RequestEndVerdict, RequestEnding } from "./request-end";
+export type { BackgroundFailure, RequestEndHook, RequestEndSeam, RequestEndStatus, RequestEndVerdict, RequestEnding } from "./request-end";
 
 export {
   DISPATCH_SEAM,

@@ -54,31 +54,25 @@ import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
-import { taskMessage } from "./task-message";
+import { steersBrief, taskMessage } from "./task-message";
 
-// A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
-export { taskMessage } from "./task-message";
 
 /**
  * What a task turn says (FIX-1817): the answer to the worker's question on
  * the attempt that answer re-queued, labelled as one, and the task as filed
- * on every other attempt. A retry after a failure is handed the task again,
- * never an answer. Shares its invariant with `packWorkerInput`'s `answer`
- * (orchestration `worker-step.ts`, `answer-envelope.test.ts`).
- *
- * On the attempt a user's message reopened (FIX-1764), the message is
- * already in the session, written there by the worker's door, so the turn
- * points at it rather than repeating it.
+ * on every other attempt, with every steer sent into it since (FIX-2086). A
+ * retry after a failure is handed the task again, never an answer. Shares its
+ * invariant with `packWorkerInput`'s `answer` (orchestration `worker-step.ts`,
+ * `answer-envelope.test.ts`). The answer's attempt is handed the steers too:
+ * a steer sent while the task waited on its question is taken when it
+ * resumes, and never answers the question.
  */
-export function taskTurnMessage(task: TaskWorkerInput): string {
-  if (task.answer !== undefined) return `Answer to your question:\n\n${task.answer}`;
-  if (task.reopened === true) return REOPENED_TURN;
-  return taskMessage(task);
+function taskTurnMessage(task: TaskWorkerInput): string {
+  if (task.answer === undefined) return taskMessage(task);
+  const steers = steersBrief(task);
+  const answer = `Answer to your question:\n\n${task.answer}`;
+  return steers === undefined ? answer : `${answer}\n\n${steers}`;
 }
-
-/** What the turn of a reopened task says: the user's message is the line above it. */
-export const REOPENED_TURN =
-  "The user wrote to you about this task after you finished it; their message is just above. Pick the task up again from there.";
 
 
 /**
@@ -107,7 +101,7 @@ export function sessionTaskOf(ctx: BlockContext): string | undefined {
  * board's hand-over named it at birth (a readonly field): where the task's
  * notice goes.
  */
-export function filingFlowOf(ctx: BlockContext): string | undefined {
+function filingFlowOf(ctx: BlockContext): string | undefined {
   const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
   return typeof flow === "string" ? flow : undefined;
 }
@@ -199,11 +193,8 @@ function verifiedClaimOf(ctx: BlockContext, entry: string): WorkerTaskClaim {
  * wrote at its birth, never from a request. `undefined` outside a
  * conversation's task session.
  *
- * For a host's message door over a worker's runs
- * (`harnessMessageDoor` in `@flow-state-dev/harness-manager`): the row the
- * session works is on this board, and its next attempt starts when the
- * conversation runs its board. `filingSession` is that conversation, where a
- * finished row's board runs once a message reopens it (FIX-1764).
+ * For a host's door over a worker's runs: the row the session works is on
+ * this board, and `filingSession` is the conversation that filed it.
  *
  * @param ctx The running block's context, in the task session. Its flow must
  *   declare the conversation ledger (`workerTaskEntry` installs it).

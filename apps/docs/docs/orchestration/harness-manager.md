@@ -60,7 +60,7 @@ A run refused before it starts (no project, a remote the host doesn't allow) fai
 
 You can also give the manager a `judge`: an evaluator block that reads a task's goal, the run's answer and its commits, and says whether the work is done, with a confidence `floor`. It runs after the phase's own check passes, and only for a task from a board read from the claim that has a goal. It answers one of three ways. *Done* closes the task. *Not done* fails the attempt, and the next attempt's prompt carries the judge's reason. *Ask* puts a question to the user, the same way a question from the run does. A verdict below the floor counts as done, and a judge that fails never fails the task: the task settles on the phase's check, and its output says `judged: false`.
 
-A manager built with `ledgers` alone has no `messageDoor`, since that door reads one board's rows. To let a user send a message into a run, build the door with `harnessMessageDoor` and tell it which boards the calling session's run may be on. Give a board `reopenIn`, the session that runs its drain, and a message on a finished task there reopens it. Workforce's `filingConversationBoard(ctx)` returns that session as `filingSession`. The package README's [One door for runs from more than one board](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/harness-manager/README.md#one-door-for-runs-from-more-than-one-board) has the setup.
+To let a user type into a run's session, build the door with `harnessSessionDoor` and tell it which board the calling session's run is on. One door serves every manager on the flow. See [Talking to a run](#talking-to-a-run).
 
 ## Choosing the harness
 
@@ -147,67 +147,76 @@ Answer it and the run picks up **the same coding session**, not a new one told w
 
 ## Talking to a run
 
-A user can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
+A user talks to a coding run by typing in the run's own session, the one the task's run link names. What a line does depends on whether the task has finished.
 
-The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
+**While the task is open, a line steers it.** The line is kept on the task as a message from that user, the same write as `updateTask({ message })` (see [Sending a message to an open task](./task-board.md#sending-a-message-to-an-open-task)). The run takes it at its next step: the same request runs another step that resumes **the same coding session** with the message in its prompt. The checkout and the harness's memory of the conversation carry over, so the run picks up with what it had already read and tried, plus what you said. No attempt is used. A follow-up filed on the task and still waiting to start counts as open: the line goes to it.
+
+**Once the task and its follow-ups have finished, a line is talk.** One harness run resumes the task's coding session with the line, and its answer is the reply in the session. It runs outside any attempt: the task, its output and its attempts don't change. It holds the checkout while it runs, as any run does. To change the work, file a follow-up task.
+
+### Steering a run
+
+By default a step that is running finishes first, and the next step takes the message. If your harness's abort resolves only once its process has exited, build the manager with `stopsOnAbort: true`. The manager then checks the task about once a second while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. A message that arrives before then waits for the step's own end. The stop costs the step the run was in the middle of; the checkout keeps whatever it wrote. Leave `stopsOnAbort` off for a harness whose abort can return while its process still runs, so two processes never work one checkout.
+
+A message that arrives after the run's last step, even while its result is being checked, gets one more step before the task settles. That step resumes the coding session the run confirmed, so it needs one: if the harness never confirmed a session, the message is left on the task unread, and only the late-message turn below (`STEER_TURN_ENTRY`) acts on it. A host that doesn't declare that entry completes the task without it. The first attempt of a task filed with messages already on it carries them all in its prompt. A message the run takes mid-run shows in its session as a line from its sender.
+
+If the task is cancelled, finishes, or is claimed again while a step runs, the request runs no further step for it.
+
+### The session door
+
+Build the action with `harnessSessionDoor`, declare it on the coding flow, and give it the same harness slot the managers use. `board` finds, from the calling session's own fields, the board its run is on:
 
 ```ts
-import { handler } from "@flow-state-dev/core";
-import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
-import { z } from "zod";
+import { defineFlow } from "@flow-state-dev/core";
+import { harnessManager, harnessSessionDoor } from "@flow-state-dev/harness-manager";
+import {
+  conversationLedgers,
+  filingConversationBoard,
+  startOwedSteerTurn,
+  STEER_TURN_ENTRY,
+  steerTurnEntry,
+  workerTaskEntry,
+} from "@flow-state-dev/workforce";
 
-const manager = harnessManager({ /* … */ });
-const board = taskBoard({ /* … the board whose rows the manager works */ });
-const onEnding = handler({
-  name: "on-coder-ending",
-  inputSchema: taskSettledInputSchema,
-  outputSchema: z.object({}),
-  execute: async () => ({}),
-});
+const manager = harnessManager({ ledgers: conversationLedgers, harness /* , phase, workspace, … */ });
+const runOf = (row) => ({ issue: row.id, phase: "answer" });
 
 defineFlow({
   kind: "coder",
-  internal: {
-    actions: {
-      resume: { block: board.drain },
-      onTaskSettled: taskSettledEntry({ block: onEnding }), // hears each task end; see the task board page
-    },
+  actions: {
+    message: harnessSessionDoor({
+      name: "coder",
+      harness,
+      board: async (ctx) => {
+        const filed = await filingConversationBoard(ctx);
+        return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
+      },
+      onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
+    }),
   },
-  actions: { message: manager.messageDoor({ drain: "resume" }) },
-  task: { actions: { work: { block: manager } } },
+  internal: {
+    actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ name: "coder-steer-turn", block: manager }) },
+  },
+  task: { actions: { work: workerTaskEntry({ name: "coder-work", block: manager }) } },
 });
 ```
 
-`onTaskSettled` is the entry every flow holding a board that hands tasks out declares: see [Hearing how a task ended](./task-board.md#hearing-how-a-task-ended).
+- `runOf` names the issue and phase a row's run is keyed by, the values the manager keys its run record by, or `undefined` for a row no manager behind this door runs.
+- `onSteered` starts the turn a message is owed when the task was running nothing because it was waiting on work it filed.
+- The internal `STEER_TURN_ENTRY` entry runs the turn a late message is owed: the task again, on the same attempt.
 
-If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its flow kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
+Call `message` with `{ message }` on the run's session. The line goes into the session as the user's message when the action starts, so a UI can show it as delivered by reading the session. It answers `{ steered: <taskId> }` for a steer and `{ reply, taskId }` for talk. A refusal fails the request, with the reason in words as the error's message and `SessionDoorRefused` as its cause, so only a delivered line ever completes:
 
-Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The user's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
-
-What happens depends on where the task is:
-
-| The task is | Your message |
+| The session | Refused with |
 |---|---|
-| Running | Stops the attempt and continues the session with your message. The action answers `continuing` |
-| Running, but its harness hasn't opened its coding session yet | Held for up to a minute while the attempt starts. If the attempt picks your message up as it starts, it works on it straight away; if the harness opens its session first, it's handled as Running. Either way the action answers `continuing`. A harness that still hasn't opened one after a minute is refused with *this run is still starting*. If the attempt ends without opening one, the message is refused with *this run's harness can't continue with a message* |
-| Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
-| About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
-| Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
-| Finished, on a board that says where its drain runs | Reopened. The message is kept for the next attempt, the task goes back in the queue under its own id, and the board's drain runs, so the task reads in progress again and the next attempt resumes the same coding session with your message. The action answers `continuing`, or `kept` if another message reopened it first. A run whose harness never confirmed a coding session is refused with *this run's harness can't continue with a message* |
-| Finished, on a board that doesn't say | Refused with *this task has finished and can't take a message here*. The manager's own `messageDoor` always answers this way; a door built with `harnessMessageDoor` reopens the task on a board you give a `reopenIn` session |
-| Not started | Refused, with the reason |
+| Has no task that started in it | `not-started` |
+| Holds a finished task whose harness never confirmed a coding session | `cannot-continue` |
+| Holds a task that can take no more messages (20) | `steer-limit` |
+| Holds a task that finished before the line reached it | `finished` |
+| Is on a board that keeps no messages | `not-supported` |
 
-A request that completes answers `{ outcome: "continuing" | "kept", taskId }`.
+**A line doesn't spend a retry**, and it isn't an answer: a run waiting on its own question still needs its question answered.
 
-A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. The error's message is the reason in words, such as "This task has finished and can't take a message here.", and its cause is the door's `TurnRefused` error. A refused message is never handed to a later attempt either.
-
-**A message doesn't spend a retry.** The run parks for your turn and comes back without being charged an attempt, so talking to a run never makes it fail sooner.
-
-**A message isn't an answer.** If the run is waiting on its own question, your message is kept for later but the question still needs answering.
-
-**Only the run's own user can send one.** The session belongs to them, so anyone else is refused before the message is written.
-
-The stop costs the step the run was in the middle of.
+**Only the run's own user can send one.** The session belongs to them, so anyone else is refused before the line is written.
 
 ## The checkout
 
@@ -255,7 +264,7 @@ stable.
 
 `@flow-state-dev/harness-manager` is the supported host API: everything above,
 plus the pieces you need around it: `harnessManager` and its options,
-`harnessMessageDoor`, `PhaseSpec`
+`harnessSessionDoor`, `PhaseSpec`
 and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
@@ -276,7 +285,7 @@ record instead of deriving them again.
 - **A turn in progress can be lost.** Work is saved when a turn ends, so a machine that dies mid-turn loses that turn.
 - **A repository on the host's own disk is never saved.** A run cut from a repository listed in `localRepositories` on `localWorkspaceHost` works in that repository directly, and its work stays on that machine.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
-- **A harness that can't resume can't be sent a message.** A run whose harness never confirms a coding session is refused with *this run's harness can't continue with a message*.
+- **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session to be kept, but the step that takes it resumes one: on a run with none confirmed, only the late-message turn (`STEER_TURN_ENTRY`) acts on it.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
 
 ## Related pages
