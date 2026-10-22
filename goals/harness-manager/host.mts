@@ -1,9 +1,4 @@
-/**
- * Minimal host flow for the harness-manager goal checks.
- *
- * The retired conductor lab used to supply this. The goals only need seed,
- * status, message, and answer over one board and one handed-off manager.
- */
+/** Host flow for the harness-manager goal checks. The conductor lab used to supply it. */
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
 import { z } from "zod";
@@ -39,10 +34,8 @@ import {
 } from "@flow-state-dev/harness-manager/checkout";
 import { isAbsolute } from "node:path";
 
-/** The one assignee this board routes to. */
 const ASSIGNEE = "harness" as const;
 
-/** How HTTP / `createFlowState` address this host. */
 export const HARNESS_GOAL_FLOW_KIND = "harness-goal" as const;
 
 export interface HarnessGoalFlowOptions {
@@ -58,37 +51,25 @@ export interface HarnessGoalFlowOptions {
   >;
 }
 
-/**
- * A positive whole number from the environment, or `fallback` when unset.
- */
 export function positiveIntFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   return assertPositiveInt(name, Number(raw));
 }
 
-/**
- * The repository checkouts are cut from. Absent is a configuration error.
- *
- * Reads `GOAL_HARNESS_REPO`, then the retired `GOAL_CONDUCTOR_REPO` name.
- */
-export function requireSourceRepo(
-  variable = "GOAL_HARNESS_REPO",
-  dispatcher: string | readonly string[] = process.cwd(),
-): string {
-  const repo = process.env[variable] || process.env.GOAL_HARNESS_REPO || process.env.GOAL_CONDUCTOR_REPO;
+export function requireSourceRepo(): string {
+  const repo = process.env.GOAL_HARNESS_REPO || process.env.GOAL_CONDUCTOR_REPO;
   if (repo === undefined || repo === "") {
     throw new Error(
-      `${variable} is not set. It names the repository the coding agent works on, ` +
+      "GOAL_HARNESS_REPO is not set. It names the repository the coding agent works on, " +
         "and there is no safe default: falling back to this process's directory " +
         "would point the agent at the dispatcher's own repository.",
     );
   }
-  assertDistinctRepository(variable, repo, dispatcher);
+  assertDistinctRepository("GOAL_HARNESS_REPO", repo, process.cwd());
   return repo;
 }
 
-/** Build the host flow one goal check drives. */
 export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
   const {
     epic,
@@ -169,10 +150,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
     execute: async (input, ctx) => {
       const taskId = harnessTaskId(input.issue, input.phase);
       const existing = await ctx.cap[boardId].getTask(taskId);
-      if (existing !== undefined) {
-        await ctx.sequencer?.patchState({ taskId: existing.id });
-        return { taskId: existing.id };
-      }
+      if (existing !== undefined) return { taskId: existing.id };
       const task = await ctx.cap[boardId].addTask({
         id: taskId,
         goal: `Drive ${input.issue} through its ${input.phase} phase.`,
@@ -181,21 +159,7 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
         maxAttempts,
         metadata: { topic: `${input.issue}/${input.phase}` },
       });
-      await ctx.sequencer?.patchState({ taskId: task.id });
       return { taskId: task.id };
-    },
-  });
-
-  const returnTaskId = handler({
-    name: "harness-goal-return-task-id",
-    inputSchema: z.unknown(),
-    outputSchema: z.object({ taskId: z.string() }),
-    execute: (_input, ctx) => {
-      const taskId = (ctx.sequencer?.state as { taskId?: unknown } | undefined)?.taskId;
-      if (typeof taskId !== "string" || taskId === "") {
-        throw new Error("seed completed without recording a task id.");
-      }
-      return { taskId };
     },
   });
 
@@ -321,11 +285,10 @@ export function harnessGoalFlow(options: HarnessGoalFlowOptions) {
           name: "harness-goal-seed",
           inputSchema: harnessTaskInputSchema,
           outputSchema: z.object({ taskId: z.string() }),
-          stateSchema: z.object({ taskId: z.string().nullable().default(null) }),
         })
-          .tap(seedTask)
-          .step(board.drain)
-          .step(returnTaskId),
+          // The drain's result is not the task id. tap keeps the id seed returned.
+          .step(seedTask)
+          .tap(board.drain),
       },
       status: { block: readStatus },
       answer: {
