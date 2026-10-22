@@ -239,7 +239,7 @@ function afterAnswerStep(block: BlockDefinition<any, any>) {
       if (!(await worksConversationResultTask(ctx as never))) throw error;
       // eslint-disable-next-line no-console
       console.error(
-        `[agent] After-answer step "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,
+        `[agent] Background work "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,
         error instanceof Error ? error.message : error
       );
     }

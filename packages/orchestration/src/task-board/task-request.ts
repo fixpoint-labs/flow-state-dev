@@ -233,6 +233,7 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
   // request, and keeps an answer this one gave that counts.
   if (!record.own && waitsOnItsOwnRequest(record.prior)) return waitOn(record, row, record.prior!, record.answer);
   if (ending.status === "suspended") return waitOn(record, row, stopOf(record, ending), undefined);
+  // The first failure only, on purpose: one fails the attempt, and the row records one error.
   const background = ending.backgroundFailures?.[0];
   if (failsTheAttempt(ending.status) || background !== undefined) {
     // The request's own error wins; then the first background step that failed (FIX-2088).

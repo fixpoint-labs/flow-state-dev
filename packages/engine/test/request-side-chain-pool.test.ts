@@ -299,6 +299,19 @@ describe("RequestSideChainPool.failures", () => {
     expect(pool.failures()).toEqual([]);
   });
 
+  it("a quiescence drain waits for a scope drain its caller stopped waiting on, and keeps its failure", async () => {
+    const pool = createRequestSideChainPool();
+    let fail!: (reason: Error) => void;
+    pool.addTask({ promise: new Promise((_resolve, reject) => (fail = reject)), meta: meta("scope-a", "slow-write") });
+    // The caller gives up (a timed-out wait): the entry is out of the pool, still unsettled.
+    void pool.drainScope("scope-a");
+    setTimeout(() => fail(new Error("late boom")), 20);
+
+    await pool.drainToQuiescence();
+
+    expect(pool.failures().map((f) => f.meta.name)).toEqual(["slow-write"]);
+  });
+
   it("keeps nothing for work that succeeded", async () => {
     const pool = createRequestSideChainPool();
     pool.addTask({ promise: Promise.resolve(1), meta: meta("scope-a") });

@@ -117,7 +117,7 @@ pipeline
   .step(nextStep);
 ```
 
-`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. In a request working a dispatched task, that failure still fails the task's attempt once the request ends. Set `failOnError: true` to promote side-chain failures:
+`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. In a request working a dispatched task, that failure also fails the dispatched task's attempt once the request ends. Set `failOnError: true` to promote side-chain failures:
 
 ```ts
 .waitForSideChain({ failOnError: true })
@@ -418,7 +418,7 @@ A gate suspends the request without draining the work pool. In-flight background
 
 If a background task fails and the parent goes on to complete, the failure is dropped and logged. There is no recovery path. The request is terminal, so nothing retries the task. This is the best-effort contract side chains are built for.
 
-A request working a dispatched task is the exception. The request still completes, but the failure fails the task's attempt, so the task runs again while it has attempts left. A failure from before a suspension doesn't carry over: the resume runs the failed task again, and that run is the one that counts.
+A request working a dispatched task is the exception. The request still completes, but the failure fails the dispatched task's attempt, so the board runs that task again while it has attempts left. A failure from before a suspension doesn't carry over: the resume reruns the failed background step, and that run is the one that counts. A background step still running when the request suspends keeps running. If it has completed by the time the request resumes, it doesn't run again; otherwise the resume reruns it, and again that run is the one that counts.
 
 When background work is required for correctness, opt into `.waitForSideChain({ failOnError: true })`. It surfaces the failure into the parent, but be precise about how. It is drain-then-throw, not fail-fast. The wait drains the scope's queued work first, then throws the first failure, so the parent becomes `failed` only after the scope settles (or the wait times out). A `failed` request is not continuable on the same id. The only follow-up is a fresh `/retry`.
 

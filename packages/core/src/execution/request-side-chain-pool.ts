@@ -104,7 +104,9 @@ export interface RequestSideChainPool {
    *
    * This is the drain with the guarantee attached: when it resolves, no task
    * queued by this request can still be running — including work queued by a
-   * task that was itself being drained, however deep it nests. Repeating is
+   * task that was itself being drained, however deep it nests, and work a
+   * scope drain took out of the pool and is still awaiting (a timed-out
+   * `.waitForSideChain()` whose caller stopped waiting). Repeating is
    * the pool's own business because the need to repeat comes from `drainAll`
    * awaiting a snapshot; a caller that looped for itself would be compensating
    * for a detail of this interface.

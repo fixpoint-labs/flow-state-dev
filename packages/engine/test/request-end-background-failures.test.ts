@@ -113,6 +113,31 @@ describe("request-end seam · background failures", () => {
     expect(endings[0]?.backgroundFailures).toEqual([{ step: "persist", message: "persist failed" }]);
   });
 
+  it("hands on a failure that lands after a .waitForSideChain({ timeoutMs }) gave up and its timeout was rescued", async () => {
+    // The wait takes the step out of the pool before it awaits it. Once the
+    // wait times out and a rescue carries the request on, the request's own
+    // drain must still wait for that step, or its failure is never kept.
+    const endings: RequestEnding[] = [];
+    const impatient = sequencer({ name: "impatient" })
+      .sideChain(throwingStep("slow-write", "late boom", 80))
+      .waitForSideChain({ timeoutMs: 10 })
+      .rescue([{ block: handler({ name: "gave-up", inputSchema: z.any(), execute: () => "gave up waiting" }) }]);
+    const flow = defineFlow({
+      kind: "bg-failures-wait-timeout",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" }).tap(registering(endings)).step(impatient).step(answer)
+        }
+      }
+    })();
+
+    const { result } = await run(flow);
+
+    expect(result.output).toBe("fine");
+    expect(endings).toEqual([{ status: "completed", backgroundFailures: [{ step: "slow-write", message: "late boom" }] }]);
+  });
+
   it("hands on nothing when the request was cancelled, whether a step settled on the cancel or threw anyway", async () => {
     const endings: RequestEnding[] = [];
     const stopsOnCancel = handler({
@@ -184,6 +209,32 @@ describe("request-end seam · background failures", () => {
     expect(endings).toEqual([{ status: "completed" }]);
   });
 
+  it("hands on nothing for a late cancel recorded only as the durable intent, as another instance's abort route records it", async () => {
+    // The abort poll closes before `onFinished`, so this run's controller never
+    // fires; the intent on the record is the only sign of the cancel.
+    const endings: RequestEnding[] = [];
+    const stores = createInMemoryStores();
+    const durableCancel = handler({
+      name: "durable-cancel",
+      inputSchema: z.any(),
+      execute: async (input: { requestId: string }) => {
+        await stores.request.setFieldsIfStatus(input.requestId, { abortRequested: true }, ["in_progress"], Date.now());
+      }
+    });
+    const flow = defineFlow({
+      kind: "bg-failures-durable-cancel",
+      actions: {
+        run: { inputSchema: z.any(), block: sequencer({ name: "run" }).tap(registering(endings)).step(answer), onCompleted: durableCancel }
+      },
+      request: { onFinished: sequencer({ name: "finished" }).sideChain(throwingStep("notify", "threw after the cancel")) }
+    })();
+
+    const { record } = await run(flow, {}, stores);
+
+    expect(record?.status).toBe("completed");
+    expect(endings).toEqual([{ status: "completed" }]);
+  });
+
   it("hands on a failure after a dropped connection: a disconnect is not a cancel", async () => {
     const endings: RequestEnding[] = [];
     const transport = new AbortController();
@@ -212,6 +263,40 @@ describe("request-end seam · background failures", () => {
 
     expect(endings).toHaveLength(1);
     expect(endings[0]?.backgroundFailures).toEqual([{ step: "capture", message: "capture failed after the disconnect" }]);
+  });
+
+  it("hands on a failure when a dropped connection ends the request as interrupted", async () => {
+    // A step that honours its signal throws when the connection drops, so the
+    // request takes the error path. That is still not a cancel.
+    const endings: RequestEnding[] = [];
+    const transport = new AbortController();
+    const honoursTheSignal = handler({
+      name: "honours-the-signal",
+      inputSchema: z.any(),
+      execute: (_input, ctx) => {
+        transport.abort(new Error("client went away"));
+        if (ctx.signal.aborted) throw new Error("the connection dropped");
+        return "fine";
+      }
+    });
+    const flow = defineFlow({
+      kind: "bg-failures-disconnect-throws",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(registering(endings))
+            .sideChain(throwingStep("capture", "capture failed after the disconnect", 40))
+            .step(honoursTheSignal)
+        }
+      }
+    })();
+
+    await run(flow, { signal: transport.signal });
+
+    expect(endings).toEqual([
+      { status: "interrupted", backgroundFailures: [{ step: "capture", message: "capture failed after the disconnect" }] }
+    ]);
   });
 
   it("hands on nothing when the request suspends: the resume reruns the step, and its outcome is the one handed on", async () => {

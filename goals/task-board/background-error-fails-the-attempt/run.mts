@@ -172,7 +172,7 @@ console.error = (...args: unknown[]) => {
   const line = args.map((a) => (typeof a === "string" ? a : a instanceof Error ? a.message : JSON.stringify(a))).join(" ");
   if (line.includes("memory-capture") && line.includes("keeps its answer")) captureLog.push(line);
   // Background failures are logged by design; keep the run's output readable.
-  if (/^\[(runAction|sequencer)\] Background work|^\[agent\] After-answer step/.test(line)) return;
+  if (/^\[(runAction|sequencer|agent)\] Background work/.test(line)) return;
   consoleError(...args);
 };
 

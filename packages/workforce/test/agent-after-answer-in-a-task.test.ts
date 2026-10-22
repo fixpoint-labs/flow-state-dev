@@ -61,6 +61,8 @@ describe("the after-answer step in a task (FIX-2088 D1)", () => {
 
       const row = await h.row("alice", filing, taskId);
       expect(row).toMatchObject({ status: "completed", attempts: 2, output: "Otto's answer." });
+      // The failed attempt's feedback names the app's own block, not the wrapper around it.
+      expect(row?.feedback).toContain('Background work "flaky-capture" failed: capture timed out');
     } finally {
       await h.dispose();
     }

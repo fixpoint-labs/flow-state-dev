@@ -172,14 +172,18 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
   }
 }
 
-/** The pool's kept failures, shaped for `RequestEnding.backgroundFailures`. Nothing when `cancelled` or none failed. */
-function backgroundFailuresOf(
+/**
+ * The pool's kept failures, shaped for `RequestEnding.backgroundFailures`.
+ * Nothing when none failed, or when `cancelled` says the request's cancel
+ * fired. `cancelled` is asked only when there is something to withhold, so a
+ * request with no failure never pays for its store read.
+ */
+async function backgroundFailuresOf(
   ctx: ExecutionContext,
-  cancelled: boolean
-): { backgroundFailures?: BackgroundFailure[] } {
-  if (cancelled) return {};
+  cancelled: () => Promise<boolean>
+): Promise<{ backgroundFailures?: BackgroundFailure[] }> {
   const failed = getRequestSideChainPool(ctx)?.failures() ?? [];
-  if (failed.length === 0) return {};
+  if (failed.length === 0 || (await cancelled())) return {};
   return {
     backgroundFailures: failed.map((f) => ({
       step: f.meta.name,
@@ -2694,7 +2698,16 @@ async function runActionAttempt<
     // A cancel accepted after the abort check above changes nothing else
     // here, but it still keeps what its steps did after it from failing a task.
     const endFailure = await requestEndRegistryOf(ctx)?.run(
-      { status: terminalStatus, ...backgroundFailuresOf(ctx, abortController.signal.aborted) },
+      {
+        status: terminalStatus,
+        // The error path's predicate. The abort poll is closed by now, so a
+        // cancel another instance recorded since is read from the record.
+        ...(await backgroundFailuresOf(
+          ctx,
+          async () =>
+            abortController.signal.aborted || deliveredAbort || (await abortRecordedForThisRun().catch(() => false))
+        ))
+      },
       { requestId, logger, keepOwed: holdsTerminalStatus }
     );
     if (endFailure !== undefined) {
@@ -3019,7 +3032,7 @@ async function runActionAttempt<
     // As on the success path (FIX-2077). The request has already ended, so a
     // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
     // The cancel is this flag, not the error's name. A disconnect is `interrupted` and still hands its failures on.
-    const handedOn = backgroundFailuresOf(ctx, wasIntentionalAbort || abortController.signal.aborted);
+    const handedOn = await backgroundFailuresOf(ctx, async () => wasIntentionalAbort || abortController.signal.aborted);
     const ending: RequestEnding = wasIntentionalAbort
       ? { status: "aborted" }
       : signalAborted
