@@ -1,8 +1,4 @@
-/**
- * A running request takes a steer before its next model call (FIX-2086): a
- * context entry, re-read before every call, takes what arrived since the
- * claim and shows it. It never stops the request and uses no attempt.
- */
+/** A running request's steer context entry (FIX-2086). */
 import { describe, expect, it } from "vitest";
 import { createSteerContext } from "../../src/skills/steer-context";
 import { ticketForClaim, type Task, type TaskCollectionRef } from "../../src/tasks";

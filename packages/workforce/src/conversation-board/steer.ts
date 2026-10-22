@@ -1,34 +1,6 @@
 /**
- * Steering a task a worker runs (FIX-2086): a line in its session, and the
- * turn a late steer is owed.
- *
- * Orchestration keeps a steer on the task (`TaskCollectionRef.steer`) and
- * holds the task open while one is untaken (rule 6). This module answers what
- * orchestration can't:
- *
- * - **A line typed in a task's session** ({@link steerOrTalk}, a worker
- *   flow's door). While the session's task is open (the task the session was
- *   opened for, or the latest of its follow-ups, which run there one at a
- *   time) the line is a steer, written as the user: it joins the brief, and
- *   the request running the task takes it before its next model call. It is
- *   not a separate reply. Once the task has finished, the line is talk: the
- *   worker's ordinary turn answers it with the session's history, and the
- *   task doesn't change.
- * - **The turn a late steer is owed** ({@link steerTurnEntry}, the internal
- *   entry {@link STEER_TURN_ENTRY}): a steer no request took gets one more
- *   turn of the task's attempt before the task settles (D2). The entry admits
- *   its request for the task, takes the steers, and runs the worker's turn
- *   (or its block) with them as the message; the task is checked again at the
- *   request's end.
- * - **Starting that turn** ({@link startOwedSteerTurn}): a wake owed in the
- *   task's session first, then the entry started there at once. The claim
- *   gate's check starts it for a steer that lands after a request's last
- *   model call; a steer to a task with no request on it (waiting on its
- *   filed work) starts it from the write.
- *
- * Every choice reads server-set state: the session's birth fields, the row
- * whose run link names the session, the claim an admission stamped. Nothing
- * in a line picks a task (BP-031).
+ * A line in a worker's task session, and the turn a late steer is owed
+ * (FIX-2086). Every choice reads server-set state (BP-031).
  */
 import { handler, router, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, type BlockContext, type BlockDefinition, type ConcurrencyConfig } from "@flow-state-dev/core/types";
@@ -173,12 +145,11 @@ export function steerOrTalk<TInputSchema extends ZodTypeAny>(
   });
 }
 
-/** What the steer turn's take hands on: the steers, with the task they are on, or nothing to do. Plain data: it is recorded. */
+/** What the steer turn's take hands on. Plain data: it is recorded. */
 type Taken = { readonly steers: ShownSteer[]; readonly taskId: string } | { readonly skip: true };
 
 const SKIP: Taken = { skip: true };
 
-/** Whether a value is the take's "nothing to do". */
 const skipped = (value: unknown): boolean => (value as { skip?: unknown } | undefined)?.skip === true;
 
 /** The steer turn's options: the worker's turn, or a block that takes the task itself. Exactly one. */
@@ -191,21 +162,16 @@ export type SteerTurnEntryOptions = {
 );
 
 /**
- * Build the internal entry that runs the turn a late steer is owed (D2):
- * spread it as `internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ ... }) } }`
+ * The internal entry for the turn a late steer is owed (D2). Spread it as
+ * `internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ ... }) } }`
  * on every flow whose `work` entry is a `workerTaskEntry`, with the same
  * `turn` or `block`.
  *
- * Admitted for the session's waiting task, it takes every steer no request of
- * the attempt has taken and runs one turn on them: a `turn` gets them as its
- * message; a `block` gets the task as the board packs it, which carries every
- * steer, with the claim it runs under. Its answer is the task's result, as a
- * woken turn's is. A start that finds nothing to do (the wake and the fast
- * path both ran, say) runs nothing. The wake is cleared once the task no
- * longer waits on a steer.
- *
- * `concurrency` is the entry's line: by default the session's notices',
- * so it runs once the request working the task has ended.
+ * A `turn` is handed the steers as its message; a `block` is handed the task
+ * as the board packs it, with the claim. A start that finds nothing to do
+ * runs nothing. The wake is cleared once the task no longer waits on a steer.
+ * `concurrency` defaults to the session's notices, so this runs once the
+ * request working the task has ended.
  */
 export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concurrency?: ConcurrencyConfig }) {
   const { name } = options;
@@ -224,8 +190,6 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
     }
   });
 
-  // A turn gets the steers as its message; a block, the task as the board
-  // packs it (every steer in it) with the claim it runs under.
   const runInput = handler({
     name: `${name}-input`,
     inputSchema: z.unknown(),

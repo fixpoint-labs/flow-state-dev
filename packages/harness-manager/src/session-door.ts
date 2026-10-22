@@ -150,7 +150,6 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
         if (after?.waitingOn === "steer") await options.onSteered?.(ctx, after);
         return { steered: row.id };
       }
-      // Finished: talk, resuming the coding session its run confirmed.
       const identity = board.runOf(row);
       const record =
         identity === undefined

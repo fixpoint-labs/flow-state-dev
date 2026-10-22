@@ -1,44 +1,5 @@
-/**
- * Goal check — every word sent into an open task reaches the work through one
- * write, `updateTask`'s `message`, without using an attempt or ending the
- * task; a finished task's output never changes, because a correction is a
- * follow-up (FIX-2086).
- *
- * **Model-free.** A real `createFlowState` host on a SQLite store, with
- * Workforce's real worker flows (the `coordinator` desk, the built-in `agent`
- * flow) and a goal-local coding worker flow built as a host builds one: a
- * `harnessManager` over the conversation's board behind `workerTaskEntry`,
- * `harnessSessionDoor` as its door, `steerTurnEntry` for a late steer. The
- * agent workers' model is one scripted step model the generator drives step
- * by step; it records every call's options whole. The coding harness is a
- * fake that names a session, resumes by session id, and until stopped works
- * until its signal fires. Alice acts over the host's HTTP router as a
- * verified user. Rows are read through `getTask_tasks` and `listTasks_tasks`.
- *
- * Legs (each failure is tagged `<leg>:<assertion>`):
- *   a  a steer to an open task: before start, to a running request, to a task
- *      waiting on the task it filed; attempts, ending and status unchanged at
- *      the steer, and the task completes on attempt 1
- *   b  a steer after the last model call gets one more turn before the
- *      settle; with a checkpoint before it, the steer turn's checkpoint is the
- *      output where it reports one, the earlier one where it doesn't
- *   c  a steer to a coding run stops the running step, and the next step
- *      resumes the same coding session with it, same request, attempt 1
- *   d  a finished task refuses a message naming the rule; a follow-up runs in
- *      its session; the original's output is byte-identical; `current` is the
- *      follow-up's
- *   e  a line in an open task's session is a steer, with no reply beside it;
- *      in a finished one, a reply naming what the task did, row unchanged
- *
- * Controls (a scratch patch to the code under test as it loads;
- * `goals/lib/module-patch.mts`):
- *   GOAL_CONTROL=drop-late-steer  rule 6 settles over an untaken steer. Must
- *     FAIL leg b on "one more turn before the settle".
- *   GOAL_CONTROL=reopen  a message on a finished task is taken and puts the
- *     task back in the queue. Must FAIL leg d on "byte-identical".
- *
- * Run: pnpm tsx goals/task-tools/steer-and-follow-up/run.mts
- */
+/** Goal check. Contract, controls, and the verdict log: `goal.md`. */
+
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

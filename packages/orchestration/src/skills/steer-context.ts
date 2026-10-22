@@ -1,22 +1,7 @@
 /**
  * How a running request takes a steer (FIX-2086): a context entry re-read
- * before every model call, and the words a steer is shown in.
- *
- * A steer that arrives while a task's request runs is kept on the row; this
- * entry, on the worker's model, takes it before the next model call
- * (`takeSteers`, fenced to the request's claim) and shows it, and keeps showing
- * what this request took on every later call of the same request. Nothing is
- * stopped, no attempt is used, and nothing settles: rule 6 holds the task open
- * while a steer is untaken (`./task-request`).
- *
- * - **Which row.** The one the running request holds, never an id from input:
- *   the claim the gate or an admission stamped on this ledger, else the row
- *   whose run link names this session and this request. An inline plan step
- *   runs inside its task's request, so it reads its task's steers, never its
- *   own row's (a step takes no message).
- * - **What it shows.** Only what this request took in this read (`takenIn`):
- *   the steers the claim took are in the brief already, and a turn started for
- *   a late steer carries its steers as its message.
+ * before every model call. Nothing is stopped, no attempt is used, and
+ * nothing settles.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
@@ -61,7 +46,10 @@ export interface RunningTask {
 
 /**
  * The task the running request works, on the ledger `resolve` answers, or
- * `undefined` when it works none there. Server-set state only.
+ * `undefined` when it works none there. Server-set state only: the claim the
+ * gate or an admission stamped, else the in-progress row whose run link names
+ * this session and this request. An inline plan step runs inside its task's
+ * request, so it reads that task's steers.
  */
 export async function runningTaskOf(
   resolve: (ctx: BlockContext) => Promise<TaskCollectionRef | undefined>,
@@ -87,8 +75,9 @@ export async function runningTaskOf(
 /**
  * Take the steers no request of `running`'s attempt has taken, in the read
  * named `takenIn`, and answer every steer this attempt took in that read
- * (a re-run of the read after a crash reads them again). Empty when the
- * board takes no steers or its claim moved on.
+ * (a re-run of the read after a crash reads them again). The claim's steers
+ * are already in the brief, and a late steer's turn carries its own. Empty
+ * when the board takes no steers or its claim moved on.
  */
 export async function takeRunningSteers(running: RunningTask, takenIn: string): Promise<ShownSteer[]> {
   const { ledger, claim, row } = running;

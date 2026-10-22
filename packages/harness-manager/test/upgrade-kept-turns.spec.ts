@@ -1,9 +1,4 @@
-/**
- * The upgrade's one-off step for a person's lines the coding door kept
- * (FIX-2086, BP-030): a kept turn no attempt took becomes an untaken steer on
- * its task, keyed by the turn so a second run adds nothing; a taken or
- * withdrawn turn, and a finished task, are left as they are.
- */
+/** `upgradeKeptTurns` (FIX-2086): a kept untaken turn becomes a steer, keyed so a second run adds nothing. */
 import { describe, expect, it } from "vitest";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { upgradeKeptTurns, type KeptTurnUpgradeStores } from "../src";
