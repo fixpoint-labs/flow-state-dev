@@ -26,7 +26,7 @@ import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { clearNotice, isNoticeOwed, type TaskNotice } from "./task-notice";
-import { TASK_SETTLED_ENTRY } from "./delivery";
+import { filerResolver, TASK_SETTLED_ENTRY } from "./delivery";
 import { delegatingBoardsOf, payBoardDebts, settlePassWake, type BoardDebts } from "./pass";
 
 /** A notice, as `onTaskSettled` and a flow's block take it. */
@@ -82,12 +82,16 @@ export function taskSettledEntry(options: TaskSettledEntryOptions) {
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
       if (!("taskId" in input)) {
+        // A wake: pay every delegating ledger this flow declares, at this
+        // session's partition. A scan of each, which is fine at a session's
+        // scale; Workforce's board runs its own pass entry instead.
         const wake = await ctx.requestHost?.wakes?.read(TASK_SETTLED_ENTRY);
         let nextDue: BoardDebts["nextDue"];
         for (const { ref, delivery } of await delegatingBoardsOf(ctx)) {
           const debts = await payBoardDebts(ctx, ref, {
             ...(delivery.noticeEntry !== undefined ? { noticeEntry: delivery.noticeEntry } : {}),
-            ...(delivery.onUndeliverable !== undefined ? { onUndeliverable: delivery.onUndeliverable } : {})
+            ...(delivery.onUndeliverable !== undefined ? { onUndeliverable: delivery.onUndeliverable } : {}),
+            filerOf: filerResolver(delivery, ref.partition)
           });
           if (debts.nextDue !== undefined) nextDue = nextDue === undefined ? debts.nextDue : Math.min(nextDue, debts.nextDue);
         }

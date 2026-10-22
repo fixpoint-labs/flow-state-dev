@@ -51,13 +51,15 @@ function noteWakeOwed(store: WakeStore, dueAt: number): void {
  * the internal entry it names, in its session, as its owner, the way the
  * dispatch seam starts a dispatched request. Resolves once the host accepted
  * it; rejects when the host refused or failed to. `onStarted` receives the
- * run's completion, so a host that closes its stores can wait for it.
+ * run's completion and a way to abort it, so a host that closes its stores can
+ * wait for it, for a while.
  */
 export async function fireWakeThrough(
   host: Pick<InboundTransportHost, "dispatch">,
   wake: WakeRecord,
-  onStarted?: (finished: Promise<unknown>) => void
+  onStarted?: (run: { finished: Promise<unknown>; abort(): void }) => void
 ): Promise<void> {
+  const controller = new AbortController();
   const handle = host.dispatch({
     source: INTERNAL_SOURCE,
     flowKind: wake.flowKind,
@@ -68,9 +70,10 @@ export async function fireWakeThrough(
     orgId: wake.orgId,
     ...(wake.tenantId !== undefined ? { tenantId: wake.tenantId } : {}),
     metadata: { wake: { entry: wake.entry, dueAt: wake.dueAt } },
-    responseEmitter: null
+    responseEmitter: null,
+    signal: controller.signal
   });
-  onStarted?.(handle.finished);
+  onStarted?.({ finished: handle.finished, abort: () => controller.abort() });
   if (handle.accepted !== undefined) await handle.accepted;
 }
 
@@ -105,6 +108,37 @@ export function installWakes(
   logRuntimeEvent(host.logger, "info", "[flow-state] this host keeps no wakes: debts are paid on their fast paths only", {
     reason: host.durable ? "the store registry has no `wakes` store" : "no durable execution"
   });
+}
+
+/** Process-wide, like {@link warnedNoWakes}: an unreadable wake store is said once. */
+let warnedUnreadable = false;
+
+/**
+ * Read the wake store once as the host starts, and withdraw the verb when it
+ * can't: a database upgraded without the schema migration that adds wakes
+ * (a host that runs its migrations itself) has the store and no table. Logged
+ * once; debts are then paid on their fast paths only, as on a host that keeps
+ * none, and the sweeper's wake step stays off.
+ */
+export async function probeWakes(
+  requestHost: { wakes?: { readonly maxDebtAgeMs: number } },
+  stores: { readonly wakes?: WakeStore },
+  logger: RuntimeLogger
+): Promise<void> {
+  if (requestHost.wakes === undefined || stores.wakes === undefined) return;
+  try {
+    await stores.wakes.earliestDueAt();
+  } catch (error) {
+    requestHost.wakes = undefined;
+    if (warnedUnreadable) return;
+    warnedUnreadable = true;
+    logRuntimeEvent(
+      logger,
+      "warn",
+      "[flow-state] this host's wake store can't be read, so it keeps no wakes: debts are paid on their fast paths only. Rerun your store's schema migration (or let it initialize its schema) after upgrading",
+      { error: (error as Error).message }
+    );
+  }
 }
 
 /** What {@link createRequestWakes} is built from. */
@@ -154,7 +188,7 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
       const sessionId = spec.sessionId ?? identity.sessionId;
       const flowKind = await flowOf(sessionId);
       if (flowKind === undefined) return false;
-      await store.owe({
+      const record = await store.owe({
         ...keyOf(sessionId, spec.entry),
         flowKind,
         userId: identity.userId,
@@ -162,7 +196,8 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
         dueAt: spec.dueAt,
         landBy: now() + inputs.fenceMs
       });
-      noteWakeOwed(store, spec.dueAt);
+      // The due time the wake keeps after coalescing, not the one asked for.
+      noteWakeOwed(store, record.dueAt);
       return true;
     },
 

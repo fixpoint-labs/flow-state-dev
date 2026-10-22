@@ -23,7 +23,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { z } from "zod";
 import { mockGenerator, testRouter, testSequencer } from "@flow-state-dev/testing";
 import chatAgentFlow from "../flows/chat-agent/flow";
-import { thinkingStyleRouter, backgroundWorkTasks } from "../flows/chat-agent/run/thinking-styles";
+import { thinkingStyleRouter, backgroundWorkTasks, backgroundWorkSettled } from "../flows/chat-agent/run/thinking-styles";
 import { resolveThinkingStyle } from "../flows/chat-agent/run/steps";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
 import {
@@ -57,6 +57,7 @@ const emptyMemorySystem = {
 const testFlow = defineFlow({
   kind: "thinking-styles-test",
   task: { actions: backgroundWorkTasks },
+  internal: { actions: { onTaskSettled: backgroundWorkSettled } },
   actions: {
     run: { inputSchema, block: thinkingStyleRouter },
   },

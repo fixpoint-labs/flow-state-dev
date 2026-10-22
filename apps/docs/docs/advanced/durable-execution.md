@@ -277,7 +277,7 @@ If you need to intercept or extend durability behavior (say, to fan out suspensi
 
 ## Store adapters
 
-The standard store adapters all implement the durability tables:
+The standard store adapters all implement the durability tables, and the `wakes` table [the sweeper fires](#retention-and-cleanup):
 
 | Adapter | Package | Notes |
 |---|---|---|
@@ -298,7 +298,7 @@ A run started in the background, dispatched to a separate process with no browse
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.
 
-Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config alongside your provider and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a request waiting on another agent's answer has an earlier deadline, so that request times out within about a second of it.
+Retention is opt-in. With durability on, the runtime runs a sweeper: a periodic in-process job. Pass a `durabilityRetention` config alongside your provider and the sweeper also reclaims records that are provably safe to drop. It runs on `sweepIntervalMs`, or sooner when a request waiting on another agent's answer has an earlier deadline, so that request times out within about a second of it, or when a [wake](#wakes) falls due.
 
 ```ts
 export const flowstate = createFlowState({
@@ -316,12 +316,13 @@ export const flowstate = createFlowState({
 });
 ```
 
-Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for a wait's deadline: it times out overdue waits and finishes requests whose answer or stop was recorded but never acted on.
+Every field has a default, so `durabilityRetention: {}` is enough to turn pruning on with the values above. Omitting `durabilityRetention` entirely leaves records in place — nothing is deleted without you asking for it. The sweeper still runs every ten minutes, or sooner for a wait's deadline or a wake: it times out overdue waits, finishes requests whose answer or stop was recorded but never acted on, and fires due wakes.
 
 What each tick does:
 
 - **Enforces suspension expiry.** A `pending` suspension whose `expiresAt` has passed is flipped to `expired`, so the resume endpoint rejects a stale approval instead of letting it hang forever. The request behind an expired approval doesn't stay paused: the sweeper continues it, in the same tick, as if the approval had been rejected. `ctx.suspend()` throws a `SuspensionRejectedError` with `expired: true`. When the approval guarded a tool call, the tool does not run, and the model gets a tool result saying the approval expired and is no longer valid, then carries on with its turn. The `suspension_resume` item records `expired`. A suspension that allows no `reject` (an input form) is only marked `expired`. A request waiting on another agent's answer is the other exception: past its deadline it is resumed with a timeout error instead, because nothing else may resume it.
 - **Finishes what a crash interrupted.** A request still `suspended` (or `interrupted`) behind a gate that was already resolved, because the process died between the gate's write and the request moving on, is driven on with the recorded outcome: an answer continues it, an expired approval continues it as no longer valid, a stop ends it `aborted`. It runs under the request's lease, so it never races a resume in progress.
+- **Fires due wakes.** See [Wakes](#wakes) below.
 - **Prunes resolved suspensions** older than `suspensionTerminalMaxAgeMs` (measured from when they were resolved). The window exists so you can still inspect recent approval decisions; after it, they're removed.
 - **Prunes expired leases.**
 - **Prunes orphaned checkpoints.** Checkpoints of completed, failed, or aborted runs are dropped once they pass `checkpointMaxAgeMs`. An interrupted run keeps its checkpoints until `orphanCheckpointThresholdMs` passes, since you might still resume it.
@@ -329,6 +330,30 @@ What each tick does:
 The one invariant worth internalizing: **checkpoints of an in-progress or suspended run are never pruned by age.** Those are exactly the state a crashed or paused run needs to continue, so the sweeper leaves them alone no matter how old they get. A flow parked on a slow human-approval gate for a week is safe.
 
 When you run multiple hosts against a shared store, the sweeper takes a single lease each tick so only one host sweeps at a time. Deletes are idempotent regardless, so the lease is an efficiency measure, not a correctness one.
+
+### Wakes
+
+A wake is a time by which some work must run in a session. The engine keeps it in the store, so it survives a crash. When the time comes, the sweeper runs the internal entry the wake names in that session, as the session's owner, the way a dispatched request runs. The task board creates them: each time a task it handed out ends, it sets a wake for the filing session, due about two seconds later. A wake that fell due while the server was down fires as soon as it is running again. If the notice of that ending went out, the run finds nothing to do and clears the wake. If it was lost, the run sends it. See [Hearing how a task ended](/docs/orchestration/task-board#hearing-how-a-task-ended).
+
+A host keeps wakes when it has durable execution and its store has a `wakes` store, which all four built-in adapters do. A host without either logs one line at start, `this host keeps no wakes: debts are paid on their fast paths only`. On such a host, a task's notice is sent once, when the task ends, and a lost one isn't sent again.
+
+If the run a wake starts dies too, the wake fires again 30 seconds later, until a run clears it. Work still owed long after its due time is given up on, so a wake can't fire forever. `maxDebtAgeMs` sets how long, counted from the due time; the default is 24 hours:
+
+```ts
+import { createFlowState } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
+
+export const flowstate = createFlowState({
+  flows: { issues },
+  stores: { default: { primary: sqliteStores({ filename: "./data.sqlite" }) } },
+  durable: true,
+  maxDebtAgeMs: 3_600_000,   // give up on a notice still owed an hour past due
+});
+```
+
+A notice given up on is recorded on its task as undeliverable, and logged.
+
+Before it closes the stores, `dispose()` waits up to 10 seconds for any request a wake started to finish. Past that, it aborts the ones still running and logs how many; each aborted request's wake stays, and fires again on the next host. On `createFlowApiRouter`, `shutdownDrainMs` sets the limit, and `disposeFlowApiRouter(router, { drainMs })` overrides it for one call. `serve()` from `@flow-state-dev/node` passes in whatever is left of its shutdown grace.
 
 ## Managing suspensions in the DevTool
 

@@ -58,8 +58,12 @@ export interface ServerApp {
   /**
    * Dispose the resolved router and, when built from a `FlowState`, its stores.
    * Idempotent and safe to call before initialization settles.
+   *
+   * @param options.drainMs How long the router waits for the requests its due
+   *   wakes started before it aborts them (the router's own default, 10 s,
+   *   when omitted). `serve` passes what is left of its shutdown grace.
    */
-  dispose(): Promise<void>;
+  dispose(options?: { drainMs?: number }): Promise<void>;
 }
 
 const DEFAULT_BASE_PATH = "/api/flows";
@@ -217,13 +221,13 @@ export function createServerApp(
   return {
     app: hono,
     tryDedicatedRoute,
-    async dispose() {
+    async dispose(options) {
       try {
         await routerPromise;
       } catch {
         // init failed; nothing to dispose on the router side.
       }
-      if (router !== undefined) await disposeFlowApiRouter(router);
+      if (router !== undefined) await disposeFlowApiRouter(router, options);
       if (flowState !== undefined) await flowState.dispose();
     },
   };

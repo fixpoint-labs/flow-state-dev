@@ -66,6 +66,7 @@ import {
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
+  withoutNoticeMarkers,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -886,7 +887,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.labels !== undefined ? { labels: input.labels } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        // A caller's metadata never carries a notice marker (BP-031, FIX-2078).
+        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
         ...(input.held === true ? { held: true } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
@@ -1336,7 +1338,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       ...updateFields,
       status: z.enum(["held", "pending", "cancelled"]).optional(),
     }),
-    outputSchema: okOrError,
+    outputSchema: z.union([
+      // A cancel names the dependents it took along (FIX-2078 D2).
+      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional() }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
     execute: async (input, ctx) => {
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       if (input.status === "cancelled" && fields.length > 0) {
@@ -1379,7 +1385,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (err instanceof TaskWriteRefusedError) return refusedError(err);
           throw err;
         }
-        return { ok: true as const };
+        // The dependents the cancel took along, which owe no notice of their own
+        // when the filer cancelled through its own tool (FIX-2078 D2): named here.
+        const cancelled = collection
+          .list()
+          .filter((row) => row.causedBy === input.id && row.status === "cancelled")
+          .map((row) => row.id);
+        return cancelled.length > 0 ? { ok: true as const, cancelled } : { ok: true as const };
       }
 
       const edits: TaskEditField[] = [...fields, ...(input.status !== undefined ? (["held"] as const) : [])];
@@ -1403,6 +1415,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.status === "held" ? { held: true } : {}),
         ...(input.status === "pending" ? { held: false } : {}),
         ...Object.fromEntries(fields.map((field) => [field, input[field]])),
+        // Nor can a patch forge, clear or settle a notice marker (BP-031, FIX-2078).
+        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
       };
       let outcome: TaskWriteOutcome | undefined;
       try {

@@ -9,7 +9,7 @@
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createFlowState, inMemoryStores, runAction } from "../src";
+import { createFlowState, disposeFlowApiRouter, inMemoryStores, runAction } from "../src";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -17,6 +17,8 @@ const ran: Array<{ sessionId: string; userId: string | undefined }> = [];
 /** How long the pass holds before it settles; a test that times the shutdown raises it. */
 let passHoldsMs = 0;
 let passEnded = false;
+/** Whether the pass saw its request aborted while it held. */
+let passAborted = false;
 
 const owe = handler({
   name: "owe",
@@ -34,7 +36,16 @@ const pass = handler({
   outputSchema: z.any(),
   execute: async (_input, ctx) => {
     ran.push({ sessionId: ctx.session.identity.id, userId: ctx.session.identity.userId });
-    if (passHoldsMs > 0) await sleep(passHoldsMs);
+    if (passHoldsMs > 0) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, passHoldsMs);
+        ctx.signal?.addEventListener("abort", () => {
+          passAborted = true;
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
     const wakes = ctx.requestHost?.wakes;
     const read = await wakes?.read("pass");
     if (wakes !== undefined && read !== undefined) await wakes.settle("pass", { ...read, landBy: 0 }, null);
@@ -55,6 +66,7 @@ afterEach(async () => {
   ran.length = 0;
   passHoldsMs = 0;
   passEnded = false;
+  passAborted = false;
 });
 
 async function host(durable: boolean) {
@@ -105,6 +117,20 @@ describe("a wake fires its entry", () => {
     await states.splice(0)[0]!.dispose();
     expect(passEnded).toBe(true);
   });
+
+  it("is waited for only so long: past the drain budget it is aborted, and shutdown goes on", async () => {
+    passHoldsMs = 30_000;
+    const { call } = await host(true);
+    await call(0);
+    for (let i = 0; i < 100 && ran.length === 0; i += 1) await sleep(20);
+    expect(ran).toHaveLength(1);
+    const state = states.splice(0)[0] as unknown as { getRouter(): Promise<unknown>; dispose(): Promise<void> };
+    const started = Date.now();
+    await disposeFlowApiRouter((await state.getRouter()) as never, { drainMs: 200 });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(passAborted).toBe(true);
+    await state.dispose();
+  }, 20_000);
 
   it("is not offered on a host without durable execution", async () => {
     const { call } = await host(false);

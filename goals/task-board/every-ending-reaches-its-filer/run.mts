@@ -103,8 +103,9 @@ const PATCHES: Record<string, ModulePatch[]> = {
 /** Leg b's second process dies the moment an ending's delivery would send a notice it owes. */
 const KILL_AFTER_ENDING: ModulePatch = {
   module: "packages/orchestration/src/tasks/notice/delivery.ts",
-  from: String.raw`    async afterEnding\(row, rows, patchMetadata\) \{`,
-  to: '    async afterEnding(row, rows, patchMetadata) { if (process.env.GOAL_KILL === "after-ending" && Object.keys(row.metadata ?? {}).some((k) => k.startsWith("noticeOwed:"))) process.exit(0);'
+  // The first line of the delivery's send half, after the ending's write.
+  from: String.raw`      const notices = owedNotices\(row, board\.collectionId, rows, filerOf\);`,
+  to: '      if (process.env.GOAL_KILL === "after-ending" && Object.keys(row.metadata ?? {}).some((k) => k.startsWith("noticeOwed:"))) process.exit(0); const notices = owedNotices(row, board.collectionId, rows, filerOf);'
 };
 
 if (CONTROL !== "" && PATCHES[CONTROL] === undefined) {

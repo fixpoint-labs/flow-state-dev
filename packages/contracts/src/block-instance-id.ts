@@ -134,6 +134,16 @@ export function blockPathTool(toolName: string, callId: string | number): string
 }
 
 /**
+ * Whether a block path runs at or under a model's tool call: one of its
+ * segments is a {@link blockPathTool} segment. Server-assigned, so it is a
+ * trusted signal (BP-031). A branch or tool name can't fake one: names are
+ * escaped inside their brackets.
+ */
+export function isToolInvocationPath(path: string): boolean {
+  return path.split("/").some((segment) => segment.startsWith("tool["));
+}
+
+/**
  * Parses a deterministic blockInstanceId back into its components.
  *
  * Returns undefined for legacy or opaque IDs that don't match the expected

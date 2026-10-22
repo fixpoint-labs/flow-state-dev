@@ -122,7 +122,7 @@ What the kit gives you, and where each piece goes:
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |
 | `planned(turn)` | Wrap the block that answers a message, and use what it returns wherever that block runs as the worker: the `run` action, the task entry's `turn`, and `entries`. The steps the worker files for itself then run in the same request. See [Working in steps](#working-in-steps). Leave it out and the flow's workers file no steps. |
-| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. |
+| `entries(turn)` | The flow's `internal: { actions }`. Pass the block that answers a message; it is woken with a line when a task the session filed ends, and when another worker messages this one. The entries include `onTaskSettled`, where each of those endings arrives. |
 | `files(ctx)` | Read it when you need to know whether the running session files now. |
 | `taskDelegates(ctx)` | The session's delegates as a task sees them: `available` (worker id to flow) and `unavailable` (worker id to why). |
 
@@ -162,6 +162,8 @@ Every session of a worker that files keeps its own board: a conversation with yo
 A worker that files from a session it was **posted** to still answers the post as usual. The tasks it filed report back to that session, not to whoever posted. If the result has to come back to you, file the work rather than posting it.
 
 How a filed task runs, how the filing session hears it ended, and how to manage it from your app are on the coordinators page, under [Handing out tasks](./coordinators.md#handing-out-tasks). They work the same for every worker.
+
+The filing session hears each ending once, even if the server stops just after the task ends. On a host with durable execution, an ending whose notice didn't go out is heard within seconds, without anyone opening the conversation: about two seconds after the ending, or as soon as the server is running again. See [Hearing how a task ended](../orchestration/task-board.md#hearing-how-a-task-ended) for the guarantee and what it needs from the host.
 
 ### Where a task runs, and where its result goes
 
@@ -243,6 +245,24 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 ```
 
 `taskChainLimit` must be a whole number of at least 1, or `hireWorkforce` throws. The depth of five doesn't change.
+
+## After upgrading
+
+Boards written by an earlier version can hold endings their conversation hasn't heard yet, and a [split task](#splitting-a-task) whose pieces have all ended but which hasn't completed. Run `backfillBoardWakes` once when your host starts, after its stores are open. Each conversation that holds such a debt is then paid within seconds, without anyone touching it:
+
+```ts
+import { resolveUserStorageKey } from "@flow-state-dev/engine";
+import { backfillBoardWakes } from "@flow-state-dev/workforce";
+
+const runtime = await flowState.getRuntime();
+const woken = await backfillBoardWakes(runtime.stores, {
+  userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+});
+```
+
+`userCell` maps a user and an org to the storage key of that user's state, where conversation boards keep their rows. Those rows sit in the user's shared state even on a flow that sets `isolateUserState`, so pass `isolateUserState: false` as shown; a flow-isolated key, `{ id: flowId, isolateUserState: true }`, points somewhere else and finds nothing.
+
+It returns how many sessions it woke, and `0` on a store that keeps no wakes. Running it again is safe. A Shift Manager Lab runs it for you when it starts.
 
 ## Related pages
 

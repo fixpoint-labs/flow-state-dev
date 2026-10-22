@@ -118,6 +118,8 @@ import {
   assertValidLeaseDuration,
   buildInitialTask,
   claimDisposition,
+  leaseLapsed,
+  readAbandonments,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
@@ -635,10 +637,15 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     });
   }
 
-  /** Whether a write from `row`'s status to `target` may end it, or retry it. */
-  function mayEnd(row: Task, target: TaskStatus): boolean {
-    if (target === "completed" || target === "errored" || target === "cancelled" || target === "parked") return row.status !== target;
-    return target === "pending" && row.status === "in_progress";
+  /**
+   * Whether a write to `target` may end the row, or make it ready (a retry, an
+   * unpark, a reopen): either owes the filer's pass. Read off the mirror,
+   * outside the write, so it errs toward owing: no check of the row's status,
+   * which a concurrent writer may have moved. A spare wake costs one pass that
+   * finds nothing.
+   */
+  function mayEnd(_row: Task, target: TaskStatus): boolean {
+    return target === "completed" || target === "errored" || target === "cancelled" || target === "parked" || target === "pending";
   }
 
   /**
@@ -868,10 +875,18 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       for (const candidate of candidates) {
         const candidateRef = mirror.get(candidate.id);
         if (candidateRef === undefined) continue;
-        // A row this write may settle (its worker died too often) owes its
-        // filer's wake first (FIX-2078).
-        if (delivery !== undefined && claimDisposition(candidate as Task, now(), DEFAULT_MAX_ABANDONMENTS) !== "claim") {
-          await delivery.hooks.beforeEnding(candidate as Task);
+        // Before the write, the filer's wake (FIX-2078). A row this write
+        // could settle (a lapsed lease, or a worker that died before) owes it
+        // now: the snapshot may say "claim" where the committed row settles,
+        // so err toward owing. Any other row's claim owes it at the lease's
+        // end, when a worker that died lets the lease lapse.
+        if (delivery !== undefined) {
+          const at = now();
+          if (leaseLapsed(candidate as Task, at) || readAbandonments(candidate as Task) > 0) {
+            await delivery.hooks.beforeEnding(candidate as Task);
+          } else {
+            await delivery.hooks.owePassAt(candidate as Task, at + leaseDurationMs);
+          }
         }
 
         const written = await updateStateWith<JsonObject, ClaimWrite | undefined>(

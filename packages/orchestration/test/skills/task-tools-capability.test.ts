@@ -147,6 +147,21 @@ describe("createTask", () => {
     });
   });
 
+  // A notice marker decides what the filer hears; only an ending's write sets
+  // one, so a caller's metadata can't forge one (BP-031, FIX-2078).
+  it("files no notice marker a caller's metadata names, on createTask and on updateTask", async () => {
+    const { ctx } = buildCtx();
+    const forged = {
+      "noticeOwed:0:completed": { attempt: 0, ending: "completed", due: 0 },
+      "noticeUndeliverable:0:completed": { at: 0, detail: "x" },
+      note: "kept",
+    };
+    const result = (await runForTest(findTool("createTask"), { goal: "forged", held: true, metadata: forged }, ctx)) as { taskId: string };
+    expect(boardOf(ctx)[result.taskId]?.metadata).toEqual({ note: "kept" });
+    await runForTest(findTool("updateTask"), { id: result.taskId, metadata: { ...forged, note: "again" } }, ctx);
+    expect(boardOf(ctx)[result.taskId]?.metadata).toEqual({ note: "again" });
+  });
+
   it("files a task held when its start setting says so, and says it is held", async () => {
     const { ctx } = buildCtx();
     const result = (await runForTest(findTool("createTask"), { goal: "later", held: true, maxAttempts: 3 }, ctx)) as {

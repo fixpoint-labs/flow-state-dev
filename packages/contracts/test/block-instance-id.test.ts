@@ -12,7 +12,19 @@ import {
   blockPathTool,
   blockPathBranch,
   extendBlockPath,
+  isToolInvocationPath,
 } from "../src/block-instance-id";
+
+describe("isToolInvocationPath", () => {
+  it("is true for a path at or under a model's tool call, false otherwise", () => {
+    const tool = extendBlockPath("root/step[0]", blockPathTool("cancelTask", "c1"));
+    expect(isToolInvocationPath(tool)).toBe(true);
+    expect(isToolInvocationPath(extendBlockPath(tool, "step[1]"))).toBe(true);
+    expect(isToolInvocationPath("root/step[0]")).toBe(false);
+    // A branch whose name reads like a tool is escaped, so it isn't one.
+    expect(isToolInvocationPath(extendBlockPath("root", blockPathBranch("tool[x]")))).toBe(false);
+  });
+});
 
 describe("blockPathTool escaping (FIX-814)", () => {
   it("distinct call ids containing reserved chars produce distinct, non-prefix-colliding paths", () => {

@@ -133,6 +133,7 @@ The schema uses:
 | `resource_state` | `(scope_type, scope_id, resource_key)` | Resource state (`JSONB`), single + collection instances, keyed per resource, separate from scope records |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
+| `wakes` | `(tenant_key, session_id, entry)` | When pending work in a session falls due, read by the durability sweeper ([Wakes](https://flow-state.dev/docs/advanced/durable-execution#wakes)); indexed on `due_at` |
 
 ### Instance ownership
 
@@ -278,6 +279,8 @@ const stores = await createPostgresStores({
 });
 ```
 
+A host that passes `skipSchemaInit` and hasn't created the `wakes` table yet logs a one-time warning at start and runs without wakes until the migration has run and the host restarts.
+
 Migrations are still idempotent if you forget — `skipSchemaInit` is a performance optimization, not a correctness requirement. See `apps/kitchen-sink/scripts/migrate.mjs` in the flow-state-dev repo for a full example.
 
 ## Schedule index
@@ -405,3 +408,5 @@ import type { QueryExecutor } from "@flow-state-dev/store-postgres";
 await initializeSchema(executor);
 const sessionStore = createPostgresSessionStore(executor);
 ```
+
+`createPostgresWakeStore(executor)` builds the `wakes` store the same way.
