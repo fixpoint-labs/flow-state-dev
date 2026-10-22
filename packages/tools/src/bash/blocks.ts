@@ -742,18 +742,25 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     ? handler({
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
+        // Best-effort: a failed purge is logged, never thrown. A background
+        // step that throws fails a dispatched task's attempt, and housekeeping
+        // must not rerun a task whose work succeeded.
         execute: async (_input: unknown, ctx) => {
-          const runName = provider.runName ?? defaultMoatRunName(getIdentity(ctx));
-          const { destroyed } = await purgeOldRuns({
-            runName,
-            bin: provider.bin,
-            workspace: provider.workspace,
-            runtime: provider.runtime,
-          });
-          if (destroyed.length > 0) {
-            console.error(
-              `[moat] purged ${destroyed.length} stale container(s): ${destroyed.join(", ")}`,
-            );
+          try {
+            const runName = provider.runName ?? defaultMoatRunName(getIdentity(ctx));
+            const { destroyed } = await purgeOldRuns({
+              runName,
+              bin: provider.bin,
+              workspace: provider.workspace,
+              runtime: provider.runtime,
+            });
+            if (destroyed.length > 0) {
+              console.error(
+                `[moat] purged ${destroyed.length} stale container(s): ${destroyed.join(", ")}`,
+              );
+            }
+          } catch (err) {
+            console.warn(`[moat] purge of stale containers failed:`, (err as Error).message);
           }
         },
       })

@@ -1892,11 +1892,16 @@ function createSequencer<
               // settled-but-undrained entries still need to be drained so
               // their failures surface. drainScope is a no-op when no
               // entries match — let it handle the empty case.
+              // Told when this wait gives up, so what settles later is the pool's to keep.
+              const abandoned = new AbortController();
               const result = await withTimeout(
-                pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError }),
+                pool.drainScope(runtime.scopeId, { failOnError: options?.failOnError, abandoned: abandoned.signal }),
                 options?.timeoutMs,
                 "waitForSideChain"
-              );
+              ).catch((error: unknown) => {
+                abandoned.abort();
+                throw error;
+              });
               // drainScope already throws when failOnError is true and any
               // task failed. With failOnError off, log failures so they still
               // surface in diagnostics — matches the per-sequencer auto-await
