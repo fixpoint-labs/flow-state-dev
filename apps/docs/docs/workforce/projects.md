@@ -663,7 +663,7 @@ Put `projectWorkspaceCapability` on the harness manager's `uses`, as in the exam
 
 A project can name MCP servers, and every coding run on the project can use their tools. MCP, the Model Context Protocol, is how an agent reaches a tool outside its checkout: an issue tracker, a docs search, a database. A run gets the project's servers however the work reached it: from a workstream, from the project's conversation, or from a task that names the project.
 
-Three parties each decide one thing. The server running your workers decides which MCP servers exist, and their addresses. A project picks from those names. Each user sets their own key for a server, and a run uses the key of the user it works for, so it acts in that tool as them.
+The server running your workers decides which MCP servers exist, and their addresses. A project picks from those names. Each user sets their own key for a server, and a run uses the key of the user it works for, so it acts in that tool as them.
 
 ```ts
 // the server's config, for example in a Shift Manager Lab
@@ -678,15 +678,15 @@ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } }
 
 `setMcpServers` replaces the list whole and returns `{ project }`. Only members can call it. Both writes refuse a name the server doesn't offer with `unknown-mcp-server`, naming the ones it does, and anything that isn't a plain name (lowercase letters, digits and hyphens) with `invalid-mcp-server`. A project row can't hold an address or a key.
 
-FSD holds the connection, not the coding agent. When a run starts, FSD connects to each of the project's servers with the requester's key, and the agent gets the servers' tools. It never gets the key or the address: not on its command line, in its environment, in its MCP config or in its session. The connections close when the run ends.
+The server holds the connection, not the coding agent. When a run starts, the server connects to each of the project's servers with the requester's key, and the agent gets the servers' tools. It never gets the key or the address: not on its command line, in its environment, in its MCP config or in its session. The connections close when the run ends.
 
 A project that names no servers gets none: its runs don't pick up MCP servers from the server machine's own Claude Code settings, or the connectors of the Claude account it's signed in with. A list or a key changed while work is running applies from the next attempt.
 
-If the requester hasn't set a key for one of the project's servers, the run goes ahead without it, and its session says which key is missing. The same happens for a name the server stopped offering, and for a server FSD can't connect to.
+If the requester hasn't set a key for one of the project's servers, the run goes ahead without it, and its session says which key is missing. The same happens for a name the server stopped offering, and for an MCP server that can't be reached.
 
 Keys are stored in the server's own store, as written. A run with a shell and no sandbox runs as the same operating-system user as the server, so it could read that store. Sandbox the run if that matters, and use a key scoped to what runs need.
 
-Only Claude Code runs get a project's servers today. A Codex or Cursor run on the same project works without them, and says so.
+Only Claude Code runs get a project's servers. A Codex or Cursor run on the same project works without them, and says so.
 
 In your own app, give the Claude Code block the resolver and the two collections it reads:
 
@@ -749,7 +749,7 @@ A few cases go differently:
 - **The base has no upstream**, such as a tag, a commit, or a branch that tracks nothing. It is used as it is, with no fetch.
 - **The run already has its branch**, on a retry or a later turn. It's handed back as it was, and nothing is fetched.
 
-Listing the checkout is what allows the fetch, so the upstream doesn't need to be in `remotes.allow`. That list still decides which remotes the host clones. The upstream's URL is checked before git sees it: one that uses a transport helper such as `ext::`, starts with `-`, or uses a scheme other than `https`, `ssh` or `file` isn't fetched, and the server logs why.
+Listing the checkout is what allows the fetch, so the upstream doesn't need to be in `remotes.allow`. `remotes.allow` decides only which remotes the host clones. The upstream's URL is checked before git sees it: one that uses a transport helper such as `ext::`, starts with `-`, or uses a scheme other than `https`, `ssh` or `file` isn't fetched, and the server logs why.
 
 Several projects can share one checkout, and their runs work side by side, each in its own worktree on its own branch.
 
