@@ -458,7 +458,7 @@ function buildHost(filename: string) {
     durable: true,
     logger: silentLogger,
     modelResolver: createMockModelResolver({
-      generators: { "agent-answer": mockGenerator({ script: [{ when: () => true, then: { text: MEMO_ANSWER } }] }) }
+      generators: { "agent-answer": mockGenerator({ name: "agent-answer", script: [{ when: () => true, then: { text: MEMO_ANSWER } }] }) }
     }),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
