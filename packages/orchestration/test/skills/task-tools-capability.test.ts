@@ -452,6 +452,35 @@ describe("updateTask — a release with a reassignment", () => {
     expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "writer" });
   });
 
+  it("doesn't release a task that wasn't held, so a claim landing mid-call isn't reported as a refusal", async () => {
+    // Pending, never started: there is nothing to release. A worker claims it
+    // right after the priority write lands.
+    const ctx = ctxWithTask("pending", { assignee: "researcher", priority: 1 });
+    const parent = (ctx as { parent: { state: Record<string, unknown>; atomicState: (fn: never) => Promise<void> } }).parent;
+    const write = parent.atomicState.bind(parent);
+    parent.atomicState = (async (fn: never) => {
+      await write(fn);
+      const board = parent.state[BOARD_FIELD] as Record<string, Record<string, unknown>>;
+      if (board.a!.priority === 9) board.a = { ...board.a, status: "in_progress", attempts: 1, startedAt: Date.now() };
+    }) as typeof parent.atomicState;
+
+    const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", priority: 9 }, ctx);
+
+    expect(result).toEqual({ ok: true });
+    expect(boardOf(ctx).a).toMatchObject({ status: "in_progress", priority: 9 });
+  });
+
+  it("writes nothing when the release is refused: a retried task has started", async () => {
+    // A release, a reassignment and a priority in one call: the refusal
+    // leaves every field as it was, not just the status.
+    const ctx = ctxWithTask("pending", { assignee: "researcher", attempts: 1, priority: 1 });
+
+    const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer", priority: 9 }, ctx);
+
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "researcher", priority: 1 });
+  });
+
   it("releases a legacy blocked row that already ran, but edits nothing on it", async () => {
     // BP-030: a row stored `blocked` after a retry reads as held with attempts
     // spent, marked `heldFromBlocked` by the read boundary. A release alone is
