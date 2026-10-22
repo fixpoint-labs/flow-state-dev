@@ -178,11 +178,12 @@ export interface RequestWaits {
    * when a request started. A wait whose chain would pass `MAX_WAIT_DEPTH` is
    * refused before anything is written.
    *
-   * @param input.binding What the new wait would wait on.
+   * @param input.binding What the new wait would wait on; omitted for work
+   *   not started yet (a dispatch about to be sent), which has nothing below it.
    * @param input.own The row the running request works, when it works one:
    *   server-derived by the caller (its claim), never input.
    */
-  depth(input: { readonly binding: WaitGateBinding; readonly own?: WaitRow }): Promise<number>;
+  depth(input: { readonly binding?: WaitGateBinding; readonly own?: WaitRow }): Promise<number>;
 }
 
 /**

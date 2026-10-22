@@ -226,6 +226,12 @@ export type DispatchAddress =
        * that already exists keeps its own.
        */
       readonly state?: Readonly<Record<string, unknown>> | TaskStateTarget;
+      /**
+       * Whether the board's drain waits on a row it hands over (FIX-2082).
+       * Absent follows the board's mode: a plan board waits, a delegation
+       * board doesn't. A board refuses one that contradicts its mode.
+       */
+      readonly wait?: boolean;
     };
 
 /**
