@@ -466,7 +466,7 @@ A task with no lease stays with its run. It isn't handed out again however long 
 
 Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
 
-The task's output is the latest checkpoint its worker reported with `reportProgress`. With no checkpoint, it's the last answer that counts: the entry's, or that of a later request [admitted for the task](#requests-that-work-on-a-waiting-task) with `answerCounts: true` and a `noteTaskAnswer` tap.
+The task's output is the latest checkpoint its worker reported with `reportProgress`. With no checkpoint, it's the last answer that counts: the entry's, or that of a later request whose answer [counts toward the output](#requests-that-work-on-a-waiting-task).
 
 If the board can't record the result, the dispatch run's request reports `failed`. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
 

@@ -262,7 +262,7 @@ const woken = await backfillBoardWakes(runtime.stores, {
 
 It returns how many sessions it woke, and `0` on a store that keeps no wakes. Running it again is safe. A Shift Manager Lab runs it for you when it starts.
 
-A split task stored by an earlier version reads as `in_progress` with `waitingOn: "filed"`. It settles like any split: at the end of the turn its last piece's ending wakes, once nothing else holds it.
+A split task stored by an earlier version reads as `in_progress` with `waitingOn: "filed"`. It settles like any split task: after the worker's turn on its last piece's ending, once nothing else holds it.
 
 ## Related pages
 
