@@ -19,13 +19,15 @@
  *   a task waiting on one keeps its lease (orchestration's rule), so the lapse
  *   takes it back.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { handler, sequencer } from "@flow-state-dev/core";
+import type { BlockContext, ConcurrencyConfig } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import { taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
 import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { messageLogOf } from "../messages/message-log";
 import { WORKER_MESSAGES_SEEN_STATE } from "../messages/keys";
 import { FILING_SESSION_STATE_KEY } from "../workers/keys";
-import { PIECE_OF } from "./board-entries";
+import { CHECK_TASK_ENTRY, PIECE_OF } from "./board-entries";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
 
 /** The running row this session works, on the ledger of the conversation it was opened for, or none. */
@@ -84,6 +86,31 @@ export const conversationEndRules: TaskEndRules = {
   },
   workQueued: messageQueued
 };
+
+/**
+ * The check entry (`CHECK_TASK_ENTRY`): admit the session's waiting task, so
+ * the check at the request's end settles it when nothing holds it, then clear
+ * the wake that ran it. On the notices' line, so it never runs beside a notice
+ * or a message for the same task.
+ */
+export function checkTaskEntry(concurrency: ConcurrencyConfig) {
+  const settleWake = handler({
+    name: "conversation-check-task-settle-wake",
+    inputSchema: z.unknown(),
+    execute: async (_input, ctx) => {
+      const wakes = ctx.requestHost?.wakes;
+      const read = await wakes?.read(CHECK_TASK_ENTRY);
+      if (wakes !== undefined && read !== undefined) await wakes.settle(CHECK_TASK_ENTRY, read, null);
+    }
+  });
+  return {
+    inputSchema: z.object({}).passthrough(),
+    block: sequencer({ name: "conversation-check-task", inputSchema: z.unknown() })
+      .tap(admitOwnTask("conversation-check-task-admission", false))
+      .tap(settleWake),
+    concurrency
+  };
+}
 
 /**
  * Admit the running request for this session's task while it waits: first in

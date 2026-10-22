@@ -54,7 +54,8 @@ import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/wor
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
-import { RUN_BOARD_ENTRY } from "./board-entries";
+import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY } from "./board-entries";
+import { checkTaskEntry } from "./task-admission";
 import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { questionPark } from "./question-park";
 import { taskProgress } from "./task-progress";
@@ -209,6 +210,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // and runs once the first ends.
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
         [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
+        // A check of the session's waiting task, on the notices' line: what
+        // the upgrade's backfill wakes for a split an older host parked.
+        [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind })
       };

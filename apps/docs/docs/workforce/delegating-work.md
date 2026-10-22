@@ -224,8 +224,6 @@ The pieces belong to the attempt that filed them. When a task fails, is retried,
 
 Run delegating workforces on a host with [durable execution](../advanced/durable-execution.md#wakes). If the server stops after a piece ends but before its notice reaches the task session, a durable host delivers the notice once it is running again. A host without durable execution doesn't, and the split task stays `in_progress` with nothing left to wake it.
 
-On a host without durable execution, a crash between a piece's ending and the turn that ending wakes leaves the split task running, so run workforces that delegate on a durable host.
-
 Every session in the chain is yours, and only your own workers appear in it.
 
 ## How far it goes

@@ -8,8 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { resolveUserStorageKey } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { backfillBoardWakes } from "../src/conversation-board/backfill-wakes";
-import { RUN_BOARD_ENTRY } from "../src/conversation-board/board-entries";
+import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY, SPLIT_MARKER } from "../src/conversation-board/board-entries";
 import { bootBoardHost, type BoardHost } from "./conversation-board-harness";
+import { bootSplitHost } from "./split-harness";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -92,6 +93,58 @@ describe("the upgrade's backfill of wakes", () => {
   }, 20_000);
 });
 
+describe("a split parked before FIX-2077, every piece's notice already acted on", () => {
+  // The crash window an old host left: the last piece's notice acted on, and
+  // the split's settle never run. Nothing is owed on any piece, so no notice
+  // comes; the backfill's wake is the only thing left to settle the task.
+  it("completes once the backfill runs, with no notice left to wake it", async () => {
+    const h = bootSplitHost({ durable: true });
+    open = h;
+    await h.state.getRouter();
+    h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
+    h.controls.plans.s1 = [
+      { goal: "Book the venue", assignee: "eng.tasker" },
+      { goal: "Print the flyers", assignee: "eng.writer" }
+    ];
+    const planner = await h.open("alice", "planner");
+    await h.turn("alice", planner);
+    expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "completed", 10_000)).toBe(true);
+    await h.settled();
+
+    // Store it as an old host left it: parked on its pieces, the pieces done,
+    // their notices acted on, and no `filedByTask` on them.
+    const [top] = await h.rowsNamed("alice", "Plan the launch");
+    const taskSession = top!.run!.sessionId;
+    const asStored = (row: Task) => {
+      const { partition: _p, filer: _f, ...rest } = row as Task & { partition?: string; filer?: unknown };
+      return rest as Task;
+    };
+    const { completedAt: _done, output: _output, waitingOn: _waiting, ...running } = asStored(top!);
+    await h.writeRow("alice", decodeURIComponent(top!.partition!), {
+      ...running,
+      status: "parked",
+      metadata: { ...(top!.metadata ?? {}), [SPLIT_MARKER]: { session: taskSession, flow: "splitter" } }
+    } as unknown as Task);
+    for (const goal of ["Book the venue", "Print the flyers"]) {
+      const [piece] = await h.rowsNamed("alice", goal);
+      expect(Object.entries(piece!.metadata ?? {}).filter(([key, value]) => key.startsWith("noticeOwed:") && value != null)).toEqual([]);
+      const { filedByTask: _by, ...legacy } = asStored(piece!);
+      await h.writeRow("alice", decodeURIComponent(piece!.partition!), legacy as Task);
+    }
+    const runtime = await h.state.getRuntime();
+    for (const session of [planner, taskSession]) {
+      const kept = await runtime.stores.wakes!.get({ sessionId: session, entry: RUN_BOARD_ENTRY });
+      if (kept !== null) await runtime.stores.wakes!.clear(kept, kept.version);
+    }
+    // As stored (the board reads it as running, waiting on its pieces).
+    expect((await h.rowsNamed("alice", "Plan the launch"))[0]?.status).toBe("parked");
+
+    expect(await backfillBoardWakes(runtime.stores, { userCell })).toBeGreaterThanOrEqual(1);
+
+    expect(await h.until(async () => (await h.rowsNamed("alice", "Plan the launch"))[0]?.status === "completed", 5_000)).toBe(true);
+  }, 30_000);
+});
+
 describe("the backfill's other two old debts", () => {
   /** Stores holding one conversation row, and the sessions it names. */
   function stores(row: Record<string, unknown>) {
@@ -121,9 +174,9 @@ describe("the backfill's other two old debts", () => {
     expect(owed).toEqual([{ sessionId: "conv", entry: RUN_BOARD_ENTRY }]);
   });
 
-  it("owes the task session's pass for a split parked on its pieces, which settles it", async () => {
+  it("owes the task session's check for a split parked on its pieces, which settles it", async () => {
     const { owed, registry } = stores({ id: "t1", goal: "g", status: "parked", run: { sessionId: "task-session", requestId: "r" } });
     expect(await backfillBoardWakes(registry, { userCell, now: 5 })).toBe(1);
-    expect(owed).toEqual([{ sessionId: "task-session", entry: RUN_BOARD_ENTRY }]);
+    expect(owed).toEqual([{ sessionId: "task-session", entry: CHECK_TASK_ENTRY }]);
   });
 });

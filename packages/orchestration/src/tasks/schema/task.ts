@@ -302,8 +302,10 @@ export const taskSchema = z.object({
       /** The attempt that started the run — equal to `attempts` while it is the latest. */
       attempt: z.number().int().nonnegative(),
       /**
-       * When the run started, in ms (FIX-2077): what "during this attempt"
-       * is measured from. **Absent** on links written before it was (BP-030).
+       * When this attempt's first run started, in ms (FIX-2077): what "during
+       * this attempt" is measured from. A resume or a lapsed lease taken back
+       * relinks the same attempt and keeps it. **Absent** on links written
+       * before it was (BP-030).
        */
       startedAt: z.number().optional(),
     })

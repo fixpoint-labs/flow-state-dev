@@ -7,14 +7,17 @@
  * (or as a migration step), this reads every user's conversation rows and owes
  * a wake, due now, for the board's pass in each session that holds such a
  * debt. The pass then pays it the way it pays any debt: an old notice is
- * stamped due and sent, an old report marker is sent to the Error Reporter
- * once, and a parked split whose pieces are done settles.
+ * stamped due and sent, and an old report marker is sent to the Error
+ * Reporter once. A split parked on its pieces gets a wake for its task
+ * session's check entry instead (`CHECK_TASK_ENTRY`, FIX-2077): it reads as
+ * running, and the check settles it once no piece holds it, also when every
+ * piece's notice was acted on before the upgrade and none is left to wake it.
  *
  * Safe to run again: a wake coalesces into the one already kept, and a pass
  * that finds nothing owed clears it.
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { RUN_BOARD_ENTRY } from "./board-entries";
+import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY } from "./board-entries";
 import { sessionIdOfFiling } from "./filing-session";
 import { CONVERSATION_LEDGER_ID } from "./ledger";
 
@@ -30,7 +33,7 @@ interface StoredSession {
 
 /** The stores the backfill reads and writes: the engine's `StoreRegistry` fits. */
 export interface BoardWakeBackfillStores {
-  readonly session: { list(): Promise<StoredSession[]> };
+  readonly session: { list(options?: { parentage?: "all" }): Promise<StoredSession[]> };
   readonly resourceState: {
     getByPrefix(scopeType: "user", scopeId: string, prefix: string): Promise<Record<string, { state: unknown }>>;
   };
@@ -74,12 +77,12 @@ interface StoredRow {
 
 const OWED_MARKER = /^(noticeOwed|reportOwed):/;
 
-/** The session a row's debt is paid in, or `undefined` when it owes nothing. */
-function payerOf(row: StoredRow, partition: string): string | undefined {
-  if (row.status === "parked") return typeof row.run?.sessionId === "string" ? row.run.sessionId : undefined;
+/** The session a row's debt is paid in and the entry that pays it, or `undefined` when it owes nothing. */
+function payerOf(row: StoredRow, partition: string): { session: string; entry: string } | undefined {
+  if (row.status === "parked") return typeof row.run?.sessionId === "string" ? { session: row.run.sessionId, entry: CHECK_TASK_ENTRY } : undefined;
   // A paid marker is kept as `null`.
   if (!Object.entries(row.metadata ?? {}).some(([key, value]) => value != null && OWED_MARKER.test(key))) return undefined;
-  return typeof row.filer?.sessionId === "string" ? row.filer.sessionId : sessionIdOfFiling(partition);
+  return { session: typeof row.filer?.sessionId === "string" ? row.filer.sessionId : sessionIdOfFiling(partition), entry: RUN_BOARD_ENTRY };
 }
 
 /** The bare session id of a stored record, whose id carries its tenant. */
@@ -97,7 +100,9 @@ export async function backfillBoardWakes(stores: BoardWakeBackfillStores, option
   if (wakes === undefined) return 0;
   const now = options.now ?? Date.now();
   const sessions = new Map<string, StoredSession>();
-  for (const session of await stores.session.list()) sessions.set(bareId(session), session);
+  // Every session, not only the ones a person started: a task session (a
+  // child session) is where a piece's notice and a parked split are paid.
+  for (const session of await stores.session.list({ parentage: "all" })) sessions.set(bareId(session), session);
 
   const cells = new Map<string, { userId: string; orgId: string }>();
   for (const session of sessions.values()) {
@@ -105,7 +110,7 @@ export async function backfillBoardWakes(stores: BoardWakeBackfillStores, option
     cells.set(options.userCell(session.userId, orgId), { userId: session.userId, orgId });
   }
 
-  const payers = new Set<string>();
+  const payers = new Map<string, { session: string; entry: string }>();
   for (const cell of cells.keys()) {
     const stored = await stores.resourceState.getByPrefix("user", cell, `${CONVERSATION_LEDGER_ID}/`);
     for (const [key, value] of Object.entries(stored)) {
@@ -115,18 +120,18 @@ export async function backfillBoardWakes(stores: BoardWakeBackfillStores, option
       const parts = key.split("/");
       if (parts.length !== 3 || parts[0] !== CONVERSATION_LEDGER_ID) continue;
       const payer = payerOf(row, decodeURIComponent(parts[1]!));
-      if (payer !== undefined) payers.add(payer);
+      if (payer !== undefined) payers.set(`${payer.session}\u0000${payer.entry}`, payer);
     }
   }
 
   let owed = 0;
-  for (const payer of payers) {
+  for (const { session: payer, entry } of payers.values()) {
     const session = sessions.get(payer);
     if (session === undefined) continue;
     await wakes.owe({
       ...(session.tenantId != null && session.tenantId.length > 0 ? { tenantId: session.tenantId } : {}),
       sessionId: payer,
-      entry: RUN_BOARD_ENTRY,
+      entry,
       flowKind: session.flowId ?? session.flowKind,
       userId: session.userId,
       orgId: session.orgId ?? DEFAULT_ORG_ID,

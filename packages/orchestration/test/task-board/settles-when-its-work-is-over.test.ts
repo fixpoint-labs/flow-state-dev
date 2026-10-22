@@ -310,6 +310,22 @@ describe("the claim gate settles a task when its work is over", () => {
     expect(row.leaseUntil).toBeGreaterThanOrEqual(row.run!.startedAt! + row.leaseDurationMs!);
   });
 
+  it("a resume keeps the attempt's start: a message sent before it still counts as queued", async () => {
+    // The gate links the run again on a resume. Restarting the window there
+    // would drop a message delivered while the task waited, and the task would
+    // complete past it.
+    const h = await harness();
+    h.setBehaviour(async (ctx) => ({ resumedWith: await ctx.suspend!({ reason: "human_input", message: "waiting" }) }));
+    const first = await h.run();
+    const startedAt = (await h.row())!.run!.startedAt;
+    expect(startedAt).toEqual(expect.any(Number));
+    h.advance(60_000);
+
+    await h.resume(first.requestId!, { ok: true });
+
+    expect((await h.row())!.run!.startedAt).toBe(startedAt);
+  });
+
   it("a checkpoint the message's request reports is the output", async () => {
     let queued = true;
     const h = await harness({ queued: () => queued });

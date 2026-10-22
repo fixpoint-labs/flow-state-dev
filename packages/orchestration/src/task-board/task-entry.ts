@@ -694,7 +694,10 @@ async function writeRunLink(
       sessionId: ctx.session.identity.id,
       requestId: ctx.request.identity.id,
       attempt: held.attempts,
-      startedAt: board.now(),
+      // The attempt's start, kept when this run relinks the same attempt (a
+      // resume, a lapsed lease taken back): the "queued" window counts from
+      // it. A new attempt starts with no link (the claim clears it).
+      startedAt: held.run?.attempt === held.attempts && held.run.startedAt != null ? held.run.startedAt : board.now(),
     },
     { claim: ticket }
   );

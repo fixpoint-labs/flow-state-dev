@@ -218,6 +218,122 @@ describe("request-end seam", () => {
     expect((await stores.request.get(result.requestId!))?.status).toBe("suspended");
   });
 
+  it("keeps the heartbeat going while a suspended request's hooks run, so no sweep takes the request for dead", async () => {
+    // The hooks run before the record says `suspended`, with the record still
+    // `in_progress`: a request with no heartbeat then reads as a crashed run.
+    const beats: number[] = [];
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "request-end-heartbeat",
+      request: { heartbeatIntervalMs: 20 },
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          durable: true,
+          block: sequencer({ name: "run", durable: true })
+            .tap(
+              handler({
+                name: "register",
+                inputSchema: z.any(),
+                execute: (_input, ctx) => {
+                  onRequestEnded(ctx, async () => {
+                    const id = ctx.request.identity.id;
+                    beats.push((await stores.activeRequests.get(id))!.lastHeartbeatAt);
+                    await sleep(150);
+                    beats.push((await stores.activeRequests.get(id))!.lastHeartbeatAt);
+                  });
+                }
+              })
+            )
+            .step(
+              handler({
+                name: "ask",
+                inputSchema: z.any(),
+                outputSchema: z.unknown(),
+                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+              })
+            )
+        }
+      }
+    })();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+
+    await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    expect(beats).toHaveLength(2);
+    expect(beats[1]!).toBeGreaterThan(beats[0]!);
+  });
+
+  it("logs a failure a hook hands back on a request that already failed", async () => {
+    // On a failed request the engine has no outcome left to change, so the
+    // failure (a task attempt whose fail could not be written) must not vanish.
+    const warnings: Array<{ message: string; data?: unknown }> = [];
+    const logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (message: string, data?: unknown) => void warnings.push({ message, data }),
+      error: (message: string, data?: unknown) => void warnings.push({ message, data })
+    };
+    const flow = defineFlow({
+      kind: "request-end-verdict-on-failure",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(
+              handler({
+                name: "register",
+                inputSchema: z.any(),
+                execute: (_input, ctx) => {
+                  onRequestEnded(ctx, () => ({ fail: new Error("the attempt's failure could not be recorded") }));
+                }
+              })
+            )
+            .step(
+              handler({
+                name: "boom",
+                inputSchema: z.any(),
+                execute: () => {
+                  throw new Error("boom");
+                }
+              })
+            )
+        }
+      }
+    })();
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores: createInMemoryStores(),
+      runtimeConfig: { logger } as never
+    });
+
+    expect(result.error?.message).toBe("boom");
+    expect(
+      warnings.some(
+        (w) => w.message.includes("request-end hook") && JSON.stringify(w.data).includes("the attempt's failure could not be recorded")
+      )
+    ).toBe(true);
+  });
+
   it("a hook that hands back a failure fails a completed request, on its record and its result", async () => {
     const flow = defineFlow({
       kind: "request-end-verdict",

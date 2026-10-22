@@ -8,6 +8,14 @@
 export const RUN_BOARD_ENTRY = "runTaskBoard";
 
 /**
+ * The internal entry that checks a task session's waiting task, and does
+ * nothing else (FIX-2077): what the upgrade's backfill wakes for a split an
+ * older host parked, which may have no notice left to wake it. **Pinned**:
+ * a wake stores it by name.
+ */
+export const CHECK_TASK_ENTRY = "checkWaitingTask";
+
+/**
  * The internal entry a task's notice arrives on in the session that filed it.
  * **Pinned** (FIX-1780): a goal check reads notices by it. Orchestration's
  * `onTaskSettled` (FIX-2078).

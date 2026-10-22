@@ -2314,7 +2314,6 @@ async function runActionAttempt<
         await response.emitItemAdded(suspItem);
         await response.emitItemDone(suspItem);
 
-        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
@@ -2324,10 +2323,20 @@ async function runActionAttempt<
         // for its end are told why it stopped (FIX-2077). Before the record
         // says `suspended`: until then no resume can start, so a hook's write
         // (what the task waits on) never lands on a resume already running.
-        await requestEndRegistryOf(ctx)?.run(
+        // The heartbeat runs on until they end: the record still reads
+        // `in_progress`, and a request with no heartbeat reads as a crashed run.
+        const endFailure = await requestEndRegistryOf(ctx)?.run(
           { status: "suspended", suspension: { reason: String(suspendError.reason) } },
           { requestId, logger }
         );
+        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+        if (endFailure !== undefined) {
+          logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+            requestId,
+            status: "suspended",
+            error: endFailure.message
+          });
+        }
 
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
@@ -2970,8 +2979,9 @@ async function runActionAttempt<
     // run writing under the id, as are the item and event writes they left
     // pending.
     await drainRequestSideChainPool(ctx);
-    // As on the success path (FIX-2077).
-    await requestEndRegistryOf(ctx)?.run(
+    // As on the success path (FIX-2077). The request has already failed, so a
+    // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
+    const endFailure = await requestEndRegistryOf(ctx)?.run(
       wasIntentionalAbort
         ? { status: "aborted" }
         : signalAborted
@@ -2979,6 +2989,13 @@ async function runActionAttempt<
           : { status: "failed", error: { message: normalizedError?.message ?? String(error) } },
       { requestId, logger }
     );
+    if (endFailure !== undefined) {
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+        requestId,
+        status: "failed",
+        error: endFailure.message
+      });
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // As on the success path: only the last live attempt stamps.
