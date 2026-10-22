@@ -3,7 +3,7 @@
  * Each case reads the tool's answer and the row, so a refusal that wrote
  * anything anyway fails here.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { buildTaskToolsList, READ_OUTPUT_LIMIT, taskToolActions } from "../../src/skills/task-tools-capability";
@@ -45,6 +45,10 @@ describe("updateTask's message (FIX-2086)", () => {
     const row = b.get("t")!;
     expect(row).toMatchObject({ status: "pending", attempts: 0, goal: "count the rows" });
     expect(row.steers).toEqual([expect.objectContaining({ message: "Use the North America numbers", from: "filer" })]);
+    // Readable through getTask (D1), not taken until an attempt reads it.
+    expect((await b.call("getTask", { id: "t" })).task.steers).toEqual([
+      { message: "Use the North America numbers", from: "filer", at: expect.any(Number), taken: false },
+    ]);
   });
 
   it("steers a running task without using an attempt, ending it or cancelling it", async () => {
@@ -143,15 +147,39 @@ describe("the task view's current (D3)", () => {
   });
 
   it("a later completed follow-up is current over an earlier one, read from any task in the chain", async () => {
-    const b = await board();
-    await ran(b.ref, "root", "completed", "v1");
-    await ran(b.ref, "f1", "completed", "v2", "root");
-    await ran(b.ref, "f2", "completed", "v3", "root");
+    // A stepping clock: each one finishes a second after the one before.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const b = await board();
+      vi.setSystemTime(1_000);
+      await ran(b.ref, "root", "completed", "v1");
+      vi.setSystemTime(2_000);
+      await ran(b.ref, "f1", "completed", "v2", "root");
+      vi.setSystemTime(3_000);
+      await ran(b.ref, "f2", "completed", "v3", "root");
 
-    expect((await b.call("getTask", { id: "root" })).task.current).toEqual({ id: "f2", output: "v3" });
-    expect((await b.call("getTask", { id: "f1" })).task.current).toEqual({ id: "f2", output: "v3" });
-    // The latest one is current itself: it names no other.
-    expect((await b.call("getTask", { id: "f2" })).task).not.toHaveProperty("current");
+      expect((await b.call("getTask", { id: "root" })).task.current).toEqual({ id: "f2", output: "v3" });
+      expect((await b.call("getTask", { id: "f1" })).task.current).toEqual({ id: "f2", output: "v3" });
+      // The latest one is current itself: it names no other.
+      expect((await b.call("getTask", { id: "f2" })).task).not.toHaveProperty("current");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("two follow-ups that complete in the same millisecond order the same way every time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(5_000);
+      const b = await board();
+      await ran(b.ref, "root", "completed", "v1");
+      await ran(b.ref, "root-f2", "completed", "v2", "root");
+      await ran(b.ref, "root-f10", "completed", "v3", "root");
+      // Same completion and filing time: the higher-numbered follow-up is current.
+      expect((await b.call("getTask", { id: "root" })).task.current).toEqual({ id: "root-f10", output: "v3" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("has no current while no follow-up completed", async () => {

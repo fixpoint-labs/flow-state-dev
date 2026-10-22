@@ -40,6 +40,23 @@ export function renderSteers(steers: readonly ShownSteer[], lead: string): strin
   );
 }
 
+/**
+ * Show steers a request just took as lines in its session, each from its
+ * sender (FIX-2086): the filer's, or a person's sent from a screen. A line
+ * typed in the session (`line:` keyed) is there already, as the person's own.
+ * Call it once per take, with only the steers that take newly took.
+ */
+export function showTakenSteers(
+  ctx: Pick<BlockContext, "emit">,
+  steers: ReadonlyArray<{ readonly id: string; readonly message: string; readonly from: "filer" | "user"; readonly by?: string }>
+): void {
+  for (const steer of steers) {
+    if (steer.id.startsWith("line:")) continue;
+    const sender = steer.from === "filer" ? "the task's filer" : (steer.by ?? "the user");
+    ctx.emit.message(`Message from ${sender}: ${steer.message}`, { agentName: steer.from === "filer" ? "filer" : (steer.by ?? "user") });
+  }
+}
+
 /** The lead the context entry shows a running request's steers under. */
 export const STEERED_WHILE_RUNNING =
   "While you were working on this task, you were sent the messages below about it. They change what to do from " +
@@ -85,18 +102,25 @@ export async function runningTaskOf(
  * named `takenIn`, and answer every steer this attempt took in that read
  * (a re-run of the read after a crash reads them again). The claim's steers
  * are already in the brief, and a late steer's turn carries its own. Empty
- * when the board takes no steers or its claim moved on.
+ * when the board takes no steers or its claim moved on. With `show`, the
+ * steers this read newly took are shown in its session ({@link showTakenSteers}).
  */
-export async function takeRunningSteers(running: RunningTask, takenIn: string): Promise<ShownSteer[]> {
+export async function takeRunningSteers(
+  running: RunningTask,
+  takenIn: string,
+  show?: Pick<BlockContext, "emit">
+): Promise<ShownSteer[]> {
   const { ledger, claim, row } = running;
   if (ledger.takeSteers === undefined || row.status !== "in_progress") return [];
   // Nothing new as stored (a steer is another request's write, so the row
   // this request first read can't say): a read, no write. A steer that lands
   // after it is taken before the next model call, or by the gate's check.
   const stored = (await readCommittedTask(ledger, row.id)) ?? row;
-  if (untakenSteers(stored).length === 0) return steersTakenIn(stored, takenIn).map(({ message, from }) => ({ message, from }));
+  const fresh = untakenSteers(stored);
+  if (fresh.length === 0) return steersTakenIn(stored, takenIn).map(({ message, from }) => ({ message, from }));
   const outcome = await ledger.takeSteers(row.id, { claim, takenIn });
   if (outcome.outcome === "declined") return [];
+  if (show !== undefined) showTakenSteers(show, fresh);
   const now = ledger.get(row.id);
   return now === undefined ? [] : steersTakenIn(now, takenIn).map(({ message, from }) => ({ message, from }));
 }
@@ -120,7 +144,7 @@ export function createSteerContext(options: SteerContextOptions) {
     const running = await runningTaskOf(options.resolve, ctx);
     const requestId = ctx.request?.identity?.id;
     if (running === undefined || requestId === undefined) return null;
-    const steers = await takeRunningSteers(running, `step:${requestId}`);
+    const steers = await takeRunningSteers(running, `step:${requestId}`, ctx);
     return steers.length === 0 ? null : renderSteers(steers, STEERED_WHILE_RUNNING);
   };
 }

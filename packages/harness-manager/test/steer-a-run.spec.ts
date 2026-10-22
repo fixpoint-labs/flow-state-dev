@@ -37,14 +37,18 @@ const ALICE = "alice";
 const ISSUE = "FIX-1";
 const PHASE = "implement";
 const TASK_ID = harnessTaskId(ISSUE, PHASE);
+const FOLLOW_UP_ID = `${TASK_ID}-f1`;
 
 const dirs: string[] = [];
 afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-/** What one harness step does: work until stopped, work 400 ms and finish, or finish at once. */
-type Step = "until-stopped" | "finish-later" | "finished";
+/**
+ * What one harness step does: work until stopped, work 400 ms and finish,
+ * finish at once, or work 1.5 s and finish without ever confirming a session.
+ */
+type Step = "until-stopped" | "finish-later" | "finished" | "no-session-later";
 
 interface SeenStep {
   prompt: string;
@@ -53,7 +57,7 @@ interface SeenStep {
   request: string;
 }
 
-function stubHarness(script: Step[], seen: SeenStep[], started: () => void) {
+function stubHarness(script: Step[], seen: SeenStep[], started: () => void, whenStopped: Array<() => Promise<void>> = []) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
       name: "stub-harness",
@@ -64,7 +68,7 @@ function stubHarness(script: Step[], seen: SeenStep[], started: () => void) {
         const step = script[seen.length] ?? "finished";
         const session = resume ?? `sess_${seen.length + 1}`;
         seen.push({ prompt: input.prompt, resume, session, request: (ctx as { request: { identity: { id: string } } }).request.identity.id });
-        await feeds.onSession(session, ctx as never);
+        if (step !== "no-session-later") await feeds.onSession(session, ctx as never);
         started();
         const handle = {
           source: "stub/test",
@@ -84,9 +88,20 @@ function stubHarness(script: Step[], seen: SeenStep[], started: () => void) {
             if (signal.aborted) return resolve();
             signal.addEventListener("abort", () => resolve(), { once: true });
           });
+          // What happens to the task while the stopped process exits.
+          await whenStopped.shift()?.();
           throw new DOMException("Aborted", "AbortError");
         }
         if (step === "finish-later") await new Promise((resolve) => setTimeout(resolve, 400));
+        if (step === "no-session-later") {
+          // Its process exits when its signal fires, like any harness that stops on abort.
+          const signal = (ctx as { signal: AbortSignal }).signal;
+          const aborted = await new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => resolve(false), 1_500);
+            signal.addEventListener("abort", () => (clearTimeout(timer), resolve(true)), { once: true });
+          });
+          if (aborted) throw new DOMException("Aborted", "AbortError");
+        }
         return handle;
       },
     }) as unknown as HarnessBlock;
@@ -106,6 +121,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
   const stepStarted = () => new Promise<void>((resolve) => starts.push(resolve));
   // Run inside the phase's done-condition, one per call: what lands while the verdict is read.
   const duringVerdict: Array<() => Promise<void>> = [];
+  const whenStopped: Array<() => Promise<void>> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
@@ -122,7 +138,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
     stopsOnAbort: options.stopsOnAbort,
-    harness: stubHarness(options.script, seen, started),
+    harness: stubHarness(options.script, seen, started, whenStopped),
   });
   const board = taskBoard({
     name: "steer-board",
@@ -163,6 +179,33 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
       return tasks.steer!(TASK_ID, { message: input.message, from: "user", by: ALICE });
     },
   });
+  const cancel = handler({
+    name: "steer-cancel",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.cancel(TASK_ID);
+    },
+  });
+  // A follow-up of the task, held so no drain starts it: it waits, unclaimed, with no run link.
+  const followUp = handler({
+    name: "steer-follow-up",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = (ctx as { cap: Record<string, any> }).cap["steer-board"];
+      await tasks.addTask({ id: FOLLOW_UP_ID, goal: "the follow-up", input: { issue: ISSUE, phase: PHASE }, assignee: "coder", followUpOf: TASK_ID, held: true });
+      return { id: FOLLOW_UP_ID };
+    },
+  });
   // The coding flow's own door: a line in the run's session.
   const message = harnessSessionDoor({
     name: "steer-host",
@@ -180,7 +223,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
   });
   const flow = defineFlow({
     kind: "steer-host",
-    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, message },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer }, cancel: { block: cancel }, followUp: { block: followUp }, message },
     internal: { actions: { ...heard } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "steer-host" } as never);
@@ -216,7 +259,13 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
-  return { act, row, until, seen, stepStarted, duringVerdict, dispose: () => state.dispose() };
+  /** Another claim of the row, as a reclaim after a lapsed lease leaves it: the next attempt holds it. */
+  const claimedAgain = async () => {
+    const stores = (await runtime()).stores;
+    const stored = await stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`);
+    await stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, { ...stored.state, attempts: stored.state.attempts + 1 }, stored.version);
+  };
+  return { act, row, until, seen, stepStarted, duringVerdict, whenStopped, claimedAgain, dispose: () => state.dispose() };
 }
 
 describe("a steer reaches a coding run", () => {
@@ -292,6 +341,50 @@ describe("a steer reaches a coding run", () => {
     }
   }, 60_000);
 
+  it.each([
+    ["cancelled", "the task is cancelled"],
+    ["claimed again", "another attempt claims the task"],
+  ] as const)("runs no more steps for a stopped step once its task is %s", async (what) => {
+    const h = host({ script: ["until-stopped", "finished", "finished"], stopsOnAbort: true });
+    try {
+      h.whenStopped.push(async () => {
+        if (what === "cancelled") await h.act("cancel");
+        else await h.claimedAgain();
+      });
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Use the v2 API instead." });
+      await h.until((t) => (what === "cancelled" ? t.status === "cancelled" : t.attempts === 2), `the task ${what}`, 10_000 + STEER_POLL_MS);
+      // Past a poll, a step and its follow-up: no step ran on a task this attempt no longer holds.
+      await new Promise((resolve) => setTimeout(resolve, 2 * STEER_POLL_MS));
+
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("doesn't stop a step whose harness hasn't confirmed a session: the steer costs no attempt", async () => {
+    const h = host({ script: ["no-session-later"], stopsOnAbort: true });
+    try {
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+
+      await h.act("steer", { message: "Use the v2 API instead." });
+      const done = await h.until((t) => t.status === "completed" || t.status === "errored", "the run to end", 10_000 + STEER_POLL_MS);
+
+      expect(done).toMatchObject({ status: "completed", attempts: 1 });
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
   it("carries a steer sent before the attempt started in its first prompt, and runs one step", async () => {
     const h = host({ script: ["finished"], stopsOnAbort: true });
     try {
@@ -326,6 +419,26 @@ describe("a line typed in a coding run's session", () => {
       const done = await h.until((t) => t.status === "completed", "the run to complete");
       expect(h.seen[1]!.prompt).toContain("Rename the flag too.");
       expect(done.steers).toEqual([expect.objectContaining({ from: "user", by: ALICE, takenBy: 1 })]);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("steers a follow-up still waiting to start, as the worker door does, rather than talk", async () => {
+    const h = host({ script: ["finished", "finished"], stopsOnAbort: false });
+    try {
+      await h.act("seed");
+      await h.act("drain");
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+      const filed = await h.act("followUp");
+      expect(filed.error).toBeUndefined();
+
+      const line = await h.act("message", { message: "And update the docs." }, done.run!.sessionId);
+
+      expect(line.error).toBeUndefined();
+      expect(line.output).toEqual({ steered: FOLLOW_UP_ID });
+      // No talk ran: the line waits on the follow-up for its first prompt.
+      expect(h.seen).toHaveLength(1);
     } finally {
       await h.dispose();
     }

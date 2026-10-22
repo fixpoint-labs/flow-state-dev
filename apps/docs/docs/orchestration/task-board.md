@@ -66,7 +66,7 @@ No tool finishes a task. A task ends when its worker's turn returns, or throws.
 | `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
 | `status: "held"`, `status: "pending"` | Before the task first starts: hold it, or release a held one |
 | `status: "cancelled"` | Until the task finishes. Sent alone |
-| `message` | Until the task finishes. Kept on the task; see [below](#sending-a-message-to-an-open-task) |
+| `message` | Until the task finishes. Sent alone, and kept on the task; see [below](#sending-a-message-to-an-open-task) |
 
 The fields are flat, beside `id`. `labels` replaces the whole list. `metadata` merges its keys over the task's. *Before it first starts* means no attempt ever claimed it, so a task back in `pending` after a failed attempt stays locked. Once a task starts, only a cancel or a message lands. Once it finishes, nothing does, its output included: file a follow-up with `createTask({ followUpOf })` to correct or extend it.
 
@@ -79,9 +79,11 @@ Every rule is checked inside the write, so a task that starts between your read 
 | `field_locked_after_start` | A field that changes only before a start, on a task that has started. It names the fields and the task's status |
 | `task_finished` | Any write to a finished task, a message included |
 | `cancel_takes_no_edits` | `status: "cancelled"` sent with another field |
+| `message_takes_no_edits` | `message` sent with a field or a status |
 | `nothing_to_update` | No field and no status beside `id` |
 | `unknown_assignee` | An `assignee` the board's roster doesn't name |
 | `steer_limit` | A message to a task that already holds 20 |
+| `message_not_supported` | A message on a board whose task list keeps no messages |
 
 ### Sending a message to an open task
 
@@ -90,11 +92,13 @@ Every rule is checked inside the write, so a task that starts between your read 
 - **Filed, not started yet.** The first attempt's brief carries every message, after the goal.
 - **Running.** The worker takes it before its next model call, in the same turn. A coding run on a [harness manager](./harness-manager.md#steering-a-run) takes it at its next step.
 - **Waiting on tasks it filed.** A turn starts now, with the message, while those tasks keep running.
-- **After the worker's last model call.** The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
+- **After the worker's last model call**, even while the task is being settled. The task gets one more turn, with the message, before it settles. Its output follows the usual rule: the latest checkpoint, or else that turn's answer.
 
-The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken.
+The last case needs a turn to run. A Workforce conversation's board has one. For a board you wire yourself, name the internal entry that runs it in `taskLedgers({ endRules: { steerTurn: { entry } } })`. Without one, the task settles and the message stays on it, untaken: on such a board, a message that arrives after the last model call may not be acted on.
 
-The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message can go with other edits in one call. Every check runs before anything is written, so a refused call writes nothing. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
+The filer's model sends a message with the `updateTask` tool, and a person with the board's `updateTask` action; the task records which. A message is sent alone, not with an edit or a hold, so a call never lands half of what it asked. A task takes at most 20 messages. Past that, cancel it and file it again with everything it needs, or file a follow-up once it ends.
+
+`getTask` lists a task's messages as `steers`, oldest first, each with who sent it and whether its work has read it (`taken`). A message the work reads mid-run also shows in the task's session as a line from its sender.
 
 A finished task takes no message, because its output never changes. To correct it, file a follow-up: it runs in the task's session, and `getTask` on the original shows the follow-up's output as `current`.
 

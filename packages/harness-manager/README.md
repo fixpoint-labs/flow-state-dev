@@ -292,26 +292,34 @@ defineFlow({
 });
 ```
 
-The session's task is the board row whose run link names the session: the task, or the latest of its follow-ups. Sent `{ message }`, the door writes the line into the session as the user's message, then:
+The session's task is found in the chain of the task that ran there (the task and its follow-ups, which run in the session one at a time), the way Workforce's door finds it: the open one running here, else the latest open one, a follow-up waiting to start, else the latest that ran here. Sent `{ message }`, the door writes the line into the session as the user's message, then:
 
 - **open task** → a steer. The line is kept on the task as a message from the user (`Task.steers`, the same write as `updateTask({ message })`). The run takes it at its next step: the same request runs another step that resumes the coding session the last one confirmed, with the steer in its prompt, on the same attempt. A steer that lands after the run's last step gets one more turn before the task settles, through `STEER_TURN_ENTRY`. Answers `{ steered: <taskId> }`.
-- **finished task** → talk. One harness run resumes the task's confirmed coding session with the line, outside any attempt, and its answer is the reply. The task, its output and its attempts don't change. Answers `{ reply, taskId }`.
+- **every task in the chain finished** → talk. One harness run resumes the task's confirmed coding session with the line, outside any attempt, and its answer is the reply. It holds the checkout while it runs, as a run does, so a follow-up claimed meanwhile waits for it; `talkTimeoutMs` (default 10 minutes) bounds it. The task, its output and its attempts don't change. Answers `{ reply, taskId }`.
 
 A refusal fails the request, with the reason in words as the error's message and `SessionDoorRefused` as its cause, so only a delivered line ever completes:
 
 - `not-started`: no task started in this session.
 - `cannot-continue`: the task finished and its harness never confirmed a coding session.
-- `steer-refused`: the task can take no more messages.
+- `steer-limit`: the task has taken as many messages as it can (20).
+- `finished`: the task finished before the line reached it.
+- `not-supported`: the board keeps no messages.
+
+The last three read as they do on Workforce's door (`LINE_STEER_REFUSALS`).
 
 The door reads nothing from the request but `message`. `board` must resolve from the session's own fields, never from the request. `runOf` names the `issue` and `phase` a row's run is keyed by, as the manager keyed its run record, or `undefined` for a row no manager behind the door runs.
 
 ### Stopping a step for a steer
 
-By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and a steer no request of the attempt took stops that step, not the request. The checkout keeps what the stopped step wrote, and the next step resumes the session with the steer. Leave it off for a harness whose abort can return while its process still runs.
+By default a running step finishes first, and the next step takes the steer. Build the manager with `stopsOnAbort: true` when your harness's abort resolves only once its process has exited. The manager then reads its row every `STEER_POLL_MS` (one second) while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. The stop ends the step, not the request, and the checkout keeps what the stopped step wrote. A message that arrives before the session is confirmed waits for the step's own end. Leave the option off for a harness whose abort can return while its process still runs.
 
-### Upgrading kept lines
+A step never runs for a task its attempt no longer holds: if the task is cancelled, finishes, or is claimed again while a step runs, the request takes no further step.
 
-A line kept in the `turns/**` collection by an earlier door is not read by this one. Run `upgradeKeptTurns` once at host start, before the first request:
+A message taken mid-run shows in the run's session as a line from its sender.
+
+### Upgrading from `messageDoor`
+
+Before `harnessSessionDoor`, a manager's `messageDoor` (and `harnessMessageDoor`) kept a user's line in the `turns/**` collection for the attempt that would act on it. Nothing reads that collection now. If your host ran a version with `messageDoor`, run `upgradeKeptTurns` once at host start, before the first request (Shift Manager's DevTeam host does):
 
 ```ts
 import { upgradeKeptTurns } from "@flow-state-dev/harness-manager";

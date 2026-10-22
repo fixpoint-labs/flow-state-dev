@@ -126,11 +126,17 @@ function latestCompletedByRoot(rows: readonly Task[]): Map<string, Task> {
   return latest;
 }
 
-/** Whether `a` completed after `b`, by completion time, then filing time. */
+/**
+ * Whether `a` completed after `b`, by completion time, then filing time, then
+ * id (a follow-up's numbered suffix, read as a number), so two that tie to the
+ * millisecond always order the same way.
+ */
 function laterThan(a: Task, b: Task): boolean {
   const at = a.completedAt ?? a.updatedAt;
   const bt = b.completedAt ?? b.updatedAt;
-  return at !== bt ? at > bt : a.createdAt > b.createdAt;
+  if (at !== bt) return at > bt;
+  if (a.createdAt !== b.createdAt) return a.createdAt > b.createdAt;
+  return a.id.localeCompare(b.id, undefined, { numeric: true }) > 0;
 }
 
 /** `current` as a task view names it: none when it is the task itself. */
@@ -1621,7 +1627,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "result once it completed. checkpoint: true means the output came from a reported " +
       "checkpoint. Its error when it failed, the question it waits on when it is " +
       "parked. current is the latest follow-up in its chain that completed, with its output: " +
-      "the version that stands now; output stays the task's own. Use it to answer from what " +
+      "the version that stands now; output stays the task's own. steers are the messages sent " +
+      "into it, oldest first, each marked taken once its work read it. Use it to answer from what " +
       "a task found, rather than from a line about it. " +
       "Don't poll a task you filed to see it end: end your turn, and its ending wakes you.",
     inputSchema: z.object({ id: z.string() }),
@@ -1669,6 +1676,19 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           current: z
             .object({ id: z.string(), output: z.unknown().optional(), outputCut: z.literal(true).optional() })
             .optional(),
+          /** The messages sent into it (FIX-2086 D1), oldest first; absent when none were. */
+          steers: z
+            .array(
+              z.object({
+                message: z.string(),
+                from: z.enum(["filer", "user"]),
+                by: z.string().optional(),
+                at: z.number(),
+                /** True once the task's current attempt read it. */
+                taken: z.boolean(),
+              }),
+            )
+            .optional(),
         }),
       }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
@@ -1708,6 +1728,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(t.filedByTask !== undefined ? { filedByTask: t.filedByTask } : {}),
           ...(t.run != null ? { run: t.run } : {}),
           ...(t.completedAt != null ? { completedAt: t.completedAt } : {}),
+          ...(t.steers !== undefined && t.steers.length > 0
+            ? {
+                steers: t.steers.map((steer) => ({
+                  message: steer.message,
+                  from: steer.from,
+                  ...(steer.by !== undefined ? { by: steer.by } : {}),
+                  at: steer.at,
+                  taken: steer.takenBy === t.attempts,
+                })),
+              }
+            : {}),
           ...(current !== undefined
             ? {
                 current: {

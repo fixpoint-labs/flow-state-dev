@@ -48,7 +48,7 @@ import type {
   HarnessResolver,
   HarnessSessionHook,
 } from "@flow-state-dev/core/types";
-import { renderSteers } from "@flow-state-dev/orchestration";
+import { renderSteers, showTakenSteers } from "@flow-state-dev/orchestration";
 import { TaskEndsForGoodError, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
@@ -1499,14 +1499,21 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ctx: BlockContext,
     takenIn: string,
     select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
-  ): Promise<Array<{ message: string; from: "filer" | "user" }>> => {
+  ): Promise<Array<{ id: string; message: string; from: "filer" | "user"; by?: string }> | null> => {
     const board = await runBoard(ctx);
     const row = await committedRow(ctx);
     if (row === undefined || row.status !== "in_progress") return [];
     if (board.takeSteers !== undefined && untakenSteers(row).length > 0) {
-      await board.takeSteers(row.id, { claim: ticketForClaim(board.collectionId, row, board.partition), takenIn });
+      const taken = await board.takeSteers(row.id, { claim: ticketForClaim(board.collectionId, row, board.partition), takenIn });
+      // Declined: the attempt no longer holds the row (claimed again, finished).
+      if (taken.outcome === "declined") return null;
     }
-    return select(board.get(row.id) ?? row, takenIn).map(({ message, from }) => ({ message, from }));
+    return select(board.get(row.id) ?? row, takenIn).map(({ id, message, from, by }) => ({
+      id,
+      message,
+      from,
+      ...(by !== undefined ? { by } : {}),
+    }));
   };
 
   /** The run's board as the substrate sees it: the one its claim names, or the fixed board. */
@@ -2175,9 +2182,10 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       // Steers after the phase prompt, once the checkout exists (FIX-2086):
       // a third channel beside `feedback` and `answers`, so a failure and a
       // person's answer stay their own sections.
-      const steers = await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) =>
-        (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts),
-      );
+      const steers =
+        (await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) =>
+          (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts),
+        )) ?? [];
       const restored = heldPromptSection(place, state.held);
       const withRestored = restored === undefined ? prompt : `${prompt}\n\n${restored}`;
       return {
@@ -2718,8 +2726,12 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const watch: SteerWatch = { stopped: false, timer: undefined };
     const poll = async () => {
       try {
+        const state = managerState(harnessCtxState(ctx));
         const row = await committedRow(ctx);
-        if (row !== undefined && row.status === "in_progress" && untakenSteers(row).length > 0) {
+        const owed = row !== undefined && row.status === "in_progress" && row.attempts === state.attempt && untakenSteers(row).length > 0;
+        // Stopped only once the harness confirmed a session to resume: a stop
+        // before that would cost the attempt the steer must not use.
+        if (owed && (await readConfirmedSession(ctx, state.topic!, state.attempt!)) !== null) {
           watch.stopped = true;
           controller.abort(new Error("[harness-manager] stopped for a steer"));
           return;
@@ -2794,7 +2806,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   const stepForSteer = async (ctx: BlockContext, stopped: boolean): Promise<{ prompt: string; again: true } | undefined> => {
     const state = managerState(harnessCtxState(ctx));
     const row = await committedRow(ctx);
-    const owed = row !== undefined && row.status === "in_progress" && untakenSteers(row).length > 0;
+    // Only this attempt's own row: a task cancelled, finished or claimed again
+    // since takes no more steps from this request.
+    const ours = row !== undefined && row.status === "in_progress" && row.attempts === state.attempt;
+    if (!ours) {
+      if (!stopped) return undefined;
+      throw new HarnessAttemptFailed(STALE_AFTER_STOP);
+    }
+    const owed = untakenSteers(row).length > 0;
     if (!owed && !stopped) return undefined;
     const session = await readConfirmedSession(ctx, state.topic!, state.attempt!);
     if (session === null) {
@@ -2810,7 +2829,13 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
       );
     }
     const steers = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, (now, takenIn) => steersTakenIn(now, takenIn));
+    if (steers === null) {
+      if (!stopped) return undefined;
+      throw new HarnessAttemptFailed(STALE_AFTER_STOP);
+    }
     if (steers.length === 0 && !stopped) return undefined;
+    // The steers this step takes, as lines in the run's session from their senders.
+    showTakenSteers(ctx, steers);
     const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
     await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
     const lead = stopped ? STOPPED_LEAD : ARRIVED_LEAD;
@@ -3031,6 +3056,10 @@ const STOPPED_LEAD =
 /** The lead the step after one that ended while steers arrived opens with. */
 const ARRIVED_LEAD =
   "These messages about the task arrived while you were working. The checkout is as you left it. Carry on, following them.";
+
+/** Why a step stopped for a steer goes no further: its task left this attempt meanwhile. */
+const STALE_AFTER_STOP =
+  "[harness-manager] the run was stopped for a steer, and its task is no longer this attempt's: it was cancelled, finished or claimed again.";
 
 /** The prompt of a step after a stop whose steers another read took. */
 const CONTINUE_AFTER_STOP =

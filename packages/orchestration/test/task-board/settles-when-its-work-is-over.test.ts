@@ -42,7 +42,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type Behaviour = (ctx: BlockContext, ledger: TaskCollectionRef) => Promise<unknown>;
 
-async function harness(options: { queued?: () => boolean; steerTurn?: boolean } = {}) {
+async function harness(
+  options: { queued?: () => boolean; queuedWith?: (ledger: TaskCollectionRef) => Promise<boolean>; steerTurn?: boolean } = {}
+) {
   const store = createFakeResourceCollection();
   let clock = 1_000;
   const log: string[] = [];
@@ -86,7 +88,8 @@ async function harness(options: { queued?: () => boolean; steerTurn?: boolean } 
 
   // The task session's steer entry (FIX-2086 D2), named when the flow declares one.
   const endRules = {
-    workQueued: async () => options.queued?.() ?? false,
+    workQueued: async () =>
+      options.queuedWith !== undefined ? options.queuedWith(await ledger()) : (options.queued?.() ?? false),
     ...(options.steerTurn === true ? { steerTurn: { entry: "steerTurn" } } : {}),
   };
   const gate = createTaskGate({
@@ -538,6 +541,33 @@ describe("a steer no request took gives the task one more turn before it settles
 
     expect(h.steerTurns).toEqual([["first"], ["second"]]);
     expect(await h.row()).toMatchObject({ status: "completed", output: "turn for second", attempts: 1 });
+  });
+
+  it("a steer that lands after the check read the row, before the settle, still gets its turn", async () => {
+    // The steer arrives while the gate asks whether work is queued: after its
+    // own read of the row, before the complete. The complete itself declines.
+    let steered = false;
+    const h = await harness({
+      steerTurn: true,
+      queuedWith: async (ledger) => {
+        if (!steered) {
+          steered = true;
+          await steer(ledger, "late redirect");
+        }
+        return false;
+      },
+    });
+    h.setBehaviour(async () => "first answer");
+
+    await h.run();
+
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "steer", attempts: 1 });
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
+    await h.runLater("steerTurn");
+
+    expect(h.steerTurns).toEqual([["late redirect"]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: late redirect", attempts: 1 });
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 
   it("a steer turn that takes none of its steers settles the task instead of owing another turn", async () => {

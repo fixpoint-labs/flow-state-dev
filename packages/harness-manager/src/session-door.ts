@@ -26,9 +26,9 @@ import {
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import type { HarnessSlot } from "./manager";
+import { resolveOwnership, type HarnessSlot } from "./manager";
 import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";
-import { runBoardSegment } from "./workspace";
+import { acquireCheckout, releaseCheckout, runBoardSegment } from "./workspace";
 
 /** What the door takes: the line. Shift Manager builds it without knowing the kind. */
 export const sessionDoorInputSchema = z.object({ message: z.string() });
@@ -88,16 +88,39 @@ export interface HarnessSessionDoorOptions {
   readonly onSteered?: (ctx: BlockContext, row: Task) => Promise<void>;
   /** Capabilities the door's blocks hold, for the board ledgers `board` resolves. */
   readonly uses?: readonly DefinedCapability[];
+  /**
+   * How long one talk run may take, in ms, which also sizes the hold on the
+   * checkout it runs in. Default 10 minutes.
+   */
+  readonly talkTimeoutMs?: number;
 }
 
-/** The row this session's run works: the running one its run link names, else the latest. */
-function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
-  const linked = tasks.list().filter((task) => (task as Task).run?.sessionId === sessionId) as Task[];
-  return (
-    linked.find((task) => !isTerminalStatus(task.status)) ??
-    linked.sort((a, b) => b.createdAt - a.createdAt || b.attempts - a.attempts)[0]
+/** The newest of `rows`, by filing time, then attempts. */
+function newest(rows: readonly Task[]): Task {
+  return rows.reduce((last, task) =>
+    task.createdAt > last.createdAt || (task.createdAt === last.createdAt && task.attempts > last.attempts) ? task : last,
   );
 }
+
+/**
+ * The row a line in this session is about, in the chain of the task the
+ * session ran (that task and its follow-ups, which run here one at a time),
+ * as Workforce's door resolves it: the open row running here; else the
+ * latest open one, a follow-up waiting to start; else, every one finished,
+ * the latest that ran here, whose coding session talk resumes.
+ */
+function sessionRow(tasks: TaskCollectionRef, sessionId: string): Task | undefined {
+  const rows = tasks.list() as Task[];
+  const linked = rows.filter((task) => task.run?.sessionId === sessionId);
+  if (linked.length === 0) return undefined;
+  const roots = new Set(linked.map((task) => task.followUpOf ?? task.id));
+  const open = rows.filter((task) => roots.has(task.followUpOf ?? task.id) && !isTerminalStatus(task.status));
+  const here = open.filter((task) => task.run?.sessionId === sessionId);
+  return newest(here.length > 0 ? here : open.length > 0 ? open : linked);
+}
+
+/** The default bound on one talk run. */
+const TALK_TIMEOUT_MS = 10 * 60_000;
 
 /** What the decide step hands on: a steer done, or the talk to run. */
 const decidedSchema = z.union([
@@ -110,6 +133,9 @@ const doorStateSchema = z.object({
   cwd: z.string().nullable().default(null),
   resume: z.string().nullable().default(null),
   taskId: z.string().nullable().default(null),
+  /** The hold on the checkout the talk runs in, released when it ends. */
+  lockPath: z.string().nullable().default(null),
+  leaseToken: z.string().nullable().default(null),
 });
 
 /**
@@ -125,6 +151,12 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     resources: { [RUNS]: runRecordCollection },
   }) as unknown as DefinedCapability;
   const uses = [capability, ...(options.uses ?? [])];
+  const talkTimeoutMs = options.talkTimeoutMs ?? TALK_TIMEOUT_MS;
+  const { ownership } = resolveOwnership({ runTimeoutMs: talkTimeoutMs });
+  const releaseTalkLease = (ctx: { sequencer?: { state?: unknown } }) => {
+    const state = stateOf(ctx);
+    if (state.lockPath != null && state.leaseToken != null) releaseCheckout({ lockPath: state.lockPath, token: state.leaseToken });
+  };
 
   // The talk's harness, fed from this door's own state: the checkout the
   // finished run worked in and the session it confirmed. Outside any
@@ -159,7 +191,16 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
           ? undefined
           : await readRunRow(ctx, runTopic(runBoardSegment(board.tasks.collectionId, board.tasks.partition), identity.issue, identity.phase));
       if (record?.sessionId == null || record.workspacePath == null) throw new SessionDoorRefused("cannot-continue");
-      await ctx.sequencer!.patchState({ cwd: record.workspacePath, resume: record.sessionId, taskId: row.id });
+      // The checkout is held for the talk, as for any run, so a follow-up
+      // claimed meanwhile waits rather than resume the same session beside it.
+      const lease = await acquireCheckout(record.workspacePath, `talk:${row.id}:${ctx.request.identity.id}`, ownership, Date.now, ctx.signal);
+      await ctx.sequencer!.patchState({
+        cwd: record.workspacePath,
+        resume: record.sessionId,
+        taskId: row.id,
+        lockPath: lease.lockPath,
+        leaseToken: lease.token,
+      });
       return { talk: { prompt: input.message, cwd: record.workspacePath, resume: record.sessionId, taskId: row.id } };
     },
   });
@@ -170,6 +211,7 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
     outputSchema: sessionDoorOutputSchema,
     sequencerStateSchema: doorStateSchema,
     execute: async (value, ctx) => {
+      releaseTalkLease(ctx as never);
       const handle = value as { finalMessage?: string | null; steered?: string };
       if (typeof handle.steered === "string") return { steered: handle.steered };
       return { reply: handle.finalMessage ?? null, taskId: stateOf(ctx as never).taskId ?? "" };
@@ -182,8 +224,23 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
       (decided: z.infer<typeof decidedSchema>) => "talk" in decided,
       (decided: z.infer<typeof decidedSchema>) => ({ prompt: (decided as { talk: { prompt: string } }).talk.prompt }),
       talkHarness,
+      { abortSignal: () => AbortSignal.timeout(talkTimeoutMs) },
     )
-    .step(reply);
+    .step(reply)
+    .rescue([
+      {
+        block: handler({
+          name: `${name}-session-door-release`,
+          inputSchema: z.unknown(),
+          outputSchema: z.unknown(),
+          sequencerStateSchema: doorStateSchema,
+          execute: (error: unknown, ctx) => {
+            releaseTalkLease(ctx as never);
+            throw error;
+          },
+        }),
+      },
+    ]);
 
   return {
     block,

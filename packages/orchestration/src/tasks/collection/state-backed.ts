@@ -868,7 +868,9 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // Decided once per row read: the decline and the patch see the same row.
       let decidedFor: { task: unknown; decided: ReturnType<typeof steerWrite> } | undefined;
       const decide = (task: unknown) => {
-        if (decidedFor?.task !== task) decidedFor = { task, decided: steerWrite(task as Task, input, steerId, at) };
+        if (decidedFor === undefined || decidedFor.task !== task) {
+          decidedFor = { task, decided: steerWrite(task as Task, input, steerId, at) };
+        }
         return decidedFor.decided;
       };
       return patchOne(

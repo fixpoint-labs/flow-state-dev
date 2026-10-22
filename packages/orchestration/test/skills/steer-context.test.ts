@@ -12,12 +12,15 @@ async function runningTurn(requestId = "r-turn") {
   const claimed = (await ref.claim("w"))!;
   const ticket = ticketForClaim(BOARD_FIELD, claimed);
   await ref.linkRun("t", { sessionId: "s-task", requestId, attempt: claimed.attempts }, { claim: ticket });
+  // The lines a turn shows in its session.
+  const lines: Array<{ text: string; agentName?: string }> = [];
   const turn = (id: string) => ({
     ...(ctx as object),
     session: { identity: { id: "s-task" }, state: { taskId: "t" } },
     request: { identity: { id } },
+    emit: { message: (text: string, options?: { agentName?: string }) => lines.push({ text, ...options }) },
   });
-  return { ref, ticket, turn, read: createSteerContext({ resolve: ownStateResolver }) };
+  return { ref, ticket, turn, lines, read: createSteerContext({ resolve: ownStateResolver }) };
 }
 
 const steer = (ref: TaskCollectionRef, message: string) => ref.steer!("t", { message, from: "filer" });
@@ -36,6 +39,21 @@ describe("the steer context entry", () => {
     // Re-read before the call after: still shown, never taken twice.
     expect(await read(undefined, turn("r-turn") as never)).toBe(next);
     expect(ref.get("t")).toMatchObject({ status: "in_progress", attempts: 1 });
+  });
+
+  it("shows a taken steer once as a line in the task's session, from its sender; a line typed there is there already", async () => {
+    const { ref, turn, lines, read } = await runningTurn();
+    await steer(ref, "Use the North America numbers");
+    await ref.steer!("t", { message: "Typed here.", from: "user", by: "alice", key: "line:r-door" });
+    await ref.steer!("t", { message: "From the screen.", from: "user", by: "alice" });
+
+    await read(undefined, turn("r-turn") as never);
+    await read(undefined, turn("r-turn") as never);
+
+    expect(lines).toEqual([
+      { text: "Message from the task's filer: Use the North America numbers", agentName: "filer" },
+      { text: "Message from alice: From the screen.", agentName: "alice" },
+    ]);
   });
 
   it("is not shown again by another request of the attempt once taken", async () => {

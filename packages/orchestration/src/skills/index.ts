@@ -134,6 +134,7 @@ export {
   createSteerContext,
   renderSteers,
   runningTaskOf,
+  showTakenSteers,
   takeRunningSteers,
   STEERED_WHILE_RUNNING,
   type ShownSteer,

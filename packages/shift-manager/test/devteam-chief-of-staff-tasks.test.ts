@@ -24,8 +24,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, harnessRunHandleSchema, harnessRunInputSchema, type GeneratorTool } from "@flow-state-dev/core";
 import type { FlowInstance, GeneratorModel, ModelResolver } from "@flow-state-dev/core/types";
-import { inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { askMarkerPath } from "@flow-state-dev/harness-manager";
+import { inMemoryStores, resolveUserStorageKey, runAction } from "@flow-state-dev/engine";
+import { askMarkerPath, runBoardSegment } from "@flow-state-dev/harness-manager";
+import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
 import { LIST_TASKS_ACTION } from "../src/lib/conversation-tasks";
 import { selectHarness } from "../teams/devteam/harness.mts";
@@ -689,6 +690,52 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     expect((await storedTask(lab, taskId!))?.attempts).toBe(1);
     expect((await runtime.stores.request.list({})).filter((r) => r.actionName === "work")).toHaveLength(1);
     await quiet(lab);
+  });
+});
+
+describe("a line the coder's door kept before lines became steers (FIX-2086)", () => {
+  it("becomes a steer on its task when the Lab starts, once", async () => {
+    // A Lab that ran before: a conversation, and one of its coder tasks with
+    // a line kept for its next attempt, as the retired door left them.
+    const stores = inMemoryStores();
+    const first = await openLab({
+      modelResolver: scriptedCoder([]),
+      stores,
+      harness: harnessStub().slot,
+      runTimeoutMs: 30_000,
+      workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-upgrade-")), remotes: { allow: ["file"] } },
+      coderWorkerId: CODER,
+    });
+    opened = first;
+    const conv = await conversation(first);
+    await first.dispose();
+    opened = undefined;
+    const cell = resolveUserStorageKey(LAB_USER_ID, LAB_ORG_ID, { id: "", isolateUserState: false });
+    const segment = runBoardSegment("tasks", conv);
+    const rowKey = `tasks/${encodeUserSegment(conv)}/task_kept`;
+    // The store the Lab's runtime resolves, the same across both starts.
+    const registry = await stores.resolve();
+    const seed = async (key: string, state: Record<string, unknown>) => registry.resourceState.set("user", cell, key, state as never, "any" as never);
+    await seed(rowKey, { id: "task_kept", goal: "look at the repo", status: "parked", parkedForTurn: true, attempts: 1, assignee: CODER, createdAt: 1, updatedAt: 1, revision: 1 });
+    await seed(`runs/${segment}/task_kept/answer`, { taskId: "task_kept", sessionId: "sess_stub_1" });
+    await seed("turns/task_kept/answer/2/k1", { message: "Check the tests too.", keptAt: 5, forAttempt: 2, deliveredTo: null, withdrawn: false });
+
+    const read = async () => (await registry.resourceState.get("user", cell, rowKey))?.state as { steers?: Array<Record<string, unknown>> };
+    for (let start = 0; start < 2; start += 1) {
+      opened = await openLab({
+        modelResolver: scriptedCoder([]),
+        stores,
+        harness: harnessStub().slot,
+        runTimeoutMs: 30_000,
+        workspace: { root: mkdtempSync(join(tmpdir(), "devteam-coder-upgrade-")), remotes: { allow: ["file"] } },
+        coderWorkerId: CODER,
+      });
+      await opened.dispose();
+      opened = undefined;
+      expect((await read()).steers).toEqual([
+        expect.objectContaining({ id: "turn:turns/task_kept/answer/2/k1", message: "Check the tests too.", from: "user", by: LAB_USER_ID }),
+      ]);
+    }
   });
 });
 

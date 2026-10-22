@@ -149,15 +149,17 @@ Answer it and the run picks up **the same coding session**, not a new one told w
 
 A user talks to a coding run by typing in the run's own session, the one the task's run link names. What a line does depends on whether the task has finished.
 
-**While the task is open, a line steers it.** The line is kept on the task as a message from that user, the same write as `updateTask({ message })` (see [Sending a message to an open task](./task-board.md#sending-a-message-to-an-open-task)). The run takes it at its next step: the same request runs another step that resumes **the same coding session** with the message in its prompt. The checkout and the harness's memory of the conversation carry over, so the run picks up with what it had already read and tried, plus what you said. No attempt is used.
+**While the task is open, a line steers it.** The line is kept on the task as a message from that user, the same write as `updateTask({ message })` (see [Sending a message to an open task](./task-board.md#sending-a-message-to-an-open-task)). The run takes it at its next step: the same request runs another step that resumes **the same coding session** with the message in its prompt. The checkout and the harness's memory of the conversation carry over, so the run picks up with what it had already read and tried, plus what you said. No attempt is used. A follow-up filed on the task and still waiting to start counts as open: the line goes to it.
+
+**Once the task and its follow-ups have finished, a line is talk.** One harness run resumes the task's coding session with the line, and its answer is the reply in the session. It runs outside any attempt: the task, its output and its attempts don't change. It holds the checkout while it runs, as any run does. To change the work, file a follow-up task.
 
 ### Steering a run
 
-By default a step that is running finishes first, and the next step takes the message. If your harness's abort resolves only once its process has exited, build the manager with `stopsOnAbort: true`. The manager then checks the task about once a second while a step runs, and a new message stops that step. The next step starts at once, with the message. The stop costs the step the run was in the middle of; the checkout keeps whatever it wrote. Leave `stopsOnAbort` off for a harness whose abort can return while its process still runs, so two processes never work one checkout.
+By default a step that is running finishes first, and the next step takes the message. If your harness's abort resolves only once its process has exited, build the manager with `stopsOnAbort: true`. The manager then checks the task about once a second while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. A message that arrives before then waits for the step's own end. The stop costs the step the run was in the middle of; the checkout keeps whatever it wrote. Leave `stopsOnAbort` off for a harness whose abort can return while its process still runs, so two processes never work one checkout.
 
-A message that arrives after the run's last step gets one more turn before the task settles, when the flow declares that turn (`STEER_TURN_ENTRY`, below). The first attempt of a task filed with messages already on it carries them all in its prompt.
+A message that arrives after the run's last step, even while its result is being checked, gets one more step before the task settles. The first attempt of a task filed with messages already on it carries them all in its prompt. A message the run takes mid-run shows in its session as a line from its sender.
 
-**Once the task has finished, a line is talk.** One harness run resumes the task's coding session with the line, and its answer is the reply in the session. It runs outside any attempt: the task, its output and its attempts don't change. To change the work, file a follow-up task.
+If the task is cancelled, finishes, or is claimed again while a step runs, the request runs no further step for it.
 
 ### The session door
 
@@ -208,7 +210,9 @@ Call `message` with `{ message }` on the run's session. The line goes into the s
 |---|---|
 | Has no task that started in it | `not-started` |
 | Holds a finished task whose harness never confirmed a coding session | `cannot-continue` |
-| Holds a task that can take no more messages (20) | `steer-refused` |
+| Holds a task that can take no more messages (20) | `steer-limit` |
+| Holds a task that finished before the line reached it | `finished` |
+| Is on a board that keeps no messages | `not-supported` |
 
 **A line doesn't spend a retry**, and it isn't an answer: a run waiting on its own question still needs its question answered.
 

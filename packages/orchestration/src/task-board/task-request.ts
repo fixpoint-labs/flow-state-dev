@@ -293,8 +293,12 @@ function stopOf(record: Admitted, ending: RequestEnding): TaskWaitingOn {
   return reason === "human_approval" || reason === "human_input" ? "person" : "wait";
 }
 
-/** A request that ended with a result: done, or what still holds the task. */
-async function checkAnswered(record: Admitted, row: Task): Promise<Error | undefined> {
+/**
+ * A request that ended with a result: done, or what still holds the task.
+ * `rechecked` is set on the one pass after the settle declined for a steer
+ * that landed after this check read the row.
+ */
+async function checkAnswered(record: Admitted, row: Task, rechecked = false): Promise<Error | undefined> {
   const { ref, ticket } = record;
   if (record.answer === undefined && !answeredBefore(record.prior)) {
     // The task's own request hasn't answered yet: it still waits on that.
@@ -305,10 +309,11 @@ async function checkAnswered(record: Admitted, row: Task): Promise<Error | undef
   // as stored: a steer is another request's write, which this one's
   // snapshot doesn't hold.
   const stored = (await readCommittedTask(ref, row.id)) ?? row;
+  // The turn owed for a steer that took none: owing another would loop with
+  // no end, so the task settles and the steers stay on it, untaken.
+  const noProgress = record.prior === "steer" && !tookSteers(stored, requestKey(record.ctx));
   if (untakenSteers(stored).length > 0) {
-    if (record.prior === "steer" && !tookSteers(stored, requestKey(record.ctx))) {
-      // The turn owed for a steer took none: owing another would loop with
-      // no end, so the task settles and the steers stay on it, untaken.
+    if (noProgress) {
       console.warn(`[task-board] task "${row.id}"'s steer turn took none of its steers; it settles without another turn`);
     } else if (await oweSteerTurn(record, row)) {
       return undefined;
@@ -328,13 +333,29 @@ async function checkAnswered(record: Admitted, row: Task): Promise<Error | undef
   // Done. The latest checkpoint stays the output (the collection's rule);
   // otherwise this request's answer, or the one the task kept while it waited.
   const output = record.answer !== undefined ? record.answer.output : row.output;
-  return settleAtRequestEnd({
+  // A steer that lands after the read above, while held work was checked,
+  // would be settled over: the complete itself declines on an untaken steer,
+  // where a turn can be owed for it, and the check runs once more.
+  const fenceSteers = !noProgress && !rechecked && record.rules.steerTurn !== undefined && ref.setWaitingOn !== undefined;
+  let lateSteer = false;
+  const settled = await settleAtRequestEnd({
     ctx: record.ctx,
     collection: ref,
     claim: ticket,
     recorder: "complete",
-    settle: (write) => advisoryComplete(ref, row.id, output, { ...guardsOf(ticket), write }),
+    settle: async (write) => {
+      const outcome = await advisoryComplete(ref, row.id, output, {
+        ...guardsOf(ticket),
+        ...(fenceSteers ? { refuseUntakenSteers: true } : {}),
+        write,
+      });
+      lateSteer = outcome.outcome === "declined" && outcome.reason === "untaken-steers";
+      return outcome;
+    },
   });
+  if (!lateSteer) return settled;
+  const fresh = (await readCommittedTask(ref, row.id)) ?? row;
+  return checkAnswered(record, fresh, true);
 }
 
 /** What else holds the task open: work it filed, then work queued for it, or nothing. */

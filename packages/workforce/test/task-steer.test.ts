@@ -186,6 +186,33 @@ describe("a line in an open task's session", () => {
     }
   });
 
+  it("steers the task running in the session, not a follow-up queued behind it", async () => {
+    const hold = gate(1);
+    const h = host([{ when: () => true, then: { text: "the note" } }], hold.after);
+    try {
+      const conv = await h.conversation("alice", "chief");
+      const filing = await h.filingOf("alice", conv);
+      const filed = await file(h, conv, { goal: "Write the release note", assignee: "otto" });
+      const row = await running(h, filing, filed.taskId!);
+      await hold.atHold;
+      // A follow-up filed now waits for the running task, in the same session.
+      const followUp = await file(h, conv, { goal: "Then a tweet about it", followUpOf: filed.taskId });
+      expect(followUp.ok).toBe(true);
+
+      const line = await h.act("alice", row.run!.sessionId, "run", { message: "Mention the new flag too." }, "agent");
+
+      expect(line.output).toEqual({ steered: filed.taskId });
+      hold.release();
+      await h.settled();
+      const first = (await h.row("alice", filing, filed.taskId!)) as Task;
+      const second = (await h.row("alice", filing, followUp.taskId!)) as Task;
+      expect(first.steers).toEqual([expect.objectContaining({ message: "Mention the new flag too." })]);
+      expect(second.steers ?? []).toEqual([]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("is a turn, as before, in a worker's own conversation that works no task", async () => {
     const h = host([{ when: () => true, then: { text: "hello back" } }]);
     try {

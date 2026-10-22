@@ -139,6 +139,12 @@ export type TaskWriteDeclineReason =
    */
   | "started"
   /**
+   * A completion fenced with `refuseUntakenSteers` on a task holding a steer
+   * no request of its attempt took (FIX-2086 D2): the steer is owed a turn
+   * before the task settles.
+   */
+  | "untaken-steers"
+  /**
    * A steer past the most a task takes (`MAX_STEERS`, FIX-2086 D1): cancel
    * it and file it again, or file a follow-up once it ends.
    */
@@ -350,6 +356,13 @@ export interface TaskTransitionOptions {
    * arriving between the read and the write is exactly the case it has to catch.
    */
   refuseWhenParked?: boolean;
+  /**
+   * Decline a `complete` while the task holds a steer no request of its
+   * attempt took (FIX-2086 D2), reason `untaken-steers`. Decided inside the
+   * write, so a steer that lands after the caller's own read still holds the
+   * task open. Pass it only where something then owes the steer a turn.
+   */
+  refuseUntakenSteers?: boolean;
   /**
    * Let a **renewal** take back a row whose lease lapsed while the claim it
    * names stayed intact (FIX-1305).

@@ -23,7 +23,7 @@ import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder
 import { recordEnding as recordNoticeOwed } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
-import { steersForAttempt } from "../steers";
+import { steersForAttempt, untakenSteers } from "../steers";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -781,6 +781,9 @@ export function transitionDeclineReason(
     SETTLEMENT_CHANGE_KINDS.has(changeKind)
   ) {
     return "parked";
+  }
+  if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
+    return "untaken-steers";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   // FIX-1305: a renewal may be the ticket-holder taking the row BACK, rather

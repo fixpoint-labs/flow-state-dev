@@ -34,19 +34,22 @@ async function sessionLedger(ctx: BlockContext): Promise<TaskCollectionRef | und
 }
 
 /**
- * The open task this session works: the task it was opened for, or the
- * latest of its follow-ups, when that one has not finished. `undefined`
- * outside a task session, and once the latest has finished.
+ * The open task this session works, in its chain (the task it was opened
+ * for and its follow-ups): the open one whose run link names this session,
+ * so a line reaches the task running here and not a follow-up queued behind
+ * it; else the latest open one, still waiting to start. `undefined` outside
+ * a task session, and once every task in the chain has finished.
  */
 async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollectionRef; row: Task } | undefined> {
   const taskId = sessionTaskOf(ctx);
   if (taskId === undefined) return undefined;
   const ledger = await sessionLedger(ctx);
   if (ledger === undefined) return undefined;
-  const rows = ledger.list().filter((task) => (task.followUpOf ?? task.id) === taskId) as Task[];
-  if (rows.length === 0) return undefined;
-  const latest = rows.reduce((last, task) => (task.createdAt > last.createdAt ? task : last));
-  return isTerminalStatus(latest.status) ? undefined : { ledger, row: latest };
+  const open = (ledger.list() as Task[]).filter((task) => (task.followUpOf ?? task.id) === taskId && !isTerminalStatus(task.status));
+  if (open.length === 0) return undefined;
+  const latest = (rows: Task[]) => rows.reduce((last, task) => (task.createdAt > last.createdAt ? task : last));
+  const here = open.filter((task) => task.run?.sessionId === ctx.session.identity.id);
+  return { ledger, row: latest(here.length > 0 ? here : open) };
 }
 
 /**

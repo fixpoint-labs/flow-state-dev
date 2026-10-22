@@ -879,15 +879,16 @@ is refused, not edited:
 | `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
 | `status: "held"` / `"pending"` | Before the task first starts |
 | `status: "cancelled"` | Until the task finishes, sent alone |
-| `message` | Until the task finishes ([steers](#messages-on-an-open-task)) |
+| `message` | Until the task finishes, sent alone ([steers](#messages-on-an-open-task)) |
 
 *Before it first starts* means no attempt ever claimed it (`hasStarted(task)`), so a task back in
 `pending` after a failed attempt stays locked. `labels` replaces the list; `metadata` merges.
 `TASK_FIELD_RULES` and `lockedFields(task, fields)` export the table. The refusals are
 `field_locked_after_start` (naming the fields and the status), `task_finished` (a message
 included: "a finished task takes no message; file a follow-up"), `cancel_takes_no_edits`,
-`nothing_to_update`, `steer_limit` and `message_not_supported` (a board whose collection keeps
-no steers). Every check runs before any write, so a call that edits and steers never half-applies. A cancel through the tool writes
+`message_takes_no_edits` (a message is its own write, so it is sent alone), `nothing_to_update`,
+`steer_limit` and `message_not_supported` (a board whose collection keeps no steers). Every
+check runs before the write, so a refused call writes nothing. A cancel through the tool writes
 `cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
 
 `dispatchTask` starts work now. Pass
@@ -1097,15 +1098,24 @@ Where a message lands:
   `takeRunningSteers` are its parts, for a worker of your own.
 - **While the task waits on work it filed** (`waitingOn: "filed"`): the steer sets `waitingOn:
   "steer"`, and the host starts the turn it is owed.
-- **After the request's last model call**: the claim gate's end check (rule 6) reads the stored
-  row, and an untaken steer owes the task one more turn on the same attempt before it settles,
-  through `taskLedgers({ endRules: { steerTurn: { entry } } })`. The gate owes a wake for it
-  first (due in `STEER_TURN_DUE_MS`) and starts the entry in the task's session. Without
-  `steerTurn`, the task settles and the steer stays untaken.
+- **After the request's last model call**: an untaken message gives the task one more turn on
+  the same attempt before it settles, run by the entry you name in
+  `taskLedgers({ endRules: { steerTurn: { entry } } })`. A message that lands while the task is
+  settling still gets it: the completion itself declines while one is untaken
+  (`refuseUntakenSteers`, reason `untaken-steers`). Without `steerTurn`, the task settles and the
+  message stays untaken, so on such a board a late message may not be acted on.
 
-A row stored with `reopened: true` reads unmarked; while still open, it carries one untaken steer
-pointing at the latest line in its session. A row stored `parked` for a person's turn
-(`parkedForTurn`) reads as `pending`, its next attempt uncharged (see `retired-shapes`).
+`getTask` returns the messages as `steers` (`{ message, from, by?, at, taken }`). A message a
+request takes mid-run shows in the task's session as a line from its sender
+(`showTakenSteers`); a line typed in the session is there already.
+
+#### Upgrading from stores written by an older version
+
+Rows written before steers existed read in their new shape, with nothing to run. A row stored with
+`reopened: true` reads unmarked; while it is still open, it carries one untaken message pointing
+at the latest line in its session, so its next turn reads it. A row stored `parked` for a
+person's turn (`parkedForTurn`) reads as `pending`, and its next attempt is not charged. See
+`retired-shapes`.
 
 ### skillsManifestSource
 
