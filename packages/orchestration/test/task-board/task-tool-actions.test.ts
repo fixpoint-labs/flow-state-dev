@@ -89,18 +89,6 @@ async function host(options: { declareResource?: boolean } = {}) {
     },
   });
 
-  // A row with a retry budget, which `addTask` does not take.
-  const fileRetryable = handler({
-    name: "file-retryable",
-    inputSchema: z.object({ maxAttempts: z.number() }),
-    outputSchema: z.unknown(),
-    uses: [board.capability],
-    execute: async (input, ctx) => {
-      const tasks = await ledger(ctx);
-      return (await tasks.addTask({ goal: "a retryable row", maxAttempts: input.maxAttempts })).id;
-    },
-  });
-
   const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: `ops${seq}`,
     ...(options.declareResource === false ? {} : { resources: { [id]: todos } }),

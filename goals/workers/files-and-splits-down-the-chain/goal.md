@@ -60,3 +60,4 @@
 | 2026-10-22 | fix/FIX-2077 9cca4ff6a | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
 | 2026-10-22 | fix/FIX-2077 24c9b2770 | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
 | 2026-10-22 | fix/FIX-2077 64332000e | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`) | As before |
+| 2026-10-22 | fix/FIX-2077 53f159aa3 (after merging main 23856ed68) | none (scripted) for a to d; DevTeam chief of staff's own model for e | PASS (`GOAL_LEGS=a,b,c,d`); leg e FAIL, 3 of 3 attempts | Leg e, first run on this branch: `e:filed` each time, the lead's turn called `createTask` twice and never `dispatchTask`. Main's five task tools (FIX-2081) change what the leg grades; not settled here, reported to the coordinator. Controls not rerun |

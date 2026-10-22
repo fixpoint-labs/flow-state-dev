@@ -184,7 +184,8 @@ export function createDelivery(
       // started, by the filer's pass. Only a board that declares its own
       // `passEntry` (Workforce's run entry) has a pass that starts pending
       // rows; the default `onTaskSettled` pass pays notices and cascades
-      // only, so a retry there is left to the owed wake.
+      // only, so a retry there is started by the board's own drain; the wake
+      // only pays its notice.
       const runsPass = row.resumeOwed === true || (row.status === "pending" && declared.passEntry !== undefined && row.attempts > 0);
       // Inside the filer's own pass that trigger waits its turn (one pass at
       // a time), and runs once the running pass ends.

@@ -196,17 +196,19 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
     serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
-     * The internal entries the board needs on its flow: a run of the board,
-     * the notice of a task the session filed, a worker's message
-     * (`onWorkerMessage`, FIX-1989), which always wakes the turn: `policy` is
-     * the notices' only, and a scheduled task's filing (`fileScheduledTask`,
-     * FIX-2085), through the board's own `dispatchTask_tasks`. Spread into
-     * `internal: { actions: ... }`.
+     * The internal entries the board needs on its flow, in this order: a run
+     * of the board; the notice of a task the session filed; a check of the
+     * session's waiting task (`CHECK_TASK_ENTRY`); with `onPost`, a post
+     * row's notice; a worker's message (`onWorkerMessage`, FIX-1989), which
+     * always wakes the turn; and a scheduled task's filing
+     * (`fileScheduledTask`, FIX-2085), through the board's own
+     * `dispatchTask_tasks`. Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
      *   with a notice as its message.
-     * @param policy Whether a notice wakes the turn (`judgment`, the default)
-     *   or lands as a line only (`fixed`), for the running session.
+     * @param policy For the two notice entries only (a task's and a post's):
+     *   whether a notice wakes the turn (`judgment`, the default) or lands as
+     *   a line only (`fixed`), for the running session.
      * @param onPost A post row's ending, for a flow that hands posts on: the
      *   coordinator's own handling (`PostEnding` in), on its own entry.
      */
