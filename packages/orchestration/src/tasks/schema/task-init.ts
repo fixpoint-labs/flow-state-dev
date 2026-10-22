@@ -40,10 +40,15 @@ export type TaskInit<TInput = unknown> = {
   metadata?: Record<string, unknown>;
   /**
    * The finished task this one follows up, already resolved to its root (see
-   * `Task.followUpOf`). Set by the `addTask` tool after it checked the named
+   * `Task.followUpOf`). Set by the `createTask` tool after it checked the named
    * task; a caller filing directly through a ref is trusted with it.
    */
   followUpOf?: string;
+  /**
+   * The task whose request filed this one (see `Task.filedByTask`). Set by the
+   * filing path from the filer's claim or session, never from model input.
+   */
+  filedByTask?: string;
   /**
    * Marks the row as a wait (see `Task.wait`). Set only by the wait path, which
    * writes it in the same write that files the row; never from model input.
@@ -105,6 +110,8 @@ export type TaskFilter = {
   cancelOwed?: true;
   /** Match only tasks whose ending still owes its cascade (`Task.cascadeOwed`). */
   cascadeOwed?: true;
+  /** Match only tasks a given task's request filed (`Task.filedByTask`, FIX-2081). */
+  filedByTask?: string;
   /**
    * Match only tasks whose `sealed` payload holds each of these keys at this
    * plain value (compared with `===`).
@@ -142,6 +149,8 @@ export function matchesFilter(task: Task, filter?: TaskFilter): boolean {
   if (filter.cancelOwed === true && task.cancelOwed !== true) return false;
 
   if (filter.cascadeOwed === true && task.cascadeOwed == null) return false;
+
+  if (filter.filedByTask !== undefined && task.filedByTask !== filter.filedByTask) return false;
 
   if (filter.sealed !== undefined) {
     for (const [key, value] of Object.entries(filter.sealed)) {

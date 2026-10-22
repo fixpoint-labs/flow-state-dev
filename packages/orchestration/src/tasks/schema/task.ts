@@ -179,6 +179,15 @@ export const taskSchema = z.object({
   followUpOf: z.string().optional(),
 
   /**
+   * The task whose request filed this one (FIX-2081): a piece of that task,
+   * or a step it planned. Server-written at filing from the filer's own
+   * claim or session, never from input, and never patched. `listTasks`
+   * filters by it (`filedByTask`). **Absent** on a task filed by no task: a
+   * conversation's turn, a screen, a schedule (BP-030).
+   */
+  filedByTask: z.string().optional(),
+
+  /**
    * Where the task runs (FIX-2080, a filing setting): `"new"`, a session of
    * its own (the default for a delegated task), or `"ongoing"`, the
    * delegate's session for this conversation. A follow-up runs in its root's
@@ -297,6 +306,37 @@ export const taskSchema = z.object({
 
   input: z.unknown().optional(),
   output: z.unknown().optional(),
+  /**
+   * `output` is a checkpoint its worker reported while it ran (FIX-2081,
+   * `reportProgress`), not a result handed back at the end. The latest
+   * checkpoint is the task's output: completing the task keeps it, and the
+   * worker's final result is written only when no checkpoint was made. A
+   * failed attempt or a reclaimed lease keeps it. **Absent** when the worker
+   * never checkpointed (BP-030).
+   */
+  checkpointed: z.literal(true).optional(),
+  /**
+   * The one-line note its worker last reported while it ran (FIX-2081,
+   * `reportProgress`), for task views. Never the task's status: done still
+   * follows the worker's return. **Absent** until one is reported.
+   */
+  statusNote: z.string().optional(),
+  /**
+   * How the cancel that ended this task was made (FIX-2081): `"tool"`, its
+   * filer's model calling `updateTask` in its own turn, or `"action"`, a
+   * public `updateTask_<board>` action. Written by the cancel from how the
+   * caller was built, never from input (BP-031). **Absent** on a cancel that
+   * named no source: a cascade, a substrate write-back, an older row.
+   */
+  cancelledVia: z.enum(["tool", "action"]).optional(),
+  /**
+   * The row was stored `blocked` and read as `held` (FIX-2080, BP-030). Set
+   * only at the read boundary, and persisted with the row when it is next
+   * written; a release clears it. Such a row may have started before it was
+   * blocked, and a release alone is how it runs again; no current path holds
+   * a row that has started (FIX-2081).
+   */
+  heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
   feedback: z.string().optional(),
 

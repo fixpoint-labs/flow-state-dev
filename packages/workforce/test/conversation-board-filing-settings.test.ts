@@ -252,7 +252,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       await h.turn("alice", planner);
       expect(await h.until(async () => h.controls.turns.some((turn) => turn.worker === "s1"))).toBe(true);
       const top = await one(h, "Plan the retreat");
-      expect(await h.tool("alice", planner, "cancelTask", { taskId: top.id, reason: "not needed" })).toEqual({ ok: true });
+      expect(await h.tool("alice", planner, "updateTask", { id: top.id, status: "cancelled" })).toEqual({ ok: true });
       file();
       expect(await h.until(async () => (await h.rowsNamed("alice", "[slow:3000] Book the cabin")).length === 1)).toBe(true);
       await h.settled();
@@ -279,7 +279,7 @@ describe("the work a task filed goes with it (FIX-2080 D2)", () => {
       const top = await one(h, "Plan the launch");
       expect(top.status).toBe("in_progress");
 
-      expect(await h.tool("alice", planner, "cancelTask", { taskId: top.id, reason: "not needed" })).toEqual({ ok: true });
+      expect(await h.tool("alice", planner, "updateTask", { id: top.id, status: "cancelled" })).toEqual({ ok: true });
       const cancelledAt = Date.now();
       const pieceCancelled = await h.until(
         async () => (await one(h, "[slow:6000] Book the venue")).status === "cancelled",

@@ -3,7 +3,8 @@
  *
  * The DevTool changes a task only through the flow's own actions. This strip
  * lists the ones that act on one task (see `lib/task-actions`), opens the
- * picked one's form with the row's `taskId` fixed, and dispatches it through
+ * picked one's form with the row's id fixed (in `id` or `taskId`, the field
+ * the action names its task in), and dispatches it through
  * the panel's own action path, the one the action bar uses. There is no other
  * write here, and no record editor: what a row can do is what the flow exposes.
  *
@@ -23,6 +24,7 @@ import { buildInputFromForm, getDefaults } from "./action-bar";
 import {
   NO_RESULT_RECORDED,
   outcomeOf,
+  taskIdField,
   type RequestOutcomeSource,
   type RowActionOutcome,
 } from "../../lib/task-actions";
@@ -62,7 +64,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   if (actions.length === 0) {
     return (
       <p className="mt-2 font-fs-mono text-[11px] text-fs-ink4">
-        This flow has no actions that take a taskId, so nothing here can change the task.{" "}
+        This flow has no actions that take a task id, so nothing here can change the task.{" "}
         <a
           className="text-fs-blue underline underline-offset-2 hover:text-fs-ink"
           href={TASK_ACTIONS_DOCS_URL}
@@ -80,7 +82,9 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   // id to that board's ledger.
   const picked = pickedState !== null && actions.includes(pickedState) ? pickedState : null;
   const schema = picked === null ? undefined : schemas?.[picked];
-  const locked = { taskId };
+  // The field the picked action names its task in (`id` or `taskId`).
+  const idField = (picked === null ? undefined : taskIdField(picked, schema, true)) ?? "taskId";
+  const locked = { [idField]: taskId };
 
   const pick = (action: string) => {
     setPicked((was) => (was === action ? null : action));
@@ -90,7 +94,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   const submit = async () => {
     if (picked === null || schema === undefined) return;
     const action = picked;
-    const input = { ...(buildInputFromForm(schema, values) as Record<string, unknown>), taskId };
+    const input = { ...(buildInputFromForm(schema, values) as Record<string, unknown>), [idField]: taskId };
     const key = nextKey.current++;
     setSubmissions((prev) => [{ key, action, sent: "sending" }, ...prev]);
     let sent: Submission["sent"] | undefined;

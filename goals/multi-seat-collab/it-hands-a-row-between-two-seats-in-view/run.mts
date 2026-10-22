@@ -334,10 +334,11 @@ async function main() {
 
     // ---- V5 (the freeze). the parked row's assignee cannot be moved ---------
     const otherDelegate = tree.delegates.find((id) => id !== first.assignee) ?? tree.delegates[0]!;
-    const moved = await lab.onConversation("assignTask_tasks", { taskId: firstId, assignee: otherDelegate });
+    const moved = await lab.onConversation("updateTask_tasks", { id: firstId, assignee: otherDelegate });
     const movedError = String(moved.output?.error ?? "");
-    if (moved.output?.ok !== false || !movedError.includes("immutable-assignee")) {
-      fail("V5", `moving the parked row to ${otherDelegate} was not refused as immutable-assignee: ${JSON.stringify(moved.output)}`);
+    // A started task keeps one accountable worker (FIX-2081): the field table refuses the move.
+    if (moved.output?.ok !== false || !movedError.startsWith("field_locked_after_start: assignee")) {
+      fail("V5", `moving the parked row to ${otherDelegate} was not refused as field_locked_after_start: ${JSON.stringify(moved.output)}`);
     }
 
     // ---- VB (1). the planner's Tasks tab: the row, as filed ---------------

@@ -91,6 +91,7 @@ import {
 } from "./workstream-collections";
 import { leadsWorkstreams, WORKSTREAM_OPENED_ENTRY } from "./workstream-lead";
 import { parseWorkstreamRef, workstreamRef, type WorkstreamAddress } from "./workstream-ref";
+import { ALL_DELEGATES } from "../delegates/delegate-keys";
 
 /** What a write hands on for its coordinator's record: none, or the change and the record. */
 const recordChangeSchema = z.object({
@@ -392,7 +393,8 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
   const leadProblem = (worker: RosterWorker): string | undefined => {
     if (worker.problem !== undefined) return `can't lead a workstream: ${worker.problem}`;
     if (!leadFlowNames.has(worker.flow)) return `runs on flow "${worker.flow}", which can't lead a workstream`;
-    if (worker.delegates.length === 0) {
+    // `all` is the whole roster, never empty: the lead itself is on it.
+    if (worker.delegates !== ALL_DELEGATES && worker.delegates.length === 0) {
       return "lists no delegates, so it can't lead a workstream: a lead runs its workstream through its delegates";
     }
     return undefined;
@@ -590,7 +592,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     // lead may have left the roster since.
     const here = before === undefined || change === "remove";
     if (here && coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
-      await changeWorkstreamRecordHere(ctx as never, record);
+      await changeWorkstreamRecordHere(ctx as never, record, options.installation);
       return undefined;
     }
     return { ...record, coordinatorSessionId };

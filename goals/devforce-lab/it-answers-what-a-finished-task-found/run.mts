@@ -45,7 +45,7 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const CODER = "eng.coder";
 const CHIEF = "chief-of-staff";
 const COORDINATOR_FLOW = "coordinator";
-const READ_TASK = "readTask";
+const READ_TASK = "getTask";
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const show = (value: unknown, n = 300): string => (JSON.stringify(value) ?? "undefined").slice(0, n);
 

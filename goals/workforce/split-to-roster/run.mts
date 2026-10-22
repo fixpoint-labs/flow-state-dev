@@ -1,11 +1,11 @@
 /**
- * Goal check: a worker on a task gets a result from any task-taking worker on
- * the roster by filing a piece, ending its turn, and finishing its task from
- * its own reading of that result (FIX-1997). The tree, the legs, the controls
- * and what each must fail are in goal.md.
+ * Goal check: a worker on a task gets a result from one of its delegates by
+ * filing a piece, ending its turn, and finishing its task from its own reading
+ * of that result (FIX-1997; delegates only since FIX-2081). The tree, the
+ * legs, the controls and what each must fail are in goal.md.
  *
  * Run: pnpm tsx goals/workforce/split-to-roster/run.mts
- * Controls: GOAL_CONTROL=delegates-only | pieces-output | wake-coordinator
+ * Controls: GOAL_CONTROL=pieces-output | wake-coordinator
  * Legs: GOAL_LEGS=1,2,3,4 (default: all; leg 4 grades what 1 to 3 left)
  */
 import { spawnSync } from "node:child_process";
@@ -64,17 +64,6 @@ const DESK = "crew.desk";
 // ---- controls ---------------------------------------------------------------------
 
 const CONTROLS: Record<string, { patches: ModulePatch[]; legs: string[]; assertions: string[] }> = {
-  "delegates-only": {
-    legs: ["1"],
-    assertions: ["1:piece-to-roster"],
-    patches: [
-      {
-        module: "packages/workforce/src/conversation-board/board.ts",
-        from: String.raw`if \(typeof state\[TASK_ID_STATE_KEY\] !== "string"\) return \{ reachable: delegates, delegates, taskSession: false \};`,
-        to: "return { reachable: delegates, delegates, taskSession: false };"
-      }
-    ]
-  },
   "pieces-output": {
     legs: ["1"],
     assertions: ["1:report-is-output"],
@@ -288,9 +277,9 @@ await runGoal(async (failures) => {
       filed.push(out.taskId);
       return out.taskId as string;
     };
-    /** The ask: a codename `holder` keeps, which isn't one of A's delegates. */
+    /** The ask: a codename `holder` keeps, one of A's delegates. */
     const ask = (what: string, holder: string) =>
-      `Find out this ${what}'s codename and write me a one-sentence report that states it. ${holder}, a worker on the team, keeps it; it isn't one of your delegates.`;
+      `Find out this ${what}'s codename and write me a one-sentence report that states it. ${holder}, one of your delegates, keeps it.`;
     /** A's task session for `taskId`: the session its row's run names. */
     const sessionOf = (row: Row | undefined): string | undefined => (row as { run?: { sessionId?: string } } | undefined)?.run?.sessionId;
 
@@ -325,7 +314,7 @@ await runGoal(async (failures) => {
       const tried = own === undefined ? [] : (await store.requests(own)).flatMap((r) => (r.items ?? []) as any[]).filter((i) => i.type === "tool_output" && i.toolCall?.name === "dispatchTask");
       if (toB.length === 0) {
         failures.push(
-          `1:piece-to-roster — wanted A's task session to file a piece for ${B}, not one of its delegates; its pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, its dispatchTask calls answered ${show(tried.map((i) => i.output ?? i.result ?? i))}`
+          `1:piece-to-delegate — wanted A's task session to file a piece for its delegate ${B}; its pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, its dispatchTask calls answered ${show(tried.map((i) => i.output ?? i.result ?? i))}`
         );
       }
       if (during.status !== "parked" || during.running !== 0) {

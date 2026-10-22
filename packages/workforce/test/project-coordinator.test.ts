@@ -84,14 +84,21 @@ const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown>
 /** One delegated post a lead heard: who, what, and in which session. */
 type Heard = { worker: string; message: string; sessionId: string };
 
-async function boot(options: { judgment?: MockGeneratorInstance; counted?: boolean; leadFit?: MockGeneratorInstance } = {}) {
+async function boot(
+  options: { judgment?: MockGeneratorInstance; counted?: boolean; leadFit?: MockGeneratorInstance; coordinatorDelegates?: "all" } = {}
+) {
   const heard: Heard[] = [];
   const counting = options.counted === true ? countingStores() : undefined;
   const projects = defineProjectBlocks();
   const leadFlowRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } }, task: { actions: { onDelegatedPost: {} } } };
   const h = await bootProjectsHost(
     {
-      standardWorkers,
+      standardWorkers:
+        options.coordinatorDelegates === undefined
+          ? standardWorkers
+          : standardWorkers.map((worker) =>
+              worker.id === PROJECT_COORDINATOR ? { ...worker, declared: { ...worker.declared, delegates: options.coordinatorDelegates } } : worker
+            ),
       projectCoordinator: PROJECT_COORDINATOR,
       lab: (installation) => ({
         ...projects.actions,
@@ -462,7 +469,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
 
 describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)", () => {
   /** Hire `id` on `flow` onto `user`'s roster, listing `delegates`. */
-  const hireOn = async (h: Awaited<ReturnType<typeof boot>>, user: string, id: string, flow: string, delegates: string[]) =>
+  const hireOn = async (h: Awaited<ReturnType<typeof boot>>, user: string, id: string, flow: string, delegates: string[] | "all") =>
     h.ok(user, ROSTER_FLOW, await h.openSession(user, ROSTER_FLOW), "hire", {
       id,
       flow,
@@ -587,6 +594,34 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     expect(refusal(quiet)).toContain("cannot-lead");
     const listed = (await h.ok("alice", "lab", lab, "readProject", { project: apollo })) as { workstreams: unknown[] };
     expect(listed.workstreams).toEqual([]);
+  });
+
+  it("keeps a delegates: all coordinator's roster when it opens a workstream from its own turn (FIX-2081 D2)", async () => {
+    const judgment = scripted([
+      { toolName: "openWorkstream", args: { id: "checkout", title: "Guest checkout", lead: "alice-lead", objectives: ["Ship it"] } }
+    ]);
+    const h = await boot({ judgment, coordinatorDelegates: "all" });
+    await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
+    await hireOn(h, "alice", "alice-quiet", "quiet", ["alice-quiet.helper"]);
+    const id = await h.coordinator("alice");
+    const posted = await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." });
+    expect(posted.settled, JSON.stringify(posted.error)).toBe("completed");
+    await h.settled();
+    // Her roster still reaches the coordinator beside the workstream's record. Today the open's own
+    // write is a no-op here (the seed already names the new workstream), so this guards the outcome;
+    // the defaults the write is handed match the coordinator's own (delegateDefaultsOf + withRoster).
+    const workers = (await h.delegates("alice", id)).map((record) => record.worker);
+    expect(workers).toEqual(expect.arrayContaining(["alice-lead", "alice-quiet"]));
+    expect(await h.delegates("alice", id)).toContainEqual({ worker: "alice-lead", target: "shared/apollo/checkout" });
+  });
+
+  it("takes a lead whose file says delegates: all, which is the whole roster and never empty (FIX-2081 D2)", async () => {
+    const h = await boot();
+    await hireOn(h, "alice", "alice-all", "lead", "all");
+    const lab = await h.lab("alice");
+    expect(
+      await h.ok("alice", "lab", lab, "openWorkstream", { project: apollo, id: "checkout", title: "Checkout", lead: "alice-all" })
+    ).toMatchObject({ opened: true });
   });
 
   describe("checking its pick of lead against the work", () => {

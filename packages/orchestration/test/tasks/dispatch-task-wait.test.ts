@@ -1,6 +1,6 @@
 /**
  * `dispatchTask({ wait, timeoutMs })` as a model calls it (FIX-1816 P3,
- * V3 and V6 through the task tools, and the D1 check), moved from `addTask` by FIX-1875.
+ * V3 and V6 through the task tools, and the D1 check), moved from the filing tool by FIX-1875.
  *
  * The waiting turn is a generator holding the task tools capability over a
  * durable board, the shape a coordinator's turn has. "The colleague" is a
@@ -132,6 +132,25 @@ afterEach(() => {
 });
 
 describe("where dispatchTask offers wait (BR-5, D1)", () => {
+  /** `dispatchTask`'s fields where it can't wait: createTask's, and `taskId`. */
+  const DISPATCH_BASE_FIELDS = [
+    "assignee",
+    "context",
+    "deps",
+    "followUpOf",
+    "goal",
+    "held",
+    "input",
+    "labels",
+    "maxAttempts",
+    "metadata",
+    "priority",
+    "resultTo",
+    "session",
+    "taskId",
+    "title"
+  ];
+
   for (const [label, options, offered] of [
     ["a durable host whose durability sweeper runs", { durable: true, router: true }, true],
     ["a durable host with no sweeper", { durable: true, router: false }, false],
@@ -145,19 +164,8 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
         await act(state as never, flow, "run", {}, { sweeper: options.router });
         const names = seen[0]!.tools!.map((t) => t.name).sort();
         // D1: waiting adds no tool.
-        expect(names).toEqual([
-          "addTask",
-          "answerTask",
-          "assignTask",
-          "cancelTask",
-          "completeTask",
-          "dispatchTask",
-          "failTask",
-          "listTasks",
-          "readTask",
-          "updateTask"
-        ]);
-        const base = ["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId", "title"];
+        expect(names).toEqual(["answerTask", "createTask", "dispatchTask", "getTask", "listTasks", "updateTask"]);
+        const base = DISPATCH_BASE_FIELDS;
         expect(dispatchTaskFields(seen)).toEqual(offered ? [...base, "timeoutMs", "wait"].sort() : base);
       } finally {
         await state.dispose();
@@ -171,7 +179,7 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
     const state = await host(flow, { durable: true, router: true });
     try {
       await act(state as never, flow, "run");
-      expect(dispatchTaskFields(seen)).toEqual(["assignee", "deps", "followUpOf", "goal", "input", "metadata", "priority", "taskId", "title"]);
+      expect(dispatchTaskFields(seen)).toEqual(DISPATCH_BASE_FIELDS);
     } finally {
       await state.dispose();
     }

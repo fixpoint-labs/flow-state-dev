@@ -28,7 +28,7 @@
 
 - **Leg (e)'s first half, "the extra row waits for its worker to free".** A conversation board has no drain: each row filed is handed over at once to a task session of its own, so two rows for one worker run at the same time. The lab saw it: with the builder turns held, both rows filed for `eng.builder-a` were `in_progress` at once, in two sessions. The `MANAGER_QUEUE_DRAIN_WIDTH` knob goes with it: nothing reads a width. The surviving half (not re-routed, not dropped) is leg (e).
 - **Leg 0, "the minted board id appears in no file".** No file declares a board, so nothing is minted. The sibling check's leg 0 now asserts that no file declares a board or grants the task tools.
-- **Old leg (f)'s "errored, naming the row".** With no default worker, a mailbox drain refused a row for nobody where it would have run. A conversation board refuses an unknown assignee at filing and keeps a row for nobody waiting for `assignTask`; leg (f) grades both, as the code does.
+- **Old leg (f)'s "errored, naming the row".** With no default worker, a mailbox drain refused a row for nobody where it would have run. A conversation board refuses an unknown assignee at filing and keeps a row for nobody waiting for `updateTask({ assignee })`; leg (f) grades both, as the code does.
 
 **The filer is a slot, and only one of its two values is the gate.**
 

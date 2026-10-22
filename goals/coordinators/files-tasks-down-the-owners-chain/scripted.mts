@@ -181,15 +181,15 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
     const c2 = await conversation(alice, "desk.lead");
     const words = { t1: word(), t2: word(), t3: word() };
     // Recorded unassigned, with three delegates that take tasks: it waits to be assigned and dispatched.
-    const t2 = await act(alice, "coordinator", c2, "addTask_tasks", { goal: `[slow:${SLOW_MS}] Draft the ${words.t2} brief` });
+    const t2 = await act(alice, "coordinator", c2, "createTask_tasks", { held: true, goal: `[slow:${SLOW_MS}] Draft the ${words.t2} brief` });
     const t1 = await act(alice, "coordinator", c1, "dispatchTask_tasks", { goal: `Tidy the ${words.t1} list`, assignee: "desk.alpha" });
     await quiet();
     // Assign, then dispatch: an assign only records (FIX-1875).
-    const reach = await act(alice, "coordinator", c1, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.alpha" });
+    const reach = await act(alice, "coordinator", c1, "updateTask_tasks", { id: taskIdOf(t2) ?? "none", assignee: "desk.alpha" });
     const reachRun = await act(alice, "coordinator", c1, "dispatchTask_tasks", { taskId: taskIdOf(t2) ?? "none" });
     await quiet();
     // The second assigns its own task and dispatches it, and it runs for a while.
-    const assign = await act(alice, "coordinator", c2, "assignTask_tasks", { taskId: taskIdOf(t2) ?? "none", assignee: "desk.beta" });
+    const assign = await act(alice, "coordinator", c2, "updateTask_tasks", { id: taskIdOf(t2) ?? "none", assignee: "desk.beta" });
     await act(alice, "coordinator", c2, "dispatchTask_tasks", { taskId: taskIdOf(t2) ?? "none" });
     await sleep(1_000);
     // While it runs, the first conversation files another.

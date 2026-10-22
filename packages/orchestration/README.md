@@ -10,7 +10,7 @@ build on each other:
   `supervisor`, `parallelTasks`, and `planAndExecute` (in `@flow-state-dev/patterns`)
   are built on.
 - **Skills** — user-editable `SKILL.md` folders injected as inline instructions,
-  plus `taskTools`, the ten tools a model uses to plan on a task board.
+  plus `taskTools`, the tools a model uses to plan on a task board.
 
 Layering: `core → orchestration → patterns`. This package depends only on
 `@flow-state-dev/core` and never imports from `patterns` or `workforce`.
@@ -390,9 +390,9 @@ failure retries the board may authorize across every task). The creation caps ta
 positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
 
-`taskToolActions(board)` returns the ten task tools over `board` as a flow `actions`
+`taskToolActions(board)` returns the filer's task tools over `board` as a flow `actions`
 map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
-character outside `[a-zA-Z0-9_-]` into `_` (`cancelTask_todos`). Spread it into
+character outside `[a-zA-Z0-9_-]` into `_` (`updateTask_todos`). Spread it into
 `defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
 declare the collection; none claims or drains; a transition the task cannot make returns
 `{ ok: false, error }` and writes nothing. It throws unless the board is on a
@@ -787,40 +787,63 @@ refused when it loads; give the work to workers on a task board instead.
 
 ### Task tools
 
-`taskTools` are the nine tools a model uses to plan on a task board: `addTask`,
-`assignTask`, `completeTask`, `failTask`, `cancelTask`, `updateTask`,
-`listTasks`, `readTask`, and `answerTask`, plus `dispatchTask` on a board that dispatches (below).
+`taskTools` are the tools a model uses to plan on a task board: the filer's `createTask`,
+`getTask`, `listTasks` and `updateTask`, with `answerTask`, plus `dispatchTask` on a board that
+dispatches (below). The worker's fifth tool, `reportProgress`, is built apart
+([below](#progress-from-the-worker)). No tool finishes a task: a task ends when its worker's turn
+returns or throws.
 `createTaskToolsCapability(resolver, roster?)` points them at a
-board, and an optional roster makes `addTask`, `assignTask` and `updateTask` refuse
+board, and an optional roster makes `createTask` and `updateTask` refuse
 an assignee it does not name. The roster can be a function of the running block's
 context, read on each call that checks an assignee, for a board whose team changes
 while it is in use. `taskToolActions` exposes the same tools as flow
 actions. With no board resolvable, a call returns
 `{ ok: false, error: "no_delegation_board" }` rather than throwing. A new task's `input`, on
-`addTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
+`createTask` and `dispatchTask`, is a JSON object: a string, number or array is refused by the
 tool's schema, so a model that would send the payload as a JSON string is told to send the object.
 A new task may also carry a `title`, a short non-empty label apart from its `goal`; `listTasks`
 answers it when a task has one, and a task filed without one is labelled by its goal.
+`createTask` also takes `context`, `labels`, `maxAttempts` and `held: true`, which files the task
+without starting it until `updateTask` releases it. A task filed from a turn that is working a
+task is stamped `filedByTask` with that task's id; `listTasks({ filedByTask })` lists them.
+
+`updateTask({ id, ...fields })` takes its fields flat, each with one rule, checked inside the
+collection's guarded write (`patchSettings`), so a task that starts between a read and the write
+is refused, not edited:
+
+| Field | Allowed |
+|---|---|
+| `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
+| `status: "held"` / `"pending"` | Before the task first starts |
+| `status: "cancelled"` | Until the task finishes, sent alone |
+
+*Before it first starts* means no attempt ever claimed it (`hasStarted(task)`), so a task back in
+`pending` after a failed attempt stays locked. `labels` replaces the list; `metadata` merges.
+`TASK_FIELD_RULES` and `lockedFields(task, fields)` export the table. The refusals are
+`field_locked_after_start` (naming the fields and the status), `task_finished`,
+`cancel_takes_no_edits` and `nothing_to_update`. A cancel through the tool writes
+`cancelledVia: "tool"`, or `"action"` through `taskToolActions`.
 
 `dispatchTask` starts work now. Pass
 `createTaskToolsCapability(resolver, roster, { dispatches: true })` only when something starts a
-ready row as soon as it's written, the way a Workforce conversation does. It takes `addTask`'s
-fields, or `taskId` for a recorded row, and with `wait` it parks the turn until the task ends
-([below](#waiting-for-a-tasks-answer)). On such a board `addTask` and
-`assignTask` record rows that wait for a dispatch, and `addTask` answers
-`{ ok: true, taskId, status: "recorded", note }`. `dispatches` defaults to `false`. Without it the tools offer no `dispatchTask`, and `addTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
+ready row as soon as it's written, the way a Workforce conversation does. It takes `createTask`'s
+fields, or `taskId` for a held row, and with `wait` it parks the turn until the task ends
+([below](#waiting-for-a-tasks-answer)). On such a board `createTask` starts a row at once unless
+it is filed `held: true`. `dispatches` defaults to `false`. Without it the tools offer no `dispatchTask`, and `createTask` files a row the drain runs. `taskToolActions(collectionId, resolve, roster, { dispatches: true })` adds
 the `dispatchTask_<board>` action, which never waits.
 
 Each `listTasks` row can also carry a `run` link, `{ sessionId, requestId }`, naming the run
 working the task or the one that last did. A row has none until a run starts on it, and a new
 claim clears it until the next run starts.
 
-`readTask({ taskId })` returns one task whole, for a model that has to answer from what the
-task found rather than from its `listTasks` row:
-`{ ok: true, task: { id, goal, title?, status, assignee?, input?, inputCut?, output?, outputCut?, error?, question?, followUpOf?, run?, completedAt? } }`.
+`getTask({ id })` returns one task whole, for a model that has to answer from what the
+task found rather than from its `listTasks` row: its goal, `context`, `input`, the fields
+`updateTask` edits (`deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts`),
+`status`, `attempts`, `statusNote`, `filedByTask`, `output` with `checkpoint: true` when it is a
+reported checkpoint, `error`, `question`, `followUpOf`, `run` and `completedAt`.
 `output` is the result as the worker recorded it. A result longer than 20,000 characters as JSON
-comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` that long is
-cut the same way, with `inputCut: true`. `question` is set only
+comes back as that text cut to 20,000 characters, with `outputCut: true`; an `input` or
+`metadata` that long is cut the same way, with `inputCut` or `metadataCut`. `question` is set only
 on a task parked on its worker's question. `run` is the same link `listTasks` carries. A task the
 board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
@@ -830,14 +853,14 @@ board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 > is bounded only if the collection it returns was built with
 > `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })`.
 
-**Every `taskTools` call reports a problem the same way.** A status change the
-task's current status does not permit is a recoverable tool result too, not a
-throw: `completeTask` on a task that was never started answers
-`{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
-status and the calls actually available from it. So the recoverable set across
-the nine tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+**Every `taskTools` call reports a problem the same way.** A change the task's
+state does not permit is a recoverable tool result, not a throw: `updateTask` on a
+started task answers `{ ok: false, error: "field_locked_after_start: …" }`, naming the
+fields and the task's status. So the recoverable set across the tools is
+`no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
-`illegal_status_transition`, `terminal_task_write_declined`,
+`field_locked_after_start`, `task_finished`, `cancel_takes_no_edits`, `nothing_to_update`,
+`create_task_does_not_wait`, `terminal_task_write_declined`,
 `not_parked_on_question`, `follow_up_takes_no_assignee`, `follow_up_of_unrun`,
 `task_id_taken`, `task_awaiting_answer`, and a filing refusal, which names its rule
 (`dependency_not_on_board`, `dependency_ended`, `dependency_loop`, and the rest of
@@ -853,8 +876,8 @@ Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
 string, except that `task_not_found` carries a sentence when a follow-up names a task
 that isn't on the board. Every other code is followed by `: ` and a sentence of guidance for the
-model, so `error === "illegal_status_transition"` never matches. Use
-`error.startsWith("illegal_status_transition")`. There is no separate structured
+model, so `error === "field_locked_after_start"` never matches. Use
+`error.startsWith("field_locked_after_start")`. There is no separate structured
 `code` field.
 
 Only the *tool* boundary translates a refusal into a result. Driving a collection
@@ -883,9 +906,8 @@ refused transition on such a call is a returned `declined` verdict rather than a
 throw, so it never reaches this `catch`.
 
 At the `taskTools` boundary a `declined` verdict **does** become a tool
-result: `assignTask`, `cancelTask`, and an `updateTask` carrying an assignee answer
-`{ ok: false, error: "terminal_task_write_declined: …" }` on a finished task rather
-than reporting a success that did not happen. `ok: true` from those tools means "the
+result: an `updateTask` cancel or edit that the collection declines answers
+`{ ok: false, error: … }` rather than reporting a success that did not happen. `ok: true` from those tools means "the
 backing reported no decline", not "the write happened" — for the two built-in
 backings those coincide, but a custom ref that reports nothing is carried past
 rather than having a verdict synthesized for it.
@@ -903,9 +925,9 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `dispatchTask` with `wait: true` starts a task and parks the calling turn until it ends, then
 returns the task's output as `answer`. `timeoutMs` bounds the wait (30 s to an hour, five
 minutes by default). `listTasks` marks a waited-on row `waitedOn: true`. A wait is refused on a
-turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. `addTask`
+turn that is itself working a task; `isTaskTurn(ctx)` returns true for those turns. `createTask`
 never waits: a call that sends it `waitForResponse` or `timeoutMs` is refused by name, <!-- retired-name-refusal: the refusal of the old fields -->
-`add_task_does_not_wait`, and nothing is filed. See
+`create_task_does_not_wait`, and nothing is filed. See
 [Task board → Giving another worker work](https://flow-state.dev/docs/orchestration/task-board#giving-another-worker-work)
 for limits and errors.
 
@@ -961,15 +983,25 @@ is waiting on now. It declines any other task (including one parked with `awaitR
 one parked while a person talks to its worker, or one waiting on its own sub-tasks), a late answer to a question the task has
 moved past (`not_parked_on_question: …`), and a finished task
 (`terminal_task_write_declined: …`). It doesn't drain the board: on a Workforce conversation's board the task starts on
-its own; on your own board, drain it afterwards. Until the answered task runs again, `assignTask`
-and `updateTask` refuse to move it to another worker (`task_awaiting_answer`), so
-the answer reaches the session that asked.
+its own; on your own board, drain it afterwards. An answered task has started, so `updateTask`
+refuses to move it to another worker, and the answer reaches the session that asked.
+
+#### Progress from the worker
+
+`createReportProgress({ resolve })` builds the worker's `reportProgress({ statusNote?, output? })`
+and an `offered(ctx)` check, the way `createParkOnQuestion` does. It is offered only on a task
+turn and acts on the task the turn holds, fenced by its claim, so it takes no id. `statusNote`
+(at most `STATUS_NOTE_LIMIT` characters) shows on `listTasks` rows; `output` is a checkpoint the
+task carries as its output (`checkpointed: true`). Neither changes the task's status. When the
+task completes, a checkpoint stays as its output; a failed attempt keeps it for the next one. On a
+finished task it answers `task_finished` and writes nothing. The collection side is
+`TaskCollectionRef.reportProgress(id, progress, { claim })`, which emits `progress_reported`.
 
 #### Following up on a finished task
 
-`addTask` and `dispatchTask` take `followUpOf` to file new work on a task: the follow-up
+`createTask` and `dispatchTask` take `followUpOf` to file new work on a task: the follow-up
 is a new task, with the same worker, that runs in that task's session. It
-keeps that worker: `assignTask` and `updateTask` won't move it
+keeps that worker: `updateTask` won't move it
 (`follow_up_takes_no_assignee`). Both tools refuse an `assignee` beside it
 (`follow_up_takes_no_assignee`) and a task that never ran with a worker
 (`follow_up_of_unrun`), before anything is filed. A follow-up of a task still running

@@ -96,7 +96,7 @@ const plain = (asked: string) => asked.replace(/\[(?:file|split|fan):[^\]]*\]|\[
  * - `[try-file]` files the ask with no assignee;
  * - `[tools]` says which tools the turn was handed.
  *
- * Every filing is a call of the turn's own task tools: `dispatchTask` for a piece with an owner, `addTask` for an unassigned one, which stays recorded. After the calls,
+ * Every filing is a call of the turn's own task tools: `dispatchTask` for a piece with an owner, `createTask` with `held` for an unassigned one, which stays held. After the calls,
  * the turn says what they answered.
  */
 const scripted = {
@@ -122,9 +122,9 @@ const scripted = {
     } else if (split !== null) {
       split[1]!.split(",").forEach((assignee, i) => calls.push({ toolCallId: `split-${i}`, toolName: "dispatchTask", args: { goal: `part ${i + 1} of: ${plain(asked)}`, assignee } }));
     } else if (fan !== null) {
-      for (let i = 0; i < Number(fan[1]); i += 1) calls.push({ toolCallId: `fan-${i}`, toolName: "addTask", args: { goal: `piece ${i + 1} of: ${plain(asked)}` } });
+      for (let i = 0; i < Number(fan[1]); i += 1) calls.push({ toolCallId: `fan-${i}`, toolName: "createTask", args: { held: true, goal: `piece ${i + 1} of: ${plain(asked)}` } });
     } else if (asked.includes("[try-file]")) {
-      calls.push({ toolCallId: "try-0", toolName: "addTask", args: { goal: plain(asked) } });
+      calls.push({ toolCallId: "try-0", toolName: "createTask", args: { held: true, goal: plain(asked) } });
     }
     if (calls.length > 0) return { toolCalls: calls, finishReason: "tool-calls" };
     return { text: `Done: ${plain(asked).slice(0, 200)}${toolsLine}`, finishReason: "stop" };

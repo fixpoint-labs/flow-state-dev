@@ -173,7 +173,7 @@ async function approve(lab: Lab): Promise<string | undefined> {
 
 /**
  * The EM's turn, scripted for leg a: a line of the form `slug: goal` it files
- * for the coder with `addTask`, the goal as posted; any other line it answers
+ * for the coder with `dispatchTask`, the goal as posted; any other line it answers
  * without filing. It stands in for the EM's judgment, which is not under test:
  * what is graded is what the run is handed once the task is filed.
  */

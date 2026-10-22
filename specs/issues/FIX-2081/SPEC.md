@@ -44,7 +44,7 @@ puts back today's reach, and it must fail.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/task-tools/four-tools-one-rule-per-field/` · no model: scripted turns on the real Workforce flows · run by the implementer at completion · verdict in the implementation PR |
+| **Goal check** | `goals/task-tools/five-tools-one-rule-per-field/` · no model: scripted turns on the real Workforce flows · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | a: workers are offered the four, `reportProgress` on a task turn only, `parkOnQuestion` on a task turn not waited on, `listDelegates`, and `answerTask` and `dispatchTask` while they stand; only a configured coordinator gets `addDelegate`, `removeDelegate`, `setFallback`; an inline plan step that calls `reportProgress({ output })` checkpoints its own row, and the task's result is still the answering turn's. b: each field in each state (pending, held, pending after a retry, running, finished; a retried row refuses every edit but a cancel), by tool, by `updateTask_tasks` as the user, and by `dispatchTask`'s reassign and release while it stands: allowed writes read back changed; refused ones leave the row unchanged and name field and state; a cancel with an edit is refused; a running task's reassign is refused and its first worker's result lands. c: a piece for a non-delegate is refused; under `all`, a worker hired mid-session is reachable; Bob's call to Alice's action is refused |
 | **Input** | Deterministic workers and scripted tool calls. Other worker names and another field order must pass too |
 | **Anti-game** | Tools from the model request; rows through the public read actions, not the collection |
@@ -86,7 +86,7 @@ task finishes it is refused ([D3](DECISIONS.md#d3)):
 ```diff
   # WORKER.md of a coordinator
   delegates: [eng.em, eng.coder]        # or: delegates: all
-+ managesOwnDelegates: true             # only then addDelegate, removeDelegate, setFallback
++ editsOwnDelegates: true             # only then addDelegate, removeDelegate, setFallback
 ```
 
 **Docs:** *Orchestration → Task board* opens by teaching one task: the five tools and the field
@@ -155,7 +155,7 @@ field's rule, FIX-2080's included; the block maps the input and names the refusa
 | The debt | |
 |---|---|
 | **Removes** | Six tools and their actions · the settle tools' claim guard · unguarded edits on the tool path · the task-session roster reach · delegate tools on every coordinator |
-| **Adds** | The field table, read by FIX-2080's guarded patch · `reportProgress` ([D3](DECISIONS.md#d3)) · `delegates: all` · `managesOwnDelegates` · `listTasks({ filedByTask })` and the filing-task link it reads · `dispatchTask` beside `createTask` for one or two issues, paid by FIX-2082 and FIX-2083 ([D1](DECISIONS.md#d1)) |
+| **Adds** | The field table, read by FIX-2080's guarded patch · `reportProgress` ([D3](DECISIONS.md#d3)) · `delegates: all` · `editsOwnDelegates` · `listTasks({ filedByTask })` and the filing-task link it reads · `dispatchTask` beside `createTask` for one or two issues, paid by FIX-2082 and FIX-2083 ([D1](DECISIONS.md#d1)) |
 | **Leaves** | Reading any of the user's tasks by id, across boards: FIX-2070's `{ task }` addressing · the raw collection's unguarded setters, the substrate's escape hatch |
 
 **Net: down.** Six tools, a guard and a reach go; one table, a worker tool, two settings and a filter arrive.

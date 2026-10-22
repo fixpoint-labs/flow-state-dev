@@ -1,19 +1,28 @@
 /**
  * A worker's delegates on the flow it runs on (FIX-1802 S3): the four
- * actions that read and change a session's list, the same four as tools for
- * a model that manages its own, and the list as a task sees it.
+ * actions that read and change a session's list, the same four as tools, and
+ * the list as a task sees it.
  *
  * Any worker whose file lists `delegates:` has them, on any flow that carries
  * this module: the built-in `agent` flow, the coordinator, and an app's own
  * worker flow through `defineSessionBoard`. A coordinator routes its posts to
- * them; any worker files tasks for the ones that take one. Every add and
- * every use runs the one check (`./delegate-check`).
+ * them; any worker files tasks for the ones that take one, and for no one
+ * else (FIX-2081). Every add and every use runs the one check
+ * (`./delegate-check`).
  *
  * The list is server-written session state (`./delegate-list`): copied from
  * the worker's `delegates:` the first time it is read or changed, changed
  * only by these actions and tools, and never seeded by a session create.
+ * `delegates: all` is the user's roster as it stands, read on every call and
+ * never copied by a read (D2).
+ *
+ * **Who changes the list** (FIX-2081, rule 13): the user, through the
+ * actions. A model gets `listDelegates` on every worker with a board, and
+ * `addDelegate`, `removeDelegate` and `setFallback` only on a coordinator
+ * whose file sets `editsOwnDelegates: true` ({@link
+ * WorkerDelegates.toolsCapability}). Those three refuse at the call too.
  */
-import { handler } from "@flow-state-dev/core";
+import { defineCapability, handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { DELEGATES_STATE } from "./delegate-keys";
 import { z } from "zod";
@@ -22,7 +31,7 @@ import { turnConfigOf, verifiedWorkerOf, workerConfigOf } from "../workers/verif
 import { WORKER_ID_STATE_KEY } from "../workers/keys";
 import type { WorkerInstallation } from "../workers/installation";
 import { DELEGATE_TAKES, createDelegateCheck, flowTakes, postTakingFlows, type DelegateTakes } from "./delegate-check";
-import { ADD_DELEGATE, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
+import { ADD_DELEGATE, ALL_DELEGATES, LIST_DELEGATES, MAX_DELEGATES, REMOVE_DELEGATE, SET_FALLBACK } from "./delegate-keys";
 import {
   changeDelegates,
   currentDelegates,
@@ -99,10 +108,39 @@ function listOutput(listed: Listed) {
   };
 }
 
-/** The defaults a worker's configuration names: its `delegates:`, and a coordinator's `fallback:`. */
+/**
+ * The defaults a worker's configuration names: its `delegates:`, and a
+ * coordinator's `fallback:`. `delegates: all` comes back `all: true` with no
+ * names; {@link withRoster} fills them from the roster for one call.
+ */
 export function delegateDefaultsOf(config: Readonly<Record<string, unknown>>): DelegateDefaults {
+  const all = config.delegates === ALL_DELEGATES;
   const delegates = Array.isArray(config.delegates) ? (config.delegates as string[]) : [];
-  return { delegates, ...(typeof config.fallback === "string" ? { fallback: config.fallback } : {}) };
+  return {
+    delegates,
+    ...(all ? { all: true } : {}),
+    ...(typeof config.fallback === "string" ? { fallback: config.fallback } : {})
+  };
+}
+
+/** Whether the running turn's worker may change its own delegates: a coordinator set so at hire (FIX-2081). */
+function editsOwnDelegates(config: Readonly<Record<string, unknown>>): boolean {
+  return config.editsOwnDelegates === true;
+}
+
+/**
+ * `defaults` with `delegates: all` read as the user's roster now, the worker
+ * itself included (FIX-2081 D2): read per call, never memoized, so a hire
+ * counts on the next call and a fired worker drops off it.
+ */
+export async function withRoster(
+  installation: WorkerInstallation,
+  ctx: BlockContext,
+  defaults: DelegateDefaults
+): Promise<DelegateDefaults> {
+  if (defaults.all !== true) return defaults;
+  const roster = await installation.roster(ctx as never);
+  return { ...defaults, delegates: roster.map((worker) => worker.id) };
 }
 
 /**
@@ -130,7 +168,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
 
   /** The session's worker's defaults, loaded now, with the seed. Refuses a session that names no worker. */
   const ownerDefaults = async (ctx: BlockContext): Promise<DelegateDefaults> =>
-    seeded(ctx, delegateDefaultsOf((await installation.resolveWorker(ctx, flowKind)).config));
+    withRoster(installation, ctx, await seeded(ctx, delegateDefaultsOf((await installation.resolveWorker(ctx, flowKind)).config)));
 
   /**
    * The defaults of the worker this turn runs as: the one its request loaded;
@@ -139,9 +177,22 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
    * copy's own settings, as the turn reads them (`turnConfigOf`).
    */
   const turnDefaults = async (ctx: BlockContext): Promise<DelegateDefaults> => {
-    if (verifiedWorkerOf(ctx.session) !== undefined) return seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx)));
+    if (verifiedWorkerOf(ctx.session) !== undefined) {
+      return withRoster(installation, ctx, await seeded(ctx, delegateDefaultsOf(workerConfigOf(ctx))));
+    }
     const named = (ctx.session.state as Record<string, unknown> | undefined)?.[WORKER_ID_STATE_KEY];
-    return typeof named === "string" ? ownerDefaults(ctx) : delegateDefaultsOf(turnConfigOf(ctx));
+    return typeof named === "string" ? ownerDefaults(ctx) : withRoster(installation, ctx, delegateDefaultsOf(turnConfigOf(ctx)));
+  };
+
+  /** Whether this turn's worker was set at hire to change its own delegates (FIX-2081, rule 13). */
+  const turnEditsOwn = (ctx: BlockContext): boolean =>
+    editsOwnDelegates(verifiedWorkerOf(ctx.session) !== undefined ? workerConfigOf(ctx) : turnConfigOf(ctx));
+
+  /** The refusal a delegate-changing tool answers on a worker not set to change its own. */
+  const notOwnToChange = {
+    refused:
+      "This worker's delegates are changed by its user, not by this worker: it wasn't set at hire to change " +
+      "its own (editsOwnDelegates). Ask the user, or message whoever filed your task. Nothing was changed."
   };
 
   type Changed = ({ ok: true } & Listed) | { ok: false; message: string };
@@ -237,7 +288,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: addInputSchema,
     outputSchema: toolOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => orTell(await add(ctx as never, input))
+    execute: async (input, ctx) => (turnEditsOwn(ctx as never) ? orTell(await add(ctx as never, input)) : notOwnToChange)
   });
   const removeDelegateTool = handler({
     name: REMOVE_DELEGATE,
@@ -245,7 +296,8 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: nameInputSchema,
     outputSchema: toolOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => orTell(await change(ctx as never, { remove: { worker: input.worker } }))
+    execute: async (input, ctx) =>
+      turnEditsOwn(ctx as never) ? orTell(await change(ctx as never, { remove: { worker: input.worker } })) : notOwnToChange
   });
   const setFallbackTool = handler({
     name: SET_FALLBACK,
@@ -255,7 +307,9 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      orTell(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
+      turnEditsOwn(ctx as never)
+        ? orTell(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
+        : notOwnToChange
   });
   const listDelegatesTool = handler({
     name: LIST_DELEGATES,
@@ -291,22 +345,24 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   };
 
   /**
-   * Every worker on the session user's roster that takes a task now, with the
-   * flow it runs on: who a task session's pieces can go to. Read per call, as
-   * {@link taskDelegates} is, and why each other one on the roster can't, in
-   * the words the one check uses.
+   * The delegate tools on a model's turn (FIX-2081, rule 13): `listDelegates`
+   * on every turn, and `addDelegate`, `removeDelegate` and `setFallback` only
+   * on a coordinator set at hire to change its own (`editsOwnDelegates`),
+   * read per call. `controlTools`, so a worker's `tools:` line doesn't fence
+   * them out. Compose it once per turn.
    */
-  const rosterTaskTakers = async (ctx: BlockContext): Promise<TaskDelegates> => {
-    const available = new Map<string, string>();
-    const unavailable = new Map<string, string>();
-    for (const worker of await installation.roster(ctx as never)) {
-      // The one check, so "takes a task" has one definition, and its refusal one wording.
-      const checked = await check(ctx as never, worker.id, "task");
-      if (checked.ok) available.set(worker.id, checked.worker.flow);
-      else unavailable.set(worker.id, checked.message);
+  const toolsCapability = defineCapability({
+    name: "delegateTools",
+    presets: {
+      tools: {
+        controlTools: async (ctx) =>
+          turnEditsOwn(ctx as never)
+            ? [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool]
+            : [listDelegatesTool]
+      },
+      default: ["tools"]
     }
-    return { available, unavailable };
-  };
+  });
 
   return {
     /** The one check, for an add, a post or a task. */
@@ -317,8 +373,6 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     postFlows,
     /** The session's delegates as a task sees them, read now. */
     taskDelegates,
-    /** Every worker on the session user's roster that takes a task now. */
-    rosterTaskTakers,
     /** The four delegate actions, for the flow's `actions`. */
     actions: {
       [ADD_DELEGATE]: {
@@ -342,8 +396,10 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
         description: "Read this conversation's delegates and its fallback."
       }
     },
-    /** The same four as tools, for a model that manages its own delegates: `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback`. */
-    tools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool] as const
+    /** The same four as tools: `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback`. The three that change refuse unless the worker manages its own. */
+    tools: [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool] as const,
+    /** The delegate tools a model's turn is offered, per call: `listDelegates`, and the three that change only where the worker manages its own. */
+    toolsCapability
   };
 }
 

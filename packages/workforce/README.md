@@ -1806,9 +1806,12 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   the call. `listDelegates` also gives each delegate, read from the roster when it is called, its
   worker's `description` (`null` when it has none) and `takes`, from its flow: `posts`, `tasks`,
   `both`, or `nothing` (fired, or on a flow that takes neither, with a `null` description). A refused
-  change writes nothing and fails its request with the refusal as the error message. The
-  coordinator's turn has the same four as tools, which hand a refusal back to the model as
-  `{ refused }`. A session create can't set them: one whose `state` carries `delegates`
+  change writes nothing and fails its request with the refusal as the error message. Every
+  worker with a board has `listDelegates` as a tool. The coordinator's turn has `addDelegate`,
+  `removeDelegate` and `setFallback` as tools only when its `WORKER.md` sets
+  `editsOwnDelegates: true` (`false` by default); they hand a refusal back to the model as
+  `{ refused }`. A worker whose file says `delegates: all` delegates to the whole roster, read on
+  each call rather than pinned, itself included. A session create can't set them: one whose `state` carries `delegates`
   is refused with a 400,
   `Session state field "delegates" is written only by flow "coordinator"; a caller cannot set it.`
   Every worker flow built on `installation.session()` refuses `delegates`, `fallback`,
@@ -1866,18 +1869,20 @@ of its `delegates:`, a `minConfidence:` outside 0 to 1 or on a coordinator that 
 same problems without throwing.
 
 A coordinator conversation also keeps a task board of its own. The coordinator's turn carries
-Orchestration's task tools (`dispatchTask`, `addTask`, `assignTask`, `listTasks`, `answerTask` and
-the rest), and the conversation's session takes them as actions named for the board:
-`dispatchTask_tasks`, `addTask_tasks`, `listTasks_tasks` and so on.
+Orchestration's task tools (`createTask`, `getTask`, `listTasks`, `updateTask`, `answerTask` and
+`dispatchTask`), and the conversation's session takes them as actions named for the board:
+`createTask_tasks`, `updateTask_tasks`, `listTasks_tasks` and so on. A turn working a task also
+has `reportProgress` (the `progress` entry of the session board), which is not an action.
 
-An assignee must be one of the conversation's delegates whose flow takes tasks (a task session's
-pieces can go further; see below). Any other is
+An assignee must be one of the conversation's delegates whose flow takes tasks, in a task
+session too. Any other is
 answered `{ ok: false, error: "unknown_assignee: …" }`, and nothing is stored.
 
-`addTask` files a task held; `dispatchTask` starts it in its task session, which belongs to you.
-Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. A held task starts
-when `dispatchTask` names its `taskId`, or `updateTask` releases it (`patch.status: "pending"`);
-`assignTask` changes its owner and leaves it held.
+`createTask` and `dispatchTask` start a task in its task session, which belongs to you.
+Find it with `findWorkerSession({ worker, taskId, filingSessionId })`. `createTask` with
+`held: true` files it held; it starts when `updateTask` releases it (`status: "pending"`) or
+`dispatchTask` names its `taskId`. Before a task starts, `updateTask` can change any of its
+fields, its assignee included; after, only a cancel lands.
 `dispatchTask` returns once the task is stored, without waiting for it to run, unless it is
 given `wait: true`. Unless
 it waited, the conversation hears once when the task ends; a waiting turn gets the answer instead. See
@@ -1896,14 +1901,14 @@ result in a task session). A request with no step costs nothing more. On the bui
 `coordinator` flows a worker's turn has the task tools for its steps whatever its delegates; your
 own flow gets steps by wrapping its turn in the kit's `planned(turn)`. Only the worker's own turn
 files a step (an action naming the worker is refused), the turn that answers files none, a step
-isn't waited on, completed, failed or blocked by a call, and `assignTask` doesn't move a step to a
+isn't waited on, held or finished by a call, and `updateTask` doesn't move a step to a
 delegate or a delegate's task to the worker. Steps count toward the 100 tasks under a top task
 and add no depth. See
 [Working in steps](https://flow-state.dev/docs/workforce/delegating-work#working-in-steps).
 
-A task's worker can split it into pieces for any other worker on the user's roster that takes
-tasks, its delegates or not; an unassigned piece goes to
-its delegate when it has exactly one. Each piece's ending wakes a turn in the task session. The task
+A task's worker can split it into pieces for its own delegates; a piece for any other worker is
+refused with `unknown_assignee`. An unassigned piece goes to
+its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from. Each piece's ending wakes a turn in the task session. The task
 completes with `{ answer, pieces }`: `answer` is what the worker said in the turn after the last
 piece ended, and `pieces` lists each piece's output. With no such turn (after a restart, for
 example), `answer` is absent. Splitting goes up to
@@ -2046,7 +2051,7 @@ tool a sent message is a call to), `WORKER_MESSAGE_ENTRY`, `WORKER_MESSAGES_PATT
 | `installation.rosterWorker(ctx, id)` / `installation.standardWorkerProblems()` | The worker an id names on the session user's roster, read by id (`undefined` for another user's, as for a missing one); and every standard worker's configuration problems, for a load-time refusal. |
 | `installation.roster(ctx)` | The session user's whole roster, as it stands when called: their own workers and every standard worker, sorted by id, each a `RosterWorker` (whose `delegates` lists the worker ids its configuration names; empty when none). The block must declare `installation.resources`. |
 | `defineCoordinatorFlow({ installation, delegateFlows, routeModel, agent?, roundDeadlineMs? })` | The `coordinator` worker flow (see [Coordinators](#coordinators)): `run`, `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. Its judgment is the agent's turn, built with the `agent` options; `agent.isolateUserState` keys this flow's user-scoped storage by its copy, as it does `agent`'s. `roundDeadlineMs` is how long a round waits for its answers (five minutes by default); a value that isn't a positive whole number of milliseconds throws. |
-| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's ten task tools, present only while the session has a delegate that takes tasks), `actions` (the ten as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `messageWorker` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which also delivers worker messages, `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
+| `defineSessionBoard({ installation, flowKind })` | The task-filing kit for a worker flow of your own (see [Delegating work](https://flow-state.dev/docs/workforce/delegating-work)): `tools` for the model block's `uses` (Orchestration's task tools, present only while the session has a delegate that takes tasks), `progress` for the same `uses` (`reportProgress` on a turn working a task), `delegateTools` for the same `uses` (`listDelegates`, plus `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`), `actions` (the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`), `resources`, `sessionStateShape` for `installation.session(...)`, `serverOwned` for `session.serverOwned`, `messages` for the same `uses` (the `messageWorker` tool; see [Worker messages](#worker-messages)), `entries(turn)` for `internal: { actions }`, which also delivers worker messages, `planned(turn)` to wrap a turn so the steps its worker files for itself run in its request (use the wrapped turn for `run`, the task entry and `entries`), and `files(ctx)` / `taskDelegates(ctx)` to read whether the session files and who takes its tasks. |
 | `delegatedPostEntry(turn)` | The `onDelegatedPost` task entry that makes a flow's workers delegates that take posts: `task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(turn) } }`. It takes a post's task from the conversation's board, runs `turn` on it, and ends the task with the reply. At the round's deadline, while the turn is still running, it tells the coordinator so the round can close. The turn isn't stopped; a later answer lands once. |
 | `delegatedPostOnFinished` | A delegate flow's request `onFinished`: when a delegated run is cancelled, it tells the coordinator, which ends the post's task as cancelled (no Error Reporter report is owed), so the round doesn't wait for its deadline. The built-in `agent` flow sets it. |
 | `delegatedPostHistory` | A delegate flow generator's `history`, in place of `history: true`: the session's history, and on a delegated post that came with the conversation's recent lines, one user-role message just before the post (`Recent lines in the conversation with <coordinator> before this post, oldest first:`, then `- <from>: <text>` per line), for that turn only and never stored. On any other turn it is the session's history unchanged. The built-in `agent` flow's turn uses it. |

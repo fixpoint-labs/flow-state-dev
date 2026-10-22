@@ -14,12 +14,12 @@ repo rewrite at upgrade. Each tool's `<tool>_tasks` action follows its tool. Shi
 | `dispatchTask` | `createTask`; `{ taskId }` is `updateTask({ id, status: "pending" })`; `{ taskId, assignee }` is `updateTask({ id, assignee })`; wait with `getTask({ id, wait: true })`; a coordinator files a routed task: `createTask` with `target` and the routing settings | FIX-2082 removes the wait form, FIX-2083 the post form; the later removes the tool ([FIX-2081 D1](../../issues/FIX-2081/DECISIONS.md#d1)) |
 | `readTask({ taskId })` | `getTask({ id })` | FIX-2081 |
 | `updateTask`'s `taskId`, `patch` (FIX-2080's interim `patch.status` included), `addLabel`, `removeLabel` | Flat input: `updateTask({ id, priority, labels, status, … })`; `labels` replaces the list | FIX-2081 |
-| `addDelegate`, `removeDelegate`, `setFallback` on every coordinator | `managesOwnDelegates: true` in the coordinator's `WORKER.md`; otherwise the user edits the list | FIX-2081 |
+| `addDelegate`, `removeDelegate`, `setFallback` on every coordinator | `editsOwnDelegates: true` in the coordinator's `WORKER.md`; otherwise the user edits the list | FIX-2081 |
 | A task session's reach to the whole roster | `delegates: [ … ]`, or `delegates: all` | FIX-2081 |
 | `assignTask` | `assignee` at filing, or `updateTask({ assignee })` before it starts | FIX-2081 |
 | `cancelTask` | `updateTask({ status: "cancelled" })` | FIX-2081 |
 | `completeTask`, `failTask` | Return or throw: the claim gate records the ending | FIX-2081 |
-| `blockTask` | `updateTask({ taskId, patch: { status: "held" } })` and `"pending"` before it starts (flattened by FIX-2081); `waitForUser` after | FIX-2080 |
+| `blockTask` | `updateTask({ id, status: "held" })` and `"pending"` before it starts; `waitForUser` after | FIX-2080 |
 | `TaskCollection.block`, `unblock` | `TaskCollection.hold`, `release` | FIX-2080 |
 | The `"blocked"` task status, and `"blocked"` in `listTasks`' status filter | `"held"` | FIX-2080 |
 | `Task.undispatched`, `TaskInit.undispatched` | `held` | FIX-2080 |

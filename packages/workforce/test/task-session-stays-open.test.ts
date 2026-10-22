@@ -143,7 +143,7 @@ describe("V4 · a follow-up runs in its task's session (S4, S6)", () => {
       const conv = await h.conversation("alice", "lead");
       const root = await file(h, conv, { goal: "Draft the plan", assignee: "eng.tasker" });
       await h.settled();
-      const recorded = await h.act("alice", conv, "addTask_tasks", { goal: "Now open the PR", followUpOf: root.taskId });
+      const recorded = await h.act("alice", conv, "createTask_tasks", { held: true, goal: "Now open the PR", followUpOf: root.taskId });
       expect(recorded.error, messageOf(recorded.error)).toBeUndefined();
       const followUp = recorded.output as { ok: boolean; taskId?: string; status?: string };
       expect(followUp).toMatchObject({ ok: true, status: "held" });
@@ -280,7 +280,7 @@ describe("V3 · the conversation answers (S2, S3)", () => {
     }
   });
 
-  it("refuses to reassign an answered task before it runs again, so the answer runs in the session that filed it", async () => {
+  it("refuses to reassign an answered task, which has started, so the answer runs in the session that filed it", async () => {
     const h = plain();
     try {
       const conv = await h.conversation("alice", "pm");
@@ -292,10 +292,8 @@ describe("V3 · the conversation answers (S2, S3)", () => {
       const lost = await h.loseDispatches("runTaskBoard");
       await answer(h, conv, filed.taskId!, "eu-west");
       await h.settled();
-      const moved = await h.act("alice", conv, "assignTask_tasks", { taskId: filed.taskId, assignee: "eng.writer" });
-      expect(moved.output).toMatchObject({ ok: false, error: expect.stringMatching(/^task_awaiting_answer: /) });
-      const patched = await h.act("alice", conv, "updateTask_tasks", { taskId: filed.taskId, patch: { assignee: "eng.writer" } });
-      expect(patched.output).toMatchObject({ ok: false, error: expect.stringMatching(/^task_awaiting_answer: /) });
+      const moved = await h.act("alice", conv, "updateTask_tasks", { id: filed.taskId, assignee: "eng.writer" });
+      expect(moved.output).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: assignee/) });
       lost.restore();
       await h.act("alice", conv, "listTasks_tasks", {});
       await h.settled();
@@ -452,7 +450,7 @@ describe("V2, V5 · the question park on a task turn (S1, S7)", () => {
       await h.act("alice", conv, "run", { message: "TOOLS-check" });
       const turn = seen.filter((s) => s.input.includes("TOOLS-check"));
       expect(turn.length).toBeGreaterThan(0);
-      const tools = ["addTask", "assignTask", "completeTask", "failTask", "cancelTask", "updateTask", "listTasks", "answerTask"];
+      const tools = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"];
       for (const t of turn) {
         for (const name of tools) expect(t.names.filter((n) => n === name), name).toHaveLength(1);
         expect(t.names).not.toContain("parkOnQuestion");

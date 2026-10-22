@@ -42,21 +42,10 @@ const STATUS_SET = ["pending", "in_progress", "held", "parked", "completed", "er
 
 /**
  * Orchestration's task tools, written out: what the manager's turn must hold,
- * each once. Nine since FIX-1817 added `answerTask` to the eight, ten on a
- * conversation's board since FIX-1875 added `dispatchTask`, and nine there
- * again since FIX-2080 retired `blockTask` (a hold is `updateTask`'s).
+ * each once. The filer's four since FIX-2081, `answerTask` (FIX-1817) and, on
+ * a conversation's board, `dispatchTask` (FIX-1875).
  */
-const TASK_TOOLS = [
-  "addTask",
-  "assignTask",
-  "completeTask",
-  "failTask",
-  "cancelTask",
-  "updateTask",
-  "listTasks",
-  "answerTask",
-  "dispatchTask",
-];
+const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask", "answerTask", "dispatchTask"];
 
 /** Frontmatter keys that would declare a board or grant the task tools. None may appear. */
 const BOARD_KEYS = /^(boards|boardActions|filing|mailboxes|members)\s*:/m;
@@ -194,7 +183,7 @@ await runGoal(async (failures) => {
     if (refused.output?.ok !== false || !refusal.startsWith("unknown_assignee") || !refusal.includes(stranger)) {
       note(`a filing for ${stranger} was not refused unknown_assignee naming it: ${JSON.stringify(refused)}`);
     }
-    const noOne = await lab.act("addTask_tasks", { goal: "filed for no one in particular" });
+    const noOne = await lab.act("createTask_tasks", { held: true, goal: "filed for no one in particular" });
     const noOneId = String(noOne.output?.taskId ?? "");
     await lab.settled();
     const afterD = await lab.rows();
@@ -235,19 +224,18 @@ await runGoal(async (failures) => {
     if (view.done.length !== 1) note(`${view.done.length} row(s) read as done, not the one that finished`);
     if (!view.waitingOnYou.some((row) => row.id === noOneId)) note(`the held row is not under "waiting on you"`);
 
-    // ---- f. the manager settles a task its worker is still running -----------
-    // Recorded as observed behaviour, not defended as a design: the task tools
-    // let the filer settle a row a worker holds, and the worker's late result
-    // is then declined.
-    const settled = await lab.act("completeTask_tasks", { taskId: runningId, output: "settled by the manager" });
+    // ---- f. the manager cancels a task its worker is still running -----------
+    // No action settles a task (FIX-2081): the filer may cancel a row a worker
+    // holds, and the worker's late result is then declined.
+    const settled = await lab.act("updateTask_tasks", { id: runningId, status: "cancelled" });
     lab.release();
     await lab.settled();
     const settledRow = (await lab.rows()).find((row) => row.id === runningId);
     const ran = lab.workLines().some((line) => line.taskId === runningId);
     const unclaimedSettle = settled.output?.ok === true ? "allowed" : `refused: ${JSON.stringify(settled)}`;
-    if (settled.output?.ok !== true) note(`the manager could not settle a task its worker was running: ${unclaimedSettle}`);
-    else if (settledRow?.status !== "completed" || settledRow.output !== "settled by the manager") {
-      note(`after the manager's settle the row reads ${settledRow?.status} with ${JSON.stringify(settledRow?.output)}`);
+    if (settled.output?.ok !== true) note(`the manager could not cancel a task its worker was running: ${unclaimedSettle}`);
+    else if (settledRow?.status !== "cancelled" || settledRow.output !== undefined) {
+      note(`after the manager's cancel the row reads ${settledRow?.status} with ${JSON.stringify(settledRow?.output)}`);
     }
 
     // ---- g. the task status set ----------------------------------------------

@@ -67,7 +67,7 @@ export const WORKER_FLOW = "worker";
 /** The task entry a filed row is handed over through. */
 export const WORK_ENTRY = "work";
 
-/** The conversation ledger's resource key, which the task actions are named for (`addTask_tasks`). */
+/** The conversation ledger's resource key, which the task actions are named for (`updateTask_tasks`). */
 const LEDGER_KEY = "tasks";
 
 /**

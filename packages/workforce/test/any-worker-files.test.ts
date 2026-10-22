@@ -240,7 +240,7 @@ describe("a worker files for its delegates that take a task (BR-1)", () => {
     try {
       const talk = await agentSession(h, "alice", "ana");
       const turn = await h.act("alice", talk, "run", { message: "what's on the board?" }, "agent");
-      expect(messageOf(turn.error)).toMatch(/has two tools named "addTask"/);
+      expect(messageOf(turn.error)).toMatch(/has two tools named "createTask"/);
     } finally {
       await h.dispose();
     }
@@ -282,8 +282,8 @@ describe("a worker with no delegate that takes a task (BR-2, BR-3, BR-4)", () =>
       const created = await h.create("alice", "tasker", { state: { workerId: "idle" } });
       expect(created.status, JSON.stringify(created.body)).toBeLessThan(300);
       await expect(
-        h.act("alice", created.body.session!.id, "addTask_tasks", { goal: "x", assignee: "eng.tasker" }, "tasker")
-      ).rejects.toThrow(/does not define action "addTask_tasks"/);
+        h.act("alice", created.body.session!.id, "createTask_tasks", { held: true, goal: "x", assignee: "eng.tasker" }, "tasker")
+      ).rejects.toThrow(/does not define action "createTask_tasks"/);
       expect(await h.rows("alice")).toEqual([]);
     } finally {
       await h.dispose();

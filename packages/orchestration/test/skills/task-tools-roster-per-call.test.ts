@@ -52,33 +52,29 @@ describe("a roster read per call (T1)", () => {
     });
     const { ctx } = buildDelegationCtx({ self: false });
 
-    const refused = await runForTest(toolNamed(tools, "addTask"), { goal: "draft", assignee: "writer" }, ctx);
+    const refused = await runForTest(toolNamed(tools, "createTask"), { goal: "draft", assignee: "writer" }, ctx);
     expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "writer"/) });
 
     team.add("writer");
-    const accepted = await runForTest(toolNamed(tools, "addTask"), { goal: "draft", assignee: "writer" }, ctx);
+    const accepted = await runForTest(toolNamed(tools, "createTask"), { goal: "draft", assignee: "writer" }, ctx);
     expect(accepted).toMatchObject({ ok: true });
     // Read on each call, and handed the running context to read it from.
     expect(seen).toHaveLength(2);
     expect(seen[0]).toBeTypeOf("object");
   });
 
-  it("holds assignTask and updateTask to the same per-call roster", async () => {
+  it("holds updateTask to the same per-call roster", async () => {
     const team = new Set(["researcher"]);
     const tools = buildTaskToolsList(ownStateResolver, async () => rosterOf(team));
     const { ctx } = buildDelegationCtx({
       self: false,
       preTasks: { a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: 1, updatedAt: 1 } },
     });
-    expect(await runForTest(toolNamed(tools, "assignTask"), { taskId: "a", assignee: "writer" }, ctx)).toMatchObject({
-      ok: false,
-      error: expect.stringMatching(/^unknown_assignee/),
-    });
     expect(
-      await runForTest(toolNamed(tools, "updateTask"), { taskId: "a", patch: { assignee: "writer" } }, ctx)
+      await runForTest(toolNamed(tools, "updateTask"), { id: "a", assignee: "writer" }, ctx)
     ).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee/) });
     team.add("writer");
-    expect(await runForTest(toolNamed(tools, "assignTask"), { taskId: "a", assignee: "writer" }, ctx)).toEqual({ ok: true });
+    expect(await runForTest(toolNamed(tools, "updateTask"), { id: "a", assignee: "writer" }, ctx)).toEqual({ ok: true });
   });
 });
 
@@ -136,9 +132,9 @@ describe("taskToolActions with a roster (T1)", () => {
   it("refuses an app's filing for an assignee off the roster, and stores nothing", async () => {
     const h = await host(new Set(["researcher"]));
     try {
-      const refused = await h.act(`addTask_${h.id}`, { goal: "audit licenses", assignee: "bobs.worker" });
+      const refused = await h.act(`createTask_${h.id}`, { goal: "audit licenses", assignee: "bobs.worker" });
       expect(refused.output).toMatchObject({ ok: false, error: expect.stringMatching(/^unknown_assignee: "bobs.worker"/) });
-      const accepted = await h.act(`addTask_${h.id}`, { goal: "audit licenses", assignee: "researcher" });
+      const accepted = await h.act(`createTask_${h.id}`, { goal: "audit licenses", assignee: "researcher" });
       expect(accepted.output).toMatchObject({ ok: true });
       const listed = await h.act(`listTasks_${h.id}`, {});
       expect(listed.output.tasks.map((t: { assignee?: string }) => t.assignee)).toEqual(["researcher"]);
@@ -151,23 +147,23 @@ describe("taskToolActions with a roster (T1)", () => {
     const team = new Set(["researcher"]);
     const h = await host(team);
     try {
-      const filed = await h.act(`addTask_${h.id}`, { goal: "audit", assignee: "researcher" });
+      const filed = await h.act(`createTask_${h.id}`, { goal: "audit", assignee: "researcher" });
       const taskId = filed.output.taskId as string;
-      expect((await h.act(`assignTask_${h.id}`, { taskId, assignee: "writer" })).output).toMatchObject({
+      expect((await h.act(`updateTask_${h.id}`, { id: taskId, assignee: "writer" })).output).toMatchObject({
         ok: false,
         error: expect.stringMatching(/^unknown_assignee/),
       });
       team.add("writer");
-      expect((await h.act(`assignTask_${h.id}`, { taskId, assignee: "writer" })).output).toEqual({ ok: true });
+      expect((await h.act(`updateTask_${h.id}`, { id: taskId, assignee: "writer" })).output).toEqual({ ok: true });
     } finally {
       await h.dispose();
     }
   });
 
-  it("names the same nine actions either way", async () => {
+  it("names the same five actions either way", async () => {
     const h = await host(new Set());
     try {
-      expect(Object.keys(h.handleForm)).toHaveLength(9);
+      expect(Object.keys(h.handleForm)).toHaveLength(5);
     } finally {
       await h.dispose();
     }

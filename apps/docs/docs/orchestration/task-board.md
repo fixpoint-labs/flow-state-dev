@@ -38,6 +38,56 @@ The board is a handle you drain. Its tasks are rows in a collection. Workers are
 
 <Figure svg={TaskBoardPartsDrawing} caption="Board, task collection, worker: where each lives" description={"The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee"} />
 
+## One task, five tools
+
+A model works a board through five task tools. Four belong to whoever files the work:
+
+- `createTask` files a task. It starts as its start setting says: at once, once its `deps` have finished, or, filed with `held: true`, when you release it.
+- `getTask({ id })` reads one task whole: its brief, every field you can edit, how it stands, and its output.
+- `listTasks` lists tasks without their output. Each row carries its worker's latest status note.
+- `updateTask({ id, ... })` changes one, each field by its own rule.
+
+The fifth is the worker's. `reportProgress({ statusNote?, output? })` is offered only on a turn that is working a task, and acts on that task, so it takes no `id`.
+
+```ts
+createTask({ goal: "Find adoption numbers", assignee: "researcher" })
+updateTask({ id, priority: 2, labels: ["stats"] })   // before it starts
+updateTask({ id, status: "cancelled" })              // until it finishes
+reportProgress({ statusNote: "Drafting the summary", output: draft })
+```
+
+No tool finishes a task. A task ends when its worker's turn returns, or throws.
+
+### What `updateTask` can change, and when
+
+| Field | Allowed |
+|---|---|
+| `goal`, `title`, `context`, `input`, `deps`, `priority`, `labels`, `metadata`, `assignee`, `maxAttempts` | Before the task first starts |
+| `status: "held"`, `status: "pending"` | Before the task first starts: hold it, or release a held one |
+| `status: "cancelled"` | Until the task finishes. Sent alone |
+
+The fields are flat, beside `id`. `labels` replaces the whole list. `metadata` merges its keys over the task's. *Before it first starts* means no attempt ever claimed it, so a task back in `pending` after a failed attempt stays locked. Once a task starts, only a cancel lands. Once it finishes, nothing does, its output included: file a follow-up with `createTask({ followUpOf })` for more work.
+
+A started task keeps the worker it started with. To move it, cancel it and file it again.
+
+Every rule is checked inside the write, so a task that starts between your read and your write is refused, not edited. A refusal is a result, not a throw, and it names the field, the state and the next move:
+
+| Error | When |
+|---|---|
+| `field_locked_after_start` | A field that changes only before a start, on a task that has started. It names the fields and the task's status |
+| `task_finished` | Any write to a finished task |
+| `cancel_takes_no_edits` | `status: "cancelled"` sent with another field |
+| `nothing_to_update` | No field and no status beside `id` |
+| `unknown_assignee` | An `assignee` the board's roster doesn't name |
+
+### Progress from the worker
+
+`reportProgress` writes two things on the task its turn holds. `statusNote` is a one-line note for task views; `listTasks` shows it. `output` is a checkpoint of the result so far; `getTask` shows it as the task's output, marked `checkpoint: true`. Neither changes the task's status.
+
+The latest checkpoint is the task's output. When the task completes, a checkpoint stays, and the worker's final answer becomes the output only when it never reported one. So report the whole result so far each time. A failed attempt keeps its checkpoint for the next one. Once the task has finished, `reportProgress` is refused and nothing changes.
+
+For a worker flow of your own, build the tool with `createReportProgress({ resolve })`, which takes the task list the turn's task is on, as [`createParkOnQuestion`](#when-a-task-stops-on-a-question) does. `reportProgress` is not an action: a screen doesn't report a worker's progress.
+
 ## Block composition
 
 ```
@@ -316,7 +366,7 @@ const board = taskBoard({
 
 There is no `defaultWorker` unless you pass one.
 
-The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `addTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
+The task tools can catch a bad assignee earlier than that. Give `createTaskToolsCapability` a roster, and `createTask` with an assignee the roster doesn't name returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. Without a roster every assignee is accepted, and an unmatched one takes the fallback path above.
 
 On a delegation board, a registry assignee runs its tasks somewhere other than the request that claimed them, and so can `defaultWorker`. See [Assignees that dispatch](#assignees-that-dispatch).
 
@@ -525,7 +575,7 @@ Each arriving task gets the same checks a board's own entry runs: same attempt, 
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
-`taskTurn`, `true` by default, makes each run of the entry a task turn: [`dispatchTask`](#giving-another-worker-work) with `wait: true` is refused, and the run gets [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run can wait on work it dispatches, and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and task-tool writes from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
+`taskTurn`, `true` by default, makes each run of the entry a task turn: [`dispatchTask`](#giving-another-worker-work) with `wait: true` is refused, and the run gets [`reportProgress`](#progress-from-the-worker) and [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run can wait on work it dispatches, and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
 
 A worker reads the claim it holds with `currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`. Pass the block's own `ctx`. It returns the claim ticket, carrying `taskId` and `attempt` among others, in a worker the board runs inline and in one reached through a task entry, and `undefined` everywhere else: a coordinator, a block wired directly, or any other request the worker starts or resumes. A worker's task-tool writes are limited to the task it holds. A write naming a different task is refused with `task_write_declined: you hold task "<held>", not "<named>"`.
 
@@ -616,21 +666,20 @@ Nothing a caller or a model sets can write `run`. Naming a session doesn't grant
 
 `dispatchTask` is on a board that dispatches: one that starts a ready task as soon as it's
 written, such as a conversation's board in Workforce. A board that a drain runs decides for
-itself when each task runs, so it has no `dispatchTask`, and its `addTask` files a task the
+itself when each task runs, so it has no `dispatchTask`, and its `createTask` files a task the
 drain runs.
 
-On a board that dispatches, `addTask` records a task without starting it, and answers
-`{ ok: true, taskId, status: "recorded" }` with a one-line `note` saying the task starts on
-`dispatchTask`. `assignTask` changes who owns a task and leaves a recorded one recorded. When
-you want another worker to start now, dispatch the task:
+On a board that dispatches, `createTask` starts a task at once too, unless it was filed with
+`held: true`. `dispatchTask` does the same for a new task, and it is also how a turn waits on
+one:
 
 ```ts
 dispatchTask({ goal: "Draft the release note", assignee: "writer" })
 ```
 
 The work starts at once, and the call returns the task's id without waiting for it. When the
-task ends, you hear about it the same way you hear about any task you filed. To start a task
-you recorded earlier, name it instead of describing a new one:
+task ends, you hear about it the same way you hear about any task you filed. To release a task
+you filed held, name it instead of describing a new one:
 
 ```ts
 dispatchTask({ taskId: "task_8f2" })
@@ -665,8 +714,8 @@ when its task ends and sits out its whole `timeoutMs`.
 
 | Input | |
 |---|---|
-| `goal`, `title`, `assignee`, `deps`, `priority`, `input`, `metadata`, `followUpOf` | A new task, exactly as for `addTask`, and refused the same way. `title` is a short, non-empty label shown where the task is listed; `listTasks` answers it when a task has one |
-| `taskId` | A task you recorded earlier on this board, instead of a new one. It must not have started |
+| `goal`, `title`, and the rest of `createTask`'s fields | A new task, exactly as for `createTask`, and refused the same way. `title` is a short, non-empty label shown where the task is listed; `listTasks` answers it when a task has one |
+| `taskId` | A task you filed held on this board, instead of a new one. It must not have started. With `assignee`, it also moves the task to that worker, which only a held task allows |
 | `wait` | `true` to wait for the result |
 | `timeoutMs` | How long to wait: 30 000 to 3 600 000, five minutes by default. Only with `wait` |
 
@@ -674,9 +723,9 @@ when its task ends and sits out its whole `timeoutMs`.
 |---|---|
 | `assignee_required` | No `assignee` named or already on the task, and the board has no single worker to give it to. Nothing is filed |
 | `task_not_dispatchable` | The task named by `taskId` has already started, ended, or been dispatched. Nothing changes |
-| `dispatch_target_required` | Neither `goal` nor `taskId`. Give `goal` for a new task or `taskId` for a recorded one. Nothing is filed |
+| `dispatch_target_required` | Neither `goal` nor `taskId`. Give `goal` for a new task or `taskId` for a held one. Nothing is filed |
 | `dispatch_target_ambiguous` | Both `goal` and `taskId`. Give one. Nothing is filed |
-| `dispatch_ref_takes_no_task_fields` | `taskId` with `deps`, `priority`, `input`, `metadata` or `followUpOf`. Change the recorded task with `updateTask` first. Nothing is written |
+| `dispatch_ref_takes_no_task_fields` | `taskId` with any field but `assignee`. Change the held task with `updateTask` first. Nothing is written |
 | `wait_timed_out` | The task didn't end in time. It is cancelled |
 | `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |
 | `wait_timeout_without_wait` | `timeoutMs` without `wait`. Nothing is filed |
@@ -694,7 +743,7 @@ apply. When it ends, the waiting turn continues with the answer, and the convers
 separate completion message for it. The `dispatchTask_<board>` action starts work and never
 waits.
 
-**Moving from `waitForResponse`.** `addTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `addTask` refuses `waitForResponse` and `timeoutMs` with `add_task_does_not_wait`. Nothing is filed. An app that sent `addTask_<board>` to start work sends `dispatchTask_<board>`. {/* retired-name-refusal: migration note */}
+**Moving from `waitForResponse`.** `createTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `createTask` refuses `waitForResponse` and `timeoutMs` with `create_task_does_not_wait`. Nothing is filed. {/* retired-name-refusal: migration note */}
 
 ## Concurrency and error handling
 
@@ -772,7 +821,7 @@ A task can also keep returning to `pending` without ever settling. `maxAttempts`
 - `maxTotalRetries` (default `50`) — how many failure retries the board may **authorize in total**, across every task.
 - `concurrency` (default `4`) — how many run at the same time.
 
-Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `addTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
+Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. The model-facing `createTask` task tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound.
 
 The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, an `unpark`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
@@ -932,7 +981,7 @@ Each sugar call re-resolves the collection, so reads always reflect the latest s
 
 ## Changing tasks from outside a run
 
-Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the ten task tools a model can hold, as actions any caller of the flow can run:
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, hold or release one, or edit one before it starts. `taskToolActions` gives your flow the filer's four task tools and `answerTask`, as actions any caller of the flow can run:
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -951,19 +1000,19 @@ defineFlow({
 });
 ```
 
-The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `cancelTask_todos`, `updateTask_todos`, `listTasks_todos`, `readTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+The actions are named for the board's collection: `createTask_todos`, `getTask_todos`, `listTasks_todos`, `updateTask_todos` and `answerTask_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `updateTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
 
-Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. An `addTask`, `assignTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
+Pass a roster and the actions check assignees the way the model's tools do: `taskToolActions(board, roster)`, or `taskToolActions(collectionId, resolve, roster)`. A `createTask` or `updateTask` naming someone the roster doesn't is answered `{ ok: false, error: "unknown_assignee: …" }` and writes nothing. The roster can also be a function of the running block's context, `(ctx) => roster`, read on every call that checks an assignee, for a board whose team changes from one session to the next. `createTaskToolsCapability(resolve, roster)` takes the same function. Without a roster, any assignee is accepted.
 
-Each one runs the same checked transition a worker's would. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task or drains the board. Settling a task a worker is still running is allowed, as it is for a coordinator: your write lands, and the worker's own result is declined when it arrives.
+Each one runs the same block the model's tool does, so every rule in [the field table](#what-updatetask-can-change-and-when) holds for a screen as for a model. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task, drains the board or finishes a task. A cancel lands on a task a worker is still running, and the worker's own result is declined when it arrives.
 
 The board needs a collection that outlives a request, built with `defineTaskCollection`. `taskToolActions` throws for a board on any other backing, because a later action could never find its tasks.
 
-These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers the ones that take a `taskId` on each row.
+These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers, on each row, the board's `getTask` and `updateTask` and every action that takes a `taskId`.
 
 Each task in a `listTasks` result can carry a `run` link, `{ sessionId, requestId }`, that names the run working it, or the run that last did. A finished or failed task keeps its link, so a task list can open the run that produced the result. A task has no link until a run starts on it, and claiming it again clears the link until the next run starts. The link says which run, not whether it is still going: read `status` for that. Only the session's owner can open it.
 
-`readTask` returns one task whole: its goal and input, its status, and what it came back with, meaning its `output`, its `error`, or the `question` it is parked on. An `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `outputCut: true`. A `taskId` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
+`getTask` returns one task whole: its goal, context and input, the fields `updateTask` edits, its status, its worker's status note, and what it came back with, meaning its `output`, its `error`, or the `question` it is parked on. An `input`, `metadata` or `output` longer than 20,000 characters as JSON comes back as that text cut to 20,000 characters, with `inputCut`, `metadataCut` or `outputCut` set. An `id` the board doesn't hold answers `{ ok: false, error: "task_not_found", taskId }`.
 
 ## When a task stops on a question
 
@@ -986,7 +1035,7 @@ It moves the task back to `pending` with the answer, like [`unparkAndDrain`](#pi
 | `{ ok: false, error: "terminal_task_write_declined: …" }` | The task has finished |
 | `{ ok: false, error: "task_not_found" }` | The board holds no task with that id |
 
-Until the answered task runs again, `assignTask` and `updateTask` refuse to give it another worker (`task_awaiting_answer: …`), so the answer reaches the session that asked.
+An answered task has started, so `updateTask` refuses to give it another worker, and the answer reaches the session that asked.
 
 ## Collection backing
 

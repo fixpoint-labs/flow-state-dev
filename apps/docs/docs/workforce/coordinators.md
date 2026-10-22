@@ -47,8 +47,9 @@ Because `help` has a description, best fit can also pick `help` itself, for a qu
 | `fallback` | The delegate that takes a post `best-fit` can't place. It must be one of `delegates`. |
 | `minConfidence` | Under `best-fit`, the lowest confidence at which a delegate pick is used, from `0` to `1`. Left out, any pick is used. See [Picking the coordinator, and a confidence floor](#picking-the-coordinator-and-a-confidence-floor). |
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
+| `editsOwnDelegates` | `true` gives the coordinator's own turn `addDelegate`, `removeDelegate` and `setFallback`, so it can change its delegates when you ask it to. `false` by default: only you change them, from your app. See [Changing the delegates](#changing-the-delegates). |
 
-The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, `addDelegate`, `removeDelegate`, `setFallback` and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
+The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, the [task tools](../orchestration/task-board.md#one-task-five-tools) and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says, and so do `addDelegate`, `removeDelegate` and `setFallback` on a coordinator set to `editsOwnDelegates: true`. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
 
 Build the `coordinator` flow and register it beside the flows its delegates run on:
 
@@ -228,7 +229,7 @@ The first post in a conversation has no lines, so it's routed and delivered alon
 
 The `delegates:` line is where each new conversation starts. A conversation takes its own copy of `delegates:` and `fallback:` on its first post, or on the first delegate action or tool call in it if that comes sooner. From then on, changes stay in that conversation. Other conversations with the same coordinator don't see them, and the file is never written. Editing `delegates:` later reaches only conversations that haven't had a post or a delegate action yet.
 
-Your app and the coordinator's own turn can both change a conversation's delegates, and both pass the same checks.
+Your app changes a conversation's delegates. The coordinator's own turn changes them only when its file sets `editsOwnDelegates: true`. Both pass the same checks.
 
 **From your app**, with the coordinator's actions on the conversation's session:
 
@@ -269,7 +270,15 @@ Each action's output is the conversation's list as it stands after the call. `se
 
 A refused change writes nothing. Its request fails, and the refusal is in `result.error.message`.
 
-**By the coordinator**, with tools of the same names, when you ask it to bring someone in or take someone off. A tool hands a refusal back to the model as `{ refused: "<message>" }`, so it can tell you why. The list isn't in the coordinator's prompt: to say who its delegates are, it calls `listDelegates`.
+**By the coordinator**, with tools of the same names, when you ask it to bring someone in or take someone off. Only a coordinator whose file sets `editsOwnDelegates: true` has `addDelegate`, `removeDelegate` and `setFallback`; every coordinator has `listDelegates`. A tool hands a refusal back to the model as `{ refused: "<message>" }`, so it can tell you why. The list isn't in the coordinator's prompt: to say who its delegates are, it calls `listDelegates`.
+
+```yaml
+---
+flow: coordinator
+delegates: [eng.em, eng.coder]
+editsOwnDelegates: true
+---
+```
 
 A conversation can't be created with delegates already set. A session create whose `state` carries `delegates` is refused with a 400:
 
@@ -322,7 +331,7 @@ Each delegate's answer to a post lands once, even across a restart or a dropped 
 
 The task runs in the delegate's own session for this conversation, the same session every post from this conversation to that delegate runs in, so the delegate keeps what it was told before. A post to a [workstream](./projects.md#talking-to-a-project) runs in the workstream's own session.
 
-You can cancel a post's task from the board with `cancelTask_tasks`. That delegate's part ends with no line, and if its turn is still running, what it says afterwards doesn't land. Reassigning, completing, failing or blocking a post's task from the board is refused. The board answers task actions only while the conversation files tasks, which it does while at least one of its delegates takes tasks. So in a conversation whose delegates take only posts, a post's task can't be cancelled from the board: `cancelTask_tasks` and `listTasks_tasks` answer `{ "ok": false, "error": "no_delegation_board" }`.
+You can cancel a post's task from the board with `updateTask_tasks` and `status: "cancelled"`. That delegate's part ends with no line, and if its turn is still running, what it says afterwards doesn't land. Any other change to a post's task from the board is refused. The board answers task actions only while the conversation files tasks, which it does while at least one of its delegates takes tasks. So in a conversation whose delegates take only posts, a post's task can't be cancelled from the board: `updateTask_tasks` and `listTasks_tasks` answer `{ "ok": false, "error": "no_delegation_board" }`.
 
 With 25 delegates, `everyone` and `rounds: 3`, one post adds up to 100 tasks to the board. They stay there like any finished task.
 
@@ -426,7 +435,7 @@ await help.sendAction(
 );
 ```
 
-These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `dispatchTask_tasks`, `addTask_tasks`, `assignTask_tasks`, `listTasks_tasks` and the rest. The coordinator has the same verbs as tools, so it hands out a task itself when you ask it for one.
+These are the [task board](../orchestration/task-board.md)'s task tools, sent as actions on the conversation's session and named for its board, `tasks`: `createTask_tasks`, `getTask_tasks`, `listTasks_tasks`, `updateTask_tasks`, `answerTask_tasks` and `dispatchTask_tasks`. The coordinator has the same verbs as tools, so it hands out a task itself when you ask it for one.
 
 From your app or from the coordinator's own tools, the assignee has to be one of this conversation's delegates that takes tasks: its `takes` in `listDelegates` is `tasks` or `both`. Anyone else is refused with one answer, the same for another user's worker as for a worker nobody holds, and nothing is stored:
 
@@ -444,13 +453,13 @@ A task with no assignee goes to the conversation's only delegate that takes task
 
 `dispatchTask_tasks` answers `{ ok: true, taskId }` once the task is stored, without waiting for it to run. The task starts at once: the delegate works it in a new session of its own, its **task session**, which belongs to you like every other session your workers run, on whichever flow the delegate runs on. The delegate is checked again when the task is handed over. If the delegate was removed or fired in the meantime, or its flow takes no task, it doesn't run the task. The task fails, and the conversation hears that it failed.
 
-`addTask_tasks` files a task **held** and answers `{ ok: true, taskId, status: "held" }`. A held task doesn't start, even with an assignee, until it is released. A held task with no assignee, in a conversation with several delegates, waits on the board unassigned. To have a delegate start a held task, send `dispatchTask_tasks` with its `taskId`, and an `assignee` if it has none:
+`createTask_tasks` starts a task the same way. Filed with `held: true`, it answers `{ ok: true, taskId, status: "held" }`, and the task doesn't start, even with an assignee, until it is released. A held task with no assignee, in a conversation with several delegates, waits on the board unassigned. To release a held task, send `updateTask_tasks` with `status: "pending"`, and an `assignee` first if it has none:
 
 ```ts
-await help.sendAction("dispatchTask_tasks", { taskId }, { sessionId: session.id });
+await help.sendAction("updateTask_tasks", { id: taskId, status: "pending" }, { sessionId: session.id });
 ```
 
-`updateTask_tasks` with `patch: { status: "pending" }` releases it the same way, and `patch: { status: "held" }` holds a task that hasn't started yet. A task that has started can't be held; cancel it instead.
+`dispatchTask_tasks` with its `taskId` releases it too. `updateTask_tasks` with `status: "held"` holds a task that hasn't started yet. A task that has started can't be held; cancel it instead.
 
 A task's `deps` must name tasks on this conversation's board that haven't failed or been cancelled, and must not loop back to the task. Anything else is refused when you file it, and nothing is stored. When a task fails for good or is cancelled, every open task that depends on it is cancelled too, labelled `skipped`.
 
@@ -469,12 +478,12 @@ It hears when a task completes, with what came back; when it fails for good, wit
 | Action | What it does |
 | --- | --- |
 | `listTasks_tasks` | This conversation's tasks only, even when another conversation has the same coordinator and the same delegates |
+| `getTask_tasks` | One task whole: its brief, its fields, how it stands, its delegate's status note, and its output |
+| `createTask_tasks` | Files a task: it starts at once, after its `deps`, or, with `held: true`, when you release it |
 | `dispatchTask_tasks` | Starts a new task, or a held one, on a delegate now |
-| `assignTask_tasks` | Gives a task nobody is working on to another delegate. It keeps its id. A held task stays held until it is released |
-| `updateTask_tasks` | Changes a task's details. Before the task starts, `patch.status` holds it (`"held"`) or releases it (`"pending"`) |
-| `cancelTask_tasks` | Cancels a task that hasn't finished. Nothing is said in the conversation |
+| `updateTask_tasks` | Before the task starts: changes any of its fields, its delegate included, holds it (`status: "held"`) or releases it (`status: "pending"`). Until it finishes: cancels it (`status: "cancelled"`), with nothing said in the conversation |
 
-A running task can't be moved to another delegate. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, can't be reassigned or cancelled, and the tools answer `terminal_task_write_declined`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
+A task that has started can't be changed, only cancelled: `updateTask_tasks` answers `field_locked_after_start`, naming the fields. A running task keeps its delegate; to move it, cancel it and file it again. Cancelling one does land: when its delegate finishes, the result is turned away. A finished task, a failed one included, changes no more, and `updateTask_tasks` answers `task_finished`. To have someone take on a failed task, dispatch it again (`dispatchTask_tasks`).
 
 To open the session working a task, look it up by the task's id and the conversation's `filingSessionId`, which `listDelegates` returns:
 
@@ -500,7 +509,7 @@ await help.sendAction(
 
 You can also just answer in chat: the coordinator passes your answer on with its [`answerTask`](../orchestration/task-board.md#when-a-task-stops-on-a-question) tool. The task picks up in its own task session, the one that asked, with everything it did before it stopped. Your answer is its next message. When it finishes, the conversation hears that too.
 
-An answer doesn't use up the task's retries, and the task can ask again. Until it picks up again, it can't be reassigned: `assignTask_tasks` answers `task_awaiting_answer`. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
+An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
 
 A task a coordinator dispatched and is [waiting for](../orchestration/task-board.md#giving-another-worker-work) (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
 
@@ -529,7 +538,7 @@ await help.sendAction(
 )
 ```
 
-The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `addTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
+The follow-up is a new task with its own id, and the conversation hears how it ends. It runs in the same session as the task it follows, with the same worker, so it starts from everything that session already knows. It keeps that worker: it can't be reassigned. You can file it while the task it follows is still running. A session works one task at a time, so the follow-up waits, unstarted, until that task ends, and then runs. `dispatchTask` refuses the follow-up, as `createTask` does, filing nothing, if the task it names never ran with a worker, or if you pass an `assignee`:
 
 ```json
 { "ok": false, "error": "follow_up_of_unrun: task \"task_…\" never ran with a worker, so there is no session to follow up in. Nothing was filed." }
@@ -636,7 +645,7 @@ With `turn`, each task runs as one turn, in a task session of its own. The task 
 
 A coding worker built on the [harness manager](../orchestration/harness-manager.md) uses `block`: the manager takes the task, works it in its own checkout, and returns the answer. The conversation hears it the same way. The `claim` comes from the board, never from the task, so a task can't point its run at another board.
 
-A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, and `dispatchTask` and `addTask` refuse them.
+A `work` entry whose tasks come only from a board in your own flow counts as taking none: `listDelegates` reports its workers as taking `nothing`, and `dispatchTask` and `createTask` refuse them.
 
 ## What it won't do
 
@@ -646,7 +655,8 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 - **Stop a delegate's turn.** Cancelling a post's task ends that delegate's part and drops anything it says afterwards, but the turn itself runs on.
 - **Pick by a delegate's instructions.** Best fit knows each delegate by its note, or else its description, and nothing else.
 - **Show a delegate another conversation.** A post's recent lines are its own conversation's, and the delegate's model sees them for that one turn.
-- **Let a delegate file tasks for workers it doesn't delegate to.** A task session files only when its own worker has a delegate that takes tasks, and what it files are [pieces of its task](./delegating-work.md#splitting-a-task). Otherwise its `addTask` is refused, from the delegate's tools and from your app alike, with `{ "ok": false, "error": "no_delegation_board" }`.
+- **Let a delegate file tasks for workers it doesn't delegate to.** A task session files only for its own worker's delegates, and what it files are [pieces of its task](./delegating-work.md#splitting-a-task). A task for anyone else is refused, from the delegate's tools and from your app alike.
+- **Let a coordinator change its own delegates unless you said so.** Without `editsOwnDelegates: true` in its file, its turn has `listDelegates` only.
 
 ## Related pages
 

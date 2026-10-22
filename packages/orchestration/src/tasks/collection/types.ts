@@ -12,6 +12,30 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
+
+/**
+ * How a cancel was made (FIX-2081), as `Task.cancelledVia` records it:
+ * `"tool"`, a model's `updateTask` inside its filer's turn; `"action"`, a
+ * public `updateTask_<board>` action, a screen's or an app's.
+ */
+export type TaskCancelSource = "tool" | "action";
+
+/** {@link TaskCollectionRef.cancel}'s options: the guards, and how the cancel was made. */
+export type CancelOptions = TaskTransitionOptions & {
+  /**
+   * Written on the row as `cancelledVia`. Set by the `updateTask` block from
+   * how it was built (a tool, or an action), never from input (BP-031).
+   */
+  readonly via?: TaskCancelSource;
+};
+
+/** What a running task's worker reports (FIX-2081, `reportProgress`). */
+export interface TaskProgress {
+  /** A one-line note for task views. Never the task's status. */
+  readonly statusNote?: string;
+  /** A checkpoint of the result so far: the task's output from then on. */
+  readonly output?: unknown;
+}
 import type { TaskWriteToken } from "../write-provenance";
 
 /**
@@ -732,7 +756,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * worker cancelling through this method is held to the same ownership check
    * as one completing through `complete` (FIX-981).
    */
-  cancel(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  cancel(id: string, reason?: string, options?: CancelOptions): Promise<TaskWriteOutcome>;
   /**
    * Push this task's lease out to `leaseUntil` — the worker saying "still
    * here" about a row it already proved it owns (FIX-1005).
@@ -802,6 +826,29 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * board that dispatches calls it on every attempt, and a declined or missing
    * verdict stops that attempt before the worker runs.
    */
+  /**
+   * Report a running task's progress (FIX-2081): `statusNote`, a one-line
+   * note for task views, and `output`, a checkpoint of the result so far.
+   * The worker's `reportProgress` tool calls it, for the row its request
+   * holds.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, the row must be
+   * `in_progress`, and the write declines `terminal` on a finished row,
+   * `not-my-task` on a recreated one, and `lost-claim` once a reclaim moved
+   * the attempt or the lease lapsed. Neither field changes the status.
+   *
+   * A checkpoint is the task's output from then on (`Task.checkpointed`):
+   * {@link complete} keeps it rather than writing the final result, and a
+   * failed attempt keeps it for the next. Publishes `progress_reported`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030); the tool
+   * refuses on a board without it.
+   */
+  reportProgress?(
+    id: string,
+    progress: TaskProgress,
+    options: { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
   linkRun(
     id: string,
     run: TaskRunLink,

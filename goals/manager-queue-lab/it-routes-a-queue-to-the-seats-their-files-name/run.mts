@@ -176,7 +176,7 @@ await runGoal(async (failures) => {
       // Filed by the turn's own tool: the check sent no `dispatchTask_tasks`, and
       // the turn was handed the tool.
       const actions = (await lab.requestsOf(lab.conversation)).map((request) => String(request.actionName));
-      if (actions.includes("dispatchTask_tasks") || actions.includes("addTask_tasks")) note(`something filed through the action, not the manager's turn`);
+      if (actions.includes("dispatchTask_tasks") || actions.includes("createTask_tasks")) note(`something filed through the action, not the manager's turn`);
       if (!lab.judgmentCalls.some((call) => call.tools.includes("dispatchTask"))) {
         note(`the manager's turn was never handed dispatchTask`);
       }
@@ -288,7 +288,7 @@ await runGoal(async (failures) => {
     if (refused.output?.ok !== false || !refusal.startsWith("unknown_assignee") || !refusal.includes(stranger)) {
       note(`a filing for ${stranger} was not refused unknown_assignee by name: ${JSON.stringify(refused)}`);
     }
-    const unassigned = await lab.act("addTask_tasks", { goal: "a piece of work for nobody in particular" });
+    const unassigned = await lab.act("createTask_tasks", { held: true, goal: "a piece of work for nobody in particular" });
     const unassignedId = String(unassigned.output?.taskId ?? "");
     await lab.settled();
     const afterF = await lab.rows();

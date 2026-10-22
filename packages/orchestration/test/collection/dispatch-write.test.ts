@@ -122,7 +122,7 @@ describe.each(BACKINGS)("dispatching a held row (%s)", (_name, makeBacking) => {
     });
   });
 
-  it("refuses an assignee a follow-up can't take, as assignTask does", async () => {
+  it("refuses an assignee a follow-up can't take, as updateTask does", async () => {
     const { tasks } = await makeBacking();
     await tasks.addTask({ id: "t-f1", goal: "g", assignee: "ops", followUpOf: "t", held: true });
     expect(await tasks.dispatch!("t-f1", { call: "c", assignee: "writer" })).toMatchObject({

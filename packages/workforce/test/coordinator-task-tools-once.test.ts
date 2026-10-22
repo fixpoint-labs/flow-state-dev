@@ -89,7 +89,7 @@ describe("the coordinator's turn carries the task tools once (ER-32)", () => {
   it("is refused, by core, when a second task-tools capability instance joins the turn", async () => {
     const { seen, error } = await judgmentToolNames({ skill: false, secondInstance: "per-turn" });
     expect(seen).toEqual([]);
-    expect(messageOf(error)).toMatch(/has two tools named "addTask"/);
+    expect(messageOf(error)).toMatch(/has two tools named "createTask"/);
   });
 
   it("is refused when the app composes a second instance beside it, before any turn runs", () => {

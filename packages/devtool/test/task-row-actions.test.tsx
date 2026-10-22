@@ -95,7 +95,7 @@ describe("the actions a row offers", () => {
     render(<Harness names={["post"]} />);
     await open();
 
-    expect(within(row()).getByText(/no actions that take a taskId/i)).toBeInTheDocument();
+    expect(within(row()).getByText(/no actions that take a task id/i)).toBeInTheDocument();
     const link = within(row()).getByRole("link");
     expect(link.getAttribute("href")).toContain("task-board#changing-tasks-from-outside-a-run");
   });
