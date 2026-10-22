@@ -171,6 +171,9 @@ jobs:
     name: Packed release installs and imports
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     # The two-users-one-tenant suite runs against the installed copies, and its
     # queue case needs a real Redis. The script refuses that leg without one,
@@ -376,6 +379,9 @@ jobs:
     name: Kitchen-sink E2E (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -423,6 +429,9 @@ jobs:
   storybook:
     name: Storybook Build
     runs-on: ubuntu-latest
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
@@ -453,6 +462,9 @@ jobs:
   docs:
     name: Docs Site Build
     runs-on: ubuntu-latest
+    # needs is queue order, not a build dependency. Still runs if Typecheck & Test fails.
+    needs: [ci]
+    if: ${{ !cancelled() }}
 
     steps:
       - uses: actions/checkout@v4
