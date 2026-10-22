@@ -145,9 +145,9 @@ export async function admitClaimedTask(
           collection: ref,
           ticket,
           claimedTask: row,
-          // The background signal, not the request's: the lease must outlive a
-          // client's disconnect while the request's background work still runs.
-          signal: ctx._requestSideChainSignal ?? ctx.signal,
+          // The request's signal, as before: a request that is stopped or torn
+          // down stops renewing. The check at its end stops it otherwise.
+          signal: ctx.signal,
         });
   const key = requestKey(ctx);
   admitted.get(key)?.renewal?.stop();
