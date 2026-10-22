@@ -51,6 +51,8 @@ import { workerMessagesResources } from "../messages/message-log";
 import { defineMessageWorkerCapability } from "../messages/message-tool";
 import { WORKER_MESSAGE_ENTRY } from "../messages/keys";
 import { workerMessageEntry, workerMessageSeenStateShape } from "../messages/worker-message-entry";
+import { fileScheduledTaskEntry } from "../schedules/file-scheduled-task";
+import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
@@ -73,6 +75,12 @@ import {
  * and the message ids it has acted on. Both server-owned.
  */
 export const workerMessageStateShape = { ...messageHopStateShape, ...workerMessageSeenStateShape } as const;
+
+/**
+ * The board action a screen files a task through, in its goal form: filed
+ * ready, the board woken. A scheduled task files through it too.
+ */
+const SCREEN_FILING_ACTION = "dispatchTask_tasks";
 
 /** {@link workerMessageStateShape}'s fields, for a flow's `session.serverOwned`. */
 export const WORKER_MESSAGE_SERVER_OWNED: readonly string[] = Object.keys(workerMessageStateShape);
@@ -158,7 +166,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /**
      * The delegate tools a model's turn is offered (FIX-2081): `listDelegates`
      * always, and `addDelegate`, `removeDelegate` and `setFallback` only on a
-     * coordinator set to `managesOwnDelegates`. One entry for `uses`.
+     * coordinator set to `editsOwnDelegates`. One entry for `uses`.
      */
     delegateTools: delegates.toolsCapability,
     /**
@@ -189,9 +197,11 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
      * The internal entries the board needs on its flow: a run of the board,
-     * the notice of a task the session filed, and a worker's message (`onWorkerMessage`,
-     * FIX-1989), which always wakes the turn: `policy` is the notices' only.
-     * Spread into `internal: { actions: ... }`.
+     * the notice of a task the session filed, a worker's message
+     * (`onWorkerMessage`, FIX-1989), which always wakes the turn: `policy` is
+     * the notices' only, and a scheduled task's filing (`fileScheduledTask`,
+     * FIX-2085), through the board's own `dispatchTask_tasks`. Spread into
+     * `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
      *   with a notice as its message.
@@ -214,7 +224,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // the upgrade's backfill wakes for a split an older host parked.
         [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
-        [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind })
+        [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
+        [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)
       };
     }
   };

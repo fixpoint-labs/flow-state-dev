@@ -38,7 +38,7 @@ description: Your one point of contact, and the one worker that changes your ros
 flow: coordinator
 routing: judgment
 delegates: [eng.em, eng.coder]
-managesOwnDelegates: true
+editsOwnDelegates: true
 model: openai/gpt-6-luna
 tools: [hire, fire]
 ---
@@ -66,7 +66,7 @@ You can't fire yourself or any worker declared in the organization's files.
 Those change when someone edits their folder.
 ```
 
-`listDelegates` and `dispatchTask` come with the coordinator flow, and `managesOwnDelegates: true` adds `addDelegate`, `removeDelegate` and `setFallback`, so `tools:` doesn't name them. Without that line, the Shift Coordinator can hire a worker but can't add it to its delegates: only you can, from your app. A Shift Coordinator declared in your files can name only workers declared in your files in `delegates:`; anything else is refused when the app loads. The workers it hires join a conversation's delegates when it adds them, and only that conversation's. [Changing the delegates](./coordinators.md#changing-the-delegates) covers how a conversation's list changes.
+`listDelegates` and `dispatchTask` come with the coordinator flow, and `editsOwnDelegates: true` adds `addDelegate`, `removeDelegate` and `setFallback`, so `tools:` doesn't name them. Without that line, the Shift Coordinator can hire a worker but can't add it to its delegates: only you can, from your app. A Shift Coordinator declared in your files can name only workers declared in your files in `delegates:`; anything else is refused when the app loads. The workers it hires join a conversation's delegates when it adds them, and only that conversation's. [Changing the delegates](./coordinators.md#changing-the-delegates) covers how a conversation's list changes.
 
 Then build the tools from `createWorkerHireBlocks` and put them in the catalog. A catalog key is the tool's own name, so give `hire` that name with `.as()`, along with what the model reads about it. A fire waits for a user's approval first, so `fire` is a sequencer that asks before it writes. The Shift Coordinator's `tools:` line is read against the catalog you pass `defineCoordinatorFlow` as `agent`, so the tools and capabilities go there. The example passes the same options to the `agent` flow, which runs the workers the Shift Coordinator hires; that part is optional, and gives those workers the same capabilities:
 

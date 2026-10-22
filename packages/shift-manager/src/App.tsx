@@ -34,6 +34,7 @@ import { TaskFrame } from "./surfaces/TaskFrame";
 import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
 import { Messages } from "./surfaces/Messages";
+import { Schedules } from "./surfaces/Schedules";
 import { SessionView } from "./surfaces/SessionView";
 import { isTyping, usePanels } from "./lib/panels";
 
@@ -173,6 +174,8 @@ function Centre({ snapshot, route, gaps, look, devtoolUrl }: { snapshot: LoadedS
       return <TaskFrame tab={route.tab} gaps={gaps} />;
     case "messages":
       return <Messages snapshot={snapshot} />;
+    case "schedules":
+      return <Schedules snapshot={snapshot} />;
     case "session":
       return <SessionView snapshot={snapshot} sessionId={route.sessionId} gaps={gaps} />;
     case "resource":

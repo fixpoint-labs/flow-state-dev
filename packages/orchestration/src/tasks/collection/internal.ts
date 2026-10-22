@@ -88,6 +88,7 @@ export function buildInitialTask<TInput, TOutput>(
   createdBy?: string,
   filer?: Task["filer"]
 ): Task<TInput, TOutput> {
+  const status = init.held === true ? "held" : (init.status ?? "pending");
   return {
     ...initialWriteProvenance(),
     incarnationId: crypto.randomUUID(),
@@ -95,7 +96,7 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     title: init.title,
     context: init.context,
-    status: init.held === true ? "held" : (init.status ?? "pending"),
+    status,
     attempts: 0,
     // A conversation-result task has one attempt: unset reads as 1. Any other
     // value was refused at filing (`assertFilingSettings`).
@@ -113,6 +114,10 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
+    // Only a row stored cancelled (a replan's skip) names a cause: `held` wins
+    // over `status`, so a held row keeps neither.
+    ...(status === "cancelled" && init.error !== undefined ? { error: init.error } : {}),
+    ...(status === "cancelled" && init.causedBy !== undefined ? { causedBy: init.causedBy } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     // Server-written by the backing (FIX-2078), never from `init`.
     ...(filer !== undefined ? { filer: { sessionId: filer.sessionId } } : {}),

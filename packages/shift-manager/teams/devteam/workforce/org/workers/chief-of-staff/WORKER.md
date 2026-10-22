@@ -5,7 +5,7 @@ flow: coordinator
 routing: best-fit
 minConfidence: 0.7
 delegates: [eng.em, eng.coder]
-managesOwnDelegates: true
+editsOwnDelegates: true
 model: anthropic/claude-haiku-5-5
 tools: [hire, fire, listProjects, createProject, setRepository, listLeads, openWorkstream, memory/recall]
 ---

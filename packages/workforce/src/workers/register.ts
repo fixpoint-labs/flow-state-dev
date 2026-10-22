@@ -6,7 +6,8 @@
  * row its owner holds, or a standard worker from the files), so hiring one
  * registers nothing, and nothing here mints a copy per worker or pins one to
  * an owner. Beside the worker flows sits the roster flow, through which an
- * app reads and writes a user's roster.
+ * app reads and writes a user's roster, and which keeps and fires the user's
+ * schedules (FIX-2085).
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { AGENT_FLOW } from "../agent-worker-flow";
@@ -15,6 +16,7 @@ import type { InventoryWorker } from "../inventory/open-inventory";
 import { createWorkerHireBlocks } from "./hire-blocks";
 import { setTaskChainLimit } from "./chain-limit";
 import { setMessageLimits, type MessageLimits } from "../messages/message-limits";
+import { defineScheduledWork, type ScheduledWorkOptions } from "../schedules/scheduled-work";
 import type { WorkerInstallation } from "./installation";
 import { defineWorkerRosterFlow } from "./roster-flow";
 import { standardWorkerFlow, workerDisplayName } from "./standard-workers";
@@ -42,6 +44,13 @@ export interface HireWorkforceOptions {
    * (6 when omitted), and `perTurn`, the most one turn sends (3 when omitted).
    */
   messages?: MessageLimits;
+  /**
+   * Recurring work: the user's schedules, each filing a task on a worker's
+   * board when it is due. Always kept and fired through the roster flow;
+   * `index` is optional, a polling or BullMQ schedule index to mirror every
+   * saved schedule into. Omit it and the host's own cron POSTs per schedule.
+   */
+  schedules?: ScheduledWorkOptions;
 }
 
 /**
@@ -87,12 +96,18 @@ export function hireWorkforce(installation: WorkerInstallation, options: HireWor
     );
   }
   const { hire, fork, edit, fire } = createWorkerHireBlocks(installation);
-  const roster = defineWorkerRosterFlow(installation, {
-    hire: { inputSchema: hire.inputSchema, block: hire },
-    fork: { inputSchema: fork.inputSchema, block: fork },
-    edit: { inputSchema: edit.inputSchema, block: edit },
-    fire: { inputSchema: fire.inputSchema, block: fire }
-  });
+  const scheduled = defineScheduledWork(installation, options.schedules);
+  const roster = defineWorkerRosterFlow(
+    installation,
+    {
+      hire: { inputSchema: hire.inputSchema, block: hire },
+      fork: { inputSchema: fork.inputSchema, block: fork },
+      edit: { inputSchema: edit.inputSchema, block: edit },
+      fire: { inputSchema: fire.inputSchema, block: fire },
+      ...scheduled.actions
+    },
+    scheduled
+  );
   copies.push(roster() as unknown as FlowInstance);
   return copies;
 }
