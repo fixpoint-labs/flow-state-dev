@@ -7,6 +7,16 @@ import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-
 /** A board, a running task `t` linked to request `requestId` in task session `s-task`, and that turn's context. */
 async function runningTurn(requestId = "r-turn") {
   const { ctx } = buildDelegationCtx({ self: false });
+  // One write at a time, as a real state ref's `atomicState` commits them:
+  // the fixture's applies a write after its mutator has already read.
+  const state = (ctx as { parent: { atomicState: (fn: (s: Record<string, unknown>) => unknown) => Promise<void> } }).parent;
+  const atomic = state.atomicState.bind(state);
+  let queue: Promise<unknown> = Promise.resolve();
+  state.atomicState = (fn) => {
+    const write = queue.then(() => atomic(fn));
+    queue = write.catch(() => undefined);
+    return write;
+  };
   const ref = (await ownStateResolver(ctx as never))!;
   await ref.addTask({ id: "t", goal: "count the rows" });
   const claimed = (await ref.claim("w"))!;
@@ -54,6 +64,18 @@ describe("the steer context entry", () => {
       { text: "Message from the task's filer: Use the North America numbers", agentName: "filer" },
       { text: "Message from alice: From the screen.", agentName: "alice" },
     ]);
+  });
+
+  it("shows a steer once when two reads of the same call run side by side: the line is the write's, not the read's", async () => {
+    const { ref, turn, lines, read } = await runningTurn();
+    await steer(ref, "Use the North America numbers");
+
+    const [first, second] = await Promise.all([read(undefined, turn("r-turn") as never), read(undefined, turn("r-turn") as never)]);
+
+    // Both reads give the model the steer; only the read whose write took it shows it.
+    expect(first).toContain("Use the North America numbers");
+    expect(second).toBe(first);
+    expect(lines).toEqual([{ text: "Message from the task's filer: Use the North America numbers", agentName: "filer" }]);
   });
 
   it("is not shown again by another request of the attempt once taken", async () => {

@@ -782,9 +782,6 @@ export function transitionDeclineReason(
   ) {
     return "parked";
   }
-  if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
-    return "untaken-steers";
-  }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   // FIX-1305: a renewal may be the ticket-holder taking the row BACK, rather
   // than a late write against a row it has lost. The two are the same evidence
@@ -801,6 +798,11 @@ export function transitionDeclineReason(
   // makes the takeover decided by the race instead of by the clock.
   const adopting = options.adoptLapsedLease === true && targetStatus === "in_progress";
   if (claim !== undefined && !adopting && leaseLapsed(task, now)) return "lost-claim";
+  // Last: a write from an attempt that lost the row is refused as that, never
+  // as owing a steer the row's next attempt holds (FIX-2086).
+  if (options.refuseUntakenSteers === true && targetStatus === "completed" && untakenSteers(task).length > 0) {
+    return "untaken-steers";
+  }
   return undefined;
 }
 

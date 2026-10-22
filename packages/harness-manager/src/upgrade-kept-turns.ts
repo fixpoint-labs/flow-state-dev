@@ -10,7 +10,9 @@
  * attempt took (neither delivered nor withdrawn) onto its task's row as an
  * untaken steer from the person, keyed by the turn's own key so a second run
  * adds nothing. A turn whose task has finished is left: a finished task takes
- * no steer. A row parked for the turn reads as pending through
+ * no steer. A row waiting on its filed work keeps waiting on it: nothing here
+ * starts the turn a live steer's sender starts, so the check its filed work
+ * wakes when it ends owes the steer its turn. A row parked for the turn reads as pending through
  * orchestration's retired-shape map, so its next attempt takes the steer.
  *
  * Which row: a turn is kept under its run's issue and phase; the run record
@@ -136,9 +138,9 @@ async function untakenTurns(stores: KeptTurnUpgradeStores, cell: string): Promis
 /**
  * Append `turns` to the row stored at `key` as steers, each keyed by its turn,
  * through the same decision a live steer takes (`steerWrite`): a key already
- * there adds nothing, the limit stops it, and a row waiting on its filed work
- * waits on the steer. A finished row takes none. One conditional write, read
- * again on a conflict.
+ * there adds nothing and the limit stops it. A row waiting on its filed work
+ * keeps that wait (see the file header). A finished row takes none. One
+ * conditional write, read again on a conflict.
  */
 async function writeSteers(
   stores: KeptTurnUpgradeStores,
@@ -159,7 +161,9 @@ async function writeSteers(
       const decided = steerWrite(row, { message: turn.message, from: "user", by: userId, key: id }, id, turn.keptAt);
       if (decided === "limit") break;
       if (decided === "unchanged") continue;
-      row = { ...row, ...decided.patch };
+      // Only the steer: waiting on it would need a turn started now, and a
+      // check turn that takes no steer settles over one it waits on.
+      row = { ...row, steers: decided.patch.steers };
       added += 1;
     }
     if (added === 0) return 0;

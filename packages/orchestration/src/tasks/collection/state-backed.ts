@@ -72,7 +72,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
-import { steerWrite, takeSteersPatch } from "../steers";
+import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
@@ -895,16 +895,22 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         "of the attempt that reads them. Only the request holding a task's claim takes its steers."
       );
       const guards = linkRunGuards({ claim: takeOptions.claim });
-      return patchOne(
+      // The steers the committed row had untaken, as the write that lands read them.
+      let taken: string[] = [];
+      const outcome = await patchOne(
         id,
         null,
-        (task) => takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined,
+        (task) => {
+          taken = untakenSteers(task as Task).map((steer) => steer.id);
+          return takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined;
+        },
         {
           // Fenced like a run link, on the committed row: a finished, recreated
           // or reclaimed row declines.
           decline: (task) => transitionDeclineReason(task as Task, "in_progress", guards, collectionId, now()),
         }
       );
+      return { ...outcome, taken: outcome.outcome === "recorded" ? taken : [] };
     },
 
     async cancel(id, reason, options) {

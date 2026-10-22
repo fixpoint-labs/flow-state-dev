@@ -141,7 +141,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
-import { steerWrite, takeSteersPatch } from "../steers";
+import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
 import type { DeliveryHooks } from "../notice/delivery";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -1159,13 +1159,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "of the attempt that reads them. Only the request holding a task's claim takes its steers."
       );
       const guards = linkRunGuards({ claim: takeOptions.claim });
-      return patchRef(id, null, (task) => {
+      // The steers the committed row had untaken, as the write that lands read them.
+      let taken: string[] = [];
+      const outcome = await patchRef(id, null, (task) => {
         // Fenced like a run link, on the committed row: a finished, recreated
         // or reclaimed row declines.
         const declined = transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now());
         if (declined !== undefined) throw new WriteDeclined(declined, task.status);
+        taken = untakenSteers(task as Task).map((steer) => steer.id);
         return takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined;
       });
+      return { ...outcome, taken: outcome.outcome === "recorded" ? taken : [] };
     },
 
     async cancel(id, reason, options) {

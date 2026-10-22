@@ -52,6 +52,21 @@ describe("upgradeKeptTurns", () => {
     expect((stores.state.get(rowKey("t1"))!.state as { steers: unknown[] }).steers).toHaveLength(1);
   });
 
+  it("leaves a row waiting on its filed work waiting on it: the check that work's end wakes owes the steer its turn", async () => {
+    const stores = fakeStores({
+      [rowKey("t1")]: { id: "t1", goal: "g", status: "in_progress", waitingOn: "filed", attempts: 1 },
+      [runKey("t1", "answer")]: { taskId: "t1", sessionId: "sess_1" },
+      "turns/t1/answer/1/aaaa": turn({ message: "Use the v2 API." }),
+    });
+
+    expect(await upgradeKeptTurns(stores, options)).toBe(1);
+    // Waiting on the steer would owe a turn nothing here starts.
+    expect(stores.state.get(rowKey("t1"))!.state).toMatchObject({
+      waitingOn: "filed",
+      steers: [expect.objectContaining({ message: "Use the v2 API." })],
+    });
+  });
+
   it("leaves a finished task alone: a finished task takes no steer", async () => {
     const stores = fakeStores({
       [rowKey("t1")]: { id: "t1", goal: "g", status: "completed", attempts: 1, output: "done" },

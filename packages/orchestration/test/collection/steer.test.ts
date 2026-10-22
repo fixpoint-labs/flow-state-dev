@@ -12,28 +12,30 @@ import {
 } from "../../src/tasks";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
-type Backing = { tasks: TaskCollectionRef; events: TaskChangeEvent[] };
+type Backing = { tasks: TaskCollectionRef; events: TaskChangeEvent[]; setNow: (at: number) => void };
 
 async function sequencerBacking(): Promise<Backing> {
   const events: TaskChangeEvent[] = [];
+  let clock = 1000;
   const tasks = createStateBackedTaskCollection({
     collectionId: "tasks",
     state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     onChange: (event) => events.push(event),
-    now: () => 1000,
+    now: () => clock,
   });
-  return { tasks, events };
+  return { tasks, events, setNow: (at) => (clock = at) };
 }
 
 async function resourceBacking(): Promise<Backing> {
   const events: TaskChangeEvent[] = [];
+  let clock = 1000;
   const tasks = await createResourceBackedTaskCollection({
     collectionId: "tasks",
     collection: createFakeResourceCollection(),
     onChange: (event) => events.push(event),
-    now: () => 1000,
+    now: () => clock,
   });
-  return { tasks, events };
+  return { tasks, events, setNow: (at) => (clock = at) };
 }
 
 describe.each([
@@ -173,13 +175,36 @@ describe.each([
     const claim = ticketForClaim("tasks", claimed);
     await tasks.steer!("t", { message: "late", from: "filer" });
 
-    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r1" })).toEqual({ outcome: "recorded" });
+    const [late] = (tasks.get("t") as Task).steers!;
+    // The write names what it took, so a caller shows exactly that.
+    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r1" })).toEqual({ outcome: "recorded", taken: [late!.id] });
     const row = tasks.get("t") as Task;
     expect(row.steers).toEqual([expect.objectContaining({ message: "late", takenBy: 1, takenIn: "step:r1" })]);
-    // Taken already: a second take writes nothing, and the first keeps it.
-    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r2" })).toEqual({ outcome: "unchanged" });
+    // Taken already: a second take writes nothing, names nothing, and the first keeps it.
+    expect(await tasks.takeSteers!("t", { claim, takenIn: "step:r2" })).toEqual({ outcome: "unchanged", taken: [] });
     expect((tasks.get("t") as Task).steers![0]!.takenIn).toBe("step:r1");
   });
+
+  it.each([
+    ["the row was claimed again", true],
+    ["the lease lapsed", false],
+  ] as const)(
+    "a fenced complete from an attempt that lost the row declines as lost-claim, not for the steer: %s",
+    async (_how, reclaim) => {
+      const { tasks, setNow } = await makeBacking();
+      await tasks.addTask({ id: "t", goal: "t" });
+      const stale = ticketForClaim("tasks", (await tasks.claim("w", { leaseDurationMs: 10_000 }))!);
+      setNow(1000 + 10_000);
+      if (reclaim) expect((await tasks.claim("w2", { leaseDurationMs: 10_000 }))?.attempts).toBe(2);
+      await tasks.steer!("t", { message: "for whoever holds it", from: "filer" });
+
+      // `untaken-steers` would owe the stale attempt a turn for a steer it can't take.
+      expect(await tasks.complete("t", "done", { ifAllowed: true, claim: stale, refuseUntakenSteers: true })).toMatchObject({
+        outcome: "declined",
+        reason: "lost-claim",
+      });
+    }
+  );
 
   it("takeSteers is fenced to the claim: a displaced attempt takes nothing", async () => {
     const { tasks } = await makeBacking();

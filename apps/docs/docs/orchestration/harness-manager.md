@@ -157,7 +157,7 @@ A user talks to a coding run by typing in the run's own session, the one the tas
 
 By default a step that is running finishes first, and the next step takes the message. If your harness's abort resolves only once its process has exited, build the manager with `stopsOnAbort: true`. The manager then checks the task about once a second while a step runs, and once the harness has confirmed a coding session to resume, a new message stops the running step, and the next step starts at once with it. A message that arrives before then waits for the step's own end. The stop costs the step the run was in the middle of; the checkout keeps whatever it wrote. Leave `stopsOnAbort` off for a harness whose abort can return while its process still runs, so two processes never work one checkout.
 
-A message that arrives after the run's last step, even while its result is being checked, gets one more step before the task settles. The first attempt of a task filed with messages already on it carries them all in its prompt. A message the run takes mid-run shows in its session as a line from its sender.
+A message that arrives after the run's last step, even while its result is being checked, gets one more step before the task settles. That step resumes the coding session the run confirmed, so it needs one: if the harness never confirmed a session, the message is left on the task unread, and only the late-message turn below (`STEER_TURN_ENTRY`) acts on it. A host that doesn't declare that entry completes the task without it. The first attempt of a task filed with messages already on it carries them all in its prompt. A message the run takes mid-run shows in its session as a line from its sender.
 
 If the task is cancelled, finishes, or is claimed again while a step runs, the request runs no further step for it.
 
@@ -285,7 +285,7 @@ record instead of deriving them again.
 - **A turn in progress can be lost.** Work is saved when a turn ends, so a machine that dies mid-turn loses that turn.
 - **A repository on the host's own disk is never saved.** A run cut from a repository listed in `localRepositories` on `localWorkspaceHost` works in that repository directly, and its work stays on that machine.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
-- **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session: it reaches the run's next step.
+- **A harness that can't resume can't be talked to once finished.** Talk resumes the coding session the run confirmed, so a finished run whose harness never confirmed one is refused (`cannot-continue`). A steer to an open task needs no session to be kept, but the step that takes it resumes one: on a run with none confirmed, only the late-message turn (`STEER_TURN_ENTRY`) acts on it.
 - **Git worktrees for a repository.** A run on a repository works in a `git worktree` of it. Where the repository comes from is up to the workspace host you pass as `workspace`; see the package README's "Running a project's work". For a project's work, Workforce's `projectWorkspace` is that source: see [A project's code and files](../workforce/projects.md#coding-work-in-a-project).
 
 ## Related pages

@@ -375,6 +375,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **No retention policy.** Run records and question rows grow without bound.
 - **A harness that can't resume can't be talked to once finished.** Talk resumes the confirmed coding session, so the door refuses a finished run whose harness never confirmed one (`cannot-continue`).
 - **A steer waits for the step to end** unless the manager is built with `stopsOnAbort: true`.
+- **A steer step needs a confirmed session.** The step a steer adds resumes the coding session the run confirmed. On a run whose harness confirmed none, a steer that arrives after its last step is left on the task untaken: only the `STEER_TURN_ENTRY` turn acts on it, and a host without that entry completes the task over it.
 - **Git worktrees specifically**, as above.
 
 ## Running tests

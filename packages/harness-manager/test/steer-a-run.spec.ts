@@ -5,7 +5,7 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -28,6 +28,7 @@ import {
   STEER_POLL_MS,
   type HarnessFeeds,
 } from "../src";
+import { MAX_STEERS } from "@flow-state-dev/orchestration/tasks";
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
@@ -46,15 +47,19 @@ afterAll(() => {
 
 /**
  * What one harness step does: work until stopped, work 400 ms and finish,
- * finish at once, or work 1.5 s and finish without ever confirming a session.
+ * finish at once, work 1.5 s and finish without ever confirming a session, or
+ * work just past one steer poll and finish, or fail at once.
  */
-type Step = "until-stopped" | "finish-later" | "finished" | "no-session-later";
+type Step = "until-stopped" | "finish-later" | "finished" | "no-session-later" | "finish-past-a-poll" | "throws";
 
 interface SeenStep {
   prompt: string;
   resume: string | null;
   session: string;
   request: string;
+  /** The checkout the step ran in, and whether its lock was held while it ran. */
+  cwd: string;
+  locked: boolean;
 }
 
 function stubHarness(script: Step[], seen: SeenStep[], started: () => void, whenStopped: Array<() => Promise<void>> = []) {
@@ -67,7 +72,16 @@ function stubHarness(script: Step[], seen: SeenStep[], started: () => void, when
         const resume = await feeds.resume(ctx as never);
         const step = script[seen.length] ?? "finished";
         const session = resume ?? `sess_${seen.length + 1}`;
-        seen.push({ prompt: input.prompt, resume, session, request: (ctx as { request: { identity: { id: string } } }).request.identity.id });
+        const cwd = await feeds.cwd(ctx as never);
+        seen.push({
+          prompt: input.prompt,
+          resume,
+          session,
+          request: (ctx as { request: { identity: { id: string } } }).request.identity.id,
+          cwd,
+          locked: existsSync(`${cwd}.lock`),
+        });
+        if (step === "throws") throw new Error("the harness failed");
         if (step !== "no-session-later") await feeds.onSession(session, ctx as never);
         started();
         const handle = {
@@ -93,6 +107,7 @@ function stubHarness(script: Step[], seen: SeenStep[], started: () => void, when
           throw new DOMException("Aborted", "AbortError");
         }
         if (step === "finish-later") await new Promise((resolve) => setTimeout(resolve, 400));
+        if (step === "finish-past-a-poll") await new Promise((resolve) => setTimeout(resolve, STEER_POLL_MS + 150));
         if (step === "no-session-later") {
           // Its process exits when its signal fires, like any harness that stops on abort.
           const signal = (ctx as { signal: AbortSignal }).signal;
@@ -259,13 +274,23 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
+  /**
+   * A steer written straight to the stored row, past the checks `steer`
+   * makes: the only way a task holds more steers than `MAX_STEERS`.
+   */
+  const steerPastTheCap = async (n: number) => {
+    const stores = (await runtime()).stores;
+    const stored = await stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`);
+    const steers = [...(stored.state.steers ?? []), { id: `raw_${n}`, message: `steer ${n}`, from: "user", by: ALICE, at: Date.now() }];
+    await stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, { ...stored.state, steers }, stored.version);
+  };
   /** Another claim of the row, as a reclaim after a lapsed lease leaves it: the next attempt holds it. */
   const claimedAgain = async () => {
     const stores = (await runtime()).stores;
     const stored = await stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`);
     await stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, { ...stored.state, attempts: stored.state.attempts + 1 }, stored.version);
   };
-  return { act, row, until, seen, stepStarted, duringVerdict, whenStopped, claimedAgain, dispose: () => state.dispose() };
+  return { act, row, until, runtime, steerPastTheCap, seen, stepStarted, duringVerdict, whenStopped, claimedAgain, dispose: () => state.dispose() };
 }
 
 describe("a steer reaches a coding run", () => {
@@ -367,6 +392,62 @@ describe("a steer reaches a coding run", () => {
     }
   }, 60_000);
 
+  it("stops polling the row when the step ends while a poll is still reading it", async () => {
+    const h = host({ script: ["finish-past-a-poll"], stopsOnAbort: true });
+    try {
+      // Reads of the task's row, slowed while the step runs so the first poll
+      // is mid-read when the step ends.
+      const resourceState = (await h.runtime()).stores.resourceState;
+      const get = resourceState.get.bind(resourceState);
+      let slow = false;
+      let reads = 0;
+      resourceState.get = async (...args: [string, string, string]) => {
+        if (args[2] === `${BOARD_ID}/${TASK_ID}`) {
+          reads += 1;
+          if (slow) await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+        return get(...args);
+      };
+      await h.act("seed");
+      const first = h.stepStarted();
+      await h.act("drain");
+      await first;
+      slow = true;
+      setTimeout(() => (slow = false), STEER_POLL_MS + 100);
+      await h.until((t) => t.status === "completed", "the run to complete", 10_000 + STEER_POLL_MS);
+
+      // Two poll periods after the run: nothing reads its row.
+      const after = reads;
+      await new Promise((resolve) => setTimeout(resolve, 2.5 * STEER_POLL_MS));
+      expect(reads - after).toBe(0);
+      expect(h.seen).toHaveLength(1);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it(`fails the attempt rather than run a step for steers past the ${MAX_STEERS}th`, async () => {
+    // Unreachable through \`steer\`: a task keeps at most MAX_STEERS steers and
+    // each step takes one or follows a stop for one. A row written past that
+    // still can't step a run for good.
+    const h = host({ script: [], stopsOnAbort: false });
+    try {
+      for (let n = 1; n <= MAX_STEERS + 1; n += 1) h.duringVerdict.push(() => h.steerPastTheCap(n));
+      await h.act("seed");
+      await h.act("drain");
+      const failed = await h.until((t) => t.status !== "in_progress" && t.feedback !== undefined, "the attempt to fail", 60_000);
+
+      // Its first step and one per steer up to the cap, then the attempt fails
+      // (and is retried), leaving the steer past the cap untaken.
+      expect(failed).toMatchObject({ status: "pending", attempts: 1 });
+      expect(failed.feedback).toContain(`already taken ${MAX_STEERS} steps for steers`);
+      expect(h.seen).toHaveLength(MAX_STEERS + 1);
+      expect(failed.steers!.filter((steer) => steer.takenBy === undefined).map((steer) => steer.id)).toEqual([`raw_${MAX_STEERS + 1}`]);
+    } finally {
+      await h.dispose();
+    }
+  }, 120_000);
+
   it("doesn't stop a step whose harness hasn't confirmed a session: the steer costs no attempt", async () => {
     const h = host({ script: ["no-session-later"], stopsOnAbort: true });
     try {
@@ -459,6 +540,27 @@ describe("a line typed in a coding run's session", () => {
       expect(h.seen).toHaveLength(2);
       expect(h.seen[1]).toMatchObject({ prompt: "What did you change?", resume: "sess_1" });
       expect(JSON.stringify(await h.row())).toBe(before);
+      // The talk held the checkout while it ran, and let it go when it ended.
+      expect(h.seen[1]).toMatchObject({ cwd: h.seen[0]!.cwd, locked: true });
+      expect(existsSync(`${h.seen[1]!.cwd}.lock`)).toBe(false);
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("lets the checkout go when the talk's harness fails", async () => {
+    const h = host({ script: ["finished", "throws"], stopsOnAbort: false });
+    try {
+      await h.act("seed");
+      await h.act("drain");
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+
+      const line = await h.act("message", { message: "What did you change?" }, done.run!.sessionId);
+
+      expect(line.error).toBeDefined();
+      expect(h.seen[1]).toMatchObject({ cwd: h.seen[0]!.cwd, locked: true });
+      // A follow-up claimed next isn't kept waiting on a talk that is over.
+      expect(existsSync(`${h.seen[1]!.cwd}.lock`)).toBe(false);
     } finally {
       await h.dispose();
     }

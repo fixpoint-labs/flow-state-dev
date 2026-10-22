@@ -33,6 +33,7 @@ import {
   type Task,
   type TaskChangeEvent,
   type TaskCollectionRef,
+  type TaskWriteOutcome,
 } from "../../src/tasks";
 import { createFakeResourceCollection } from "../helpers";
 // Not exported from the engine's entry: the stop of a parked turn, as its routes run it.
@@ -43,7 +44,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type Behaviour = (ctx: BlockContext, ledger: TaskCollectionRef) => Promise<unknown>;
 
 async function harness(
-  options: { queued?: () => boolean; queuedWith?: (ledger: TaskCollectionRef) => Promise<boolean>; steerTurn?: boolean } = {}
+  options: {
+    queued?: () => boolean;
+    queuedWith?: (ledger: TaskCollectionRef) => Promise<boolean>;
+    steerTurn?: boolean;
+    /** What the gate's `complete` does after the store answers, with that answer. */
+    afterComplete?: (outcome: TaskWriteOutcome) => Promise<void>;
+  } = {}
 ) {
   const store = createFakeResourceCollection();
   let clock = 1_000;
@@ -92,11 +99,35 @@ async function harness(
       options.queuedWith !== undefined ? options.queuedWith(await ledger()) : (options.queued?.() ?? false),
     ...(options.steerTurn === true ? { steerTurn: { entry: "steerTurn" } } : {}),
   };
+  // The waits the gate writes, as it asks for them (a declined one included).
+  const waits: Array<string | null> = [];
   const gate = createTaskGate({
     name: "settle-board",
     boardId: "settle-board",
     onError: "skip",
-    collection: async () => ledger(),
+    collection: async () => {
+      const ref = await ledger();
+      const after = options.afterComplete;
+      if (after === undefined) return ref;
+      return new Proxy(ref, {
+        get: (target, key, receiver) => {
+          if (key === "complete") {
+            return async (...args: Parameters<TaskCollectionRef["complete"]>) => {
+              const outcome = await target.complete(...args);
+              await after(outcome);
+              return outcome;
+            };
+          }
+          if (key === "setWaitingOn") {
+            return async (...args: Parameters<NonNullable<TaskCollectionRef["setWaitingOn"]>>) => {
+              waits.push(args[1]);
+              return target.setWaitingOn!(...args);
+            };
+          }
+          return Reflect.get(target, key, receiver);
+        },
+      });
+    },
     endRules,
   });
   const entry = gate({ block: worker, durable: true } as unknown as ActionCore, "implement");
@@ -258,6 +289,13 @@ async function harness(
   return {
     log,
     stop,
+    waits,
+    /** A steer written onto the stored row alone, as a host's upgrade step writes one: the row's wait is left as it was. */
+    rawSteer: async (message: string) => {
+      const [instance] = (await store.list()).filter((ref) => (ref.state as { id?: unknown }).id === "t1");
+      const row = instance!.state as unknown as Task;
+      await instance!.patchState({ steers: [...(row.steers ?? []), { id: `raw:${message}`, message, from: "user", at: clock }] } as never);
+    },
     events,
     run,
     runLater,
@@ -320,6 +358,27 @@ describe("the claim gate settles a task when its work is over", () => {
 
     expect(await h.row()).toMatchObject({ status: "completed", output: "second answer", attempts: 1 });
     expect((await h.row())?.waitingOn).toBeUndefined();
+  });
+
+  it("a steer written onto a task waiting on its filed work gets its turn once that work ends", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (ctx, ledger) => {
+      await ledger.addTask({ id: "piece", goal: "a piece", assignee: "helper", filedByTask: currentWorkerClaim(ctx)!.taskId });
+      return "first answer";
+    });
+    await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "filed" });
+
+    await h.rawSteer("Use the v2 API.");
+    expect((await h.reclaim())?.id).toBe("piece");
+    await (await h.ledger()).complete("piece", "piece done");
+    await h.runLater("notice");
+
+    // The request the piece's end wakes takes no steer: it owes the turn.
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "steer", attempts: 1 });
+    await h.runLater("steerTurn");
+    expect(h.steerTurns).toEqual([["Use the v2 API."]]);
+    expect(await h.row()).toMatchObject({ status: "completed", output: "answered: Use the v2 API." });
   });
 
   it("a request whose own filed work ended before it did settles at its end", async () => {
@@ -568,6 +627,38 @@ describe("a steer no request took gives the task one more turn before it settles
     expect(h.steerTurns).toEqual([["late redirect"]]);
     expect(await h.row()).toMatchObject({ status: "completed", output: "answered: late redirect", attempts: 1 });
     expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
+  });
+
+  it("a complete that declines for a steer owes no turn once another attempt has the row: the steer is that attempt's", async () => {
+    // Between the decline and the check that runs again, the lease lapses, the
+    // row is claimed again, and a steer lands for the new attempt.
+    let raced = false;
+    let h: Awaited<ReturnType<typeof harness>>;
+    h = await harness({
+      steerTurn: true,
+      afterComplete: async (outcome) => {
+        if (raced || outcome.outcome !== "declined" || outcome.reason !== "untaken-steers") return;
+        raced = true;
+        h.advance(10_000);
+        expect((await h.reclaim())?.attempts).toBe(2);
+        await steer(await h.ledger(), "for the second attempt");
+      },
+      queuedWith: async (ledger) => {
+        // After the check's read, before the complete: the complete declines.
+        if ((await ledger.get("t1"))?.steers === undefined) await steer(ledger, "late redirect");
+        return false;
+      },
+    });
+    h.setBehaviour(async () => "first answer");
+
+    await h.run();
+
+    expect(raced).toBe(true);
+    // The first attempt owes no turn: it never asks to wait on the steer.
+    expect(h.waits).not.toContain("steer");
+    expect(await h.row()).toMatchObject({ status: "in_progress", attempts: 2 });
+    expect((await h.row())?.waitingOn).toBeUndefined();
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(0);
   });
 
   it("a steer turn that takes none of its steers settles the task instead of owing another turn", async () => {

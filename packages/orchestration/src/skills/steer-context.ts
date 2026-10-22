@@ -116,13 +116,15 @@ export async function takeRunningSteers(
   // this request first read can't say): a read, no write. A steer that lands
   // after it is taken before the next model call, or by the gate's check.
   const stored = (await readCommittedTask(ledger, row.id)) ?? row;
-  const fresh = untakenSteers(stored);
-  if (fresh.length === 0) return steersTakenIn(stored, takenIn).map(({ message, from }) => ({ message, from }));
+  if (untakenSteers(stored).length === 0) return steersTakenIn(stored, takenIn).map(({ message, from }) => ({ message, from }));
   const outcome = await ledger.takeSteers(row.id, { claim, takenIn });
   if (outcome.outcome === "declined") return [];
-  if (show !== undefined) showTakenSteers(show, fresh);
   const now = ledger.get(row.id);
-  return now === undefined ? [] : steersTakenIn(now, takenIn).map(({ message, from }) => ({ message, from }));
+  if (now === undefined) return [];
+  // Shown once: only the steers this write took, as it says. A read under the
+  // same name that ran beside it, or again, took none.
+  if (show !== undefined) showTakenSteers(show, (now.steers ?? []).filter((steer) => outcome.taken?.includes(steer.id) === true));
+  return steersTakenIn(now, takenIn).map(({ message, from }) => ({ message, from }));
 }
 
 /** {@link createSteerContext}'s options: where it reads the row the request holds. */

@@ -354,7 +354,10 @@ async function checkAnswered(record: Admitted, row: Task, rechecked = false): Pr
     },
   });
   if (!lateSteer) return settled;
-  const fresh = (await readCommittedTask(ref, row.id)) ?? row;
+  // Checked again only while this request's claim still holds the row: a
+  // steer for an attempt that took the row over is that attempt's to take.
+  const fresh = await readCommittedTask(ref, row.id);
+  if (!holds(ref, ticket, fresh)) return undefined;
   return checkAnswered(record, fresh, true);
 }
 

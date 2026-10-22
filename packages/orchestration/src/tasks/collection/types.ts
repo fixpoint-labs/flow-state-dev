@@ -767,12 +767,17 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * Fenced like {@link linkRun}: `options.claim` is required, the row must be
    * `in_progress`, and the write declines `terminal`, `not-my-task` or
-   * `lost-claim` otherwise. `unchanged` when nothing was untaken. Publishes
-   * no `task-change`.
+   * `lost-claim` otherwise. `unchanged` when nothing was untaken. A recorded
+   * take names the steers this write took (`taken`, by id): a concurrent read
+   * under the same name, or a re-run of it, took none and names none.
+   * Publishes no `task-change`.
    *
    * Optional, so a ref written before it keeps compiling (BP-030).
    */
-  takeSteers?(id: string, options: { claim: TaskClaimTicket; takenIn: string }): Promise<TaskWriteOutcome>;
+  takeSteers?(
+    id: string,
+    options: { claim: TaskClaimTicket; takenIn: string }
+  ): Promise<TaskWriteOutcome & { readonly taken?: readonly string[] }>;
   /**
    * Cancel the task (terminal).
    *
