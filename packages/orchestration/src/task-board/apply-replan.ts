@@ -37,9 +37,11 @@ import {
   getOrCreateTaskCollection,
   SKIPPED_LABEL,
   TaskFilingRefusedError,
+  type Task,
   type TaskCollectionRef,
   type TaskInit,
 } from "../tasks";
+import { skippedFor } from "../tasks/collection/cascade";
 import { generateId } from "../tasks/generate-id";
 
 /**
@@ -238,7 +240,7 @@ async function addSkippingDeadDeps(collection: TaskCollectionRef, tasks: readonl
       return;
     } catch (error) {
       if (!(error instanceof TaskFilingRefusedError) || error.rule !== "dependency_ended" || error.taskId === undefined) throw error;
-      const skipped = skipWithDependents(batch, error.taskId);
+      const skipped = skipWithDependents(batch, error.taskId, (id) => collection.get(id));
       // A refusal naming no row this batch can skip would repeat: fail as before.
       if (skipped === batch) throw error;
       batch = skipped;
@@ -246,8 +248,12 @@ async function addSkippingDeadDeps(collection: TaskCollectionRef, tasks: readonl
   }
 }
 
-/** `batch` with `id` and every batch row that depends on it, transitively, filed skipped. */
-function skipWithDependents(batch: TaskInit[], id: string): TaskInit[] {
+/**
+ * `batch` with `id` and every batch row that depends on it, transitively,
+ * filed skipped, each with the `error` and `causedBy` a cascade's cancel
+ * writes: the stored dependency that ended, else the batch row skipped first.
+ */
+function skipWithDependents(batch: TaskInit[], id: string, stored: (id: string) => Pick<Task, "id" | "status"> | undefined): TaskInit[] {
   const skip = new Set<string>([id]);
   for (let grew = true; grew; ) {
     grew = false;
@@ -259,9 +265,21 @@ function skipWithDependents(batch: TaskInit[], id: string): TaskInit[] {
     }
   }
   if (!batch.some((row) => row.id !== undefined && skip.has(row.id) && row.status !== "cancelled")) return batch;
-  return batch.map((row) =>
-    row.id !== undefined && skip.has(row.id)
-      ? { ...row, status: "cancelled" as const, labels: [...new Set([...(row.labels ?? []), SKIPPED_LABEL])] }
-      : row
-  );
+  const causeOf = (row: TaskInit): Pick<Task, "id" | "status"> | undefined => {
+    const deps = row.deps ?? [];
+    const ended = deps.map(stored).find((dep) => dep?.status === "errored" || dep?.status === "cancelled");
+    if (ended !== undefined) return ended;
+    const skippedDep = deps.find((dep) => dep !== row.id && skip.has(dep));
+    return skippedDep === undefined ? undefined : { id: skippedDep, status: "cancelled" };
+  };
+  return batch.map((row) => {
+    if (row.id === undefined || !skip.has(row.id) || row.status === "cancelled") return row;
+    const cause = causeOf(row);
+    return {
+      ...row,
+      status: "cancelled" as const,
+      labels: [...new Set([...(row.labels ?? []), SKIPPED_LABEL])],
+      ...(cause !== undefined ? skippedFor(cause) : {}),
+    };
+  });
 }

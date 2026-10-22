@@ -85,6 +85,7 @@ export function buildInitialTask<TInput, TOutput>(
   now: number,
   createdBy?: string
 ): Task<TInput, TOutput> {
+  const status = init.held === true ? "held" : (init.status ?? "pending");
   return {
     ...initialWriteProvenance(),
     incarnationId: crypto.randomUUID(),
@@ -92,7 +93,7 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     title: init.title,
     context: init.context,
-    status: init.held === true ? "held" : (init.status ?? "pending"),
+    status,
     attempts: 0,
     // A conversation-result task has one attempt: unset reads as 1. Any other
     // value was refused at filing (`assertFilingSettings`).
@@ -109,6 +110,10 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),
+    // Only a row stored cancelled (a replan's skip) names a cause: `held` wins
+    // over `status`, so a held row keeps neither.
+    ...(status === "cancelled" && init.error !== undefined ? { error: init.error } : {}),
+    ...(status === "cancelled" && init.causedBy !== undefined ? { causedBy: init.causedBy } : {}),
     ...(createdBy !== undefined ? { createdBy } : {}),
     createdAt: now,
     updatedAt: now,
@@ -316,6 +321,14 @@ export function settingsDecline(task: Task, patch: TaskSettingsPatch): TaskWrite
   const releaseOnly = task.status === "held" && patch.held === false && patch.deps === undefined && patch.maxAttempts === undefined;
   if (releaseOnly) return undefined;
   return hasStarted(task) || (task.status !== "pending" && task.status !== "held") ? "started" : undefined;
+}
+
+/**
+ * Why a release of `task` would be refused, decided from the row before
+ * anything is written: it has ended, or it has started and isn't held.
+ */
+export function releaseDecline(task: Task): TaskWriteDeclineReason | undefined {
+  return isTerminalStatus(task.status) ? "terminal" : settingsDecline(task, { held: false });
 }
 
 /**

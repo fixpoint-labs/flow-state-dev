@@ -114,7 +114,11 @@ export function filedCascadeOver(ledgerAt: LedgerAt): DeclaredFiledCascade {
       const board = await ledgerAt(ctx, marker.partition);
       if (board === undefined) return false;
       // Only the work filed by the ending this debt is for: a late payment
-      // finds the next attempt's pieces under the same parent too.
+      // finds the next attempt's pieces under the same parent too. The piece's
+      // `createdAt` and the debt's `endedAt` come from two boards' clocks,
+      // possibly in two processes, so skew can misplace a piece across the
+      // line. That takes a crash and skew both, so it isn't handled; if it
+      // ever matters, the parent's `attempt` at filing is the skew-free key.
       const endedAt = cascadeEndedAt(row.cascadeOwed);
       for (const piece of board.list()) {
         if (piece.metadata?.[PIECE_OF] !== row.id || isTerminalStatus(piece.status) || piece.createdAt > endedAt) continue;

@@ -98,7 +98,7 @@ import { isTaskTurn } from "../task-board/task-turn";
 // Imported from the module rather than the package barrel so the recovery
 // composer stays in step with `fail()` without widening the public surface —
 // same deep-import shape `task-board/capability.ts` uses for `safe-key`.
-import { shouldRetryOnFail } from "../tasks/collection/internal";
+import { releaseDecline, shouldRetryOnFail } from "../tasks/collection/internal";
 import {
   dispatchAndWait,
   canHoldWait,
@@ -1478,7 +1478,21 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           // started, before anything else is written. A release runs last:
           // it is what lets the task start, so everything else lands on the
           // held task first, and a refused reassignment leaves it held rather
-          // than started under the worker it was meant to leave.
+          // than started under the worker it was meant to leave. Whether the
+          // release will decline is decided here, before any write, on the
+          // row as it stands, so its decline too means nothing was written.
+          // A row that isn't held has nothing to release (the backing would
+          // answer `unchanged`), so the release is skipped: a claim landing
+          // mid-call is not reported as a refusal. Only a release by another
+          // caller, then a claim, before this release can still decline it
+          // after the other writes.
+          let releases = false;
+          if (patch.status === "pending") {
+            const row = c.get(input.taskId);
+            const reason = row === undefined ? undefined : releaseDecline(row);
+            if (reason !== undefined) return { outcome: "declined", reason, status: row!.status };
+            releases = row?.status === "held";
+          }
           if (patch.status === "held") {
             const outcome: TaskWriteOutcome | undefined = await c.hold(input.taskId);
             if (outcome != null && outcome.outcome === "declined") return outcome;
@@ -1494,7 +1508,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
           if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
           if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
-          if (patch.status === "pending") {
+          if (releases) {
             const outcome: TaskWriteOutcome | undefined = await c.release(input.taskId);
             if (outcome != null && outcome.outcome === "declined") return outcome;
           }

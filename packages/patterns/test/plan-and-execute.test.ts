@@ -352,6 +352,10 @@ describe("plan-and-execute pattern", () => {
       expect(status("after")).toBe("skipped");
       expect(status("after-after")).toBe("skipped");
       expect(status("fresh")).toBe("completed");
+      // Skipped the way a cascade skips: each says which dependency ended it.
+      const error = (id: string) => output.tasks.find((t: any) => t.id === id)?.error;
+      expect(error("after")).toBe("dep s1 failed");
+      expect(error("after-after")).toBe("dep after was cancelled");
     });
 
     it("still fails the run on a replanned task whose dependency is on no board", async () => {

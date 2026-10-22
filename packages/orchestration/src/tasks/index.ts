@@ -44,6 +44,7 @@ export {
   assertFilingCallerContext,
   assertFilingSettings,
   assertFollowUpHasRun,
+  assertIdsFree,
   assertUniqueIds,
   type TaskFilingCallerContext,
   type TaskFilingRule,
