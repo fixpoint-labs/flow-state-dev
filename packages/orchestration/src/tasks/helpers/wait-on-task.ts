@@ -32,6 +32,8 @@
  * The functions:
  *
  * - {@link waitOnTask}, the wait.
+ * - {@link waitRefusal}, its checks alone: a drain runs them before it hands
+ *   a row over, so a wait it can't make refuses the row with nothing started.
  * - {@link deliverHeldEnding}, a read of a task that delivers an ending held
  *   for the reading request: every `getTask` calls it.
  * - {@link payOwedResumes}, the waker: the filer's pass resumes every request
@@ -157,6 +159,37 @@ export interface WaitOnTaskOptions {
   readonly waitAgain?: boolean;
   /** Shown wherever the parked request is listed. */
   readonly message?: string;
+  /**
+   * The waiting request is the board's own drain, waiting on a row it handed
+   * to another session (FIX-2082 D2): it waits on any row it handed over, so
+   * there is no filer check, and the request's own row is the task it works,
+   * never the row its drain claimed.
+   */
+  readonly ownBoard?: true;
+}
+
+/** What the checks found, for the wait that passed them. */
+type Checked = {
+  readonly row: Task;
+  readonly deadlineMs: number;
+  readonly binding: WaitRow;
+  readonly own: WaitRow | undefined;
+};
+
+/**
+ * Run a wait's checks (see the module header) without waiting: the refusal,
+ * or `undefined` when the wait may be made. The depth is recorded under
+ * `options.key`, so the wait made after reads the same count. Writes nothing
+ * else.
+ */
+export async function waitRefusal(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  taskId: string,
+  options: WaitOnTaskOptions
+): Promise<TaskWaitResult | undefined> {
+  const checked = await check(ctx, collection, taskId, options);
+  return "ok" in checked ? checked : undefined;
 }
 
 /**
@@ -170,6 +203,17 @@ export async function waitOnTask(
   taskId: string,
   options: WaitOnTaskOptions
 ): Promise<TaskWaitResult> {
+  const checked = await check(ctx, collection, taskId, options);
+  if ("ok" in checked) return checked;
+  return waitChecked(ctx, collection, taskId, options, checked);
+}
+
+async function check(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  taskId: string,
+  options: WaitOnTaskOptions
+): Promise<TaskWaitResult | Checked> {
   const waits = ctx.requestHost?.waits;
   if (
     waits === undefined ||
@@ -198,7 +242,7 @@ export async function waitOnTask(
   const row = collection.get(taskId);
   if (row === undefined) throw new Error(`[tasks] task "${taskId}" not found`);
   const filer = collection.filerOf?.(row) ?? row.filer?.sessionId;
-  if (filer === undefined || filer !== ctx.session.identity.id) {
+  if (options.ownBoard !== true && (filer === undefined || filer !== ctx.session.identity.id)) {
     return refused(
       "wait_not_filer",
       `task "${taskId}" wasn't filed by this session, so this session can't wait on it: only the session that ` +
@@ -223,7 +267,7 @@ export async function waitOnTask(
   }
 
   const binding = { board: collection.collectionId, taskId };
-  const own = ownRowOf(ctx);
+  const own = ownRowOf(ctx, options.ownBoard === true);
   // Decided once and recorded, so the replay after the resume decides as the
   // first call did: the chain it counts has changed by then.
   const depth = await ctx.runOnce(`fsd.wait.depth:${options.key}`, () =>
@@ -236,12 +280,22 @@ export async function waitOnTask(
         "this request's own task above it, and the waits under the task it would wait on). Nothing was written."
     );
   }
+  return { row, deadlineMs, binding, own };
+}
 
+/** The wait itself, once its checks passed. */
+async function waitChecked(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  taskId: string,
+  options: WaitOnTaskOptions,
+  { row, deadlineMs, binding, own }: Checked
+): Promise<TaskWaitResult> {
   for (let round = 0; ; round += 1) {
     const roundKey = round === 0 ? options.key : `${options.key}#${round}`;
     // The gate carries a nonce of this wait's own, so a resume names this
     // wait and no other, and its deadline is counted from the first call.
-    const planned = await ctx.runOnce(`fsd.wait.plan:${roundKey}`, async () => ({
+    const planned = await ctx.runOnce!(`fsd.wait.plan:${roundKey}`, async () => ({
       gateId: `${waitGateId(collection.collectionId, taskId)}#${crypto.randomUUID()}`,
       deadline: Date.now() + deadlineMs
     }));
@@ -253,7 +307,7 @@ export async function waitOnTask(
       message: options.message ?? `Waiting on "${row.title ?? row.goal}"`
     };
     const requestId = ctx.request.identity.id;
-    const marked = await collection.markWait(taskId, { gateId: planned.gateId, deadline: planned.deadline, requestId });
+    const marked = await collection.markWait!(taskId, { gateId: planned.gateId, deadline: planned.deadline, requestId });
     if (marked.outcome === "declined" && marked.reason !== "terminal") {
       return refused(
         "wait_taken",
@@ -276,7 +330,7 @@ export async function waitOnTask(
     if (!("deadline" in outcome) && !isLegacyTimeout(outcome)) return ended(ctx, collection, taskId);
 
     // The deadline. The slot lapses, unless the ending already won.
-    const lapsed = await collection.lapseWait(taskId, planned.gateId, requestId);
+    const lapsed = await collection.lapseWait!(taskId, planned.gateId, requestId);
     if (lapsed.outcome === "declined") return ended(ctx, collection, taskId);
     if (options.waitAgain === true) continue;
     releaseAtRequestEnd(ctx, collection, taskId);
@@ -298,8 +352,9 @@ function isLegacyTimeout(outcome: WaitOutcome): boolean {
  * session was opened for. Server-set, never input: the engine's depth count
  * reads it to find what waits on this request's own work.
  */
-function ownRowOf(ctx: BlockContext): WaitRow | undefined {
-  const claim = currentWorkerClaim(ctx);
+function ownRowOf(ctx: BlockContext, drain = false): WaitRow | undefined {
+  // A drain's claim is the row it waits on, not the work its request does.
+  const claim = drain ? undefined : currentWorkerClaim(ctx);
   if (claim !== undefined) return { board: claim.collectionId, taskId: claim.taskId };
   const admitted = admittedTaskOf(ctx);
   if (admitted !== undefined) return { board: admitted.ref.collectionId, taskId: admitted.taskId };

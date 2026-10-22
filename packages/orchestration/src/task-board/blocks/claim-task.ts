@@ -19,7 +19,7 @@
  * block surfaces the claim outcome to the pattern layer; it adds no
  * arbitration of its own.
  */
-import { handler } from "@flow-state-dev/core";
+import { handler, parseBlockInstanceId } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef, TaskDispatcher } from "../../tasks";
@@ -43,6 +43,19 @@ export interface ClaimTaskOptions {
 
 export type ClaimTaskOutput = ClaimResult;
 
+/**
+ * The running block's logical id, `${requestId}:${path}`: the same on every
+ * replay of the request, and distinct per worker and per loop pass. The
+ * runtime's `idempotencyKey` when it carries one, else derived from the
+ * block's instance id to the same value.
+ */
+function logicalIdOf(ctx: BlockContext): string | undefined {
+  if (ctx.idempotencyKey !== undefined) return ctx.idempotencyKey;
+  const instanceId = ctx._blockIdentity?.blockInstanceId;
+  const parsed = instanceId === undefined ? undefined : parseBlockInstanceId(instanceId);
+  return parsed === undefined ? undefined : `${parsed.requestId}:${parsed.path}`;
+}
+
 export function createClaimTask(options: ClaimTaskOptions) {
   const { name, collection: collectionFactory, dispatcher, workerId } = options;
   return handler({
@@ -58,8 +71,17 @@ export function createClaimTask(options: ClaimTaskOptions) {
     outputSchema: claimResultSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,
     execute: async (_input, ctx): Promise<ClaimResult> => {
-      const collection = await collectionFactory(ctx);
-      const task = await dispatcher.claim(collection, workerId(ctx), ctx);
+      const claim = async () => dispatcher.claim(await collectionFactory(ctx), workerId(ctx), ctx);
+      // A request that parked mid-drain replays the drain from its top, and
+      // this block's trace is transient, so nothing records the claim it made
+      // (FIX-2082): the claim is kept with the request instead, and a replay
+      // reads it back rather than claiming again. Keyed by the block's
+      // logical path, which names this worker and this pass of its loop.
+      const key = logicalIdOf(ctx);
+      const task =
+        ctx.runOnce !== undefined && key !== undefined
+          ? await ctx.runOnce(`fsd.board.claim:${key}`, claim)
+          : await claim();
       if (task === null) {
         await ctx.sequencer!.patchState({ lastClaimed: false });
         return { claimed: false };

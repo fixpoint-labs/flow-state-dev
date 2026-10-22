@@ -3,9 +3,9 @@
  * author's declared choice, and a board that contradicts it is refused when it
  * is built.
  *
- * - `"plan"` (the default): every row runs in the drain, and the drain waits on
- *   every one. A dispatcher assignee is refused here until the waited dispatch
- *   lands, because a plan board that does not wait is the bug this replaces.
+ * - `"plan"` (the default): the drain waits on every row. A row runs in the
+ *   drain, or is handed to another session and waited on (FIX-2082): a
+ *   dispatcher that says `wait: false` is refused.
  * - `"delegation"`: every row is handed to another session, and the drain never
  *   waits on one. An inline assignee is refused, and so is a board with no
  *   dispatcher at all.
@@ -36,13 +36,14 @@ function inline(name: string): TaskWorker {
 }
 
 let count = 0;
-function dispatching(action = "work"): TaskWorker {
+function dispatching(action = "work", wait?: boolean): TaskWorker {
   count += 1;
   return dispatcher({
     name: `mode-dispatch-${count}`,
     type: "task",
     action,
     session: "per-task",
+    ...(wait !== undefined ? { wait } : {}),
   }) as unknown as TaskWorker;
 }
 
@@ -72,27 +73,70 @@ describe("mode — the declared choice, on the handle", () => {
 });
 
 describe("mode — the three refusals at taskBoard()", () => {
-  it("refuses a plan board holding a dispatcher, naming mode: \"delegation\"", () => {
-    expect(() =>
-      taskBoard({
-        name: "plan-with-dispatch",
-        boardId: "plan-with-dispatch",
-        collection: durable("plan-with-dispatch"),
-        workers: { implement: dispatching() },
-      })
-    ).toThrow(/"plan-with-dispatch" is a plan board.*assignee:implement.*mode: "delegation"/s);
+  it("builds a plan board holding a dispatcher: its drain waits on the rows it hands over (FIX-2082)", () => {
+    const board = taskBoard({
+      name: "plan-with-dispatch",
+      boardId: "plan-with-dispatch",
+      collection: durable("plan-with-dispatch"),
+      workers: { implement: dispatching(), summarize: inline("plan-with-dispatch-inline") },
+      defaultWorker: dispatching(),
+    });
+    expect(board.mode).toBe("plan");
   });
 
-  it("refuses a plan board whose floor dispatches", () => {
+  it("refuses a plan board whose dispatcher says wait: false, naming mode: \"delegation\"", () => {
     expect(() =>
       taskBoard({
-        name: "plan-floor-dispatch",
-        boardId: "plan-floor-dispatch",
-        collection: durable("plan-floor-dispatch"),
-        workers: {},
-        defaultWorker: dispatching(),
+        name: "plan-no-wait",
+        boardId: "plan-no-wait",
+        collection: durable("plan-no-wait"),
+        workers: { implement: dispatching("work", false) },
       })
-    ).toThrow(/plan board.*floor.*mode: "delegation"/s);
+    ).toThrow(/"plan-no-wait" is a plan board.*assignee:implement.*wait: false.*mode: "delegation"/s);
+  });
+
+  it("refuses a delegation board whose dispatcher says wait: true", () => {
+    expect(() =>
+      taskBoard({
+        name: "delegation-waits",
+        boardId: "delegation-waits",
+        mode: "delegation",
+        collection: durable("delegation-waits"),
+        workers: { implement: dispatching("work", true) },
+      })
+    ).toThrow(/"delegation-waits" is a delegation board.*assignee:implement.*wait: true.*drop `mode`/s);
+  });
+
+  it("refuses newSession on a delegation board, and anything but a task dispatcher there", () => {
+    expect(() =>
+      taskBoard({
+        name: "delegation-new-session",
+        boardId: "delegation-new-session",
+        mode: "delegation",
+        collection: durable("delegation-new-session"),
+        workers: { implement: dispatching() },
+        newSession: dispatching() as never,
+      })
+    ).toThrow(/"delegation-new-session" is a delegation board and declares newSession/);
+    expect(() =>
+      taskBoard({
+        name: "plan-new-session-inline",
+        boardId: "plan-new-session-inline",
+        collection: durable("plan-new-session-inline"),
+        workers: inline("plan-new-session-inline-w"),
+        newSession: inline("not-a-dispatcher") as never,
+      })
+    ).toThrow(/"plan-new-session-inline" newSession is not a task dispatcher/);
+  });
+
+  it("holds newSession to every dispatched board's rules: a board id and a durable ledger", () => {
+    expect(() =>
+      taskBoard({
+        name: "plan-new-session-request",
+        workers: inline("plan-new-session-request-w"),
+        newSession: dispatching() as never,
+      })
+    ).toThrow(/"plan-new-session-request" dispatches assignees \(newSession\) but has no boardId/);
   });
 
   it("refuses a delegation board with a named inline assignee", () => {

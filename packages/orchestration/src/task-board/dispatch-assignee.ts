@@ -84,10 +84,11 @@ export interface DispatchingAssignee {
   name: string;
   /**
    * Where the dispatcher sat: a named assignee, the uniform `workers` block,
-   * or the `defaultWorker` fallback. What every reader branches on.
+   * the `defaultWorker` fallback, or a plan board's `newSession` (FIX-2082),
+   * which takes the rows filed `session: "new"`. What every reader branches on.
    */
-  kind: "named" | "uniform" | "floor";
-  /** `assignee:<name>`, `uniform`, or `floor` — the readable form, for refusals. Never branched on. */
+  kind: "named" | "uniform" | "floor" | "newSession";
+  /** `assignee:<name>`, `uniform`, `floor` or `newSession` — the readable form, for refusals. Never branched on. */
   label: string;
   dispatch: TaskAssigneeAddress;
 }

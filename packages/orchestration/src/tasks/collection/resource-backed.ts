@@ -485,7 +485,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // cancel owes none when its cause shares the filer (D2).
     ...(delivery !== undefined
       ? {
-          delivers: true,
+          // A ledger that owes no notices still resumes a parked wait (FIX-2082).
+          delivers: delivery.hooks.notices !== false,
           causeSharesFiler: (row: Task) => {
             const cause = row.causedBy === undefined ? undefined : lookupRow(row.causedBy);
             return cause !== undefined && delivery.hooks.filerOf(cause) === delivery.hooks.filerOf(row);

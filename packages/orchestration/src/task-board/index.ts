@@ -81,7 +81,7 @@
  * and the other immediately re-scans for the next eligible task. No
  * pattern-level coordination beyond that.
  */
-import { handler, sequencer, defineCapability } from "@flow-state-dev/core";
+import { handler, sequencer, defineCapability, utility } from "@flow-state-dev/core";
 import { z } from "zod";
 import { whenBoardClaimable } from "./predicates";
 import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
@@ -130,7 +130,7 @@ import {
   type ClaimResult,
   type UnparkAndDrainInput,
 } from "./schemas";
-import type { Task, TaskWriteOutcome } from "../tasks";
+import { taskSchema, type Task, type TaskWriteOutcome } from "../tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
 import { owesATouch } from "../tasks/collection/cascade";
@@ -157,10 +157,12 @@ import {
 import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import {
   assertDispatchBoardSupported,
+  isTaskDispatcher,
   resolveWorkerSlots,
   type DispatchingAssignee,
   type TaskAssignee,
   type TaskAssigneeRegistry,
+  type TaskDispatcherBlock,
 } from "./dispatch-assignee";
 import { boardExitsConnector } from "./exits-connector";
 import { assertBoardModeSupported, runsElsewhereFor, type TaskBoardMode } from "./board-mode";
@@ -391,10 +393,10 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * Whether the drain waits on its rows (FIX-2076). The author's choice,
    * checked against the assignees when the board is built:
    *
-   * - `"plan"` (**default**): every row runs in the drain, and the drain waits
-   *   on every one. Every assignee is a block that runs inline. A dispatcher
-   *   assignee is refused, because the drain can't wait on a row another
-   *   session runs.
+   * - `"plan"` (**default**): the drain waits on every row. A row runs inline,
+   *   in the drain, or, through a `dispatcher({ action, session })` assignee or
+   *   `newSession`, in another session that the drain waits on until the row
+   *   ends (FIX-2082). A dispatcher that says `wait: false` is refused.
    * - `"delegation"`: every row is handed to another session through a
    *   `dispatcher({ action, session })` assignee, and the drain waits on none
    *   of them; the session that works a row settles it. An assignee that runs
@@ -450,6 +452,16 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * genuine miss). Blackboard and the patterns leave it unset.
    */
   defaultWorker?: TaskAssignee;
+
+  /**
+   * A plan board's way to run a row in a session of its own (FIX-2082): a
+   * `dispatcher({ action, session })`. A row filed `session: "new"` is handed
+   * to it under its own assignee, and the drain waits on it until it ends, as
+   * it waits on every row; every other row runs in `workers`. A row filed with
+   * no session runs inline. A delegation board refuses it: it hands every row
+   * over already.
+   */
+  newSession?: TaskDispatcherBlock;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -776,6 +788,7 @@ export function taskBoard<
     collection: collectionConfig,
     workers: workersConfig,
     defaultWorker: defaultWorkerConfig,
+    newSession: newSessionConfig,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -824,6 +837,9 @@ export function taskBoard<
   const defaultWorker = resolvedWorkers.defaultWorker;
   const dispatchers = resolvedWorkers.dispatchers;
   const inlineAssignees = resolvedWorkers.inline;
+  const newSession = resolveNewSession(name, mode, newSessionConfig);
+  // Every dispatcher the board holds, for the refusals that apply to any.
+  const allDispatchers = newSession === undefined ? dispatchers : [...dispatchers, newSession];
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
@@ -851,7 +867,7 @@ export function taskBoard<
     ...(collectionDeclaration !== undefined
       ? { collection: collectionDeclaration }
       : {}),
-    dispatchers,
+    dispatchers: allDispatchers,
   });
 
   // FIX-2076: the declared mode against the assignees. After the dispatch
@@ -859,7 +875,7 @@ export function taskBoard<
   assertBoardModeSupported({
     name,
     mode,
-    dispatchers,
+    dispatchers: allDispatchers,
     inline: inlineAssignees,
     uniformInline:
       typeof (workersConfig as { run?: unknown }).run === "function" &&
@@ -982,10 +998,15 @@ export function taskBoard<
   // same ledger and the same failure policy whichever assignee dispatches.
   const dispatchByAssignee = new Map<string, TaskWorker>();
   let floorDispatch: TaskWorker | undefined;
-  if (boardId !== undefined && dispatchers.length > 0) {
+  let newSessionDispatch: TaskWorker | undefined;
+  // A plan board's drain waits on every row it hands over (FIX-2082 D2).
+  const waitsOnHandOff = mode === "plan" ? { collection: collectionFactory } : undefined;
+  if (boardId !== undefined && allDispatchers.length > 0) {
     // A board that hands rows out delivers each ending to its filer (FIX-2078),
-    // whose flow must declare `onTaskSettled` (named on the binding below).
-    if (collectionDeclaration !== undefined) markDelegating(collectionDeclaration);
+    // whose flow must declare `onTaskSettled` (named on the binding below). A
+    // plan board's endings owe no notice: its drain waits on every row, and the
+    // ending of one it handed over resumes it (FIX-2082).
+    if (collectionDeclaration !== undefined) markDelegating(collectionDeclaration, mode === "plan" ? { notices: false } : {});
     const gate = createTaskGate({
       name,
       boardId,
@@ -998,7 +1019,18 @@ export function taskBoard<
       // so it has to declare the board's durable collection itself.
       ...(drainUses !== undefined ? { uses: drainUses } : {}),
     });
-    for (const assignee of dispatchers) {
+    for (const assignee of allDispatchers) {
+      if (assignee.kind === "newSession") {
+        newSessionDispatch = createRowDispatch({
+          // A wire value, kept: a router's recorded decision names it.
+          name: `${name}-hand-off-new-session`,
+          boardId,
+          address: assignee.dispatch,
+          binding: { boardId, gate, requiresInternal: [TASK_SETTLED_ENTRY] },
+          ...(waitsOnHandOff !== undefined ? { wait: waitsOnHandOff } : {}),
+        });
+        continue;
+      }
       if (assignee.kind === "floor") {
         // The fallback stands in for every assignee the board does not name,
         // so its dispatch carries no assignee: each row goes over under its own.
@@ -1009,6 +1041,7 @@ export function taskBoard<
           boardId,
           address: assignee.dispatch,
           binding: { boardId, gate, requiresInternal: [TASK_SETTLED_ENTRY] },
+          ...(waitsOnHandOff !== undefined ? { wait: waitsOnHandOff } : {}),
         });
         continue;
       }
@@ -1021,6 +1054,7 @@ export function taskBoard<
           assignee: assignee.name,
           address: assignee.dispatch,
           binding: { boardId, gate, requiresInternal: [TASK_SETTLED_ENTRY] },
+          ...(waitsOnHandOff !== undefined ? { wait: waitsOnHandOff } : {}),
         })
       );
     }
@@ -1037,7 +1071,7 @@ export function taskBoard<
         );
   const dispatchDefaultWorker = floorDispatch ?? defaultWorker;
 
-  const workerStep = buildWorkerStep({
+  const assigneeStep = buildWorkerStep({
     name,
     workers: dispatchWorkers,
     ...(dispatchDefaultWorker !== undefined
@@ -1046,6 +1080,26 @@ export function taskBoard<
     collection: collectionFactory,
     resolveFlowPolicy: createFlowPolicyResolver(name),
   });
+  // FIX-2082: a row filed `session: "new"` goes to `newSession`, the rest to
+  // the assignees. Inline or handed over is read per row, not per board.
+  const workerStep =
+    newSessionDispatch === undefined
+      ? assigneeStep
+      : utility.keyedRouter({
+          name: `${name}-session-router`,
+          inputSchema: taskSchema,
+          outputSchema: z.unknown(),
+          blocks: {
+            inline: assigneeStep,
+            "new-session": buildWorkerStep({
+              name: `${name}-new-session`,
+              workers: newSessionDispatch,
+              collection: collectionFactory,
+              resolveFlowPolicy: createFlowPolicyResolver(name),
+            }),
+          },
+          select: (task: Task) => (task.session === "new" ? "new-session" : "inline"),
+        });
 
   // FIX-963. The inline batch is the one place that may DEFER: a recorder
   // failure is reported here and raised at `raiseRecorderFailures` below, so
@@ -1473,6 +1527,34 @@ export function taskBoard<
 
 // ---------------------------------------------------------------------------
 // Internals
+
+/**
+ * Read a board's `newSession` (FIX-2082): a task dispatcher, on a plan board.
+ *
+ * @throws {Error} naming the board and the fix, for anything else.
+ */
+function resolveNewSession(
+  name: string,
+  mode: TaskBoardMode,
+  newSession: TaskDispatcherBlock | undefined
+): DispatchingAssignee | undefined {
+  if (newSession === undefined) return undefined;
+  if (!isTaskDispatcher(newSession)) {
+    throw new Error(
+      `[task-board] "${name}" newSession is not a task dispatcher. Put a ` +
+        `\`dispatcher({ action, session })\` there, naming the task entry a row filed ` +
+        `\`session: "new"\` runs in.`
+    );
+  }
+  if (mode !== "plan") {
+    throw new Error(
+      `[task-board] "${name}" is a delegation board and declares newSession: a delegation ` +
+        `board hands every row to another session already. Drop newSession, or drop \`mode\` ` +
+        `for a plan board, whose rows run inline unless filed \`session: "new"\`.`
+    );
+  }
+  return { name: "", kind: "newSession", label: "newSession", dispatch: newSession.dispatch };
+}
 // ---------------------------------------------------------------------------
 
 /**

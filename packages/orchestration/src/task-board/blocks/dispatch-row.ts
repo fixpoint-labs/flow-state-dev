@@ -49,6 +49,16 @@
  * The parent renews the lease to say "a live worker is on this row." After the
  * dispatch that is no longer true of *this* request — the child starts its own
  * renewal from its own async chain.
+ *
+ * ## A plan board waits on the row it handed over (FIX-2082 D2)
+ *
+ * With `wait`, the drain waits on the row after handing it over, through the
+ * one wait every request waits with (`waitOnTask`), and goes on only once the
+ * row has ended: at each deadline it waits again, a check-in, and never moves
+ * past a running row. Its checks run before the hand-over, with the claim
+ * still held, so a wait it can't make fails the row with nothing started. The
+ * hand-over is recorded with the request (`runOnce`), so the replay after the
+ * park hands nothing over again and waits on the same row.
  */
 import { handler } from "@flow-state-dev/core";
 import {
@@ -61,6 +71,7 @@ import {
   resolveTaskSessionTarget,
 } from "@flow-state-dev/core/types";
 import type {
+  BlockContext,
   BlockDefinition,
   TaskBinding,
   TaskDispatchInput,
@@ -68,7 +79,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
-import type { TaskWorker, TaskWorkerInput } from "../../tasks";
+import type { TaskCollectionRef, TaskWorker, TaskWorkerInput } from "../../tasks";
+import { waitOnTask, waitRefusal, type WaitOnTaskOptions } from "../../tasks/helpers/wait-on-task";
 import type { TaskAssigneeAddress } from "../dispatch-assignee";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
@@ -88,6 +100,11 @@ export interface RowDispatchOptions {
   address: TaskAssigneeAddress;
   /** The board's claim gate, bound onto this block for `defineFlow` to apply to the entry. */
   binding: TaskBinding;
+  /**
+   * Wait on the row once it is handed over, until it ends (FIX-2082 D2): a
+   * plan board's dispatch. Needs `collection`, the board's ledger.
+   */
+  wait?: { collection: (ctx: BlockContext) => Promise<TaskCollectionRef> };
 }
 
 /**
@@ -98,17 +115,10 @@ export interface RowDispatchOptions {
  * dispatched and inline paths agree on what the worker sees.
  */
 export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
-  const { name, boardId, assignee: named, address, binding } = options;
+  const { name, boardId, assignee: named, address, binding, wait } = options;
 
-  const block = handler({
-    name,
-    // Substrate-internal. The user-visible signal that background work started
-    // is the child session itself, which the parent session can enumerate.
-    transient: true,
-    inputSchema: z.unknown(),
-    sequencerStateSchema: taskBoardWorkerBodyStateSchema,
-    execute: async (payload: TaskWorkerInput, ctx) => {
-      const claim = ctx.sequencer!.state.currentClaim;
+  const handOver = async (payload: TaskWorkerInput, ctx: BlockContext) => {
+      const claim = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim;
       if (claim === undefined) {
         // Unreachable through the drain, which mints the ticket in the tap
         // before any route runs. Named because reaching here would otherwise
@@ -247,8 +257,53 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
         /** True when the child session already existed. */
         adopted: outcome.adopted,
       };
+  };
+
+  const block = handler({
+    name,
+    // Substrate-internal. The user-visible signal that background work started
+    // is the child session itself, which the parent session can enumerate.
+    transient: true,
+    inputSchema: z.unknown(),
+    sequencerStateSchema: taskBoardWorkerBodyStateSchema,
+    execute: async (payload: TaskWorkerInput, ctx) => {
+      if (wait === undefined) return handOver(payload, ctx as unknown as BlockContext);
+      return handOverAndWait(payload, ctx as unknown as BlockContext);
     },
   });
+
+  /**
+   * A plan board's hand-over (see the file header): the wait's checks with
+   * the claim held, the hand-over once, then the wait until the row ends.
+   */
+  const handOverAndWait = async (payload: TaskWorkerInput, ctx: BlockContext) => {
+    const collection = await wait!.collection(ctx);
+    const taskId = payload.taskId;
+    const key = `fsd.plan.dispatch:${boardId}:${taskId}:${payload.attempts}`;
+    const waitOptions: WaitOnTaskOptions = {
+      key: `${key}:wait`,
+      waitAgain: true,
+      ownBoard: true,
+      message: `Waiting on the step "${payload.title ?? payload.goal}" it handed to its own session`,
+    };
+    const refusal = await waitRefusal(ctx, collection, taskId, waitOptions);
+    if (refusal !== undefined && !refusal.ok) {
+      // The claim is still held: the row fails through the board's error path.
+      throw new Error(
+        `[task-board] "${boardId}" can't hand task "${taskId}" to a session of its own and wait on it: ` +
+          `${refusal.error}: ${refusal.message}`
+      );
+    }
+    if (ctx.runOnce === undefined) {
+      throw new Error(`[task-board] "${boardId}" can't wait on task "${taskId}": this request keeps no record to replay.`);
+    }
+    const handed = await ctx.runOnce(key, () => handOver(payload, ctx));
+    const waited = await waitOnTask(ctx, collection, taskId, waitOptions);
+    if (!waited.ok && waited.error !== "wait_ended_the_request") {
+      throw new Error(`[task-board] "${boardId}" handed task "${taskId}" over but can't wait on it: ${waited.error}: ${waited.message}`);
+    }
+    return handed;
+  };
 
   // A fresh address object: the binding is keyed by it, so the assignee's own
   // dispatcher stays unbound — reached outside this board it is refused as
