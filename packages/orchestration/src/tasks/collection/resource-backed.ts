@@ -1361,7 +1361,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // so a crash between leaves a wake that pays nothing, never a slot with none.
       const row = lookupRow(id);
       if (delivery !== undefined && row?.wait?.gateId === gateId && row.wait.lapsed !== true) {
-        await delivery.hooks.owePassAt(row, now() + LAPSED_SLOT_CHECK_MS);
+        // Read as lapsed: a ledger that owes no notices owes no pass for a lapsed slot either.
+        await delivery.hooks.owePassAt({ ...row, wait: { ...row.wait, lapsed: true } } as Task, now() + LAPSED_SLOT_CHECK_MS);
       }
       return patchRef(id, "wait_changed", (task) => {
         const decided = lapseWaitWrite(task as Task, gateId, requestId);
