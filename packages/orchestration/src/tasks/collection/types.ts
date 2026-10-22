@@ -401,10 +401,12 @@ export interface TaskTransitionOptions {
    */
   write?: TaskWriteToken;
   /**
-   * A cancel made through a model's task tool, inside its own turn
-   * (FIX-2078 D2). Set by the task tools only, never from input. When the
-   * running session is the row's filer, the call's result is how it hears the
-   * cancel, so the cancel owes it no notice.
+   * A cancel made through a model's `updateTask` tool (FIX-2078 D2). Set by
+   * the task tools only, from how the block was built, never from input: the
+   * tools are blocks for a model's turn, and an app's or a person's cancel goes
+   * through `taskToolActions`, which never sets it. When the running
+   * session is the row's filer, the call's result is how it hears the cancel,
+   * so the cancel owes it no notice.
    */
   viaTool?: boolean;
 }

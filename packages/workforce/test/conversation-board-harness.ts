@@ -109,7 +109,11 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: Re
       const slow = /\[slow:(\d+)\]/.exec(message);
       if (slow !== null) await sleep(Number(slow[1]));
       const hold = /\[hold:([^\]]+)\]/.exec(message);
-      if (hold !== null) await holds.get(hold[1]!);
+      if (hold !== null) {
+        const gate = holds.get(hold[1]!);
+        if (gate === undefined) throw new Error(`[hold:${hold[1]}] names no gate the test passed in holds`);
+        await gate;
+      }
       if (message.includes("[fail]")) throw new Error(`${worker.id} could not do it`);
       const until = /\[fail-until:(\d+)\]/.exec(message);
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);

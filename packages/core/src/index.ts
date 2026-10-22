@@ -247,7 +247,6 @@ export {
   blockPathSegment,
   blockPathTool,
   extendBlockPath,
-  isToolInvocationPath,
   parseBlockInstanceId,
   ROOT_BLOCK_PATH
 } from "./blocks/internal/block-instance-id";

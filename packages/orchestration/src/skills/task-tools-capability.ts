@@ -1656,6 +1656,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
  * Build the `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  *
+ * These are a model's tools: only a generator's turn should call them. A
+ * cancel through them counts as the model's own (FIX-2078 D2), so it owes the
+ * filing session no notice. An app's or a person's move goes through
+ * {@link taskToolActions}, whose cancel does owe one.
+ *
  * @param roster Optional roster of the board's workers, fixed or read per call
  *   from the running context ({@link AssigneeRosterSource}). Supply it and
  *   `createTask` and `updateTask` reject an assignee it does not name.
