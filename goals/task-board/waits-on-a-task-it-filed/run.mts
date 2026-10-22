@@ -282,6 +282,7 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
     const turn = generator({
       name: `${kind}-turn`,
       model,
+      prompt: "Work the turn its script describes.",
       inputSchema: doorInput,
       uses: [board.tools],
       tools: [probeWait(`${kind}_probe_wait`)],
@@ -292,6 +293,7 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
     const probe = generator({
       name: `${kind}-probe`,
       model,
+      prompt: "Work the turn its script describes.",
       inputSchema: doorInput,
       tools: [probeWait(`${kind}_probe_again`)],
       user: (input: { message: string }) => input.message
@@ -344,7 +346,7 @@ function buildHost(filename: string, waitDeadlines?: { defaultMs: number; minMs:
       await until(async () => (await status(requestId)) !== "in_progress", 30_000);
       return requestId;
     };
-    const record = (requestId: string) => runtime.stores.request.get(requestId, { withItems: true } as never) as Promise<any>;
+    const record = (requestId: string) => runtime.stores.request.get(requestId) as Promise<any>;
     const status = async (requestId: string) => (await runtime.stores.request.get(requestId))?.status as string | undefined;
     const requestsOf = async (sessionId: string) =>
       ((await runtime.stores.request.list({ sessionId })) as Array<{ id: string; actionName: string; status: string; createdAt: number; result?: any; finalizedAtMs?: number }>).sort(
