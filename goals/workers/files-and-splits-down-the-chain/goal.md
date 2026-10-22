@@ -59,3 +59,4 @@
 | 2026-10-22 | fix/FIX-2077 763314317 | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
 | 2026-10-22 | fix/FIX-2077 9cca4ff6a | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
 | 2026-10-22 | fix/FIX-2077 24c9b2770 | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
+| 2026-10-22 | fix/FIX-2077 64332000e | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`) | As before |
