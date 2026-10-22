@@ -37,3 +37,4 @@ Before FIX-2077 the check fails legs b and d on `main`: a split task parks and s
 | 2026-10-22 | fix/FIX-2077 b08756fec | n/a | FAIL (control `settle-at-return`, expected) | `a:after-the-side-chains`, `c:message-ends-first`, `c:output`, `c:once`, as before |
 | 2026-10-22 | fix/FIX-2077 6726e43b4 | n/a | PASS | As on b08756fec |
 | 2026-10-22 | fix/FIX-2077 0e2bf938f | n/a | PASS; control `settle-at-return` FAIL, as required | As before |
+| 2026-10-22 | fix/FIX-2077 763314317 | n/a | PASS; control `settle-at-return` FAIL, as required | As before |
