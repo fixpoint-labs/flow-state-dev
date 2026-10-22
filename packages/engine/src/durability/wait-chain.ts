@@ -50,17 +50,17 @@ import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { TASK_SOURCE } from "../execution/transport-sources";
 
 /** A wait that names no deadline waits this long: five minutes. */
-export const DEFAULT_WAIT_DEADLINE_MS = 5 * 60_000;
+const DEFAULT_WAIT_DEADLINE_MS = 5 * 60_000;
 
 /**
  * The shortest deadline a wait may name: the durability sweep's resolution
  * (its shortest tick). A shorter one can't come due sooner, and would only
  * spin park and resume.
  */
-export const MIN_WAIT_DEADLINE_MS = 1_000;
+const MIN_WAIT_DEADLINE_MS = 1_000;
 
 /** The longest deadline a wait may name: 24 hours. */
-export const MAX_WAIT_DEADLINE_MS = 86_400_000;
+const MAX_WAIT_DEADLINE_MS = 86_400_000;
 
 /** A host's wait deadline settings, each optional. */
 export type WaitDeadlineSettings = {
@@ -70,7 +70,7 @@ export type WaitDeadlineSettings = {
 };
 
 /** The bounds a host holds waits to, its settings over the defaults. */
-export function resolveWaitDeadlines(settings: WaitDeadlineSettings = {}): WaitDeadlines {
+function resolveWaitDeadlines(settings: WaitDeadlineSettings = {}): WaitDeadlines {
   const minMs = settings.minMs ?? MIN_WAIT_DEADLINE_MS;
   const maxMs = settings.maxMs ?? MAX_WAIT_DEADLINE_MS;
   const defaultMs = settings.defaultMs ?? DEFAULT_WAIT_DEADLINE_MS;

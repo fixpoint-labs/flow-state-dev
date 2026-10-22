@@ -268,6 +268,7 @@ export { collapseToCanonicalLog } from "./items/canonical-log";
 export {
   dispatcher,
   dispatchHandleSchema,
+  dispatchWaitResultSchema,
   assertEvaluatorBlock,
   boolean,
   choice,
@@ -284,6 +285,7 @@ export {
   router,
   sequencer,
   type DispatchHandle,
+  type DispatchWaitResult,
   type DispatcherConfig,
   type DispatcherSession,
   type InternalDispatcherConfig,
