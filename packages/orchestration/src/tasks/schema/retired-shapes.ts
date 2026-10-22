@@ -16,7 +16,7 @@
  * | `blocked` | status `blocked` | `held` | FIX-2080 |
  * | `recorded` | the recorded-not-started mark (`undispatched`) | `held` | FIX-2080 |
  * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session | FIX-2083 |
- * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running | FIX-2077 |
+ * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running, `waitingOn: "filed"`, no lease | FIX-2077 |
  * | `reopened` | a reopened row (`reopened`) | pending, unmarked | FIX-2086 |
  * | `parked-for-turn` | a row parked for a person's turn (`parkedForTurn`) | pending, uncharged | FIX-2086 |
  *
@@ -94,14 +94,16 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...row, session: "ongoing" };
     },
   },
-  // A split task parked on its pieces stays running (FIX-2077). FIX-2077 adds
-  // the field naming what keeps it open (`waitingOn`) to this entry.
+  // A split task parked on its pieces stays running (FIX-2077), waiting on
+  // them with no lease (`waitingOn: "filed"`), so no reclaim takes it back:
+  // the request its last piece's ending wakes checks it, as for any task.
   "parked-split": {
-    on: false,
+    on: true,
     owner: "FIX-2077",
     read: (row) => {
       if (row.status !== "parked" || !isObject(row.metadata) || row.metadata.splitInto === undefined) return undefined;
-      return { ...row, status: "in_progress" };
+      const { splitInto: _split, ...metadata } = row.metadata;
+      return { ...without(row, "leaseUntil", "feedback"), status: "in_progress", waitingOn: "filed", metadata };
     },
   },
   // A reopened row is an ordinary pending row (FIX-2086, which adds its steers).

@@ -203,6 +203,7 @@ describe("a dispatched row names the run working it", () => {
       sessionId: ran[0]!.sessionId,
       requestId: ran[0]!.requestId,
       attempt: row?.attempts,
+      startedAt: expect.any(Number),
     });
     // Not the claiming conversation's coordinate, which the row also carries
     // while the claim is open.
@@ -240,7 +241,7 @@ describe("a dispatched row names the run working it", () => {
       [t1, ran.find((r) => r.taskId === "t1")],
       [t2, ran.find((r) => r.taskId === "t2")],
     ] as const) {
-      expect(row?.run).toEqual({ sessionId: seen!.sessionId, requestId: seen!.requestId, attempt: 1 });
+      expect(row?.run).toEqual({ sessionId: seen!.sessionId, requestId: seen!.requestId, attempt: 1, startedAt: expect.any(Number) });
     }
   });
 
@@ -260,6 +261,7 @@ describe("a dispatched row names the run working it", () => {
       sessionId: ran[0]!.sessionId,
       requestId: ran[0]!.requestId,
       attempt: 1,
+      startedAt: expect.any(Number),
     });
   });
 
@@ -282,7 +284,7 @@ describe("a dispatched row names the run working it", () => {
 
     const row = await durableRow(stores, kind, "t1");
     // Same attempt: the takeover renewed the claim rather than making a new one.
-    expect(row?.run).toEqual({ sessionId: ran[0]!.sessionId, requestId: ran[0]!.requestId, attempt: 1 });
+    expect(row?.run).toEqual({ sessionId: ran[0]!.sessionId, requestId: ran[0]!.requestId, attempt: 1, startedAt: expect.any(Number) });
     // The renewal publishes nothing, so the link's own write must reach the stream.
     expect((await taskChanges(stores, child.requestId)).filter((c) => c.kind === "run_linked")).toHaveLength(1);
   });

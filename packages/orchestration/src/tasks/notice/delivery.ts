@@ -181,7 +181,11 @@ export function createDelivery(
       const address = addressOf(filer);
       if (address === undefined) return;
       // A waited-on row's turn is resumed, and a retry's next attempt
-      // started, by the filer's pass.
+      // started, by the filer's pass. Only a board that declares its own
+      // `passEntry` (Workforce's run entry) has a pass that starts pending
+      // rows; the default `onTaskSettled` pass pays notices and cascades
+      // only, so a retry there is started by the board's own drain; the wake
+      // only pays its notice.
       const runsPass = row.resumeOwed === true || (row.status === "pending" && declared.passEntry !== undefined && row.attempts > 0);
       // Inside the filer's own pass that trigger waits its turn (one pass at
       // a time), and runs once the running pass ends.
@@ -193,8 +197,13 @@ export function createDelivery(
           await settleUndeliverable(row, notice, outcome.detail, patchMetadata);
         }
       }
-    } catch {
+    } catch (error) {
       // Never fails the write that committed: the wake pays what is left.
+      console.warn("[orchestration] a settled task's delivery failed after its write: the filer's next wake pays it", {
+        boardId: board.collectionId,
+        taskId: row.id,
+        error: (error as Error).message
+      });
     }
   }
 }

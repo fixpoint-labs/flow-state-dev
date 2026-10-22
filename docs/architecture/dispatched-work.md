@@ -296,7 +296,8 @@ running, and `resumeWait?()` resumes a turn in this session parked on a wait
 gate (present only with durable execution). Beside them, one fact:
 `hasWaitSweeper`, true when this process runs a durability sweeper that times
 waits out. `dispatchTask` offers `wait` only when both hold: the board
-opts in with `resumesWaits: true` (whatever runs it calls `resumeOwedWaits`), and
+opts in with `resumesWaits: true` (the filing session's `onTaskSettled` pass
+resumes an owed wait when its task ends), and
 the host reports `hasWaitSweeper`. `createTask` never waits. Identity is
 never a parameter to any of them.
 

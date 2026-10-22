@@ -83,15 +83,15 @@ import type {
 import { z } from "zod";
 import { assertDispatchEntrySupported } from "./dispatch-assignee";
 import { ticketForClaim, type TaskClaimTicket } from "../tasks/claim-ticket";
-import { startLeaseRenewal } from "../tasks/lease-renewal";
 import {
   currentLeaseRenewal,
   stampLeaseRenewal,
   withLeaseRenewalScope,
 } from "../tasks/lease-renewal-scope";
 import { openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
-import { createRecordError, createRecordSuccess } from "./blocks/record-result";
+import { createRecordError } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
+import { admitClaimedTask, noteTaskAnswer, type TaskEndRules } from "./task-request";
 import {
   committedLeaseSpan,
   leaseLapsed,
@@ -164,6 +164,8 @@ export interface TaskGateOptions {
    * additionally fails that request.
    */
   onError: "skip" | "fail";
+  /** What else holds a task open at a request's end (FIX-2077, rule 6). */
+  endRules?: TaskEndRules;
 }
 
 /**
@@ -242,6 +244,8 @@ export interface TaskLedgersOptions {
    * task-tool writes from the turn stay fenced to the row it holds.
    */
   taskTurn?: boolean;
+  /** What else holds a task open at a request's end (FIX-2077, rule 6). See {@link TaskEndRules}. */
+  endRules?: TaskEndRules;
 }
 
 /**
@@ -269,6 +273,7 @@ export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
       onError: options.onError ?? "skip",
       allowSessionState: options.allowSessionState === true,
       taskTurn: options.taskTurn !== false,
+      ...(options.endRules !== undefined ? { endRules: options.endRules } : {}),
       ledger: { kind: "by-id", resolve },
     }),
   };
@@ -297,6 +302,7 @@ function buildTaskGate(options: {
   allowSessionState?: boolean;
   /** See {@link TaskLedgersOptions.taskTurn}; a board's own gate always serves task turns. */
   taskTurn?: boolean;
+  endRules?: TaskEndRules;
 }): TaskBinding["gate"] {
   const { name, boardId, ledger, uses, onError } = options;
 
@@ -378,27 +384,16 @@ function buildTaskGate(options: {
     return inPartition(resolved, claim?.taskId ?? "(no claim)", ledgerId!, claim?.partition);
   };
 
-  // The same recorders the inline drain composes, bound to this board's
-  // collection. Reused rather than reimplemented: they own the ticket-fenced
-  // write-back and the rule for when lease renewal stops.
-  // FIX-963 — the third settlement site, and the one with nowhere to defer to.
-  // There is no batch around this task and no drain tail to report at, so a
-  // recorder that cannot announce a committed write raises where it stands and
-  // fails the child run. Nothing is abandoned by that: there is no sibling here
-  // to protect. `recordError` refuses to let `onError` swallow the raise.
-  //
-  // This is also the recorders' default, so the option is redundant. It is
-  // passed anyway: the gate's raise is a property of the composition — no tail
-  // follows it — and stating it here is what makes that visible next to the
-  // `.rescue()` it travels through, rather than resting on a default one file
-  // away that a later change to the drain could be tempted to flip.
+  // The error recorder the inline drain composes, bound to this board's
+  // collection: a request that throws fails the attempt where it always has.
+  // FIX-963 — the gate is a settlement site with no batch around it and no
+  // drain tail to report at, so a recorder that cannot announce a committed
+  // write raises where it stands and fails the child run. That is also the
+  // recorder's default; it is stated here because it is a property of this
+  // composition. The success settle is no recorder any more (FIX-2077): it is
+  // the check at the request's end, in `./task-request`.
   const recorderFailure = { onRecorderFailure: "raise" as const };
 
-  const recordSuccess = createRecordSuccess({
-    name: `${name}-gate-record-success`,
-    collection: collectionFactory,
-    recorderFailure,
-  });
   const recordError = createRecordError({
     name: `${name}-gate-record-error`,
     collection: collectionFactory,
@@ -507,14 +502,20 @@ function buildTaskGate(options: {
 
           ctx._markTaskScope?.(held.id);
           stampCurrentClaim(ticket, ctx, { taskTurn: options.taskTurn !== false });
-          stampLeaseRenewal(
-            startLeaseRenewal({
-              collection: board,
-              ticket,
-              claimedTask: held,
-              signal: ctx.signal,
-            })
-          );
+          // ADMISSION (FIX-2077): a row waiting on something (a stop, filed
+          // work, a queued message) gets a lease again, renewed until this
+          // request ends, and the task is checked at that end.
+          const renewal = await admitClaimedTask(ctx, {
+            ref: board,
+            row: held,
+            ticket,
+            answerCounts: true,
+            own: true,
+            ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
+            onStale: (reason) =>
+              new StaleTaskClaimError(held.id, `it was waiting, and its lease could not be restored (${reason})`),
+          });
+          if (renewal !== undefined) stampLeaseRenewal(renewal);
         });
       })
       // The worker receives the payload the parent packed at claim time, not a
@@ -536,9 +537,10 @@ function buildTaskGate(options: {
           },
         }
       )
-      // The child settles its own task through the SAME fenced recorders the
-      // inline drain uses — both read the claim off `currentClaim`.
-      .tap(recordSuccess)
+      // The answer is noted, not recorded: the task is checked once the
+      // request's work is over (FIX-2077), after the engine's last drain. A
+      // throw still fails the attempt here, through the inline drain's recorder.
+      .tap(noteTaskAnswer)
       .rescue([{ block: recordError }]);
 
     return {
@@ -692,6 +694,10 @@ async function writeRunLink(
       sessionId: ctx.session.identity.id,
       requestId: ctx.request.identity.id,
       attempt: held.attempts,
+      // The attempt's start, kept when this run relinks the same attempt (a
+      // resume, a lapsed lease taken back): the "queued" window counts from
+      // it. A new attempt starts with no link (the claim clears it).
+      startedAt: held.run?.attempt === held.attempts && held.run.startedAt != null ? held.run.startedAt : board.now(),
     },
     { claim: ticket }
   );

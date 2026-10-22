@@ -303,6 +303,8 @@ export {
   type TaskLedgersOptions,
 } from "./task-entry";
 export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
+export { afterTaskCheck, noteTaskAnswer, taskRequestAdmission } from "./task-request";
+export type { TaskEndRules, TaskRequestAdmissionOptions } from "./task-request";
 export { createRowDispatch } from "./blocks/dispatch-row";
 export type { RowDispatchOptions } from "./blocks/dispatch-row";
 // A durable board's eight task tools as flow actions (FIX-1629). Defined with

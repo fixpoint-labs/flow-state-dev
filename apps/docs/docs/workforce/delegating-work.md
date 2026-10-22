@@ -203,33 +203,26 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 ## Splitting a task
 
-A worker given a task can split it into pieces, for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed: when the task needs a worker that isn't a delegate, the worker says so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one. `listTasks({ filedByTask })` lists the pieces one task filed.
+A worker given a task can split it into pieces for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed. When the task needs a worker that isn't a delegate, the worker should say so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
 
-The pieces go on the task session's own board. The worker's turn ends, and its task waits, with nothing running, until every piece has ended. Each piece's ending wakes the worker for a turn in the task session, where it reads the result. Once no piece is left open, the task completes with the answer the worker gave in the last of those turns, with the pieces' outputs listed under it:
+The pieces go on the task session's own board. The worker files them without `wait` and ends its turn; `dispatchTask` with `wait` is refused on a task turn. Nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `waitingOn: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
 
-```json
-{
-  "answer": "The codename is Bluebird.",
-  "pieces": [
-    { "taskId": "task_8f2…", "goal": "Ask the archivist for the codename", "assignee": "archivist", "status": "completed", "output": "Bluebird" }
-  ]
-}
-```
+Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session while the task runs also holds the task open until the message's turn has run.
 
-If the worker didn't get a turn after the last piece ended (after a server restart, for example), the output is `{ pieces }` with no `answer`, so treat `answer` as optional. A task with a piece that failed for good fails, naming it. Only the session that filed the task hears it end; it doesn't hear each piece.
-
-The pieces live only as long as the attempt that filed them. When a task fails, is retried, or is cancelled, every piece it filed that is still open is cancelled within seconds. A retry doesn't wait on the pieces of the attempt before it.
+The task completes once no piece is open, the worker has had a turn on every piece's ending, and no message is waiting. Its output follows the same rule as any task's: the latest checkpoint the worker reported with `reportProgress`, or, with none, the answer from the last turn a piece's ending woke. A message's answer is never the output.
 
 ```text
 your conversation ── task ──▶ lead's task session ── pieces ──▶ two task sessions
         ◀── "completed, with lead's answer" ──┘
 ```
 
-A worker on a task can't wait for a piece inside its turn: `dispatchTask` with `wait` is refused there. It files the piece without `wait` and ends its turn, and the piece's ending wakes it.
+To carry a piece's result into the task's output, have the worker put it in its answer, or read the piece's own row: `listTasks({ filedByTask })` lists the pieces one task filed, and `getTask` reads one.
 
-When a piece fails for good, the turn its ending woke can dispatch the work again, to the same worker or another. A piece dispatched in that turn is the failed piece's retry: the failure stops counting, and the retry takes its place. The task completes once the retry and every other piece complete. If the retry fails for good too, and the turn its failure woke doesn't dispatch it again, the task fails naming the retry.
+A piece that fails for good doesn't fail the task by itself. Its ending wakes the worker like any other, and the worker's turn decides: file the work again, to the same delegate or another, or answer with what it has. If that turn throws, the task's attempt fails. A worker that ignores a failed piece completes its task anyway, so tell your workers what to do when a piece fails. Only the session that filed the task hears it end; it doesn't hear each piece.
 
-Only the turn a failure woke can retry it. A piece dispatched in any later turn is new work, so a failure the worker left alone still fails the task.
+The pieces belong to the attempt that filed them. When a task fails, is retried, or is cancelled, every piece it filed that is still open is cancelled within seconds. A retry doesn't wait on the pieces of the attempt before it.
+
+Run delegating workforces on a host with [durable execution](../advanced/durable-execution.md#wakes). If the server stops after a piece ends but before its notice reaches the task session, a durable host delivers the notice once it is running again. A host without durable execution doesn't, and the split task stays `in_progress` with nothing left to wake it.
 
 Every session in the chain is yours, and only your own workers appear in it.
 
@@ -336,6 +329,8 @@ const woken = await backfillBoardWakes(runtime.stores, {
 `userCell` maps a user and an org to the storage key of that user's state, where conversation boards keep their rows. Those rows sit in the user's shared state even on a flow that sets `isolateUserState`, so pass `isolateUserState: false` as shown; a flow-isolated key, `{ id: flowId, isolateUserState: true }`, points somewhere else and finds nothing.
 
 It returns how many sessions it woke, and `0` on a store that keeps no wakes. Running it again is safe. A Shift Manager Lab runs it for you when it starts.
+
+A split task stored by an earlier version reads as `in_progress` with `waitingOn: "filed"`. It settles like any split task: after the worker's turn on its last piece's ending, once nothing else holds it.
 
 ## Related pages
 

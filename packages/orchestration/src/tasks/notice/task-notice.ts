@@ -201,6 +201,18 @@ export function owedNotices(
 }
 
 /**
+ * Whether `row` still owes any notice. The boolean form of
+ * {@link owedNotices}, with an early exit and no notice built: what a check
+ * run at every request's end asks of every row a task filed (FIX-2077).
+ */
+export function owesAnyNotice(row: Task): boolean {
+  for (const [key, value] of Object.entries(row.metadata ?? {})) {
+    if (isMarker(key, value)) return true;
+  }
+  return false;
+}
+
+/**
  * When the earliest notice `row` owes falls due, or `undefined` when it owes
  * none. A marker stored before FIX-2078 carries no due time: it is due at once.
  */

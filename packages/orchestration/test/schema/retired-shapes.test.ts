@@ -18,11 +18,11 @@ import { persistedTaskStatusSchema } from "../../src/tasks/schema/task-status";
 const row = { id: "t", goal: "t", attempts: 0, createdAt: 1, updatedAt: 1 };
 
 describe("the retired-shape map", () => {
-  it("turns on exactly the two entries this change stops writing", () => {
+  it("turns on exactly the entries whose shapes nothing writes any more", () => {
     const on = Object.entries(RETIRED_SHAPES)
       .filter(([, entry]) => entry.on)
       .map(([shape]) => shape);
-    expect(on.sort()).toEqual(["blocked", "recorded"]);
+    expect(on.sort()).toEqual(["blocked", "parked-split", "recorded"]);
   });
 
   it("returns a row in no retired shape as the same object", () => {
@@ -61,10 +61,23 @@ describe("the retired-shape map", () => {
     expect(readRetiredShape("post", post)).toMatchObject({ session: "ongoing", sealed: post.sealed });
   });
 
-  it("parked-split (off until FIX-2077): read as stored; its entry reads it running", () => {
-    const split = { ...row, status: "parked", metadata: { splitInto: { session: "s", flow: "f" } } };
-    expect(withRetiredShapes(split)).toBe(split);
-    expect(readRetiredShape("parked-split", split)).toMatchObject({ status: "in_progress" });
+  it("parked-split (on, FIX-2077): a split parked on its pieces reads as running, waiting on them, with no lease", () => {
+    // Stored by the split before FIX-2077: parked, its lease left on the row.
+    const split = {
+      ...row,
+      status: "parked",
+      leaseUntil: 5,
+      feedback: "Waiting on its pieces.",
+      metadata: { splitInto: { session: "s", flow: "f" }, kept: true },
+    };
+    const read = withRetiredShapes(split) as Record<string, unknown>;
+    expect(read).toMatchObject({ status: "in_progress", waitingOn: "filed", metadata: { kept: true } });
+    // No lease: a reclaim past the stale deadline must not run the task again (D1).
+    expect(read).not.toHaveProperty("leaseUntil");
+    expect(read).not.toHaveProperty("feedback");
+    expect(read.metadata).not.toHaveProperty("splitInto");
+    // A fixed point: a second read returns the same object.
+    expect(withRetiredShapes(read)).toBe(read);
   });
 
   it("reopened (off until FIX-2086): read as stored; its entry reads it as a plain pending row", () => {

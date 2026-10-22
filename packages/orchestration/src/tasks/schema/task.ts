@@ -301,6 +301,13 @@ export const taskSchema = z.object({
       requestId: z.string(),
       /** The attempt that started the run — equal to `attempts` while it is the latest. */
       attempt: z.number().int().nonnegative(),
+      /**
+       * When this attempt's first run started, in ms (FIX-2077): what "during
+       * this attempt" is measured from. A resume or a lapsed lease taken back
+       * relinks the same attempt and keeps it. **Absent** on links written
+       * before it was (BP-030).
+       */
+      startedAt: z.number().optional(),
     })
     .optional(),
 
@@ -462,6 +469,24 @@ export const taskSchema = z.object({
    * as not owed** (BP-030).
    */
   resumeOwed: z.boolean().optional(),
+
+  /**
+   * What keeps this running task open while no worker holds it (FIX-2077 D1):
+   * `"person"`, a stop to ask a person; `"wait"`, any other suspension (a
+   * webhook, a call); `"filed"`, work it filed that still holds it; `"queued"`,
+   * work queued for it that has not run. Only on an `in_progress` row. A row
+   * waiting on a person, a wait or filed work has no lease, so the reclaim
+   * leaves it alone: that task is never run again by a lapse. A row waiting
+   * on `"queued"` keeps its claim's lease: queued work is about to run, and
+   * if it never does the lapse takes the task back. The request admitted for
+   * it next clears it and starts a lease; every ending, and every claim,
+   * clears it.
+   *
+   * Not FIX-2080's `held`, which is a status before a start: this applies only
+   * after one. Server-written by the claim gate (`setWaitingOn`), never by a
+   * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030).
+   */
+  waitingOn: z.enum(["person", "wait", "filed", "queued"]).nullable().optional(),
 
   /**
    * The wait on this row is over (its turn was stopped, or it timed out) but

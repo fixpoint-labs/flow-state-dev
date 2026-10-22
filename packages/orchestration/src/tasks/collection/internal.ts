@@ -1203,6 +1203,36 @@ export function requireClaimTicket(
   }
 }
 
+/**
+ * The patch `setWaitingOn` writes (FIX-2077): set, with the request's answer
+ * kept by {@link completionPatch}'s output rule and no lease unless one is
+ * given (the gate gives one for `"queued"`); or cleared, with the lease the
+ * admission starts.
+ *
+ * @throws when clearing without a finite `leaseUntil`: a programming error.
+ */
+export function waitingOnPatch(
+  task: Task,
+  waitingOn: Task["waitingOn"],
+  options: { leaseUntil?: number; answer?: { output: unknown } }
+): Partial<Task> {
+  if (waitingOn == null) {
+    assertValidLeaseDeadline(options.leaseUntil ?? Number.NaN);
+    return { waitingOn: undefined, leaseUntil: options.leaseUntil };
+  }
+  // The output a completion would write now, and only that (D3): a
+  // checkpoint stays the output, and the answer is kept only where the
+  // completion would write it. One rule, read from `completionPatch`.
+  const kept: Partial<Task> = {};
+  if (options.answer !== undefined) {
+    const done = completionPatch(task, options.answer.output, task.updatedAt) as Record<string, unknown>;
+    for (const key of ["output", "checkpointed", "checkpointAttempt"] as const) {
+      if (key in done) (kept as Record<string, unknown>)[key] = done[key];
+    }
+  }
+  return { waitingOn, leaseUntil: options.leaseUntil, ...kept };
+}
+
 /** Whether a progress report names anything to write. */
 export function reportsProgress(progress: { statusNote?: string; output?: unknown }): boolean {
   return progress.statusNote !== undefined || progress.output !== undefined;
@@ -1251,7 +1281,14 @@ export function cancelPatch(
 
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */
 export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
-  return { run: { sessionId: run.sessionId, requestId: run.requestId, attempt: run.attempt } };
+  return {
+    run: {
+      sessionId: run.sessionId,
+      requestId: run.requestId,
+      attempt: run.attempt,
+      ...(run.startedAt !== undefined ? { startedAt: run.startedAt } : {}),
+    },
+  };
 }
 
 /**
@@ -1322,6 +1359,10 @@ export function applyClaimToTask<TInput, TOutput>(
     // `claimedBy` is: a spread that added nothing would carry the previous
     // attempt's run onto this one.
     run: undefined,
+    // A claim starts an attempt that waits on nothing yet (FIX-2077): a row
+    // taken back from a lapsed wait (`"queued"`, the one that keeps a lease)
+    // must not carry it onto the new attempt.
+    waitingOn: undefined,
     updatedAt: now,
   };
 }
@@ -1489,15 +1530,11 @@ export function applyTransition<TInput, TOutput>(
   now: number,
   recording?: EndingRecording
 ): Task<TInput, TOutput> {
-  return recordEnding(
-    task,
-    {
-      ...task,
-      ...patch,
-      updatedAt: now,
-    },
-    recording
-  );
+  const next = { ...task, ...patch, updatedAt: now };
+  // A row waits on something only while it runs (FIX-2077): every write that
+  // moves it off `in_progress` clears the field.
+  if (next.waitingOn != null && next.status !== "in_progress") next.waitingOn = undefined;
+  return recordEnding(task, next, recording);
 }
 
 /** Filter and clone tasks for query results — keeps consumers from mutating internal state. */

@@ -23,9 +23,10 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { AFTER_REPLY_CONCURRENCY } from "../conversation-board/task-settled";
+import { admitOwnTask } from "../conversation-board/task-admission";
 import type { WorkerInstallation } from "../workers/installation";
 import { messageTurnStateSchema, startTurnAtHop, TURN_MESSAGED_STATE } from "./hop";
-import { MESSAGE_WORKER_TOOL } from "./keys";
+import { MESSAGE_WORKER_TOOL, WORKER_MESSAGES_SEEN_STATE } from "./keys";
 import { MAX_MESSAGE_CHARS } from "./log-row";
 import { sendWorkerMessage } from "./send-message";
 import { messageLogOf, workerMessagesResources } from "./message-log";
@@ -33,8 +34,6 @@ import { messageLogOf, workerMessagesResources } from "./message-log";
 /** What the entry takes: the message's id, and nothing a sender could shape. */
 export const workerMessageInputSchema = z.object({ messageId: z.string().min(1) }).strict();
 
-/** Server-written session state: the message ids this session has acted on, newest last. */
-export const WORKER_MESSAGES_SEEN_STATE = "workerMessagesSeen";
 
 /** The request-state field naming the message that woke this turn, when its text may be relayed. */
 const RELAY_STATE = "workforceRelayTo";
@@ -149,6 +148,10 @@ export function workerMessageEntry(options: {
   });
 
   const block = sequencer({ name: "worker-message-arrived", inputSchema: workerMessageInputSchema })
+    // A message for a task session whose task waits runs for that task, and
+    // the task is checked at its end; its answer is never the task's result
+    // (FIX-2077). First, before any await.
+    .tap(admitOwnTask("worker-message-admission", false))
     .step(heard)
     .tapIf((got: Heard) => got.act !== "none", line)
     .tapIf(

@@ -15,7 +15,7 @@
  * does, while the sender's assignee names `flowKind: "task-recipient"`.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ORG_ID, SuspensionError } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { encodeUserSegment, type FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
@@ -32,6 +32,7 @@ import {
   type TaskWorkerInput,
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
+import { currentLeaseRenewal } from "../../src/tasks/lease-renewal-scope";
 import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_cross_dispatch";
@@ -231,7 +232,9 @@ const partitionedLedger = defineTaskCollection({
 /** Each run of the agent-flow entry, with where and as whom it ran. */
 const agentRuns: Array<{ taskId: string; attempt: number; userId: string; sessionId: string }> = [];
 /** Per-task script for the agent's worker: what each attempt does. */
-const scripts = new Map<string, (attempt: number) => "complete" | "suspend" | "park" | "slow">();
+const scripts = new Map<string, (attempt: number) => "complete" | "die" | "park" | "slow">();
+/** Releases the runs a script left for dead, so the test's teardown finds no request still open. */
+let releaseDead: () => void = () => undefined;
 /** Where a `park` script parks its row: the partition the test filed it in. */
 const parkIn = new Map<string, string>();
 
@@ -322,10 +325,19 @@ function agentWorker() {
         sessionId: ctx.session.identity.id,
       });
       const step = scripts.get(input.taskId)?.(input.attempts) ?? "complete";
-      if (step === "suspend") {
-        // The run dies as far as the board can tell: no recorder runs and its
-        // renewal stops, so the lease lapses with the row in progress.
-        throw new SuspensionError({ suspensionId: `gone-${input.taskId}`, reason: "human_approval" });
+      if (step === "die") {
+        // The run dies as far as the board can tell: its renewal stops and it
+        // never ends, so the lease lapses with the row in progress. (A
+        // suspension is no longer a way to die: a suspended task keeps its
+        // claim with no lease, FIX-2077 D1.)
+        currentLeaseRenewal()?.stop();
+        await new Promise<void>((resolve) => {
+          const before = releaseDead;
+          releaseDead = () => {
+            before();
+            resolve();
+          };
+        });
       }
       if (step === "slow") await sleep(MIN_LEASE_DURATION_MS * 2);
       if (step === "park") {
@@ -603,7 +615,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
   it("V2 · BR-15 · a dead cross-flow run's row is taken back by its own board, not another conversation's", async () => {
     const h = await bootPartitioned();
     try {
-      scripts.set("t", (attempt) => (attempt === 1 ? "suspend" : "complete"));
+      scripts.set("t", (attempt) => (attempt === 1 ? "die" : "complete"));
       await h.act(ALICE, "conv_a", "file", { id: "t" });
       await h.act(ALICE, "conv_a", "drain");
       await until(() => agentRuns.length === 1, "the first attempt");
@@ -623,6 +635,7 @@ describe("a ledger kept per conversation, handed to a task session", () => {
       expect(settled.attempts).toBe(2);
       expect(settled.abandonments).toBe(1);
     } finally {
+      releaseDead();
       await h.state.dispose();
     }
   }, 20_000);

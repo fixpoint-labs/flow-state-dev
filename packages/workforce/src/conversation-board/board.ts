@@ -128,7 +128,7 @@ import {
   TASK_ID_STATE_KEY,
   WORKER_ID_STATE_KEY
 } from "../workers/keys";
-import { PIECE_OF, RETRY_OF, RUN_BOARD_ENTRY } from "./board-entries";
+import { PIECE_OF, RUN_BOARD_ENTRY } from "./board-entries";
 import {
   DEFAULT_TASK_CHAIN_LIMIT,
   MAX_TASK_DEPTH,
@@ -153,7 +153,7 @@ import {
 import { sendPostCancelled } from "./notice-delivery";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
-import { cascadeIfSplit, pieceOwnerOf, replaySplits, retryingPiece, settleIfOwedLater, settleOwed } from "./split";
+import { pieceOwnerOf } from "./held-task";
 import { STEP_ATTEMPTS, definePlanning, isAnsweringTurn, isSteppingTurn, planLedgerAt, planLedgerResources } from "./plan";
 import { verifiedWorkerOf } from "../workers/verified-worker";
 
@@ -793,15 +793,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (delegates.available.size === 1) assignee = [...delegates.available.keys()][0]!;
       }
       // In a task session, the row is a piece of the task it was filed for:
-      // server-written, so its settle reads only its own pieces. Filed in the
-      // turn a piece's failure woke, it is that piece's retry.
+      // server-written, so the task's cascade reaches only its own pieces.
       const owner = await pieceOwnerOf(ctx);
-      const retrying = owner === undefined ? undefined : retryingPiece(ctx);
       const given = callerMetadata(init.metadata);
-      const metadata =
-        owner === undefined
-          ? given
-          : { ...(given ?? {}), [PIECE_OF]: owner, ...(retrying !== undefined ? { [RETRY_OF]: retrying } : {}) };
+      const metadata = owner === undefined ? given : { ...(given ?? {}), [PIECE_OF]: owner };
       const input = ownProjectIn(init.input, filingProjectAddressOf(ctx.session.state));
       // The task this piece is for learns where its session is first, so its
       // ending's cascade can reach the piece (FIX-2080 D2).
@@ -842,7 +837,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         ? { ...(guards as object), claim: undefined }
         : guards;
     };
-    /** A write that may end a split task: cancel its open pieces once it lands. */
+    /** A write that may end a top task: its chain's count goes with it. */
     const ending =
       (write: (id: string, ...rest: any[]) => Promise<TaskWriteOutcome>) =>
       async (id: string, ...rest: any[]): Promise<TaskWriteOutcome> => {
@@ -850,7 +845,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         const last = rest.length - 1;
         const args = last >= 0 && rest[last] !== null && typeof rest[last] === "object" ? [...rest.slice(0, last), ownClaim(rest[last])] : rest;
         const outcome = await write(id, ...args);
-        await cascadeIfSplit(ctx, before, outcome);
         // A top task ended here takes its chain's count with it.
         const after = ref.get(id);
         if (taskChainOf(ctx) === undefined && after !== undefined && isTerminalStatus(after.status) && before?.status !== after.status) {
@@ -1197,8 +1191,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     // the pass pays it, one at a time. A touch resends nothing itself. Don't
     // narrow it to writes, or to a session that files now: rows filed before
     // it lost its last task-taking delegate still run and are heard (FIX-1802 BR-5).
-    // Its own split's settle, owed once its pieces are done, is paid there too.
-    if (hasPastDue(ref.list(), ref.now()) || (await settleOwed(ctx))) await triggerPass(ctx);
+    if (hasPastDue(ref.list(), ref.now())) await triggerPass(ctx);
     else if (hasStartable(ref)) await triggerPass(ctx, { touch: true });
     // No board to act on while the session doesn't file: none of its
     // delegates takes a task now, so an action answers `no_delegation_board`.
@@ -1228,16 +1221,10 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     const rows = ref.list();
     // Reports stored before FIX-2078 (BP-030), once each.
     await sendLegacyReports(ctx, ref, rows, { boardId: CONVERSATION_LEDGER_ID, partition }, "conversation-board-report");
-    // The settles owed down the chain: each parked split row's session
-    // settles its task once its pieces are done, behind any turn it runs
-    // (FIX-1802 BR-17); and this session's own, when its task is split.
-    await replaySplits(ctx, rows);
-    await settleIfOwedLater(ctx);
     let next = debts.nextDue;
     const later = (at: number) => {
       next = next === undefined ? at : Math.min(next, at);
     };
-    if (await settleOwed(ctx)) later(Date.now() + NOTICE_DUE_MS);
     // The last ready check: a row still startable is a start owed.
     if (hasStartable(ref)) later(Date.now() + NOTICE_DUE_MS);
     return next;
@@ -1321,14 +1308,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * `tools:` line doesn't fence them out.
    */
   // Chosen per turn: a wait is offered only where the host can hold one
-  // (FIX-1816). This board resumes waits: its notice entry and every run call
-  // `resumeOwedWaits`. And it dispatches (FIX-1875): its ref's filings and
+  // (FIX-1816). This board resumes waits: its pass resumes the turns owed a
+  // resume when their task ends. And it dispatches (FIX-1875): its ref's filings and
   // dispatches wake a run of it, so `dispatchTask` starts work now.
   // On a turn routing a post (FIX-1872), `dispatchTask` also takes its post
   // form; a session that files no task gets that one tool alone.
   // A task session's turn can't wait, but its task can: a piece filed without
-  // `wait` parks the task when the turn ends, and the piece's ending wakes it
-  // (`./split`). The refusal and the description say so.
+  // `wait` leaves the task waiting on it (`waitingOn: "filed"`) when the turn
+  // ends, and the piece's ending wakes it. The refusal and the description
+  // say so.
   const eight = taskToolsForTurn(turnResolver, turnRoster, {
     resumesWaits: true,
     dispatches: true,

@@ -17,7 +17,7 @@ import { readDispatchStamp } from "./dispatch-metadata";
 import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf, addressEntries } from "@flow-state-dev/core";
-import type { TaskEntry } from "@flow-state-dev/core/types";
+import type { RequestEnding, TaskEntry } from "@flow-state-dev/core/types";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
@@ -83,6 +83,7 @@ import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { noteWaitDeadline } from "../durability/wait-deadlines";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
+import { requestEndRegistryOf } from "./request-end-hooks";
 import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
@@ -2205,6 +2206,8 @@ async function runActionAttempt<
   // `recorded` is the record's snapshot, taken then too, so a hook that
   // mutates the returned object cannot change the recorded answer.
   let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
+  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
+  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -2311,11 +2314,29 @@ async function runActionAttempt<
         await response.emitItemAdded(suspItem);
         await response.emitItemDone(suspItem);
 
-        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
+
+        // A suspended request's work is over for now; the hooks registered
+        // for its end are told why it stopped (FIX-2077). Before the record
+        // says `suspended`: until then no resume can start, so a hook's write
+        // (what the task waits on) never lands on a resume already running.
+        // The heartbeat runs on until they end: the record still reads
+        // `in_progress`, and a request with no heartbeat reads as a crashed run.
+        const endFailure = await requestEndRegistryOf(ctx)?.run(
+          { status: "suspended", suspension: { reason: String(suspendError.reason) } },
+          { requestId, logger }
+        );
+        if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+        if (endFailure !== undefined) {
+          logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+            requestId,
+            status: "suspended",
+            error: endFailure.message
+          });
+        }
 
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
@@ -2552,10 +2573,16 @@ async function runActionAttempt<
     ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
 
-    await response.emitRequestStatus(terminalStatus);
-
-    // Persist the final event list (includes terminal status event)
-    await options.stores.request.flushEvents(requestId);
+    // A request that owes request-end hooks (FIX-2077: a dispatched task's
+    // run) holds back its terminal status until they have run, and then emits
+    // the status they leave it with: a stream ends once, matching the record.
+    // Every other request emits it here, as before.
+    const holdsTerminalStatus = requestEndRegistryOf(ctx)?.owes() === true;
+    if (!holdsTerminalStatus) {
+      await response.emitRequestStatus(terminalStatus);
+      // Persist the final event list (includes terminal status event)
+      await options.stores.request.flushEvents(requestId);
+    }
 
     // Durable completion: clean up THIS request's own durability artifacts
     // (suspension records + lease) when it completes.
@@ -2639,6 +2666,42 @@ async function runActionAttempt<
     // under the id; wait for it, as for `onCompleted`'s above, and for any
     // item or event writes it and `onFinished` left pending.
     await drainRequestSideChainPool(ctx);
+    // The request's work is over: the hooks framework packages registered for
+    // its end run now, before the pending writes settle, so what they write
+    // is flushed with the rest (FIX-2077). A failure a hook hands back is the
+    // request's own: the record already reads `completed`, so it is patched to
+    // `failed` with that error, and the run returns it (FIX-963's guarantee
+    // that a run whose result the board could not record never reads as
+    // success).
+    // Held, the request stays owed until its terminal status is flushed below:
+    // a shutdown that closed the stores first would leave its log without one.
+    const endFailure = await requestEndRegistryOf(ctx)?.run(
+      { status: terminalStatus },
+      { requestId, logger, keepOwed: holdsTerminalStatus }
+    );
+    if (endFailure !== undefined) {
+      const normalized = applyNormalizedErrorSeam(
+        internalSeams,
+        normalizeError(endFailure, { scope: "request", blockName: action.block.name }),
+        metadata
+      );
+      terminalRecordIncarnation = await settleRequestRecord(
+        options.stores,
+        requestId,
+        { status: "failed", error: normalized, answered: actionAnswer.recorded },
+        { failedAtMs: Date.now(), items: itemsToPersist(), heartbeatsUntilFinalized: heartbeatIntervalMs > 0 }
+      );
+      ctx.requestRuntime.status = "failed";
+      endError = normalized;
+    }
+    if (holdsTerminalStatus) {
+      try {
+        await response.emitRequestStatus(endError !== undefined ? "failed" : terminalStatus);
+        await options.stores.request.flushEvents(requestId);
+      } finally {
+        requestEndRegistryOf(ctx)?.release();
+      }
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // The run has nothing left to write under this id.
@@ -2671,7 +2734,8 @@ async function runActionAttempt<
       // `response.getItems()` on a normal run.
       items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
-      requestId
+      requestId,
+      ...(endError !== undefined ? { error: endError } : {})
     };
   } catch (error) {
     // The heartbeat is deliberately NOT cleared here. It has to outlive the
@@ -2934,6 +2998,21 @@ async function runActionAttempt<
     // run writing under the id, as are the item and event writes they left
     // pending.
     await drainRequestSideChainPool(ctx);
+    // As on the success path (FIX-2077). The request has already ended, so a
+    // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
+    const ending: RequestEnding = wasIntentionalAbort
+      ? { status: "aborted" }
+      : signalAborted
+        ? { status: "interrupted" }
+        : { status: "failed", error: { message: normalizedError?.message ?? String(error) } };
+    const endFailure = await requestEndRegistryOf(ctx)?.run(ending, { requestId, logger });
+    if (endFailure !== undefined) {
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+        requestId,
+        status: ending.status,
+        error: endFailure.message
+      });
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // As on the success path: only the last live attempt stamps.

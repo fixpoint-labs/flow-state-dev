@@ -48,7 +48,7 @@
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { BlockContext, BlockDefinition, LLMMessage, RequestScopeHandle, TaskDispatchInput } from "@flow-state-dev/core/types";
-import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { afterTaskCheck, taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { taskClaimTicketSchema, type TaskClaimTicket, type TaskCollectionRef, type TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "../conversation-board/ledger";
@@ -425,7 +425,15 @@ const tell = handler({
   outputSchema: z.object({ sent: z.number() }),
   resources: { ...conversationLedgerResources },
   requestStateSchema: takenPostStateSchema,
-  execute: async (_input, ctx) => ({ sent: await tellCoordinator(ctx as never) })
+  // After the claim gate's check at the request's end (FIX-2077): the post row
+  // owes its notice only once it settles, and it settles after this hook runs.
+  execute: async (_input, ctx) => {
+    let sent = 0;
+    await afterTaskCheck(ctx as never, async () => {
+      sent = await tellCoordinator(ctx as never);
+    });
+    return { sent };
+  }
 });
 
 /**

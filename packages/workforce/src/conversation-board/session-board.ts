@@ -17,8 +17,8 @@
  *   `removeDelegate`, `setFallback`, `listDelegates`).
  * - **The entries**: `entries(turn)`, the internal entries the board runs on
  *   (a run of the board), its notices arrive on (`onTaskSettled`), and a
- *   split task settles and cancels its pieces on, and the session state they
- *   keep (`sessionStateShape`, `serverOwned`).
+ *   worker's message arrives on, and the session state they keep
+ *   (`sessionStateShape`, `serverOwned`).
  *
  * The built-in `agent` flow and the coordinator carry it through the agent's
  * shared worker turn. An app's own worker flow carries it the same way:
@@ -56,11 +56,11 @@ import { FILE_SCHEDULED_TASK_ENTRY } from "../schedules/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard } from "./board";
-import { CANCEL_PIECES_ENTRY, RUN_BOARD_ENTRY, SETTLE_SPLIT_ENTRY } from "./board-entries";
+import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY } from "./board-entries";
+import { checkTaskEntry } from "./task-admission";
 import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./notice-delivery";
 import { questionPark } from "./question-park";
 import { taskProgress } from "./task-progress";
-import { cancelPiecesBlock, cancelPiecesInputSchema, settleSplitBlock } from "./split";
 import {
   AFTER_REPLY_CONCURRENCY,
   PASS_CONCURRENCY,
@@ -196,18 +196,19 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /** The session-state fields only this kit writes, for the flow's `session.serverOwned`. */
     serverOwned: SESSION_BOARD_SERVER_OWNED,
     /**
-     * The internal entries the board needs on its flow: a run of the board,
-     * the notice of a task the session filed, a split task's settle and
-     * the cancel of its pieces, a worker's message (`onWorkerMessage`,
-     * FIX-1989), which always wakes the turn: `policy` is the notices' only,
-     * and a scheduled task's filing (`fileScheduledTask`, FIX-2085), through
-     * the board's own `dispatchTask_tasks`. Spread into
-     * `internal: { actions: ... }`.
+     * The internal entries the board needs on its flow, in this order: a run
+     * of the board; the notice of a task the session filed; a check of the
+     * session's waiting task (`CHECK_TASK_ENTRY`); with `onPost`, a post
+     * row's notice; a worker's message (`onWorkerMessage`, FIX-1989), which
+     * always wakes the turn; and a scheduled task's filing
+     * (`fileScheduledTask`, FIX-2085), through the board's own
+     * `dispatchTask_tasks`. Spread into `internal: { actions: ... }`.
      *
      * @param turn The flow's turn for one message (`{ message }` in), woken
      *   with a notice as its message.
-     * @param policy Whether a notice wakes the turn (`judgment`, the default)
-     *   or lands as a line only (`fixed`), for the running session.
+     * @param policy For the two notice entries only (a task's and a post's):
+     *   whether a notice wakes the turn (`judgment`, the default) or lands as
+     *   a line only (`fixed`), for the running session.
      * @param onPost A post row's ending, for a flow that hands posts on: the
      *   coordinator's own handling (`PostEnding` in), on its own entry.
      */
@@ -221,9 +222,10 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // and runs once the first ends.
         [RUN_BOARD_ENTRY]: { inputSchema: z.object({}).strict(), block: board.runBoard, concurrency: PASS_CONCURRENCY },
         [TASK_SETTLED_ENTRY]: taskSettledEntry({ turn, policy, ...(onPost === undefined ? {} : { onPost }) }),
+        // A check of the session's waiting task, on the notices' line: what
+        // the upgrade's backfill wakes for a split an older host parked.
+        [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
-        [SETTLE_SPLIT_ENTRY]: { inputSchema: z.object({}).strict(), block: settleSplitBlock, concurrency: AFTER_REPLY_CONCURRENCY },
-        [CANCEL_PIECES_ENTRY]: { inputSchema: cancelPiecesInputSchema, block: cancelPiecesBlock, concurrency: AFTER_REPLY_CONCURRENCY },
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)
       };

@@ -1821,7 +1821,7 @@ rounds: 0                # how many times an answer goes back out: 0 (the defaul
   is refused with a 400,
   `Session state field "delegates" is written only by flow "coordinator"; a caller cannot set it.`
   Every worker flow built on `installation.session()` refuses `delegates`, `fallback`,
-  `taskNotices` and `splitParent` the same way, including a flow that has no such field.
+  and `taskNotices` the same way, including a flow that has no such field.
 - **Who can be a delegate.** A worker on the conversation's user's own roster, one of theirs or a
   standard one, whose flow takes a delegated post or a task. A conversation holds at most 25. A
   standard coordinator's defaults can name only standard workers; `createWorkerInstallation`
@@ -1898,7 +1898,8 @@ heard within seconds, without anyone opening the conversation, through the sessi
 
 **After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
-whose pieces have all ended but which hasn't completed, with no wake to pay it. Call `backfillBoardWakes(stores, { userCell })` once at host
+whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
+version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
 orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
 now, in each session holding such a debt, and returns how many. It is safe to run again, and
@@ -1928,10 +1929,17 @@ and add no depth. See
 
 A task's worker can split it into pieces for its own delegates; a piece for any other worker is
 refused with `unknown_assignee`. An unassigned piece goes to
-its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from. Each piece's ending wakes a turn in the task session. The task
-completes with `{ answer, pieces }`: `answer` is what the worker said in the turn after the last
-piece ended, and `pieces` lists each piece's output. With no such turn (after a restart, for
-example), `answer` is absent. Splitting goes up to
+its delegate when it has exactly one. Each piece carries `filedByTask`, the task it was split from.
+The task stays running while a piece is open, with no lease (`waitingOn: "filed"`). Each piece's
+ending wakes a turn in the task session, which decides what it means: a failed piece fails nothing
+by itself. Once no piece holds it, the task completes with its output like any task's: the latest
+`reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
+throws fails the attempt. Read a piece's result from its own row (`listTasks({ filedByTask })`,
+`getTask`). A message to the worker in its task session while the task runs holds it open too,
+and its answer is never the task's output. Run a workforce that splits on a host with durable
+execution: if the server stops between a piece's ending and its notice reaching the task session,
+a durable host delivers the notice when it starts again; without durable execution the task stays
+`in_progress` with nothing to wake it. Splitting goes up to
 five boards deep and 100 tasks under one top task; a filing past either is answered
 `{ ok: false, error: "total_task_cap_exceeded" }`. Raise the 100 with `hireWorkforce`'s
 `taskChainLimit`. See [Delegating work](https://flow-state.dev/docs/workforce/delegating-work).

@@ -107,6 +107,7 @@ export type {
   TaskWriteDeclineReason,
   TaskDispatchOptions,
   TaskProgress,
+  TaskWaitingOn,
   TaskCancelSource,
   CancelOptions,
 } from "./collection/types";
@@ -178,6 +179,7 @@ export { resolveResourceCollection } from "./collection/resolve-resource-collect
 export {
   recordEnding,
   owedNotices,
+  owesAnyNotice,
   isNoticeOwed,
   clearNotice,
   noticeKey,
@@ -202,6 +204,9 @@ export {
   type DeclaredDelivery,
   type NoticeAddress,
 } from "./notice/delivery";
+
+// Filed work still holding a task (FIX-2077, rule 6).
+export { filedWorkHolds, holdsItsFiler } from "./helpers/filed-work";
 
 // Wake filters (FIX-660) — pair with `.waitForCondition`'s `wakeOn` option.
 export { onTaskChangeFor } from "./collection/predicates";

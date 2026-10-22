@@ -37,6 +37,7 @@ import {
   applyTransition,
   assertValidLeaseDeadline,
   linkRunGuards,
+  waitingOnPatch,
   completionPatch,
   cancelPatch,
   progressPatch,
@@ -702,6 +703,23 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // rides the ordinary transition path with renewal's guards; unlike a
       // renewal it IS a change a reader acts on, so it publishes `run_linked`.
       return transitionTo(id, "in_progress", "run_linked", () => runLinkPatch(run), linkRunGuards(linkOptions));
+    },
+
+    async setWaitingOn(id, waitingOn, waitOptions) {
+      requireClaimTicket(
+        waitOptions?.claim,
+        "setWaitingOn",
+        "of the attempt that waits. Only the request holding a task's claim records what it waits on."
+      );
+      // Same-status, fenced like a run link: a finished, recreated or reclaimed
+      // row declines. No `task-change`, as a renewal publishes none.
+      return transitionTo(
+        id,
+        "in_progress",
+        null,
+        (task) => waitingOnPatch(task as Task, waitingOn, waitOptions) as Partial<Task<TInput, TOutput>>,
+        linkRunGuards({ claim: waitOptions.claim })
+      );
     },
 
     async complete(id, output, options) {

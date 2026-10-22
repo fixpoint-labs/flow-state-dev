@@ -148,11 +148,14 @@ export async function handleRequestStream(
   const leaseHeld = lease !== null;
 
   // Live-tail branch: a known-in-flight request — or a suspended one with an
-  // active continuation — streams via subscribeToEvents.
+  // active continuation, or a terminal one whose run is still writing its
+  // terminal event (FIX-2077: held until its request-end hooks have run) —
+  // streams via subscribeToEvents.
   if (
     requestRecord !== undefined &&
     (!isTerminalRequestStatus(requestRecord.status) ||
-      (requestRecord.status === "suspended" && leaseHeld))
+      (requestRecord.status === "suspended" && leaseHeld) ||
+      (await terminalEventStillComing(ctx.stores, requestRecord)))
   ) {
     // The addressed instance must own the record — a same-kind peer's request
     // is as unknown here as another flow's.
@@ -291,6 +294,11 @@ export async function handleRequestStream(
   }
   if (replaySource.length === 0 && cursor.sequenceNumber === undefined) {
     replaySource = buildReplayEvents(requestRecord, session);
+  } else {
+    // A log its run left with no terminal event (it died, or stopped, before
+    // writing it) still ends: once, with the record's status (FIX-2077).
+    const terminal = await missingTerminalEvent(ctx.stores, requestRecord, replaySource, cursor.sequenceNumber);
+    if (terminal !== undefined) replaySource = [...replaySource, terminal];
   }
 
   let replay = replayRequestEvents({
@@ -510,5 +518,65 @@ export function voiceErrorToHttpStatus(kind: VoiceErrorKind): number {
     case "unknown":
       return 500;
   }
+}
+
+/** A record status a request ends in for good: terminal, and not a suspension (which a resume continues). */
+const endsForGood = (status: RequestRecord["status"]): boolean => status !== "suspended" && isTerminalRequestStatus(status);
+
+/**
+ * Whether a terminal record's run may still write its terminal event
+ * (FIX-2077): a request that owed request-end hooks settles its record
+ * (`completed`, `incomplete`, or `failed` on a hook's verdict) first, emits
+ * its terminal status once they have run, and then stamps `finalizedAtMs`.
+ * While that stamp is unset (`null`; absent on records from before it
+ * existed) and its log has no terminal event, a reader tails it live, because
+ * the event that comes may say something else than the record does now. A run
+ * that died then ends the tail through the live tail's liveness timeout, or,
+ * once the stale sweep stamps it, a replay ends with
+ * {@link missingTerminalEvent}.
+ *
+ * An `interrupted` or `aborted` record is not tailed. A run's own path for
+ * those also writes the record before its event, so a reader in that gap gets
+ * a synthetic at the log's last sequence number plus one, and then the real
+ * event lands at that same number with the same type: it says the same thing.
+ * Without a run (the stale sweep or the stop of a parked request wrote it),
+ * nothing else comes, except a same-id continuation of an `interrupted` one,
+ * which starts past that number (`continueRequest`).
+ */
+async function terminalEventStillComing(stores: StoreRegistry, record: RequestRecord): Promise<boolean> {
+  const held = record.status === "completed" || record.status === "incomplete" || record.status === "failed";
+  if (!held || record.finalizedAtMs !== null) return false;
+  return !(await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent);
+}
+
+/**
+ * The terminal event a replay ends with when its log holds none: the record's
+ * own status (FIX-2077). Reached only when {@link terminalEventStillComing} is
+ * false, so nothing more can be written that says otherwise. It takes the
+ * log's last sequence number plus one, the rule for a synthetic terminal
+ * (`streaming.md`): a client, which dedupes by sequence number, never drops it
+ * as a repeat of an event it saw, and a same-id continuation starts past it.
+ * Not persisted. `undefined` when the log (before the cursor included) has
+ * one, or the record isn't final.
+ */
+async function missingTerminalEvent(
+  stores: StoreRegistry,
+  record: RequestRecord,
+  slice: readonly RequestStreamEvent[],
+  cursor: number | undefined
+): Promise<RequestStreamEvent | undefined> {
+  if (!endsForGood(record.status)) return undefined;
+  if (slice.some(isTerminalRequestStreamEvent)) return undefined;
+  const log = cursor === undefined ? slice : await stores.request.getEvents(record.id);
+  if (log.some(isTerminalRequestStreamEvent)) return undefined;
+  const last = log.reduce((max, event) => Math.max(max, event.sequence_number ?? 0), cursor ?? 0);
+  return {
+    stream: "request",
+    type: `request.${record.status}`,
+    requestId: record.id,
+    sequence_number: last + 1,
+    status: record.status,
+    ts: record.completedAtMs ?? record.failedAtMs ?? record.updatedAt ?? Date.now()
+  } as RequestStreamEvent;
 }
 

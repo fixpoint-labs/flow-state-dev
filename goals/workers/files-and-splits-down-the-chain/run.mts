@@ -17,10 +17,10 @@
  *
  * Every grade reads the store file the run wrote (the coordinators goal's `store.mts`), except what an
  * action answered, which is what the person saw. Leg c's tool lists are what
- * each turn was handed, as the turn said it, never the prompt.
+ * each turn was handed, as the turn said it, never the prompt: noted, not graded.
  *
  * Run:      pnpm tsx goals/workers/files-and-splits-down-the-chain/run.mts
- * Controls: GOAL_CONTROL=no-delegate-check | no-parent-settle (each runs the leg it must fail)
+ * Controls: GOAL_CONTROL=hands-to-a-non-delegate | no-parent-settle (each runs the leg it must fail)
  * Before:   GOAL_COMMIT=<sha> serves that commit, from its own tree and install
  * Legs:     GOAL_LEGS=a,b,c,d,e (default: all)
  * Attempts: GOAL_ATTEMPTS=<n> fresh Labs for leg e, until it first passes (default 3; 1 under a control)
@@ -44,8 +44,6 @@ const ALL_LEGS = ["a", "b", "c", "d", "e"] as const;
 const SCRIPTED_LEGS = new Set(["a", "b", "c", "d"]);
 /** The app's own chain cap on leg d's second Lab. */
 const APP_CAP = 3;
-/** The task tools (the pinned eight, and `answerTask`): none may be on the turn of a worker with no task-taking delegate. */
-const TASK_TOOLS = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"];
 const say = (s: string) => console.error(`[split ${new Date().toISOString().slice(11, 19)}] ${s}`);
 const show = (value: unknown) => JSON.stringify(value)?.slice(0, 500);
 
@@ -62,18 +60,18 @@ interface Control {
 }
 
 const CONTROLS: Record<string, Control> = {
-  "no-delegate-check": {
-    name: "no-delegate-check",
+  "hands-to-a-non-delegate": {
+    name: "hands-to-a-non-delegate",
     legs: ["c"],
-    assertions: ["c:files-nothing"],
+    assertions: ["c:reaches-no-delegate"],
     patches: [
       {
         module: "packages/workforce/src/conversation-board/board.ts",
-        from: String.raw`\(await options\.delegates\(ctx\)\)\.available\.size > 0;`,
-        to: "true;",
+        from: String.raw`if \(delegates\.available\.size === 1\) assignee = \[\.\.\.delegates\.available\.keys\(\)\]\[0\]!;`,
+        to: "if (delegates.available.size + delegates.unavailable.size === 1) assignee = [...delegates.available.keys(), ...delegates.unavailable.keys()][0]!;",
       },
     ],
-    does: "the grant always says yes: every session's turn gets the task tools and the app's task actions get a board, whatever its delegates take",
+    does: "an unassigned filing goes to the conversation's only delegate even when that delegate takes no task: desk.router's goes to desk.poster",
   },
   "no-parent-settle": {
     name: "no-parent-settle",
@@ -81,12 +79,12 @@ const CONTROLS: Record<string, Control> = {
     assertions: ["a:completes-after-pieces"],
     patches: [
       {
-        module: "packages/workforce/src/conversation-board/split.ts",
-        from: String.raw`export async function settleParent\(ctx(?:: BlockContext)?\)(?:: Promise<boolean>)? \{`,
-        to: "$& return false;",
+        module: "packages/workforce/src/conversation-board/task-settled.ts",
+        from: String.raw`\.tap\(admitOwnTask\("conversation-task-settled-admission", true\)\)`,
+        to: "",
       },
     ],
-    does: "a split task never settles from its pieces: it stays parked on the board above after they end",
+    does: "a piece's notice never runs for the task that filed it, so the task is never checked after its first turn: it stays running on the board above after its pieces end",
   },
 };
 
@@ -189,6 +187,12 @@ const onBoardOf = (rows: StoredTask[], sessionId: string) => rows.filter((r) => 
 const completedLines = (store: string, conv: string, taskId: string, worker: string) =>
   items(store, conv, "message").filter((m) => m.agentName === worker && textOf(m).includes(`(${taskId}) completed`));
 
+/** Whether a split task's output is its worker's woken answer (`Noted.`), never a list of its pieces (FIX-2077 D3). */
+function isWokenAnswer(output: unknown): boolean {
+  if (output === undefined || (output as { pieces?: unknown } | null)?.pieces !== undefined) return false;
+  return JSON.stringify(output).includes("Noted.");
+}
+
 /** Leg a: Alice's `agent` worker files for its delegate, which splits; Bob's worker of the same name stays his. */
 function gradeA(o: any, store: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
@@ -212,6 +216,8 @@ function gradeA(o: any, store: string): LegResult {
     r.failures.push(`a:split — wanted crew.planner's task session to file two pieces, one for crew.one and one for crew.two, on its own board by its own createTask; sessions ${plannerSessions.length}, its createTask answered ${show(pieceCalls)}, pieces on its board ${show(pieces.map((p) => [p.assignee, p.status]))}`);
   }
   const chain = chainUnder(all, A.conv);
+  /** Where a session in the chain sits: under the conversation, under the planner, or its parent's id. */
+  const parentOf = (s: (typeof chain)[number]) => (s.parentSessionId === A.conv ? "conv" : s.parentSessionId === planner?.id ? "planner" : s.parentSessionId);
   const pieceSessions = pieces.map((p) => all.filter((s) => s.state.taskId === p.id));
   if (
     chain.length !== 4 ||
@@ -222,10 +228,10 @@ function gradeA(o: any, store: string): LegResult {
     !top.partition.startsWith(`${A.conv}~`)
   ) {
     r.failures.push(
-      `a:four-sessions — wanted four sessions, all Alice's: her conversation, the task's session under it, and one per piece under that, each row on its own session's board; the chain ${show(chain.map((s) => [s.state.workerId, s.userId === alice ? "alice" : s.userId, s.parentSessionId === A.conv ? "conv" : s.parentSessionId === planner?.id ? "planner" : s.parentSessionId]))}`,
+      `a:four-sessions — wanted four sessions, all Alice's: her conversation, the task's session under it, and one per piece under that, each row on its own session's board; the chain ${show(chain.map((s) => [s.state.workerId, s.userId === alice ? "alice" : s.userId, parentOf(s)]))}`,
     );
   }
-  const outputPieces = ((top?.output as { pieces?: Array<{ taskId?: string }> } | undefined)?.pieces ?? []).map((p) => p.taskId).sort();
+  const answered = isWokenAnswer(top?.output);
   const lastPiece = Math.max(...pieces.map((p) => p.completedAt ?? Infinity));
   if (
     top?.status !== "completed" ||
@@ -234,10 +240,10 @@ function gradeA(o: any, store: string): LegResult {
     pieces.length !== 2 ||
     pieces.some((p) => p.status !== "completed") ||
     !(lastPiece <= top.completedAt) ||
-    show(outputPieces) !== show(pieces.map((p) => p.id).sort())
+    !answered
   ) {
     r.failures.push(
-      `a:completes-after-pieces — wanted the top task completed within 120 s of the filing, after both pieces, from them; it is ${top?.status ?? "missing"}${top?.completedAt === undefined ? "" : ` ${top.completedAt - A.turn.startedAt} ms after the filing`}, pieces ${show(pieces.map((p) => [p.status, p.completedAt]))}, its output names ${show(outputPieces)}`,
+      `a:completes-after-pieces — wanted the top task completed within 120 s of the filing, after both pieces, from them; it is ${top?.status ?? "missing"}${top?.completedAt === undefined ? "" : ` ${top.completedAt - A.turn.startedAt} ms after the filing`}, pieces ${show(pieces.map((p) => [p.status, p.completedAt]))}, its output ${show(top?.output)}`,
     );
   }
   const conv = all.find((s) => s.id === A.conv);
@@ -296,12 +302,17 @@ function gradeB(o: any, store: string): LegResult {
   return r;
 }
 
-/** Leg c: no task-taking delegate, no task tool, and nothing files. */
+/**
+ * Leg c: no task-taking delegate, so nothing reaches a delegate (FIX-2076's
+ * rule: the turn has the task tools, and an unassigned filing stays on its own
+ * board as a step).
+ */
 function gradeC(o: any, store: string): LegResult {
   const r: LegResult = { failures: [], notes: [] };
   const C = o.c;
   const alice = o.people.alice.userId as string;
   const rows = taskRows(store, alice, o.org);
+  const all = sessions(store);
   for (const label of ["router", "solo"] as const) {
     const X = C[label];
     const said = items(store, X.conv, "message")
@@ -310,16 +321,16 @@ function gradeC(o: any, store: string): LegResult {
       .join("\n");
     const listed = /tools=(\[[^\]]*\])/.exec(said);
     const tools = listed === null ? null : (JSON.parse(listed[1]!) as string[]);
-    const onTurn = tools === null ? [] : tools.filter((name) => TASK_TOOLS.includes(name));
-    if (tools === null || onTurn.length > 0) {
-      r.failures.push(`c:no-task-tool — wanted ${X.worker}'s turn handed none of the task tools; ${tools === null ? `it said no tool list (the turn ${X.turn.status}: ${show(said || X.turn.error)})` : `it was handed ${show(onTurn)}`}`);
-    }
     const tried = addTasks("createTask", store, X.conv, X.turn.requestId);
     const stored = onBoardOf(rows, X.conv);
-    if (tried.some((x) => x?.ok === true) || !refusedWith(X.app.output ?? X.app.error, "no_delegation_board") || stored.length > 0) {
-      r.failures.push(`c:files-nothing — wanted ${X.worker}, with no task-taking delegate, to file nothing: its turn's createTask answered ${show(tried)}, the app's createTask ${show(X.app.output ?? X.app.error ?? X.app.status)}, rows on its board ${stored.length}`);
+    const assigned = stored.filter((row) => row.assignee != null);
+    const taskSessions = all.filter((s) => s.parentSessionId === X.conv && s.state.taskId !== undefined);
+    if (!tried.some((x) => x?.ok === true) || stored.length === 0 || assigned.length > 0 || taskSessions.length > 0 || stored.some((row) => row.status !== "held")) {
+      r.failures.push(
+        `c:reaches-no-delegate — wanted ${X.worker}, with no task-taking delegate, to keep its filing on its own board as a held step: no row with an assignee and no task session; its turn's createTask answered ${show(tried)}, rows on its board ${show(stored.map((row) => [row.status, row.assignee ?? null]))}, task sessions under it ${taskSessions.length}`,
+      );
     }
-    r.notes.push(`${X.worker}: tools ${show(tools)}; its createTask ${show(tried)}; the app's ${show(X.app.output ?? X.app.status)}`);
+    r.notes.push(`${X.worker}: tools ${show(tools)}; its createTask ${show(tried)}; the app's ${show(X.app.output ?? X.app.status)}; rows ${show(stored.map((row) => [row.status, row.assignee ?? null]))}`);
   }
   return r;
 }

@@ -220,7 +220,8 @@ function gradeA(o: any, store: string): LegResult {
 
   // The split (FIX-1802 P2): a delegate's task session files a piece for its
   // own delegate, by its turn's tool; its task waits on the piece and
-  // completes from it; the app files on that session's board too.
+  // completes after it, with its worker's answer (FIX-2077 D3); the app files
+  // on that session's board too.
   const S = A.split;
   const subRow = rows.find((x) => x.id === S.taskId);
   const subSessions = all.filter((s) => s.state.taskId === S.taskId && S.taskId !== null);
@@ -229,7 +230,8 @@ function gradeA(o: any, store: string): LegResult {
   const pieces = allTaskRows(store).filter((x) => sub !== undefined && x.partition.startsWith(`${sub.id}~`));
   const toolPiece = pieces.find((x) => x.goal === `a piece of: Plan the ${S.word} rollout`);
   const pieceRun = toolPiece === undefined ? undefined : all.find((s) => s.state.taskId === toolPiece.id);
-  const fromPieces = ((subRow?.output as { pieces?: Array<{ taskId?: string; status?: string }> } | undefined)?.pieces ?? []).map((p) => `${p.taskId}:${p.status}`);
+  // The output is the worker's answer, never a list of its pieces.
+  const listsPieces = (subRow?.output as { pieces?: unknown } | null | undefined)?.pieces !== undefined;
   const heardSub = ((conv?.state.taskNotices as string[] | undefined) ?? []).filter((k) => k.startsWith(`${S.taskId}:`) && k.endsWith(":completed"));
   if (
     subRow?.status !== "completed" ||
@@ -239,14 +241,14 @@ function gradeA(o: any, store: string): LegResult {
     toolPiece?.status !== "completed" ||
     toolPiece.assignee !== "desk.alpha" ||
     pieceRun?.parentSessionId !== sub?.id ||
-    fromPieces.join(",") !== `${toolPiece.id}:completed` ||
+    listsPieces ||
     (toolPiece.completedAt ?? Infinity) > (subRow.completedAt ?? -Infinity) ||
     refusalOf(S.app) !== undefined ||
     pieces.length !== 2 ||
     heardSub.length !== 1
   ) {
     r.failures.push(
-      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's dispatchTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} from ${show(fromPieces)}, sessions ${subSessions.length}, its dispatchTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
+      `a:split — wanted desk.sub's task session to file one piece for desk.alpha by its turn's dispatchTask, run in a child of that session, and its task to complete from it, heard once; the app's filing on that session accepted onto its board. Its task ${subRow?.status ?? "missing"} with ${show(subRow?.output)}, sessions ${subSessions.length}, its dispatchTask answered ${show(subTool)}, the piece ${show(toolPiece === undefined ? null : [toolPiece.status, toolPiece.assignee, pieceRun?.parentSessionId === sub?.id])}, the app's ${show(S.app)}, pieces stored ${pieces.length}, heard ${show(heardSub)}`,
     );
   } else {
     r.notes.push(`desk.sub split its task: one piece for desk.alpha, completed, then its task; the app's ${show(S.app)}`);

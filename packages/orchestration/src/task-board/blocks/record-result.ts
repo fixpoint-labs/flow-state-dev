@@ -638,3 +638,54 @@ export function createRecordError(options: RecordErrorOptions) {
     },
   });
 }
+
+/**
+ * Settle a dispatched task's claim from the claim gate's check at its
+ * request's end (FIX-2077), with the recorders' write semantics (FIX-963):
+ * `settle` is the fenced write (a completion or a failure), run under a write
+ * token so a write that threw can be classified.
+ *
+ * - The write didn't throw: `undefined`.
+ * - It threw and committed nothing: a completion fails the attempt instead,
+ *   as the gate's rescue would; when that write throws too, its error comes
+ *   back. A failure's own error comes back.
+ * - It threw having committed, or the board can't tell: the report is emitted
+ *   on its saved entry (and the row released when it can't tell), and a
+ *   {@link TaskBoardRecorderFailureError} comes back.
+ *
+ * Returns the failure rather than raising it: the check runs after the
+ * request's record is written, and the engine turns a failure the check hands
+ * back into the request's own (`onRequestEnded`).
+ */
+export async function settleAtRequestEnd(params: {
+  ctx: BlockContext;
+  collection: TaskCollectionRef;
+  claim: TaskClaimTicket;
+  recorder: RecorderKind;
+  settle: (write: TaskWriteToken) => Promise<unknown>;
+}): Promise<Error | undefined> {
+  const { ctx, collection, claim } = params;
+  let report: RecorderFailureReport | undefined;
+  try {
+    report = await writeRethrowingIfNothingSaved({
+      ctx,
+      collection,
+      claim,
+      recorder: params.recorder,
+      runId: undefined,
+      attempt: params.settle,
+    });
+  } catch (err) {
+    if (params.recorder === "fail") return err instanceof Error ? err : new Error(messageOf(err));
+    // Nothing was saved: fail the attempt, the rescue's write.
+    try {
+      await advisoryFail(collection, claim.taskId, messageOf(err), { ifAllowed: true, claim, refuseWhenParked: true });
+      return undefined;
+    } catch (failed) {
+      return failed instanceof Error ? failed : new Error(messageOf(failed));
+    }
+  }
+  if (report === undefined) return undefined;
+  await reportRecorderFailure(ctx, report);
+  return new TaskBoardRecorderFailureError([report]);
+}

@@ -536,7 +536,8 @@ await runGoal(async (failures, tell) => {
       for (const id of [blocked, recorded]) {
         if (listed.get(id) !== "held" || proofsOf(id).length !== 0) failures.push(`e:a retired not-started row reads as held — ${id} reads ${listed.get(id)}, ran ${proofsOf(id).length} time(s)`);
       }
-      for (const [id, stored] of [[`post-${RUN_STAMP}`, "completed"], [`split-${RUN_STAMP}`, "parked"], [`turn-${RUN_STAMP}`, "parked"]] as const) {
+      // A stored split reads as running since FIX-2077 turned its entry on.
+      for (const [id, stored] of [[`post-${RUN_STAMP}`, "completed"], [`split-${RUN_STAMP}`, "in_progress"], [`turn-${RUN_STAMP}`, "parked"]] as const) {
         if (listed.get(id) !== stored) failures.push(`e:an entry still off reads as stored — ${id} reads ${listed.get(id)}, stored ${stored}`);
       }
       for (const id of [blocked, recorded]) await h.act(conversation, "updateTask_tasks", { id, status: "pending" });

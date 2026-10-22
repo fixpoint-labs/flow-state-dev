@@ -1,3 +1,4 @@
+import { attachRequestEndRegistry, createRequestEndRegistry } from "../execution/request-end-hooks";
 import { isOrgAttributed, UnattributedOrgError } from "./org-attribution";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -2895,6 +2896,10 @@ export async function createExecutionContext<
   // drains the pool exactly once on the success path. Replaces the legacy
   // per-sequencer auto-await scoping.
   const requestSideChainPool = createRequestSideChainPool();
+  // Per-request request-end registry (FIX-2077), attached beside the pool on
+  // every scope so a hook added from any block reaches the one list the
+  // request executor runs after its last drain.
+  const requestEndRegistry = createRequestEndRegistry();
 
   // Request-scoped status slot — shared across every scope's createEmitStatus.
   // Terminates naturally when this context is discarded at request end.
@@ -3798,6 +3803,7 @@ export async function createExecutionContext<
         // so `.sideChain()` calls in inner sequencers reach the same pool the
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
+        attachRequestEndRegistry(childContext, requestEndRegistry);
         // FIX-663: re-attach the background signal on every scope so nested
         // `.sideChain()` dispatches can read it (the dispatch site reads
         // `ctx._requestSideChainSignal`, not `ctx.signal`).
@@ -4162,6 +4168,7 @@ export async function createExecutionContext<
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
   (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
+  attachRequestEndRegistry(rootContext, requestEndRegistry);
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.

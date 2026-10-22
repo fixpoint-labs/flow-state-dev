@@ -1,11 +1,19 @@
 /**
  * The internal entries a session's board runs on, by name: a leaf module, so
- * the board, the split and the filing kit share one spelling without
+ * the board, the ledger and the filing kit share one spelling without
  * importing each other.
  */
 
 /** The internal entry a filing dispatches to run its session's board: the board's one pass. */
 export const RUN_BOARD_ENTRY = "runTaskBoard";
+
+/**
+ * The internal entry that checks a task session's waiting task, and does
+ * nothing else (FIX-2077): what the upgrade's backfill wakes for a split an
+ * older host parked, which may have no notice left to wake it. **Pinned**:
+ * a wake stores it by name.
+ */
+export const CHECK_TASK_ENTRY = "checkWaitingTask";
 
 /**
  * The internal entry a task's notice arrives on in the session that filed it.
@@ -21,22 +29,10 @@ export const TASK_SETTLED_ENTRY = "onTaskSettled";
 export const POST_SETTLED_ENTRY = "onPostSettled";
 
 /**
- * The internal entry a task session settles its parked task on, once none of
- * its pieces is open (FIX-1802 S4). Dispatched by the session into itself,
- * so it waits for any turn the session is running.
- */
-export const SETTLE_SPLIT_ENTRY = "settleSplitTask";
-
-/**
- * The internal entry a split task's session cancels its open pieces on, when
- * its task was ended from above (FIX-1802 BR-19).
- */
-export const CANCEL_PIECES_ENTRY = "cancelSplitPieces";
-
-/**
- * The metadata key a parked split row carries: the task session that split
- * it, and that session's flow (FIX-1802 S4). Only the split writes it; a
- * caller's filing or patch never reaches it.
+ * The metadata key a split row parked on its pieces carried (FIX-1802 S4).
+ * Retired by FIX-2077, which no longer parks a split: a row stored with it
+ * reads as running (orchestration's retired-shape map), and a caller's filing
+ * or patch still never writes it, so no row can be made to look like one.
  */
 export const SPLIT_MARKER = "splitInto";
 
@@ -49,10 +45,9 @@ export const SPLIT_MARKER = "splitInto";
 export const PIECE_OF = "pieceOf";
 
 /**
- * The metadata key a retried piece carries: the piece whose failure for good
- * it was filed in answer to, in the turn that failure's notice woke. A failed
- * piece with a retry doesn't fail its task; the retry is judged in its place.
- * Only the board writes it; a caller's filing or patch never reaches it.
+ * The metadata key a retried piece carried (FIX-1802 D3). Retired by FIX-2077:
+ * the turn a piece's failure wakes decides what it means, so nothing writes
+ * it. A caller's filing or patch still never reaches it.
  */
 export const RETRY_OF = "retryOf";
 
