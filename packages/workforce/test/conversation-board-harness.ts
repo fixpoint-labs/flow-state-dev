@@ -347,14 +347,19 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
   /** Every request in the store, once none is still running. */
   const settled = async (timeoutMs = 10_000) => {
     const deadline = Date.now() + timeoutMs;
+    // Still running: in progress, or ended but not finalized. A record reads
+    // `completed` before `onFinished` and the request-end check (FIX-2077)
+    // have run, and a task's row is settled by that check.
+    const running = (r: { status: string; finalizedAtMs?: number | null }) =>
+      r.status === "in_progress" || (r.status !== "suspended" && r.status !== "pending" && r.finalizedAtMs == null);
     for (;;) {
       const all = await (await state.getRuntime()).stores.request.list({});
-      if (!all.some((r) => r.status === "in_progress")) {
+      if (!all.some(running)) {
         // Read again after a beat: a dispatch accepted just now may not have
         // written its request yet.
         await sleep(20);
         const again = await (await state.getRuntime()).stores.request.list({});
-        if (!again.some((r) => r.status === "in_progress") && again.length === all.length) return again;
+        if (!again.some(running) && again.length === all.length) return again;
         continue;
       }
       if (Date.now() > deadline) throw new Error("a request never finished");
