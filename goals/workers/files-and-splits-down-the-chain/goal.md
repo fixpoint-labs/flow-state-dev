@@ -58,3 +58,4 @@
 | 2026-10-22 | fix/FIX-2077 0e2bf938f | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); controls `hands-to-a-non-delegate` and `no-parent-settle` FAIL, as required | As before |
 | 2026-10-22 | fix/FIX-2077 763314317 | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
 | 2026-10-22 | fix/FIX-2077 9cca4ff6a | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
+| 2026-10-22 | fix/FIX-2077 24c9b2770 | none (scripted) | PASS (`GOAL_LEGS=a,b,c,d`); both controls FAIL, as required | As before |
