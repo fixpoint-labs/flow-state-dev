@@ -383,7 +383,7 @@ describe("the coordinator's own delegate tools (V2, BR-32, FIX-2081 rule 13)", (
         { text: "Done." }
       ]
     });
-    const host = bootHost({ judgment, standard: standardWorkers({ chief: { managesOwnDelegates: true } }) });
+    const host = bootHost({ judgment, standard: standardWorkers({ chief: { editsOwnDelegates: true } }) });
     expect((await host.hire("bob", { id: "bobs-helper", flow: "helper" })).error).toBeUndefined();
     const id = await host.conversation("alice", "chief");
     const turn = await host.act("alice", id, "run", { message: "bring in a coder" });

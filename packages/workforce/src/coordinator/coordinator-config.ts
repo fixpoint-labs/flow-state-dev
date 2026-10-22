@@ -15,7 +15,7 @@
  *   `delegates`.
  * - `minConfidence`: under `best-fit` only, the lowest confidence, from 0 to
  *   1, at which a delegate pick is used. No default: without it, any pick is.
- * - `managesOwnDelegates`: whether the coordinator's model gets
+ * - `editsOwnDelegates`: whether the coordinator's model gets
  *   `addDelegate`, `removeDelegate` and `setFallback` and may change its own
  *   delegates (FIX-2081, rule 13). Default `false`: only the user changes them.
  * - `rounds`: how many times an answer goes back out. Zero by default, at most
@@ -61,7 +61,7 @@ function coordinatorShape() {
   return {
     routing: z.enum(COORDINATOR_ROUTING).default("judgment"),
     fallback: z.string().min(1).optional(),
-    managesOwnDelegates: z.boolean().default(false),
+    editsOwnDelegates: z.boolean().default(false),
     minConfidence: z
       .number({ invalid_type_error: MIN_CONFIDENCE_RANGE })
       .min(0, { message: MIN_CONFIDENCE_RANGE })

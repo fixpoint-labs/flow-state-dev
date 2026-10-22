@@ -16,7 +16,7 @@
  *   a  the tools each worker's model is offered: a coordinator's and an agent
  *      worker's turn get the filer's four, `answerTask`, `dispatchTask` and
  *      `listDelegates`, and none of the removed six; only a coordinator set
- *      to `managesOwnDelegates` gets `addDelegate`, `removeDelegate`,
+ *      to `editsOwnDelegates` gets `addDelegate`, `removeDelegate`,
  *      `setFallback`; `reportProgress` and `parkOnQuestion` only on a task
  *      turn; an inline plan step that calls `reportProgress({ output })`
  *      checkpoints its own row, and the task's result is still the answering
@@ -245,7 +245,7 @@ function modelResolver() {
 const worker = (id: string, declared: Record<string, unknown>): WorkerManifest => ({ id, declared, body: "", skills: [] });
 const WORKERS: WorkerManifest[] = [
   worker("desk", { flow: "coordinator", delegates: ["eng.a", "eng.b"], description: "The person's desk." }),
-  worker("chief", { flow: "coordinator", delegates: ["eng.a"], managesOwnDelegates: true, description: "Changes its own delegates." }),
+  worker("chief", { flow: "coordinator", delegates: ["eng.a"], editsOwnDelegates: true, description: "Changes its own delegates." }),
   worker("fan", { flow: "agent", delegates: "all", description: "Reaches the whole roster." }),
   worker("eng.a", { flow: "agent", delegates: ["eng.b"], description: "Splits work." }),
   worker("eng.b", { flow: "agent", description: "Does work." }),

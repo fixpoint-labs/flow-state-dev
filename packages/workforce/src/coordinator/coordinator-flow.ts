@@ -774,7 +774,7 @@ export function defineCoordinatorFlow(options: CoordinatorFlowOptions) {
    * copied, run as this conversation's worker. It reads the worker's
    * instructions, model, tools, skills and capabilities as an `agent` worker's
    * are read, and carries the delegate tools (`listDelegates`, and the three
-   * that change the list on one set to `managesOwnDelegates`), the dispatch
+   * that change the list on one set to `editsOwnDelegates`), the dispatch
    * tool and the task tools on every coordinator, whatever the worker's
    * `tools:` line grants. The task tools come from one capability instance, the
    * conversation's board's, composed by the turn once, so no skill or preset

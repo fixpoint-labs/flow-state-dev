@@ -86,7 +86,7 @@ task finishes it is refused ([D3](DECISIONS.md#d3)):
 ```diff
   # WORKER.md of a coordinator
   delegates: [eng.em, eng.coder]        # or: delegates: all
-+ managesOwnDelegates: true             # only then addDelegate, removeDelegate, setFallback
++ editsOwnDelegates: true             # only then addDelegate, removeDelegate, setFallback
 ```
 
 **Docs:** *Orchestration → Task board* opens by teaching one task: the five tools and the field
@@ -155,7 +155,7 @@ field's rule, FIX-2080's included; the block maps the input and names the refusa
 | The debt | |
 |---|---|
 | **Removes** | Six tools and their actions · the settle tools' claim guard · unguarded edits on the tool path · the task-session roster reach · delegate tools on every coordinator |
-| **Adds** | The field table, read by FIX-2080's guarded patch · `reportProgress` ([D3](DECISIONS.md#d3)) · `delegates: all` · `managesOwnDelegates` · `listTasks({ filedByTask })` and the filing-task link it reads · `dispatchTask` beside `createTask` for one or two issues, paid by FIX-2082 and FIX-2083 ([D1](DECISIONS.md#d1)) |
+| **Adds** | The field table, read by FIX-2080's guarded patch · `reportProgress` ([D3](DECISIONS.md#d3)) · `delegates: all` · `editsOwnDelegates` · `listTasks({ filedByTask })` and the filing-task link it reads · `dispatchTask` beside `createTask` for one or two issues, paid by FIX-2082 and FIX-2083 ([D1](DECISIONS.md#d1)) |
 | **Leaves** | Reading any of the user's tasks by id, across boards: FIX-2070's `{ task }` addressing · the raw collection's unguarded setters, the substrate's escape hatch |
 
 **Net: down.** Six tools, a guard and a reach go; one table, a worker tool, two settings and a filter arrive.

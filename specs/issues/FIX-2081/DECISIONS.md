@@ -115,6 +115,8 @@ tool again, which rule 18 rules out.
 - **`managesOwnDelegates`,** a coordinator setting, default `false`, gates `addDelegate`,
   `removeDelegate` and `setFallback`; every worker with a board gets `listDelegates`. It exists
   for Shift Manager's Shift Coordinator, which hires and adds its own delegates.
+  2026-10-22: the owner renamed it `editsOwnDelegates`, so it can't be read as "can use its
+  delegates".
 - **A screen acts as the user:** the tools' own blocks, claimless, in a session the engine refuses
   to another user. Identity is the host's principal (BP-031).
 - **`listTasks` rows carry `statusNote`, not `output`.** A list of uncut checkpoints is an

@@ -28,7 +28,7 @@ delegates: [eng.coder, eng.reviewer]
 
 `delegates:` is who works for this worker, and the only workers it can give work to. A coordinator hands posts to this list, and any worker dispatches tasks to it. Each session starts from the file's list, and you change one session's list with the `addDelegate` and `removeDelegate` actions, described under [Changing the delegates](./coordinators.md#changing-the-delegates). A delegate has to be on the same user's roster.
 
-The worker itself changes its list only when it is a coordinator whose file sets `managesOwnDelegates: true`. Every worker with a board can read its list with `listDelegates`.
+The worker itself changes its list only when it is a coordinator whose file sets `editsOwnDelegates: true`. Every worker with a board can read its list with `listDelegates`.
 
 `delegates: all` gives the worker every worker on your roster, itself included:
 
@@ -117,7 +117,7 @@ What the kit gives you, and where each piece goes:
 | `messages` | The same `uses`. It carries `messageWorker`, which [messages another worker](./messaging-workers.md). Leave it out and the flow's workers can receive messages but not send them. |
 | `actions` | The flow's `actions`: the task tools as `<tool>_tasks`, plus `addDelegate`, `removeDelegate`, `setFallback` and `listDelegates`. |
 | `progress` | The same `uses`. It carries `reportProgress` on a turn working a task. |
-| `delegateTools` | The same `uses`. It carries `listDelegates`, and `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `managesOwnDelegates: true`. |
+| `delegateTools` | The same `uses`. It carries `listDelegates`, and `addDelegate`, `removeDelegate` and `setFallback` on a worker set to `editsOwnDelegates: true`. |
 | `resources` | The flow's `resources`. |
 | `sessionStateShape` | `installation.session(...)`. |
 | `serverOwned` | The flow's `session.serverOwned`. |

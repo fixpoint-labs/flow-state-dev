@@ -19,7 +19,7 @@
  * **Who changes the list** (FIX-2081, rule 13): the user, through the
  * actions. A model gets `listDelegates` on every worker with a board, and
  * `addDelegate`, `removeDelegate` and `setFallback` only on a coordinator
- * whose file sets `managesOwnDelegates: true` ({@link
+ * whose file sets `editsOwnDelegates: true` ({@link
  * WorkerDelegates.toolsCapability}). Those three refuse at the call too.
  */
 import { defineCapability, handler } from "@flow-state-dev/core";
@@ -124,8 +124,8 @@ export function delegateDefaultsOf(config: Readonly<Record<string, unknown>>): D
 }
 
 /** Whether the running turn's worker may change its own delegates: a coordinator set so at hire (FIX-2081). */
-function managesOwnDelegates(config: Readonly<Record<string, unknown>>): boolean {
-  return config.managesOwnDelegates === true;
+function editsOwnDelegates(config: Readonly<Record<string, unknown>>): boolean {
+  return config.editsOwnDelegates === true;
 }
 
 /**
@@ -186,13 +186,13 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
 
   /** Whether this turn's worker was set at hire to change its own delegates (FIX-2081, rule 13). */
   const turnManagesOwn = (ctx: BlockContext): boolean =>
-    managesOwnDelegates(verifiedWorkerOf(ctx.session) !== undefined ? workerConfigOf(ctx) : turnConfigOf(ctx));
+    editsOwnDelegates(verifiedWorkerOf(ctx.session) !== undefined ? workerConfigOf(ctx) : turnConfigOf(ctx));
 
   /** The refusal a delegate-changing tool answers on a worker not set to change its own. */
   const notOwnToChange = {
     refused:
       "This worker's delegates are changed by its user, not by this worker: it wasn't set at hire to change " +
-      "its own (managesOwnDelegates). Ask the user, or message whoever filed your task. Nothing was changed."
+      "its own (editsOwnDelegates). Ask the user, or message whoever filed your task. Nothing was changed."
   };
 
   type Changed = ({ ok: true } & Listed) | { ok: false; message: string };
@@ -347,7 +347,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   /**
    * The delegate tools on a model's turn (FIX-2081, rule 13): `listDelegates`
    * on every turn, and `addDelegate`, `removeDelegate` and `setFallback` only
-   * on a coordinator set at hire to change its own (`managesOwnDelegates`),
+   * on a coordinator set at hire to change its own (`editsOwnDelegates`),
    * read per call. `controlTools`, so a worker's `tools:` line doesn't fence
    * them out. Compose it once per turn.
    */

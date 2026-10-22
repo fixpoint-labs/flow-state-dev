@@ -157,7 +157,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /**
      * The delegate tools a model's turn is offered (FIX-2081): `listDelegates`
      * always, and `addDelegate`, `removeDelegate` and `setFallback` only on a
-     * coordinator set to `managesOwnDelegates`. One entry for `uses`.
+     * coordinator set to `editsOwnDelegates`. One entry for `uses`.
      */
     delegateTools: delegates.toolsCapability,
     /**

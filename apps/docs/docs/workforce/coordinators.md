@@ -47,9 +47,9 @@ Because `help` has a description, best fit can also pick `help` itself, for a qu
 | `fallback` | The delegate that takes a post `best-fit` can't place. It must be one of `delegates`. |
 | `minConfidence` | Under `best-fit`, the lowest confidence at which a delegate pick is used, from `0` to `1`. Left out, any pick is used. See [Picking the coordinator, and a confidence floor](#picking-the-coordinator-and-a-confidence-floor). |
 | `rounds` | How many times a delegate's answer goes back out to the others: `0` (the default) to `3`. See [Letting delegates answer each other](#letting-delegates-answer-each-other). |
-| `managesOwnDelegates` | `true` gives the coordinator's own turn `addDelegate`, `removeDelegate` and `setFallback`, so it can change its delegates when you ask it to. `false` by default: only you change them, from your app. See [Changing the delegates](#changing-the-delegates). |
+| `editsOwnDelegates` | `true` gives the coordinator's own turn `addDelegate`, `removeDelegate` and `setFallback`, so it can change its delegates when you ask it to. `false` by default: only you change them, from your app. See [Changing the delegates](#changing-the-delegates). |
 
-The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, the [task tools](../orchestration/task-board.md#one-task-five-tools) and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says, and so do `addDelegate`, `removeDelegate` and `setFallback` on a coordinator set to `managesOwnDelegates: true`. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
+The coordinator's own turn, the one that runs when it routes by judgment, is the [built-in worker's](./built-in-worker.md) turn. Its `model`, `tools`, `skills` and `capabilities` read the way an `agent` worker's do. `listDelegates`, the [task tools](../orchestration/task-board.md#one-task-five-tools) and `dispatchTask` come with the flow, whatever the coordinator's `tools:` line says, and so do `addDelegate`, `removeDelegate` and `setFallback` on a coordinator set to `editsOwnDelegates: true`. So do the [standing rules](./standing-rules.md) tools, `rules/read`, `rules/add`, `rules/change` and `rules/remove`, on a turn a user's own message started. In the turn's model input, each delegate's answer starts with `<worker id>, a delegate in this conversation, answered:`, and a post the routing already handed to delegates is followed by a note saying where it went: `Handed this post to <delegates> by its routing, with no turn of mine.`
 
 Build the `coordinator` flow and register it beside the flows its delegates run on:
 
@@ -229,7 +229,7 @@ The first post in a conversation has no lines, so it's routed and delivered alon
 
 The `delegates:` line is where each new conversation starts. A conversation takes its own copy of `delegates:` and `fallback:` on its first post, or on the first delegate action or tool call in it if that comes sooner. From then on, changes stay in that conversation. Other conversations with the same coordinator don't see them, and the file is never written. Editing `delegates:` later reaches only conversations that haven't had a post or a delegate action yet.
 
-Your app changes a conversation's delegates. The coordinator's own turn changes them only when its file sets `managesOwnDelegates: true`. Both pass the same checks.
+Your app changes a conversation's delegates. The coordinator's own turn changes them only when its file sets `editsOwnDelegates: true`. Both pass the same checks.
 
 **From your app**, with the coordinator's actions on the conversation's session:
 
@@ -270,13 +270,13 @@ Each action's output is the conversation's list as it stands after the call. `se
 
 A refused change writes nothing. Its request fails, and the refusal is in `result.error.message`.
 
-**By the coordinator**, with tools of the same names, when you ask it to bring someone in or take someone off. Only a coordinator whose file sets `managesOwnDelegates: true` has `addDelegate`, `removeDelegate` and `setFallback`; every coordinator has `listDelegates`. A tool hands a refusal back to the model as `{ refused: "<message>" }`, so it can tell you why. The list isn't in the coordinator's prompt: to say who its delegates are, it calls `listDelegates`.
+**By the coordinator**, with tools of the same names, when you ask it to bring someone in or take someone off. Only a coordinator whose file sets `editsOwnDelegates: true` has `addDelegate`, `removeDelegate` and `setFallback`; every coordinator has `listDelegates`. A tool hands a refusal back to the model as `{ refused: "<message>" }`, so it can tell you why. The list isn't in the coordinator's prompt: to say who its delegates are, it calls `listDelegates`.
 
 ```yaml
 ---
 flow: coordinator
 delegates: [eng.em, eng.coder]
-managesOwnDelegates: true
+editsOwnDelegates: true
 ---
 ```
 
@@ -656,7 +656,7 @@ A `work` entry whose tasks come only from a board in your own flow counts as tak
 - **Pick by a delegate's instructions.** Best fit knows each delegate by its note, or else its description, and nothing else.
 - **Show a delegate another conversation.** A post's recent lines are its own conversation's, and the delegate's model sees them for that one turn.
 - **Let a delegate file tasks for workers it doesn't delegate to.** A task session files only for its own worker's delegates, and what it files are [pieces of its task](./delegating-work.md#splitting-a-task). A task for anyone else is refused, from the delegate's tools and from your app alike.
-- **Let a coordinator change its own delegates unless you said so.** Without `managesOwnDelegates: true` in its file, its turn has `listDelegates` only.
+- **Let a coordinator change its own delegates unless you said so.** Without `editsOwnDelegates: true` in its file, its turn has `listDelegates` only.
 
 ## Related pages
 
