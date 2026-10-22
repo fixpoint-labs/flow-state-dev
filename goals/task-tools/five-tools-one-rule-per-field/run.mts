@@ -200,7 +200,8 @@ function modelResolver() {
     const record = (options: any) => {
       const message = lastUser(options.messages);
       seen.push({ block: blockName, tag: tagOf(message), tools: (options.tools ?? []).map((t: { name: string }) => t.name), message });
-      const slow = /\[slow:(\d+)\]/.exec(message);
+      // A notice of an ending quotes the task's goal; its `[slow]` is the task's, not the notice turn's.
+      const slow = message.startsWith('Task "') ? null : /\[slow:(\d+)\]/.exec(message);
       return slow === null ? undefined : sleep(Number(slow[1]));
     };
     const wrapTools = (options: any) => {
