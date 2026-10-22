@@ -26,6 +26,8 @@ interface PoolEntry {
 
 class RequestSideChainPoolImpl implements RequestSideChainPool {
   private readonly entries: PoolEntry[] = [];
+  /** Every failure a drain returned, kept across drains (see `failures`). */
+  private readonly kept: RequestSideChainPoolResult["failed"] = [];
   private pending = 0;
   /** Listener installed by an active `drainAll` for status emission. */
   private drainListener: ((count: number) => void) | undefined;
@@ -84,6 +86,7 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
       const reason = result.failed[0]!.reason;
       throw reason instanceof Error ? reason : new Error(String(reason));
     }
+    this.kept.push(...result.failed);
     return result;
   }
 
@@ -98,7 +101,9 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
 
     try {
       const matching = this.entries.splice(0, this.entries.length);
-      return await this.awaitEntries(matching, options?.signal);
+      const result = await this.awaitEntries(matching, options?.signal);
+      this.kept.push(...result.failed);
+      return result;
     } finally {
       this.drainListener = undefined;
     }
@@ -126,6 +131,10 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
 
   pendingCount(): number {
     return this.pending;
+  }
+
+  failures(): ReadonlyArray<RequestSideChainPoolResult["failed"][number]> {
+    return [...this.kept];
   }
 
   private notifyDrainListener(): void {

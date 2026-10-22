@@ -265,3 +265,50 @@ describe("RequestSideChainPool.drainToQuiescence", () => {
     expect(counts.length).toBeGreaterThan(1);
   });
 });
+
+/**
+ * The pool keeps every failure it drained, across drains (FIX-2088): the
+ * request-end seam hands them to the claim gate after the last drain, which
+ * fails a task's attempt on any. A drain that logs a failure must not be the
+ * only one who ever sees it.
+ */
+describe("RequestSideChainPool.failures", () => {
+  it("keeps the failures of every drain, in the order they were drained", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.reject(new Error("first")), meta: meta("scope-a", "capture") });
+    await pool.drainToQuiescence();
+    pool.addTask({ promise: Promise.resolve("fine"), meta: meta("scope-a", "ok") });
+    pool.addTask({ promise: Promise.reject(new Error("second")), meta: meta("scope-b", "notify") });
+    await pool.drainToQuiescence();
+
+    expect(pool.failures().map((f) => [f.meta.name, (f.reason as Error).message])).toEqual([
+      ["capture", "first"],
+      ["notify", "second"]
+    ]);
+  });
+
+  it("keeps a failure a scope drain returned, so a default .waitForSideChain() does not hide it", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.reject(new Error("waited on")), meta: meta("scope-a", "persist") });
+    const result = await pool.drainScope("scope-a");
+
+    expect(result.failed).toHaveLength(1);
+    expect(pool.failures().map((f) => f.meta.name)).toEqual(["persist"]);
+  });
+
+  it("does not keep a failure a failOnError scope drain threw: that throw is the sequencer's, for a .rescue to catch", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.reject(new Error("thrown")), meta: meta("scope-a", "persist") });
+    await expect(pool.drainScope("scope-a", { failOnError: true })).rejects.toThrow("thrown");
+
+    expect(pool.failures()).toEqual([]);
+  });
+
+  it("keeps nothing for work that succeeded", async () => {
+    const pool = createRequestSideChainPool();
+    pool.addTask({ promise: Promise.resolve(1), meta: meta("scope-a") });
+    await pool.drainToQuiescence();
+
+    expect(pool.failures()).toEqual([]);
+  });
+});

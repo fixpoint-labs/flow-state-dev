@@ -120,6 +120,17 @@ export interface RequestSideChainPool {
 
   /** Snapshot of currently pending tasks, regardless of scope. */
   pendingCount(): number;
+
+  /**
+   * Every failure a drain has returned so far, across drains, in the order
+   * they were drained: a request's drains, and a scope drain without
+   * `failOnError`. A scope drain with `failOnError` keeps none, since its
+   * throw hands the failure to the sequencer, where a `.rescue()` can catch
+   * it. The request executor reads this once, after its last drain, and hands
+   * it to the request-end seam, so a task's attempt fails on background work
+   * that errored (FIX-2088).
+   */
+  failures(): ReadonlyArray<RequestSideChainPoolResult["failed"][number]>;
 }
 
 /**

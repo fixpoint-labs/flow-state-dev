@@ -105,6 +105,7 @@ import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
 import { replyOrReopen } from "./conversation-board/reopen";
+import { worksConversationResultTask } from "./conversation-board/task-admission";
 
 /**
  * The worker flow name the hire step resolves a record to when it names none, and the
@@ -227,6 +228,32 @@ function workerSkillsOf(ctx: BlockContext): InitialSkill[] {
  */
 function activateToolOn(ctx: BlockContext): boolean {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
+}
+
+/**
+ * The app's after-answer block, run as background work after the worker
+ * answers. A failure in it fails a task's attempt, as any background step's
+ * does (FIX-2088 D1), with one exception: a task whose result goes to the
+ * conversation has one attempt, so there a failure is logged and the task
+ * keeps its answer, as a conversation turn does (D1's amendment). Read from the
+ * task row's result setting, never session state.
+ */
+function afterAnswerStep(block: BlockDefinition<any, any>) {
+  const keepTheAnswer = handler({
+    name: "agent-after-answer-rescue",
+    inputSchema: z.unknown(),
+    execute: async (error, ctx) => {
+      if (!(await worksConversationResultTask(ctx as never))) throw error;
+      // eslint-disable-next-line no-console
+      console.error(
+        `[agent] After-answer step "${block.name}" failed; the task's result goes to the conversation, so it keeps its answer:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  });
+  return sequencer({ name: "agent-after-answer", inputSchema: z.unknown() })
+    .step(block)
+    .rescue([{ block: keepTheAnswer }]);
 }
 
 /** What the app supplies. Everything else is a worker's own setting. */
@@ -1209,8 +1236,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // the sequence it built before this option existed rather than one carrying
   // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
   // must not be able to change the answer, and a failure inside it — a capture
-  // call that times out, say — is not a conversation failure.
-  const answeredRun = options.afterAnswer ? answered.sideChain(options.afterAnswer) : answered;
+  // call that times out, say — is not a conversation failure. In a task it is
+  // background work like any other, and fails the attempt (FIX-2088 D1),
+  // except where the task's result goes to the conversation (`afterAnswerStep`).
+  const answeredRun = options.afterAnswer
+    ? answered.sideChain(afterAnswerStep(options.afterAnswer), { name: options.afterAnswer.name })
+    : answered;
   // On an installation, every turn runs with its plan (FIX-2076 D1, D2): a
   // step the worker files for itself is worked after the turn, in the same
   // request, one turn of `answeredRun` each, and the worker answers once more.

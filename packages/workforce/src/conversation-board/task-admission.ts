@@ -41,6 +41,16 @@ async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; 
 }
 
 /**
+ * Whether the running request works a task whose result goes back into the
+ * conversation it was filed from (`resultTo: "conversation"`), read from the
+ * task's row, never from session state. Such a task has one attempt, so its
+ * after-answer capture is best-effort (FIX-2088, D1's amendment).
+ */
+export async function worksConversationResultTask(ctx: BlockContext): Promise<boolean> {
+  return (await ownTaskRow(ctx))?.row.resultTo === "conversation";
+}
+
+/**
  * Whether a message for this session, sent during `task`'s current attempt, is
  * delivered and not yet acted on here. One sent before the attempt started
  * belongs to an attempt that is over. A run link with no start time (written
