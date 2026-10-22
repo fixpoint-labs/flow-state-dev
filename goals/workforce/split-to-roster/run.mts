@@ -294,21 +294,36 @@ await runGoal(async (failures) => {
       seen.codename = codename();
       say(`leg 1: the codename is ${seen.codename}`);
       const taskId = await fileForA(ask("release", B));
-      // While B works: A's task running, waiting on its piece, and nothing running in A's task session.
+      // While B works: A's task running, waiting on its piece, and nothing
+      // running in A's task session. Read the moment A's own turn has ended
+      // (its request finalized, so its end-of-request check has run) while
+      // B's piece is still running: an event, not a fixed delay. B finishing
+      // first is a failure of its own.
       const store = await storeOf(host);
-      let during: { status?: string; waitingOn?: unknown; lease?: unknown; running?: number; at?: number } = {};
-      for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(100)) {
+      let during: { status?: string; waitingOn?: unknown; lease?: unknown; running?: number; at?: number; bEndedFirst?: boolean } = {};
+      for (const deadline = Date.now() + 240_000; Date.now() < deadline; await sleep(25)) {
         const rows = await store.rows();
         const piece = rows.find((r) => r.assignee === B && pieceOf(r) === taskId);
+        const top = rows.find((r) => r.id === taskId);
         if (piece !== undefined && seen.takerRuns.some((r) => r.taskId === piece.id)) {
-          await sleep(KEEPER_HOLD_MS / 2);
-          const top = (await store.rows()).find((r) => r.id === taskId);
           const own = sessionOf(top);
-          const running = own === undefined ? -1 : (await store.requests(own)).filter((r) => r.status === "in_progress").length;
-          during = { status: top?.status, waitingOn: (top as { waitingOn?: unknown } | undefined)?.waitingOn, lease: top?.leaseUntil, running, at: Date.now() };
+          const runId = (top as { run?: { requestId?: string } } | undefined)?.run?.requestId;
+          const turn = own === undefined || runId === undefined ? undefined : (await store.requests(own)).find((r) => r.id === runId);
+          if (turn?.finalizedAtMs == null) {
+            if (["completed", "errored", "cancelled"].includes(piece.status)) {
+              during = { bEndedFirst: true, at: Date.now() };
+              break;
+            }
+            continue;
+          }
+          const now = (await store.rows()).find((r) => r.id === taskId);
+          const stillWorking = !["completed", "errored", "cancelled"].includes((await store.rows()).find((r) => r.id === piece.id)?.status ?? "");
+          const running = (await store.requests(own!)).filter((r) => r.status === "in_progress").length;
+          during = stillWorking
+            ? { status: now?.status, waitingOn: (now as { waitingOn?: unknown } | undefined)?.waitingOn, lease: now?.leaseUntil, running, at: Date.now() }
+            : { bEndedFirst: true, at: Date.now() };
           break;
         }
-        const top = rows.find((r) => r.id === taskId);
         if (top !== undefined && ["completed", "errored", "cancelled"].includes(top.status)) break;
       }
       await quiet(host);
@@ -323,8 +338,10 @@ await runGoal(async (failures) => {
           `1:piece-to-delegate — wanted A's task session to file a piece for its delegate ${B}; its pieces ${show(pieces.map((p) => [p.assignee, p.status]))}, its dispatchTask calls answered ${show(tried.map((i) => i.output ?? i.result ?? i))}`
         );
       }
-      if (during.status !== "in_progress" || during.waitingOn !== "filed" || during.lease != null || during.running !== 0) {
-        failures.push(`1:waiting-while-b-works — wanted A's task running, waiting on its piece with no lease, and no request running in its session while ${B} worked; read ${show(during)}`);
+      if (during.bEndedFirst === true) {
+        failures.push(`1:waiting-while-b-works — wanted A's turn to end while ${B} still worked; ${B}'s piece ended before A's turn did, so the wait was never observed`);
+      } else if (during.status !== "in_progress" || during.waitingOn !== "filed" || during.lease != null || during.running !== 0) {
+        failures.push(`1:waiting-while-b-works — wanted A's task running, waiting on its piece with no lease, and no request running in its session once A's turn ended while ${B} worked; read ${show(during)}`);
       }
       const answer = answerText(top?.output);
       if (top?.status !== "completed" || answer === undefined || !answer.includes(seen.codename) || toB.some((p) => p.status !== "completed")) {
