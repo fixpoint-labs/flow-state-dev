@@ -89,7 +89,7 @@ const OWED_PREFIX = "noticeOwed:";
 const RESENT_PREFIX = "noticeResent:";
 
 /** The longest a pass waits between two resends of one notice: 5 minutes. */
-export const NOTICE_RESEND_CAP_MS = 300_000;
+const NOTICE_RESEND_CAP_MS = 300_000;
 
 /** What a marker holds: enough to rebuild the notice from the row it is on. */
 interface OwedMarker {
