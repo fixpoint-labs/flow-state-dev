@@ -479,6 +479,7 @@ describe("same-request continuation (FIX-811)", () => {
     });
     const requestId = initial.requestId!;
     expect((await stores.request.get(requestId))?.status).toBe("suspended");
+    const preSuspensionMax = Math.max(...(await stores.request.getEvents(requestId)).map((e) => e.sequence_number));
 
     const [suspension] = await provider.listSuspended({ status: "pending" });
     const finished = await resolve(
@@ -496,6 +497,12 @@ describe("same-request continuation (FIX-811)", () => {
     expect(resumed.requestId).toBe(requestId);
     expect((await stores.request.get(requestId))?.status).toBe("completed");
     expect(resumed.output).toContain("confirmed");
+
+    // The continuation's events climb on from the suspension's: a log that
+    // ends in a terminal event (here `request.suspended`) is continued with no
+    // gap. Only a log with none skips one number (FIX-2077).
+    const postResume = (await stores.request.getEvents(requestId)).filter((e) => e.sequence_number > preSuspensionMax);
+    expect(postResume[0]?.sequence_number).toBe(preSuspensionMax + 1);
 
     // No orphan: exactly one request record exists.
     const allRequests = await stores.request.list();
