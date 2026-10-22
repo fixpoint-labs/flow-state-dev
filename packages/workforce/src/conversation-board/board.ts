@@ -151,7 +151,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { sendPostCancelled } from "./notice-delivery";
-import { startOwedSteerTurn } from "./steer";
+import { startOwedSteerTurn } from "./steer-turn-start";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
 import { pieceOwnerOf } from "./held-task";
@@ -163,7 +163,7 @@ import { verifiedWorkerOf } from "../workers/verified-worker";
  * again in the same session, with no coordinator turn, and the second failure
  * is the one the conversation hears.
  */
-export const TASK_ATTEMPTS = 2;
+const TASK_ATTEMPTS = 2;
 
 /** What a session's board is built from. */
 export interface ConversationBoardOptions {
@@ -342,7 +342,7 @@ function holdsSession(task: Task): boolean {
  *
  * @param rows The board's rows, as the claim write reads them.
  */
-export function isStartable(task: Task, rows: readonly Task[]): boolean {
+function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (task.assignee === undefined) return false;
   const key = sessionKeyOf(task);
   if (key === undefined) return true;
@@ -1455,4 +1455,4 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   };
 }
 
-export type ConversationBoard = ReturnType<typeof defineConversationBoard>;
+

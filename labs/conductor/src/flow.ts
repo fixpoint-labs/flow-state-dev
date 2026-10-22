@@ -87,7 +87,6 @@ import {
   runRecordStateSchema,
   RUNS,
   runTopic,
-  runTopicPrefix,
   withdrawQuestion,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
@@ -109,7 +108,7 @@ import {
 } from "./answer";
 
 /** The one assignee this board routes to. */
-export const ASSIGNEE = "harness" as const;
+const ASSIGNEE = "harness" as const;
 
 export interface ConductorFlowOptions {
   /**
@@ -1211,4 +1210,3 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
   };
 }
 
-export { runTopic, runTopicPrefix };

@@ -55,8 +55,6 @@ import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
 import { steersBrief, taskMessage } from "./task-message";
 
-// A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
-export { taskMessage } from "./task-message";
 
 /**
  * What a task turn says (FIX-1817): the answer to the worker's question on
@@ -68,7 +66,7 @@ export { taskMessage } from "./task-message";
  * a steer sent while the task waited on its question is taken when it
  * resumes, and never answers the question.
  */
-export function taskTurnMessage(task: TaskWorkerInput): string {
+function taskTurnMessage(task: TaskWorkerInput): string {
   if (task.answer === undefined) return taskMessage(task);
   const steers = steersBrief(task);
   const answer = `Answer to your question:\n\n${task.answer}`;

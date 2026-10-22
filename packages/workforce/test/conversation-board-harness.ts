@@ -69,7 +69,7 @@ export function boardWorkers(overrides: Partial<Record<string, Record<string, un
 }
 
 /** One run of a task, as the worker's turn saw it. */
-export type TaskRun = {
+type TaskRun = {
   worker: string;
   message: string;
   sessionId: string;
@@ -153,7 +153,7 @@ function helperFlow(installation: WorkerInstallation) {
 }
 
 /** What the default judgment turn says: it reads what woke it and does nothing else. */
-export const QUIET_TURN = "Noted.";
+const QUIET_TURN = "Noted.";
 
 export type BoardHostOptions = {
   standard?: WorkerManifest[];

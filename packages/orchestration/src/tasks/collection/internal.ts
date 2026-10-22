@@ -147,7 +147,7 @@ export function readAbandonments(task: Task): number {
  * (FIX-1817), or, on a row stored before FIX-2086, after a person's turn
  * stopped its worker. **Absent reads as zero** (BP-030), as {@link readAbandonments}.
  */
-export function readTurnReentries(task: Task): number {
+function readTurnReentries(task: Task): number {
   return task.turnReentries ?? 0;
 }
 
@@ -446,7 +446,7 @@ export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
  * status: a failure with retries left targets `pending`, which is also where a
  * `unpark` lands. The kind separates them; the status cannot.
  */
-export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
+const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
   "completed",
   "errored",
   "retried",
@@ -460,7 +460,7 @@ export const SETTLEMENT_CHANGE_KINDS = new Set<TaskChangeKind>([
  * history" — a task persisted before FIX-948, or one that has never failed.
  * Never let an absent ledger become `undefined` arithmetic in the sum.
  */
-export function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean } {
+function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean } {
   const ledger = task.retryLedger;
   if (ledger == null) return { granted: 0, deniedByBudget: false };
   return {
@@ -839,7 +839,7 @@ export function assertTransitionFrom(
  * collection.get(id)` for the dispatcher case so dep status reflects
  * the latest committed state, not a scan-time snapshot.
  */
-export function depsSatisfied(
+function depsSatisfied(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {
@@ -988,7 +988,7 @@ export function claimDisposition(
 }
 
 /** The error recorded on a row the substrate stopped recovering (FIX-1005). */
-export function abandonmentExhaustedError(
+function abandonmentExhaustedError(
   taskId: string,
   maxAbandonments: number
 ): string {

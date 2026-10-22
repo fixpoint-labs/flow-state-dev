@@ -86,8 +86,7 @@ import { z } from "zod";
 export const RUNS = "runs" as const;
 
 /** How the last attempt on an issue-phase ended. */
-export const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
-export type RunOutcome = z.infer<typeof runOutcomeSchema>;
+const runOutcomeSchema = z.enum(["running", "succeeded", "failed"]);
 
 /**
  * Where a run's place stands, on a host that holds a run's work. The host's
