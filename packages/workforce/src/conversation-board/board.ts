@@ -68,7 +68,7 @@
  *   session's wake moves to the next debt's due time or clears. That check
  *   reads this request's snapshot, so it can't see a concurrent write. What
  *   keeps such a debt is the wake's version: every writer that can make a row
- *   ready or end one (a filing, an assign, an answer, a release, a reopen, a
+ *   ready or end one (a filing, an assign, an answer, a release, a
  *   claim at its lease's end, an ending) owes the session's wake before it
  *   writes, which bumps the version, so the pass's settle comes back stale
  *   and the wake stays. Each then runs the pass. A touch of the board runs the
@@ -151,6 +151,7 @@ import {
   conversationLedgerResources
 } from "./ledger";
 import { sendPostCancelled } from "./notice-delivery";
+import { startOwedSteerTurn } from "./steer-turn-start";
 import { conversationDelivery } from "./delivery";
 import { owedReports, sendLegacyReports } from "./report-owed";
 import { pieceOwnerOf } from "./held-task";
@@ -162,7 +163,7 @@ import { verifiedWorkerOf } from "../workers/verified-worker";
  * again in the same session, with no coordinator turn, and the second failure
  * is the one the conversation hears.
  */
-export const TASK_ATTEMPTS = 2;
+const TASK_ATTEMPTS = 2;
 
 /** What a session's board is built from. */
 export interface ConversationBoardOptions {
@@ -341,7 +342,7 @@ function holdsSession(task: Task): boolean {
  *
  * @param rows The board's rows, as the claim write reads them.
  */
-export function isStartable(task: Task, rows: readonly Task[]): boolean {
+function isStartable(task: Task, rows: readonly Task[]): boolean {
   if (task.assignee === undefined) return false;
   const key = sessionKeyOf(task);
   if (key === undefined) return true;
@@ -889,6 +890,23 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;
       },
+      // A steer (FIX-2086): a post row takes none, as it takes no edit. One
+      // that leaves the task waiting on it (it ran nothing, waiting on its
+      // filed work) starts the turn it is owed, in the task's session.
+      ...(ref.steer === undefined
+        ? {}
+        : {
+            async steer(id: string, steer: Parameters<NonNullable<TaskCollectionRef["steer"]>>[1]) {
+              const row = ref.get(id);
+              if (isPostRow(row)) return { outcome: "declined" as const, reason: "disallowed" as const, status: row!.status };
+              const outcome = await ref.steer!(id, steer);
+              const after = ref.get(id);
+              if (outcome.outcome === "recorded" && after?.waitingOn === "steer" && after.assignee !== undefined) {
+                await startOwedSteerTurn(ctx, after, (await reach(ctx)).available.get(after.assignee));
+              }
+              return outcome;
+            }
+          }),
       // The one guarded edit (FIX-2080, FIX-2081): the field table holds inside
       // the write. A post row takes no edit, only a cancel; an assignee is a
       // delegate, never the worker itself; metadata keeps its server-written
@@ -1134,7 +1152,18 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       },
       release: byRow("release") as TaskCollectionRef["release"],
       unpark: byRow("unpark") as TaskCollectionRef["unpark"],
-      reopen: byRow("reopen") as TaskCollectionRef["reopen"],
+      // A step takes no message: its task's steers reach it (FIX-2086).
+      async steer(id, steer) {
+        if (isStep(id)) {
+          throw new TaskWriteRefusedError(
+            "step_takes_no_message",
+            `task "${id}" is a step of the task its worker is running: steer the task this step belongs to. Nothing was written.`,
+            id
+          );
+        }
+        if (board.steer === undefined) return { outcome: "declined", reason: "disallowed", status: board.get(id)?.status ?? "pending" };
+        return board.steer(id, steer);
+      },
       setPriority: byRow("setPriority") as TaskCollectionRef["setPriority"],
       addLabel: byRow("addLabel") as TaskCollectionRef["addLabel"],
       removeLabel: byRow("removeLabel") as TaskCollectionRef["removeLabel"],
@@ -1426,4 +1455,4 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
   };
 }
 
-export type ConversationBoard = ReturnType<typeof defineConversationBoard>;
+

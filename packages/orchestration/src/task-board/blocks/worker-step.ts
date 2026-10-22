@@ -143,8 +143,10 @@ export async function packWorkerInput(
     ...(task.feedback !== undefined ? { feedback: task.feedback } : {}),
     // Only to the attempt an answer re-queued (FIX-1817): a failure's feedback is not an answer.
     ...(task.answered === true && task.feedback !== undefined ? { answer: task.feedback } : {}),
-    // Only to the attempts a person's reopen queued (FIX-1764).
-    ...(task.reopened === true ? { reopened: true as const } : {}),
+    // Every steer, taken or not (FIX-2086 D1): the brief a retry runs from too.
+    ...(task.steers !== undefined && task.steers.length > 0
+      ? { steers: task.steers.map((steer) => ({ message: steer.message, from: steer.from })) }
+      : {}),
     // The task a follow-up follows: a `per-task` dispatch keys its session by it.
     ...(task.followUpOf !== undefined ? { followUpOf: task.followUpOf } : {}),
     ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),

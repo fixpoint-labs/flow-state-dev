@@ -303,7 +303,7 @@ export {
   type TaskLedgersOptions,
 } from "./task-entry";
 export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
-export { afterTaskCheck, noteTaskAnswer, taskRequestAdmission } from "./task-request";
+export { afterTaskCheck, noteTaskAnswer, taskRequestAdmission, STEER_TURN_DUE_MS } from "./task-request";
 export type { TaskEndRules, TaskRequestAdmissionOptions } from "./task-request";
 export { createRowDispatch } from "./blocks/dispatch-row";
 export type { RowDispatchOptions } from "./blocks/dispatch-row";

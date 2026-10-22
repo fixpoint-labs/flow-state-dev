@@ -3,9 +3,9 @@
  * the task at that request's end (FIX-2077, rule 6).
  *
  * **Done** means: a request for the task ended with a result, its background
- * work ended too, no filed work still holds the task, and nothing is queued
- * for it. The claim gate admits the task's own entry (`work`, and its resume);
- * {@link taskRequestAdmission} admits the other requests for it a package
+ * work ended too, no steer is untaken by its attempt, no filed work still
+ * holds the task, and nothing is queued for it. The claim gate admits the
+ * task's own entry (`work`, and its resume); {@link taskRequestAdmission} admits the other requests for it a package
  * runs in the task's session (a notice of a piece's ending, a queued
  * message). Every one of them ends at the same check, which runs after the
  * engine's last drain through its request-end seam (`onRequestEnded`), on every
@@ -17,6 +17,12 @@
  *   the row records what holds it (`waitingOn`, `"filed"` or `"queued"`),
  *   keeps that answer as its output, and drops its lease, so no reclaim takes
  *   it back. The next request admitted for it checks again.
+ * - **a steer no request of its attempt took** (FIX-2086 D2): one more turn
+ *   before it settles. The check owes the task session's steer entry a wake,
+ *   records `waitingOn: "steer"` with no lease (the answer kept as for any
+ *   wait), and starts that entry at once; the entry admits a same-attempt
+ *   request whose message is the steer, and its end checks again. Each turn
+ *   takes at least one steer, so the steer cap bounds the turns.
  * - **suspended** — the row records the stop (`"person"` for a person's,
  *   `human_approval` or `human_input`; `"wait"` for any other) and drops its
  *   lease (D1). The resume is admitted like any request.
@@ -33,13 +39,15 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { onRequestEnded, type RequestEndVerdict, type RequestEnding } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, onRequestEnded, type RequestEndVerdict, type RequestEnding } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   DEFAULT_LEASE_DURATION_MS,
   filedWorkHolds,
+  readCommittedTask,
   ticketForClaim,
+  untakenSteers,
   type Task,
   type TaskClaimTicket,
   type TaskCollectionRef,
@@ -65,7 +73,22 @@ export interface TaskEndRules {
    * later request will act on, never a process's own queue. Default: none.
    */
   workQueued?: (ctx: BlockContext, task: Task) => Promise<boolean>;
+  /**
+   * The internal entry, on the task session's own flow, that runs one more
+   * turn for a steer no request of the attempt took (FIX-2086 D2). The check
+   * starts it in the running session, with a wake owed for it first, and the
+   * entry admits its request for the task. Absent: a steer that lands after a
+   * request's last model call waits for the attempt's next request, if any,
+   * and the task settles without it.
+   */
+  steerTurn?: { readonly entry: string };
 }
+
+/**
+ * When a steer's owed turn falls due if its fast-path start was lost: write +
+ * 2 s (FIX-2086 D2), the wake's due time.
+ */
+export const STEER_TURN_DUE_MS = 2_000;
 
 /** One request admitted for a task, until its end. */
 interface Admitted {
@@ -113,7 +136,7 @@ function holds(ref: TaskCollectionRef, ticket: TaskClaimTicket, row: Task | unde
 
 /** A task's request ended with a result that settles it, or that the next request picks up. */
 function answeredBefore(prior: TaskWaitingOn | undefined): boolean {
-  return prior === "filed" || prior === "queued";
+  return prior === "filed" || prior === "queued" || prior === "steer";
 }
 
 /**
@@ -253,6 +276,14 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
   return checkAnswered(record, row);
 }
 
+/**
+ * Whether request `requestId` took any of `task`'s steers on its attempt:
+ * every read that takes one names the request in its `takenIn`.
+ */
+function tookSteers(task: Task, requestId: string): boolean {
+  return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && steer.takenIn?.includes(requestId) === true);
+}
+
 /** A task whose own request stopped (a person, a wait) and has not ended. */
 function waitsOnItsOwnRequest(prior: TaskWaitingOn | undefined): boolean {
   return prior === "person" || prior === "wait";
@@ -269,13 +300,31 @@ function stopOf(record: Admitted, ending: RequestEnding): TaskWaitingOn {
   return reason === "human_approval" || reason === "human_input" ? "person" : "wait";
 }
 
-/** A request that ended with a result: done, or what still holds the task. */
-async function checkAnswered(record: Admitted, row: Task): Promise<Error | undefined> {
+/**
+ * A request that ended with a result: done, or what still holds the task.
+ * `rechecked` is set on the one pass after the settle declined for a steer
+ * that landed after this check read the row.
+ */
+async function checkAnswered(record: Admitted, row: Task, rechecked = false): Promise<Error | undefined> {
   const { ref, ticket } = record;
   if (record.answer === undefined && !answeredBefore(record.prior)) {
     // The task's own request hasn't answered yet: it still waits on that.
     if (record.prior !== undefined) return waitOn(record, row, record.prior, undefined);
     return undefined;
+  }
+  // A steer no request of this attempt took: one more turn first (D2). Read
+  // as stored: a steer is another request's write, which this one's
+  // snapshot doesn't hold.
+  const stored = (await readCommittedTask(ref, row.id)) ?? row;
+  // The turn owed for a steer that took none: owing another would loop with
+  // no end, so the task settles and the steers stay on it, untaken.
+  const noProgress = record.prior === "steer" && !tookSteers(stored, requestKey(record.ctx));
+  if (untakenSteers(stored).length > 0) {
+    if (noProgress) {
+      console.warn(`[task-board] task "${row.id}"'s steer turn took none of its steers; it settles without another turn`);
+    } else if (await oweSteerTurn(record, row)) {
+      return undefined;
+    }
   }
   const holding = await holdingWork(record, row);
   if (holding !== undefined) {
@@ -291,13 +340,32 @@ async function checkAnswered(record: Admitted, row: Task): Promise<Error | undef
   // Done. The latest checkpoint stays the output (the collection's rule);
   // otherwise this request's answer, or the one the task kept while it waited.
   const output = record.answer !== undefined ? record.answer.output : row.output;
-  return settleAtRequestEnd({
+  // A steer that lands after the read above, while held work was checked,
+  // would be settled over: the complete itself declines on an untaken steer,
+  // where a turn can be owed for it, and the check runs once more.
+  const fenceSteers = !noProgress && !rechecked && record.rules.steerTurn !== undefined && ref.setWaitingOn !== undefined;
+  let lateSteer = false;
+  const settled = await settleAtRequestEnd({
     ctx: record.ctx,
     collection: ref,
     claim: ticket,
     recorder: "complete",
-    settle: (write) => advisoryComplete(ref, row.id, output, { ...guardsOf(ticket), write }),
+    settle: async (write) => {
+      const outcome = await advisoryComplete(ref, row.id, output, {
+        ...guardsOf(ticket),
+        ...(fenceSteers ? { refuseUntakenSteers: true } : {}),
+        write,
+      });
+      lateSteer = outcome.outcome === "declined" && outcome.reason === "untaken-steers";
+      return outcome;
+    },
   });
+  if (!lateSteer) return settled;
+  // Checked again only while this request's claim still holds the row: a
+  // steer for an attempt that took the row over is that attempt's to take.
+  const fresh = await readCommittedTask(ref, row.id);
+  if (!holds(ref, ticket, fresh)) return undefined;
+  return checkAnswered(record, fresh, true);
 }
 
 /** What else holds the task open: work it filed, then work queued for it, or nothing. */
@@ -322,6 +390,54 @@ async function waitOn(record: Admitted, row: Task, on: TaskWaitingOn, answer: { 
   const lease = on === "queued" ? { leaseUntil: record.ref.now() + (row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS) } : {};
   await record.ref.setWaitingOn(row.id, on, { claim: record.ticket, ...lease, ...(answer !== undefined ? { answer } : {}) });
   return undefined;
+}
+
+/**
+ * Owe the task one more turn for its untaken steers (D2): the wake first, then
+ * the wait (`"steer"`, no lease, the answer kept), then the entry's start in
+ * this session. `false` when no turn can be owed (no steer entry, a ledger
+ * that records no wait, or a flow that declares no such entry), and the check
+ * goes on as before.
+ */
+async function oweSteerTurn(record: Admitted, row: Task): Promise<boolean> {
+  const entry = record.rules.steerTurn?.entry;
+  const { ctx, ref } = record;
+  if (entry === undefined || ref.setWaitingOn === undefined) return false;
+  const wakes = ctx.requestHost?.wakes;
+  try {
+    await wakes?.owe({ entry, dueAt: ref.now() + STEER_TURN_DUE_MS });
+  } catch (error) {
+    console.warn(`[task-board] the wake for task "${row.id}"'s steer turn couldn't be written; its start runs now only`, {
+      error: (error as Error).message,
+    });
+  }
+  await waitOn(record, row, "steer", record.answer);
+  let refused: string | undefined;
+  try {
+    const sent = await dispatchThroughSeam(ctx, {
+      type: "internal",
+      action: entry,
+      session: { id: ctx.session.identity.id },
+      payload: {},
+      from: "task-steer-turn",
+    });
+    if (!sent.ok && sent.refused === "no-entry") refused = sent.detail;
+  } catch {
+    // Not definitive: the wake starts it.
+  }
+  if (refused === undefined) return true;
+  // The flow declares no steer entry: nothing can take the steer, so the check
+  // goes on without it rather than leave the task waiting on a turn that never comes.
+  console.warn(`[task-board] task "${row.id}"'s flow declares no "${entry}" entry, so its untaken steer gets no turn`, {
+    detail: refused,
+  });
+  try {
+    const read = await wakes?.read(entry);
+    if (wakes !== undefined && read !== undefined) await wakes.settle(entry, read, null);
+  } catch {
+    // The wake fails on its own when it fires.
+  }
+  return false;
 }
 
 const defaultFiledWorkHolds: NonNullable<TaskEndRules["filedWorkHolds"]> = async (_ctx, task, ledger) =>

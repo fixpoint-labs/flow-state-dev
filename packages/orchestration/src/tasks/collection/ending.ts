@@ -38,9 +38,8 @@ import type { Task } from "../schema/task";
  * - `retried`: failed with attempts left, so the row is `pending` again; the
  *   error is the attempt's.
  * - `parked`: waiting on someone, with the note it was parked with as
- *   `question`. `quiet` is true for a park that asks nobody anything: one made
- *   for a person's turn (`forTurn`), or one its holder made for its own reasons
- *   (`awaitReview(..., { quiet: true })`).
+ *   `question`. `quiet` is true for a park that asks nobody anything: one its
+ *   holder made for its own reasons (`awaitReview(..., { quiet: true })`).
  * - `cancelled`: cancelled, with the reason when one was given.
  */
 export type TaskEnding =
@@ -59,8 +58,7 @@ export type TaskEnding =
  *   ending, with the row's output, error, or (for a cancel) the reason it
  *   stores as its error;
  * - into `parked` from any other status: a park, with the note it stores as
- *   `feedback`; quiet when the row was parked for a person's turn, or when the
- *   write was told so;
+ *   `feedback`; quiet when the write was told so;
  * - `in_progress` into `pending`: a failure with attempts left (a lapsed
  *   lease's reclaim writes the row directly and records nothing).
  *
@@ -79,7 +77,7 @@ export function endingOf(prev: Task, next: Task, quiet?: boolean): TaskEnding | 
       return {
         kind: "parked",
         ...(next.feedback != null ? { question: next.feedback } : {}),
-        quiet: next.parkedForTurn === true || quiet === true,
+        quiet: quiet === true,
       };
     case "pending":
       return prev.status === "in_progress" ? { kind: "retried", error: next.feedback ?? "" } : undefined;

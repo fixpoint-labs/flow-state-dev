@@ -50,7 +50,7 @@ import {
 } from "@flow-state-dev/engine";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { encodeUserSegment, type BlockContext, type FlowInstance, type HarnessBlock, type ModelResolver } from "@flow-state-dev/core/types";
-import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
+import { upgradeKeptTurns, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
@@ -1229,6 +1229,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // A no-op on a store that keeps no wakes, and on a Lab that owes nothing.
   await backfillBoardWakes(runtime.stores, {
     userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+  });
+  // A user's line the coder's door kept for a run before lines became steers
+  // (FIX-2086) becomes a steer on its task, so the run still takes it. Every
+  // coder run is on a conversation's board (`tasks`). A second start adds nothing.
+  await upgradeKeptTurns(runtime.stores as never, {
+    userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+    ledgers: ["tasks"],
   });
 
   // The Error Reporter, bound to this runtime: it runs as the Lab's user, and
