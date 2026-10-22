@@ -41,41 +41,20 @@ If the Lab fails to start after a save, the error prints and Shift Manager waits
 
 ### Working on Shift Manager itself
 
-In this repository, `pnpm shift-manager:dev` opens the `fsd` profile, at `teams/devteam/fsd.fsdev.config.mts`: a Lab for working on this repository with Shift Manager itself. It has two projects from the start. **FSD** is the framework packages, and **Shift Manager** is this app. Both are shared with everyone in the Lab, and both point at this repository. It raises no ask and opens no workstream, so Inbox is empty until a worker asks you something.
+In this repository, Shift Manager comes with two profiles, Labs ready to open. `fsd`, the default, is for working on this repository with Shift Manager itself; its coding agent is Claude Code, so sign in to Claude Code or set `ANTHROPIC_API_KEY` first. [`devteam`](#the-devteam-profile) is the one this repository's checks run against.
 
-Ask the Shift Coordinator for work on either project, and say which one, for example "on Shift Manager, make the empty Inbox say who to ask". A coding agent picks it up in a fresh worktree of your checkout, on a branch of its own, and works to this repository's `AGENTS.md` and `CLAUDE.md`. Before cutting that branch, the Lab fetches the upstream your `main` tracks, usually `origin/main`, and starts from whichever is newer, that upstream or your local `main`. So you don't need to pull first, and commits you haven't pushed are kept. Your own `main`, its files and your index aren't touched.
+```bash
+pnpm shift-manager:dev                    # the fsd profile, pages served from source
+pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts
+```
 
-If your `main` and its upstream each have commits the other lacks, the run is refused before anything is made, and the refusal names both commits. Pull or rebase, or push, then ask again. If the fetch fails, because you're offline for instance, the run starts from your local `main`, and a warning prints where you started Shift Manager.
+[From a checkout](https://flow-state.dev/docs/shift-manager/from-a-checkout) on the docs site covers both profiles in full: what to set before you start, how a coding run gets its worktree and branch, reviewing a run, Linear keys, and where each Lab keeps its data.
 
-The Lab pins the URL of each remote and the upstream your branches track the first time it starts with your checkout, and fetches only from those. If you change a remote's URL on purpose, the next run fetches nothing, starts from your local `main`, and prints a warning naming a pin file. If you change a branch's upstream, the run still fetches the pinned upstream and prints the same kind of warning. Either way, delete that pin file and restart Shift Manager to accept the change.
+The `fsd` profile is `teams/devteam/fsd.fsdev.config.mts`, with its projects and MCP servers in `teams/devteam/fsd-projects.mts`.
 
-A coding run works in your checkout with your trust, the way Claude Code does when you start it there. It can create and move branches, tags and remote-tracking refs in your repository.
+#### The `devteam` profile
 
-Review the work in that worktree, or from your checkout with `git log -p <branch> --not main main@{upstream}`. That shows only the run's commits, whichever of the two it started from. The branch stays checked out in its worktree, so git won't check it out a second time in yours.
-
-Only those two projects get a worktree of your checkout. Apart from that fetch, the Lab reaches no git remote, so a coding run on a project you add yourself, even one on this repository, is refused, naming the repository, and nothing is cloned.
-
-Open **Settings** and paste a Linear API key, and every coding run you ask for on either project can read and update Linear, as you. Each user sets their own. A run for someone who hasn't set one works without Linear and says so. For runs with nobody at the keyboard, such as a goal check or CI, `LINEAR_MCP_API_KEY` stands in for the Lab's own user until that user sets a key. An `MCP servers:` line at start says whether the Lab's own user has a key. The profile's projects and its MCP servers are in `teams/devteam/fsd-projects.mts`.
-
-The coding agent is Claude Code. Sign in to Claude Code, or set `ANTHROPIC_API_KEY`, before you start. Without either, the Lab refuses to start and says so. To run the scripted coder (`stub`) instead, which writes one file and costs nothing, set `DEVFORCE_LAB_HARNESS=stub`. A `Coder:` line at start names the coder it started with. The Shift Coordinator answers on a model of its own, so its turns need `ANTHROPIC_API_KEY` or `AI_GATEWAY_API_KEY`. A worker that names no `model:`, such as one the Shift Coordinator hires, answers on the Lab's default model, `openai/gpt-6-luna`, so its turns need `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`.
-
-The Lab keeps its data in SQLite at `packages/shift-manager/.fsdev/fsd.sqlite`, or wherever `FSD_STORE` points. Delete the file to start fresh.
-
-`pnpm shift-manager:dev` runs with `--dev`, which serves Shift Manager's pages from source, so a change to a screen shows as you save it. `pnpm --filter @flow-state-dev/shift-manager start` runs the same profile on the built pages, and builds them first when they're older than their source. To open the `devteam` profile instead, pass its config, a path from the repository root:
-`pnpm shift-manager:dev --config packages/shift-manager/teams/devteam/fsdev.config.mts`.
-
-To open another Lab from a checkout, pass its config:
-`pnpm --filter @flow-state-dev/shift-manager dev --config ../my-lab/fsdev.config.mts`.
-
-### The `devteam` profile
-
-`devteam` is the profile this repository's checks run against. Open it with `--config`, as above.
-
-It's at `teams/devteam/fsdev.config.mts`. It isn't in the published package, because it builds on the repository's own test Labs.
-
-It's a software team. An EM worker leads workstreams and files the coder's tasks on each one's board, a coder worker runs each task as a supervised coding run, and a reviewer worker is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with three shared projects you own: Storefront, where the Lab's second user has opened two workstreams, `feature` and `release`, both led by the EM, and Platform and Sandbox, which hold none yet. Its standard workers include the project coordinator each user talks to a project through, which opens a workstream when you ask it for new work. Rows run on the scripted coder (`stub`), with no model, unless `DEVFORCE_LAB_HARNESS=claude-code` is set, and then the Lab checks for a Claude Code sign-in or `ANTHROPIC_API_KEY` at start, as `fsd` does. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It keeps what it holds in SQLite at `packages/shift-manager/.fsdev/devteam.sqlite` (or at `DEVTEAM_STORE`), so projects, their workstreams and your conversations survive a restart. Delete the file to start fresh.
-
-Its Shift Coordinator has memory from `@flow-state-dev/memory` (working memory, a rolling digest across conversations, and the `memory/recall` tool). By default it reads memory but records nothing, so its memory stays empty. Set `DEVTEAM_MEMORY_CAPTURE=1` to record each conversation into it after each answer, which adds model calls every turn. A request best fit sends straight to a delegate runs no Shift Coordinator turn, so it isn't recorded on its own; it can still show up as earlier context when a later answer of the Shift Coordinator's is recorded.
+`devteam` is `teams/devteam/fsdev.config.mts`, a software team with an EM, a coder and a reviewer worker that is declared but never woken. Its tree sits beside the config, in [`teams/devteam/`](teams/devteam/README.md), and the checks behind it are in [`goals/devforce-lab/`](../../goals/devforce-lab/). It isn't in the published package.
 
 ## Themes
 
