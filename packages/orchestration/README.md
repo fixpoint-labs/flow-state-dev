@@ -694,25 +694,39 @@ settled or parked, has no outstanding claim, so there is nothing to reclaim. On 
 side the dispatch block returns `{ dispatched: true, taskId, sessionId, requestId,
 adopted }`, and a refused dispatch fails the row through the board's ordinary
 error path, throwing the same `DispatchRefusedError` (with its `refused` code)
-that a `dispatcher()` block throws. The child settles its own row once, when the
-task's work is over: after its request, the background work that request started and
-the background work the flow's `onFinished` started have all ended, with no task it
-filed still open or still owing its ending to the child's session, and nothing queued
-for it. Until then the row stays `in_progress`; a request that ends with filed or
-queued work open records it in `waitingOn` (`"filed"`, `"queued"`) and drops the
-lease, and a request that suspends records `"person"` (`human_approval`,
-`human_input`) or `"wait"` (any other reason) and drops it too, so a waiting task is
-never reclaimed and run twice. `"queued"` alone keeps the claim's lease: that work is
-about to run, and if it never does, the lapse takes the task back. The next request for the task in that session (its
-resume, or one a package admits with `taskRequestAdmission`, noting the answer that
-counts with `noteTaskAnswer`) checks it again; `afterTaskCheck` runs a step after that
-check, such as sending the notice the ending owes. The output is the latest
-`reportProgress` checkpoint, else the last answer that counts. A throw fails the attempt,
-and the board's `onError` reaches it:
-`"skip"` settles the row and lets the child's request complete, `"fail"` also fails
-that request. The one thing `onError` does not govern is the board failing to record
-what it saved — see the recorder-failure note under
-[taskBoard()](#taskboard) — which fails the child run under either setting.
+that a `dispatcher()` block throws.
+
+The child settles its own row once, when the task's work is over: its request has ended,
+along with the background work that request started and any the flow's `onFinished`
+started; every task it filed has ended and its ending has reached the child's session;
+and nothing is queued for it. Until then the row stays `in_progress`, and `waitingOn`
+says why:
+
+| `waitingOn` | Waiting on | Lease |
+| --- | --- | --- |
+| `"filed"` | tasks it filed that are open, or whose ending is still owed to the child's session | none |
+| `"queued"` | work queued for it that hasn't run | kept |
+| `"person"` | a `ctx.suspend()` for `human_approval` or `human_input` | none |
+| `"wait"` | any other suspension | none |
+
+A row with no lease is never reclaimed, so a waiting task isn't run twice. A `"queued"`
+row keeps its lease: if the queued work never runs, the lapse takes the task back. A
+resume continues the same attempt. Each later request for the task in that session
+checks it again; a package admits one with `taskRequestAdmission({ name, find,
+answerCounts, endRules? })` first in its sequencer, where `find(ctx)` returns
+`Promise<{ ref: TaskCollectionRef; row: Task } | undefined>` (the waiting row whose run is
+this session, read from server-set state). A later request's answer becomes the output
+only with `answerCounts: true` and a `noteTaskAnswer` tap after the step that produced it, and `afterTaskCheck(ctx, fn)` runs `fn` after that check,
+such as sending the filer the notice that the task ended. `endRules: { filedWorkHolds?, workQueued? }`
+(type `TaskEndRules`, also on `taskLedgers`) replaces what holds a task: by default its
+filed tasks, and nothing queued. The output is the latest `reportProgress` checkpoint,
+else the last answer that counts. A request that fails, aborts or is interrupted fails
+the attempt, and the board's `onError` reaches it: `"skip"` settles the row and lets the
+child's request complete, `"fail"` also fails that request. A result the board can't
+record fails the child's request under either setting; see the recorder-failure note
+under [taskBoard()](#taskboard). Before it closes the stores, disposing the router waits for any request working a
+dispatched task, until it has recorded that task's outcome (settled, failed, or waiting on
+something), within `shutdownDrainMs` (default 10 s).
 
 `taskBoard()` refuses a board that dispatches unless all of these hold, naming the
 board and the fix:

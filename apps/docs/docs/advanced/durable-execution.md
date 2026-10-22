@@ -353,7 +353,7 @@ export const flowstate = createFlowState({
 
 A notice given up on is recorded on its task as undeliverable, and logged.
 
-Before it closes the stores, `dispose()` waits up to 10 seconds for any request a wake started to finish. Past that, it aborts the ones still running and logs how many; each aborted request's wake stays, and fires again on the next host. On `createFlowApiRouter`, `shutdownDrainMs` sets the limit, and `disposeFlowApiRouter(router, { drainMs })` overrides it for one call. `serve()` from `@flow-state-dev/node` passes in whatever is left of its shutdown grace.
+Before it closes the stores, `dispose()` waits up to 10 seconds for any request a wake started to finish, and for any request working a [dispatched task](/docs/orchestration/task-board#when-a-dispatched-task-is-done), until it has recorded that task's outcome (settled, failed, or waiting on something). Past that, it aborts the wake requests still running and logs how many, and logs how many task requests hadn't recorded an outcome; each aborted request's wake stays, and fires again on the next host. On `createFlowApiRouter`, `shutdownDrainMs` sets the limit, and `disposeFlowApiRouter(router, { drainMs })` overrides it for one call. `serve()` from `@flow-state-dev/node` passes in whatever is left of its shutdown grace.
 
 ## Managing suspensions in the DevTool
 

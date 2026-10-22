@@ -376,7 +376,7 @@ On a delegation board, a registry assignee runs its tasks somewhere other than t
 
 <a id="assignees-that-hand-off"></a>
 
-An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. On a board declared `mode: "delegation"`, an assignee instead **dispatches** each claimed row to a **dispatch run** and moves on. The drain finishes with the row still `in_progress`, and the run settles it when the worker is done.
+An assignee in the registry normally runs its tasks inline: the drain claims a row, runs the worker, records the result, claims the next. On a board declared `mode: "delegation"`, an assignee instead **dispatches** each claimed row to a **dispatch run** and moves on. The drain finishes with the row still `in_progress`, and the run settles it once [the task's work is over](#when-a-dispatched-task-is-done).
 
 A dispatch run is an ordinary session — of this flow, or of the flow the assignee names with `flowKind`. Which session a row lands in is derived from the assignee's session key together with the identity of the session dispatching it. `per-task` gives every row a run to itself, except a follow-up task (filed with `followUpOf`), which runs in the run of the task it follows; `per-worker` and a shared `{ key }` send several rows into one run, one request each.
 
@@ -447,36 +447,66 @@ The drain dispatches a row once it has claimed it. A board run by a drain has no
 
 ### When a dispatched task is done
 
-The run settles its task once, when the task's work is over. That is later than the moment the entry returns:
+The dispatch run settles its task once, when all of the task's work is over. Returning from the entry isn't enough. The task completes only when:
 
-- the run's request has ended, along with any background work it started (`.sideChain()`), and any background work your flow's `onFinished` hook started;
-- no task it filed is still open, or still owes its ending to the run's session;
+- the run's request has ended, along with any background work it started (`.sideChain()`) and any your flow's `onFinished` hook started;
+- every task it filed has ended, and the run's session has heard each of those endings;
 - nothing is queued for it.
 
-Until then the task stays `in_progress`. When the run's request ends and work it filed or work queued for it is still open, the row records what it waits on in `waitingOn` (`"filed"` or `"queued"`). Waiting on filed work, it gives up its lease, so no other worker takes it back. Waiting on queued work, it keeps its lease: that work is about to run, and if it never does, the lease runs out and the task is taken back. The next request for the task in that session checks it again, and the request after which nothing holds it settles it. Its output is the latest checkpoint the worker reported with `reportProgress`; when it reported none, it is the run's answer.
+Until then the task stays `in_progress`, and its row's `waitingOn` says what it's waiting for:
 
-A run that stops partway, with `ctx.suspend()`, keeps its task the same way. `waitingOn` is `"person"` for a stop that asks a person (`human_approval`, `human_input`) and `"wait"` for any other, such as an external event. The task isn't handed out again however long the stop lasts, across a server restart too. Resuming the run continues the same attempt, and the task settles when that request's work is over. A run that throws fails its attempt.
+| `waitingOn` | The task is waiting on | Lease |
+| --- | --- | --- |
+| `"filed"` | tasks it filed that haven't ended, or whose ending the run's session hasn't heard yet | none |
+| `"queued"` | work queued for it that hasn't run yet, such as a message to its Workforce worker | kept |
+| `"person"` | a stop that asks a person: `ctx.suspend()` with `human_approval` or `human_input` | none |
+| `"wait"` | any other stop, such as an external event | none |
 
-On a [Workforce](../workforce/delegating-work.md#splitting-a-task) conversation's board, the notice of a piece's ending and a worker's message are those later requests. On a flow of your own, a request that works on a waiting task starts with `taskRequestAdmission` and notes the answer that counts with `noteTaskAnswer`:
+A task with no lease stays with its run. It isn't handed out again however long the wait lasts, including across a server restart. A task waiting on `"queued"` keeps its lease, two minutes by default. If the queued work never runs, the lease runs out and the board takes the task back, as it would from a worker that died.
+
+Each later request for the task in that session checks it again, and the one after which nothing holds it settles it. A stopped run resumes on the same attempt and settles when the resumed request's work is over. A request that throws fails the attempt.
+
+The task's output is the latest checkpoint its worker reported with `reportProgress`. With no checkpoint, it's the last answer that counts: the entry's, or that of a later request whose answer [counts toward the output](#requests-that-work-on-a-waiting-task).
+
+If the board can't record the result, the dispatch run's request reports `failed`. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
+
+Before it closes the stores, stopping the host waits for a request working a dispatched task, until it has recorded that task's outcome (settled, failed, or waiting on something). It shares the `shutdownDrainMs` budget (default 10 seconds) it gives requests that [wakes](../advanced/durable-execution.md#wakes) started. Past that budget the host shuts down anyway and logs how many such requests hadn't recorded an outcome.
+
+#### Requests that work on a waiting task
+
+On a [Workforce](../workforce/delegating-work.md#splitting-a-task) board, the notice of a piece's ending and a message to the worker are these later requests, and you don't wire anything. On a flow of your own, start each such entry with `taskRequestAdmission`, and tap `noteTaskAnswer` after the step whose answer can become the task's output:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
+import { taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { noteTaskAnswer, taskRequestAdmission } from "@flow-state-dev/orchestration/task-board";
+import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 
-const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: pieceEndingSchema })
+// Your lookup: the waiting task whose run is this session, and the ledger it's on.
+async function findWaitingTask(
+  ctx: BlockContext
+): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
+  // e.g. resolve the ledger, then ref.list({ status: "in_progress" })
+  //   .find((task) => task.run?.sessionId === ctx.session.identity.id)
+}
+
+// readThePiece is your own block: whatever this request does with the notice.
+const onPieceEnded = sequencer({ name: "on-piece-ended", inputSchema: taskSettledInputSchema })
   .tap(
     taskRequestAdmission({
       name: "on-piece-ended-admission",
       answerCounts: true,
-      // The waiting task this session runs, read from server-set state.
-      find: async (ctx) => findOwnTask(ctx),
+      find: (ctx) => findWaitingTask(ctx),
     })
   )
   .step(readThePiece)
   .tap(noteTaskAnswer);
 ```
 
-`find` must answer only for a row whose run is this session. Put the admission first in the sequencer. It admits nothing while no request waits on the task, so two requests never settle it at once. Set `answerCounts: false` on an entry whose answer must never become the task's output, such as a message.
+`find` is called with the request's block context and returns the task's ledger (`ref`) and its row, or `undefined` to admit nothing. Read both from server-set state, such as session state your flow wrote, never from the request's input, and return a row only when its run is the current session. Put the admission first in the sequencer. It takes the task only while the row has a `waitingOn`; otherwise the request runs as usual and settles nothing. An admitted request works under the task's claim, so its task tools write as the worker, `reportProgress` included. A later request's answer becomes the task's output only when both hold: the admission has `answerCounts: true`, and the sequencer taps `noteTaskAnswer` after the step that produced the answer. `noteTaskAnswer` records the output of the step before it. Set `answerCounts: false` on an entry whose answer must never become the task's output, such as a message.
+
+By default, the tasks a task filed hold it, and nothing counts as queued. To change either, pass `endRules: { filedWorkHolds, workQueued }` to `taskRequestAdmission`, and to [`taskLedgers`](#a-task-entry-served-by-many-boards) when your task entry takes its tasks through one. Each is an async predicate over the context and the task row; `workQueued` should read a durable record, so a restart doesn't lose what it reports.
 
 ### Which session a task runs in
 
@@ -629,7 +659,7 @@ The ledger id is the `boardId` the sending board dispatches under. So a board se
 
 Each arriving task gets the same checks a board's own entry runs: same attempt, same row, still `in_progress`, still for this assignee. A ledger id `resolve` doesn't answer for is refused before any row is read, with an `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`) naming the entry, the task and the ledger. The id travels with the dispatch, so treat it as untrusted: answer from `ctx`, for ledgers the running request may read, never from a map of every ledger in the process.
 
-`taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
+`taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), `endRules` (what else [holds a task open](#when-a-dispatched-task-is-done)), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
 `taskTurn`, `true` by default, makes each run of the entry a task turn: [`dispatchTask`](#giving-another-worker-work) with `wait: true` is refused, and the run gets [`reportProgress`](#progress-from-the-worker) and [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run can wait on work it dispatches, and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
 
