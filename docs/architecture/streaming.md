@@ -128,6 +128,12 @@ The request stream carries these event types:
 
 A request that owes request-end hooks (FIX-2077: the claim gate registers one for a dispatched task's run) holds back its terminal status until `onFinished`'s drain and those hooks have run. It then emits the status they leave it with: `request.failed` when a hook hands back a failure (`RequestEndVerdict`), never `request.completed` first. Readers that end on the first terminal event need no change. A request that owes none emits its terminal status where it always has, after its record settles and before `onFinished`.
 
+What a `GET .../stream` reader sees of such a request:
+
+- **While the hooks run**, the record already reads terminal but its log has no terminal event. The route live-tails it, as a running request, while its run is still writing: not finalized (`finalizedAtMs` unset), and its active-request entry still registered and, when the run beats, beaten within the live-tail liveness window. This holds with heartbeats off too. The reader ends on the held event, once.
+- **A terminal log with no terminal event**, whose run can write nothing more (finalized, its entry gone, or its heartbeat lapsed), replays with a terminal event synthesized from the record's status: `request.<status>`, not persisted, with sequence number one past the log's last. Nothing real can land there later, and a client, which dedupes by sequence number, never drops it as a repeat. This also ends the log of a run that died before writing its terminal event, which the stale sweep stamps without one.
+- **Known limits.** A hook that hangs keeps the request live: a reader tails it until the hook ends, and on stores with a liveness timeout it gets that timeout's synthetic `request.interrupted` after 30 seconds while the record reads `completed` or `failed`. A hung hook is unbounded on the record already; the stream only makes it visible.
+
 ### Event Envelope
 
 Every event includes:
@@ -211,6 +217,7 @@ GET /stream?starting_after=42
 
 - If both provided, `starting_after` takes precedence
 - Server replays persisted events with `sequence_number > cursor` then continues live
+- A terminal request whose run is still writing its held terminal event is followed live, and one whose log has no terminal event and can get none ends with a synthesized one (see the terminal-status note under the event table)
 - `ping` events and diagnostics are NOT replayed
 - `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 - `content.audio.delta` events are NOT replayed (FIX-523). The durable `OutputAudioContent` snapshot is delivered via `content.added` / `content.done` and survives reconnects; in-flight audio chunks are lost. Clients hear a gap from disconnect to the next live delta. This matches every comparable system (OpenAI Realtime, ElevenLabs WS, Cartesia, LiveKit) — nobody does mid-stream audio resume

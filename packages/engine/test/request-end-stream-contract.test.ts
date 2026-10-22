@@ -19,10 +19,15 @@ import type { StoreRegistry } from "../src";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const FLOW_ID = "request-end-stream";
 
-/** A flow whose action registers one request-end hook that waits on `gate` and then fails the request. */
-function heldFlow(gate: { started: boolean; open: Promise<void> }) {
+/**
+ * A flow whose action registers one request-end hook that waits on `gate` and
+ * then fails the request. `heartbeatIntervalMs: 0` turns the run's heartbeat
+ * off, documented config a reader must not mistake for a finished run.
+ */
+function heldFlow(gate: { started: boolean; open: Promise<void> }, heartbeatIntervalMs?: number) {
   return defineFlow({
     kind: "request-end-stream",
+    ...(heartbeatIntervalMs !== undefined ? { request: { heartbeatIntervalMs } } : {}),
     actions: {
       run: {
         inputSchema: z.any(),
@@ -77,12 +82,18 @@ async function streamOf(router: ReturnType<typeof hostFor>, requestId: string): 
 const terminalsIn = (body: string) =>
   [...body.matchAll(/^event: (request\.(?:completed|failed|incomplete|aborted|interrupted))$/gm)].map((match) => match[1]);
 
-describe("a held request's stream", () => {
+/** The sequence numbers of an SSE body's events, in order. */
+const sequencesIn = (body: string) => [...body.matchAll(/^id: [^\n]*:(\d+)$/gm)].map((match) => Number(match[1]));
+
+describe.each([
+  ["heartbeats on", undefined],
+  ["heartbeats off", 0]
+] as const)("a held request's stream (%s)", (_label, heartbeatIntervalMs) => {
   it("a GET stream attached while the hooks run ends once, with the final status", async () => {
     let open!: () => void;
     const gate = { started: false, open: new Promise<void>((resolve) => (open = resolve)) };
     const stores = createInMemoryStores();
-    const flow = heldFlow(gate);
+    const flow = heldFlow(gate, heartbeatIntervalMs);
     const router = hostFor(stores, flow);
     const running = run(flow, stores);
     for (let i = 0; i < 200 && !gate.started; i += 1) await sleep(5);
@@ -117,7 +128,7 @@ describe("a held request's stream", () => {
       await Promise.all([...pending]);
       await flush(requestId);
     };
-    const flow = heldFlow(gate);
+    const flow = heldFlow(gate, heartbeatIntervalMs);
     const router = hostFor(stores, flow);
     const running = run(flow, stores);
     for (let i = 0; i < 200 && !gate.started; i += 1) await sleep(5);
@@ -129,6 +140,33 @@ describe("a held request's stream", () => {
     // Read the moment shutdown is done, as a host closing its stores would.
     expect((await stores.request.getEvents(record!.id)).filter((event) => event.type === "request.failed")).toHaveLength(1);
     await running;
+  });
+
+  it("a held run that died mid-hook: a reader ends at once with the record's status, after the last real event", async () => {
+    // Its process is gone: no active-request entry runs it any more. Nothing
+    // more can be written, so a reader must not wait on it.
+    let open!: () => void;
+    const gate = { started: false, open: new Promise<void>((resolve) => (open = resolve)) };
+    const stores = createInMemoryStores();
+    const flow = heldFlow(gate, heartbeatIntervalMs);
+    const router = hostFor(stores, flow);
+    const running = run(flow, stores);
+    for (let i = 0; i < 200 && !gate.started; i += 1) await sleep(5);
+    const [record] = await stores.request.list({ sessionId: "s1" });
+    await stores.activeRequests.deregister(record!.id);
+    const lastReal = Math.max(...(await stores.request.getEvents(record!.id)).map((event) => event.sequence_number ?? 0));
+
+    try {
+      const body = await Promise.race([streamOf(router, record!.id), sleep(2_000).then(() => "still open")]);
+
+      expect(terminalsIn(body)).toEqual(["request.completed"]);
+      // After every real event, never on one: a client dedupes by sequence number.
+      expect(sequencesIn(body).at(-1)).toBe(lastReal + 1);
+    } finally {
+      open();
+      await running;
+      await disposeFlowApiRouter(router, { drainMs: 0 });
+    }
   });
 
   it("a log its run left without a terminal event replays with one, the record's status", async () => {

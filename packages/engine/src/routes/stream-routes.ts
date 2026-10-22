@@ -523,13 +523,20 @@ export function voiceErrorToHttpStatus(kind: VoiceErrorKind): number {
 /**
  * Whether a terminal record's own run is still writing its terminal event
  * (FIX-2077): a request that owed request-end hooks settles its record first
- * and emits its terminal status only once they have run. Until the run stamps
- * `finalizedAtMs` and while its log has no terminal event, a reader tails it
- * live; the live tail's liveness timeout ends it if that run died.
+ * and emits its terminal status only once they have run, then stamps
+ * `finalizedAtMs`. Still writing means: not finalized, no terminal event in
+ * its log, and its run still alive, read from the run itself whatever the
+ * heartbeat setting: its active-request entry is still registered, and, when
+ * it beats, has beaten within the live-tail liveness window. A reader tails
+ * such a request live. Anything else can write nothing more, and a replay of
+ * it ends with {@link missingTerminalEvent}.
  */
 async function terminalEventStillComing(stores: StoreRegistry, record: RequestRecord): Promise<boolean> {
-  if (record.status === "suspended" || record.heartbeatsUntilFinalized !== true || record.finalizedAtMs != null) return false;
-  return !(await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent);
+  if (record.status === "suspended" || !FINAL_STATUSES.has(record.status) || record.finalizedAtMs != null) return false;
+  if ((await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent)) return false;
+  const entry = await stores.activeRequests.get(record.id);
+  if (entry === undefined) return false;
+  return record.heartbeatsUntilFinalized !== true || Date.now() - entry.lastHeartbeatAt <= resolveLiveTailLivenessMs();
 }
 
 /** The record statuses a request ends in for good: a replay of one ends with it. */
@@ -537,10 +544,14 @@ const FINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "failed", "inc
 
 /**
  * The terminal event a replay must end with when its log holds none: the
- * record's own status, after the log's last event (FIX-2077). A run that died
- * or stopped before writing its terminal event otherwise leaves every later
- * reader without one. `undefined` when the log (before the cursor included)
- * has one, or the record is not in a final state.
+ * record's own status (FIX-2077). A run that died or stopped before writing
+ * its terminal event otherwise leaves every later reader without one. Only
+ * reached once nothing more can be written ({@link terminalEventStillComing}
+ * is false), so its sequence number is the log's last plus one: no real event
+ * can land there later, and it never repeats one a client has already seen
+ * (clients dedupe by sequence number). Not persisted. `undefined` when the
+ * log (before the cursor included) has one, or the record is not in a final
+ * state.
  */
 async function missingTerminalEvent(
   stores: StoreRegistry,
