@@ -185,7 +185,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
   };
 
   /** Whether this turn's worker was set at hire to change its own delegates (FIX-2081, rule 13). */
-  const turnManagesOwn = (ctx: BlockContext): boolean =>
+  const turnEditsOwn = (ctx: BlockContext): boolean =>
     editsOwnDelegates(verifiedWorkerOf(ctx.session) !== undefined ? workerConfigOf(ctx) : turnConfigOf(ctx));
 
   /** The refusal a delegate-changing tool answers on a worker not set to change its own. */
@@ -288,7 +288,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     inputSchema: addInputSchema,
     outputSchema: toolOutputSchema,
     ...blockBase,
-    execute: async (input, ctx) => (turnManagesOwn(ctx as never) ? orTell(await add(ctx as never, input)) : notOwnToChange)
+    execute: async (input, ctx) => (turnEditsOwn(ctx as never) ? orTell(await add(ctx as never, input)) : notOwnToChange)
   });
   const removeDelegateTool = handler({
     name: REMOVE_DELEGATE,
@@ -297,7 +297,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      turnManagesOwn(ctx as never) ? orTell(await change(ctx as never, { remove: { worker: input.worker } })) : notOwnToChange
+      turnEditsOwn(ctx as never) ? orTell(await change(ctx as never, { remove: { worker: input.worker } })) : notOwnToChange
   });
   const setFallbackTool = handler({
     name: SET_FALLBACK,
@@ -307,7 +307,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     outputSchema: toolOutputSchema,
     ...blockBase,
     execute: async (input, ctx) =>
-      turnManagesOwn(ctx as never)
+      turnEditsOwn(ctx as never)
         ? orTell(await change(ctx as never, { fallback: input.worker === null ? null : { worker: input.worker } }))
         : notOwnToChange
   });
@@ -356,7 +356,7 @@ export function defineWorkerDelegates(options: WorkerDelegatesOptions) {
     presets: {
       tools: {
         controlTools: async (ctx) =>
-          turnManagesOwn(ctx as never)
+          turnEditsOwn(ctx as never)
             ? [listDelegatesTool, addDelegateTool, removeDelegateTool, setFallbackTool]
             : [listDelegatesTool]
       },

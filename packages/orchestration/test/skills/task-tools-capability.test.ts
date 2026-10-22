@@ -478,6 +478,8 @@ describe("updateTask — a release with a reassignment", () => {
     const result = await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer", priority: 9 }, ctx);
 
     expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("field_locked_after_start");
+    expect((result as { error: string }).error).toContain("Nothing was written.");
     expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "researcher", priority: 1 });
   });
 
