@@ -520,38 +520,43 @@ export function voiceErrorToHttpStatus(kind: VoiceErrorKind): number {
   }
 }
 
+/** A record status a request ends in for good: terminal, and not a suspension (which a resume continues). */
+const endsForGood = (status: RequestRecord["status"]): boolean => status !== "suspended" && isTerminalRequestStatus(status);
+
 /**
- * Whether a terminal record's own run is still writing its terminal event
- * (FIX-2077): a request that owed request-end hooks settles its record first
- * and emits its terminal status only once they have run, then stamps
- * `finalizedAtMs`. Still writing means: not finalized, no terminal event in
- * its log, and its run still alive, read from the run itself whatever the
- * heartbeat setting: its active-request entry is still registered, and, when
- * it beats, has beaten within the live-tail liveness window. A reader tails
- * such a request live. Anything else can write nothing more, and a replay of
- * it ends with {@link missingTerminalEvent}.
+ * The statuses a run settles its own record with before its terminal event
+ * (FIX-2077: it holds that event until its request-end hooks have run). An
+ * `interrupted` or `aborted` record with no terminal event has no run behind
+ * it: the stale sweep or the stop of a parked request wrote it, and a run's
+ * own paths for those statuses emit their event first.
+ */
+const HELD_STATUSES: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed"]);
+
+/**
+ * Whether a terminal record's run may still write its terminal event
+ * (FIX-2077): a request that owed request-end hooks settles its record first,
+ * emits its terminal status once they have run, and then stamps
+ * `finalizedAtMs`. While that stamp is unset (`null`; absent on records from
+ * before it existed) and its log has no terminal event, a reader tails it
+ * live. A run that died then ends the tail through the live tail's liveness
+ * timeout, or, once the stale sweep stamps it, a replay ends with
+ * {@link missingTerminalEvent}.
  */
 async function terminalEventStillComing(stores: StoreRegistry, record: RequestRecord): Promise<boolean> {
-  if (record.status === "suspended" || !FINAL_STATUSES.has(record.status) || record.finalizedAtMs != null) return false;
-  if ((await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent)) return false;
-  const entry = await stores.activeRequests.get(record.id);
-  if (entry === undefined) return false;
-  return record.heartbeatsUntilFinalized !== true || Date.now() - entry.lastHeartbeatAt <= resolveLiveTailLivenessMs();
+  if (!HELD_STATUSES.has(record.status) || record.finalizedAtMs !== null) return false;
+  return !(await stores.request.getEvents(record.id)).some(isTerminalRequestStreamEvent);
 }
 
-/** The record statuses a request ends in for good: a replay of one ends with it. */
-const FINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "failed", "incomplete", "aborted", "interrupted"]);
-
 /**
- * The terminal event a replay must end with when its log holds none: the
- * record's own status (FIX-2077). A run that died or stopped before writing
- * its terminal event otherwise leaves every later reader without one. Only
- * reached once nothing more can be written ({@link terminalEventStillComing}
- * is false), so its sequence number is the log's last plus one: no real event
- * can land there later, and it never repeats one a client has already seen
- * (clients dedupe by sequence number). Not persisted. `undefined` when the
- * log (before the cursor included) has one, or the record is not in a final
- * state.
+ * The terminal event a replay ends with when its log holds none: the record's
+ * own status (FIX-2077). Only once nothing more can be written under the id:
+ * the record is finalized (by its run, or by the stale sweep), or it is a
+ * status no run writes before its event (`interrupted`, `aborted`; see
+ * {@link HELD_STATUSES}). It takes the log's last sequence number plus one,
+ * the rule for a synthetic terminal that nothing can follow (`streaming.md`):
+ * no real event can land there, and a client, which dedupes by sequence
+ * number, never drops it as a repeat. Not persisted. `undefined` when the log
+ * (before the cursor included) has one, or more may still be written.
  */
 async function missingTerminalEvent(
   stores: StoreRegistry,
@@ -559,7 +564,7 @@ async function missingTerminalEvent(
   slice: readonly RequestStreamEvent[],
   cursor: number | undefined
 ): Promise<RequestStreamEvent | undefined> {
-  if (!FINAL_STATUSES.has(record.status)) return undefined;
+  if (!endsForGood(record.status) || (HELD_STATUSES.has(record.status) && record.finalizedAtMs === null)) return undefined;
   if (slice.some(isTerminalRequestStreamEvent)) return undefined;
   const log = cursor === undefined ? slice : await stores.request.getEvents(record.id);
   if (log.some(isTerminalRequestStreamEvent)) return undefined;
