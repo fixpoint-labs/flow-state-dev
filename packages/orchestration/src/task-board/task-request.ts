@@ -89,7 +89,12 @@ interface Admitted {
   readonly own: boolean;
 }
 
-/** The requests admitted in this process, by request id. Each leaves at its request's end. */
+/**
+ * The requests admitted in this process, by request id. Each leaves at its
+ * request's end. Requests for the same task are serialized by admission, not
+ * by this map: a task session's notices and messages run one at a time on its
+ * line, and the task's own request is told from later ones by `own`.
+ */
 const admitted = new Map<string, Admitted>();
 
 function requestKey(ctx: BlockContext): string {

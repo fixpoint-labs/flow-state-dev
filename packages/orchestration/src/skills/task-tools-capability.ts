@@ -1723,9 +1723,9 @@ export function createTaskToolsCapability(
  */
 export interface TaskToolsOptions {
   /**
-   * The board has a waker: whatever runs it calls `resumeOwedWaits` when it
-   * touches the board outside a turn (a board run, a task's notice), so a
-   * turn parked on a wait is resumed when its task ends. Only then may
+   * The board has a waker: the filing session's pass (its `onTaskSettled`
+   * request, sent when a waited-on task ends) resumes a turn parked on a
+   * wait. Only then may
    * `dispatchTask` offer `wait`, so it has no effect without `dispatches`.
    * Default `false`: a board that nothing wakes would leave every wait to its
    * timeout.

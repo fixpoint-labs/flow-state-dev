@@ -1308,14 +1308,15 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * `tools:` line doesn't fence them out.
    */
   // Chosen per turn: a wait is offered only where the host can hold one
-  // (FIX-1816). This board resumes waits: its notice entry and every run call
-  // `resumeOwedWaits`. And it dispatches (FIX-1875): its ref's filings and
+  // (FIX-1816). This board resumes waits: its pass resumes the turns owed a
+  // resume when their task ends. And it dispatches (FIX-1875): its ref's filings and
   // dispatches wake a run of it, so `dispatchTask` starts work now.
   // On a turn routing a post (FIX-1872), `dispatchTask` also takes its post
   // form; a session that files no task gets that one tool alone.
   // A task session's turn can't wait, but its task can: a piece filed without
-  // `wait` parks the task when the turn ends, and the piece's ending wakes it
-  // (`./split`). The refusal and the description say so.
+  // `wait` leaves the task waiting on it (`waitingOn: "filed"`) when the turn
+  // ends, and the piece's ending wakes it. The refusal and the description
+  // say so.
   const eight = taskToolsForTurn(turnResolver, turnRoster, {
     resumesWaits: true,
     dispatches: true,
