@@ -363,6 +363,14 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
       expect(tasks.get("live")?.causedBy).toBeUndefined();
       expect(tasks.get("live")?.error).toBeUndefined();
     });
+
+    it("names no cause on a row filed cancelled and held: it is stored held, not skipped", async () => {
+      const { tasks } = await makeBacking();
+      await tasks.addTask({ id: "h", goal: "h", held: true, status: "cancelled", causedBy: "gone", error: "dep gone failed" });
+      expect(tasks.get("h")?.status).toBe("held");
+      expect(tasks.get("h")?.causedBy).toBeUndefined();
+      expect(tasks.get("h")?.error).toBeUndefined();
+    });
   });
 
   describe("attempts", () => {
