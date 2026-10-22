@@ -402,9 +402,17 @@ async function owePass(ctx: BlockContext): Promise<void> {
  *   board before it landed; nor does a touch that found a debt past due, which
  *   no write sends a pass for.
  *
- * Process-local and only a saving: an entry goes when its pass starts or ends,
- * when its send is refused or fails, and lapses after
- * {@link PASS_START_GRACE_MS} or {@link PASS_RUN_GRACE_MS}.
+ * Only where the pass runs in this process (`RequestHost.dispatchRunsHere`):
+ * on a host whose passes run on a queue's worker, this process never sees one
+ * start, so nothing is skipped there. A write skipped behind a pass that then
+ * never starts is still paid: by the wake it owed first, or, on a host that
+ * keeps none, by a trigger sent again once {@link PASS_START_GRACE_MS} lapses
+ * with that pass still not started.
+ *
+ * Module state, unlike the pass's own read of its wake and its rounds, which
+ * live in its request's state: this is a saving shared by the requests of one
+ * process, not something a pass needs to be correct. A lost entry costs one
+ * repeated pass; a stale one lapses.
  */
 const waitingPasses = new Map<string, number>();
 const runningPasses = new Map<string, number>();
@@ -432,8 +440,14 @@ export async function triggerPass(ctx: BlockContext, options: { touch?: boolean 
   const now = Date.now();
   const sent = waitingPasses.get(key);
   const running = runningPasses.get(key);
-  const waiting = sent !== undefined && now - sent < PASS_START_GRACE_MS;
-  if (waiting || (options.touch === true && running !== undefined && now - running < PASS_RUN_GRACE_MS)) return;
+  const here = ctx.requestHost?.dispatchRunsHere === true;
+  const waiting = here && sent !== undefined && now - sent < PASS_START_GRACE_MS;
+  if (waiting) {
+    // No wake backs this write: if that pass never starts, send again.
+    if (options.touch !== true && ctx.requestHost?.wakes === undefined) resendIfNeverStarted(ctx, key, sent!);
+    return;
+  }
+  if (here && options.touch === true && running !== undefined && now - running < PASS_RUN_GRACE_MS) return;
   waitingPasses.set(key, now);
   try {
     const outcome = await dispatchThroughSeam(ctx, {
@@ -449,6 +463,39 @@ export async function triggerPass(ctx: BlockContext, options: { touch?: boolean 
     // The wake runs it, and the next trigger tries again.
     if (waitingPasses.get(key) === now) waitingPasses.delete(key);
   }
+}
+
+/** The running session's pass has started: a write's trigger from here on asks for the next one. */
+export function notePassStarted(ctx: BlockContext): void {
+  const key = waitingPassKey(ctx);
+  waitingPasses.delete(key);
+  runningPasses.set(key, Date.now());
+}
+
+/** The running session's pass has ended. */
+export function notePassEnded(ctx: BlockContext): void {
+  runningPasses.delete(waitingPassKey(ctx));
+}
+
+/** Sends that will check, once the start grace lapses, that the pass sent at `sent` began. */
+const resendChecks = new Set<string>();
+
+/**
+ * Once the pass sent at `sent` has had {@link PASS_START_GRACE_MS} to start,
+ * send another if it still hasn't (its entry is unchanged): the backstop for a
+ * write skipped behind it on a host that keeps no wakes. One check per pass.
+ */
+function resendIfNeverStarted(ctx: BlockContext, key: string, sent: number): void {
+  const check = `${key}\u0000${sent}`;
+  if (resendChecks.has(check)) return;
+  resendChecks.add(check);
+  const timer = setTimeout(() => {
+    resendChecks.delete(check);
+    if (waitingPasses.get(key) !== sent) return;
+    waitingPasses.delete(key);
+    void triggerPass(ctx).catch(() => undefined);
+  }, Math.max(0, sent + PASS_START_GRACE_MS - Date.now()));
+  (timer as { unref?: () => void }).unref?.();
 }
 
 /** Whether any debt on the board is past its due time: the touch runs the pass for it. */
@@ -470,7 +517,9 @@ const MAX_PASS_ROUNDS = 3;
  * What one pass keeps between its steps, in its own request's state (so a
  * failed or aborted pass leaves nothing behind, and a pass resumed elsewhere
  * reads it back): the wake as read at its start, settled at its end against
- * that version, and the rounds run so far.
+ * that version, and the rounds run so far. Correctness rests on this. The
+ * process-wide record of passes sent and running ({@link notePassStarted})
+ * is only a saving, and lives in module state for that reason.
  */
 const passStateSchema = z.object({
   passWake: z.object({ dueAt: z.number(), landBy: z.number(), version: z.number() }).optional(),
@@ -1149,9 +1198,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     resources: { ...conversationLedgerResources, ...taskChainResources },
     requestStateSchema: passStateSchema,
     execute: async (_input, ctx) => {
-      // Started: a write's trigger from here on asks for the next pass.
-      waitingPasses.delete(waitingPassKey(ctx as never));
-      runningPasses.set(waitingPassKey(ctx as never), Date.now());
+      notePassStarted(ctx as never);
       const wake = await ctx.requestHost?.wakes?.read(RUN_BOARD_ENTRY);
       await ctx.request.patchState({ passWake: wake === undefined ? undefined : { dueAt: wake.dueAt, landBy: wake.landBy, version: wake.version }, passRounds: 0 });
       const partition = await filingSessionIdOf(ctx.session);
@@ -1196,7 +1243,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
     outputSchema: z.object({ nextDue: z.number().optional() }),
     requestStateSchema: passStateSchema,
     execute: async (round, ctx) => {
-      runningPasses.delete(waitingPassKey(ctx as never));
+      notePassEnded(ctx as never);
       await settlePassWake(ctx as never, RUN_BOARD_ENTRY, passStateOf(ctx as never).passWake, round.nextDue);
       return round.nextDue === undefined ? {} : { nextDue: round.nextDue };
     }
