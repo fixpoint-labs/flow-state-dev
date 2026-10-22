@@ -129,6 +129,18 @@ export {
   STATUS_NOTE_LIMIT,
 } from "./task-tools-capability";
 
+// How a running request takes a steer, and the words a steer is shown in (FIX-2086).
+export {
+  createSteerContext,
+  renderSteers,
+  runningTaskOf,
+  takeRunningSteers,
+  STEERED_WHILE_RUNNING,
+  type ShownSteer,
+  type RunningTask,
+  type SteerContextOptions,
+} from "./steer-context";
+
 export {
   ensureSeeded,
 } from "./seeding";

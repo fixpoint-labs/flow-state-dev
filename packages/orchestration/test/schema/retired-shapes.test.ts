@@ -2,10 +2,10 @@
  * The retired-shape map (FIX-2080, epic D3): one read for every task row
  * stored in a shape the epic retires, one test per shape.
  *
- * Two entries are on (`blocked`, `recorded`): their rows read in the current
- * shape at every read boundary. Four are built here and turned on by the
- * issue that stops writing their shape; until then the boundary reads them as
- * stored, and the entry's own read shows what they will read as.
+ * An entry is on once nothing writes its shape: its rows read in the current
+ * shape at every read boundary. One (`post`) is built here and turned on by
+ * the issue that stops writing its shape; until then the boundary reads it as
+ * stored, and the entry's own read shows what it will read as.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -22,7 +22,7 @@ describe("the retired-shape map", () => {
     const on = Object.entries(RETIRED_SHAPES)
       .filter(([, entry]) => entry.on)
       .map(([shape]) => shape);
-    expect(on.sort()).toEqual(["blocked", "parked-split", "recorded"]);
+    expect(on.sort()).toEqual(["blocked", "parked-for-turn", "parked-split", "recorded", "reopened"]);
   });
 
   it("returns a row in no retired shape as the same object", () => {
@@ -80,20 +80,40 @@ describe("the retired-shape map", () => {
     expect(withRetiredShapes(read)).toBe(read);
   });
 
-  it("reopened (off until FIX-2086): read as stored; its entry reads it as a plain pending row", () => {
-    const reopened = { ...row, status: "pending", reopened: true };
-    expect(withRetiredShapes(reopened)).toBe(reopened);
-    const read = readRetiredShape("reopened", reopened);
-    expect(read).toMatchObject({ status: "pending" });
+  it("reopened (on, FIX-2086): a reopened row in flight reads as pending, with one steer pointing at the session's latest line", () => {
+    const reopened = { ...row, status: "pending", attempts: 1, reopened: true, turnReentries: 1, updatedAt: 7 };
+    const read = withRetiredShapes(reopened) as Record<string, unknown>;
+    expect(read).toMatchObject({ status: "pending", attempts: 1 });
     expect(read).not.toHaveProperty("reopened");
+    // Untaken, so the attempt that picks the task up is handed it; from the person who typed the line.
+    expect(read.steers).toEqual([
+      { id: "reopened", from: "user", at: 7, message: expect.stringContaining("latest line in this session") },
+    ]);
+    // A fixed point: a second read returns the same object.
+    expect(withRetiredShapes(read)).toBe(read);
   });
 
-  it("parked-for-turn (off until FIX-2086): read as stored; its entry re-queues it uncharged", () => {
+  it("reopened (on): a reopened row whose attempt is running keeps running, and its request takes the steer", () => {
+    const running = { ...row, status: "in_progress", attempts: 2, reopened: true, leaseUntil: 9 };
+    const read = withRetiredShapes(running) as Record<string, unknown>;
+    expect(read).toMatchObject({ status: "in_progress", attempts: 2, leaseUntil: 9 });
+    expect((read.steers as Array<{ takenBy?: number }>)[0]!.takenBy).toBeUndefined();
+  });
+
+  it("reopened (on): a reopened row that has finished again only loses the mark: a finished task takes no steer", () => {
+    const finished = { ...row, status: "completed", attempts: 2, reopened: true, output: "again" };
+    const read = withRetiredShapes(finished) as Record<string, unknown>;
+    expect(read).toMatchObject({ status: "completed", output: "again" });
+    expect(read).not.toHaveProperty("reopened");
+    expect(read).not.toHaveProperty("steers");
+  });
+
+  it("parked-for-turn (on, FIX-2086): a row parked for a person's turn re-queues, uncharged", () => {
     const parked = { ...row, status: "parked", parkedForTurn: true, turnReentries: 1, leaseUntil: 5 };
-    expect(withRetiredShapes(parked)).toBe(parked);
-    const read = readRetiredShape("parked-for-turn", parked);
+    const read = withRetiredShapes(parked);
     expect(read).toMatchObject({ status: "pending", turnReentries: 2 });
     expect(read).not.toHaveProperty("parkedForTurn");
     expect(read).not.toHaveProperty("leaseUntil");
+    expect(withRetiredShapes(read)).toBe(read);
   });
 });

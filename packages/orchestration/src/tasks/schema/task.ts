@@ -8,6 +8,7 @@
  */
 import { z } from "zod";
 import { persistedTaskStatusSchema, type TaskStatus } from "./task-status";
+import { taskSteerSchema } from "../steers";
 
 /** The base Task schema. */
 export const taskSchema = z.object({
@@ -106,26 +107,13 @@ export const taskSchema = z.object({
   abandonments: z.number().int().nonnegative().optional(),
 
   /**
-   * Whether this row is parked because a person's turn stopped its worker,
-   * rather than because the worker asked a question (FIX-1690). Set by
-   * `awaitReview(id, feedback, { forTurn: true })`, cleared by every other park
-   * and by `unpark`.
-   *
-   * Top level for the reason `abandonments` is (BP-031): it decides whether
-   * the next claim is charged, so no caller-writable surface may reach it.
-   * **Absent reads as false** (BP-030).
-   */
-  parkedForTurn: z.boolean().optional(),
-
-  /**
-   * How many times this row re-entered after a person's turn stopped its
-   * worker (FIX-1690), or after an answer to the question it parked on
-   * (`unpark(..., { answer: true })`, FIX-1817). Incremented by the `unpark`
-   * of a row parked for a turn, and by an answering one;
-   * the claim that follows advances `attempts` as every claim does, and
-   * `shouldRetryOnFail` discounts this beside `abandonments`, so a person
-   * talking to a run never spends its retries. The board's `maxTotalRetries`
-   * is untouched already: `unpark` is not a failure retry.
+   * How many times this row re-entered after an answer to the question it
+   * parked on (`unpark(..., { answer: true })`, FIX-1817), or, on a row stored
+   * before FIX-2086, after a person's turn stopped its worker (FIX-1690, read
+   * by the retired-shape map). The claim that follows advances `attempts` as
+   * every claim does, and `shouldRetryOnFail` discounts this beside
+   * `abandonments`, so an answer never spends the task's retries. The board's
+   * `maxTotalRetries` is untouched already: `unpark` is not a failure retry.
    *
    * Top level, never in `metadata` (BP-031), for `abandonments`' reason.
    * **Absent reads as zero** (BP-030).
@@ -146,16 +134,14 @@ export const taskSchema = z.object({
   answered: z.boolean().optional(),
 
   /**
-   * A person reopened this finished row (FIX-1764): set by `reopen`, so the
-   * next attempt is told it picks the task up again rather than starting it.
-   * Cleared, like `answered`, by every later write of `feedback`: a park, an
-   * `unpark`, a failure that re-pends. It survives the claim, so an attempt
-   * recovered after its worker died is still told.
-   *
-   * Top level and server-written for `abandonments`' reason (BP-031).
-   * **Absent reads as false** (BP-030).
+   * Words sent into this task while it was open (FIX-2086): `updateTask`'s
+   * `message`, or a line typed in its session. Server-written by the
+   * collection's `steer`, append-only, at most `MAX_STEERS`; never patched. Each
+   * names its sender and the attempt that took it (`../steers`). Every later
+   * attempt reads every steer, and a finished task takes none. **Absent** on
+   * a task never steered (BP-030).
    */
-  reopened: z.boolean().optional(),
+  steers: z.array(taskSteerSchema).optional(),
 
   /**
    * The row is parked on its worker's question (FIX-1817): set by the park
@@ -478,15 +464,16 @@ export const taskSchema = z.object({
    * waiting on a person, a wait or filed work has no lease, so the reclaim
    * leaves it alone: that task is never run again by a lapse. A row waiting
    * on `"queued"` keeps its claim's lease: queued work is about to run, and
-   * if it never does the lapse takes the task back. The request admitted for
-   * it next clears it and starts a lease; every ending, and every claim,
-   * clears it.
+   * if it never does the lapse takes the task back. `"steer"`, a steer no
+   * request has taken (FIX-2086 D2): the turn owed for it is on its way, with
+   * no lease. The request admitted for it next clears it and starts a lease;
+   * every ending, and every claim, clears it.
    *
    * Not FIX-2080's `held`, which is a status before a start: this applies only
    * after one. Server-written by the claim gate (`setWaitingOn`), never by a
    * caller. **Absent, or `null`, reads as waiting on nothing** (BP-030).
    */
-  waitingOn: z.enum(["person", "wait", "filed", "queued"]).nullable().optional(),
+  waitingOn: z.enum(["person", "wait", "filed", "queued", "steer"]).nullable().optional(),
 
   /**
    * The wait on this row is over (its turn was stopped, or it timed out) but

@@ -24,6 +24,19 @@ describe("the envelope's answer", () => {
     expect(input.feedback).toBe("tests failed");
   });
 
+  it("carries every steer, taken or not, so a retry is never run as first filed (FIX-2086 D1)", async () => {
+    const steers: Task["steers"] = [
+      { id: "s1", message: "Use the North America numbers", from: "filer", at: 1, takenBy: 1 },
+      { id: "s2", message: "Add the totals", from: "user", by: "u_alice", at: 2 },
+    ];
+    const input = await packWorkerInput(row({ steers }), board);
+    expect(input.steers).toEqual([
+      { message: "Use the North America numbers", from: "filer" },
+      { message: "Add the totals", from: "user" },
+    ]);
+    expect("steers" in (await packWorkerInput(row({}), board))).toBe(false);
+  });
+
   it("carries the task a follow-up follows, which a per-task dispatch keys its session by", async () => {
     const input = await packWorkerInput(row({ id: "root-f1", followUpOf: "root" }), board);
     expect(input.followUpOf).toBe("root");

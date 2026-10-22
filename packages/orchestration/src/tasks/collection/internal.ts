@@ -24,6 +24,7 @@ import { applyEndingRecorder, endingOf, type TaskEnding, type TaskEndingRecorder
 import { recordEnding as recordNoticeOwed } from "../notice/task-notice";
 import { assertDepsEditable, TaskFilingRefusedError } from "./filing";
 import { hasStarted, lockedFields, type TaskEditField } from "./field-rules";
+import { steersForAttempt } from "../steers";
 import type { TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
@@ -143,8 +144,9 @@ export function readAbandonments(task: Task): number {
 }
 
 /**
- * How many times this row re-entered after a person's turn stopped its worker
- * (FIX-1690), or after an answer to its question (FIX-1817). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
+ * How many times this row re-entered after an answer to its question
+ * (FIX-1817), or, on a row stored before FIX-2086, after a person's turn
+ * stopped its worker. **Absent reads as zero** (BP-030), as {@link readAbandonments}.
  */
 export function readTurnReentries(task: Task): number {
   return task.turnReentries ?? 0;
@@ -152,97 +154,54 @@ export function readTurnReentries(task: Task): number {
 
 /**
  * The fields `awaitReview` writes besides the status. `feedback` is written
- * unconditionally (a park with no reason clears the note); the turn mark is
- * set only for a park a person's turn caused, and the question mark only for
- * a worker's question (FIX-1817), so no park inherits an earlier one's.
+ * unconditionally (a park with no reason clears the note); the question mark
+ * is set only for a worker's question (FIX-1817), so no park inherits an
+ * earlier one's.
  */
-export function parkPatch(
-  feedback: string | undefined,
-  forTurn: boolean | undefined,
-  onQuestion?: boolean
-): Partial<Task> {
+export function parkPatch(feedback: string | undefined, onQuestion?: boolean): Partial<Task> {
   return {
     feedback,
-    parkedForTurn: forTurn === true ? true : undefined,
     parkedOnQuestion: onQuestion === true ? true : undefined,
     answered: undefined,
-    reopened: undefined,
   };
 }
 
 /**
- * The fields `unpark` writes besides the status. Clears the lease, the claim
- * coordinate and the turn mark. A row that was parked for a turn (FIX-1690),
- * or one re-queued by an answer to its question (`answer`, FIX-1817), counts
- * one more turn re-entry, so the claim that follows is not charged; an answer
- * also marks `feedback` as the answer (`answered`) for the next attempt.
+ * The fields `unpark` writes besides the status. Clears the lease and the
+ * claim coordinate. A row re-queued by an answer to its question (`answer`,
+ * FIX-1817) counts one more turn re-entry, so the claim that follows is not
+ * charged, and marks `feedback` as the answer (`answered`) for the next
+ * attempt.
  */
 export function unparkPatch(task: Task, feedback: string | undefined, answer = false): Partial<Task> {
   return {
     feedback: feedback ?? undefined,
     leaseUntil: undefined,
     claimedBy: undefined,
-    parkedForTurn: undefined,
     parkedOnQuestion: undefined,
     answered: answer ? true : undefined,
-    reopened: undefined,
-    ...(task.parkedForTurn === true || answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
-  };
-}
-
-/** Clears the ending and the per-attempt fields. The result, and any notice or resume the ending owes, stay. */
-export function reopenPatch(task: Task): Partial<Task> {
-  return {
-    error: undefined,
-    completedAt: undefined,
-    feedback: undefined,
-    leaseUntil: undefined,
-    claimedBy: undefined,
-    parkedForTurn: undefined,
-    parkedOnQuestion: undefined,
-    answered: undefined,
-    reopened: true,
-    turnReentries: readTurnReentries(task) + 1,
+    ...(answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
   };
 }
 
 /**
- * The status a verb that owns one edge may run from: one status, or
- * `"finished"` for any terminal one. Only `reopen` owns an edge out of a
- * finished row (FIX-1764), and that edge is not in the status table every
- * other writer is checked against, so a late write can never reopen a row by
- * accident.
+ * The one status a verb that owns one edge may run from. Nothing owns an edge
+ * out of a finished row: a finished task's output never changes (FIX-2086),
+ * and a correction is a follow-up.
  */
-export type EdgeSource = TaskStatus | "finished";
-
-/**
- * Whether a write is `reopen`'s edge: from a finished row, back to `pending`.
- * The only edge the status table is skipped for, so a verb that names
- * `"finished"` for any other target is still checked against the table.
- */
-function isReopenEdge(requireFrom: EdgeSource | undefined, to: TaskStatus): boolean {
-  return requireFrom === "finished" && to === "pending";
-}
+export type EdgeSource = TaskStatus;
 
 /** Whether `status` is a source of the edge `source` names. */
 export function onEdgeSource(status: TaskStatus, source: EdgeSource): boolean {
-  return source === "finished" ? isTerminalStatus(status) : status === source;
+  return status === source;
 }
 
 /**
- * The status table's check, for a write that is not `reopen`'s. A verb that
- * owns the edge out of a finished row is legal on that edge alone, which
- * {@link assertTransitionFrom} has already checked.
+ * The status table's check.
  *
  * @throws {IllegalTaskTransitionError} when the table forbids the edge.
  */
-export function assertEdgeAllowed(
-  from: TaskStatus,
-  to: TaskStatus,
-  taskId: string,
-  requireFrom: EdgeSource | undefined
-): void {
-  if (isReopenEdge(requireFrom, to)) return;
+export function assertEdgeAllowed(from: TaskStatus, to: TaskStatus, taskId: string): void {
   assertTransitionAllowed(from, to, taskId);
 }
 
@@ -478,9 +437,9 @@ export const DEFAULT_MAX_ABANDONMENTS = 3;
  * configured for real failures. `attempts - abandonments` is the count of
  * attempts this task actually got to run out of its own budget.
  *
- * **So are re-entries after a person's turn (FIX-1690)**, for the same
- * reason: the claim after a turn advances `attempts`, and the budget prices
- * failures, not conversation.
+ * **So are re-entries after an answer (FIX-1817)**, for the same reason: the
+ * claim after an answer advances `attempts`, and the budget prices failures,
+ * not conversation. A steer (FIX-2086) uses no attempt at all.
  */
 export function shouldRetryOnFail(task: Task): boolean {
   if (task.maxAttempts === undefined) return false;
@@ -789,10 +748,7 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *   `unblock` (`blocked → pending`) and `unpark` (`parked → pending`, FIX-1244).
  *   The status table cannot express this — it maps status to status, not verb
  *   to edge, and `in_progress → pending` is legal for `reclaim`, so without the
- *   fence `unpark` would re-queue a row a worker is holding. `reopen` owns the
- *   one edge out of a finished row (`"finished"`, FIX-1764): a finished row is
- *   not refused as `terminal` for it, and the table, which has no such edge,
- *   is not consulted.
+ *   fence `unpark` would re-queue a row a worker is holding.
  *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
@@ -807,8 +763,7 @@ export function transitionDeclineReason(
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
-  const reopening = isReopenEdge(requireFrom, targetStatus);
-  if (options.ifAllowed === true && isTerminalStatus(task.status) && !reopening) return "terminal";
+  if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
   if (
     options.ifAllowed === true &&
@@ -817,7 +772,7 @@ export function transitionDeclineReason(
   ) {
     return "disallowed";
   }
-  if (options.ifAllowed === true && !reopening && !isTransitionAllowed(task.status, targetStatus)) {
+  if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
   }
   // FIX-1234: the caller asked not to settle a row somebody parked for review.
@@ -1363,6 +1318,10 @@ export function applyClaimToTask<TInput, TOutput>(
     // taken back from a lapsed wait (`"queued"`, the one that keeps a lease)
     // must not carry it onto the new attempt.
     waitingOn: undefined,
+    // The attempt's brief carries every steer (FIX-2086 D1), so the claim
+    // marks them all taken by it; one that arrives later is untaken until a
+    // request of this attempt reads it.
+    ...(task.steers !== undefined ? { steers: steersForAttempt(task.steers, task.attempts + 1) } : {}),
     updatedAt: now,
   };
 }

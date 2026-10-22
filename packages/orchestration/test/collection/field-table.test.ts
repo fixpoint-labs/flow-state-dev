@@ -33,10 +33,18 @@ const BACKINGS: Array<[string, () => Promise<TaskCollectionRef>]> = [
 ];
 
 describe("the field table", () => {
-  it("gives every field one rule: until the task starts, but a cancel until it finishes", () => {
+  it("gives every field one rule: until the task starts, but a cancel and a message until it finishes", () => {
     for (const [field, rule] of Object.entries(TASK_FIELD_RULES)) {
-      expect(rule, field).toBe(field === "cancel" ? "until-finish" : "until-start");
+      expect(rule, field).toBe(field === "cancel" || field === "message" ? "until-finish" : "until-start");
     }
+    expect(TASK_FIELD_RULES.message).toBe("until-finish");
+  });
+
+  it("takes a message on a started task, and none on a finished one (FIX-2086)", () => {
+    const base = { id: "t", goal: "g", createdAt: 1, updatedAt: 1 } as const;
+    expect(lockedFields({ ...base, status: "in_progress", attempts: 1 }, ["message"])).toEqual([]);
+    expect(lockedFields({ ...base, status: "parked", attempts: 1 }, ["message"])).toEqual([]);
+    expect(lockedFields({ ...base, status: "completed", attempts: 1 }, ["message"])).toEqual(["message"]);
   });
 
   it("locks every field on a finished task, and the until-start ones on a started task", () => {

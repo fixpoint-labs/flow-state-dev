@@ -137,11 +137,12 @@ import {
   type TaskSettingsPatch,
   parkPatch,
   unparkPatch,
-  reopenPatch,
   assertEdgeAllowed,
   type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
+import { generateId } from "../generate-id";
+import { steerWrite, takeSteersPatch } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
 import type { DeliveryHooks } from "../notice/delivery";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -589,7 +590,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           throw new WriteDeclined(reason, task.status);
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertEdgeAllowed(task.status, targetStatus, id, requireFrom);
+        assertEdgeAllowed(task.status, targetStatus, id);
         // Stamped here, inside the serialized write, off the `task` this
         // invocation read. Since FIX-992 this updater is re-run against
         // refreshed state on a version conflict, so a stamp derived from
@@ -639,7 +640,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   /**
    * Whether a write to `target` may end the row, or make it ready (a retry, an
-   * unpark, a reopen): either owes the filer's pass. Read off the mirror,
+   * unpark): either owes the filer's pass. Read off the mirror,
    * outside the write, so it errs toward owing: no check of the row's status,
    * which a concurrent writer may have moved. A spare wake costs one pass that
    * finds nothing.
@@ -1056,7 +1057,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               return {
                 feedback: error,
                 answered: undefined,
-                reopened: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -1100,19 +1100,18 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // Writes `feedback` unconditionally, the way `unpark` does: a park with
       // no reason clears the note, so a failed attempt's text never reads as
       // why the task is waiting on a person.
-      // A park for a person's turn is fenced to a running attempt: a row that
-      // settled or re-pended first declines naming what it found, instead of
-      // being parked behind the attempt that already ended it. `ifAllowed` is
-      // forced on that path only, the way `unpark` forces its own fence.
-      const forTurn = options?.forTurn === true;
-      const fenced = forTurn || options?.fromRunning === true;
+      // A worker's own park is fenced to a running attempt: a row that settled
+      // or re-pended first declines naming what it found, instead of being
+      // parked behind the attempt that already ended it. `ifAllowed` is forced
+      // on that path only, the way `unpark` forces its own fence.
+      const fenced = options?.fromRunning === true;
       // A park its holder marks `quiet` asks nobody anything: the ending
-      // recorders are told so. A park for a person's turn is quiet on its own.
+      // recorders are told so.
       return transitionRef(
         id,
         "parked",
         "review_requested",
-        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
+        () => parkPatch(feedback, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
         fenced ? { ...options, ifAllowed: true } : options,
         fenced ? "in_progress" : undefined,
         options?.quiet === true
@@ -1137,16 +1136,36 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
-    async reopen(id, options) {
-      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
-      return transitionRef(
+    async steer(id, input) {
+      // Minted once, outside the write, so a retried write keeps one id.
+      const steerId = generateId("steer");
+      return patchRef(
         id,
-        "pending",
-        "reopened",
-        (task) => reopenPatch(task as Task) as Partial<Task<TInput, TOutput>>,
-        { ...options, ifAllowed: true },
-        "finished"
+        "steered",
+        (task) => {
+          const decided = steerWrite(task as Task, input, steerId, now());
+          if (decided === "limit") throw new WriteDeclined("steer-limit", task.status);
+          return decided === "unchanged" ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        // A finished task takes no steer: its output never changes (FIX-2086).
+        { declineOnTerminal: true }
       );
+    },
+
+    async takeSteers(id, takeOptions) {
+      requireClaimTicket(
+        takeOptions?.claim,
+        "takeSteers",
+        "of the attempt that reads them. Only the request holding a task's claim takes its steers."
+      );
+      const guards = linkRunGuards({ claim: takeOptions.claim });
+      return patchRef(id, null, (task) => {
+        // Fenced like a run link, on the committed row: a finished, recreated
+        // or reclaimed row declines.
+        const declined = transitionDeclineReason(task as Task, "in_progress", guards, options.collectionId, now());
+        if (declined !== undefined) throw new WriteDeclined(declined, task.status);
+        return takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined;
+      });
     },
 
     async cancel(id, reason, options) {
