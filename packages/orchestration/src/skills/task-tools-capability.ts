@@ -1464,7 +1464,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       // The dependents the cancel took along, which owe no notice of their own
       // when the filer cancelled through its own tool (FIX-2078 D2): named here.
       const cancelledRow = board.get(input.taskId);
-      const cancelled = cancelledRow === undefined ? [] : cancelledDependents(cancelledRow, board.list());
+      // By the board's own filer rule, the one the cascade suppressed their
+      // notices by, so a row filed before the upgrade is read right (BP-030).
+      const filerOf = board.filerOf?.bind(board);
+      const cancelled = cancelledRow === undefined ? [] : cancelledDependents(cancelledRow, board.list(), filerOf);
       return cancelled.length > 0 ? { ok: true as const, cancelled } : result;
     },
   });

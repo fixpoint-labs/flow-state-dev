@@ -88,6 +88,36 @@ describe("the conversation's pass trigger", () => {
     expect(sent).toHaveLength(2);
   });
 
+  it("sends again at once on a host with no wakes when the send a write was skipped behind fails", async () => {
+    const { ctx, sent } = session({ wakes: false });
+    let release!: (outcome: unknown) => void;
+    let calls = 0;
+    (ctx as Record<symbol, unknown>)[DISPATCH_SEAM] = (spec: unknown) => {
+      sent.push(spec);
+      calls += 1;
+      // The first send is refused, after a write was skipped behind it.
+      if (calls === 1) return new Promise((resolve) => (release = resolve));
+      return Promise.resolve({ ok: true, sessionId: "s", requestId: `r${calls}`, adopted: false });
+    };
+    const first = triggerPass(ctx);
+    await Promise.resolve();
+    await triggerPass(ctx);
+    expect(sent).toHaveLength(1);
+    release({ ok: false, refused: "busy", detail: "refused" });
+    await first;
+    expect(sent).toHaveLength(2);
+  });
+
+  it("schedules no backstop on a host that keeps wakes: the wake each write owed pays it", async () => {
+    vi.useFakeTimers();
+    const { ctx, sent, owed } = session();
+    await triggerPass(ctx);
+    await triggerPass(ctx);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sent).toHaveLength(1);
+    expect(owed).toHaveLength(2);
+  });
+
   it("sends nothing more when that pass did start", async () => {
     vi.useFakeTimers();
     const { ctx, sent } = session({ wakes: false });

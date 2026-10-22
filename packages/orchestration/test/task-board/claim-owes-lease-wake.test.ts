@@ -87,7 +87,7 @@ describe("a claim on a board that hands rows out", () => {
     }
   });
 
-  it("leaves the filer's own earlier wake as it is: a drain in the filer's session doesn't make its pass stale", async () => {
+  it("owes the lease's end in the filer's own session too, so a pass that read the wake before the claim can't drop it", async () => {
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     const worker = handler({
@@ -136,9 +136,11 @@ describe("a claim on a board that hands rows out", () => {
         runtimeConfig: { ...runtime.runtimeConfig },
       });
       expect(drained.error).toBeUndefined();
+      // A pass that read the wake before this claim now settles stale, and
+      // the wake, coalesced, keeps the earlier due time.
       const after = await runtime.stores.wakes!.get(key);
-      expect(after?.version).toBe(owed.version);
-      expect(after?.dueAt).toBe(owed.dueAt);
+      expect(after!.version).toBeGreaterThan(owed.version);
+      expect(after!.dueAt).toBe(owed.dueAt);
     } finally {
       release();
       await state.dispose();

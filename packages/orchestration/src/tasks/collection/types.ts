@@ -902,6 +902,13 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   markCancelOwed?(id: string): Promise<TaskWriteOutcome>;
   /**
+   * The session that filed `row`, by the ledger's delivery rule (FIX-2078):
+   * `Task.filer`, or, for a row filed before it, the ledger's legacy filer
+   * (BP-030). Present on a ledger a board hands rows out from; absent
+   * elsewhere, where `Task.filer` is the whole answer.
+   */
+  filerOf?(row: Task): string | undefined;
+  /**
    * Release a held row for a dispatch (FIX-1875; a release since FIX-2080):
    * `held → pending` in one conditional write, recording the call that made
    * it (`Task.dispatchCall`), with `assignee` and `wait` set in the same
