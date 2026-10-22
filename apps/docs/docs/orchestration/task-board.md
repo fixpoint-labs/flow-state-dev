@@ -143,12 +143,13 @@ Defaults: a plan board (`mode: "plan"`), request-scoped storage (`collection` is
 
 A board either runs its tasks or hands them out, and you say which with `mode`. It decides whether the drain waits for the work.
 
-- **`"plan"`** (the default) runs every task in the drain, and the drain waits on every one of them. When it returns, every task it could run has ended. Every assignee is a block that runs inline. The patterns are plan boards.
+- **`"plan"`** (the default) waits on every task. When the drain returns, every task it could run has ended. Most plan boards run every task inline, as the patterns do; a plan board can also [hand a row to another session](#a-plan-board-that-hands-a-row-over) and wait on it there.
 - **`"delegation"`** hands every task to another session through an [assignee that dispatches](#assignees-that-dispatch), and the drain waits on none of them: it returns once each task is on its way, and the session working a task settles it.
 
 A board has one mode, so its assignees all agree with it. `taskBoard()` throws when they don't, naming the board, the assignee and the fix:
 
-- a plan board with a dispatcher assignee, named or the `defaultWorker`: declare `mode: "delegation"`;
+- a plan board whose dispatcher says `wait: false`: drop `wait`, or declare `mode: "delegation"`;
+- a delegation board whose dispatcher says `wait: true`: drop `wait`, or drop `mode`;
 - a delegation board with an assignee that runs inline, named, the uniform `workers` block, or the `defaultWorker`: put a dispatcher there, or move that work to a plan board;
 - a delegation board with no dispatcher at all: drop `mode`.
 
@@ -663,7 +664,7 @@ Each arriving task gets the same checks a board's own entry runs: same attempt, 
 
 `taskLedgers` also takes `uses` (capabilities that declare the ledgers as resources, in place of `resources` on the flow), `onError` (`"skip"` by default, as on a board), `endRules` (what else [holds a task open](#when-a-dispatched-task-is-done)), and `allowSessionState`, which accepts an entry whose blocks keep session state. Leave that off unless the entry is handed tasks `per-task`, or its session state has the same shape for every task.
 
-`taskTurn`, `true` by default, makes each run of the entry a task turn: [`dispatchTask`](#giving-another-worker-work) with `wait: true` is refused, and the run gets [`reportProgress`](#progress-from-the-worker) and [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run can wait on work it dispatches, and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
+`taskTurn`, `true` by default, makes each run of the entry a task turn: the run gets [`reportProgress`](#progress-from-the-worker) and [`parkOnQuestion`](#when-a-task-stops-on-a-question), whose question goes to whoever filed the task. Set `taskTurn: false` for an entry whose run answers the user directly. That run doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the task is still current, and `reportProgress` from the run can touch only the task it holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session state; if it does, its runs are task turns anyway.
 
 A worker reads the claim it holds with `currentWorkerClaim(ctx)`, from `@flow-state-dev/orchestration/task-board`. Pass the block's own `ctx`. It returns the claim ticket, carrying `taskId` and `attempt` among others, in a worker the board runs inline and in one reached through a task entry, and `undefined` everywhere else: a coordinator, a block wired directly, or any other request the worker starts or resumes. A worker's task-tool writes are limited to the task it holds. A write naming a different task is refused with `task_write_declined: you hold task "<held>", not "<named>"`.
 
@@ -767,7 +768,7 @@ When a task the board handed out ends, the session that filed it is told, once. 
 
 A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
 
-- A task the filer [waited on](#giving-another-worker-work) with `dispatchTask({ wait: true })`. The waiting call gets the result instead.
+- A task the filer [waited on](#waiting-on-a-task) with `getTask({ id, wait: true })` while it ended. The waiting call gets the result instead. An ending after the wait's deadline goes to the waiting request's next `getTask` while it runs, and comes here only if that request ends without reading it.
 - A cancel the filer's own model made with its `updateTask` tool (`status: "cancelled"`), in its own turn. The tool's result already told it, and names the dependents the cancel took along.
 
 A cancel from anywhere else does send one: a person, an app calling the board's actions, or a cascade from a task another session filed.
@@ -788,8 +789,7 @@ itself when each task runs, so it has no `dispatchTask`, and its `createTask` fi
 drain runs.
 
 On a board that dispatches, `createTask` starts a task at once too, unless it was filed with
-`held: true`. `dispatchTask` does the same for a new task, and it is also how a turn waits on
-one:
+`held: true`. `dispatchTask` does the same for a new task:
 
 ```ts
 dispatchTask({ goal: "Draft the release note", assignee: "writer" })
@@ -803,42 +803,10 @@ you filed held, name it instead of describing a new one:
 dispatchTask({ taskId: "task_8f2" })
 ```
 
-If your next step needs the result, wait for it:
-
-```ts
-dispatchTask({ goal: "Which region is the outage in?", assignee: "ops", wait: true })
-```
-
-Your turn pauses until the task ends, then carries on with the task's output as the tool's
-result, `{ ok: true, taskId, answer }`. Nothing holds a request open while it waits, so a server
-restart loses nothing. A wait has a time limit, five minutes unless you set `timeoutMs` between
-30 000 (30 seconds) and 3 600 000 (an hour). When it runs out, the task is cancelled. On a
-long-lived server the limit fires at the deadline; where the durability sweeper runs as an
-external cron, not sooner than its next run. A worker you're waiting on can't stop to ask you a question; it
-answers with what it has, or fails. One wait per step, where a step is one model call and the
-tool calls it makes.
-
-Only wait when the result changes what you do next. Otherwise let the task run and carry on.
-
-Waiting also needs a board that
-wakes a waiting turn, and a server with durable execution and the
-[durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
-wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
-`createTaskToolsCapability` only when something starts a ready row as soon as it's written,
-the way a Workforce conversation does, and add `resumesWaits: true` only when the board also
-hands its tasks out, so the flow holding it declares [`onTaskSettled`](#hearing-how-a-task-ended).
-When a waited-on task ends, the filing session's `onTaskSettled` request resumes the waiting
-turn; after a crash, the [wake](/docs/advanced/durable-execution#wakes) sends it again. On any other
-board, a waiting turn isn't woken when its task ends and sits out its whole `timeoutMs`.
-
-**Moving from `resumeOwedWaits`.** `resumeOwedWaits` is no longer exported. The filing session's `onTaskSettled` request resumes owed waits itself, so drop the call and declare `onTaskSettled` on the flow that holds the board.
-
 | Input | |
 |---|---|
 | `goal`, `title`, and the rest of `createTask`'s fields | A new task, exactly as for `createTask`, and refused the same way. `title` is a short, non-empty label shown where the task is listed; `listTasks` answers it when a task has one |
 | `taskId` | A task you filed held on this board, instead of a new one. It must not have started. With `assignee`, it also moves the task to that worker, which only a held task allows |
-| `wait` | `true` to wait for the result |
-| `timeoutMs` | How long to wait: 30 000 to 3 600 000, five minutes by default. Only with `wait` |
 
 | Error | When |
 |---|---|
@@ -847,24 +815,104 @@ board, a waiting turn isn't woken when its task ends and sits out its whole `tim
 | `dispatch_target_required` | Neither `goal` nor `taskId`. Give `goal` for a new task or `taskId` for a held one. Nothing is filed |
 | `dispatch_target_ambiguous` | Both `goal` and `taskId`. Give one. Nothing is filed |
 | `dispatch_ref_takes_no_task_fields` | `taskId` with any field but `assignee`. Change the held task with `updateTask` first. Nothing is written |
-| `wait_timed_out` | The task didn't end in time. It is cancelled |
-| `wait_timeout_out_of_range` | `timeoutMs` is under 30 seconds or over an hour. Nothing is filed; the value is never clamped |
-| `wait_timeout_without_wait` | `timeoutMs` without `wait`. Nothing is filed |
-| `wait_task_failed` · `wait_task_cancelled` | The task failed for good, or someone else cancelled it |
-| `wait_already_pending` | This step already waits on a task. One wait per step |
-| `wait_unavailable` | The turn is itself working a task, so it can't wait. Nothing is filed |
+| `dispatch_task_does_not_wait` | `wait` or `timeoutMs`. `dispatchTask` doesn't wait: [wait with `getTask`](#waiting-on-a-task). Nothing is filed |
 
 A refused call returns `{ ok: false, error, taskId? }`, with `taskId` when a task was filed.
 `error` is the code, then `: ` and a sentence for the model, so match it with
-`error.startsWith("wait_timed_out")`, not `===`.
+`error.startsWith("task_not_dispatchable")`, not `===`.
 
-Stopping a conversation while its turn waits ends the turn and cancels the task. A task you
-wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's limits
-apply. When it ends, the waiting turn continues with the answer, and the conversation gets no
-separate completion message for it. The `dispatchTask_<board>` action starts work and never
-waits.
+### Waiting on a task
 
-**Moving from `waitForResponse`.** `createTask` doesn't wait. Send the same fields to `dispatchTask`, with `wait` in place of `waitForResponse`. `createTask` refuses `waitForResponse` and `timeoutMs` with `create_task_does_not_wait`. Nothing is filed. {/* retired-name-refusal: migration note */}
+When your next step needs a task's result, file the task, then wait on it with `getTask`:
+
+```ts
+createTask({ goal: "Which region is the outage in?", assignee: "ops" })
+// → { ok: true, taskId: "task_8f2" }
+getTask({ id: "task_8f2", wait: true })
+```
+
+You can wait in the same turn or in a later one. Your turn pauses until the task ends, then
+carries on with the task as `getTask` always returns it: its status, and its output once it
+completed. Nothing holds a request open while it waits, so a server restart loses nothing.
+
+A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
+your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
+cancelled: the task runs on, and you can wait on it again. If it ends while your request is
+still running, your next `getTask` on it returns the ending. If your request ends without
+reading it, you [hear about it](#hearing-how-a-task-ended) once, the usual way. A worker you're
+waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
+per step, where a step is one model call and the tool calls it makes.
+
+Only wait when the result changes what you do next. Otherwise let the task run and carry on.
+
+A turn that is itself working a task can wait too, so waits nest: a task's turn waits on a task
+it filed, whose turn waits on another, and so on. Five waits deep is the limit, counted along
+the whole chain from both ends: a sixth is refused, and so is a late wait on a task whose own
+chain is already five deep.
+
+| Input | |
+|---|---|
+| `id` | The task to read |
+| `wait` | `true` to wait until it ends, or until the deadline |
+| `deadline` | How long to wait, in milliseconds. Five minutes by default; the server sets the bounds (one second to 24 hours by default). Only with `wait` |
+
+| Error | When |
+|---|---|
+| `wait_not_filer` | Your session didn't file the task. Only the session that filed a task can wait on it |
+| `wait_on_conversation_result` | The task's result goes to the conversation, which hears it when it ends |
+| `wait_taken` | Another request already waits on this task. A task has one waiter at a time |
+| `wait_already_pending` | This step already waits on something. One wait per step |
+| `wait_too_deep` | The wait would make a chain of more than five |
+| `wait_deadline_out_of_range` | `deadline` is outside the server's bounds. It is never clamped |
+| `deadline_without_wait` | `deadline` without `wait` |
+| `wait_unavailable` | This server or board can't hold a wait |
+
+Nothing is written when a wait is refused.
+
+Waiting needs a board that wakes a waiting turn, and a server with durable execution, the
+[durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup) and a store that
+keeps [wakes](/docs/advanced/durable-execution#wakes). Where it can't wait, `getTask` isn't
+offered `wait`. For a board of your own, pass `{ dispatches: true }` to
+`createTaskToolsCapability` only when something starts a ready row as soon as it's written,
+the way a Workforce conversation does, and add `resumesWaits: true` only when the board also
+hands its tasks out, so the flow holding it declares [`onTaskSettled`](#hearing-how-a-task-ended).
+When a waited-on task ends, the filing session's `onTaskSettled` request resumes the waiting
+turn; after a crash, the [wake](/docs/advanced/durable-execution#wakes) sends it again.
+
+Stopping a conversation while its turn waits ends the turn and cancels the task. Cancelling
+the task a waiting turn is working ends that turn too, with no further model call. A task you
+wait on is an ordinary row: `listTasks` shows it, marked `waitedOn: true`, and the board's
+limits apply. The `getTask_<board>` action reads without waiting.
+
+**Moving from `dispatchTask({ wait })`.** `dispatchTask` no longer waits: it refuses `wait` and
+`timeoutMs` with `dispatch_task_does_not_wait`. File the task with `createTask` or
+`dispatchTask`, then call `getTask({ id, wait: true })`. `deadline` takes the place of
+`timeoutMs`, and it cancels nothing.
+
+**Moving from `waitForResponse`.** `createTask` doesn't wait, and refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`. File the task, then wait with `getTask`. Nothing is filed. {/* retired-name-refusal: migration note */}
+
+### A plan board that hands a row over
+
+A plan board's drain waits on every row, so it can hand a row to another session and wait on
+it there, as it waits on the rows it runs inline. Give the board a `newSession` dispatcher, and
+a row filed with `session: "new"` runs in a session of its own:
+
+```ts
+const steps = taskBoard({
+  name: "steps",
+  boardId: "steps",
+  collection: defineTaskCollection({ id: "steps", scope: "user" }),
+  workers: inlineStep,
+  newSession: dispatcher({ name: "own-session", action: "work", session: "per-task" }),
+});
+```
+
+Every other row runs in `workers`. The drain parks while the row runs, and checks in at each
+[deadline](#waiting-on-a-task) without moving past it; once the row ends, the rows after it see
+its output, as any dependency's. Its ending owes nobody a notice: the drain is the one waiting.
+A plan board may also hold dispatcher assignees, whose rows it waits on the same way. A
+dispatcher there that says `wait: false` is refused, and so is a delegation board's that says
+`wait: true`, each naming the fix.
 
 ## Concurrency and error handling
 

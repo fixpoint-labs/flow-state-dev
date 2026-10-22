@@ -97,7 +97,9 @@ board. Inside a board an unset `wait` follows the mode. Outside, `wait` defaults
 dispatch**.
 
 **Four settings, chosen at filing,** decide how a delegated task runs; start and attempts stay
-editable until it starts. A plan row uses only those two.
+editable until it starts. A plan row uses only those two, and the session: unset runs it
+inline in the plan's own request, and `"new"` hands it to a new session of the same worker,
+which the drain waits on (FIX-2082 D2).
 
 | Setting | Choices | Default |
 | -- | -- | -- |

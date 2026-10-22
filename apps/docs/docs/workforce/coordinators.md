@@ -511,7 +511,7 @@ You can also just answer in chat: the coordinator passes your answer on with its
 
 An answer doesn't use up the task's retries, and the task can ask again. It has started, so it can't be reassigned. A task waits on a question for as long as it takes; cancel it if nobody will answer. A second answer to the same question is turned away, and so is an answer to a task that isn't waiting on one: the action answers `{ ok: false, error }` and nothing is written.
 
-A task a coordinator dispatched and is [waiting for](../orchestration/task-board.md#giving-another-worker-work) (`dispatchTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
+A task a coordinator is [waiting on](../orchestration/task-board.md#waiting-on-a-task) (`getTask` with `wait`) can't stop on a question. Its delegate answers with what it has, or fails.
 
 ### After a task finishes
 

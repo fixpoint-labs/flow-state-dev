@@ -203,15 +203,30 @@ still a disagreement: ownership is by instance, not by kind. A `task` dispatcher
 ### Waiting for the answer
 
 A dispatch returns before the work it started has run. That suits a job that outlives the turn.
-When the turn's next step needs the result instead, a worker can dispatch the task with
-`dispatchTask` and `wait: true`. The turn parks without holding the request open, survives a
-server restart, and continues with the task's output as the tool's result. A turn that is itself
-working a task can't wait.
+When the next step needs the result instead, wait for it:
 
-Waiting needs durable execution, and the durability sweeper times waits out (see
-[Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). The tool, its
-time limits and its errors are on
-[the task board](/docs/orchestration/task-board#giving-another-worker-work).
+```ts
+const checkLinks = dispatcher({
+  name: "check-links",
+  action: "check",
+  inputSchema: z.object({ docId: z.string() }),
+  session: { key: (input) => input.docId },
+  wait: true,
+});
+```
+
+With `wait: true` the block's output is how the dispatched request ended:
+`{ status: "completed", output, requestId }`, `{ status: "failed", error, requestId }`, or
+`{ status: "running", requestId }` at the deadline, five minutes by default. Nothing is stopped
+at the deadline; the work runs on. The request parks without holding anything open and
+survives a server restart. Waits nest up to five deep, counting task waits too, and a wait that
+would go deeper is refused before anything is dispatched.
+
+A worker waits on a task the same way: it files it, then calls `getTask({ id, wait: true })`.
+Both need durable execution, the durability sweeper and a store that keeps wakes (see
+[Retention and cleanup](/docs/advanced/durable-execution#retention-and-cleanup)). The task tool,
+its deadline and its errors are on
+[the task board](/docs/orchestration/task-board#waiting-on-a-task).
 
 ## Finding dispatched runs on a flow
 

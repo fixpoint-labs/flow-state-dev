@@ -142,6 +142,12 @@ A worker can plan its own work. A task it files naming **itself** is a **step**:
 
 A step can report its progress with `reportProgress`, on its own row: its checkpoint is that step's output. A step can't be held.
 
+A step that needs a fresh start runs in a session of its own: file it with `session: "new"`. When the request reaches it, the step is handed to a new session of the same worker, and the request waits for it to end before it goes on, checking in at each [deadline](../orchestration/task-board.md#waiting-on-a-task) without moving past it. The steps after it see its result, as they see any step's. A step filed with no `session` runs here, in this session. A step in its own session counts toward [how far it goes](#how-far-it-goes) one board deeper, as a task for a delegate does. It needs the worker's flow to take tasks through its own `work` entry, as the built-in flows do; elsewhere the filing is refused with `step_session_new_unsupported`.
+
+```json title="A step in a session of its own"
+{ "goal": "Fact-check the draft", "assignee": "eng.writer", "session": "new", "deps": ["<the draft's taskId>"] }
+```
+
 A step that fails isn't tried again, and a step waiting on it is cancelled. The worker's last turn hears both, and can do the work itself, explain, or carry on. A request that files no step costs nothing extra. One that does costs a model turn for each step, and one more for the answer.
 
 The worker gets the task tools for its steps on the built-in and coordinator flows even with no delegates. A few rules keep a step the worker's own:
@@ -150,7 +156,8 @@ The worker gets the task tools for its steps on the built-in and coordinator flo
 - A step's own turn files no step for itself. A step that finds more work says so in its answer, and the answer after the steps deals with it.
 - A step depends only on other steps, and a delegate's task only on other tasks: a step whose `deps` names a delegate's task, or a delegate's task whose `deps` names a step, is refused when it is filed.
 - The turn that answers after the steps can't file another step for itself. It can still hand a task to a delegate.
-- A step can't be waited on (`dispatchTask` with `wait`) or held, and no tool call finishes it: it ends when its turn answers. It can be changed with `updateTask` before it starts, or cancelled.
+- A step can't be waited on (`getTask` with `wait` is refused `step_cannot_wait`: it runs after the turn, in its request) or held, and no tool call finishes it: it ends when its turn answers. It can be changed with `updateTask` before it starts, or cancelled.
+- A step runs here or in a session of its own: `session: "ongoing"` is refused with `step_session_ongoing`.
 - A step stays the worker's, and a delegate's task stays a delegate's: `updateTask` won't move one into the other. Cancel it and file it again.
 
 The worker's `listTasks` lists the session's steps beside the tasks it dispatched; a step's `assignee` is the worker itself. Steps sit on a ledger of their own, `plan`, which your app reads the same way it reads `tasks` ([Showing a user's boards in your app](#showing-a-users-boards-in-your-app)). On a worker with no delegate that takes tasks, the app's `<tool>_tasks` actions answer `no_delegation_board`, so read the `plan` ledger to show its steps. They count toward [the 100 tasks under one top task](#how-far-it-goes), and add no depth.
@@ -205,7 +212,7 @@ The read answers in pages: 50 rows by default, up to 200 if you pass `limit`. `r
 
 A worker given a task can split it into pieces for its own delegates. A piece for any other worker is refused with `unknown_assignee`, and nothing is filed. When the task needs a worker that isn't a delegate, the worker should say so in its answer, and whoever filed the task decides. A piece filed with no assignee goes to the worker's delegate when it has exactly one.
 
-The pieces go on the task session's own board. The worker files them without `wait` and ends its turn; `dispatchTask` with `wait` is refused on a task turn. Nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `waitingOn: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
+The pieces go on the task session's own board. The worker either waits on a piece in the same turn, with `getTask({ id, wait: true })`, or files them and ends its turn. Waits nest up to five deep, so a task's turn can wait on a piece whose own turn waits on another. When the turn ends instead, nothing runs for the task while the pieces are worked, but the task stays `in_progress`, with `waitingOn: "filed"` on its row, and it isn't handed out again while it waits. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done) for the rule every dispatched task follows.
 
 Each piece's ending wakes the worker for a turn in the task session, where it reads the result and decides what it means. A turn can file more pieces, and the task waits on those too. A message to the worker in its task session while the task runs also holds the task open until the message's turn has run.
 
