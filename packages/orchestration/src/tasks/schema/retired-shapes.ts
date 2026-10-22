@@ -17,7 +17,7 @@
  * | `recorded` | the recorded-not-started mark (`undispatched`) | `held` | FIX-2080 |
  * | `post` | a post row (`sealed.kind === "post"`) | a task in the delegate's ongoing session, its result to the conversation | FIX-2083 |
  * | `parked-split` | a row parked on its pieces (`metadata.splitInto`) | running, `waitingOn: "filed"`, no lease | FIX-2077 |
- * | `reopened` | a reopened row (`reopened`) | pending, unmarked | FIX-2086 |
+ * | `reopened` | a reopened row (`reopened`) | unmarked, with one steer pointing at the session's latest line | FIX-2086 |
  * | `parked-for-turn` | a row parked for a person's turn (`parkedForTurn`) | pending, uncharged | FIX-2086 |
  *
  * An entry that is off reads its shape as it is stored, which is what the
@@ -27,6 +27,14 @@
  * second read, and a row in no retired shape is returned as the same object,
  * so the common path allocates nothing.
  */
+import { isTerminalStatus, type TaskStatus } from "./task-status";
+
+/**
+ * The steer a row reopened before FIX-2086 reads with: the person's line is
+ * already the latest in the task's session, so it points there.
+ */
+const REOPENED_STEER =
+  "The user wrote to you about this task after you had finished it; their message is the latest line in this session. Pick the task up again from there.";
 
 /** The retired shapes, one entry each. */
 export type RetiredShape = "blocked" | "recorded" | "post" | "parked-split" | "reopened" | "parked-for-turn";
@@ -114,19 +122,31 @@ export const RETIRED_SHAPES: Readonly<Record<RetiredShape, RetiredShapeEntry>> =
       return { ...without(row, "leaseUntil", "feedback"), status: "in_progress", waitingOn: "filed", metadata };
     },
   },
-  // A reopened row is an ordinary pending row (FIX-2086, which adds its steers).
+  // A row a person's line reopened before FIX-2086 (FIX-1764): the line is the
+  // latest in the task's session. Still open, it reads unmarked with one
+  // untaken steer pointing at that line, so the attempt that picks it up (or
+  // the request running it) is told, and the task can't settle before it is.
+  // Its output is replaced once more, by that attempt, the last time. Finished
+  // again, it only loses the mark: a finished task takes no steer.
   reopened: {
-    on: false,
+    on: true,
     owner: "FIX-2086",
     read: (row) => {
-      if (row.reopened !== true || row.status !== "pending") return undefined;
-      return without(row, "reopened");
+      if (row.reopened !== true) return undefined;
+      const rest = without(row, "reopened");
+      if (typeof row.status === "string" && isTerminalStatus(row.status as TaskStatus)) return rest;
+      const steers = Array.isArray(row.steers) ? row.steers : [];
+      const at = typeof row.updatedAt === "number" ? row.updatedAt : 0;
+      return { ...rest, steers: [...steers, { id: "reopened", message: REOPENED_STEER, from: "user", at }] };
     },
   },
-  // A row parked for a person's turn goes back to the queue, and its next
-  // attempt is not charged against `maxAttempts`: one more turn re-entry.
+  // A row parked for a person's turn (FIX-1690: a door that stopped the run
+  // and crashed before it re-queued it) goes back to the queue, and its next
+  // attempt is not charged against `maxAttempts`: one more turn re-entry. The
+  // person's line is a turn the coding door kept, which harness-manager's
+  // upgrade step writes onto the row as a steer.
   "parked-for-turn": {
-    on: false,
+    on: true,
     owner: "FIX-2086",
     read: (row) => {
       if (row.status !== "parked" || row.parkedForTurn !== true) return undefined;

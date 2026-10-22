@@ -12,6 +12,7 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskSettingsPatch } from "./internal";
+import type { SteerInput } from "../steers";
 
 /**
  * How a cancel was made (FIX-2081), as `Task.cancelledVia` records it:
@@ -136,7 +137,18 @@ export type TaskWriteDeclineReason =
    * already started (FIX-2080, ER-4): a retry's return to `pending` does not
    * reopen them. A started task takes a cancel.
    */
-  | "started";
+  | "started"
+  /**
+   * A completion fenced with `refuseUntakenSteers` on a task holding a steer
+   * no request of its attempt took (FIX-2086 D2): the steer is owed a turn
+   * before the task settles.
+   */
+  | "untaken-steers"
+  /**
+   * A steer past the most a task takes (`MAX_STEERS`, FIX-2086 D1): cancel
+   * it and file it again, or file a follow-up once it ends.
+   */
+  | "steer-limit";
 
 /**
  * What a write actually did (FIX-976).
@@ -345,6 +357,13 @@ export interface TaskTransitionOptions {
    */
   refuseWhenParked?: boolean;
   /**
+   * Decline a `complete` while the task holds a steer no request of its
+   * attempt took (FIX-2086 D2), reason `untaken-steers`. Decided inside the
+   * write, so a steer that lands after the caller's own read still holds the
+   * task open. Pass it only where something then owes the steer a turn.
+   */
+  refuseUntakenSteers?: boolean;
+  /**
    * Let a **renewal** take back a row whose lease lapsed while the claim it
    * names stayed intact (FIX-1305).
    *
@@ -420,22 +439,11 @@ export interface TaskTransitionOptions {
  */
 export interface AwaitReviewOptions extends TaskTransitionOptions {
   /**
-   * The worker was stopped so a person's message can reach it, rather than
-   * asking a question of its own (FIX-1690). Marks the row `parkedForTurn`; its
-   * `unpark` then counts a turn re-entry, and the claim after it is not
-   * charged against `maxAttempts`.
-   *
-   * Runs only from `in_progress`, whatever `ifAllowed` says: a row that
-   * settled, re-pended or parked first comes back `declined` naming the
-   * status it found.
-   */
-  forTurn?: boolean;
-  /**
-   * Runs only from `in_progress`, whatever `ifAllowed` says, as `forTurn`
-   * does, without marking the park as a turn's (FIX-1817). A worker parking
-   * on its question passes it, so a row that already parked this attempt (for
-   * a question, or for anything else) comes back `declined` naming `parked`,
-   * rather than having its question overwritten.
+   * Runs only from `in_progress`, whatever `ifAllowed` says (FIX-1817): a row
+   * that settled, re-pended or parked first comes back `declined` naming the
+   * status it found. A worker parking on its question passes it, so a row
+   * that already parked this attempt (for a question, or for anything else)
+   * is not parked again, and its question isn't overwritten.
    */
   fromRunning?: boolean;
   /**
@@ -448,7 +456,7 @@ export interface AwaitReviewOptions extends TaskTransitionOptions {
    * (FIX-1794 P2): a task waiting on pieces it handed out, say. A ledger's
    * ending recorder is told so (`TaskEnding`'s `quiet`), so a composing layer
    * that tells someone about each park can leave this one out. Changes nothing
-   * else about the park. A park for a person's turn (`forTurn`) is quiet too.
+   * else about the park.
    */
   quiet?: boolean;
 }
@@ -736,24 +744,40 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     options?: UnparkOptions
   ): Promise<TaskWriteOutcome>;
   /**
-   * Put a finished task back in the queue: a person picked it up again
-   * (FIX-1764).
+   * Steer an open task (FIX-2086): keep `steer` on the row (`Task.steers`),
+   * for every later attempt to read. Changes nothing else: no status, no
+   * claim, no lease, no attempt count, and no ending. A row running nothing
+   * while it waits on work it filed (`waitingOn: "filed"`) waits on the steer
+   * instead, in the same write: a turn is owed for it, which its caller
+   * starts.
    *
-   * Fenced to the one edge it owns: `completed`, `errored` or `cancelled` →
-   * `pending`. The status table has no edge out of a finished status, and no
-   * other verb gains one, so only this write reopens a row. A task that is not
-   * finished is **refused as a value**: `declined`, `disallowed`, naming the
-   * status the write found. Advisory by construction, like `unpark`.
+   * Declines `terminal` on a finished row, so a finished task's output never
+   * changes, and `steer-limit` past `MAX_STEERS`. `unchanged` for a `key`
+   * already kept. Publishes `steered`.
    *
-   * The row keeps its id, attempts and result; its ending's error and time are
-   * cleared, and its next attempt is marked `reopened` and is not charged
-   * against `maxAttempts`. A debt its ending owes (a notice, a resume) is left
-   * for whoever pays it. The ending was already heard, so reopening it is not
-   * an ending; the reopened attempt's own ending is a new one.
-   *
-   * Re-queues only. Nothing runs the work until something drains the board.
+   * Optional, so a ref written before it keeps compiling (BP-030); a steer
+   * is refused on a board without it.
    */
-  reopen(id: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  steer?(id: string, steer: SteerInput): Promise<TaskWriteOutcome>;
+  /**
+   * Take the steers that arrived since the claim (FIX-2086): mark each steer
+   * no request of the claim's attempt has taken as taken by it, in the read
+   * named `takenIn`. Read them back with `steersTakenIn`. A steer this attempt
+   * took already, in any read, stays as it is.
+   *
+   * Fenced like {@link linkRun}: `options.claim` is required, the row must be
+   * `in_progress`, and the write declines `terminal`, `not-my-task` or
+   * `lost-claim` otherwise. `unchanged` when nothing was untaken. A recorded
+   * take names the steers this write took (`taken`, by id): a concurrent read
+   * under the same name, or a re-run of it, took none and names none.
+   * Publishes no `task-change`.
+   *
+   * Optional, so a ref written before it keeps compiling (BP-030).
+   */
+  takeSteers?(
+    id: string,
+    options: { claim: TaskClaimTicket; takenIn: string }
+  ): Promise<TaskWriteOutcome & { readonly taken?: readonly string[] }>;
   /**
    * Cancel the task (terminal).
    *
@@ -1020,6 +1044,13 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;
+  /**
+   * The row as stored now (FIX-2086), where {@link get} reads it as this
+   * request first did: another request's write (a steer sent while this one
+   * runs) is read here. Optional, so a ref written before it keeps compiling
+   * (BP-030); a caller falls back to `get`.
+   */
+  getCommitted?(id: string): Promise<TaskHandle<TInput, TOutput> | undefined>;
   list(filter?: TaskFilter): TaskHandle<TInput, TOutput>[];
   count(filter?: TaskFilter): number;
 }

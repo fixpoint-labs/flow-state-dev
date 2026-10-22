@@ -20,6 +20,7 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
+  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -68,11 +69,10 @@ import {
   type EndingRecording,
   parkPatch,
   unparkPatch,
-  reopenPatch,
-  assertEdgeAllowed,
-  type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
+import { generateId } from "../generate-id";
+import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
@@ -301,7 +301,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: EdgeSource
+    requireFrom?: TaskStatus
   ): Promise<TaskWriteOutcome> {
     return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
@@ -318,7 +318,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
     /** The one source status this verb may run from — see `assertTransitionFrom`. */
-    requireFrom?: EdgeSource;
+    requireFrom?: TaskStatus;
   }
 
   /**
@@ -388,7 +388,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           };
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertEdgeAllowed(task.status, targetStatus, id, requireFrom);
+        assertTransitionAllowed(task.status, targetStatus, id);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that
         // map and there is nothing to reset (FIX-989).
@@ -785,7 +785,6 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
                 answered: undefined,
-                reopened: undefined,
                 leaseUntil: undefined,
                 claimedBy: undefined,
                 error: undefined,
@@ -829,17 +828,16 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       // Writes `feedback` unconditionally, the way `unpark` does: a park with
       // no reason clears the note, so a failed attempt's text never reads as
       // why the task is waiting on a person.
-      // A park for a person's turn is fenced to a running attempt: a row that
-      // settled or re-pended first declines naming what it found, instead of
-      // being parked behind the attempt that already ended it. `ifAllowed` is
-      // forced on that path only, the way `unpark` forces its own fence.
-      const forTurn = options?.forTurn === true;
-      const fenced = forTurn || options?.fromRunning === true;
+      // A worker's own park is fenced to a running attempt: a row that settled
+      // or re-pended first declines naming what it found, instead of being
+      // parked behind the attempt that already ended it. `ifAllowed` is forced
+      // on that path only, the way `unpark` forces its own fence.
+      const fenced = options?.fromRunning === true;
       return transitionTo(
         id,
         "parked",
         "review_requested",
-        () => parkPatch(feedback, forTurn, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
+        () => parkPatch(feedback, options?.onQuestion) as Partial<Task<TInput, TOutput>>,
         fenced ? { ...options, ifAllowed: true } : options,
         fenced ? "in_progress" : undefined
       );
@@ -863,16 +861,56 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       );
     },
 
-    async reopen(id, options) {
-      // Finished → pending, inside the write. `ifAllowed` is forced, the way `unpark` forces it.
-      return transitionTo(
+    async steer(id, input) {
+      // Minted once, outside the write, so a CAS replay keeps one id and one time.
+      const steerId = generateId("steer");
+      const at = now();
+      // Decided once per row read: the decline and the patch see the same row.
+      let decidedFor: { task: unknown; decided: ReturnType<typeof steerWrite> } | undefined;
+      const decide = (task: unknown) => {
+        if (decidedFor === undefined || decidedFor.task !== task) {
+          decidedFor = { task, decided: steerWrite(task as Task, input, steerId, at) };
+        }
+        return decidedFor.decided;
+      };
+      return patchOne(
         id,
-        "pending",
-        "reopened",
-        (task) => reopenPatch(task as Task) as Partial<Task<TInput, TOutput>>,
-        { ...options, ifAllowed: true },
-        "finished"
+        "steered",
+        (task) => {
+          const decided = decide(task);
+          return typeof decided === "string" ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
+        },
+        {
+          // A finished task takes no steer: its output never changes (FIX-2086).
+          declineOnTerminal: true,
+          decline: (task) => (decide(task) === "limit" ? "steer-limit" : undefined),
+        }
       );
+    },
+
+    async takeSteers(id, takeOptions) {
+      requireClaimTicket(
+        takeOptions?.claim,
+        "takeSteers",
+        "of the attempt that reads them. Only the request holding a task's claim takes its steers."
+      );
+      const guards = linkRunGuards({ claim: takeOptions.claim });
+      // The steers the committed row had untaken, as the write that lands read them.
+      let taken: string[] = [];
+      const outcome = await patchOne(
+        id,
+        null,
+        (task) => {
+          taken = untakenSteers(task as Task).map((steer) => steer.id);
+          return takeSteersPatch(task as Task, takeOptions.takenIn) as Partial<Task<TInput, TOutput>> | undefined;
+        },
+        {
+          // Fenced like a run link, on the committed row: a finished, recreated
+          // or reclaimed row declines.
+          decline: (task) => transitionDeclineReason(task as Task, "in_progress", guards, collectionId, now()),
+        }
+      );
+      return { ...outcome, taken: outcome.outcome === "recorded" ? taken : [] };
     },
 
     async cancel(id, reason, options) {
@@ -1016,6 +1054,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     get(id) {
+      const task = ownTask(readTasks(), id);
+      return task === undefined ? undefined : wrap(task);
+    },
+
+    // Request or sequencer state: every write of this ledger is this run's, so
+    // the committed row is the one `get` reads.
+    async getCommitted(id) {
       const task = ownTask(readTasks(), id);
       return task === undefined ? undefined : wrap(task);
     },

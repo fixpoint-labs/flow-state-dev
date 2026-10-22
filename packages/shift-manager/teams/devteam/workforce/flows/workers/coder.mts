@@ -32,9 +32,13 @@
  * detached: the claim gate refuses an entry that authors session state
  * beneath it, and this flow refuses to build otherwise, naming the entry.
  *
- * **One message door** covers both managers: a user's message into a
- * running coding run, on the run's own session, found on the board of the
- * session its task was filed from.
+ * **One door** covers both managers: a user's line typed in a run's own
+ * session, whose task is found on the board of the session it was filed
+ * from. While the task is open the line steers it, and the run takes it at
+ * its next step; once the task has finished, the line is talk, answered by
+ * one run resuming the task's coding session (FIX-2086). A steer a run's last
+ * step missed is owed one more turn (`STEER_TURN_ENTRY`), which runs the task
+ * again on its attempt.
  *
  * Every coder worker runs on this worker flow's one copy. A session names its worker
  * (`installation.session()`), and the phases read that worker's own settings
@@ -46,9 +50,8 @@ import type { DeclaredResources } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   harnessManager,
-  harnessMessageDoor,
+  harnessSessionDoor,
   type HarnessJudge,
-  type MessageDoorBoard,
   type PhaseSpec,
   type WorkspaceConfig,
 } from "@flow-state-dev/harness-manager";
@@ -59,6 +62,9 @@ import {
   conversationLedgers,
   filingConversationBoard,
   projectWorkspaceCapability,
+  startOwedSteerTurn,
+  STEER_TURN_ENTRY,
+  steerTurnEntry,
   WORKER_TASK_ENTRY,
   workerTaskEntry,
   type WorkerInstallation,
@@ -184,25 +190,15 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
 
   // The board this session's run is on: the one of the session its task was
   // filed from, read from the session's own fields.
-  const message = harnessMessageDoor({
+  const message = harnessSessionDoor({
     name: "coder",
-    boards: async (ctx) => {
+    harness: options.harness,
+    board: async (ctx) => {
       const filed = await filingConversationBoard(ctx);
-      const boards: MessageDoorBoard[] =
-        filed === undefined
-          ? []
-          : [
-              {
-                tasks: filed.tasks,
-                orgScoped: false,
-                drain: { drain: filed.runEntry, flowKind: filed.filingFlow },
-                runOf,
-                // A finished task's board runs in the conversation that filed it.
-                reopenIn: filed.filingSession,
-              },
-            ];
-      return boards;
+      return filed === undefined ? undefined : { tasks: filed.tasks, runOf };
     },
+    // A steer to a task running nothing (waiting on its filed work) starts the turn it is owed.
+    onSteered: (ctx, row) => startOwedSteerTurn(ctx, row),
   });
 
   return defineFlow({
@@ -221,9 +217,16 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         block: readOwnFacts,
         description: "Read what this worker can see of its own configuration. Writes nothing.",
       },
-      // A user's message into one of this worker's running coding runs,
-      // which stops and continues the same coding session with it.
+      // A user's line in one of this worker's runs' sessions: a steer while
+      // its task is open, talk once it has finished.
       message,
+    },
+    internal: {
+      actions: {
+        // The turn a steer the run's last step missed is owed (FIX-2086 D2):
+        // the task once more, on its attempt, with every steer in its prompt.
+        [STEER_TURN_ENTRY]: steerTurnEntry({ name: `${CODER_FLOW}-steer-turn`, block: byTask }),
+      },
     },
     // The one door: any session's tasks, handed over under its board's id.
     task: {

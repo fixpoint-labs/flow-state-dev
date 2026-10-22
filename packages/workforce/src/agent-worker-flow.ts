@@ -103,7 +103,7 @@ import { markUserTurnStep } from "./standing-rules/user-turn";
 import { standingRulesCapability } from "./standing-rules/rules-capability";
 import { STANDING_RULES_ACTION, standingRulesAction } from "./standing-rules/rules-action";
 import type { WorkerInstallation } from "./workers/installation";
-import { replyOrReopen } from "./conversation-board/reopen";
+import { steerOrTalk } from "./conversation-board/steer";
 import { worksConversationResultTask } from "./conversation-board/task-admission";
 
 /**
@@ -805,8 +805,8 @@ export interface AgentTurnShare {
   readonly extraTools?: readonly GeneratorTool[];
   /**
    * The session board the turn files through (FIX-1802 S1), when the sharing
-   * flow builds its own: the coordinator does, to name the flows its posts
-   * reach. Omitted, a turn on an installation builds one for its flow. Its
+   * flow builds its own: the coordinator does, to name the flows its routed
+   * tasks reach. Omitted, a turn on an installation builds one for its flow. Its
    * task tools are composed once, here, so a turn carries one instance of
    * each, whatever skill is loaded.
    */
@@ -990,7 +990,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
     ...(options.uses ?? []),
     standingRulesCapability,
     ...(workerCapabilityCatalog.size > 0 ? [workerCapabilities] : []),
-    ...(board !== undefined ? [board.tools, board.questions, board.progress, board.delegateTools, board.messages] : [])
+    ...(board !== undefined ? [board.tools, board.questions, board.progress, board.steers, board.delegateTools, board.messages] : [])
   ];
 
   const answerWith = (binding: ReturnType<typeof skills.with>, name: string) =>
@@ -1343,10 +1343,11 @@ function defineAgentFlowAround(
     // On an installation copy the session names its worker, so a turn whose
     // input names one (or carries any other key) is refused, not stripped.
     actions: {
-      // A reply: its notice waits for it to end. A finished task session reopens the task instead (FIX-1764).
+      // A reply: its notice waits for it to end. In a task session whose task
+      // is open, the line steers the task instead (FIX-2086).
       run: {
         inputSchema: installation !== undefined ? inputSchema.strict() : inputSchema,
-        block: replyOrReopen(userTurn),
+        block: steerOrTalk(userTurn),
         userMessage: (input) => input.message,
         concurrency: REPLY_CONCURRENCY
       },

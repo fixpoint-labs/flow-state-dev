@@ -10,7 +10,7 @@
  *   `[park:<question>]` parks the task on its question on the first attempt,
  *   `[slow:<ms>]` takes that long, `[hold:<name>]` waits until the test
  *   releases the gate of that name (`holds`), and anything else is done.
- * - `helper` takes delegated posts and no task.
+ * - `helper` answers the message a routed task hands it.
  * - `agent` is the built-in worker flow, scripted by its generator's block name
  *   (`agent-answer`).
  *
@@ -39,7 +39,7 @@ import { mockEvaluationModel } from "@flow-state-dev/testing";
 
 export const ORG = "acme";
 
-/** The standard workers: coordinators that file, workers that take tasks, one that takes only posts. */
+/** The standard workers: coordinators that file, workers that take tasks, one that answers what it is handed. */
 export function boardWorkers(overrides: Partial<Record<string, Record<string, unknown>>> = {}): WorkerManifest[] {
   const worker = (id: string, declared: Record<string, unknown>, body = ""): WorkerManifest => ({
     id,
@@ -68,7 +68,7 @@ export function boardWorkers(overrides: Partial<Record<string, Record<string, un
 }
 
 /** One run of a task, as the worker's turn saw it. */
-export type TaskRun = {
+type TaskRun = {
   worker: string;
   message: string;
   sessionId: string;
@@ -152,7 +152,7 @@ function helperFlow(installation: WorkerInstallation) {
 }
 
 /** What the default judgment turn says: it reads what woke it and does nothing else. */
-export const QUIET_TURN = "Noted.";
+const QUIET_TURN = "Noted.";
 
 export type BoardHostOptions = {
   standard?: WorkerManifest[];
@@ -184,6 +184,12 @@ export type BoardHostOptions = {
    * at its next step (FIX-1816's asks).
    */
   judgmentModel?: GeneratorModel;
+  /**
+   * A step model for the agent worker's turn, in place of `agentAnswer`'s
+   * script: the generator drives it step by step, re-reading its context
+   * before each step (FIX-2086's steers).
+   */
+  agentModel?: GeneratorModel;
   /** More worker flows, built on the installation, registered beside the four, keyed by `kind`. */
   flows?: (installation: WorkerInstallation) => Record<string, unknown>;
   /** More scripted generators, by block name. */
@@ -232,16 +238,18 @@ function observingTools(
   return Object.assign(resolver, base);
 }
 
-/** `base`, with the judgment turn's block answered by `model` when one is given. */
+/** `base`, with the judgment turn's block answered by `model` when one is given, and the agent's by `agent`. */
 function withJudgmentModel(
   base: ReturnType<typeof createMockModelResolver>,
-  model: GeneratorModel | undefined
+  model: GeneratorModel | undefined,
+  agent?: GeneratorModel
 ): ReturnType<typeof createMockModelResolver> {
-  if (model === undefined) return base;
-  const resolver = ((modelId: string, blockName?: string) =>
-    blockName === "coordinator-judgment" ? model : (base as any)(modelId, blockName)) as ReturnType<
-    typeof createMockModelResolver
-  >;
+  if (model === undefined && agent === undefined) return base;
+  const resolver = ((modelId: string, blockName?: string) => {
+    if (model !== undefined && blockName === "coordinator-judgment") return model;
+    if (agent !== undefined && blockName?.startsWith("agent-answer") === true) return agent;
+    return (base as any)(modelId, blockName);
+  }) as ReturnType<typeof createMockModelResolver>;
   return Object.assign(resolver, base);
 }
 
@@ -287,7 +295,8 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models
         : observingTools(models, options.observeTools, options.afterModelCall),
-      options.judgmentModel
+      options.judgmentModel,
+      options.agentModel
     ),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");

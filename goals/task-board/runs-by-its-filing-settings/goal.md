@@ -12,7 +12,7 @@
 - `b` (session and result): a follow-up filed while its task runs waits, then runs in that task's session. An ongoing task runs in the delegate's session for the conversation. From a task's session, both conversation settings are refused, and so is a wait on a conversation-result task.
 - `c` (attempts): a task filed with 3 attempts fails after the third failure, and each retry runs in one session.
 - `d` (cascades): a cancel, a retry and a final failure each cancel the open filed task. A failed dependency and a cancelled dependency each cancel a two-deep chain. A second process on the same store is killed between an ending and its cascade; on the next touch, the filed child and the dependent are cancelled.
-- `e` (retired rows): a `blocked` row and a recorded-not-started row, stored as before the change, read as `held` and start on release. The retired-shape entries that are still off read as stored; a stored split reads as running since FIX-2077 turned its entry on.
+- `e` (retired rows): a `blocked` row and a recorded-not-started row, stored as before the change, read as `held` and start on release. A stored post row keeps its status, read as a routed task since FIX-2083 turned its entry on; a stored split reads as running since FIX-2077 turned its entry on; a row parked for a person's turn goes back to the queue and runs once, uncharged, since FIX-2086 turned its entry on.
 
 **Anti-game:** the check grades the stored rows, or the proof each worker wrote from inside its own run (session, request, attempt). It never grades what the board says about itself. The kill leg dies in a real child process at the point where the ending's own pass would pay the cascade, so only the debt on the stored row can make the next touch pay it.
 

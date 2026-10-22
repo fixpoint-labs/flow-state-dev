@@ -56,11 +56,13 @@ import { ROUTED_FROM_STATE_KEY } from "../workers/keys";
 import { taskChainLimitOf } from "../workers/chain-limit";
 import type { WorkerInstallation } from "../workers/installation";
 import { defineConversationBoard, type RoutedFiling } from "./board";
-import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY } from "./board-entries";
+import { CHECK_TASK_ENTRY, RUN_BOARD_ENTRY, STEER_TURN_ENTRY } from "./board-entries";
 import { checkTaskEntry } from "./task-admission";
 import { TASK_SETTLED_ENTRY } from "./board-entries";
 import { questionPark } from "./question-park";
 import { taskProgress } from "./task-progress";
+import { steerTurnEntry } from "./steer";
+import { taskSteers } from "./task-steers";
 import {
   AFTER_REPLY_CONCURRENCY,
   PASS_CONCURRENCY,
@@ -154,6 +156,12 @@ export function defineSessionBoard(options: SessionBoardOptions) {
      */
     progress: taskProgress,
     /**
+     * The steers a running task took (FIX-2086), in the worker's context, read
+     * before each model call: one entry for the model block's `uses`, beside
+     * `tools`.
+     */
+    steers: taskSteers,
+    /**
      * The delegate tools a model's turn is offered (FIX-2081): `listDelegates`
      * always, and `addDelegate`, `removeDelegate` and `setFallback` only on a
      * coordinator set to `editsOwnDelegates`. One entry for `uses`.
@@ -188,7 +196,8 @@ export function defineSessionBoard(options: SessionBoardOptions) {
     /**
      * The internal entries the board needs on its flow, in this order: a run
      * of the board; the notice of a task the session filed; a check of the
-     * session's waiting task (`CHECK_TASK_ENTRY`); a worker's message
+     * session's waiting task (`CHECK_TASK_ENTRY`); the turn a late steer is
+     * owed (`STEER_TURN_ENTRY`, FIX-2086); a worker's message
      * (`onWorkerMessage`, FIX-1989), which always wakes the turn; and a
      * scheduled task's filing (`fileScheduledTask`, FIX-2085), through the
      * board's own `dispatchTask_tasks`. Spread into `internal: { actions: ... }`.
@@ -215,6 +224,9 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         // A check of the session's waiting task, on the notices' line: what
         // the upgrade's backfill wakes for a split an older host parked.
         [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
+        // The turn a steer no request took is owed (FIX-2086 D2), on the
+        // notices' line: the claim gate's check and the steer's write start it.
+        [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)
       };

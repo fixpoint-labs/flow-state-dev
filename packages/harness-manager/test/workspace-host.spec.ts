@@ -22,7 +22,12 @@ import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
+import {
+  defineTaskCollection,
+  getOrCreateTaskCollection,
+  resolveResourceCollection,
+  type Task,
+} from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { localWorkspaceHost, type RunSourceAnswer } from "@flow-state-dev/workspace";
 import { harnessManager, harnessTaskInputSchema, runOwnerDispatcher, type HarnessFeeds } from "../src";
@@ -52,8 +57,10 @@ afterAll(() => {
  * - `switch-throw` — moves the run source to another repository, then throws.
  * - `read` — reads `which.txt` from its checkout, then finishes.
  * - `where` — records the name of the directory it was handed, then finishes.
+ * - `write-step` — confirms a coding session, writes `step-<n>.md` (n counts the
+ *   steps), then finishes: what a steer's extra step leaves behind.
  */
-type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "read" | "where";
+type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "read" | "where" | "write-step";
 
 function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
   return (feeds: HarnessFeeds): HarnessBlock =>
@@ -71,7 +78,10 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
               ? basename(cwd)
               : step,
         );
-        if (step.startsWith("write")) writeFileSync(join(cwd, "notes.md"), "what the run wrote");
+        if (step === "write-step") {
+          await feeds.onSession("sess_steps", ctx as never);
+          writeFileSync(join(cwd, `step-${seen.length}.md`), `step ${seen.length}`);
+        } else if (step.startsWith("write")) writeFileSync(join(cwd, "notes.md"), "what the run wrote");
         if (step === "write-ask") {
           const marker = /write it as the entire contents of this file:\n {2}(\S+)/.exec(input.prompt)?.[1];
           if (marker === undefined) throw new Error("the prompt named no ask marker");
@@ -168,6 +178,8 @@ function lab(options: {
     stateSchema: harnessTaskInputSchema,
   });
   const seen: string[] = [];
+  // Run inside the phase's done-condition, one per call: what lands while the verdict is read.
+  const duringVerdict: Array<() => Promise<void>> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
@@ -180,7 +192,10 @@ function lab(options: {
           "To ask, write it as the entire contents of this file:",
           `  ${run.askMarkerPath}`,
         ].join("\n"),
-      isDone: () => true,
+      isDone: async () => {
+        await duringVerdict.shift()?.();
+        return true;
+      },
     },
     workspace,
     runTimeoutMs: 20_000,
@@ -219,9 +234,25 @@ function lab(options: {
       return { id: TASK_ID };
     },
   });
+  // A steer from the person, as `updateTask({ message })` writes one.
+  const steer = handler({
+    name: "host-steer",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.steer!(TASK_ID, { message: "Write one more step.", from: "user", by: ALICE });
+    },
+  });
   const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "host-flow",
-    actions: { seed: { block: seed }, drain: { block: board.drain } },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, steer: { block: steer } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "host-flow" } as never);
   const state = createFlowState({
@@ -269,7 +300,7 @@ function lab(options: {
     return (Object.values(rows)[0] as { state: Record<string, any> }).state;
   };
 
-  return { act, settled, record, seen, collection, remoteA, asked: () => asked };
+  return { act, settled, record, seen, collection, remoteA, duringVerdict, asked: () => asked };
 }
 
 describe("a run's kept files are saved wherever the run stops", () => {
@@ -281,6 +312,21 @@ describe("a run's kept files are saved wherever the run stops", () => {
 
     expect(run.collection.contents()["sandbox/notes.md"]).toBe("what the run wrote");
     expect((await run.record()).lastSave).toMatchObject({ conflicts: [], error: null });
+  }, 60_000);
+
+  it("and a step a late steer adds saves what it wrote too", async () => {
+    // The steer lands while the verdict is read: after the turn's save let
+    // the place go. The extra step works in a place provisioned again, and
+    // its own end saves it.
+    const run = lab({ script: ["write-step", "write-step"], source: "files" });
+    run.duringVerdict.push(() => run.act("steer"));
+    await run.act("seed");
+    await run.act("drain");
+    const done = await run.settled("completed");
+
+    expect(run.seen).toEqual(["write-step", "write-step"]);
+    expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1 })]);
+    expect(Object.keys(run.collection.contents()).sort()).toEqual(["sandbox/step-1.md", "sandbox/step-2.md"]);
   }, 60_000);
 
   it("when the run parks on a question, before anyone answers it", async () => {

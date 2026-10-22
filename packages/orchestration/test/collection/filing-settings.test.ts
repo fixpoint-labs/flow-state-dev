@@ -428,7 +428,7 @@ describe.each(BACKINGS)("retired rows in the store at upgrade (%s)", (_name, mak
     expect((await tasks.claim("w"))?.id).toBe("t");
   });
 
-  it("reads the shapes whose entries are still off as stored, a stored split as running, and a stored post as a routed task", async () => {
+  it("reads every retired shape in the current one: a stored post as a routed task, a stored split as running, and a reopened or turn-parked row as pending", async () => {
     const { seed } = await makeBacking();
     await seed({ ...stored, id: "p", goal: "p", status: "pending", sealed: { kind: "post" } } as unknown as Task);
     await seed({ ...stored, id: "s", goal: "s", status: "parked", metadata: { splitInto: { session: "x", flow: "f" } } } as unknown as Task);
@@ -438,8 +438,11 @@ describe.each(BACKINGS)("retired rows in the store at upgrade (%s)", (_name, mak
     expect(tasks.get("p")).toMatchObject({ session: "ongoing", resultTo: "conversation" });
     // On since FIX-2077: a stored split reads as running, waiting on its pieces, with no lease.
     expect(tasks.get("s")).toMatchObject({ status: "in_progress", waitingOn: "filed" });
-    expect(tasks.get("r")?.reopened).toBe(true);
-    expect(tasks.get("q")).toMatchObject({ status: "parked", parkedForTurn: true });
+    // On since FIX-2086: a reopened row reads as pending with a steer for its line; a turn-parked one, pending, uncharged.
+    expect(tasks.get("r")).toMatchObject({ status: "pending", steers: [expect.objectContaining({ id: "reopened", from: "user" })] });
+    expect(tasks.get("r")).not.toHaveProperty("reopened");
+    expect(tasks.get("q")).toMatchObject({ status: "pending", turnReentries: 1 });
+    expect(tasks.get("q")).not.toHaveProperty("parkedForTurn");
   });
 });
 

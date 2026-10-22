@@ -35,13 +35,21 @@ export const TASK_FIELD_RULES = {
   // Here only so a refusal can name a cancel beside the fields: a cancel is
   // `status: "cancelled"` through `cancel()`, never a settings patch.
   cancel: "until-finish",
+  // A steer (FIX-2086): words that join the brief, kept on the task through
+  // the collection's `steer`, never a settings patch. A finished task takes
+  // none, so its output never changes: a correction is a follow-up.
+  message: "until-finish",
 } as const satisfies Record<string, TaskFieldRule>;
 
 /** A field the table holds a rule for. */
 export type TaskEditField = keyof typeof TASK_FIELD_RULES;
 
-/** The fields `updateTask` takes as fields, beside `id`: the table less a hold and a cancel, which it takes as `status`. */
-export type TaskUpdateField = Exclude<TaskEditField, "held" | "cancel">;
+/**
+ * The settings `updateTask` takes as fields, beside `id`: the table less a
+ * hold and a cancel, which it takes as `status`, and a message, which steers
+ * rather than patches.
+ */
+export type TaskUpdateField = Exclude<TaskEditField, "held" | "cancel" | "message">;
 
 /**
  * Whether the row has ever started: claimed at least once. A retry's return

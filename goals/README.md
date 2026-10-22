@@ -198,6 +198,10 @@ Retired by FIX-1814, when skills stopped delegating to sub-agents:
 
 - `delegation-floor/runs-an-unassigned-task`: a skill no longer files tasks, so there is no on-demand default worker under a shipped prompt to run them. A task a person or a coordinator files for nobody now follows the conversation's delegates: with exactly one, it goes to that delegate; with none or several, it waits pending and unassigned until `updateTask({ assignee })` hands it out, and runs nowhere (FIX-1794 BR-5, BR-6). The waiting half is proven by `manager-queue-lab/it-stands-the-team-and-its-board-up-from-files` (d) and `manager-queue-lab/it-routes-a-queue-to-the-seats-their-files-name` (f), and both halves by `packages/workforce/test/conversation-board-filing.test.ts`. The task board's own `defaultWorker` option, which runs an unknown or absent assignee on a stand-in worker and records its output, is still shipped and is proven by `packages/orchestration/test/task-board/task-board.test.ts` ("the floor", I1 to I3).
 
+Retired by FIX-2086, when a person's words reached a coding run as a steer on its task instead of a park and a re-queue:
+
+- `harness-manager/a-persons-turn-continues-its-session`: its signals were the door's (`continuing`, a second claim with one turn re-entry), and that door is removed. A steer uses no attempt: the same request resumes the coding session its step confirmed, with the steer in its prompt, which `task-tools/steer-and-follow-up` leg c proves on a fake harness that resumes by session id, and `packages/harness-manager/test/steer-a-run.spec.ts` in CI.
+
 Retired by FIX-1792, when a mailbox became a coordinator worker file:
 
 - `kitchen-sink-talk/lists-a-filed-case-without-a-reload`: the escalation feature is removed, not replaced (FIX-1792 BR-14; product owner, 2026-10-06), so nothing files a case and there is no list to show one (BR-24). It last passed on `main` at 57d2c10e9.

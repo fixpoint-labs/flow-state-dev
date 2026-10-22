@@ -1,8 +1,8 @@
 /**
  * Goal check: a task that stops on a question carries on in its own session
  * once answered, and finishes from there; once finished, that session still
- * answers a question about what it did, and takes a follow-up task that runs
- * in it (FIX-1817). See goal.md.
+ * answers a question about what it did, with the task unchanged, and takes a
+ * follow-up task that runs in it (FIX-1817, FIX-2086). See goal.md.
  *
  * One person on a goal-local Lab (`lab/`), served by Shift Manager's own
  * command over HTTP, on the real engine and a SQLite store. The worker runs on
@@ -160,13 +160,12 @@ async function drive(origin: string, store: string) {
   const ended = parked && (await waitFor(() => ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 90_000));
   const endedIn = Date.now() - answeredAt;
   await quiet();
-  // Leg a is graded on the row as it stands here: leg b's line reopens it (FIX-1764).
+  // Leg a is graded on the row as it stands here; leg b's line must leave it so (FIX-2086).
   const endedRow = row(taskId);
 
   // Leg b: the door into the finished task's session, found as an app finds it.
   const found = taskId === undefined || filingSessionId === undefined ? undefined : await app.findWorkerSession({ worker: "desk.ops", taskId, filingSessionId });
   const asked = found?.id === undefined ? null : await act("agent", found.id, "run", { message: LEG_B });
-  if (asked !== null) await waitFor(() => (row(taskId)?.attempts ?? 0) > (endedRow?.attempts ?? 0) && ["completed", "errored", "cancelled"].includes(row(taskId)?.status ?? ""), 120_000);
   await quiet();
 
   // Leg c: a follow-up task naming the finished one.
@@ -187,7 +186,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const notes: string[] = [];
   const rows = taskRows(store, ALICE.userId, ORG);
   const task = o.endedRow as (StoredTask & { turnReentries?: number; abandonments?: number }) | undefined;
-  const reopened = rows.find((t) => t.id === o.taskId);
+  const afterTalk = rows.find((t) => t.id === o.taskId);
   const follow = rows.find((t) => t.id === o.followId) as (StoredTask & { followUpOf?: string }) | undefined;
   const all = sessions(store);
   const parkedSession = o.parkedRow?.run?.sessionId;
@@ -221,14 +220,15 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
   const charged = (task?.attempts ?? 0) - (task?.turnReentries ?? 0) - (task?.abandonments ?? 0);
   if (charged !== 1) failures.push(`a:unspent — wanted the answer's re-entry not charged: one attempt charged; attempts ${task?.attempts}, re-entries ${task?.turnReentries}`);
 
-  // Leg b: the line reopens the finished task, whose next attempt answers it in the task's session (FIX-1764).
-  const reopenOutput = outputText(reopened);
-  const reopenedRan = reopened?.status === "completed" && (reopened.attempts ?? 0) > (task?.attempts ?? 0) && reopened.run?.sessionId === parkedSession;
-  if (o.found?.id !== parkedSession || o.asked?.output?.reopened !== o.taskId || !reopenedRan || !names(reopenOutput, ticket)) {
-    failures.push(
-      `b:names-ticket — wanted "${LEG_B}" in the task's own session (${parkedSession}, found ${o.found?.id}) to reopen it (${show(o.asked?.output ?? o.asked?.error)}) and complete there naming the ticket ${ticket}; ` +
-        `it is ${reopened?.status} after ${reopened?.attempts} attempts in ${reopened?.run?.sessionId}, saying ${show(reopened?.output)}`,
-    );
+  // Leg b: the line in the finished task's session is talk. Its reply names the
+  // ticket, from the session's history, and the task is as it ended (FIX-2086).
+  const reply = JSON.stringify(o.asked?.output ?? "");
+  if (o.found?.id !== parkedSession || o.asked?.error !== undefined || !names(reply, ticket)) {
+    failures.push(`b:names-ticket — wanted "${LEG_B}" in the task's own session (${parkedSession}, found ${o.found?.id}) answered naming the ticket ${ticket}; it answered ${show(o.asked?.output ?? o.asked?.error)}`);
+  }
+  const standing = (t: StoredTask | undefined) => show(t && { status: t.status, attempts: t.attempts, output: t.output, session: t.run?.sessionId });
+  if (task === undefined || standing(afterTalk) !== standing(task)) {
+    failures.push(`b:unchanged — wanted the task as it ended, its output included; ${standing(task)} → ${standing(afterTalk)}`);
   }
 
   // Leg c.
@@ -244,7 +244,7 @@ function grade(o: Awaited<ReturnType<typeof drive>>, store: string): { failures:
 
   notes.push(
     `region ${o.region}; ticket ${ticket}; task ${o.taskId} ${task?.status} in ${task?.run?.sessionId} (parked in ${parkedSession}), attempts ${task?.attempts}, re-entries ${task?.turnReentries}, ended ${o.endedIn} ms after the answer; output ${show(task?.output)}`,
-    `b: ${show(reopenOutput)}`,
+    `b: ${show(o.asked?.output)}`,
     `c: "${o.followUp}" → ${follow?.status} in ${follow?.run?.sessionId}; output ${show(follow?.output)}; draws ${draws.length}`,
   );
   return { failures, notes };

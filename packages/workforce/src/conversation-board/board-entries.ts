@@ -16,6 +16,13 @@ export const RUN_BOARD_ENTRY = "runTaskBoard";
 export const CHECK_TASK_ENTRY = "checkWaitingTask";
 
 /**
+ * The internal entry that runs the turn a steer no request took is owed, in
+ * the task's own session (FIX-2086 D2): what the claim gate's check starts,
+ * and what its wake runs. **Pinned**: a wake stores it by name.
+ */
+export const STEER_TURN_ENTRY = "onTaskSteered";
+
+/**
  * The internal entry a task's notice arrives on in the session that filed it.
  * **Pinned** (FIX-1780): a goal check reads notices by it. Orchestration's
  * `onTaskSettled` (FIX-2078).

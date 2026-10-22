@@ -59,6 +59,14 @@ export {
   type WorkerTaskEntryOptions
 } from "./conversation-board/task-entry";
 export { sessionIdOfFiling } from "./conversation-board/filing-session";
+// Steering a task a worker runs (FIX-2086): the turn a late steer is owed, on
+// every flow whose `work` entry is a `workerTaskEntry`, and how a write starts it.
+export {
+  STEER_TURN_ENTRY,
+  startOwedSteerTurn,
+  steerTurnEntry,
+  type SteerTurnEntryOptions
+} from "./conversation-board/steer";
 export {
   backfillBoardWakes,
   type BoardWakeBackfillOptions,

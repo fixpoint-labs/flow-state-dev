@@ -60,7 +60,8 @@ afterAll(() => {
  * - `write` / `write-ask` / `write-throw` — writes `notes.md` (turn N), then finishes, asks, or the harness throws.
  * - `read` — records `notes.md` as it found it, then finishes.
  */
-type Step = "write" | "write-ask" | "write-throw" | "read";
+/** `write-session` writes like `write`, and confirms a coding session a steer's step can resume. */
+type Step = "write" | "write-ask" | "write-throw" | "read" | "write-session";
 
 interface Seen {
   step: Step;
@@ -167,6 +168,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
         attempt += 1;
         const notesPath = join(cwd, "notes.md");
         seen.push({ step, notes: existsSync(notesPath) ? readFileSync(notesPath, "utf8") : null, prompt: input.prompt });
+        if (step === "write-session") await feeds.onSession("sess_held", ctx as never);
         if (step !== "read") writeFileSync(notesPath, `turn ${attempt}\n`);
         if (step === "write-ask") {
           const marker = /write it as the entire contents of this file:\n {2}(\S+)/.exec(input.prompt)?.[1];
@@ -188,6 +190,8 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       },
     }) as unknown as HarnessBlock;
 
+  // Run inside the phase's done-condition, one per call: what lands while the verdict is read.
+  const duringVerdict: Array<() => Promise<void>> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
@@ -196,7 +200,10 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       phase: PHASE,
       buildPrompt: (run) =>
         [`Work on ${run.issue}, attempt ${run.attempt}.`, "To ask, write it as the entire contents of this file:", `  ${run.askMarkerPath}`].join("\n"),
-      isDone: () => true,
+      isDone: async () => {
+        await duringVerdict.shift()?.();
+        return true;
+      },
     },
     workspace,
     runTimeoutMs: 30_000,
@@ -249,9 +256,25 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
       return {};
     },
   });
+  // A steer from the person, as `updateTask({ message })` writes one.
+  const steer = handler({
+    name: "held-steer",
+    inputSchema: z.object({}),
+    outputSchema: z.unknown(),
+    uses: [board.capability],
+    execute: async (_input, ctx) => {
+      const tasks = await getOrCreateTaskCollection({
+        ctx: ctx as never,
+        backing: "resource",
+        collectionId: BOARD_ID,
+        collection: resolveResourceCollection(ctx as never, BOARD_ID)!,
+      });
+      return tasks.steer!(TASK_ID, { message: "One more turn.", from: "user", by: ALICE });
+    },
+  });
   const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: "held-flow",
-    actions: { seed: { block: seed }, drain: { block: board.drain }, answer: { block: answerOpen } },
+    actions: { seed: { block: seed }, drain: { block: board.drain }, answer: { block: answerOpen }, steer: { block: steer } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "held-flow" } as never);
   const state = createFlowState({
@@ -320,6 +343,7 @@ function lab(options: { script: Step[]; maxAttempts?: number; held?: "on" | "off
   return {
     act,
     settled,
+    duringVerdict,
     record,
     rewriteRecord,
     questions,
@@ -381,6 +405,21 @@ describe("a run's work is held at every save point (BR-1, BR-6, Q1)", () => {
     expect(keys).toHaveLength(1);
     expect(record.held).toMatchObject({ attempt: 1, key: keys[0], error: null, parked: false });
     expect(record.place).toEqual({ host: run.hostId("A"), state: "ready" });
+  });
+
+  it("after a step a late steer adds: the pack the record names is that step's work", async () => {
+    const run = lab({ script: ["write-session", "write-session"] });
+    run.duringVerdict.push(() => run.act("steer"));
+    await run.act("seed");
+    await run.act("drain");
+    const done = await run.settled("completed");
+
+    expect(run.seen.map((s) => s.step)).toEqual(["write-session", "write-session"]);
+    expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1 })]);
+    // Two holds, one per step, and the record names the second.
+    const puts = run.calls.filter((call) => call.startsWith("put "));
+    expect(puts).toHaveLength(2);
+    expect((await run.record()).held).toMatchObject({ key: puts[1]!.slice("put ".length), error: null });
   });
 
   it("when the run parks on a question", async () => {

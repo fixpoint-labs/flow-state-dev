@@ -139,7 +139,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     for (const call of woken) expect(ruleToolsOf(call)).toEqual([]);
   });
 
-  it("offers none on a coordinator's post handed to an agent delegate", async () => {
+  it("offers none on a coordinator's routed task to an agent delegate", async () => {
     const h = boot();
     const conversation = await h.conversation("alice", "front");
     expect((await h.act("alice", conversation, "run", { message: "Who can help with billing?" })).error).toBeUndefined();
@@ -188,7 +188,7 @@ describe("which turns get the rule tools (V3, BR-4)", () => {
     expect(taskSession?.state).toMatchObject({ workerId: "otto", taskId: expect.any(String) });
     expect(taskSession).toBeDefined();
     calls = [];
-    // The task has finished, so the message reopens it, and the task's next turn is the one graded.
+    // The task has finished, so the message is talk in the task's session: still not a user's turn.
     await h.act("alice", taskSession!.id, "run", { message: "Also add a title." }, "agent");
     await h.settled();
     const turn = calls.find((c) => c.block === "agent-answer");
