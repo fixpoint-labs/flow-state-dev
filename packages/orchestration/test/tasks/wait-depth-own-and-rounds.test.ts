@@ -82,7 +82,7 @@ describe("a wait made inside an inline plan step of a task's request", () => {
     // Five waits above the task t1 this request works: a waits on t1, b on a's task, and so on up.
     const parked = [gate("a", "t1", "t0"), gate("b", "t0", "tm1"), gate("c", "tm1", "tm2"), gate("d", "tm2", "tm3"), gate("e", "tm3")];
     const waits = createRequestWaits({
-      provider: { listSuspended: async () => parked as never },
+      provider: { listSuspended: async () => parked as never, loadSuspension: async () => null },
       deadlines: DEADLINES,
       userId: "alice",
       requestId: "req_1",
