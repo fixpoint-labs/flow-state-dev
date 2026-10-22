@@ -3,9 +3,7 @@
  *
  * Owned by this package's tests because three of them need it — `workspace`,
  * `run-record` and `guards` — and it is a *git repository* fixture rather than
- * a board fixture. Goal checks and host tests share this definition of "what a
- * source repository looks like" rather than two that drift; the same reason
- * `inbox-fake` lives beside the inbox it models.
+ * a board fixture.
  */
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
