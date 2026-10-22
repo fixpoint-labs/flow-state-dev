@@ -39,6 +39,7 @@ import { z, type ZodTypeAny } from "zod";
 import { STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { admitOwnTask } from "./task-admission";
+import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
 import { filingPartitionOf, sessionTaskOf } from "./task-entry";
 
 export { STEER_TURN_ENTRY } from "./board-entries";
@@ -203,9 +204,10 @@ export type SteerTurnEntryOptions = {
  * path both ran, say) runs nothing. The wake is cleared once the task no
  * longer waits on a steer.
  *
- * @param concurrency The entry's line: the session's notices'.
+ * `concurrency` is the entry's line: by default the session's notices',
+ * so it runs once the request working the task has ended.
  */
-export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concurrency: ConcurrencyConfig }) {
+export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concurrency?: ConcurrencyConfig }) {
   const { name } = options;
   const take = handler({
     name: `${name}-take-steers`,
@@ -277,6 +279,6 @@ export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concu
       .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
       .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
       .tap(settleWake),
-    concurrency: options.concurrency
+    concurrency: options.concurrency ?? AFTER_REPLY_CONCURRENCY
   };
 }

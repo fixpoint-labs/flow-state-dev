@@ -48,13 +48,18 @@ import type {
   HarnessResolver,
   HarnessSessionHook,
 } from "@flow-state-dev/core/types";
+import { renderSteers } from "@flow-state-dev/orchestration";
 import { TaskEndsForGoodError, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
+  MAX_STEERS,
   resolveResourceCollection,
+  steersTakenIn,
   ticketForClaim,
+  untakenSteers,
   type DefinedTaskCollection,
+  type Task,
   type TaskCollectionRef,
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
@@ -78,6 +83,7 @@ import {
   heldSchema,
   placeStateSchema,
   openRunRow,
+  readConfirmedSession,
   readRunRow,
   runRecordCollection,
   runTopic,
@@ -108,8 +114,6 @@ import {
 } from "./run-owner";
 
 export type { RequestIdentityContext } from "./run-owner";
-import { TURNS, takeTurns, turnCollection, turnsPromptSection } from "./turns";
-import { createMessageDoor, type MessageDoorAction, type MessageDoorOptions } from "./door";
 import {
   INBOX,
   askQuestion,
@@ -499,6 +503,20 @@ export interface ManagerOptions {
    */
   harness: HarnessSlot;
   /**
+   * Whether the harness's abort resolves only once its process has exited
+   * (FIX-2086). A steer that arrives while a coding step runs then stops that
+   * step, not the request: once the process is down, the same request runs
+   * the next step, resuming the coding session the harness confirmed, with
+   * the steer in its prompt. The checkout keeps whatever the stopped step
+   * wrote.
+   *
+   * Absent or `false`, a harness whose abort can return while its process
+   * still runs is never stopped for a steer: the steer waits for the step's
+   * own end, and the next step takes it. The manager watches its row for a
+   * steer by polling it ({@link STEER_POLL_MS}) while a step runs.
+   */
+  stopsOnAbort?: boolean;
+  /**
    * Capabilities installed on the blocks whose contexts a phase sees — the same
    * `uses` slot any other block takes.
    *
@@ -683,6 +701,11 @@ const managerStateSchema = z.object({
   askedQuestion: z.string().nullable().default(null),
   /** The task's goal, as handed to this attempt: what a judge reads the answer against. */
   goal: z.string().nullable().default(null),
+  /**
+   * How many more harness steps this request ran for a steer (FIX-2086): each
+   * names the read its steers were taken in. `null` before the first.
+   */
+  steerSteps: z.number().nullable().default(null),
   /**
    * What `decide` decided, for the step that settles it once a judge (if
    * any) has read the run: the output to return, and whether the row parked
@@ -1209,9 +1232,6 @@ function createManagerCapability(options: {
       // question a child session writes is the one the coordinator session
       // reads — one registration, not two storage slots that look alike.
       [INBOX]: inboxCollection,
-      // Where a person's message to a run is kept for the attempt that acts on
-      // it (FIX-1690). The door writes it; the next attempt's prompt takes it.
-      [TURNS]: turnCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first. A board
@@ -1224,38 +1244,15 @@ function createManagerCapability(options: {
 }
 
 /**
- * The manager: a task worker, plus the door a coding kind declares so a person
- * can talk to its runs.
- */
-export type HarnessManager = TaskWorker & {
-  /**
-   * The public action that takes a person's message into a run's session
-   * (FIX-1690). Declare it on the kind whose rows this manager runs, with an
-   * `internal` entry that runs their board's drain. After a stop the door
-   * dispatches that entry into the session that claimed the row, so the next
-   * attempt runs in the same session:
-   *
-   * ```ts
-   * internal: { actions: { resume: { block: board.drain } } },
-   * actions: { message: manager.messageDoor({ drain: "resume" }) }
-   * ```
-   */
-  messageDoor(options: MessageDoorOptions): MessageDoorAction;
-};
-
-/**
  * Build the manager: one dispatched worker for one phase.
  *
- * Only a manager with a fixed board has a message door: the door reads that
- * board's rows. A manager given only {@link ManagerOptions.ledgers} is a plain
- * task worker, and its host builds the door with `harnessMessageDoor`, naming
- * the boards a session's run may be on.
+ * A person's words reach its runs as steers on the task (FIX-2086):
+ * `updateTask({ id, message })`, or a line in the run's session through the
+ * coding flow's own door. The first prompt of every attempt carries every
+ * steer; one that arrives while a step runs is taken by the next step of the
+ * same request.
  */
-export function harnessManager(
-  options: ManagerOptions & { boardCollectionId: string; boardCollection: DefinedTaskCollection },
-): HarnessManager;
-export function harnessManager(options: ManagerOptions): TaskWorker;
-export function harnessManager(options: ManagerOptions): HarnessManager | TaskWorker {
+export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
     boardCollectionId,
     boardCollection,
@@ -1385,7 +1382,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing
   // anywhere saying why. This fails loudly, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, INBOX, TURNS, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
+  const RESERVED_ACCESSORS = new Set([RUNS, INBOX, ...(boardCollectionId !== undefined ? [boardCollectionId] : [])]);
 
   /** Refuse a capability set that claims one of the manager's accessors. */
   const assertClaimsNothingReserved = (
@@ -1405,8 +1402,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     throw new Error(
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
-        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, "${TURNS}" holds ` +
-        `a person's messages to a run` +
+        `"${RUNS}" is the run record, "${INBOX}" is the question inbox` +
         (boardCollectionId !== undefined
           ? `, and "${boardCollectionId}" is the board ledger the attempt fence reads`
           : "") +
@@ -1500,6 +1496,33 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     if (resolved === undefined) return undefined;
     if (resolved.collectionId !== claim.collectionId || resolved.partition !== partition) return undefined;
     return resolved;
+  };
+
+  /** The run's row as stored now: a steer is another request's write (FIX-2086). */
+  const committedRow = async (ctx: BlockContext): Promise<Task | undefined> => {
+    const taskId = managerState(harnessCtxState(ctx)).taskId;
+    if (taskId === null) return undefined;
+    const board = await runBoard(ctx);
+    return (await board.getCommitted?.(taskId)) ?? board.get(taskId);
+  };
+
+  /**
+   * Take the steers no request of the run's attempt has taken, in the read
+   * named `takenIn`, fenced to the attempt, and answer the steers `select`
+   * picks off the row once they are taken.
+   */
+  const takeSteersFor = async (
+    ctx: BlockContext,
+    takenIn: string,
+    select: (row: Task, takenIn: string) => NonNullable<Task["steers"]>,
+  ): Promise<Array<{ message: string; from: "filer" | "user" }>> => {
+    const board = await runBoard(ctx);
+    const row = await committedRow(ctx);
+    if (row === undefined || row.status !== "in_progress") return [];
+    if (board.takeSteers !== undefined && untakenSteers(row).length > 0) {
+      await board.takeSteers(row.id, { claim: ticketForClaim(board.collectionId, row, board.partition), takenIn });
+    }
+    return select(board.get(row.id) ?? row, takenIn).map(({ message, from }) => ({ message, from }));
   };
 
   /** The run's board as the substrate sees it: the one its claim names, or the fixed board. */
@@ -2165,20 +2188,20 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
         await ctx.sequencer!.patchState(pin);
       }
 
-      // **A person's turns, after the phase's own prompt** (FIX-1690). Kept by
-      // the door for this attempt, oldest first, in a section that says whose
-      // words they are: a third channel beside `feedback` (why the last
-      // attempt failed) and `answers` (what a person answered), for the reason
-      // those two are already apart. Taken last, once the checkout is ready, so
-      // an attempt that could not start leaves them for the next one.
-      // Before the harness starts, and the door depends on it: a turn this
-      // attempt takes is marked taken before any session can be named
-      // (`continueOnceStarted` in `./door`, pinned in `message-door.spec.ts`).
-      const turns = await takeTurns(ctx, state.issue!, state.phase!, input.attempts);
+      // **The task's steers, after the phase's own prompt** (FIX-2086): every
+      // steer sent into the task, taken by this attempt (the claim took the
+      // ones sent before it; this takes any sent since), oldest first, in a
+      // section that says whose words they are: a third channel beside
+      // `feedback` (why the last attempt failed) and `answers` (what a person
+      // answered), for the reason those two are already apart. Taken last,
+      // once the checkout is ready, before the harness starts.
+      const steers = await takeSteersFor(ctx, `brief:${ctx.request.identity.id}`, (row) =>
+        (row.steers ?? []).filter((steer) => steer.takenBy === row.attempts),
+      );
       const restored = heldPromptSection(place, state.held);
       const withRestored = restored === undefined ? prompt : `${prompt}\n\n${restored}`;
       return {
-        prompt: turns.length === 0 ? withRestored : `${withRestored}\n\n${turnsPromptSection(turns)}`,
+        prompt: steers.length === 0 ? withRestored : `${withRestored}\n\n${renderSteers(steers, STEERS_IN_BRIEF)}`,
       };
     },
   });
@@ -2706,6 +2729,115 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     },
   });
 
+  /**
+   * A steer's watch over one harness step (FIX-2086): poll the row while the
+   * step runs, and stop the step (not the request) when a steer arrives that
+   * no request of the attempt took. Only a harness whose abort waits for its
+   * process ({@link ManagerOptions.stopsOnAbort}) is stopped.
+   */
+  const steerWatches = new Map<string, SteerWatch>();
+  const watchForSteers = (ctx: BlockContext): AbortSignal | undefined => {
+    if (options.stopsOnAbort !== true) return undefined;
+    const requestId = ctx.request.identity.id;
+    const controller = new AbortController();
+    const watch: SteerWatch = { stopped: false, timer: undefined };
+    const poll = async () => {
+      try {
+        const row = await committedRow(ctx);
+        if (row !== undefined && row.status === "in_progress" && untakenSteers(row).length > 0) {
+          watch.stopped = true;
+          controller.abort(new Error("[harness-manager] stopped for a steer"));
+          return;
+        }
+      } catch {
+        // A read that fails stops nothing: the step's own end takes the steer.
+      }
+      if (!controller.signal.aborted) watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
+    };
+    watch.timer = setTimeout(() => void poll(), STEER_POLL_MS);
+    steerWatches.set(requestId, watch);
+    return controller.signal;
+  };
+  const stopWatching = (ctx: BlockContext): void => {
+    const watch = steerWatches.get(ctx.request.identity.id);
+    if (watch?.timer !== undefined) clearTimeout(watch.timer);
+    if (watch !== undefined) watch.timer = undefined;
+  };
+
+  // The harness step, with what a steer's stop does to it: a step stopped for
+  // a steer ends with a marker, not an error, so the request goes on.
+  const harnessStep = sequencer({ name: `${name}-harness-step`, inputSchema: z.object({ prompt: z.string() }).passthrough() })
+    .step(harnessBlock, {
+      // The cancellable-under-a-deadline obligation, met by a primitive core
+      // already has: this composes into the block's own signal, which the SDK
+      // path forwards into the query's abort controller. A steer's watch
+      // composes in beside it.
+      abortSignal: (ctx) => {
+        const deadline = AbortSignal.timeout(runTimeoutMs);
+        const steer = watchForSteers(ctx);
+        return steer === undefined ? deadline : AbortSignal.any([deadline, steer]);
+      },
+      // Fires on every exit from the dispatch — returned, threw, or
+      // suspended. The tree is only written by the agent, so releasing the
+      // moment it stops is tighter than holding through the verdict; a step
+      // the request runs next for a steer takes it again.
+      onSettled: (ctx) => {
+        stopWatching(ctx);
+        releaseLeaseFromState(ctx);
+      },
+    })
+    .rescue([
+      {
+        block: handler({
+          name: `${name}-stopped-for-steer`,
+          inputSchema: z.unknown(),
+          outputSchema: z.unknown(),
+          execute: (error: unknown, ctx) => {
+            const watch = steerWatches.get(ctx.request.identity.id);
+            if (watch?.stopped !== true) throw error;
+            watch.stopped = false;
+            return STOPPED_FOR_STEER;
+          },
+        }),
+      },
+    ]);
+
+  /**
+   * After a harness step: a steer no request of the attempt took gives the
+   * request one more step (FIX-2086), resuming the coding session this
+   * attempt's harness confirmed, with the steers as its prompt. The checkout
+   * is taken again for it. With no steer, the step's handle goes on to the
+   * verdict. A harness that confirmed no session can't continue: the steer is
+   * left for the task's next turn.
+   */
+  const steerNext = handler({
+    name: `${name}-steer-next`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (value: unknown, ctx: BlockContext) => {
+      const stopped = value === STOPPED_FOR_STEER;
+      const state = managerState(harnessCtxState(ctx));
+      const row = await committedRow(ctx);
+      const owed = row !== undefined && row.status === "in_progress" && untakenSteers(row).length > 0;
+      if (!owed && !stopped) return value;
+      const session = await readConfirmedSession(ctx, state.topic!, state.attempt!);
+      if (session === null) {
+        if (!stopped) return value;
+        throw new HarnessAttemptFailed(
+          `[harness-manager] the run was stopped for a steer, and its harness confirmed no coding session to continue.`,
+        );
+      }
+      const loop = (state.steerSteps ?? 0) + 1;
+      const steers = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, (now, takenIn) => steersTakenIn(now, takenIn));
+      const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+      await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
+      const lead = stopped ? STOPPED_LEAD : ARRIVED_LEAD;
+      return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
+    },
+  });
+
   const chain = sequencer({
     name,
     inputSchema: harnessManagerInputSchema,
@@ -2714,19 +2846,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
   })
     .tap(openRun)
     .step(prepare)
-    .step(
-      harnessBlock,
-      {
-        // The cancellable-under-a-deadline obligation, met by a primitive core
-        // already has: this composes into the block's own signal, which the SDK
-        // path forwards into the query's abort controller.
-        abortSignal: () => AbortSignal.timeout(runTimeoutMs),
-        // Fires on every exit from the dispatch — returned, threw, or
-        // suspended. The tree is only written by the agent, so releasing the
-        // moment it stops is tighter than holding through the verdict.
-        onSettled: (ctx) => releaseLeaseFromState(ctx),
-      },
-    )
+    .step(harnessStep)
+    .step(steerNext)
+    // One more step per steer at most: the cap on a task's steers bounds it.
+    .loopBack(harnessStep.name, { when: (value) => (value as { again?: unknown } | null)?.again === true, maxIterations: MAX_STEERS })
     .step(decide);
   const worker = (
     judgeStep === undefined
@@ -2744,17 +2867,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager | TaskWo
     .rescue([{ block: recordFailure }]);
 
   worker.validate();
-
-  // This door reads one board's rows, so only a fixed board has one. A host
-  // whose runs come from more than one board builds `harnessMessageDoor`.
-  if (boardCollectionId === undefined || boardCollection === undefined) return worker;
-  const messageDoor = createMessageDoor({
-    name,
-    boardCollection,
-    capability: managerCapability as unknown as DefinedCapability,
-    boardTasks,
-  });
-  return Object.assign(worker, { messageDoor }) as HarnessManager;
+  return worker;
 }
 
 /**
@@ -2897,6 +3010,36 @@ function refusedMessage(by: "source" | "host", refusal: { reason: string; messag
  * No module-level state remains, so two managers in one process cannot touch
  * each other's lock by construction rather than by keying a table correctly.
  */
+/** How often a running step's row is read for a steer (FIX-2086). */
+export const STEER_POLL_MS = 1_000;
+
+/** What a harness step stopped for a steer hands on, in place of a handle. */
+const STOPPED_FOR_STEER = "harness-manager:stopped-for-steer";
+
+/** One harness step's watch for a steer. */
+interface SteerWatch {
+  /** Set when the watch stopped the step for a steer. */
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+
+/** The lead a run's first prompt shows the task's steers under. */
+const STEERS_IN_BRIEF =
+  "Since this task was filed, you were also sent the messages below about it, oldest first. They are part of the task: follow them.";
+
+/** The lead the step after a stop for a steer opens with. */
+const STOPPED_LEAD =
+  "You were stopped so the messages below could reach you. The checkout keeps everything you wrote before you were " +
+  "stopped. Carry on from where you were, following them.";
+
+/** The lead the step after one that ended while steers arrived opens with. */
+const ARRIVED_LEAD =
+  "These messages about the task arrived while you were working. The checkout is as you left it. Carry on, following them.";
+
+/** The prompt of a step after a stop whose steers another read took. */
+const CONTINUE_AFTER_STOP =
+  "You were stopped while you were working. The checkout keeps everything you wrote. Carry on from where you were.";
+
 function releaseLeaseFromState(ctx: {
   sequencer?: { state?: unknown } | undefined;
 }): void {

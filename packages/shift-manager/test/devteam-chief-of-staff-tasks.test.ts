@@ -648,9 +648,9 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
     ).rejects.toThrow(/task entry "work".*sessionStateSchema/);
   });
 
-  it("takes a user's message into a running run, and the next attempt's prompt carries it", async () => {
+  it("takes a user's message into a running run as a steer: the same attempt resumes its session with it", async () => {
     const said = `also check the tests ${globalThis.crypto.randomUUID().slice(0, 6)}`;
-    // The first attempt holds until the test lets it go; the next one answers at once.
+    // The first harness step holds until the test lets it go; the next one answers at once.
     let started: () => void = () => {};
     let release: () => void = () => {};
     const firstStarted = new Promise<void>((resolve) => (started = resolve));
@@ -670,15 +670,24 @@ describe("a task for the coder, from a conversation (FIX-1866)", () => {
 
     const runtime = await lab.state.getRuntime();
     const taskSession = (await runtime.stores.request.list({})).find((r) => r.actionName === "work")!.sessionId!;
-    // The door stops the attempt and waits for it to end, so let it go once the door has asked.
-    const sending = act(lab, taskSession, "message", { message: said }, "coder");
-    setTimeout(release, 500);
-    const sent = await sending;
+    // The door steers the open task and returns at once; the running step is not ended for it.
+    const sent = await act(lab, taskSession, "message", { message: said }, "coder");
     expect(sent.error).toBeUndefined();
-    expect(sent.output).toMatchObject({ outcome: "continuing" });
+    const taskId = (sent.output as { steered?: string }).steered;
+    expect(taskId).toBeTypeOf("string");
+    const steered = await storedTask(lab, taskId!);
+    expect(steered?.status).toBe("in_progress");
+    expect(steered?.attempts).toBe(1);
+    release();
 
-    await until(async () => stub.runs.length, (n) => n >= 2, "the next attempt");
+    await until(async () => (await storedTask(lab, taskId!))?.status, (status) => status === "completed", "the steered task");
+    // One attempt: the next step resumed the session the first confirmed, with the user's words.
+    expect(stub.runs).toHaveLength(2);
+    expect(stub.runs[0]!.prompt).not.toContain(said);
     expect(stub.runs[1]!.prompt).toContain(said);
+    expect(stub.runs[1]!.resume).toBe("sess_stub_1");
+    expect((await storedTask(lab, taskId!))?.attempts).toBe(1);
+    expect((await runtime.stores.request.list({})).filter((r) => r.actionName === "work")).toHaveLength(1);
     await quiet(lab);
   });
 });

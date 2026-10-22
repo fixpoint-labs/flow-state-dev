@@ -19,8 +19,11 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
- * - `harnessMessageDoor`, the message door for a flow whose runs come from
- *   more than one board.
+ * - `harnessSessionDoor`, the door a coding flow declares for a line typed
+ *   in a run's session: a steer while its task is open, talk once it has
+ *   finished.
+ * - `upgradeKeptTurns`, the upgrade's one-off step that writes a line the
+ *   coding door kept before FIX-2086 onto its task as a steer.
  * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
  *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
@@ -58,6 +61,7 @@ export {
   HarnessRunParked,
   HarnessRunRefused,
   RUNS,
+  STEER_POLL_MS,
   type ManagerOptions,
   type HarnessLedgers,
   type HarnessJudge,
@@ -74,20 +78,19 @@ export {
   type RequestIdentityContext,
 } from "./manager";
 
-// ── A person's message into a run, for a host whose runs span boards ────────
+// ── A line typed in a run's session: a steer, or talk once finished ─────────
 export {
-  harnessMessageDoor,
-  messageDoorInputSchema,
-  messageDoorOutputSchema,
-  TurnRefused,
-  type HarnessMessageDoorOptions,
-  type MessageDoorAction,
-  type MessageDoorBoard,
-  type MessageDoorOptions,
-  type MessageDoorOutput,
-  type DoorRunIdentity,
-  type TurnRefusalReason,
-} from "./door";
+  harnessSessionDoor,
+  sessionDoorInputSchema,
+  sessionDoorOutputSchema,
+  SessionDoorRefused,
+  type HarnessSessionDoorOptions,
+  type SessionDoorBoard,
+  type SessionDoorRefusalReason,
+} from "./session-door";
+
+// ── The upgrade's one-off step for lines the coding door kept ───────────────
+export { upgradeKeptTurns, type KeptTurnUpgradeOptions, type KeptTurnUpgradeStores } from "./upgrade-kept-turns";
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {

@@ -236,7 +236,7 @@ export function defineSessionBoard(options: SessionBoardOptions) {
         [CHECK_TASK_ENTRY]: checkTaskEntry(AFTER_REPLY_CONCURRENCY),
         // The turn a steer no request took is owed (FIX-2086 D2), on the
         // notices' line: the claim gate's check and the steer's write start it.
-        [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn, concurrency: AFTER_REPLY_CONCURRENCY }),
+        [STEER_TURN_ENTRY]: steerTurnEntry({ name: "conversation-steer-turn", turn }),
         ...(onPost === undefined ? {} : { [POST_SETTLED_ENTRY]: postSettledEntry({ turn, policy, onPost }) }),
         [WORKER_MESSAGE_ENTRY]: workerMessageEntry({ turn, installation: options.installation, flowKind: options.flowKind }),
         [FILE_SCHEDULED_TASK_ENTRY]: fileScheduledTaskEntry(board.actions[SCREEN_FILING_ACTION]!)

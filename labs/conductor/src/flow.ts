@@ -70,7 +70,9 @@ import {
   describeTenant,
   harnessDrainBudgetMs,
   harnessManager,
+  harnessSessionDoor,
   harnessTaskInputSchema,
+  type HarnessSlot,
   INBOX,
   inboxCollection,
   listQuestions,
@@ -548,6 +550,33 @@ export function conductorFlow(options: ConductorFlowOptions) {
     stateSchema: harnessTaskInputSchema,
   });
 
+  // **The slot, and the only place this repository names a coding harness.**
+  //
+  // The manager hands down three feeds and knows nothing else about what it
+  // is driving; everything Claude-specific is written here, where it belongs.
+  // Pointing this board at Codex is this one expression.
+  //
+  // `detached: true` is not decoration: the harness becomes a child block of
+  // the flow's gated task entry, and the claim gate refuses an entry that
+  // authors session state anywhere beneath it. A non-detached harness fails
+  // at `defineFlow`, naming the entry.
+  //
+  // `recordWork: true` keys the index of what the run touched to the run's
+  // own checkout — the other half of `cwd`, and doing only the first is the
+  // trap the option's own doc names.
+  //
+  // Shared by the manager and the run's door, which resumes a finished run's
+  // coding session for a person's line (FIX-2086).
+  const harness: HarnessSlot = ({ cwd, resume, onSession }) =>
+    claudeCodeAgent({
+      ...(agent ?? {}),
+      cwd,
+      resume,
+      onSession,
+      detached: true,
+      recordWork: true,
+    });
+
   const manager = harnessManager({
     boardCollectionId: collectionId,
     boardCollection: tasks,
@@ -555,29 +584,7 @@ export function conductorFlow(options: ConductorFlowOptions) {
     phase,
     workspace,
     runTimeoutMs,
-    // **The slot, and the only place this repository names a coding harness.**
-    //
-    // The manager hands down three feeds and knows nothing else about what it
-    // is driving; everything Claude-specific is written here, where it belongs.
-    // Pointing this board at Codex is this one expression.
-    //
-    // `detached: true` is not decoration: the harness becomes a child block of
-    // the flow's gated task entry, and the claim gate refuses an entry that
-    // authors session state anywhere beneath it. A non-detached harness fails
-    // at `defineFlow`, naming the entry.
-    //
-    // `recordWork: true` keys the index of what the run touched to the run's
-    // own checkout — the other half of `cwd`, and doing only the first is the
-    // trap the option's own doc names.
-    harness: ({ cwd, resume, onSession }) =>
-      claudeCodeAgent({
-        ...(agent ?? {}),
-        cwd,
-        resume,
-        onSession,
-        detached: true,
-        recordWork: true,
-      }),
+    harness,
     ...(ownership !== undefined ? { ownership } : {}),
     ...(announce !== undefined ? { announce } : {}),
   });
@@ -1028,8 +1035,23 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     },
   });
 
-  /** A person's message into a run; `resume` below is where it re-runs the board. */
-  const door = manager.messageDoor({ drain: "resume" });
+  /**
+   * A person's line typed in a run's session (FIX-2086): a steer on the run's
+   * task while it is open, talk with its coding session once it has finished.
+   * The row is the one whose run link names the session.
+   */
+  const door = harnessSessionDoor({
+    name: "conductor",
+    uses: [board.capability],
+    harness,
+    board: async (ctx) => ({
+      tasks: await (ctx as unknown as { cap: Record<string, { tasks(): Promise<import("@flow-state-dev/orchestration/tasks").TaskCollectionRef> }> }).cap[boardId]!.tasks(),
+      runOf: (row: Task) => {
+        const payload = harnessTaskInputSchema.safeParse(row.input);
+        return payload.success ? { issue: payload.data.issue, phase: payload.data.phase } : undefined;
+      },
+    }),
+  });
 
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
@@ -1042,9 +1064,6 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     // puts it behind the board's claim gate; the flow, not the board, owns
     // what a task dispatch can reach.
     task: { actions: { [ASSIGNEE]: { block: manager } } },
-    // The drain the `message` door dispatches into the session that claimed
-    // the row, so the next attempt runs in the run's own session rather than
-    // one beneath it. Gated like `wake`; not reachable from outside.
     internal: {
       actions: {
         // Each ending of a phase the board handed out is sent here. The
@@ -1058,15 +1077,6 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
             execute: () => ({}),
           }),
         }),
-        resume: {
-          block: sequencer({
-            name: "conductor-resume",
-            inputSchema: z.unknown(),
-            outputSchema: z.unknown(),
-          })
-            .tap(tenantGate)
-            .step(board.drain),
-        },
       },
     },
     actions: {
@@ -1145,9 +1155,9 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
       },
       /**
-       * Send a person's message into a run. Called in the run's own session
-       * (the board row's run link names it): a running attempt stops, and the
-       * next one resumes the same coding session with the message.
+       * Send a person's line into a run. Called in the run's own session (the
+       * board row's run link names it): while the task is open the line steers
+       * it, and the run takes it at its next step; once finished, it is talk.
        */
       message: {
         ...door,
@@ -1155,7 +1165,6 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
         block: sequencer({
           name: "conductor-message",
           inputSchema: door.inputSchema,
-          outputSchema: door.block.outputSchema,
         })
           .tap(tenantGate)
           .step(door.block),
