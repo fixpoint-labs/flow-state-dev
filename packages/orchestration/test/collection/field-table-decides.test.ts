@@ -12,7 +12,7 @@ vi.mock("../../src/tasks/collection/field-rules", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../src/tasks/collection/field-rules")>();
   const TASK_FIELD_RULES = { ...real.TASK_FIELD_RULES, priority: "until-finish" } as const;
   const finished = new Set(["completed", "errored", "cancelled"]);
-  // The real `lockedFields`, over the swapped table.
+  // A copy of `lockedFields`, reading the swapped table.
   const lockedFields: typeof real.lockedFields = (task, fields) => {
     if (finished.has(task.status)) return [...fields];
     if (!real.hasStarted(task)) return [];

@@ -48,6 +48,8 @@ import {
 } from "../delegates/delegate-list";
 import { PROJECT_STATE_KEY } from "../workers/keys";
 import { workerConfigOf } from "../workers/verified-worker";
+import { delegateDefaultsOf, withRoster } from "../delegates/worker-delegates";
+import type { WorkerInstallation } from "../workers/installation";
 import type { ProjectAddress } from "./collections";
 import { PROJECT_ROW_RESOURCES, workstreamsAt, type ResourcesContext } from "./project-address";
 import { DONE_STATUS } from "./project-progress";
@@ -239,17 +241,19 @@ async function applyWorkstreamRecord(
  * the open already checked that the lead is on the user's roster and can lead.
  *
  * @param ctx A block's context in the coordinator's turn, declaring the workstream entries.
+ * @param installation The installation the coordinator is on: `delegates: all`
+ *   reads its roster, as the coordinator's own defaults do.
  */
 export async function changeWorkstreamRecordHere(
   ctx: CoordinatorContext & { readonly session: Parameters<typeof changeDelegates>[0] },
-  change: WorkstreamDelegateChange
+  change: WorkstreamDelegateChange,
+  installation: WorkerInstallation
 ): Promise<void> {
-  const config = workerConfigOf(ctx) as { delegates?: unknown; fallback?: unknown };
+  const config = workerConfigOf(ctx) as Record<string, unknown>;
   const state = ctx.session.state as Readonly<Record<string, unknown>>;
   const records = state[DELEGATES_STATE] == null ? await workstreamDelegateSeed(ctx) : undefined;
   const defaults: DelegateDefaults = {
-    delegates: Array.isArray(config.delegates) ? (config.delegates as string[]) : [],
-    ...(typeof config.fallback === "string" ? { fallback: config.fallback } : {}),
+    ...(await withRoster(installation, ctx as never, delegateDefaultsOf(config))),
     ...(records === undefined ? {} : { records })
   };
   await applyWorkstreamRecord(

@@ -727,7 +727,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
         id,
         "in_progress",
         "progress_reported",
-        (task) => progressPatch(task as Task, progress) as Partial<Task<TInput, TOutput>>,
+        () => progressPatch(progress) as Partial<Task<TInput, TOutput>>,
         linkRunGuards(progressOptions)
       );
     },

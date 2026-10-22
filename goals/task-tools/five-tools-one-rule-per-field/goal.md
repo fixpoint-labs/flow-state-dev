@@ -35,3 +35,6 @@ On `fix/FIX-2080` before FIX-2081 the check fails before any leg runs: the host 
 | 2026-10-21 | `fix/FIX-2081` after the review round and the merge of `fix/FIX-2080` at b194f86 | n/a | PASS | Legs a, b and c, with the field table as the write's only field rule. |
 | 2026-10-21 | same, `GOAL_CONTROL=roster-reach` | n/a | FAIL (expected) | Only `c:a piece for a non-delegate is refused`. |
 | 2026-10-21 | same, `GOAL_CONTROL=edit-any-state` (patch moved to the new call sites) | n/a | FAIL (expected) | Leg b, the running, finished and pending-after-retry columns; pending and held stay green. |
+| 2026-10-22 | `fix/FIX-2081` at the delta-review round (D3's literal checkpoint rule, the legacy-only release, `main` at b8328ccb3) | n/a | PASS | Legs a, b and c. |
+| 2026-10-22 | same, `GOAL_CONTROL=roster-reach` | n/a | FAIL (expected) | Only `c:a piece for a non-delegate is refused`. |
+| 2026-10-22 | same, `GOAL_CONTROL=edit-any-state` | n/a | FAIL (expected) | Leg b, the running, finished and pending-after-retry columns; pending and held stay green. Both controls reached their patch anchors. |

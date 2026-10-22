@@ -592,7 +592,7 @@ export function defineWorkstreamBlocks(options: WorkstreamBlocksOptions): Workst
     // lead may have left the roster since.
     const here = before === undefined || change === "remove";
     if (here && coordinatorSessionId === (ctx.session.identity as { id?: string }).id) {
-      await changeWorkstreamRecordHere(ctx as never, record);
+      await changeWorkstreamRecordHere(ctx as never, record, options.installation);
       return undefined;
     }
     return { ...record, coordinatorSessionId };

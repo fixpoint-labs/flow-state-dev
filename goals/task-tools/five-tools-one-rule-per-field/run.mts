@@ -44,7 +44,6 @@
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createFlowState, runAction } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";

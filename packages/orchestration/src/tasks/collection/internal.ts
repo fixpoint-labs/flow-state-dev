@@ -290,6 +290,7 @@ export function dispatchWrite(
     patch: {
       status: "pending",
       dispatchCall: options.call,
+      ...(task.heldFromBlocked === true ? { heldFromBlocked: undefined } : {}),
       ...(options.assignee !== undefined && options.assignee !== task.assignee ? { assignee: options.assignee } : {}),
       ...(options.wait !== undefined ? { wait: { gateId: options.wait.gateId, deadline: options.wait.deadline } } : {}),
     },
@@ -390,7 +391,11 @@ export function settingsWrite(
   if (declined !== undefined) return { decline: declined };
   const update: Partial<Task> = {};
   if (patch.held === true && task.status === "pending") update.status = "held";
-  if (patch.held === false && task.status === "held") update.status = "pending";
+  if (patch.held === false && task.status === "held") {
+    update.status = "pending";
+    // The legacy mark serves one release; a later hold is an ordinary one.
+    if (task.heldFromBlocked === true) update.heldFromBlocked = undefined;
+  }
   if (patch.deps !== undefined && !sameIds(patch.deps, task.deps)) {
     assertDepsEditable(task.id, patch.deps, lookup);
     update.deps = [...patch.deps];
@@ -1194,32 +1199,22 @@ export function reportsProgress(progress: { statusNote?: string; output?: unknow
   return progress.statusNote !== undefined || progress.output !== undefined;
 }
 
-/**
- * The patch a progress report writes on `task` (FIX-2081): the note, and the
- * output marked a checkpoint of the attempt running now.
- */
-export function progressPatch(task: Task, progress: { statusNote?: string; output?: unknown }): Partial<Task> {
+/** The patch a progress report writes (FIX-2081): the note, and the output marked a checkpoint. */
+export function progressPatch(progress: { statusNote?: string; output?: unknown }): Partial<Task> {
   return {
     ...(progress.statusNote !== undefined ? { statusNote: progress.statusNote } : {}),
-    ...(progress.output !== undefined
-      ? { output: progress.output, checkpointed: true as const, checkpointAttempt: task.attempts }
-      : {}),
+    ...(progress.output !== undefined ? { output: progress.output, checkpointed: true as const } : {}),
   };
 }
 
 /**
- * The patch a completion writes (FIX-2081): the completing attempt's own
- * result as the output, unless that same attempt reported a checkpoint,
- * which then stays the output. A checkpoint from an earlier, failed attempt
- * is the retry's to read while it runs; it never beats the result of the
- * attempt that completed.
+ * The patch a completion writes (FIX-2081, D3): the latest checkpoint is the
+ * output, so the final result is written only when no checkpoint was ever
+ * made. A failed attempt or a reclaim keeps the checkpoint.
  */
 export function completionPatch(task: Task, output: unknown, completedAt: number): Partial<Task> {
-  const ownCheckpoint = task.checkpointed === true && task.checkpointAttempt === task.attempts;
   return {
-    ...(ownCheckpoint
-      ? {}
-      : { output, ...(task.checkpointed === true ? { checkpointed: undefined, checkpointAttempt: undefined } : {}) }),
+    ...(task.checkpointed === true ? {} : { output }),
     completedAt,
     leaseUntil: undefined,
     claimedBy: undefined,
