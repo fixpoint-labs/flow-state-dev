@@ -19,7 +19,8 @@ import { startOwedSteerTurn } from "./steer-turn-start";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { admitOwnTask } from "./task-admission";
 import { AFTER_REPLY_CONCURRENCY } from "./task-settled";
-import { filingPartitionOf, sessionTaskOf } from "./task-entry";
+import { boardAboveOf } from "./board-above";
+import { sessionTaskOf } from "./task-entry";
 
 export { STEER_TURN_ENTRY } from "./board-entries";
 
@@ -28,9 +29,12 @@ const STEERED_AFTER_ANSWER =
   "You were sent the messages below about this task after your last model call. Act on them, then answer again. " +
   "A checkpoint you reported stands as the task's output unless you report a new one.";
 
-/** The ledger a task session's task is on: the conversation it was opened for. */
+/**
+ * The ledger this session's task is on: the conversation it was opened for,
+ * or, in a workstream's session, the one whose routed task it works (FIX-2083).
+ */
 async function sessionLedger(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
-  const partition = filingPartitionOf(ctx);
+  const partition = boardAboveOf(ctx);
   return partition === undefined ? undefined : conversationLedgerAt(ctx, partition);
 }
 
