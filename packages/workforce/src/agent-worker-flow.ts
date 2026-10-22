@@ -230,14 +230,7 @@ function activateToolOn(ctx: BlockContext): boolean {
   return (turnConfigOf(ctx) as Partial<WorkerConfig>).skills?.activateTool === true;
 }
 
-/**
- * The app's after-answer block, run as background work after the worker
- * answers. A failure in it fails a task's attempt, as any background step's
- * does (FIX-2088 D1), with one exception: a task whose result goes to the
- * conversation has one attempt, so there a failure is logged and the task
- * keeps its answer, as a conversation turn does (D1's amendment). Read from the
- * task row's result setting, never session state.
- */
+/** `afterAnswer`, rescuing only when the task row says the result goes to the conversation. */
 function afterAnswerStep(block: BlockDefinition<any, any>) {
   const keepTheAnswer = handler({
     name: "agent-after-answer-rescue",
@@ -1239,9 +1232,7 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
   // the sequence it built before this option existed rather than one carrying
   // an inert extra step. `.sideChain` rather than `.step`: a post-answer block
   // must not be able to change the answer, and a failure inside it — a capture
-  // call that times out, say — is not a conversation failure. In a task it is
-  // background work like any other, and fails the attempt (FIX-2088 D1),
-  // except where the task's result goes to the conversation (`afterAnswerStep`).
+  // call that times out, say — is not a conversation failure.
   const answeredRun = options.afterAnswer
     ? answered.sideChain(afterAnswerStep(options.afterAnswer), { name: options.afterAnswer.name })
     : answered;

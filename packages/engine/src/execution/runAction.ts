@@ -172,16 +172,7 @@ async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
   }
 }
 
-/**
- * The request's background failures, for the request-end seam (FIX-2088):
- * every step the pool kept a failure for, across all its drains. Called once,
- * after the last drain.
- *
- * A request whose cancel fired hands on none, whatever its steps did after
- * it: a cancelled task stays cancelled. The test is the cancel itself, never
- * the error's name or shape. A dropped connection never fires it, so a step
- * that throws after one is still handed on.
- */
+/** The pool's kept failures, shaped for `RequestEnding.backgroundFailures`. Nothing when `cancelled` or none failed. */
 function backgroundFailuresOf(
   ctx: ExecutionContext,
   cancelled: boolean
@@ -3027,6 +3018,7 @@ async function runActionAttempt<
     await drainRequestSideChainPool(ctx);
     // As on the success path (FIX-2077). The request has already ended, so a
     // failure a hook hands back changes nothing; it is logged, as a hook's throw is.
+    // The cancel is this flag, not the error's name. A disconnect is `interrupted` and still hands its failures on.
     const handedOn = backgroundFailuresOf(ctx, wasIntentionalAbort || abortController.signal.aborted);
     const ending: RequestEnding = wasIntentionalAbort
       ? { status: "aborted" }
