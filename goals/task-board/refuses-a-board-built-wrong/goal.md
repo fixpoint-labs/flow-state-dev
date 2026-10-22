@@ -4,9 +4,10 @@
 
 **Outcome:** whether a board's drain waits on its rows is the author's declared choice. A board whose declaration contradicts its assignees, and a goal-seek loop over a board whose drain can return with work unfinished, fail when they are built, and the error says which setting is wrong and what to write instead. Nothing runs first.
 
-**Input:** five boards as an author would write them, built through the public `taskBoard()` and `goalSeekLoop()`:
+**Input:** six boards as an author would write them, built through the public `taskBoard()` and `goalSeekLoop()`:
 
-- a plan board (the default) holding a dispatcher assignee;
+- a plan board (the default) whose dispatcher says `wait: false` (since FIX-2082 a plan board may hold a dispatcher, and waits on the rows it hands over);
+- a delegation board whose dispatcher says `wait: true`;
 - a delegation board with an assignee that runs inline;
 - a delegation board with no dispatcher;
 - a goal-seek loop over a delegation board;
@@ -19,7 +20,7 @@ Held out: each board's names are arbitrary, and the check reads only the error t
 - `b:refused` the build throws.
 - `b:names-the-setting` the message names what contradicts what (the board's mode and the assignee, or the loop and the board's mode or `onReview`).
 - `b:names-the-fix` the message gives the change to make (`mode: "delegation"`, a dispatcher or drop `mode`, a plan board, `onReview: "hold"`).
-- `b:right-builds` a delegation board with only a dispatcher, and a goal-seek loop over a plan board, build.
+- `b:right-builds` a delegation board with only a dispatcher, a plan board whose dispatcher leaves `wait` to the mode, and a goal-seek loop over a plan board, build.
 
 **Anti-game:** the check builds through the public factories and reads the thrown message, never the internal assertion functions. Each case names its own setting and fix, so a refusal that fires for another reason (the boardId check, the backing check) fails `b:names-the-setting`. The right-built pair keeps a fence that refuses everything from passing.
 
@@ -27,7 +28,7 @@ Held out: each board's names are arbitrary, and the check reads only the error t
 
 **Run:** `pnpm tsx goals/task-board/refuses-a-board-built-wrong/run.mts`
 
-**Controls:** `GOAL_CONTROL=no-fence` skips the mode check in `taskBoard()` and the loop's two guards, as today's `main` has none (a scratch patch applied as the process loads, `goals/lib/module-patch.mts`). It must fail **`b:refused`** for all five boards.
+**Controls:** `GOAL_CONTROL=no-fence` skips the mode check in `taskBoard()` and the loop's two guards, as today's `main` has none (a scratch patch applied as the process loads, `goals/lib/module-patch.mts`). It must fail **`b:refused`** for all six boards.
 
 FIX-2080's refusal of a plan row filed held joins this leg when that issue lands: this one landed first, so the leg holds five refusals.
 

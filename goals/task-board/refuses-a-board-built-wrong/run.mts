@@ -62,20 +62,42 @@ if (CONTROL !== "" && process.env.GOAL_MODULE_PATCH === undefined) {
 const inline = (name: string) =>
   handler({ name, inputSchema: taskWorkerInputSchema, outputSchema: z.unknown(), execute: (task) => task.goal }) as TaskWorker;
 let count = 0;
-const handsOff = () => {
+const handsOff = (wait?: boolean) => {
   count += 1;
-  return dispatcher({ name: `hand-off-${count}`, type: "task", action: "work", session: "per-task" }) as unknown as TaskWorker;
+  return dispatcher({
+    name: `hand-off-${count}`,
+    type: "task",
+    action: "work",
+    session: "per-task",
+    ...(wait !== undefined ? { wait } : {})
+  }) as unknown as TaskWorker;
 };
 const ledger = (id: string) => defineTaskCollection({ id, scope: "user" });
 const judge = () => ({ decision: "done", reason: "ok" }) as Verdict;
 
 /** One board as an author would write it, the setting its refusal must name, and the fix it must give. */
 const WRONG: Array<{ name: string; build: () => unknown; setting: RegExp; fix: RegExp }> = [
+  // FIX-2082: a plan board waits on the rows it hands over, so the refusal is
+  // of a dispatcher that says otherwise, on either kind of board.
   {
-    name: "a plan board holding a dispatcher",
-    build: () => taskBoard({ name: "issue-work", boardId: "issue-work", collection: ledger("issue-work"), workers: { implement: handsOff() } }),
-    setting: /is a plan board.*holds a task dispatcher/s,
-    fix: /declares `mode: "delegation"`/
+    name: "a plan board whose dispatcher won't wait",
+    build: () =>
+      taskBoard({ name: "issue-work", boardId: "issue-work", collection: ledger("issue-work"), workers: { implement: handsOff(false) } }),
+    setting: /is a plan board.*assignee:implement says `wait: false`/s,
+    fix: /declare `mode: "delegation"`/
+  },
+  {
+    name: "a delegation board whose dispatcher waits",
+    build: () =>
+      taskBoard({
+        name: "waiting-work",
+        boardId: "waiting-work",
+        mode: "delegation",
+        collection: ledger("waiting-work"),
+        workers: { implement: handsOff(true) }
+      }),
+    setting: /is a delegation board, and its dispatcher at assignee:implement says `wait: true`/,
+    fix: /drop `mode` for a plan board/
   },
   {
     name: "a delegation board with an inline assignee",
@@ -142,6 +164,8 @@ await runGoal((failures, tell) => {
   // The same boards, declared right, build: the fence refuses only the contradiction.
   try {
     taskBoard({ name: "issue-work-right", boardId: "issue-work-right", mode: "delegation", collection: ledger("issue-work-right"), workers: { implement: handsOff() } });
+    // A plan board that hands a row over and waits on it (FIX-2082).
+    taskBoard({ name: "plan-hands-over", boardId: "plan-hands-over", collection: ledger("plan-hands-over"), workers: { implement: handsOff() } });
     goalSeekLoop({ name: "seek-right", maxIterations: 3, judge, board: taskBoard({ name: "plan-right", workers: inline("plan-right-w") }) });
   } catch (error) {
     failures.push(`b:right-builds: ${error instanceof Error ? error.message : String(error)}`);

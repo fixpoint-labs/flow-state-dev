@@ -19,15 +19,14 @@
 
 **Model:** real — openai/gpt-5.4-mini (`GOAL_MODEL` overrides), gated on a key that serves it (`keysServing`).
 
-**Run:** `pnpm tsx goals/hand-offs/ask-survives-a-restart/run.mts`. `GOAL_ATTEMPTS=<n>` fresh stores until it first passes (default 3, over the model's flakiness; 1 under a control). `GOAL_ASK=recorded` asks in `fixtures/ask.json`'s `askRecorded` words instead, which name the recorded-task path below, so that path can be run on purpose; the model takes it unprompted only some of the time.
+**Run:** `pnpm tsx goals/hand-offs/ask-survives-a-restart/run.mts`. `GOAL_ATTEMPTS=<n>` fresh stores until it first passes (default 3, over the model's flakiness; 1 under a control). `GOAL_ASK=recorded` asks in `fixtures/ask.json`'s `askRecorded` words instead, which spell out filing the task with `createTask` and then waiting on it with `getTask` by its id.
 
-**Controls:** each is a scratch patch to `packages/orchestration/src/tasks/helpers/wait-for-response.ts`, applied as the server loads it (`goals/lib/module-patch.mjs`), printed by the run, and refused when it never reached the code.
+**How the asker waits (since FIX-2082):** it files with `createTask` and waits with `getTask({ id, wait: true })`, the one way to wait; the run reads the asking request's own `getTask` call and prints it. `dispatchTask({ wait })` is gone, and with it the two paths (a new task, a recorded one) this goal used to tell apart.
 
-- `GOAL_CONTROL=no-run-once`: the ask records neither its filing nor its row's id with `runOnce` (two patches), so the replay after the resume files again. What that breaks depends on how the asker waited, which the run reads from the asking request's own `dispatchTask` call and prints:
-  - On a new task (`goal`), the replay reaches the collection's add with a new id and files a second row. Must fail **`one-row`**. `b:once` goes red with it (the colleague runs the second row too).
-  - On a task it filed held first with `createTask` (`taskId`), the replay dispatches that row again, and the board declines it, since it was already dispatched. No second row can exist on this path, and the answer never reaches the turn. Must fail **`a:word`**, and `one-row` must stay green: if it fails, something other than the control broke the run.
-  - When the asker never dispatched with `wait`, or waited both ways in one turn, the control fails as ungraded.
-- `GOAL_CONTROL=no-waker`: nothing resumes a waiting turn; a touch of the board finds no owed resume. Must fail **`a:completed`** (the request stays `suspended`). `a:word` goes red with it.
+**Controls:** a scratch patch to `packages/orchestration/src/tasks/helpers/wait-on-task.ts`, applied as the server loads it (`goals/lib/module-patch.mjs`), printed by the run, and refused when it never reached the code.
+
+- `GOAL_CONTROL=no-waker`: nothing resumes a waiting turn; a touch of the board finds no owed resume. Must fail **`a:completed`** (the request stays `suspended`). `a:word` goes red with it. When the asker never waited with `getTask`, the control fails as ungraded.
+- `no-run-once` is retired (FIX-2082): it removed the `runOnce` that kept the wait's own filing, and the wait no longer files. The filing is `createTask`'s own tool call, which the replay after the resume reads back from the request's log; `one-row` and `b:once` still grade that it was filed and run once.
 
 **Before-state:** on `main` before FIX-1816 P3 the asker has no `wait`, so there is no ask to survive a restart.
 

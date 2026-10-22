@@ -14,8 +14,8 @@
  * Every grade reads the store file the run wrote, read-only.
  *
  * Run:      pnpm tsx goals/hand-offs/ask-survives-a-restart/run.mts
- * Controls: GOAL_CONTROL=no-run-once | no-waker
- * Wording:  GOAL_ASK=recorded (ask to record the task first, then wait on it by id)
+ * Controls: GOAL_CONTROL=no-waker
+ * Wording:  GOAL_ASK=recorded (ask to file the task first, then wait on it by id, in so many words)
  * Attempts: GOAL_ATTEMPTS=<n> fresh stores, until it first passes (default 3; 1 under a control)
  */
 import { execFileSync } from "node:child_process";
@@ -38,8 +38,10 @@ const word = () => `${["heron", "copper", "lantern", "saffron", "willow", "glaci
 // ---- controls -------------------------------------------------------------------
 
 /**
- * How the asker waited: `dispatchTask` with `wait` on a new task (`goal`), or on
- * a task it filed held first with `createTask` (`taskId`). `none` when it never did.
+ * How the asker waited: on a task it filed with `createTask`, through
+ * `getTask({ id, wait: true })` (FIX-2082), the one way to wait. `none` when it
+ * never did. (`recorded` named the second way `dispatchTask({ wait })` had,
+ * which is gone.)
  */
 type WaitPath = "new" | "recorded" | "none";
 
@@ -60,32 +62,12 @@ interface Control {
   does: string;
 }
 
-const WAIT = "packages/orchestration/src/tasks/helpers/wait-for-response.ts";
+const WAIT = "packages/orchestration/src/tasks/helpers/wait-on-task.ts";
 
+// FIX-2082 retired `no-run-once`: it removed the `runOnce` that kept the wait's
+// own filing, and the wait no longer files. `createTask` files in a tool call
+// of its own, which the replay after the resume reads back from the log.
 const CONTROLS: Record<string, Control> = {
-  "no-run-once": {
-    name: "no-run-once",
-    // On a new task the replay mints a new id and files a second row. On a
-    // recorded one it re-dispatches the same row, which the board declines,
-    // so the answer never reaches the turn: one row, and no word. `one-row`
-    // must stay green there, so a resume that broke some other way can't
-    // pass for this control.
-    assertions: (path) => (path === "new" ? ["one-row"] : ["a:word"]),
-    holds: (path) => (path === "recorded" ? ["one-row"] : []),
-    patches: [
-      {
-        module: WAIT,
-        from: String.raw`const filed = await ctx\.runOnce\(\`fsd\.ask\.file:`,
-        to: "const filed = await ((_key, fn) => fn())(`fsd.ask.file:",
-      },
-      {
-        module: WAIT,
-        from: String.raw`await ctx\.runOnce!?\(\`fsd\.ask\.plan:`,
-        to: "await ((_key, fn) => fn())(`fsd.ask.plan:",
-      },
-    ],
-    does: "the ask records neither its filing nor its row's id with runOnce, so the replay after the resume files again: a new task gets a second row, and a recorded one is dispatched again and declined",
-  },
   "no-waker": {
     name: "no-waker",
     assertions: () => ["a:completed"],
@@ -257,10 +239,8 @@ function waitPath(store: string, O: Observed): WaitPath {
   const calls = items(store, O.conv, "generator_step")
     .filter((step) => step.requestId === O.asked)
     .flatMap((step) => (step.toolCalls ?? []) as Array<{ toolName?: string; arguments?: Record<string, unknown> }>)
-    .filter((call) => call.toolName?.startsWith("dispatchTask") === true && call.arguments?.wait === true);
-  const recorded = calls.filter((call) => call.arguments?.taskId !== undefined).length;
-  if (calls.length === 0 || (recorded > 0 && recorded < calls.length)) return "none";
-  return recorded > 0 ? "recorded" : "new";
+    .filter((call) => call.toolName?.startsWith("getTask") === true && call.arguments?.wait === true);
+  return calls.length === 0 ? "none" : "new";
 }
 
 function grade(O: Observed, store: string, userId: string): Graded {
