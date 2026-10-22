@@ -176,12 +176,14 @@ export const unpartitioned = (root: string, scratch: string) =>
   codeControl(root, scratch, "unpartitioned", [{ module: `${BOARD}/ledger.ts`, from: "partition,(\\s*)immutableAssignee", to: 'partition: "unpartitioned",$1immutableAssignee' }]);
 
 /**
- * `no-follow-up`: a settled task owes its notice but none is ever sent (b5 must fail). The send is
- * Orchestration's: Workforce's own sender served only posts, which FIX-2083 removed.
+ * `no-follow-up`: a settled task owes its notice but none is ever sent (b5 must fail). Every send,
+ * at the ending and from the pass a wake runs, reads the owed notices through Orchestration's
+ * `owedNotices`, which the patch makes read none. (Workforce's own sender served only posts,
+ * which FIX-2083 removed.)
  */
 export const noFollowUp = (root: string, scratch: string) =>
   codeControl(root, scratch, "no-follow-up", [
-    { module: "packages/orchestration/src/tasks/notice/delivery.ts", from: "const outcome = await send\\(address, entry, notice\\);", to: "const outcome = undefined;" },
+    { module: "packages/orchestration/src/tasks/notice/task-notice.ts", from: "const notices(?:: TaskNotice\\[\\])? = \\[\\];", to: "const notices = []; return notices;" },
   ]);
 
 /** `no-delegate-check`: a conversation files tasks whether or not a delegate takes them (b6 must fail). */
