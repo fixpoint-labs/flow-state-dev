@@ -266,12 +266,7 @@ describe("RequestSideChainPool.drainToQuiescence", () => {
   });
 });
 
-/**
- * The pool keeps every failure it drained, across drains (FIX-2088): the
- * request-end seam hands them to the claim gate after the last drain, which
- * fails a task's attempt on any. A drain that logs a failure must not be the
- * only one who ever sees it.
- */
+/** A drain that logged a failure must not be the only reader that ever sees it. */
 describe("RequestSideChainPool.failures", () => {
   it("keeps the failures of every drain, in the order they were drained", async () => {
     const pool = createRequestSideChainPool();

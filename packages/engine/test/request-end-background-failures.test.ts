@@ -1,13 +1,7 @@
 /**
- * The request-end seam hands on the request's background failures
- * (FIX-2088): every step of the request's background work that failed,
- * gathered across the engine's drains, reaches the hooks after the last
- * drain, unless the request's cancel fired.
- *
- * Why it matters: the claim gate fails a task's attempt on any of them. A
- * drain that only logs a failure lets a task whose background work broke be
- * reported done. The request's own status does not change (D2): background
- * work never drives it.
+ * Why it matters: the claim gate fails a task's attempt on a background
+ * failure a drain only logged. The request's own status does not change:
+ * background work never drives it.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";

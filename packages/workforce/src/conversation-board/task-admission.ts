@@ -40,12 +40,7 @@ async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; 
   return ref === undefined || row === undefined ? undefined : { ref, row };
 }
 
-/**
- * Whether the running request works a task whose result goes back into the
- * conversation it was filed from (`resultTo: "conversation"`), read from the
- * task's row, never from session state. Such a task has one attempt, so its
- * after-answer capture is best-effort (FIX-2088, D1's amendment).
- */
+/** Whether this request's task row has `resultTo: "conversation"`. The row, never session state. */
 export async function worksConversationResultTask(ctx: BlockContext): Promise<boolean> {
   return (await ownTaskRow(ctx))?.row.resultTo === "conversation";
 }
