@@ -166,6 +166,12 @@ export type RequestHostConstructionInputs = {
    */
   dispatchOperation?: DispatchOperation;
   /**
+   * Whether `dispatchOperation` runs what it starts in this process, read as
+   * each request starts (`RequestHost.dispatchRunsHere`). Absent → no request
+   * is told so.
+   */
+  dispatchRunsHere?: () => boolean;
+  /**
    * Resolves another registered flow instance by its exact address (its id),
    * for a cross-instance dispatch address. Wired from the host's flow
    * registry. Absent → every cross-flow address refuses `flow-not-found`, the

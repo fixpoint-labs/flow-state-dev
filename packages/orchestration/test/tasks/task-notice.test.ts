@@ -251,6 +251,18 @@ describe("a failure or a cancel names the dependents it cancelled (FIX-2078 D2)"
     row({ id: "d4", status: "cancelled", causedBy: "other", filer } as Partial<Task>)
   ];
 
+  it("names every dependent down a cascade, each of which owes no notice of its own", () => {
+    const top = row({ id: "a", status: "errored", error: "boom", filer } as Partial<Task>);
+    const chain = [
+      top,
+      row({ id: "b", status: "cancelled", causedBy: "a", filer } as Partial<Task>),
+      row({ id: "c", status: "cancelled", causedBy: "b", filer } as Partial<Task>),
+      // Another filer's row down the chain is told on its own.
+      row({ id: "x", status: "cancelled", causedBy: "b", filer: { sessionId: "someone-else" } } as Partial<Task>)
+    ];
+    expect(cancelledDependents(top, chain).sort()).toEqual(["b", "c"]);
+  });
+
   it("names a dependent filed after the upgrade by a cause filed before it, by the board's filer rule (BP-030)", () => {
     // The cause predates `Task.filer`; its board's legacy rule reads the conversation.
     const legacy = row({ id: "old", status: "errored", error: "boom" } as Partial<Task>);

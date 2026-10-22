@@ -944,6 +944,7 @@ export async function createExecutionContext<
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
           waitSweeper: options.requestHost.waitSweeper,
+          dispatchRunsHere: options.requestHost.dispatchRunsHere,
           ...(options.requestHost.wakes !== undefined && stores.wakes !== undefined
             ? {
                 wakes: {

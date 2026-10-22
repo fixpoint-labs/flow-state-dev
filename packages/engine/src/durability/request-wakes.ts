@@ -211,7 +211,11 @@ export function createRequestWakes(inputs: RequestWakesInputs): RequestWakes {
       // Nothing owed, but a writer may still be landing what it owes: wait for it.
       const dueAt = next ?? (now() < read.landBy ? read.landBy : null);
       if (dueAt === null) return (await store.clear(key, read.version)) ? "cleared" : "stale";
-      return (await store.move(key, read.version, dueAt)) ? "moved" : "stale";
+      if (!(await store.move(key, read.version, dueAt))) return "stale";
+      // A sweeper armed for later (the fire moved the wake on before this
+      // pass ran) comes forward to the new due time.
+      noteWakeOwed(store, dueAt);
+      return "moved";
     }
   };
 }
