@@ -89,6 +89,16 @@ export interface TaskNotice {
 /** How long after its ending's write a notice falls due: the fast path pays it first. */
 export const NOTICE_DUE_MS = 2_000;
 
+/**
+ * How often a filer's pass looks again at a wait slot that lapsed for a
+ * request still running or parked (FIX-2082): the slot is released by the
+ * pass after that request ends, so an ending held for it is never stranded.
+ * The release at the request's end in its own process comes first; this is
+ * what pays it when that process is gone. Thirty seconds, the age at which a
+ * request whose process died is marked interrupted.
+ */
+export const LAPSED_SLOT_CHECK_MS = 30_000;
+
 /** The marker each owed notice is kept under, in the row's metadata. */
 const OWED_PREFIX = "noticeOwed:";
 

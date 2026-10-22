@@ -99,7 +99,7 @@
  */
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition } from "../types/block";
-import { MAX_WAIT_DEPTH, parkOnWait } from "../types/wait-gate";
+import { canHoldWait, MAX_WAIT_DEPTH, parkOnWait } from "../types/wait-gate";
 import {
   DispatchRefusedError,
   dispatchThroughSeam,
@@ -117,6 +117,7 @@ import {
   type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
+import { parseBlockInstanceId } from "./internal/block-instance-id";
 
 /** What a dispatcher returns: enough to find the work it started. */
 export const dispatchHandleSchema = z.object({
@@ -474,16 +475,15 @@ export function dispatcher(
  * after the park sends nothing again and parks on the same gate.
  */
 async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<DispatchHandle>): Promise<DispatchWaitResult> {
-  const host = ctx.requestHost;
-  const waits = host?.waits;
-  if (waits === undefined || host?.resumeWait === undefined || host.hasWaitSweeper !== true || ctx.runOnce === undefined || ctx.suspend === undefined) {
+  const waits = ctx.requestHost?.waits;
+  if (waits === undefined || !canHoldWait(ctx) || ctx.runOnce === undefined || ctx.suspend === undefined) {
     throw new Error(
       `[dispatcher] "${name}": wait_unavailable: this host can't hold a wait (it needs a durable ` +
         `action on a host whose store keeps wakes), so nothing was dispatched. Drop \`wait\` to get the handle back.`
     );
   }
   const once = ctx.runOnce.bind(ctx);
-  const key = ctx.idempotencyKey ?? ctx._blockIdentity?.blockInstanceId ?? name;
+  const key = logicalKeyOf(ctx) ?? name;
   const handle = await once(`fsd.dispatch.send:${key}`, async () => {
     const depth = await waits.depth({});
     if (depth > MAX_WAIT_DEPTH) {
@@ -513,6 +513,20 @@ async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<
     return { status: "running", requestId };
   }
   return { status: "failed", error: outcome.error.message, requestId };
+}
+
+/**
+ * The block's logical id: the same on every attempt of the block and on the
+ * replay after a resume, so a retry after the send reads back the dispatch it
+ * sent. The runtime's `ctx.idempotencyKey` when the context carries it, else
+ * the block instance id without its attempt (`${requestId}:${path}`).
+ */
+function logicalKeyOf(ctx: BlockContext): string | undefined {
+  if (ctx.idempotencyKey !== undefined) return ctx.idempotencyKey;
+  const instanceId = ctx._blockIdentity?.blockInstanceId;
+  if (instanceId === undefined) return undefined;
+  const parsed = parseBlockInstanceId(instanceId);
+  return parsed === undefined ? instanceId : `${parsed.requestId}:${parsed.path}`;
 }
 
 function handleOf(outcome: { sessionId: string; requestId: string; adopted: boolean }): DispatchHandle {

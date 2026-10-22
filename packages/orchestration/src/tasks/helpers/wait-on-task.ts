@@ -10,7 +10,9 @@
  *    the deadline is within the host's bounds; this session filed the task
  *    (its server-written filer, never input, BP-031); its result doesn't go
  *    to the conversation; one wait per model step; and the chain of waits it
- *    joins stays within `MAX_WAIT_DEPTH`, counted by the engine from both ends.
+ *    joins stays within `MAX_WAIT_DEPTH`: the waits above this request and
+ *    any already below the task it waits on, counted by the engine. A wait
+ *    that waits again at its deadline counts again before each new park.
  *    A task already ended is returned at once.
  * 2. **Take the row's wait slot** in one conditional write (`markWait`): a
  *    second request waiting on the same task is refused.
@@ -21,9 +23,12 @@
  *    session's pass resumes it, `payOwedResumes`), or at the deadline with the
  *    task still running. The deadline cancels nothing: the slot lapses, in one
  *    conditional write that loses to an ending already written, and an ending
- *    that lands while this request still runs is held for it, so its next read
- *    of the task delivers it. If it ends without that read, the ending goes to
- *    the filer's `onTaskSettled`, once (`releaseWait`, at the request's end).
+ *    that lands while this request still runs, or is parked on something else,
+ *    is held for it, so its next read of the task delivers it. If it ends
+ *    without that read, the ending goes to the filer's `onTaskSettled`, once
+ *    (`releaseWait`): at the request's end in this process, or, whatever
+ *    became of the process, by the filer's next pass, which the lapse owes a
+ *    wake (`releaseEndedWaits`).
  *
  * A person stopping a waiting request ends it and cancels the task it waited
  * on, as before. A request whose own task is cancelled while it waits ends at
@@ -32,8 +37,9 @@
  * The functions:
  *
  * - {@link waitOnTask}, the wait.
- * - {@link waitRefusal}, its checks alone: a drain runs them before it hands
- *   a row over, so a wait it can't make refuses the row with nothing started.
+ * - {@link checkWait}, its checks alone: a drain runs them before it hands
+ *   a row over, so a wait it can't make refuses the row with nothing started,
+ *   then hands what passed to {@link waitOnTask}, which doesn't check again.
  * - {@link deliverHeldEnding}, a read of a task that delivers an ending held
  *   for the reading request: every `getTask` calls it.
  * - {@link payOwedResumes}, the waker: the filer's pass resumes every request
@@ -43,6 +49,7 @@
  *   call a request parked on before FIX-2082 (BP-030).
  */
 import {
+  canHoldWait,
   MAX_WAIT_DEPTH,
   parkOnWait,
   parseBlockInstanceId,
@@ -57,7 +64,7 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { TaskClaimTicket } from "../claim-ticket";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { holdsAnEnding } from "../notice/task-notice";
+import { holdsAnEnding, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
@@ -73,17 +80,8 @@ export function waitGateId(collectionId: string, taskId: string): string {
   return `ask:${collectionId}:${taskId}`;
 }
 
-/**
- * Whether the running request's host can hold a wait (FIX-1816 BR-5, FIX-2082
- * D1): durable execution (the resume is wired), a durability sweeper that
- * resumes a wait at its deadline (`RequestHost.hasWaitSweeper`), and wakes
- * (`RequestHost.waits`, present only where they are kept). Read off the
- * server's request host, never from input.
- */
-export function canHoldWait(ctx: { readonly requestHost?: BlockContext["requestHost"] }): boolean {
-  const host = ctx.requestHost;
-  return host?.resumeWait !== undefined && host.hasWaitSweeper === true && host.waits !== undefined;
-}
+/** Whether the running request's host can hold a wait: core's check, re-exported where the board's wait lives. */
+export { canHoldWait };
 
 /**
  * The tool call this block runs as: its logical id, and the step it belongs to.
@@ -171,44 +169,54 @@ export interface WaitOnTaskOptions {
   readonly ownBoard?: true;
 }
 
-/** What the checks found, for the wait that passed them. */
-type Checked = {
+/** A wait that passed its checks ({@link checkWait}): hand it to {@link waitOnTask} to make it. */
+export interface CheckedWait {
+  readonly taskId: string;
+  readonly key: string;
   readonly row: Task;
   readonly deadlineMs: number;
   readonly binding: WaitRow;
   readonly own: WaitRow | undefined;
-};
+}
 
 /**
  * Run a wait's checks (see the module header) without waiting: the refusal,
- * or `undefined` when the wait may be made. The depth is recorded under
- * `options.key`, so the wait made after reads the same count. Writes nothing
- * else.
+ * or the wait that passed them. The depth and the request's own row are
+ * recorded under `options.key`, so a replay decides the same way. Writes
+ * nothing else.
  */
-export async function waitRefusal(
+export async function checkWait(
   ctx: BlockContext,
   collection: TaskCollectionRef,
   taskId: string,
   options: WaitOnTaskOptions
-): Promise<TaskWaitResult | undefined> {
-  const checked = await check(ctx, collection, taskId, options);
-  return "ok" in checked ? checked : undefined;
+): Promise<Extract<TaskWaitResult, { ok: false }> | CheckedWait> {
+  return check(ctx, collection, taskId, options);
 }
 
 /**
  * Wait on `taskId` on `collection` until it ends or the deadline passes (see
  * the module header). Every refusal comes before anything is written. Must run
  * as a block with a stable identity on a durable host.
+ *
+ * @param checked What {@link checkWait} returned for this same task and key,
+ *   when the caller checked first: the checks don't run again.
  */
 export async function waitOnTask(
   ctx: BlockContext,
   collection: TaskCollectionRef,
   taskId: string,
-  options: WaitOnTaskOptions
+  options: WaitOnTaskOptions,
+  checked?: CheckedWait
 ): Promise<TaskWaitResult> {
-  const checked = await check(ctx, collection, taskId, options);
-  if ("ok" in checked) return checked;
-  return waitChecked(ctx, collection, taskId, options, checked);
+  if (checked !== undefined && (checked.taskId !== taskId || checked.key !== options.key)) {
+    throw new Error(`[tasks] the checked wait is on task "${checked.taskId}" under "${checked.key}", not this one`);
+  }
+  // A run after a park: the slots this request lapsed before it are released at its end again.
+  rearmLapsed(ctx);
+  const passed = checked ?? (await check(ctx, collection, taskId, options));
+  if ("ok" in passed) return passed;
+  return waitChecked(ctx, collection, taskId, options, passed);
 }
 
 async function check(
@@ -216,7 +224,7 @@ async function check(
   collection: TaskCollectionRef,
   taskId: string,
   options: WaitOnTaskOptions
-): Promise<TaskWaitResult | Checked> {
+): Promise<Extract<TaskWaitResult, { ok: false }> | CheckedWait> {
   // What the task says first: the most specific refusal names the rule.
   const row = collection.get(taskId);
   if (row === undefined) throw new Error(`[tasks] task "${taskId}" not found`);
@@ -272,20 +280,35 @@ async function check(
   }
 
   const binding = { board: collection.collectionId, taskId };
-  const own = ownRowOf(ctx, options.ownBoard === true);
-  // Decided once and recorded, so the replay after the resume decides as the
-  // first call did: the chain it counts has changed by then.
-  const depth = await ctx.runOnce(`fsd.wait.depth:${options.key}`, () =>
-    waits.depth({ binding, ...(own !== undefined ? { own } : {}) })
+  // Read once and recorded: a request resumed after its park may no longer
+  // hold what it was admitted with in this process.
+  const own =
+    (await ctx.runOnce(`fsd.wait.own:${options.key}`, async () => ownWaitRowFromContext(ctx, options.ownBoard === true) ?? null)) ??
+    undefined;
+  const tooDeep = await depthRefusal(ctx, `fsd.wait.depth:${options.key}`, binding, own);
+  if (tooDeep !== undefined) return tooDeep;
+  return { taskId, key: options.key, row, deadlineMs, binding, own };
+}
+
+/**
+ * The depth check, for one park: `wait_too_deep` when the chain this wait
+ * would join passes {@link MAX_WAIT_DEPTH}. Decided once per park and recorded
+ * under `memoKey`, so the replay after the resume decides as the first run
+ * did: the chain it counts has changed by then.
+ */
+async function depthRefusal(
+  ctx: BlockContext,
+  memoKey: string,
+  binding: WaitRow,
+  own: WaitRow | undefined
+): Promise<Extract<TaskWaitResult, { ok: false }> | undefined> {
+  const depth = await ctx.runOnce!(memoKey, () => ctx.requestHost!.waits!.depth({ binding, ...(own !== undefined ? { own } : {}) }));
+  if (depth <= MAX_WAIT_DEPTH) return undefined;
+  return refused(
+    "wait_too_deep",
+    `waits nest at most ${MAX_WAIT_DEPTH} deep, and this one would make ${depth} in its chain (the waits on ` +
+      "this request's own task above it, and the waits under the task it would wait on). Nothing was written."
   );
-  if (depth > MAX_WAIT_DEPTH) {
-    return refused(
-      "wait_too_deep",
-      `waits nest at most ${MAX_WAIT_DEPTH} deep, and this one would make ${depth} in its chain (the waits on ` +
-        "this request's own task above it, and the waits under the task it would wait on). Nothing was written."
-    );
-  }
-  return { row, deadlineMs, binding, own };
 }
 
 /** The wait itself, once its checks passed. */
@@ -294,11 +317,20 @@ async function waitChecked(
   collection: TaskCollectionRef,
   taskId: string,
   options: WaitOnTaskOptions,
-  { row, deadlineMs, binding, own }: Checked
+  { row, deadlineMs, binding, own }: CheckedWait
 ): Promise<TaskWaitResult> {
   const drain = options.ownBoard === true;
   for (let round = 0; ; round += 1) {
     const roundKey = round === 0 ? options.key : `${options.key}#${round}`;
+    if (round > 0) {
+      // Waiting again is a new park on a chain that may have grown while this
+      // request ran between them: count it again, once for this round.
+      const tooDeep = await depthRefusal(ctx, `fsd.wait.depth:${roundKey}`, binding, own);
+      if (tooDeep !== undefined) {
+        releaseAtRequestEnd(ctx, collection, taskId);
+        return tooDeep;
+      }
+    }
     // The gate carries a nonce of this wait's own, so a resume names this
     // wait and no other, and its deadline is counted from the first call.
     const planned = await ctx.runOnce!(`fsd.wait.plan:${roundKey}`, async () => ({
@@ -347,7 +379,7 @@ async function waitChecked(
   }
 }
 
-function refused(error: TaskWaitRefusal, message: string): TaskWaitResult {
+function refused(error: TaskWaitRefusal, message: string): Extract<TaskWaitResult, { ok: false }> {
   return { ok: false, error, message };
 }
 
@@ -356,17 +388,21 @@ function isLegacyTimeout(outcome: WaitOutcome): boolean {
 }
 
 /**
- * The row the running request works, when it works one: the claim an inline
- * worker or the gate holds, the task it was admitted for, or the task its
- * session was opened for. Server-set, never input: the engine's depth count
- * reads it to find what waits on this request's own work.
+ * The row the running request works, when it works one, read off its context:
+ * the task it was admitted for, else the claim an inline worker holds, else
+ * the task its session was opened for. Server-set, never input: the engine's
+ * depth count reads it to find what waits on this request's own work.
+ *
+ * The admitted task comes first: inside a task's request, an inline plan
+ * step's claim is a step of that task, which adds no depth, so the chain
+ * above runs through the task. A drain's claim is the row it waits on, never
+ * its own work.
  */
-function ownRowOf(ctx: BlockContext, drain = false): WaitRow | undefined {
-  // A drain's claim is the row it waits on, not the work its request does.
-  const claim = drain ? undefined : currentWorkerClaim(ctx);
-  if (claim !== undefined) return { board: claim.collectionId, taskId: claim.taskId };
+function ownWaitRowFromContext(ctx: BlockContext, drain = false): WaitRow | undefined {
   const admitted = admittedTaskOf(ctx);
   if (admitted !== undefined) return { board: admitted.ref.collectionId, taskId: admitted.taskId };
+  const claim = drain ? undefined : currentWorkerClaim(ctx);
+  if (claim !== undefined) return { board: claim.collectionId, taskId: claim.taskId };
   const sessionTask = (ctx.session?.state as Record<string, unknown> | undefined)?.[TASK_SESSION_TASK_KEY];
   return typeof sessionTask === "string" ? { board: "", taskId: sessionTask } : undefined;
 }
@@ -474,37 +510,100 @@ async function endQuietly(
   return { ok: false, error: "wait_ended_the_request", message: `The waiting request ended: ${why}.` };
 }
 
-/** The tasks each running request lapsed a wait on, released at its end. */
-const lapsedByRequest = new Map<string, Map<string, TaskCollectionRef>>();
+/**
+ * The tasks each running request lapsed a wait on in this process, released
+ * at its end: the fast path. The row records the lapse too, and the filer's
+ * pass releases what this misses (a crash, or a run in another process).
+ * `armed` is whether a request-end hook in the request's current run holds it.
+ */
+const lapsedByRequest = new Map<string, { readonly tasks: Map<string, TaskCollectionRef>; armed: boolean }>();
+
+/** Exposed for tests: the requests with lapsed slots this process will release at their end. */
+export function lapsedSlotsHeldInProcess(): ReadonlyMap<string, ReadonlySet<string>> {
+  return new Map([...lapsedByRequest].map(([requestId, entry]) => [requestId, new Set(entry.tasks.keys())]));
+}
 
 /**
- * Release this request's lapsed slot on `taskId` when the request ends (on
- * any end, a suspension included: a request parked on something else is not
- * running to read the row). An ending held for it and never read then goes to
- * the filer's notice, once.
+ * Release this request's lapsed slot on `taskId` when the request ends. A park
+ * is not its end: the slot stays lapsed for it across the park, so an ending
+ * that lands meanwhile is held for its read after the resume. An ending held
+ * for it and never read goes to the filer's notice, once.
  */
 function releaseAtRequestEnd(ctx: BlockContext, collection: TaskCollectionRef, taskId: string): void {
   const requestId = ctx.request.identity.id;
-  let tasks = lapsedByRequest.get(requestId);
-  if (tasks === undefined) {
-    tasks = new Map();
-    lapsedByRequest.set(requestId, tasks);
-    const owned = tasks;
-    const registered = onRequestEnded(ctx, async () => {
-      if (lapsedByRequest.get(requestId) === owned) lapsedByRequest.delete(requestId);
-      for (const [id, ref] of owned) {
-        try {
-          await ref.releaseWait?.(id, { requestId, read: false });
-        } catch (error) {
-          console.warn(
-            `[orchestration] wait "${id}": its lapsed slot was not released at the request's end: ${(error as Error).message}`
-          );
-        }
-      }
-    });
-    if (!registered) lapsedByRequest.delete(requestId);
+  let entry = lapsedByRequest.get(requestId);
+  if (entry === undefined) {
+    entry = { tasks: new Map(), armed: false };
+    lapsedByRequest.set(requestId, entry);
   }
-  tasks.set(taskId, collection);
+  entry.tasks.set(taskId, collection);
+  arm(ctx, requestId, entry);
+}
+
+/**
+ * In a run after a park: arm this run's request-end hook for the slots the
+ * request lapsed before it. Every wait and every read of a task calls it; a
+ * run that makes neither leaves its slots to the filer's pass.
+ */
+function rearmLapsed(ctx: BlockContext): void {
+  const requestId = ctx.request?.identity?.id;
+  const entry = requestId === undefined ? undefined : lapsedByRequest.get(requestId);
+  if (entry !== undefined) arm(ctx, requestId!, entry);
+}
+
+function arm(ctx: BlockContext, requestId: string, entry: { readonly tasks: Map<string, TaskCollectionRef>; armed: boolean }): void {
+  if (entry.armed) return;
+  const registered = onRequestEnded(ctx, async (ending) => {
+    entry.armed = false;
+    // Parked: the slots stay lapsed for it; its run after the resume arms again.
+    if (ending.status === "suspended") return;
+    if (lapsedByRequest.get(requestId) === entry) lapsedByRequest.delete(requestId);
+    for (const [id, ref] of entry.tasks) {
+      try {
+        await ref.releaseWait?.(id, { requestId, read: false });
+      } catch (error) {
+        console.warn(
+          `[orchestration] wait "${id}": its lapsed slot was not released at the request's end; the filer's pass releases it: ${(error as Error).message}`
+        );
+      }
+    }
+  });
+  if (registered) entry.armed = true;
+  // No seam here (a hand-built context): nothing in this process releases it, the pass does.
+  else if (lapsedByRequest.get(requestId) === entry) lapsedByRequest.delete(requestId);
+}
+
+/**
+ * Release every slot on `collection` that lapsed for a request that has since
+ * stopped running its work (`RequestWaits.ended`): the durable half of the
+ * release at a request's end, run by the filer's pass. An ending held for such
+ * a request goes to the filer's notice, once.
+ *
+ * @returns When the pass should look again: the earliest check-in for a slot
+ *   whose request still runs or is parked, or `undefined` when none is left.
+ */
+export async function releaseEndedWaits(ctx: BlockContext, collection: TaskCollectionRef, now: number): Promise<number | undefined> {
+  const lapsed = collection.list().filter((row) => row.wait?.lapsed === true && row.wait.requestId !== undefined);
+  if (lapsed.length === 0) return undefined;
+  const ended = ctx.requestHost?.waits?.ended;
+  if (ended === undefined || collection.releaseWait === undefined) return undefined;
+  const answers = await ended(lapsed.map((row) => row.wait!.requestId!));
+  let next: number | undefined;
+  for (const row of lapsed) {
+    const requestId = row.wait!.requestId!;
+    if (answers[requestId] !== true) {
+      next = Math.min(next ?? Infinity, now + LAPSED_SLOT_CHECK_MS);
+      continue;
+    }
+    try {
+      await collection.releaseWait(row.id, { requestId, read: false });
+      lapsedByRequest.get(requestId)?.tasks.delete(row.id);
+    } catch (error) {
+      console.warn(`[orchestration] wait "${row.id}": its lapsed slot stays for the next pass: ${(error as Error).message}`);
+      next = Math.min(next ?? Infinity, now + LAPSED_SLOT_CHECK_MS);
+    }
+  }
+  return next;
 }
 
 /**
@@ -515,11 +614,12 @@ function releaseAtRequestEnd(ctx: BlockContext, collection: TaskCollectionRef, t
  * never told. A no-op for any other read.
  */
 export async function deliverHeldEnding(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<void> {
+  rearmLapsed(ctx);
   const requestId = ctx.request?.identity?.id;
   if (requestId === undefined || task.wait?.lapsed !== true || task.wait.requestId !== requestId) return;
   if (!isTerminalStatus(task.status) && !holdsAnEnding(task)) return;
   await collection.releaseWait?.(task.id, { requestId, read: true });
-  lapsedByRequest.get(requestId)?.delete(task.id);
+  lapsedByRequest.get(requestId)?.tasks.delete(task.id);
 }
 
 /**

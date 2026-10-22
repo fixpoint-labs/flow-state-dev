@@ -147,7 +147,7 @@ import { generateId } from "../generate-id";
 import { steerWrite, takeSteersPatch, untakenSteers } from "../steers";
 import type { TaskEndingRecorder } from "./ending";
 import type { DeliveryHooks } from "../notice/delivery";
-import { NOTICE_DUE_MS } from "../notice/task-notice";
+import { NOTICE_DUE_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import { createTaskChangeEmitter } from "./change-event";
 import { assertDepsFileable, assertFilingSettings, type TaskSettingsSupport } from "./filing";
@@ -1356,6 +1356,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async lapseWait(id, gateId, requestId) {
+      // A lapsed slot is released when its request ends; the filer's pass
+      // does it when nothing in this process will (a crash). The wake first,
+      // so a crash between leaves a wake that pays nothing, never a slot with none.
+      const row = lookupRow(id);
+      if (delivery !== undefined && row?.wait?.gateId === gateId && row.wait.lapsed !== true) {
+        await delivery.hooks.owePassAt(row, now() + LAPSED_SLOT_CHECK_MS);
+      }
       return patchRef(id, "wait_changed", (task) => {
         const decided = lapseWaitWrite(task as Task, gateId, requestId);
         if (decided === undefined) return undefined;

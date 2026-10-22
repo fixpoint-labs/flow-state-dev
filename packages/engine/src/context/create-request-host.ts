@@ -74,7 +74,7 @@ import type {
   WaitDeadlines,
   WaitRow,
 } from "@flow-state-dev/core/types";
-import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveEntry } from "@flow-state-dev/core";
 import type { DispatchStamp } from "../execution/dispatch-metadata";
 import type { RuntimeConfig } from "../runtime-config";
@@ -180,6 +180,8 @@ export type RequestHostInputs = {
     own: WaitRow | undefined;
     /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
     waitedBy?: WaiterOf;
+    /** A request's record, for `waits.ended`. */
+    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "status" | "sessionId"> | undefined>;
   };
   /**
    * The running request's trusted dispatch stamp, already read through
@@ -665,7 +667,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }
             : {}),
-          ...(spec.provenance ?? {}),
+          // Never a `waitedBy` of the caller's: that key is the seam's own, below.
+          ...withoutWaitedBy(spec.provenance),
           // A sender that waits on this dispatch (FIX-2082): who it is and
           // the row it works, from this request's own server-derived facts.
           ...(spec.waits === true && inputs.waits !== undefined
@@ -787,7 +790,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       userId: identity.userId,
       requestId: inputs.waits.requestId,
       own: inputs.waits.own,
-      ...(inputs.waits.waitedBy !== undefined ? { waitedBy: inputs.waits.waitedBy } : {})
+      ...(inputs.waits.waitedBy !== undefined ? { waitedBy: inputs.waits.waitedBy } : {}),
+      sessionId: identity.sessionId,
+      readRequest: inputs.waits.readRequest
     });
   }
 
@@ -961,4 +966,11 @@ async function isDescendantSession(
     cursor = parent;
   }
   return false;
+}
+
+/** `provenance` without a `waitedBy` key, which only the seam writes (FIX-2082). */
+function withoutWaitedBy(provenance: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
+  if (provenance === undefined) return {};
+  const { waitedBy: _dropped, ...rest } = provenance;
+  return rest;
 }

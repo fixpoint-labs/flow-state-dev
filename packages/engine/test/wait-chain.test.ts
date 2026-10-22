@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { MAX_WAIT_DEPTH } from "@flow-state-dev/core/types";
-import { outcomeOfRequest, waitChainDepth, waitedByOf } from "../src/durability/wait-chain";
+import { createRequestWaits, installWaits, outcomeOfRequest, waitChainDepth, waitedByOf } from "../src/durability/wait-chain";
 
 type Parked = { requestId: string; data: Record<string, unknown> };
 
@@ -60,6 +60,78 @@ describe("the depth of a chain of waits", () => {
     // Once the sender has parked, it is counted once, not twice.
     const withPark = [...parked, onRequest("d", "probe", "t4")];
     expect(await waitChainDepth(provider(withPark), "u", running, undefined, { requestId: "d", own: row("t4") })).toBe(4);
+  });
+});
+
+describe("rows on two ledgers with the same task id", () => {
+  // A task id is unique within its ledger only: "t1" on ledger A and on ledger B are two rows.
+  const onLedger = (requestId: string, board: string, taskId: string, own?: { board: string; taskId: string }): Parked => ({
+    requestId,
+    data: { board, taskId, deadline: 1, ...(own !== undefined ? { own } : {}) }
+  });
+
+  it("a wait on one ledger's row is not a waiter on the other's", async () => {
+    const parked = [onLedger("x", "ledger-b", "t1")];
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "r", own: { board: "ledger-a", taskId: "t1" } }, undefined)).toBe(1);
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "r", own: { board: "ledger-b", taskId: "t1" } }, undefined)).toBe(2);
+  });
+
+  it("the chain below a row counts only the waits whose request works that row", async () => {
+    const parked = [onLedger("w", "ledger-b", "t2", { board: "ledger-b", taskId: "t1" })];
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "r", own: undefined }, { board: "ledger-a", taskId: "t1" })).toBe(1);
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "r", own: undefined }, { board: "ledger-b", taskId: "t1" })).toBe(2);
+  });
+
+  it("a row whose ledger isn't known matches by task id", async () => {
+    // A request a task dispatch started knows its board, not its ledger.
+    const parked = [onLedger("x", "ledger-b", "t1")];
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "r", own: { board: "", taskId: "t1" } }, undefined)).toBe(2);
+  });
+});
+
+describe("a host's wait deadline bounds", () => {
+  const host = () => ({ wakes: {} }) as { wakes: unknown; waits?: unknown };
+
+  it("are refused unless finite: an infinite deadline is a wake that never comes due", () => {
+    for (const settings of [{ defaultMs: Infinity, maxMs: Infinity }, { maxMs: Infinity }, { minMs: Number.NaN }]) {
+      expect(() => installWaits(host() as never, {} as never, settings)).toThrow(/finite/);
+    }
+  });
+
+  it("are taken when finite and ordered", () => {
+    const requestHost = host();
+    installWaits(requestHost as never, {} as never, { defaultMs: 2_000, minMs: 1_000, maxMs: 3_000 });
+    expect((requestHost.waits as { deadlines: unknown }).deadlines).toEqual({ defaultMs: 2_000, minMs: 1_000, maxMs: 3_000 });
+  });
+});
+
+describe("whether a request has stopped running its own work", () => {
+  const records: Record<string, { status: string; sessionId: string }> = {
+    done: { status: "completed", sessionId: "s" },
+    died: { status: "interrupted", sessionId: "s" },
+    parked: { status: "suspended", sessionId: "s" },
+    running: { status: "in_progress", sessionId: "s" },
+    elsewhere: { status: "completed", sessionId: "s_other" }
+  };
+  const waits = createRequestWaits({
+    provider: provider([]),
+    deadlines: { defaultMs: 1, minMs: 1, maxMs: 1 },
+    userId: "u",
+    requestId: "r",
+    own: undefined,
+    sessionId: "s",
+    readRequest: async (id) => records[id] as never
+  });
+
+  it("is true for an end or an interruption, false while it runs or is parked, and never for another session", async () => {
+    expect(await waits.ended!(["done", "died", "parked", "running", "elsewhere", "gone"])).toEqual({
+      done: true,
+      died: true,
+      parked: false,
+      running: false,
+      elsewhere: false,
+      gone: true
+    });
   });
 });
 

@@ -80,7 +80,7 @@ import type {
 import { z } from "zod";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import type { TaskCollectionRef, TaskWorker, TaskWorkerInput } from "../../tasks";
-import { waitOnTask, waitRefusal, type WaitOnTaskOptions } from "../../tasks/helpers/wait-on-task";
+import { checkWait, waitOnTask, type WaitOnTaskOptions } from "../../tasks/helpers/wait-on-task";
 import type { TaskAssigneeAddress } from "../dispatch-assignee";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 import { assertJsonSafe } from "./json-safe";
@@ -286,19 +286,30 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
       ownBoard: true,
       message: `Waiting on the step "${payload.title ?? payload.goal}" it handed to its own session`,
     };
-    const refusal = await waitRefusal(ctx, collection, taskId, waitOptions);
-    if (refusal !== undefined && !refusal.ok) {
+    const checked = await checkWait(ctx, collection, taskId, waitOptions);
+    if ("ok" in checked) {
       // The claim is still held: the row fails through the board's error path.
       throw new Error(
         `[task-board] "${boardId}" can't hand task "${taskId}" to a session of its own and wait on it: ` +
-          `${refusal.error}: ${refusal.message}`
+          `${checked.error}: ${checked.message}`
       );
     }
     if (ctx.runOnce === undefined) {
       throw new Error(`[task-board] "${boardId}" can't wait on task "${taskId}": this request keeps no record to replay.`);
     }
-    const handed = await ctx.runOnce(key, () => handOver(payload, ctx));
-    const waited = await waitOnTask(ctx, collection, taskId, waitOptions);
+    let handedNow = false;
+    const handed = await ctx.runOnce(key, async () => {
+      handedNow = true;
+      return handOver(payload, ctx);
+    });
+    if (!handedNow) {
+      // The replay after a park: the row is the child's. The drain's tap
+      // claimed it again on the way here (a fenced write that declined), so
+      // drop that claim and its lease renewal, as the hand-over did.
+      await ctx.sequencer!.patchState({ currentClaim: undefined });
+      currentLeaseRenewal()?.stop();
+    }
+    const waited = await waitOnTask(ctx, collection, taskId, waitOptions, checked);
     if (!waited.ok && waited.error !== "wait_ended_the_request") {
       throw new Error(`[task-board] "${boardId}" handed task "${taskId}" over but can't wait on it: ${waited.error}: ${waited.message}`);
     }

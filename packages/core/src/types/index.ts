@@ -60,6 +60,7 @@ export {
   isWaitGate,
   isExpiredApproval,
   parkOnWait,
+  canHoldWait,
   parseWaitOutcome,
   recordedWaitOutcome,
   waitGateDataOf

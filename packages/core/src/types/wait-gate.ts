@@ -216,6 +216,21 @@ export function waitGateDataOf(record: { readonly data?: Record<string, unknown>
 }
 
 /**
+ * Whether the running request's host can hold a wait (FIX-1816 BR-5, FIX-2082
+ * D1): durable execution (the resume is wired), a durability sweeper that
+ * resumes a wait at its deadline (`RequestHost.hasWaitSweeper`), and wakes
+ * (`RequestHost.waits`, present only where they are kept). Read off the
+ * server's request host, never from input. Every wait checks it before
+ * anything is written.
+ */
+export function canHoldWait(ctx: {
+  readonly requestHost?: { readonly resumeWait?: unknown; readonly hasWaitSweeper?: boolean; readonly waits?: unknown };
+}): boolean {
+  const host = ctx.requestHost;
+  return host?.resumeWait !== undefined && host.hasWaitSweeper === true && host.waits !== undefined;
+}
+
+/**
  * Park the running request on a wait gate, and return how the wait ended once
  * it resumes: the answer, an error, the deadline, or a stop.
  *

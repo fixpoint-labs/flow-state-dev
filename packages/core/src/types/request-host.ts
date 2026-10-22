@@ -184,6 +184,14 @@ export interface RequestWaits {
    *   server-derived by the caller (its claim), never input.
    */
   depth(input: { readonly binding?: WaitGateBinding; readonly own?: WaitRow }): Promise<number>;
+  /**
+   * Whether each request has stopped running its own work: it ended, or its
+   * process died while it ran (`interrupted`). `false` for one running or
+   * parked, and for a request of another session. A request with no record
+   * reads `true`. A board's pass reads it to release a wait slot that lapsed
+   * for a request that ended without reading the task.
+   */
+  ended?(requestIds: readonly string[]): Promise<Readonly<Record<string, boolean>>>;
 }
 
 /**

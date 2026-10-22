@@ -22,8 +22,10 @@
  * started is stamped with its sender and the row the sender works, since its
  * sender parks on it only after the dispatch returns, and the child may count
  * before that park is written. The walk goes on from the sender's row, live. Rows
- * are matched by task id: task ids are unique, and a board's id can differ
- * from its ledger's (a dispatch names the board, a wait the ledger).
+ * are matched by ledger and task id: a task id is unique only within its
+ * ledger. A row whose ledger isn't known (`board: ""`) matches by task id: a
+ * dispatch names its board, not the ledger, and a board's id can differ from
+ * its ledger's.
  *
  * ## The parent's resume
  *
@@ -74,9 +76,12 @@ function resolveWaitDeadlines(settings: WaitDeadlineSettings = {}): WaitDeadline
   const minMs = settings.minMs ?? MIN_WAIT_DEADLINE_MS;
   const maxMs = settings.maxMs ?? MAX_WAIT_DEADLINE_MS;
   const defaultMs = settings.defaultMs ?? DEFAULT_WAIT_DEADLINE_MS;
-  if (!(minMs > 0) || !(maxMs >= minMs) || !(defaultMs >= minMs && defaultMs <= maxMs)) {
+  // Finite first: an infinite bound passes the ordering, and an infinite
+  // deadline is a wake that never comes due.
+  const finite = [minMs, maxMs, defaultMs].every((ms) => Number.isFinite(ms));
+  if (!finite || !(minMs > 0) || !(maxMs >= minMs) || !(defaultMs >= minMs && defaultMs <= maxMs)) {
     throw new Error(
-      `[flow-state] wait deadlines must satisfy 0 < min <= default <= max; got min ${minMs}, ` +
+      `[flow-state] wait deadlines must be finite and satisfy 0 < min <= default <= max; got min ${minMs}, ` +
         `default ${defaultMs}, max ${maxMs}.`
     );
   }
@@ -103,11 +108,23 @@ export function installWaits(
  * dispatch started (its trusted source is `task`) carries the claim envelope
  * the board minted as its input. `undefined` for any other request; a caller
  * that knows more (a later request working the same task) says so itself.
+ *
+ * Its ledger is left unknown (`board: ""`): the envelope names the board,
+ * whose id can differ from the ledger's that a wait names, so the walk
+ * matches this row by task id.
  */
 export function ownRowOf(source: string | undefined, metadata: unknown, input: unknown): WaitRow | undefined {
   if (source !== TASK_SOURCE || readDispatchStamp(source, metadata) === undefined) return undefined;
   const parsed = taskDispatchInputSchema.safeParse(input);
-  return parsed.success ? { board: parsed.data.boardId, taskId: parsed.data.taskId } : undefined;
+  return parsed.success ? { board: "", taskId: parsed.data.taskId } : undefined;
+}
+
+/**
+ * Whether two rows are the same: the same task id on the same ledger, or the
+ * same task id where either ledger is unknown (`""`).
+ */
+function sameRow(a: { readonly board: string; readonly taskId: string }, b: { readonly board: string; readonly taskId: string }): boolean {
+  return a.taskId === b.taskId && (a.board === "" || b.board === "" || a.board === b.board);
 }
 
 /** The request that dispatched a request and waits on it, and the row it works. */
@@ -161,16 +178,16 @@ export async function waitChainDepth(
     if (data === undefined) continue;
     parked.push({ requestId: record.requestId, binding: data.binding, own: data.own });
   }
-  const waitsOn = (wait: ParkedWait, work: { taskId?: string; requestId?: string }): boolean =>
+  const waitsOn = (wait: ParkedWait, work: { own?: WaitRow; requestId?: string }): boolean =>
     "taskId" in wait.binding
-      ? work.taskId !== undefined && wait.binding.taskId === work.taskId
+      ? work.own !== undefined && sameRow(wait.binding, work.own)
       : work.requestId !== undefined && wait.binding.requestId === work.requestId;
 
   // Above: whoever waits on this request's work, then on theirs.
   let above = 0;
   const seen = new Set<string>([running.requestId]);
   for (let at: { requestId: string; own: WaitRow | undefined } = running; above < WALK_LIMIT; ) {
-    const parkedWaiter = parked.find((wait) => waitsOn(wait, { requestId: at.requestId, ...(at.own ? { taskId: at.own.taskId } : {}) }));
+    const parkedWaiter = parked.find((wait) => waitsOn(wait, { requestId: at.requestId, ...(at.own ? { own: at.own } : {}) }));
     // The sender of a waited dispatch waits on it from the start, parked yet or not.
     const waiter =
       parkedWaiter ?? (at === running && waitedBy !== undefined ? { requestId: waitedBy.requestId, own: waitedBy.own } : undefined);
@@ -185,7 +202,7 @@ export async function waitChainDepth(
     if (depth >= WALK_LIMIT) return depth;
     let deepest = 0;
     for (const wait of parked) {
-      const works = "taskId" in work ? wait.own?.taskId === work.taskId : wait.requestId === work.requestId;
+      const works = "taskId" in work ? wait.own !== undefined && sameRow(wait.own, work) : wait.requestId === work.requestId;
       if (!works || path.has(wait.requestId)) continue;
       deepest = Math.max(deepest, 1 + below(wait.binding, depth + 1, new Set([...path, wait.requestId])));
     }
@@ -205,13 +222,34 @@ export function createRequestWaits(inputs: {
   readonly own: WaitRow | undefined;
   /** The sender that waits on this request, when a waited dispatch started it. */
   readonly waitedBy?: WaiterOf;
+  /** The running request's session: `ended` answers only for requests in it. */
+  readonly sessionId: string;
+  /** A request's record, from the request store. */
+  readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "status" | "sessionId"> | undefined>;
 }): RequestWaits {
   return {
     deadlines: inputs.deadlines,
     depth: ({ binding, own }) =>
-      waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding, inputs.waitedBy)
+      waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding, inputs.waitedBy),
+    ended: async (requestIds) => {
+      const answers: Record<string, boolean> = {};
+      for (const requestId of new Set(requestIds)) {
+        const record = await inputs.readRequest(requestId);
+        // A request of another session is never answered as ended: not this session's to release.
+        answers[requestId] = record === undefined || (record.sessionId === inputs.sessionId && WORK_OVER.has(record.status));
+      }
+      return answers;
+    }
   };
 }
+
+/**
+ * Request statuses after which a request runs no more of its own work: an end,
+ * or `interrupted` (its process died while it ran). A request interrupted
+ * behind a resolved gate may be driven again; what it reads then is the row as
+ * it stands.
+ */
+const WORK_OVER: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted", "interrupted"]);
 
 /** Request statuses after which a request does no more work. */
 const ENDED: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);

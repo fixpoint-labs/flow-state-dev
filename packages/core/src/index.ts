@@ -156,6 +156,7 @@ export {
   WAIT_GATE_REASON,
   isWaitGate,
   parkOnWait,
+  canHoldWait,
   parseWaitOutcome,
   recordedWaitOutcome,
   waitGateDataOf

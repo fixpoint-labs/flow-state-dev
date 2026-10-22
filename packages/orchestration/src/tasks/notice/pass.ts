@@ -9,7 +9,9 @@
  * 2. **Cascades owed** (`Task.cascadeOwed`) past their due time (FIX-2080 D2),
  *    before any notice, so a resent notice names what its ending cancelled.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
- * 4. **Notices owed** past their due time, sent again to this session's notice
+ * 4. **Wait slots lapsed** for a request that has since ended (FIX-2082):
+ *    released, so an ending held for it is owed to the filer's notice.
+ * 5. **Notices owed** past their due time, sent again to this session's notice
  *    entry. A send turned away (the 32-notice cap among them) stays owed.
  *
  * Then it answers when the board's next debt falls due: the earliest due time
@@ -26,7 +28,7 @@ import { dispatchThroughSeam } from "@flow-state-dev/core/types";
 import type { Task } from "../schema/task";
 import { isTerminalStatus } from "../schema/task-status";
 import type { TaskCollectionRef } from "../collection/types";
-import { payOwedResumes } from "../helpers/wait-on-task";
+import { payOwedResumes, releaseEndedWaits } from "../helpers/wait-on-task";
 import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
@@ -96,11 +98,21 @@ export async function payBoardDebts(
     log("a pass's cascades failed and stay owed", { error: (error as Error).message });
   }
 
+  // 4: slots lapsed for a request that has ended. Before the notices, so an
+  // ending a slot held is owed, then sent at its due time.
+  let lapsedCheck: number | undefined;
+  try {
+    lapsedCheck = await releaseEndedWaits(ctx, ref, now);
+  } catch (error) {
+    log("a pass's lapsed wait slots stay for the next pass", { error: (error as Error).message });
+    lapsedCheck = now + NOTICE_DUE_MS;
+  }
+
   // A notice stored before FIX-2078 has no due time: it is due now, the
   // upgrade's, and its age counts from here (BP-030).
   await stampLegacyNotices(ref, now);
 
-  // 4: notices past due, sent again here; one too old ends.
+  // 5: notices past due, sent again here; one too old ends.
   const rows = ref.list();
   for (const row of rows) {
     const due = noticeDueAt(row);
@@ -138,6 +150,7 @@ export async function payBoardDebts(
   const owe = (at: number): void => {
     nextDue = nextDue === undefined ? at : Math.min(nextDue, at);
   };
+  if (lapsedCheck !== undefined) owe(lapsedCheck);
   for (const row of ref.list()) {
     const notice = noticeDueAt(row);
     // A notice the pass just sent again is outstanding until its entry clears it.

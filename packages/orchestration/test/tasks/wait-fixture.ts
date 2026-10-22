@@ -71,7 +71,7 @@ export const waitAgain = (callId: string, id: () => string, deadline?: number): 
 });
 
 /** A step that reads a task without waiting, as a plain `getTask({ id })` does. */
-export const readTask = (callId: string, id: () => string): StepFn => () => ({
+export const readTask = (callId: string, id: () => string): StepFn => (_options) => ({
   toolCalls: [{ toolCallId: callId, toolName: "read_task", args: { id: id() } }],
   finishReason: "tool-calls"
 });

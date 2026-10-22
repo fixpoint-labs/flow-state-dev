@@ -657,13 +657,12 @@ await runGoal(async (failures, tell) => {
           { answer: "c-cancel-file" }
         ])
       });
-      let [cancelRow] = await h.byGoal(word("c-cancel-a"));
       // Its request parks on the piece it filed, whose own row names this task.
       await h.until(async () => {
         const piece = (await h.byGoal(word("c-cancel-b")))[0];
         return piece !== undefined && (await h.parked()).some((p) => p.reason === "wait" && JSON.stringify(p.data ?? {}).includes(piece.id));
       }, 15_000);
-      [cancelRow] = await h.byGoal(word("c-cancel-a"));
+      const [cancelRow] = await h.byGoal(word("c-cancel-a"));
       const runRequest = cancelRow?.run?.requestId;
       // The waiting request's own model calls: its turn reads the task as filed.
       const ownCalls = () => CALLS.filter((call) => call.label === "c-cancel-a" && call.last.startsWith(word("c-cancel-a"))).length;
@@ -738,12 +737,11 @@ await runGoal(async (failures, tell) => {
       await s.send("desk", conversation, "run", {
         message: scripted("d-file", [{ tool: "createTask", args: { goal: plan, assignee: "doer.a" } }, { answer: "d-file" }])
       });
-      let [task] = await s.byGoal(word("d-plan"));
       const step = (n: number) => s.steps().then((rows) => rows.find((row) => row.goal.startsWith(word(`d-step-${n}`))));
       await s.until(async () => (await step(2))?.status === "in_progress", 15_000);
       // Two deadlines pass while the step runs in its own session.
       await sleep(2_800);
-      [task] = await s.byGoal(word("d-plan"));
+      const [task] = await s.byGoal(word("d-plan"));
       const drain = task?.run?.requestId;
       const parks = drain === undefined ? 0 : (((await s.record(drain))?.items ?? []) as Array<{ type: string }>).filter((item) => item.type === "suspension").length;
       const third = await step(3);

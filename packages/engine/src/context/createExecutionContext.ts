@@ -971,7 +971,8 @@ export async function createExecutionContext<
                   requestId: options.requestId,
                   // The row a task dispatch started this request for (FIX-2082).
                   own: ownRowOf(options.source, options.metadata, options.input),
-                  ...waitedByStamp(options.source, options.metadata)
+                  ...waitedByStamp(options.source, options.metadata),
+                  readRequest: (requestId: string) => stores.request.get(requestId)
                 }
               }
             : {}),

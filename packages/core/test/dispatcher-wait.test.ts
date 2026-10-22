@@ -91,6 +91,19 @@ describe("dispatcher({ wait: true })", () => {
     expect(replay.parked[0]!.data).toEqual(first.parked[0]!.data);
   });
 
+  it("a retry of the block after the send sends nothing again: the dispatch is kept by the block's logical id, not its attempt", async () => {
+    const at = (attempt: number) => ({ blockName: "check-links", blockInstanceId: `req_1:root/step[0]:${attempt}` });
+    const first = harness();
+    Object.assign(first.ctx, { _blockIdentity: at(0) });
+    await expect(runForTest(checkLinks(), { docId: "d1" }, first.ctx)).rejects.toThrow("parked");
+    const retry = harness({ outcome: { answered: true, answer: "ok" } }, first.memo);
+    Object.assign(retry.ctx, { _blockIdentity: at(1) });
+    expect(await runForTest(checkLinks(), { docId: "d1" }, retry.ctx)).toMatchObject({ status: "completed", requestId: "req_child" });
+    expect(first.sent).toHaveLength(1);
+    expect(retry.sent).toEqual([]);
+    expect(retry.parked[0]!.suspensionId).toBe(first.parked[0]!.suspensionId);
+  });
+
   it("at the deadline outputs running, with the request to find it by: nothing is stopped", async () => {
     const { ctx } = harness({ outcome: { answered: false, deadline: true } });
     expect(await runForTest(checkLinks(), { docId: "d1" }, ctx)).toEqual({ status: "running", requestId: "req_child" });
