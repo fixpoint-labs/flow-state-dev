@@ -774,6 +774,7 @@ Which of the host's verbs answer depends on the deployment:
 
 - `resumeWait({ gateId, outcome })` — resume a turn in **this** conversation that is parked on a wait gate (see `parkOnWait`), with `{ answered: true, answer }` or `{ answered: false, error: { code, message } }`. The parked request continues under its own id; the call returns once it has started. Resolves `{ ok: true }`, or `{ ok: false, refused: "gate-not-found" | "already-resolved" | "busy" | "ambiguous", detail }`. A gate resolves once; `ambiguous` means two parked turns in this conversation share the gate id, and neither is resumed. Gate ids must be unique within the session. **Absent** without durable execution.
 - `hasWaitSweeper` — `true` when this process runs a durability sweeper that resumes an overdue wait with `wait_timed_out`, so a wait parked here is bounded. Read as the request starts. Orchestration offers a wait only where it is `true` (`canHoldWait`) and the board opts in with `resumesWaits: true`; `resumeWait` does not depend on it.
+- `dispatchRunsHere` — `true` when what this request dispatches runs in this process (the host's in-process dispatcher), not on another process's worker such as a queue's. Read as the request starts. Bookkeeping that only this process can see, like Workforce's skipping of a repeated board pass, relies on it only when it is `true`.
 
 The types are `RequestHost`, `ParentTaskOutcome`, `SettleParentTaskInput`, `SettleParentTaskResult`, `LivenessAnswers`, `ResumeWaitInput`, and `ResumeWaitResult`.
 

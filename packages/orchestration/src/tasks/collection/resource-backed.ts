@@ -1289,6 +1289,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
+    ...(delivery !== undefined ? { filerOf: (row: Task) => delivery.hooks.filerOf(row) } : {}),
+
     async markCancelOwed(id) {
       return patchRef(id, "cancel_owed", (task) =>
         task.wait != null && !isTerminalStatus(task.status) && task.cancelOwed !== true

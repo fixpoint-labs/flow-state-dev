@@ -462,12 +462,24 @@ export async function triggerPass(ctx: BlockContext, options: { touch?: boolean 
       payload: {},
       from: "conversation-board-wake"
     });
-    // Not sent: the next trigger tries again.
-    if (!outcome.ok && waitingPasses.get(key) === now) waitingPasses.delete(key);
+    if (!outcome.ok) await notSent(ctx, key, now);
   } catch {
-    // The wake runs it, and the next trigger tries again.
-    if (waitingPasses.get(key) === now) waitingPasses.delete(key);
+    await notSent(ctx, key, now);
   }
+}
+
+/**
+ * The pass sent at `sent` never went out (refused, or the send failed). The
+ * next trigger tries again; and a write already skipped behind it on a host
+ * that keeps no wakes, which no wake backs, gets that trigger now.
+ */
+async function notSent(ctx: BlockContext, key: string, sent: number): Promise<void> {
+  if (waitingPasses.get(key) !== sent) return;
+  waitingPasses.delete(key);
+  const check = `${key}\u0000${sent}`;
+  if (!resendChecks.has(check)) return;
+  resendChecks.delete(check);
+  await triggerPass(ctx);
 }
 
 /** The running session's pass has started: a write's trigger from here on asks for the next one. */
@@ -495,7 +507,7 @@ function resendIfNeverStarted(ctx: BlockContext, key: string, sent: number): voi
   if (resendChecks.has(check)) return;
   resendChecks.add(check);
   const timer = setTimeout(() => {
-    resendChecks.delete(check);
+    if (!resendChecks.delete(check)) return;
     if (waitingPasses.get(key) !== sent) return;
     waitingPasses.delete(key);
     void triggerPass(ctx).catch(() => undefined);
