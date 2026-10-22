@@ -37,6 +37,13 @@ export interface RequestSideChainPoolResult {
 export interface RequestSideChainPoolDrainOptions {
   /** Throw the first failure instead of returning a settled result. */
   failOnError?: boolean;
+  /**
+   * Fires when the caller stops waiting on this drain (a `.waitForSideChain()`
+   * whose `timeoutMs` ran out). Failures that settle after it fired have no
+   * caller to throw or log to, so the pool keeps and logs them itself,
+   * whatever `failOnError` says.
+   */
+  abandoned?: AbortSignal;
 }
 
 export interface RequestSideChainPoolDrainAllOptions {
@@ -104,7 +111,9 @@ export interface RequestSideChainPool {
    *
    * This is the drain with the guarantee attached: when it resolves, no task
    * queued by this request can still be running — including work queued by a
-   * task that was itself being drained, however deep it nests. Repeating is
+   * task that was itself being drained, however deep it nests, and work a
+   * scope drain took out of the pool and is still awaiting (a timed-out
+   * `.waitForSideChain()` whose caller stopped waiting). Repeating is
    * the pool's own business because the need to repeat comes from `drainAll`
    * awaiting a snapshot; a caller that looped for itself would be compensating
    * for a detail of this interface.
@@ -120,6 +129,13 @@ export interface RequestSideChainPool {
 
   /** Snapshot of currently pending tasks, regardless of scope. */
   pendingCount(): number;
+
+  /**
+   * Every failure a drain has returned so far, across drains, in the order
+   * they were drained. A scope drain with `failOnError` keeps none: its throw
+   * is the sequencer's, where a `.rescue()` can catch it.
+   */
+  failures(): ReadonlyArray<RequestSideChainPoolResult["failed"][number]>;
 }
 
 /**

@@ -65,6 +65,8 @@ Work failures are isolated. The framework logs the failure; the DevTool surfaces
 
 If you need to know whether background work succeeded, use `.waitForSideChain()`.
 
+One place a failure does count: a request working a dispatched task. There, a background step that throws fails the task's attempt, even though the request itself still completes. See [When a dispatched task is done](../orchestration/task-board.md#when-a-dispatched-task-is-done).
+
 ## Side chains are request-scoped
 
 Background work outlives the sequencer that dispatched it. `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a single per-request pool. Inner sequencers do not block their parent on their own background work, and sibling sequencers run their `.sideChain()` tasks concurrently. The request executor drains the pool before the request's final event — your stream stays open until every task queued by then settles, regardless of which sequencer queued it. Work queued later, from `onFinished` or `onErrored`, is covered below.
@@ -115,13 +117,15 @@ pipeline
   .step(nextStep);
 ```
 
-`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. Set `failOnError: true` to promote side-chain failures:
+`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. In a request working a dispatched task, that failure also fails the dispatched task's attempt once the request ends. Set `failOnError: true` to promote side-chain failures:
 
 ```ts
 .waitForSideChain({ failOnError: true })
 ```
 
 With `failOnError: true`, if any work task rejects, the sequencer throws and the pipeline aborts. Use this when background work is required for correctness (e.g., persisting a critical record) rather than optional (e.g., analytics).
+
+`timeoutMs` bounds the wait, not the request. The request still ends only once its background steps settle, as with an unwaited `.sideChain()`.
 
 ## failOnError option
 
@@ -415,6 +419,8 @@ A gate suspends the request without draining the work pool. In-flight background
 ### Failed work under a completed parent
 
 If a background task fails and the parent goes on to complete, the failure is dropped and logged. There is no recovery path. The request is terminal, so nothing retries the task. This is the best-effort contract side chains are built for.
+
+A request working a dispatched task is the exception. The request still completes, but the failure fails the dispatched task's attempt, so the board runs that task again while it has attempts left. A failure from before a suspension doesn't carry over: the resume reruns the failed background step, and that run is the one that counts. A background step still running when the request suspends keeps running. If it has completed by the time the request resumes, it doesn't run again; otherwise the resume reruns it, and again that run is the one that counts.
 
 When background work is required for correctness, opt into `.waitForSideChain({ failOnError: true })`. It surfaces the failure into the parent, but be precise about how. It is drain-then-throw, not fail-fast. The wait drains the scope's queued work first, then throws the first failure, so the parent becomes `failed` only after the scope settles (or the wait times out). A `failed` request is not continuable on the same id. The only follow-up is a fresh `/retry`.
 

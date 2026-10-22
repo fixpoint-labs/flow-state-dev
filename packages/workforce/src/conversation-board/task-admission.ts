@@ -40,6 +40,11 @@ async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; 
   return ref === undefined || row === undefined ? undefined : { ref, row };
 }
 
+/** Whether this request's task row has `resultTo: "conversation"`. The row, never session state. */
+export async function worksConversationResultTask(ctx: BlockContext): Promise<boolean> {
+  return (await ownTaskRow(ctx))?.row.resultTo === "conversation";
+}
+
 /**
  * Whether a message for this session, sent during `task`'s current attempt, is
  * delivered and not yet acted on here. One sent before the attempt started
