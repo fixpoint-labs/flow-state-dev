@@ -36,7 +36,7 @@ import { isDefinedTaskCollection } from "../collection/define-task-collection";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { resolveTaskPartition } from "../collection/partition";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { clearNotice, NOTICE_DUE_MS, noticeDueAt, noticeTimes, owedNotices, resentRecord, type TaskNotice } from "./task-notice";
+import { clearNotice, LAPSED_SLOT_CHECK_MS, NOTICE_DUE_MS, noticeDueAt, noticeTimes, owedNotices, resentRecord, type TaskNotice } from "./task-notice";
 import { TASK_SETTLED_ENTRY, undeliverableRecord, type DeclaredDelivery } from "./delivery";
 
 /** The default most a debt may stay outstanding past its due time, when the host names none: 24 hours. */
@@ -108,7 +108,7 @@ export async function payBoardDebts(
     lapsedCheck = await releaseEndedWaits(ctx, ref, now, maxAge);
   } catch (error) {
     log("a pass's lapsed wait slots stay for the next pass", { error: (error as Error).message });
-    lapsedCheck = now + NOTICE_DUE_MS;
+    lapsedCheck = now + LAPSED_SLOT_CHECK_MS;
   }
 
   // A notice stored before FIX-2078 has no due time: it is due now, the

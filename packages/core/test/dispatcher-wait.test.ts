@@ -28,6 +28,7 @@ function harness(script: Script = {}, memo = new Map<string, unknown>()) {
     return accepted;
   });
   const ctx = createMockContext({
+    _blockIdentity: { blockName: "check-links", blockInstanceId: "req_1:root/step[0]:0" },
     [DISPATCH_SEAM]: seam,
     requestHost: {
       resumeWait: async () => ({ ok: true }),
@@ -130,6 +131,16 @@ describe("dispatcher({ wait: true })", () => {
     const { ctx, sent } = harness({ waits: false });
     await expect(runForTest(checkLinks(), { docId: "d1" }, ctx)).rejects.toThrow(/wait_unavailable/);
     expect(sent).toEqual([]);
+  });
+
+  it("refuses a wait in a block with no identity to keep its dispatch under, before sending anything", async () => {
+    // Keyed by anything less, two passes of a loop, or two dispatchers of one name, would share one send.
+    for (const identity of [undefined, { blockName: "check-links", blockInstanceId: "opaque" }]) {
+      const { ctx, sent } = harness();
+      Object.assign(ctx, { _blockIdentity: identity });
+      await expect(runForTest(checkLinks(), { docId: "d1" }, ctx)).rejects.toThrow(/wait_unavailable: this block has no identity/);
+      expect(sent).toEqual([]);
+    }
   });
 
   it("without wait, returns the handle and parks on nothing", async () => {

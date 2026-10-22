@@ -9,7 +9,8 @@
  *   turning an ending it held into the filer's notice, and looks again later
  *   at one whose request still runs or is parked.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createRequestWaits } from "../../../engine/src/durability/wait-chain";
 import type { JsonObject } from "@flow-state-dev/core";
 import { REQUEST_END_SEAM, type BlockContext, type ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
@@ -139,6 +140,68 @@ describe("a lapsed wait slot, released by the filer's pass", () => {
     expect((await payBoardDebts(ctx, board, { now: tenDays })).nextDue).toBeUndefined();
     // The slot itself stays: the request's end, or a later pass that finds it ended, releases it.
     expect(board.get(id)!.wait).toMatchObject({ lapsed: true });
+  });
+});
+
+describe("a lapsed wait slot the pass can't read the request of", () => {
+  it("answers for that slot only: the others are released, and nothing comes back every two seconds", async () => {
+    const owed: Owed[] = [];
+    const boardCtx = hostCtx(owed, () => false);
+    const board = await boardFor(boardCtx);
+    const bad = (await board.addTask({ goal: "a request whose gate can't be read", assignee: "researcher" })).id;
+    const ok = (await board.addTask({ goal: "a request that ended", assignee: "researcher" })).id;
+    await waitOnTask(hostCtx(owed, () => false, new Map(), "req_bad"), board, bad, wait);
+    await waitOnTask(hostCtx(owed, () => false, new Map(), "req_ok"), board, ok, wait);
+
+    // The engine's own answer, over a gate store that fails for one record.
+    const records: Record<string, unknown> = {
+      req_bad: { id: "req_bad", status: "interrupted", sessionId: SESSION, items: [{ type: "suspension", suspensionId: "g-bad" }] },
+      req_ok: { id: "req_ok", status: "completed", sessionId: SESSION }
+    };
+    const waits = createRequestWaits({
+      provider: {
+        listSuspended: async () => [],
+        loadSuspension: async () => {
+          throw new Error("store unavailable");
+        }
+      },
+      deadlines: DEADLINES,
+      userId: "alice",
+      requestId: "req_pass",
+      own: undefined,
+      sessionId: SESSION,
+      readRequest: async (id) => records[id] as never
+    });
+    const pass = { ...boardCtx, requestHost: { ...boardCtx.requestHost, waits } } as unknown as BlockContext;
+
+    const now = Date.now();
+    const { nextDue } = await payBoardDebts(pass, board, { now });
+    expect(board.get(ok)!.wait).toBeUndefined();
+    expect(board.get(bad)!.wait).toMatchObject({ lapsed: true, requestId: "req_bad" });
+    // The unreadable one is looked at again on the bounded cadence, not every two seconds.
+    expect(nextDue).toBe(now + LAPSED_SLOT_CHECK_MS);
+  });
+});
+
+describe("the line the pass logs when it stops looking at a slot", () => {
+  it("is logged once, by the pass that crosses the bound, with the reason", async () => {
+    const ctx = hostCtx([], () => false, new Map(), "req_log");
+    const board = await boardFor(ctx);
+    const id = (await board.addTask({ goal: "slow work", assignee: "researcher" })).id;
+    await waitOnTask(ctx, board, id, wait);
+    const lapsedAt = board.get(id)!.wait!.deadline;
+    const maxAge = 86_400_000;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await releaseEndedWaits(ctx, board, lapsedAt + maxAge + 1_000, maxAge);
+      await releaseEndedWaits(ctx, board, lapsedAt + maxAge + 2 * LAPSED_SLOT_CHECK_CAP_MS, maxAge);
+      await releaseEndedWaits(ctx, board, lapsedAt + 10 * maxAge, maxAge);
+      const lines = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("stops looking"));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("its request still runs or is parked");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

@@ -146,6 +146,32 @@ describe("whether a request has stopped running its own work", () => {
     });
   });
 
+  it("answers false for a request whose record or gate can't be read, and still answers the others", async () => {
+    const failing = createRequestWaits({
+      provider: {
+        ...provider([]),
+        loadSuspension: async () => {
+          throw new Error("store unavailable");
+        }
+      },
+      deadlines: { defaultMs: 1, minMs: 1, maxMs: 1 },
+      userId: "u",
+      requestId: "r",
+      own: undefined,
+      sessionId: "s",
+      readRequest: async (id) => {
+        if (id === "unreadable") throw new Error("store unavailable");
+        return records[id] as never;
+      }
+    });
+    expect(await failing.ended!(["redriven", "unreadable", "done", "died"])).toEqual({
+      redriven: false,
+      unreadable: false,
+      done: true,
+      died: true
+    });
+  });
+
   it("is false for an interruption the sweep re-drives or a resume drives, while it runs or is parked, and for another session", async () => {
     expect(await waits.ended!(["redriven", "behindPending", "parked", "running", "elsewhere"])).toEqual({
       redriven: false,

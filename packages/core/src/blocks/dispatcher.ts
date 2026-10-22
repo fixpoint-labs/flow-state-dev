@@ -483,8 +483,14 @@ async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<
     );
   }
   const once = ctx.runOnce.bind(ctx);
-  // A context with no block identity (a hand-built one) keys by the block's name.
-  const key = logicalBlockIdOf(ctx) ?? name;
+  const key = logicalBlockIdOf(ctx);
+  if (key === undefined) {
+    // A key by anything less (the block's name) would let a second send read back the first.
+    throw new Error(
+      `[dispatcher] "${name}": wait_unavailable: this block has no identity to keep its dispatch under, so ` +
+        "nothing was dispatched. Run it inside a request."
+    );
+  }
   const handle = await once(`fsd.dispatch.send:${key}`, async () => {
     const depth = await waits.depth({});
     if (depth > MAX_WAIT_DEPTH) {

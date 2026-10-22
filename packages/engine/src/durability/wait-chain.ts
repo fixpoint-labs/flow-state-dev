@@ -234,20 +234,21 @@ export function createRequestWaits(inputs: {
     depth: ({ binding, own }) =>
       waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding, inputs.waitedBy),
     ended: async (requestIds) => {
+      const endedOne = async (requestId: string): Promise<boolean> => {
+        const record = await inputs.readRequest(requestId);
+        if (record === undefined) return true;
+        // A request of another session is never answered as ended: not this session's to release.
+        if (record.sessionId !== inputs.sessionId) return false;
+        return WORK_OVER.has(record.status) || (record.status === "interrupted" && !(await drivenAgain(inputs.provider, record)));
+      };
       const answers: Record<string, boolean> = {};
       for (const requestId of new Set(requestIds)) {
-        const record = await inputs.readRequest(requestId);
-        if (record === undefined) {
-          answers[requestId] = true;
-          continue;
-        }
-        // A request of another session is never answered as ended: not this session's to release.
-        if (record.sessionId !== inputs.sessionId) {
+        try {
+          answers[requestId] = await endedOne(requestId);
+        } catch {
+          // A record or gate that can't be read answers for itself only: not ended, for now.
           answers[requestId] = false;
-          continue;
         }
-        answers[requestId] =
-          WORK_OVER.has(record.status) || (record.status === "interrupted" && !(await drivenAgain(inputs.provider, record)));
       }
       return answers;
     }
@@ -271,7 +272,7 @@ async function drivenAgain(
   if (gateId === undefined) return false;
   const gate = await provider.loadSuspension(record.id, gateId);
   if (gate === null) return false;
-  return gate.status === "pending" || isWaitGate(gate) || owesRedrive(gate);
+  return gate.status === "pending" || owesRedrive(gate);
 }
 
 /** Request statuses after which a request does no more work. */

@@ -620,13 +620,17 @@ export async function releaseEndedWaits(
   const answers = await ended(lapsed.map((row) => row.wait!.requestId!));
   let next: number | undefined;
   // Look again at this slot later, unless it is past the age every debt ends at.
-  const lookAgain = (row: Task): void => {
+  const lookAgain = (row: Task, why: string): void => {
     const age = Math.max(0, now - row.wait!.deadline);
     if (age > maxAgeMs) {
-      console.warn(
-        `[orchestration] wait "${row.id}": its request still runs or is parked ${Math.round(age / 1000)} s past the lapse; ` +
-          "the pass stops looking at its slot, which the request's end releases"
-      );
+      // Said once, by the pass that crosses the bound: a later pass, at most a
+      // check interval on, finds it past by more.
+      if (age - maxAgeMs <= LAPSED_SLOT_CHECK_CAP_MS) {
+        console.warn(
+          `[orchestration] wait "${row.id}": ${why} ${Math.round(age / 1000)} s past the lapse; ` +
+            "the pass stops looking at its slot, which the request's end releases"
+        );
+      }
       return;
     }
     const at = now + Math.min(Math.max(age, LAPSED_SLOT_CHECK_MS), LAPSED_SLOT_CHECK_CAP_MS);
@@ -635,7 +639,7 @@ export async function releaseEndedWaits(
   for (const row of lapsed) {
     const requestId = row.wait!.requestId!;
     if (answers[requestId] !== true) {
-      lookAgain(row);
+      lookAgain(row, "its request still runs or is parked");
       continue;
     }
     try {
@@ -643,7 +647,7 @@ export async function releaseEndedWaits(
       forgetLapsed(requestId, row.id);
     } catch (error) {
       console.warn(`[orchestration] wait "${row.id}": its lapsed slot stays for the next pass: ${(error as Error).message}`);
-      lookAgain(row);
+      lookAgain(row, "its request ended, and releasing its slot keeps failing,");
     }
   }
   return next;
