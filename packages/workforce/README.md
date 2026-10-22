@@ -1892,7 +1892,8 @@ heard within seconds, without anyone opening the conversation, through the sessi
 
 **After upgrading.** Rows an earlier version wrote can owe a notice, an Error Reporter report, or the
 settle of a [split task](https://flow-state.dev/docs/workforce/delegating-work#splitting-a-task)
-whose pieces have all ended but which hasn't completed, with no wake to pay it. Call `backfillBoardWakes(stores, { userCell })` once at host
+whose pieces have all ended but which hasn't completed, with no wake to pay it. A split an earlier
+version stored reads as `in_progress`, `waitingOn: "filed"`, and its pieces hold it. Call `backfillBoardWakes(stores, { userCell })` once at host
 start, with the runtime's `stores` and `userCell: (userId, orgId) => resolveUserStorageKey(userId,
 orgId, { id: "", isolateUserState: false })` (from `@flow-state-dev/engine`): it owes a wake, due
 now, in each session holding such a debt, and returns how many. It is safe to run again, and
@@ -1929,7 +1930,10 @@ by itself. Once no piece holds it, the task completes with its output like any t
 `reportProgress` checkpoint, else the answer of the last turn a piece's ending woke. A turn that
 throws fails the attempt. Read a piece's result from its own row (`listTasks({ filedByTask })`,
 `getTask`). A message to the worker in its task session while the task runs holds it open too,
-and its answer is never the task's output. Splitting goes up to
+and its answer is never the task's output. Run a workforce that splits on a host with durable
+execution: if the server stops between a piece's ending and its notice reaching the task session,
+a durable host delivers the notice when it starts again; without durable execution the task stays
+`in_progress` with nothing to wake it. Splitting goes up to
 five boards deep and 100 tasks under one top task; a filing past either is answered
 `{ ok: false, error: "total_task_cap_exceeded" }`. Raise the 100 with `hireWorkforce`'s
 `taskChainLimit`. See [Delegating work](https://flow-state.dev/docs/workforce/delegating-work).
