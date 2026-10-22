@@ -122,6 +122,18 @@ describe("RequestHost.wakes", () => {
     expect(heard).toEqual([1_001_000]);
   });
 
+  it("tells the listener where a settle moved the wake, so a sweeper armed later comes forward", async () => {
+    const { stores, wakes, now } = await setup();
+    await wakes.owe({ entry: "runTaskBoard", dueAt: 1_002_000 });
+    const read = (await wakes.read("runTaskBoard"))!;
+    const heard: number[] = [];
+    const stop = onWakeOwed(stores.wakes!, (dueAt) => heard.push(dueAt));
+    now.t = 1_003_000;
+    expect(await wakes.settle("runTaskBoard", read, 1_007_000)).toBe("moved");
+    stop();
+    expect(heard).toEqual([1_007_000]);
+  });
+
   it("is withdrawn at start when the store can't read its wakes, as a database not migrated for them", async () => {
     const { stores } = await setup();
     const broken = { ...stores.wakes!, earliestDueAt: async () => { throw new Error('relation "wakes" does not exist'); } };
