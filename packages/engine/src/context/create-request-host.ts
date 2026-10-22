@@ -97,7 +97,7 @@ import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import { createRequestWakes } from "../durability/request-wakes";
-import { createRequestWaits } from "../durability/wait-chain";
+import { createRequestWaits, type WaiterOf } from "../durability/wait-chain";
 import type { DurabilityProvider } from "../durability/types";
 import type { WakeStore } from "../stores/types";
 
@@ -178,6 +178,8 @@ export type RequestHostInputs = {
     deadlines: WaitDeadlines;
     requestId: string;
     own: WaitRow | undefined;
+    /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
+    waitedBy?: WaiterOf;
   };
   /**
    * The running request's trusted dispatch stamp, already read through
@@ -663,7 +665,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           ...(session.recipientLineageId !== undefined
             ? { recipientLineageId: session.recipientLineageId }
             : {}),
-          ...(spec.provenance ?? {})
+          ...(spec.provenance ?? {}),
+          // A sender that waits on this dispatch (FIX-2082): who it is and
+          // the row it works, from this request's own server-derived facts.
+          ...(spec.waits === true && inputs.waits !== undefined
+            ? { waitedBy: { requestId: inputs.waits.requestId, ...(inputs.waits.own !== undefined ? { own: inputs.waits.own } : {}) } }
+            : {})
         }
       },
       // The dispatched request continues THIS request's work, so it runs under
@@ -779,7 +786,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       deadlines: inputs.waits.deadlines,
       userId: identity.userId,
       requestId: inputs.waits.requestId,
-      own: inputs.waits.own
+      own: inputs.waits.own,
+      ...(inputs.waits.waitedBy !== undefined ? { waitedBy: inputs.waits.waitedBy } : {})
     });
   }
 

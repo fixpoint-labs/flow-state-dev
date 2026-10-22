@@ -54,6 +54,9 @@ import type { BlockContext, WaitOutcome, WaitRow } from "@flow-state-dev/core/ty
 import { IllegalTaskTransitionError, isTerminalStatus } from "../schema/task-status";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
+import type { TaskClaimTicket } from "../claim-ticket";
+import { resolveResourceCollection } from "../collection/resolve-resource-collection";
+import { getOrCreateTaskCollection } from "../collection/get-or-create";
 import { holdsAnEnding } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
@@ -321,6 +324,9 @@ async function waitChecked(
       // gate still wins (a replay after a stop ends the request).
       const recorded = await recordedWaitOutcome(ctx, park);
       if (recorded !== undefined && "stopped" in recorded) return endStopped(ctx, collection, taskId);
+      // The replay after a resume reaches here once the row has ended: the
+      // request's own task may have ended first (a cancel that cascaded to it).
+      if (await ownTaskEnded(ctx)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
       return ended(ctx, collection, taskId);
     }
 
@@ -364,11 +370,33 @@ function ownRowOf(ctx: BlockContext, drain = false): WaitRow | undefined {
   return typeof sessionTask === "string" ? { board: "", taskId: sessionTask } : undefined;
 }
 
-/** Whether the task the running request was admitted for has ended: a cancel while it waited. */
+/**
+ * Whether the task the running request works has ended: a cancel while it
+ * waited. Read as committed, not as this request first read it: the cancel
+ * was another request's write. The task is the one the request was admitted
+ * for in this process, or, on the request resumed after its park (whose
+ * admission was its first run's), the claim its gate left on the state.
+ */
 async function ownTaskEnded(ctx: BlockContext): Promise<boolean> {
   const admitted = admittedTaskOf(ctx);
-  if (admitted === undefined) return false;
-  const row = admitted.ref.get(admitted.taskId);
+  if (admitted !== undefined) {
+    await admitted.ref.refresh?.(admitted.taskId);
+    const row = admitted.ref.get(admitted.taskId);
+    return row !== undefined && isTerminalStatus(row.status);
+  }
+  const ticket = (ctx.sequencer?.state as { currentClaim?: TaskClaimTicket } | undefined)?.currentClaim ?? currentWorkerClaim(ctx);
+  if (ticket === undefined) return false;
+  const collection = resolveResourceCollection(ctx, ticket.collectionId);
+  if (collection === undefined) return false;
+  const ref = await getOrCreateTaskCollection({
+    ctx,
+    backing: "resource",
+    collectionId: ticket.collectionId,
+    collection,
+    ...(ticket.partition !== undefined ? { partition: ticket.partition } : {})
+  });
+  await ref.refresh?.(ticket.taskId);
+  const row = ref.get(ticket.taskId);
   return row !== undefined && isTerminalStatus(row.status);
 }
 

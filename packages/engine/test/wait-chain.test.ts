@@ -1,0 +1,90 @@
+/**
+ * The depth of a chain of waits (FIX-2082): read live off the waits parked
+ * now, from both ends, never copied at birth. Above the running request: what
+ * waits on its own work, then on that waiter's. Below the work a new wait would
+ * wait on: the deepest chain of waits under it. A request a waited dispatch
+ * started counts its sender before the sender's park is written, from the
+ * stamp the seam wrote, and the walk goes on from the sender's row.
+ */
+import { describe, expect, it } from "vitest";
+import { MAX_WAIT_DEPTH } from "@flow-state-dev/core/types";
+import { outcomeOfRequest, waitChainDepth, waitedByOf } from "../src/durability/wait-chain";
+
+type Parked = { requestId: string; data: Record<string, unknown> };
+
+/** A provider holding `parked` wait gates for one user. */
+function provider(parked: Parked[]) {
+  return {
+    listSuspended: async () =>
+      parked.map((p) => ({ ...p, reason: "wait", status: "pending", suspensionId: `g-${p.requestId}`, userId: "u" })) as never
+  };
+}
+
+const row = (taskId: string) => ({ board: "tasks", taskId });
+/** A request parked on `taskId`, working `own`. */
+const onTask = (requestId: string, taskId: string, own?: string): Parked => ({
+  requestId,
+  data: { ...row(taskId), deadline: 1, ...(own !== undefined ? { own: row(own) } : {}) }
+});
+/** A request parked on a request it dispatched, working `own`. */
+const onRequest = (requestId: string, child: string, own?: string): Parked => ({
+  requestId,
+  data: { requestId: child, deadline: 1, ...(own !== undefined ? { own: row(own) } : {}) }
+});
+
+describe("the depth of a chain of waits", () => {
+  it("counts the waits above the running request, through task rows and dispatched requests", async () => {
+    // desk waits on t1; r1 works t1 and waits on its dispatch r2; r2 works nothing and waits on t3.
+    const parked = [onTask("desk", "t1"), onRequest("r1", "r2", "t1")];
+    // r2 is about to wait on t3, which nobody works below.
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "r2", own: undefined }, row("t3"))).toBe(3);
+  });
+
+  it("counts the deepest chain below the work a new wait would wait on", async () => {
+    // t1's request waits on t2, whose request waits on t3; a side branch under t1 is one deep.
+    const parked = [onTask("w1", "t2", "t1"), onTask("w2", "t3", "t2"), onTask("side", "t9", "t1")];
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "desk", own: undefined }, row("t1"))).toBe(3);
+  });
+
+  it("refuses past the limit from either end: a late wait on a chain already five deep below", async () => {
+    const parked = [onTask("a", "t2", "t1"), onTask("b", "t3", "t2"), onTask("c", "t4", "t3"), onTask("d", "t5", "t4"), onRequest("e", "probe", "t5")];
+    expect(await waitChainDepth(provider(parked), "u", { requestId: "desk", own: undefined }, row("t1"))).toBe(MAX_WAIT_DEPTH + 1);
+  });
+
+  it("counts the sender of a waited dispatch before its park is written, and walks on from its row", async () => {
+    // The sender d works t4; c waits on t4; b on t3 (c's own); d has not parked yet.
+    const parked = [onTask("b", "t3"), onTask("c", "t4", "t3")];
+    const running = { requestId: "probe", own: undefined };
+    expect(await waitChainDepth(provider(parked), "u", running, undefined)).toBe(1);
+    expect(await waitChainDepth(provider(parked), "u", running, undefined, { requestId: "d", own: row("t4") })).toBe(4);
+    // Once the sender has parked, it is counted once, not twice.
+    const withPark = [...parked, onRequest("d", "probe", "t4")];
+    expect(await waitChainDepth(provider(withPark), "u", running, undefined, { requestId: "d", own: row("t4") })).toBe(4);
+  });
+});
+
+describe("the stamp a waited dispatch leaves on its child", () => {
+  const stamp = (waitedBy: unknown) => ({
+    dispatch: { type: "internal", action: "probe", from: { block: "b", sessionId: "s" }, waitedBy }
+  });
+
+  it("is read only off a request the runtime dispatched", () => {
+    expect(waitedByOf("internal", stamp({ requestId: "d", own: row("t4") }))).toEqual({ requestId: "d", own: row("t4") });
+    expect(waitedByOf("internal", stamp({ requestId: "d" }))).toEqual({ requestId: "d" });
+    // A caller's own bag over HTTP is not a stamp.
+    expect(waitedByOf("http", stamp({ requestId: "d" }))).toBeUndefined();
+    expect(waitedByOf("internal", stamp({ requestId: 4 }))).toBeUndefined();
+  });
+});
+
+describe("how a waited-on request's end resumes its waiter", () => {
+  it("answers with its output, an error naming its end, or nothing while it runs", () => {
+    expect(outcomeOfRequest({ status: "completed", result: { output: "done" } } as never)).toEqual({ answered: true, answer: "done" });
+    expect(outcomeOfRequest({ status: "aborted" } as never)).toMatchObject({ answered: false, error: { code: "wait_task_cancelled" } });
+    expect(outcomeOfRequest({ status: "failed", result: { error: { message: "boom" } } } as never)).toMatchObject({
+      answered: false,
+      error: { code: "wait_task_failed", message: "boom" }
+    });
+    expect(outcomeOfRequest({ status: "in_progress" } as never)).toBeUndefined();
+  });
+});

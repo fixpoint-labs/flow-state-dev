@@ -81,7 +81,7 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
-import { resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
+import { ownRowOf, resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { requestEndRegistryOf } from "./request-end-hooks";
 import { WAIT_DEADLINE_ENTRY, isWaitGate, isExpiredApproval, waitGateDataOf } from "@flow-state-dev/core/types";
@@ -2304,6 +2304,14 @@ async function runActionAttempt<
           // A wait's deadline is a wake on this session (FIX-2082 D1), owed
           // before the gate is written: a crash between the two leaves a wake
           // that resumes nothing, never a gate with no deadline.
+          // A wait gate names the row its request works, so the depth count
+          // finds what waits above it: a caller that can't name it (a
+          // dispatcher's wait) gets the row the engine reads off this
+          // request's own task dispatch (FIX-2082).
+          if (isWaitGate(record) && record.data != null && record.data.own === undefined) {
+            const own = ownRowOf(options.source, options.metadata, options.input);
+            if (own !== undefined) record.data = { ...record.data, own };
+          }
           const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;
           if (waitDeadline !== undefined) {
             const wakes = ctx.requestHost?.wakes;

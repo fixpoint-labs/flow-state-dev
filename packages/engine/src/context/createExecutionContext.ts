@@ -69,7 +69,13 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
-import { ownRowOf } from "../durability/wait-chain";
+import { ownRowOf, waitedByOf } from "../durability/wait-chain";
+
+/** The waiter a dispatched request was born with, as an optional field. */
+function waitedByStamp(source: string | undefined, metadata: unknown) {
+  const waitedBy = waitedByOf(source, metadata);
+  return waitedBy === undefined ? {} : { waitedBy };
+}
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
@@ -964,7 +970,8 @@ export async function createExecutionContext<
                   deadlines: options.requestHost.waits.deadlines,
                   requestId: options.requestId,
                   // The row a task dispatch started this request for (FIX-2082).
-                  own: ownRowOf(options.source, options.metadata, options.input)
+                  own: ownRowOf(options.source, options.metadata, options.input),
+                  ...waitedByStamp(options.source, options.metadata)
                 }
               }
             : {}),

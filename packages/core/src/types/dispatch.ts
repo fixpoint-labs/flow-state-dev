@@ -457,6 +457,13 @@ export type DispatchSpec = {
    * the wire as server truth, so only put here what the runtime produced.
    */
   readonly provenance?: Readonly<Record<string, unknown>>;
+  /**
+   * The sending request parks on the dispatched request at once, waiting for
+   * it (`dispatcher({ wait: true })`, FIX-2082). The seam stamps the child
+   * with who waits on it, from the sender's own server-derived facts, so the
+   * child's wait depth counts its sender before the sender's park is written.
+   */
+  readonly waits?: boolean;
 };
 
 /**

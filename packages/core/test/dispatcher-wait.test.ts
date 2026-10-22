@@ -71,6 +71,8 @@ describe("dispatcher({ wait: true })", () => {
     const result = await runForTest(checkLinks(), { docId: "d1" }, ctx);
     expect(result).toEqual({ status: "completed", output: { broken: 0 }, requestId: "req_child" });
     expect(sent).toHaveLength(1);
+    // The seam is told the sender waits, so the child counts it before the park is written.
+    expect(sent[0]!.waits).toBe(true);
     expect(parked).toHaveLength(1);
     expect(parked[0]).toMatchObject({ reason: "wait", suspensionId: "dispatch:req_child", data: { requestId: "req_child" } });
     // The deadline is the host's default, from when the wait was planned.
@@ -118,7 +120,7 @@ describe("dispatcher({ wait: true })", () => {
   });
 
   it("without wait, returns the handle and parks on nothing", async () => {
-    const { ctx, parked } = harness();
+    const { ctx, parked, sent } = harness();
     const block = dispatcher({
       name: "check-links",
       action: "check",
@@ -127,5 +129,6 @@ describe("dispatcher({ wait: true })", () => {
     });
     expect(await runForTest(block, { docId: "d1" }, ctx)).toEqual({ sessionId: "dsx_child", requestId: "req_child", adopted: false });
     expect(parked).toEqual([]);
+    expect(sent[0]!.waits).toBeUndefined();
   });
 });

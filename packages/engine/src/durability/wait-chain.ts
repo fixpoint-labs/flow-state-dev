@@ -17,7 +17,11 @@
  *   on down, the deepest branch.
  *
  * Nothing is copied when a request starts: a chain built below a task nobody
- * waits on, then waited on late, counts the same as one built top down. Rows
+ * waits on, then waited on late, counts the same as one built top down. One
+ * fact is carried, and only one hop: a request a `dispatcher({ wait: true })`
+ * started is stamped with its sender and the row the sender works, since its
+ * sender parks on it only after the dispatch returns, and the child may count
+ * before that park is written. The walk goes on from the sender's row, live. Rows
  * are matched by task id: task ids are unique, and a board's id can differ
  * from its ledger's (a dispatch names the board, a wait the ledger).
  *
@@ -106,6 +110,26 @@ export function ownRowOf(source: string | undefined, metadata: unknown, input: u
   return parsed.success ? { board: parsed.data.boardId, taskId: parsed.data.taskId } : undefined;
 }
 
+/** The request that dispatched a request and waits on it, and the row it works. */
+export type WaiterOf = { readonly requestId: string; readonly own?: WaitRow };
+
+/**
+ * The sender that waits on a request it dispatched (`dispatcher({ wait: true })`),
+ * read off the request's trusted dispatch stamp, where the seam wrote it from
+ * the sender's own facts. `undefined` for any other request.
+ */
+export function waitedByOf(source: string | undefined, metadata: unknown): WaiterOf | undefined {
+  if (readDispatchStamp(source, metadata) === undefined) return undefined;
+  const waitedBy = (metadata as { dispatch?: { waitedBy?: unknown } }).dispatch?.waitedBy as
+    | { requestId?: unknown; own?: { board?: unknown; taskId?: unknown } }
+    | undefined;
+  if (waitedBy == null || typeof waitedBy.requestId !== "string") return undefined;
+  const own = waitedBy.own;
+  return typeof own?.board === "string" && typeof own.taskId === "string"
+    ? { requestId: waitedBy.requestId, own: { board: own.board, taskId: own.taskId } }
+    : { requestId: waitedBy.requestId };
+}
+
 /** One parked wait, as the depth count reads it. */
 type ParkedWait = {
   readonly requestId: string;
@@ -126,7 +150,8 @@ export async function waitChainDepth(
   provider: Pick<DurabilityProvider, "listSuspended">,
   userId: string,
   running: { readonly requestId: string; readonly own: WaitRow | undefined },
-  binding: WaitGateBinding | undefined
+  binding: WaitGateBinding | undefined,
+  waitedBy?: WaiterOf
 ): Promise<number> {
   // One user's parked waits: a chain stays within one user's work.
   const parked: ParkedWait[] = [];
@@ -145,7 +170,10 @@ export async function waitChainDepth(
   let above = 0;
   const seen = new Set<string>([running.requestId]);
   for (let at: { requestId: string; own: WaitRow | undefined } = running; above < WALK_LIMIT; ) {
-    const waiter = parked.find((wait) => waitsOn(wait, { requestId: at.requestId, ...(at.own ? { taskId: at.own.taskId } : {}) }));
+    const parkedWaiter = parked.find((wait) => waitsOn(wait, { requestId: at.requestId, ...(at.own ? { taskId: at.own.taskId } : {}) }));
+    // The sender of a waited dispatch waits on it from the start, parked yet or not.
+    const waiter =
+      parkedWaiter ?? (at === running && waitedBy !== undefined ? { requestId: waitedBy.requestId, own: waitedBy.own } : undefined);
     if (waiter === undefined || seen.has(waiter.requestId)) break;
     seen.add(waiter.requestId);
     above += 1;
@@ -175,11 +203,13 @@ export function createRequestWaits(inputs: {
   readonly requestId: string;
   /** The row this request works, as the engine reads it off its own dispatch. */
   readonly own: WaitRow | undefined;
+  /** The sender that waits on this request, when a waited dispatch started it. */
+  readonly waitedBy?: WaiterOf;
 }): RequestWaits {
   return {
     deadlines: inputs.deadlines,
     depth: ({ binding, own }) =>
-      waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding)
+      waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding, inputs.waitedBy)
   };
 }
 

@@ -432,14 +432,15 @@ export function dispatcher(
     ...(flowKind !== undefined ? { flowKind: flowKind as string } : {})
   };
   const inputSchema = internal.inputSchema ?? z.unknown();
-  const send = async (input: unknown, ctx: BlockContext): Promise<DispatchHandle> => {
+  const send = async (input: unknown, ctx: BlockContext, waits = false): Promise<DispatchHandle> => {
     const sessionTarget = resolveSessionTarget(name, session, input, ctx);
     const body = payload === undefined ? input : await payload(input, ctx);
     const outcome = await dispatchThroughSeam(ctx, {
       ...address,
       session: sessionTarget,
       payload: body,
-      from: name
+      from: name,
+      ...(waits ? { waits: true } : {})
     });
     if (!outcome.ok) {
       throw new DispatchRefusedError(name, address, outcome.refused, outcome.detail);
@@ -451,7 +452,7 @@ export function dispatcher(
       ...common,
       inputSchema,
       outputSchema: dispatchWaitResultSchema,
-      execute: (input, ctx) => sendAndWait(name, ctx, () => send(input, ctx))
+      execute: (input, ctx) => sendAndWait(name, ctx, () => send(input, ctx, true))
     });
     return markDispatcher(block, address);
   }
