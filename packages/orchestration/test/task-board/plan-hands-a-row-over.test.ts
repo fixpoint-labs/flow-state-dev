@@ -9,7 +9,7 @@
  * its durability sweeper and its wakes. The handed-over row's work waits on a
  * gate the test opens, so the drain is seen parked before the row ends.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
@@ -23,6 +23,20 @@ import {
   type TaskWorkerInput
 } from "../../src/tasks";
 import { taskSettledEntry } from "../../src";
+
+// The engine's depth count, which a test can force past five: a chain that grew
+// while the drain ran between two parks.
+const forced = vi.hoisted(() => ({ depth: undefined as number | undefined }));
+vi.mock("../../../engine/src/durability/wait-chain", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../../engine/src/durability/wait-chain")>();
+  return {
+    ...original,
+    createRequestWaits: (inputs: Parameters<typeof original.createRequestWaits>[0]) => {
+      const waits = original.createRequestWaits(inputs);
+      return { ...waits, depth: async (input: Parameters<typeof waits.depth>[0]) => forced.depth ?? waits.depth(input) };
+    }
+  };
+});
 
 const USER = "u_plan";
 const SESSION = "s_plan";
@@ -122,6 +136,7 @@ describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
     await state?.dispose();
     state = undefined;
     notices.length = 0;
+    forced.depth = undefined;
   });
 
   async function boot(waitDeadlines?: { defaultMs: number; minMs: number }) {
@@ -211,6 +226,27 @@ describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
     open();
     expect(await until(async () => (await statusOf(run.requestId!)) === "completed")).toBe(true);
     const publish = (await rowsNow()).find((row) => row.id === "publish")!;
+    expect(publish.output).toContain("Fact-check in");
+  }, 20_000);
+
+  it("keeps waiting on the row it handed over when the chain has grown past five: that wait already exists", async () => {
+    holdTheStep();
+    const { act, statusOf, until, rowsNow, parks } = await boot({ defaultMs: 1_000, minMs: 1_000 });
+    const run = await act("run");
+    expect(await until(async () => (await statusOf(run.requestId!)) === "suspended")).toBe(true);
+    // From the second park on, the chain reads six deep.
+    forced.depth = 6;
+    await new Promise((resolve) => setTimeout(resolve, 2_600));
+    // The drain waited again at each deadline, and went no further.
+    expect(await until(async () => (await statusOf(run.requestId!)) === "suspended")).toBe(true);
+    expect(await parks(run.requestId!)).toBeGreaterThanOrEqual(3);
+    expect((await rowsNow()).find((row) => row.id === "publish")).toMatchObject({ status: "pending" });
+
+    open();
+    // The row ends, the drain hears it, the next row runs, and the request ends.
+    expect(await until(async () => (await statusOf(run.requestId!)) === "completed")).toBe(true);
+    const publish = (await rowsNow()).find((row) => row.id === "publish")!;
+    expect(publish).toMatchObject({ status: "completed" });
     expect(publish.output).toContain("Fact-check in");
   }, 20_000);
 });

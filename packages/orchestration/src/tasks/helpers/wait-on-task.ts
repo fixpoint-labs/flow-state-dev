@@ -12,7 +12,8 @@
  *    to the conversation; one wait per model step; and the chain of waits it
  *    joins stays within `MAX_WAIT_DEPTH`: the waits above this request and
  *    any already below the task it waits on, counted by the engine. A wait
- *    that waits again at its deadline counts again before each new park.
+ *    that waits again at its deadline counts again before each new park,
+ *    except a drain on a row it handed over, whose wait already exists.
  *    A task already ended is returned at once.
  * 2. **Take the row's wait slot** in one conditional write (`markWait`): a
  *    second request waiting on the same task is refused.
@@ -156,7 +157,8 @@ export interface WaitOnTaskOptions {
   /**
    * At the deadline, take the slot again and go on waiting, rather than return
    * the task as it stands: a drain never moves past a running row (FIX-2082
-   * D2). Each round is a check-in at the host's default deadline.
+   * D2). Each round is a check-in at the host's default deadline, and counts
+   * the chain again before it parks, unless `ownBoard` is set.
    */
   readonly waitAgain?: boolean;
   /** Shown wherever the parked request is listed. */
@@ -323,7 +325,12 @@ async function waitChecked(
   const drain = options.ownBoard === true;
   for (let round = 0; ; round += 1) {
     const roundKey = round === 0 ? options.key : `${options.key}#${round}`;
-    if (round > 0) {
+    // A drain waiting again on a row it handed over never refuses on depth:
+    // the cap refuses new waits, and this one already exists. Refusing it
+    // can't shorten the chain, only leave the plan waiting on nothing. A lower
+    // wait made while the drain was between parks may leave the chain one too
+    // deep until one end finishes.
+    if (round > 0 && !drain) {
       // Waiting again is a new park on a chain that may have grown while this
       // request ran between them: count it again, once for this round.
       const tooDeep = await depthRefusal(ctx, `fsd.wait.depth:${roundKey}`, binding, own);

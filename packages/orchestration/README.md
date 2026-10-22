@@ -1026,7 +1026,9 @@ Two functions sit under the option, for a layer that builds its own board surfac
   once it ended, or as it stands at the deadline), `{ ok: false, error, message }` with a
   `wait_*` refusal, or `{ ok: false, error: "wait_ended_the_request" }` when a person stopped
   the request or its own task was cancelled. `waitAgain: true` waits again at each deadline, as
-  a plan board's drain does on a row it handed over, counting the chain again before each park.
+  a plan board's drain does on a row it handed over. Each new park counts the chain again,
+  except a drain's (`ownBoard: true`): its wait already exists, and refusing it would only leave
+  the plan waiting on nothing.
 - `checkWait(ctx, collection, taskId, options)` runs the same checks without waiting: the
   refusal, or the checked wait to pass to `waitOnTask` as `checked`, which then doesn't check
   again. A drain uses it to refuse a row before it hands the row over.
