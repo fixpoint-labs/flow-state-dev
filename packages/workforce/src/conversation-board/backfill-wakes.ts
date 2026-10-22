@@ -100,7 +100,7 @@ export async function backfillBoardWakes(stores: BoardWakeBackfillStores, option
   if (wakes === undefined) return 0;
   const now = options.now ?? Date.now();
   const sessions = new Map<string, StoredSession>();
-  // Every session, not only the ones a person started: a task session (a
+  // Every session, not only the ones a user started: a task session (a
   // child session) is where a piece's notice and a parked split are paid.
   for (const session of await stores.session.list({ parentage: "all" })) sessions.set(bareId(session), session);
 
