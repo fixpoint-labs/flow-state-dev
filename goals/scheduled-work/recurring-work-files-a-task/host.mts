@@ -16,7 +16,7 @@
  *   { op: "fire", key, at? }       the scheduler POSTs the schedule's dispatch, with `at` as its time or none
  *   { op: "settle" }               wait until no request is running
  *   { op: "tasks" }                Alice's tasks with launch (`listTasks_tasks`)
- *   { op: "cancel-newest" }        wait for a second task, then Alice cancels the newest (`cancelTask_tasks`)
+ *   { op: "cancel-newest" }        wait for a second task, then Alice cancels the newest (`updateTask_tasks`, status "cancelled")
  *   { op: "endings" }              the ending requests launch's conversation ran, by task
  */
 import "./clock.mts";
@@ -174,7 +174,7 @@ try {
         }
         const newest = listed.find((task) => !(op.before as string[]).includes(task.id));
         if (newest === undefined) throw new Error(`no new task appeared to cancel: ${JSON.stringify(listed)}`);
-        const out = await alice.act("launch", conversation, "cancelTask_tasks", { taskId: newest.id, reason: "not this week" });
+        const out = await alice.act("launch", conversation, "updateTask_tasks", { id: newest.id, status: "cancelled" });
         results.push({ op: "cancel-newest", taskId: newest.id, statusBefore: newest.status, out });
         break;
       }

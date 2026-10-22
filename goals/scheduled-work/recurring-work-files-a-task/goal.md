@@ -8,7 +8,7 @@
 
 **Signal:** each failure is tagged `<leg>:<assertion>`.
 
-- **a**: `a:accepted` a fire POSTed with the scheduler's secret and the scheduled time is accepted; `a:one-task-on-launch's-board` Alice's task list with launch then holds exactly one task; `a:the-schedule's-task` it is the schedule's goal, assigned to researcher; `a:it-runs` it ended completed; `a:ending-heard-once` launch's conversation ran exactly one ending request for it; `a:second-week's-task` the next week's fire files a second task, and `a:cancelled-like-any-task` Alice's `cancelTask_tasks` on it, while it works, leaves it cancelled.
+- **a**: `a:accepted` a fire POSTed with the scheduler's secret and the scheduled time is accepted; `a:one-task-on-launch's-board` Alice's task list with launch then holds exactly one task; `a:the-schedule's-task` it is the schedule's goal, assigned to researcher; `a:it-runs` it ended completed; `a:ending-heard-once` launch's conversation ran exactly one ending request for it; `a:second-week's-task` the next week's fire files a second task, and `a:cancelled-like-any-task` Alice's `updateTask_tasks` with `status: "cancelled"` on it, while it works, leaves it cancelled.
 - **b**: `b:exactly-one-task` one scheduled time POSTed by two processes at once, again by a restarted one, and again 20 s late, files exactly one task; `b:early-files-nothing` an untimed POST a minute before the next time files nothing; `b:its-own-fire-still-files` that time's own fire then files one.
 - **c**: `c:shows-the-change` Alice's `listSchedules` shows exactly her schedules, before and after one is removed and one added, on the next read; `c:next-run` each one's `nextRunAt` equals the next time of its cron in its zone, from the host's clock.
 
@@ -33,3 +33,6 @@
 | 2026-10-21 | `8b3f56d92` + mutation | n/a | FAIL (expected) | the fire files through `addTask_tasks` (recorded, not started): only `a:it-runs` (ended pending) and `a:ending-heard-once` (0 ending requests) fail, with CAN'T TELL on launch's ending requests |
 | 2026-10-21 | `49159691b` | n/a | PASS | After review fixes (five-field crons, stale fixed times, untimed tolerance, floor, delete with its record): all three legs as before; b answers 200, 202, 200, 200 |
 | 2026-10-21 | `49159691b` | n/a | FAIL (expected) | `GOAL_CONTROL=memory-dedupe`: `b:exactly-one-task — one scheduled time filed 4 tasks (fires answered 202, 202, 202, 202)`; `b:early-files-nothing` as before |
+| 2026-10-22 | `34c32d4d9` | n/a | FAIL | On main after FIX-2081: `a2` refused, `cancelTask_tasks` is no longer an action |
+| 2026-10-22 | `34c32d4d9` + fix | n/a | PASS | Cancel through `updateTask_tasks` with `status: "cancelled"`: every leg green, as on 2026-10-21 |
+| 2026-10-22 | `34c32d4d9` + fix | n/a | FAIL (expected) | `GOAL_CONTROL=memory-dedupe`: `b:exactly-one-task` (4 tasks; 202 ×4) and `b:early-files-nothing` |
