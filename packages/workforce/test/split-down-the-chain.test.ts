@@ -584,14 +584,19 @@ describe("a split task changed from above while its pieces are open (BR-19)", ()
   it("declines a reassign, and a cancel cancels its open pieces down the chain; its later settle is declined", async () => {
     // Durable: the pieces' cancels are heard by the task session through its
     // wake, which the conversation that cancelled can't address (FIX-2078).
-    const h = bootSplitHost({ durable: true });
+    // The two leaf pieces are held open until the cancel has been issued, so
+    // the cascade, not the clock, decides how they end.
+    let release!: () => void;
+    const cancelIssued = new Promise<void>((resolve) => (release = resolve));
+    const holds = new Map([["until-cancel", cancelIssued]]);
+    const h = bootSplitHost({ durable: true, holds });
     try {
       h.controls.plans.planner = [{ goal: "Plan the launch", assignee: "s1" }];
       h.controls.plans.s1 = [
-        { goal: "Book the venue [slow:400]", assignee: "eng.tasker" },
+        { goal: "Book the venue [hold:until-cancel]", assignee: "eng.tasker" },
         { goal: "Run the event", assignee: "s2" }
       ];
-      h.controls.plans.s2 = [{ goal: "Hire the band [slow:400]", assignee: "eng.writer" }];
+      h.controls.plans.s2 = [{ goal: "Hire the band [hold:until-cancel]", assignee: "eng.writer" }];
       const planner = await h.open("alice", "planner");
       await h.turn("alice", planner);
       expect(
@@ -607,13 +612,15 @@ describe("a split task changed from above while its pieces are open (BR-19)", ()
       expect(JSON.stringify(reassign)).toContain("immutable-assignee");
 
       expect((await h.tool("alice", planner, "cancelTask", { taskId: top.id })).ok).toBe(true);
+      // The held pieces now finish their turns; a cancelled row keeps its ending.
+      release();
       await h.settled();
       const rows = Object.fromEntries((await h.rows("alice")).map((row) => [row.goal, row.status]));
       expect(rows).toEqual({
         "Plan the launch": "cancelled",
-        "Book the venue [slow:400]": "cancelled",
+        "Book the venue [hold:until-cancel]": "cancelled",
         "Run the event": "cancelled",
-        "Hire the band [slow:400]": "cancelled"
+        "Hire the band [hold:until-cancel]": "cancelled"
       });
       // Nothing settled the cancelled task. A cancel through the task action is
       // heard by its filer, once (FIX-2078 D2); only a model's own tool call isn't.
@@ -622,6 +629,7 @@ describe("a split task changed from above while its pieces are open (BR-19)", ()
       expect(await h.until(async () => ((await h.session(t1)).state as { splitParent?: unknown }).splitParent === null, 8_000)).toBe(true);
       expect(await h.chains("alice")).toEqual({});
     } finally {
+      release();
       await h.dispose();
     }
   });
