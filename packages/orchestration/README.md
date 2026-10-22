@@ -993,11 +993,12 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `getTask({ id, wait: true, deadline? })` parks the calling turn on a task its session filed,
 until the task ends or the deadline passes, and returns the task as `getTask` always does. The
 deadline is milliseconds from the call, five minutes by default, within the host's
-`waitDeadlines` bounds; at the deadline the task runs on, nothing is cancelled, and the row's
-wait slot lapses. An ending that lands on a lapsed slot is held for the request that waited:
-its next `getTask` on the task delivers it, and if that request ends without reading it the
-ending goes to `onTaskSettled`, once. Waits nest: a task's own turn may wait too, up to
-`MAX_WAIT_DEPTH` (5) deep, counted by the engine along the live chain from both ends.
+`waitDeadlines` bounds. At the deadline the task runs on and nothing is cancelled. If it ends
+before the waiting request does, that request's next `getTask` on it returns the ending. If
+the request ends without reading it, the ending goes to `onTaskSettled`, once. Waits nest: a
+task's own turn may wait too. A wait is refused when it would make a chain of more than five
+waits (`MAX_WAIT_DEPTH`), counting the waits above you and any already below the task you wait
+on.
 `listTasks` marks a row a request is parked on `waitedOn: true`. `createTask` and
 `dispatchTask` never wait: `createTask` refuses `wait`, `deadline`, `waitForResponse` and <!-- retired-name-refusal: the refusal of the old fields -->
 `timeoutMs` with `create_task_does_not_wait`, `dispatchTask` refuses `wait` and `timeoutMs`
@@ -1015,9 +1016,9 @@ and a store that keeps wakes (`canHoldWait`). `resumesWaits` defaults to `false`
 layer that builds its own capability gets the same per-turn list from
 `taskToolsForTurn(resolver, roster, { dispatches, resumesWaits })`.
 
-One function sits under the option, for a layer that builds its own board surface:
+Two functions sit under the option, for a layer that builds its own board surface:
 
-- `waitOnTask(ctx, collection, taskId, { key, step?, deadlineMs?, waitAgain?, message? })`, from
+- `waitOnTask(ctx, collection, taskId, { key, step?, deadlineMs?, waitAgain?, message? }, checked?)`, from
   `@flow-state-dev/orchestration/task-board`, waits on a task already filed from inside a
   block with a stable identity. `key` is what the wait is recorded under with the request (a
   tool call's logical id), and `step` the model step it belongs to (one wait per step). It runs
@@ -1025,19 +1026,28 @@ One function sits under the option, for a layer that builds its own board surfac
   once it ended, or as it stands at the deadline), `{ ok: false, error, message }` with a
   `wait_*` refusal, or `{ ok: false, error: "wait_ended_the_request" }` when a person stopped
   the request or its own task was cancelled. `waitAgain: true` waits again at each deadline, as
-  a plan board's drain does on a row it handed over. `canHoldWait(ctx)` and `waitGateId` are on
-  the same subpath.
+  a plan board's drain does on a row it handed over, counting the chain again before each park.
+- `checkWait(ctx, collection, taskId, options)` runs the same checks without waiting: the
+  refusal, or the checked wait to pass to `waitOnTask` as `checked`, which then doesn't check
+  again. A drain uses it to refuse a row before it hands the row over.
+
+`canHoldWait(ctx)` (re-exported from `@flow-state-dev/core`) and `waitGateId` are on the same
+subpath.
 
 A plan board can hand a row to another session and wait on it there: give `taskBoard` a
 `newSession` dispatcher, and a row filed `session: "new"` runs in a session of its own while
-the drain parks on it, checking in at each deadline. A plan board may hold dispatcher assignees
-too, whose rows it waits on the same way; a plan board's dispatcher with `wait: false` and a
-delegation board's with `wait: true` are refused. A plan board's ledger owes no notices: the
-drain hears each ending itself.
+the drain parks on it. The drain waits for the row to end, however many deadlines that takes,
+before it starts the rows that depend on it. No completion notice is sent for the row. A plan
+board may hold dispatcher assignees too, whose rows it waits on the same way; a plan board's
+dispatcher with `wait: false` and a delegation board's with `wait: true` are refused. Declare
+the board's pass entry on the flow: without it, the board still builds, and the drain hears a
+row's ending at its next check-in, up to the host's default wait deadline later.
 
-A waiting turn whose task has ended is resumed by the board's pass (`payBoardDebts`, above),
-which also cancels each task whose wait was stopped while its own cancel failed
-(`Task.cancelOwed`). Until that pass runs, that task's worker may keep running.
+A waiting turn whose task has ended is resumed by the board's pass, which the filing session's
+`onTaskSettled` runs (`payBoardDebts`, above). The same pass cancels each task whose wait was
+stopped while its own cancel failed (`Task.cancelOwed`), and releases a wait slot that lapsed
+for a request that has since ended, so an ending held for that request reaches `onTaskSettled`
+even when its process died. Until that pass runs, a cancelled task's worker may keep running.
 
 **Migrating from `resumeOwedWaits`.** `resumeOwedWaits(ctx, collection)` is no longer exported.
 The board's `onTaskSettled` pass pays owed resumes and owed cancels, so drop the call and make

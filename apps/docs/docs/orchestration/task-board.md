@@ -867,18 +867,19 @@ completed. Nothing holds a request open while it waits, so a server restart lose
 
 A wait has a deadline, five minutes unless you pass `deadline` in milliseconds. At the deadline
 your turn carries on with the task as it stands, usually still `in_progress`. Nothing is
-cancelled: the task runs on, and you can wait on it again. If it ends while your request is
-still running, your next `getTask` on it returns the ending. If your request ends without
-reading it, you [hear about it](#hearing-how-a-task-ended) once, the usual way. A worker you're
+cancelled: the task runs on, and you can wait on it again. If it ends before your request
+does, even while your request waits on something else, your next `getTask` on it returns the
+ending. If your request ends without reading it, you [hear about it](#hearing-how-a-task-ended)
+once, the usual way. A worker you're
 waiting on can't stop to ask you a question; it answers with what it has, or fails. One wait
 per step, where a step is one model call and the tool calls it makes.
 
 Only wait when the result changes what you do next. Otherwise let the task run and carry on.
 
 A turn that is itself working a task can wait too, so waits nest: a task's turn waits on a task
-it filed, whose turn waits on another, and so on. Five waits deep is the limit, counted along
-the whole chain from both ends: a sixth is refused, and so is a late wait on a task whose own
-chain is already five deep.
+it filed, whose turn waits on another, and so on. A wait is refused when it would make a chain
+of more than five waits, counting the waits above you and any already below the task you wait
+on.
 
 | Input | |
 |---|---|
@@ -917,7 +918,7 @@ limits apply. The `getTask_<board>` action reads without waiting.
 **Moving from `dispatchTask({ wait })`.** `dispatchTask` no longer waits: it refuses `wait` and
 `timeoutMs` with `dispatch_task_does_not_wait`. File the task with `createTask` or
 `dispatchTask`, then call `getTask({ id, wait: true })`. `deadline` takes the place of
-`timeoutMs`, and it cancels nothing.
+`timeoutMs`.
 
 **Moving from `waitForResponse`.** `createTask` doesn't wait, and refuses `waitForResponse`, `wait` and `timeoutMs` with `create_task_does_not_wait`. File the task, then wait with `getTask`. Nothing is filed. {/* retired-name-refusal: migration note */}
 
@@ -937,9 +938,11 @@ const steps = taskBoard({
 });
 ```
 
-Every other row runs in `workers`. The drain parks while the row runs, and checks in at each
-[deadline](#waiting-on-a-task) without moving past it; once the row ends, the rows after it see
-its output, as any dependency's. Its ending owes nobody a notice: the drain is the one waiting.
+Every other row runs in `workers`. The drain waits for the row to end, however many
+[deadlines](#waiting-on-a-task) that takes, before it starts the rows that depend on it, and
+they see its output, as any dependency's. No completion notice is sent for the row. Declare
+the board's [pass entry](#hearing-how-a-task-ended) on the flow: without it, the drain still
+learns of the row's ending, but only at its next deadline, up to five minutes later.
 A plan board may also hold dispatcher assignees, whose rows it waits on the same way. A
 dispatcher there that says `wait: false` is refused, and so is a delegation board's that says
 `wait: true`, each naming the fix.
