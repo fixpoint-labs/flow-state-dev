@@ -162,6 +162,15 @@ describe("createTask", () => {
     expect(boardOf(ctx)[result.taskId]?.metadata).toEqual({ note: "again" });
   });
 
+  it("clears no real notice marker through updateTask's metadata", async () => {
+    const owed = { attempt: 0, ending: "completed", due: 0 };
+    const ctx = ctxWithTask("pending", { metadata: { "noticeOwed:0:completed": owed } });
+    expect(await runForTest(findTool("updateTask"), { id: "a", metadata: { "noticeOwed:0:completed": null, note: "kept" } }, ctx)).toEqual({
+      ok: true,
+    });
+    expect(boardOf(ctx).a?.metadata).toEqual({ "noticeOwed:0:completed": owed, note: "kept" });
+  });
+
   it("files a task held when its start setting says so, and says it is held", async () => {
     const { ctx } = buildCtx();
     const result = (await runForTest(findTool("createTask"), { goal: "later", held: true, maxAttempts: 3 }, ctx)) as {
@@ -444,6 +453,33 @@ describe("updateTask — a cancel", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("cancel_takes_no_edits");
     expect(boardOf(ctx).a).toMatchObject({ status: "pending", priority: 1 });
+  });
+
+  // A model's own cancel owes no notice for it or for the dependents it takes
+  // along (FIX-2078 D2), so the call's result is where it learns of them.
+  it("names the dependents it cancelled", async () => {
+    const now = Date.now();
+    const ctx = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: now, updatedAt: now },
+        b: { id: "b", goal: "y", status: "pending", attempts: 0, deps: ["a"], createdAt: now, updatedAt: now },
+      },
+    }).ctx;
+    expect(await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)).toEqual({ ok: true, cancelled: ["b"] });
+  });
+
+  it("names every dependent down the chain it took, not only the first level", async () => {
+    const now = Date.now();
+    const ctx = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: now, updatedAt: now },
+        b: { id: "b", goal: "y", status: "pending", attempts: 0, deps: ["a"], createdAt: now, updatedAt: now },
+        c: { id: "c", goal: "z", status: "pending", attempts: 0, deps: ["b"], createdAt: now, updatedAt: now },
+      },
+    }).ctx;
+    const result = (await runForTest(findTool("updateTask"), { id: "a", status: "cancelled" }, ctx)) as { ok: boolean; cancelled?: string[] };
+    expect(result.ok).toBe(true);
+    expect([...(result.cancelled ?? [])].sort()).toEqual(["b", "c"]);
   });
 });
 

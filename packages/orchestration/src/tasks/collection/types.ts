@@ -29,10 +29,10 @@ export type CancelOptions = TaskTransitionOptions & {
   readonly via?: TaskCancelSource;
 };
 
-/** What a running task's worker reports (FIX-2081, `reportProgress`). */
 /** What a running task waits on (`Task.waitingOn`, FIX-2077). */
 export type TaskWaitingOn = NonNullable<Task["waitingOn"]>;
 
+/** What a running task's worker reports (FIX-2081, `reportProgress`). */
 export interface TaskProgress {
   /** A one-line note for task views. Never the task's status. */
   readonly statusNote?: string;
@@ -404,10 +404,12 @@ export interface TaskTransitionOptions {
    */
   write?: TaskWriteToken;
   /**
-   * A cancel made through a model's task tool, inside its own turn
-   * (FIX-2078 D2). Set by the task tools only, never from input. When the
-   * running session is the row's filer, the call's result is how it hears the
-   * cancel, so the cancel owes it no notice.
+   * A cancel made through a model's `updateTask` tool (FIX-2078 D2). Set by
+   * the task tools only, from how the block was built, never from input: the
+   * tools are blocks for a model's turn, and an app's or a person's cancel goes
+   * through `taskToolActions`, which never sets it. When the running
+   * session is the row's filer, the call's result is how it hears the cancel,
+   * so the cancel owes it no notice.
    */
   viaTool?: boolean;
 }

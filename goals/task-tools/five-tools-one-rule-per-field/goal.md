@@ -38,3 +38,4 @@ On `fix/FIX-2080` before FIX-2081 the check fails before any leg runs: the host 
 | 2026-10-22 | `fix/FIX-2081` at the delta-review round (D3's literal checkpoint rule, the legacy-only release, `main` at b8328ccb3) | n/a | PASS | Legs a, b and c. |
 | 2026-10-22 | same, `GOAL_CONTROL=roster-reach` | n/a | FAIL (expected) | Only `c:a piece for a non-delegate is refused`. |
 | 2026-10-22 | same, `GOAL_CONTROL=edit-any-state` | n/a | FAIL (expected) | Leg b, the running, finished and pending-after-retry columns; pending and held stay green. Both controls reached their patch anchors. |
+| 2026-10-22 | `fix/FIX-2078` over `main` at 23856ed68 | n/a | PASS | Legs a, b and c. The scripted model no longer sleeps on a `[slow]` quoted in a notice of an ending: since FIX-2078 the coordinator hears the cancel of `#b-running#` as a notice turn, which slept 45 s on the quoted goal and held the session past leg c's idle wait (`c:threw — a request never finished`). |

@@ -901,6 +901,7 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         await owePass(ctx);
         if (self !== undefined && patch.assignee === self) throw filedApart(id);
         const metadata = patch.metadata === undefined ? undefined : (callerMetadata(patch.metadata) ?? {});
+        await owePass(ctx);
         const outcome = await ref.patchSettings(id, metadata === undefined ? patch : { ...patch, metadata });
         if (outcome.outcome !== "declined" && hasStartable(ref, id)) await triggerPass(ctx);
         return outcome;

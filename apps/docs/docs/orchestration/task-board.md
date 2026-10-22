@@ -768,7 +768,7 @@ When a task the board handed out ends, the session that filed it is told, once. 
 A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
 
 - A task the filer [waited on](#giving-another-worker-work) with `dispatchTask({ wait: true })`. The waiting call gets the result instead.
-- A cancel the filer's own model made with its `cancelTask` tool, in its own turn. The tool's result already told it.
+- A cancel the filer's own model made with its `updateTask` tool (`status: "cancelled"`), in its own turn. The tool's result already told it, and names the dependents the cancel took along.
 
 A cancel from anywhere else does send one: a person, an app calling the board's actions, or a cascade from a task another session filed.
 
