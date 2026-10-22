@@ -871,7 +871,8 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * admission.
    *
    * - `waitingOn` set: the row keeps its claim and drops its lease
-   *   (`leaseUntil`), so no reclaim takes it back. `options.answer` is that
+   *   (`leaseUntil`), so no reclaim takes it back, unless `options.leaseUntil`
+   *   is given (the gate gives one for `"queued"`). `options.answer` is that
    *   request's result, kept as the output (unless this attempt reported a
    *   checkpoint, which stays the output), for the settle that follows.
    * - `null`: the field clears and the row holds a lease again, to
@@ -880,7 +881,12 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *
    * Fenced like {@link linkRun}: `options.claim` is required, the row must be
    * `in_progress`, and the write declines `terminal`, `not-my-task` or
-   * `lost-claim` otherwise. Publishes no `task-change`, as a renewal doesn't.
+   * `lost-claim` otherwise. A clear does not require the row to be waiting:
+   * the gate clears only a row it read as waiting, and that two requests never
+   * clear one row at once rests on the task session running its notices and
+   * messages one at a time, not on this write. Publishes no `task-change`, as
+   * a renewal doesn't, so a screen showing a running row's kept `output` reads
+   * it stale until the row's next change.
    *
    * Optional, so a ref written before it keeps compiling (BP-030); the gate
    * then keeps the lease as before.

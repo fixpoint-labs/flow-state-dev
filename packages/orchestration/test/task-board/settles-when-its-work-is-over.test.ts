@@ -34,6 +34,8 @@ import {
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { createFakeResourceCollection } from "../helpers";
+// Not exported from the engine's entry: the stop of a parked turn, as its routes run it.
+import { createParkedStopDeps, stopSuspendedRequest } from "../../../engine/src/durability/stop-suspended";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -191,8 +193,25 @@ async function harness(options: { queued?: () => boolean } = {}) {
     return finished;
   };
 
+  /** Stop the task's parked request, as the abort route or `ctx.session.stopRequest` stops it. */
+  const stop = async (requestId: string) => {
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const deps = createParkedStopDeps({
+      provider,
+      stores,
+      continueRequest: (options) => continueRequest({ ...options, stores, flowRegistry: registry, runtimeConfig } as never) as never,
+    });
+    const result = await stopSuspendedRequest(deps, (await stores.request.get(requestId))!);
+    // The stopped turn continues and ends through its own lifecycle.
+    for (let i = 0; i < 200 && (await stores.request.get(requestId))?.status === "suspended"; i += 1) await sleep(10);
+    for (let i = 0; i < 200 && (await stores.request.get(requestId))?.finalizedAtMs == null; i += 1) await sleep(10);
+    return result;
+  };
+
   return {
     log,
+    stop,
     events,
     run,
     runLater,
@@ -277,6 +296,20 @@ describe("the claim gate settles a task when its work is over", () => {
     expect(await h.row()).toMatchObject({ status: "completed", output: "the answer" });
   });
 
+  it("a task held by a queued message keeps its claim's lease, and its run link says when the attempt started", async () => {
+    const h = await harness({ queued: () => true });
+
+    await h.run();
+
+    const row = (await h.row())!;
+    expect(row).toMatchObject({ status: "in_progress", waitingOn: "queued" });
+    // What the message rule counts from: messages from before this attempt hold nothing.
+    expect(row.run?.startedAt).toEqual(expect.any(Number));
+    // A message that never runs must not hold the task forever: a span from
+    // the check, the lease lapses and the reclaim takes the task back.
+    expect(row.leaseUntil).toBeGreaterThanOrEqual(row.run!.startedAt! + row.leaseDurationMs!);
+  });
+
   it("a checkpoint the message's request reports is the output", async () => {
     let queued = true;
     const h = await harness({ queued: () => queued });
@@ -290,6 +323,44 @@ describe("the claim gate settles a task when its work is over", () => {
     await h.runLater("message");
 
     expect(await h.row()).toMatchObject({ status: "completed", output: "checkpointed" });
+  });
+
+  it.each(["notice", "message"] as const)(
+    "a %s request while the task's own request is stopped settles nothing: the task waits on that stop, and the resume settles it",
+    async (later) => {
+      const h = await harness();
+      h.setBehaviour(async (ctx) => {
+        const resolution = await ctx.suspend!({ reason: "human_input", message: "which one?" });
+        return { resumedWith: resolution };
+      });
+      const first = await h.run();
+      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person" });
+
+      // A piece of the task ends (or a message arrives) while its own turn waits on the person.
+      h.setLaterTurn(async () => "an answer while it waits");
+      await h.runLater(later);
+
+      expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person", attempts: 1 });
+      expect((await h.row())?.leaseUntil).toBeUndefined();
+
+      const resumed = await h.resume(first.requestId!, { ok: true });
+      expect(resumed.error).toBeUndefined();
+      expect(await h.row()).toMatchObject({ status: "completed", attempts: 1, output: { resumedWith: { ok: true } } });
+    }
+  );
+
+  it("a parked request that is stopped fails its attempt: the task never sits waiting with no lease and no payer", async () => {
+    const h = await harness();
+    h.setBehaviour(async (ctx) => ctx.suspend!({ reason: "human_input", message: "which one?" }));
+    const first = await h.run();
+    expect(await h.row()).toMatchObject({ status: "in_progress", waitingOn: "person" });
+
+    expect(await h.stop(first.requestId!)).toBe("stopped");
+
+    const row = await h.row();
+    // Two attempts: the stopped one fails and the task goes back for its retry.
+    expect(row?.status === "pending" || row?.status === "errored").toBe(true);
+    expect(row?.waitingOn).toBeUndefined();
   });
 
   it.each([

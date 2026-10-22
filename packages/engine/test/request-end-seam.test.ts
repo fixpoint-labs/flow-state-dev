@@ -162,6 +162,100 @@ describe("request-end seam", () => {
     expect(endings).toEqual([{ status: "suspended", suspension: { reason: "human_input" } }]);
   });
 
+  it("runs on a suspended request before the request can be resumed", async () => {
+    // A resume admitted while the suspended run's hook still runs would have
+    // that hook write over it ("waiting on a person") as the resume works.
+    const statusAtHook: Array<string | undefined> = [];
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "request-end-before-resumable",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          durable: true,
+          block: sequencer({ name: "run", durable: true })
+            .tap(
+              handler({
+                name: "register",
+                inputSchema: z.any(),
+                execute: (_input, ctx) => {
+                  onRequestEnded(ctx, async () => {
+                    statusAtHook.push((await stores.request.get(ctx.request.identity.id))?.status);
+                  });
+                }
+              })
+            )
+            .step(
+              handler({
+                name: "ask",
+                inputSchema: z.any(),
+                outputSchema: z.unknown(),
+                execute: (_input, ctx) => ctx.suspend!({ reason: "human_input", message: "Which one?" })
+              })
+            )
+        }
+      }
+    })();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+
+    expect(statusAtHook).toHaveLength(1);
+    expect(statusAtHook[0]).not.toBe("suspended");
+    expect((await stores.request.get(result.requestId!))?.status).toBe("suspended");
+  });
+
+  it("a hook that hands back a failure fails a completed request, on its record and its result", async () => {
+    const flow = defineFlow({
+      kind: "request-end-verdict",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(
+              handler({
+                name: "register",
+                inputSchema: z.any(),
+                execute: (_input, ctx) => {
+                  onRequestEnded(ctx, () => ({ fail: new Error("the result could not be recorded") }));
+                }
+              })
+            )
+            .step(handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }))
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(result.error?.message).toContain("the result could not be recorded");
+    const record = await stores.request.get(result.requestId!);
+    expect(record?.status).toBe("failed");
+  });
+
   it("a hook that throws leaves the request's outcome as it was", async () => {
     const flow = defineFlow({
       kind: "request-end-throws",

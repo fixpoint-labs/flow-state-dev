@@ -1199,9 +1199,10 @@ export function requireClaimTicket(
 }
 
 /**
- * The patch `setWaitingOn` writes (FIX-2077): set, with no lease and the
- * request's answer kept by {@link completionPatch}'s output rule; or cleared,
- * with the lease the admission starts.
+ * The patch `setWaitingOn` writes (FIX-2077): set, with the request's answer
+ * kept by {@link completionPatch}'s output rule and no lease unless one is
+ * given (the gate gives one for `"queued"`); or cleared, with the lease the
+ * admission starts.
  *
  * @throws when clearing without a finite `leaseUntil`: a programming error.
  */
@@ -1224,7 +1225,7 @@ export function waitingOnPatch(
       if (key in done) (kept as Record<string, unknown>)[key] = done[key];
     }
   }
-  return { waitingOn, leaseUntil: undefined, ...kept };
+  return { waitingOn, leaseUntil: options.leaseUntil, ...kept };
 }
 
 /** Whether a progress report names anything to write. */
@@ -1275,7 +1276,14 @@ export function cancelPatch(
 
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */
 export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
-  return { run: { sessionId: run.sessionId, requestId: run.requestId, attempt: run.attempt } };
+  return {
+    run: {
+      sessionId: run.sessionId,
+      requestId: run.requestId,
+      attempt: run.attempt,
+      ...(run.startedAt !== undefined ? { startedAt: run.startedAt } : {}),
+    },
+  };
 }
 
 /**
@@ -1346,6 +1354,10 @@ export function applyClaimToTask<TInput, TOutput>(
     // `claimedBy` is: a spread that added nothing would carry the previous
     // attempt's run onto this one.
     run: undefined,
+    // A claim starts an attempt that waits on nothing yet (FIX-2077): a row
+    // taken back from a lapsed wait (`"queued"`, the one that keeps a lease)
+    // must not carry it onto the new attempt.
+    waitingOn: undefined,
     updatedAt: now,
   };
 }

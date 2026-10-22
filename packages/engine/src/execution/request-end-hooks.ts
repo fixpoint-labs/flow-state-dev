@@ -6,7 +6,9 @@
  * every scope's context under `REQUEST_END_SEAM`, so a hook registered from any
  * block reaches the same list. `runActionInternal` runs the list once, after
  * the drain of what `onFinished` and `onErrored` started, on each terminal
- * path, and at the end of the suspension path.
+ * path, and on the suspension path before the request is recorded suspended.
+ * A request with a hook still to run is one a host's shutdown waits for
+ * ({@link drainRequestEnds}).
  */
 import { REQUEST_END_SEAM, type RequestEndHook, type RequestEndSeam, type RequestEnding } from "@flow-state-dev/core/types";
 import type { RuntimeLogger } from "./logging";
@@ -21,30 +23,81 @@ export interface RequestEndRegistry {
   /**
    * Run every hook added so far, in order, then forget them. A hook added while
    * the list runs runs too. A rejection is logged and the next hook still runs.
+   *
+   * @returns the first failure a hook handed back, for the caller to record as the request's own.
    */
-  run(ending: RequestEnding, context: { requestId: string; logger?: RuntimeLogger }): Promise<void>;
+  run(ending: RequestEnding, context: { requestId: string; logger?: RuntimeLogger }): Promise<Error | undefined>;
+}
+
+/**
+ * The requests in this process that owe a hook run: added at a request's first
+ * hook, removed once its run ends. What a host's shutdown waits on
+ * ({@link drainRequestEnds}), so a hook's writes never meet a closed store.
+ */
+const owed = new Map<RequestEndRegistry, Promise<void>>();
+
+/**
+ * Wait for every request in this process that owes a hook run, for at most
+ * `budgetMs`. A host calls it at shutdown, before it closes its stores.
+ *
+ * @returns how many still owed one when the budget ran out.
+ */
+export async function drainRequestEnds(budgetMs: number): Promise<number> {
+  if (owed.size === 0) return 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const outOfTime = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, Math.max(0, budgetMs));
+  });
+  await Promise.race([Promise.all([...owed.values()]), outOfTime]);
+  clearTimeout(timer);
+  return owed.size;
 }
 
 /** Build one request's registry. */
 export function createRequestEndRegistry(): RequestEndRegistry {
   const hooks: RequestEndHook[] = [];
-  return {
-    seam: { add: (hook) => void hooks.push(hook) },
-    async run(ending, { requestId, logger }) {
-      while (hooks.length > 0) {
-        const hook = hooks.shift()!;
-        try {
-          await hook(ending);
-        } catch (err) {
-          logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
-            requestId,
-            status: ending.status,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
+  let release: (() => void) | undefined;
+  const registry: RequestEndRegistry = {
+    seam: {
+      add: (hook) => {
+        hooks.push(hook);
+        if (release === undefined) owed.set(registry, new Promise<void>((resolve) => (release = resolve)));
+      }
+    },
+    async run(ending, context) {
+      try {
+        return await runHooks(hooks, ending, context);
+      } finally {
+        owed.delete(registry);
+        release?.();
+        release = undefined;
       }
     }
   };
+  return registry;
+}
+
+/** Run `hooks` in order until none is left, as {@link RequestEndRegistry.run} says. */
+async function runHooks(
+  hooks: RequestEndHook[],
+  ending: RequestEnding,
+  { requestId, logger }: { requestId: string; logger?: RuntimeLogger }
+): Promise<Error | undefined> {
+  let failure: Error | undefined;
+  while (hooks.length > 0) {
+    const hook = hooks.shift()!;
+    try {
+      const verdict = await hook(ending);
+      if (verdict != null && failure === undefined) failure = verdict.fail;
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] a request-end hook failed", {
+        requestId,
+        status: ending.status,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+  return failure;
 }
 
 /** The registry attached to `ctx`, when the context carries one. */

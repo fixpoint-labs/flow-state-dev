@@ -753,7 +753,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "the task first starts; after that only a cancel. The board may bound how many tasks wait " +
     "at once and how many it may hold in total: enqueued_task_cap_exceeded means too many tasks " +
     "are already waiting to run, and total_task_cap_exceeded is the lifetime ceiling, which " +
-    "draining does not reset.";
+    "draining does not reset. Working a task yourself, end your turn once you have filed its " +
+    "pieces: each piece's ending wakes you with its result.";
   const createTaskFields = {
     goal: z.string(),
     title: z
@@ -1443,7 +1444,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     description:
       "List tasks on your delegation board, optionally filtered by status, assignee, or the task " +
       "whose request filed them (filedByTask). Rows carry each task's status note, never its output: " +
-      "read one task's output with getTask.",
+      "read one task's output with getTask. Don't list to wait for a task you filed to end: end " +
+      "your turn, and its ending wakes you.",
     inputSchema: z.object({
       status: z
         .enum(["pending", "in_progress", "held", "parked", "completed", "errored", "cancelled"])
@@ -1512,7 +1514,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "worker's latest status note, and its output: the result so far while it runs, or its " +
       "result once it completed. checkpoint: true means the output came from a reported " +
       "checkpoint. Its error when it failed, the question it waits on when it is " +
-      "parked. Use it to answer from what a task found, rather than from a line about it.",
+      "parked. Use it to answer from what a task found, rather than from a line about it. " +
+      "Don't poll a task you filed to see it end: end your turn, and its ending wakes you.",
     inputSchema: z.object({ id: z.string() }),
     outputSchema: z.union([
       z.object({

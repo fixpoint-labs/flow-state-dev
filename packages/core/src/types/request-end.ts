@@ -29,11 +29,21 @@ export interface RequestEnding {
 }
 
 /**
+ * What a request-end hook may hand back: a failure that is the request's own.
+ * On a request that completed, the runtime then records the request as failed
+ * with this error (the record it already wrote is patched), so its status
+ * never reads as success for work a framework package could not record.
+ */
+export interface RequestEndVerdict {
+  readonly fail: Error;
+}
+
+/**
  * A request-end hook. Runs once per request end, after the last drain. A
  * rejection is logged by the runtime and does not change how the request
- * ended: by the time it runs, the request's record is already written.
+ * ended; a hook that must fail the request returns a {@link RequestEndVerdict}.
  */
-export type RequestEndHook = (ending: RequestEnding) => void | Promise<void>;
+export type RequestEndHook = (ending: RequestEnding) => void | RequestEndVerdict | Promise<void | RequestEndVerdict>;
 
 /** The per-request registry the runtime attaches under {@link REQUEST_END_SEAM}. */
 export interface RequestEndSeam {

@@ -33,7 +33,7 @@
  * nothing outside the gate, and the gate checks at its entry's last step.
  */
 import { handler } from "@flow-state-dev/core";
-import { onRequestEnded, type RequestEnding } from "@flow-state-dev/core/types";
+import { onRequestEnded, type RequestEndVerdict, type RequestEnding } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
@@ -47,6 +47,7 @@ import {
 } from "../tasks";
 import { ticketNamesTask } from "../tasks/claim-ticket";
 import { advisoryComplete, advisoryFail } from "../tasks/collection/advisory-write-back";
+import { settleAtRequestEnd } from "./blocks/record-result";
 import { startLeaseRenewal, type LeaseRenewalDriver } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
 import { openWorkerClaimScope, stampCurrentClaim } from "./flow-policy-wiring";
@@ -81,6 +82,11 @@ interface Admitted {
   answer?: { output: unknown };
   /** No request-end seam: the check runs where the answer is noted. */
   readonly inline: boolean;
+  /**
+   * The task's own request (its entry, or that entry's resume), rather than a
+   * later one admitted for it while it waits (a notice, a message).
+   */
+  readonly own: boolean;
 }
 
 /** The requests admitted in this process, by request id. Each leaves at its request's end. */
@@ -120,6 +126,8 @@ export async function admitClaimedTask(
     row: Task;
     ticket: TaskClaimTicket;
     answerCounts: boolean;
+    /** Whether this is the task's own request: its entry or that entry's resume. */
+    own: boolean;
     rules?: TaskEndRules;
     /** Called when the row's lease could not be restored, with the decline reason. */
     onStale?: (reason: string) => Error;
@@ -160,8 +168,11 @@ export async function admitClaimedTask(
     prior,
     rules: options.rules ?? {},
     inline: false,
+    own: options.own,
   };
-  const registered = onRequestEnded(ctx, (ending) => endRequest(key, ending));
+  // The hook closes over its own record: a resume reuses the request id, so a
+  // hook from the run before it must never check (or drop) the resume's record.
+  const registered = onRequestEnded(ctx, (ending) => endRequest(key, record, ending));
   admitted.set(key, registered ? record : { ...record, inline: true });
   return renewal;
 }
@@ -176,64 +187,129 @@ async function noteAnswer(ctx: BlockContext, output: unknown): Promise<void> {
   const record = admitted.get(key);
   if (record === undefined) return;
   if (record.answerCounts) record.answer = { output };
-  if (record.inline) await endRequest(key, { status: "completed" });
+  if (record.inline) {
+    const failure = await endRequest(key, record, { status: "completed" });
+    if (failure !== undefined) throw failure.fail;
+  }
 }
 
-/** The request admitted for a task ended: check the task, then stop renewing its lease. */
-async function endRequest(key: string, ending: RequestEnding): Promise<void> {
-  const record = admitted.get(key);
-  if (record === undefined) return;
-  admitted.delete(key);
+/**
+ * The request admitted for a task ended: check the task, then stop renewing
+ * its lease. A failure to record the result is handed back as the request's
+ * own (FIX-963), so the run's status never reads as success.
+ */
+async function endRequest(key: string, record: Admitted, ending: RequestEnding): Promise<RequestEndVerdict | undefined> {
+  // Only this record's own entry leaves the map: a resume's is another record.
+  if (admitted.get(key) === record) admitted.delete(key);
   try {
-    await checkTask(record, ending);
+    const failure = await checkTask(record, ending);
+    return failure === undefined ? undefined : { fail: failure };
   } finally {
     // After the write, never before: the write is fenced on the lease.
     record.renewal?.stop();
   }
 }
 
-/** The one check (rule 6), at the end of a request admitted for the task. */
-async function checkTask(record: Admitted, ending: RequestEnding): Promise<void> {
-  const { ref, ticket, ctx } = record;
+/** The guards every write of the check presents: advisory, fenced on the claim, a review park left alone. */
+const guardsOf = (ticket: TaskClaimTicket) => ({ ifAllowed: true, claim: ticket, refuseWhenParked: true }) as const;
+
+/** Whether a request ending is one that fails the attempt. */
+const failsTheAttempt = (status: RequestEnding["status"]) =>
+  status === "failed" || status === "aborted" || status === "interrupted";
+
+/** The one check (rule 6), at the end of a request admitted for the task. A failure to record comes back. */
+async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error | undefined> {
+  const { ref, ticket } = record;
   const row = ref.get(ticket.taskId);
   // Settled, retried, parked for review or taken back meanwhile: not this request's to write.
-  if (!holds(ref, ticket, row)) return;
-  const guards = { ifAllowed: true, claim: ticket, refuseWhenParked: true } as const;
+  if (!holds(ref, ticket, row)) return undefined;
+  // A later request (a notice, a message) while the task's own request is
+  // suspended settles nothing and fails nothing: the task still waits on that
+  // request, and keeps an answer this one gave that counts.
+  if (!record.own && waitsOnItsOwnRequest(record.prior)) return waitOn(record, row, record.prior!, record.answer);
+  if (ending.status === "suspended") return waitOn(record, row, stopOf(record, ending), undefined);
+  if (failsTheAttempt(ending.status)) {
+    const message = ending.error?.message ?? `The request working the task was ${ending.status}.`;
+    return settleAtRequestEnd({
+      ctx: record.ctx,
+      collection: ref,
+      claim: ticket,
+      recorder: "fail",
+      settle: (write) => advisoryFail(ref, row.id, message, { ...guardsOf(ticket), write }),
+    });
+  }
+  return checkAnswered(record, row);
+}
 
-  if (ending.status === "suspended") {
-    const reason = ending.suspension?.reason;
-    const stop: TaskWaitingOn = reason === "human_approval" || reason === "human_input" ? "person" : "wait";
-    // A request other than the task's own that stops after the task answered
-    // leaves the task waiting on what it waited on.
-    await waitOn(record, row, !record.answerCounts && answeredBefore(record.prior) ? record.prior! : stop, undefined);
-    return;
-  }
-  if (ending.status === "failed" || ending.status === "aborted" || ending.status === "interrupted") {
-    await advisoryFail(ref, row.id, ending.error?.message ?? `The request working the task was ${ending.status}.`, guards);
-    return;
-  }
+/** A task whose own request stopped (a person, a wait) and has not ended. */
+function waitsOnItsOwnRequest(prior: TaskWaitingOn | undefined): boolean {
+  return prior === "person" || prior === "wait";
+}
 
-  const answered = record.answer !== undefined || answeredBefore(record.prior);
-  if (!answered) {
-    // The task's own request hasn't answered yet (it is suspended): it still waits on that.
-    if (record.prior !== undefined) await waitOn(record, row, record.prior, undefined);
-    return;
+/**
+ * What a suspended request leaves the task waiting on: a person, for a stop
+ * that asks one, or another wait. A request other than the task's own that
+ * stops after the task answered leaves it waiting on what it waited on.
+ */
+function stopOf(record: Admitted, ending: RequestEnding): TaskWaitingOn {
+  if (!record.own && answeredBefore(record.prior)) return record.prior!;
+  const reason = ending.suspension?.reason;
+  return reason === "human_approval" || reason === "human_input" ? "person" : "wait";
+}
+
+/** A request that ended with a result: done, or what still holds the task. */
+async function checkAnswered(record: Admitted, row: Task): Promise<Error | undefined> {
+  const { ref, ticket } = record;
+  if (record.answer === undefined && !answeredBefore(record.prior)) {
+    // The task's own request hasn't answered yet: it still waits on that.
+    if (record.prior !== undefined) return waitOn(record, row, record.prior, undefined);
+    return undefined;
   }
-  const filed = await (record.rules.filedWorkHolds ?? defaultFiledWorkHolds)(ctx, row, ref);
-  const queued = filed ? false : await (record.rules.workQueued ?? noWorkQueued)(ctx, row);
-  if ((filed || queued) && ref.setWaitingOn !== undefined) {
-    await waitOn(record, row, filed ? "filed" : "queued", record.answer);
-    return;
+  const holding = await holdingWork(record, row);
+  if (holding !== undefined) {
+    if (ref.setWaitingOn !== undefined) return waitOn(record, row, holding, record.answer);
+    // A ref that can't record a wait: leave the task running on its lease,
+    // which lapses with nothing renewing it, rather than settle it early.
+    console.warn(
+      `[task-board] task "${row.id}" is still held by ${holding} work, and its ledger "${ref.collectionId}" ` +
+        "has no setWaitingOn; it stays running on its lease."
+    );
+    return undefined;
   }
   // Done. The latest checkpoint stays the output (the collection's rule);
   // otherwise this request's answer, or the one the task kept while it waited.
-  await advisoryComplete(ref, row.id, record.answer !== undefined ? record.answer.output : row.output, guards);
+  const output = record.answer !== undefined ? record.answer.output : row.output;
+  return settleAtRequestEnd({
+    ctx: record.ctx,
+    collection: ref,
+    claim: ticket,
+    recorder: "complete",
+    settle: (write) => advisoryComplete(ref, row.id, output, { ...guardsOf(ticket), write }),
+  });
 }
 
-/** Record what the task waits on, and keep `answer` as its output while it waits. */
-async function waitOn(record: Admitted, row: Task, on: TaskWaitingOn, answer: { output: unknown } | undefined): Promise<void> {
-  if (record.ref.setWaitingOn === undefined) return;
-  await record.ref.setWaitingOn(row.id, on, { claim: record.ticket, ...(answer !== undefined ? { answer } : {}) });
+/** What else holds the task open: work it filed, then work queued for it, or nothing. */
+async function holdingWork(record: Admitted, row: Task): Promise<"filed" | "queued" | undefined> {
+  const { ref, ctx, rules } = record;
+  if (await (rules.filedWorkHolds ?? defaultFiledWorkHolds)(ctx, row, ref)) return "filed";
+  if (await (rules.workQueued ?? noWorkQueued)(ctx, row)) return "queued";
+  return undefined;
+}
+
+/**
+ * Record what the task waits on, and keep `answer` as its output while it
+ * waits. A ref without `setWaitingOn` keeps its lease instead.
+ *
+ * Work queued for the task keeps the claim's lease, one span from now: it is
+ * about to run, and its request renews the lease once admitted. If it never
+ * runs (its dispatch lost to a restart), the lapse takes the task back, as for
+ * a worker that died, rather than leave it waiting with nothing to wake it.
+ */
+async function waitOn(record: Admitted, row: Task, on: TaskWaitingOn, answer: { output: unknown } | undefined): Promise<undefined> {
+  if (record.ref.setWaitingOn === undefined) return undefined;
+  const lease = on === "queued" ? { leaseUntil: record.ref.now() + (row.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS) } : {};
+  await record.ref.setWaitingOn(row.id, on, { claim: record.ticket, ...lease, ...(answer !== undefined ? { answer } : {}) });
+  return undefined;
 }
 
 const defaultFiledWorkHolds: NonNullable<TaskEndRules["filedWorkHolds"]> = async (_ctx, task, ledger) =>
@@ -292,6 +368,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
           row,
           ticket,
           answerCounts: options.answerCounts,
+          own: false,
           ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
         });
         stampCurrentClaim(ticket, ctx as never, { taskTurn: options.taskTurn !== false });

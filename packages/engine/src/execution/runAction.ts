@@ -2206,6 +2206,8 @@ async function runActionAttempt<
   // `recorded` is the record's snapshot, taken then too, so a hook that
   // mutates the returned object cannot change the recorded answer.
   let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
+  // A failure a request-end hook handed back, once the record was patched to it (FIX-2077).
+  let endError: ReturnType<typeof applyNormalizedErrorSeam> | undefined;
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -2318,6 +2320,15 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        // A suspended request's work is over for now; the hooks registered
+        // for its end are told why it stopped (FIX-2077). Before the record
+        // says `suspended`: until then no resume can start, so a hook's write
+        // (what the task waits on) never lands on a resume already running.
+        await requestEndRegistryOf(ctx)?.run(
+          { status: "suspended", suspension: { reason: String(suspendError.reason) } },
+          { requestId, logger }
+        );
+
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
@@ -2380,13 +2391,6 @@ async function runActionAttempt<
             });
           }
         }
-
-        // A suspended request's work is over for now; the hooks registered
-        // for its end are told why it stopped (FIX-2077).
-        await requestEndRegistryOf(ctx)?.run(
-          { status: "suspended", suspension: { reason: String(suspendError.reason) } },
-          { requestId, logger }
-        );
 
         return {
           output: undefined,
@@ -2649,8 +2653,27 @@ async function runActionAttempt<
     await drainRequestSideChainPool(ctx);
     // The request's work is over: the hooks framework packages registered for
     // its end run now, before the pending writes settle, so what they write
-    // is flushed with the rest (FIX-2077).
-    await requestEndRegistryOf(ctx)?.run({ status: terminalStatus }, { requestId, logger });
+    // is flushed with the rest (FIX-2077). A failure a hook hands back is the
+    // request's own: the record already reads `completed`, so it is patched to
+    // `failed` with that error, and the run returns it (FIX-963's guarantee
+    // that a run whose result the board could not record never reads as
+    // success).
+    const endFailure = await requestEndRegistryOf(ctx)?.run({ status: terminalStatus }, { requestId, logger });
+    if (endFailure !== undefined) {
+      const normalized = applyNormalizedErrorSeam(
+        internalSeams,
+        normalizeError(endFailure, { scope: "request", blockName: action.block.name }),
+        metadata
+      );
+      terminalRecordIncarnation = await settleRequestRecord(
+        options.stores,
+        requestId,
+        { status: "failed", error: normalized, answered: actionAnswer.recorded },
+        { failedAtMs: Date.now(), items: itemsToPersist(), heartbeatsUntilFinalized: heartbeatIntervalMs > 0 }
+      );
+      ctx.requestRuntime.status = "failed";
+      endError = normalized;
+    }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // The run has nothing left to write under this id.
@@ -2683,7 +2706,8 @@ async function runActionAttempt<
       // `response.getItems()` on a normal run.
       items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
-      requestId
+      requestId,
+      ...(endError !== undefined ? { error: endError } : {})
     };
   } catch (error) {
     // The heartbeat is deliberately NOT cleared here. It has to outlive the

@@ -702,7 +702,8 @@ for it. Until then the row stays `in_progress`; a request that ends with filed o
 queued work open records it in `waitingOn` (`"filed"`, `"queued"`) and drops the
 lease, and a request that suspends records `"person"` (`human_approval`,
 `human_input`) or `"wait"` (any other reason) and drops it too, so a waiting task is
-never reclaimed and run twice. The next request for the task in that session (its
+never reclaimed and run twice. `"queued"` alone keeps the claim's lease: that work is
+about to run, and if it never does, the lapse takes the task back. The next request for the task in that session (its
 resume, or one a package admits with `taskRequestAdmission`, noting the answer that
 counts with `noteTaskAnswer`) checks it again; `afterTaskCheck` runs a step after that
 check, such as sending the notice the ending owes. The output is the latest

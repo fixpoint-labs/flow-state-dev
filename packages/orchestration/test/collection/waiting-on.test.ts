@@ -103,6 +103,16 @@ describe.each([
     expect(other.collection.get("t")).toMatchObject({ output: "checkpoint", checkpointed: true });
   });
 
+  it("work queued for it keeps a lease: if that work never runs, the lapse takes the task back and the next attempt waits on nothing", async () => {
+    const { collection, claim, setNow } = await claimed();
+    await collection.setWaitingOn!("t", "queued", { claim, leaseUntil: 11_000 });
+    expect(collection.get("t")).toMatchObject({ status: "in_progress", waitingOn: "queued", leaseUntil: 11_000 });
+
+    setNow(20_000);
+    expect(await collection.claim("w2", { leaseDurationMs: 10_000 })).toMatchObject({ id: "t", attempts: 2 });
+    expect(collection.get("t")?.waitingOn).toBeUndefined();
+  });
+
   it("refuses a request that does not hold the claim", async () => {
     const { collection, claim } = await claimed();
     const stale = { ...claim, attempt: claim.attempt + 1 };

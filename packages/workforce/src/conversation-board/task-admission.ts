@@ -12,16 +12,20 @@
  *   session: server-set state only.
  * - **What else holds it** ({@link conversationEndRules}). Its pieces, on the
  *   session's own board: one that is open, or whose ending this session hasn't
- *   acted on yet. And a message for this session that the session hasn't
- *   acted on: a delivered row in the user's message log, not the process's
- *   admission line, so a restart doesn't lose it.
+ *   acted on yet. And a message for this session, sent during the task's
+ *   current attempt, that the session hasn't acted on: a delivered row in the
+ *   user's message log, not the process's admission line, so a restart
+ *   doesn't lose it. A message that never runs doesn't hold the task forever:
+ *   a task waiting on one keeps its lease (orchestration's rule), so the lapse
+ *   takes it back.
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { taskRequestAdmission, type TaskEndRules } from "@flow-state-dev/orchestration/task-board";
-import { filedWorkHolds, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { messageLogOf } from "../messages/message-log";
-import { WORKER_MESSAGES_SEEN_STATE } from "../messages/worker-message-entry";
+import { WORKER_MESSAGES_SEEN_STATE } from "../messages/keys";
 import { FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { PIECE_OF } from "./board-entries";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
 
 /** The running row this session works, on the ledger of the conversation it was opened for, or none. */
@@ -34,8 +38,16 @@ async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; 
   return ref === undefined || row === undefined ? undefined : { ref, row };
 }
 
-/** Whether a message for this session is delivered and not yet acted on here. */
-async function messageQueued(ctx: BlockContext): Promise<boolean> {
+/**
+ * Whether a message for this session, sent during `task`'s current attempt, is
+ * delivered and not yet acted on here. One sent before the attempt started
+ * belongs to an attempt that is over. A run link with no start time (written
+ * before it carried one) counts them all.
+ *
+ * The log is listed whole: it is keyed by message id, with no index by the
+ * session a message is for to filter on (BP-033's gap here).
+ */
+async function messageQueued(ctx: BlockContext, task: Task): Promise<boolean> {
   let log;
   try {
     log = messageLogOf(ctx);
@@ -45,20 +57,32 @@ async function messageQueued(ctx: BlockContext): Promise<boolean> {
   }
   const seen = new Set(((ctx.session.state ?? {}) as Record<string, unknown>)[WORKER_MESSAGES_SEEN_STATE] as string[] | undefined);
   const sessionId = ctx.session.identity.id;
+  const since = task.run?.startedAt ?? Number.NEGATIVE_INFINITY;
   for (const ref of await log.list()) {
     const row = ref.state;
-    if (row?.toSession === sessionId && row.status === "delivered" && !seen.has(row.id)) return true;
+    if (row?.toSession === sessionId && row.status === "delivered" && row.at >= since && !seen.has(row.id)) return true;
   }
   return false;
+}
+
+/**
+ * Whether a piece of `taskId` on `board` still holds it: one it filed
+ * (`filedByTask`), or a row the board stamped as its piece (`PIECE_OF`) with
+ * no `filedByTask`, as rows stored before it carried one are.
+ */
+export function piecesHold(board: TaskCollectionRef, taskId: string): boolean {
+  if (filedWorkHolds(board, taskId)) return true;
+  // No filter on metadata: the legacy rows are found by listing the board.
+  return board.list().some((row) => row.filedByTask == null && row.metadata?.[PIECE_OF] === taskId && holdsItsFiler(row));
 }
 
 /** What else holds a task session's task open, beside its own request (rule 6). */
 export const conversationEndRules: TaskEndRules = {
   filedWorkHolds: async (ctx, task) => {
     const own = await ownConversationLedger(ctx);
-    return own !== undefined && filedWorkHolds(own, task.id);
+    return own !== undefined && piecesHold(own, task.id);
   },
-  workQueued: (ctx) => messageQueued(ctx)
+  workQueued: messageQueued
 };
 
 /**

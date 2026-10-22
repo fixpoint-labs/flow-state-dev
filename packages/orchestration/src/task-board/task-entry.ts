@@ -510,6 +510,7 @@ function buildTaskGate(options: {
             row: held,
             ticket,
             answerCounts: true,
+            own: true,
             ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
             onStale: (reason) =>
               new StaleTaskClaimError(held.id, `it was waiting, and its lease could not be restored (${reason})`),
@@ -693,6 +694,7 @@ async function writeRunLink(
       sessionId: ctx.session.identity.id,
       requestId: ctx.request.identity.id,
       attempt: held.attempts,
+      startedAt: board.now(),
     },
     { claim: ticket }
   );

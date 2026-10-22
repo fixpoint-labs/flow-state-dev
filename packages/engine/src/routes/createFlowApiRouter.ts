@@ -32,6 +32,7 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import { drainRequestEnds } from "../execution/request-end-hooks";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
 import { fireWakeThrough } from "../durability/request-wakes";
@@ -116,7 +117,9 @@ export type CreateFlowApiRouterOptions = {
   onBackgroundWork?: (promise: Promise<unknown>) => void;
   /**
    * How long disposing the router waits for the requests its due wakes
-   * started (FIX-2078) before it aborts them and goes on. Default 10 s. An
+   * started (FIX-2078), and for any request in the process that still owes
+   * its request-end hooks (FIX-2077), before it goes on (aborting the wakes'
+   * requests). One budget for both. Default 10 s. An
    * aborted pass leaves its wake, which the sweeper had already moved on, so
    * the next host fires it again. `disposeFlowApiRouter(router, { drainMs })`
    * overrides it per call, for a host whose shutdown grace is partly spent.
@@ -700,7 +703,18 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     const staleSweepSettled = sweeper.dispose();
     durabilitySweeper.dispose();
     await staleSweepSettled;
-    await drainFiredWakes(disposeOptions?.drainMs ?? options.shutdownDrainMs ?? DEFAULT_SHUTDOWN_DRAIN_MS);
+    const drainMs = disposeOptions?.drainMs ?? options.shutdownDrainMs ?? DEFAULT_SHUTDOWN_DRAIN_MS;
+    const drainEnds = Date.now() + drainMs;
+    await drainFiredWakes(drainMs);
+    // In the same budget: a request that still owes its request-end hooks
+    // (FIX-2077), whose writes (a task's settle) need the stores open.
+    const stillOwed = await drainRequestEnds(drainEnds - Date.now());
+    if (stillOwed > 0) {
+      runtimeConfig.logger?.warn?.(
+        `[flow-state] shutdown went on with ${stillOwed} request(s) whose request-end hooks had not run`,
+        { owed: stillOwed, drainMs }
+      );
+    }
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

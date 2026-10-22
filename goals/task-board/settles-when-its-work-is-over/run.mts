@@ -85,7 +85,7 @@ const PATCHES: Record<string, ModulePatch[]> = {
   "settle-at-return": [
     {
       module: "packages/orchestration/src/task-board/task-request.ts",
-      from: String.raw`const registered = onRequestEnded\(ctx, \(ending\) => endRequest\(key, ending\)\);`,
+      from: String.raw`const registered = onRequestEnded\(ctx, \(ending\) => endRequest\(key, record, ending\)\);`,
       to: "const registered = false;"
     }
   ]
@@ -212,58 +212,67 @@ function buildHost(filename: string) {
   //   [message] / [message-checkpoint]  a message arrives for this session mid-task
   //   [stop:REASON]  stop and wait (ctx.suspend)
   // On a notice ("Task ...") it answers; on a message it answers, and may report a checkpoint.
+  type Base = { requestId: string; sessionId: string; taskId?: string };
+  /** Answer, and prove what this request answered. */
+  const answered = (kind: Proof["kind"], base: Base, answer: string) => {
+    prove({ kind, ...base, answer, at: Date.now() });
+    return answer;
+  };
+  /** A message's turn: a checkpoint first, when it asks for one. */
+  const onMessage = async (ctx: BlockContext, base: Base, message: string, row: Task | undefined) => {
+    if (message.includes("[checkpoint]") && row !== undefined) {
+      const above = await filingConversationBoard(ctx);
+      await above!.tasks.reportProgress!(row.id, { output: `checkpoint ${base.requestId}` }, { claim: currentWorkerClaim(ctx)! });
+    }
+    return answered("message", base, `the message's answer ${base.requestId}`);
+  };
+  /** A piece's turn, on eng.helper. */
+  const onPiece = async (base: Base, ms: number) => {
+    await sleep(ms);
+    prove({ kind: "piece", ...base, at: Date.now() });
+    return "piece done";
+  };
+  /** File the pieces a `[split:N:MS]` mark asks for. */
+  const fileSplit = async (ctx: BlockContext, row: Task | undefined, split: RegExpExecArray) => {
+    const ref = await doerBoard.board.resolver(ctx as never);
+    for (let i = 0; i < Number(split[1]); i += 1) {
+      await ref!.addTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
+    }
+  };
+  /** The task's own turn, by its marks. */
+  const onTask = async (ctx: BlockContext, base: Base, message: string, row: Task | undefined) => {
+    if (message.includes("[background]")) finishWrites.add(base.requestId);
+    const split = /\[split:(\d+):(\d+)\]/.exec(message);
+    if (split !== null) await fileSplit(ctx, row, split);
+    const after = /\[after:(\d+)\]/.exec(message);
+    if (after !== null) await sleep(Number(after[1]));
+    const stop = /\[stop:([a-z_]+)\]/.exec(message);
+    if (stop === null) return answered("turn", base, `work answer ${base.requestId}`);
+    const resolution = await ctx.suspend!({ reason: stop[1]!, message: `waiting (${stop[1]})` });
+    return answered("turn", base, `resumed ${JSON.stringify(resolution)}`);
+  };
+
+  // The doer's turn. On its task it reads marks in the task:
+  //   [background]   the request's own side chain, and its onFinished's, write after it returns
+  //   [split:N:MS]   file N pieces for eng.helper, each taking MS
+  //   [after:MS]     take MS after filing
+  //   [message] / [message-checkpoint]  a message arrives for this session mid-task
+  //   [stop:REASON]  stop and wait (ctx.suspend)
+  // On a notice ("Task ...") it answers; on a message it answers, and may report a checkpoint.
   const doerTurn = handler({
     name: "settles-doer-turn",
     inputSchema: doorInput,
     outputSchema: z.unknown(),
     execute: async (input, rawCtx) => {
       const ctx = rawCtx as unknown as BlockContext;
-      const requestId = ctx.request.identity.id;
-      const sessionId = ctx.session.identity.id;
-      const message = input.message;
       const row = await heldRow(ctx);
-      const base = { requestId, sessionId, ...(row !== undefined ? { taskId: row.id } : {}) };
-      if (message.startsWith('Task "')) {
-        const answer = `woken answer ${requestId}`;
-        prove({ kind: "woken", ...base, answer, at: Date.now() });
-        return answer;
-      }
-      if (message.startsWith("Message ")) {
-        if (message.includes("[checkpoint]") && row !== undefined) {
-          const above = await filingConversationBoard(ctx);
-          await above!.tasks.reportProgress!(row.id, { output: `checkpoint ${requestId}` }, { claim: currentWorkerClaim(ctx)! });
-        }
-        const answer = `the message's answer ${requestId}`;
-        prove({ kind: "message", ...base, answer, at: Date.now() });
-        return answer;
-      }
-      // A piece, on eng.helper.
+      const base: Base = { requestId: ctx.request.identity.id, sessionId: ctx.session.identity.id, ...(row !== undefined ? { taskId: row.id } : {}) };
+      const message = input.message;
+      if (message.startsWith('Task "')) return answered("woken", base, `woken answer ${base.requestId}`);
+      if (message.startsWith("Message ")) return onMessage(ctx, base, message, row);
       const slow = /\[slow:(\d+)\]/.exec(message);
-      if (slow !== null) {
-        await sleep(Number(slow[1]));
-        prove({ kind: "piece", ...base, at: Date.now() });
-        return "piece done";
-      }
-      if (message.includes("[background]")) finishWrites.add(requestId);
-      const split = /\[split:(\d+):(\d+)\]/.exec(message);
-      if (split !== null) {
-        const ref = await doerBoard.board.resolver(ctx as never);
-        for (let i = 0; i < Number(split[1]); i += 1) {
-          await ref!.addTask({ goal: `piece ${i} of ${row?.id} ${RUN_STAMP} [slow:${split[2]}]`, assignee: "eng.helper" });
-        }
-      }
-      const after = /\[after:(\d+)\]/.exec(message);
-      if (after !== null) await sleep(Number(after[1]));
-      const stop = /\[stop:([a-z_]+)\]/.exec(message);
-      if (stop !== null) {
-        const resolution = await ctx.suspend!({ reason: stop[1]!, message: `waiting (${stop[1]})` });
-        const answer = `resumed ${JSON.stringify(resolution)}`;
-        prove({ kind: "turn", ...base, answer, at: Date.now() });
-        return answer;
-      }
-      const answer = `work answer ${requestId}`;
-      prove({ kind: "turn", ...base, answer, at: Date.now() });
-      return answer;
+      if (slow !== null) return onPiece(base, Number(slow[1]));
+      return onTask(ctx, base, message, row);
     }
   });
 
@@ -382,187 +391,235 @@ const word = (name: string) => `${name} ${RUN_STAMP}`;
 
 // ---- the legs ----------------------------------------------------------------
 
+type Host = Awaited<ReturnType<ReturnType<typeof buildHost>["connect"]>>;
+type Row = Task & { partition: string };
+type Tell = Parameters<Parameters<typeof runGoal>[0]>[1];
+
+/** What every leg reads and writes through. */
+interface Run {
+  h: Host;
+  conversation: string;
+  failures: string[];
+  notes: string[];
+  tell: Tell;
+}
+
+const show = (value: unknown) => JSON.stringify(value);
+
+/** File `goal` for eng.doer from the desk, as the person does. Its task id. */
+async function file(run: Run, goal: string): Promise<string> {
+  const filed = await run.h.act(run.conversation, "dispatchTask_tasks", { goal, assignee: "eng.doer" });
+  if (filed?.ok !== true) throw new Error(`filing "${goal}" was refused: ${show(filed)}`);
+  return filed.taskId as string;
+}
+
+const proofsOf = (taskId: string, kind?: Proof["kind"]) =>
+  readProofs().filter((p) => p.taskId === taskId && (kind === undefined || p.kind === kind));
+
+/** The notices the desk acted on for a task. */
+async function heard(run: Run, taskId: string): Promise<string[]> {
+  const session = (await run.h.runtime.stores.session.get(run.conversation)) as { state?: { taskNotices?: string[] } } | null;
+  return (session?.state?.taskNotices ?? []).filter((key) => key.startsWith(`${taskId}:`));
+}
+
+/** The task session a row ran in. */
+const sessionOf = async (run: Run, taskId: string) => (await run.h.byId(taskId))?.run?.sessionId;
+
+/** A request in a task's session, by id. */
+async function requestIn(run: Run, taskId: string, requestId: string | undefined) {
+  return (await run.h.requests((await sessionOf(run, taskId)) ?? "")).find((r) => r.id === requestId);
+}
+
+/** Whether a row completed after every write in `writes`. */
+const completedAfter = (row: Row | undefined, writes: Proof[]) =>
+  row?.status === "completed" && row.completedAt !== undefined && writes.every((p) => p.at <= row.completedAt!);
+
+/** a. Background work: settled after both background writes, once, with the work's answer. */
+async function legA(run: Run): Promise<void> {
+  const taskId = await file(run, word("[background] write after you return"));
+  await run.h.idle();
+  const row = await run.h.byId(taskId);
+  const turn = proofsOf(taskId, "turn")[0];
+  const writes = readProofs().filter((p) => p.requestId === turn?.requestId && (p.kind === "background" || p.kind === "on-finished"));
+  run.tell.over("a · the background writes of the task's request", writes);
+  if (writes.length !== 2 || !completedAfter(row, writes)) {
+    run.failures.push(
+      `a:after-the-side-chains — wanted the task completed after the last write of its request's side chain and of the one onFinished starts; it is ${row?.status} at ${row?.completedAt}, the writes ${show(writes.map((p) => [p.kind, p.at]))}`
+    );
+  }
+  const told = await heard(run, taskId);
+  if (row?.output !== turn?.answer || told.length !== 1) {
+    run.failures.push(`a:once — wanted one ending, heard once, with the work's answer; output ${show(row?.output)}, heard ${show(told)}`);
+  }
+  run.notes.push(`a: completed ${(row?.completedAt ?? 0) - Math.max(...writes.map((p) => p.at))} ms after the last background write`);
+}
+
+/** Whether a task is running, waiting on pieces with no lease, while one of them is open. */
+async function waitsOnOpenPieces(run: Run, taskId: string): Promise<boolean> {
+  const row = await run.h.byId(taskId);
+  const open = (await run.h.rows()).filter((r) => r.filedByTask === taskId && r.status !== "completed");
+  return row?.status === "in_progress" && row.waitingOn === "filed" && row.leaseUntil === undefined && open.length > 0;
+}
+
+/** b, first half: the pieces end after the task's own request ended. */
+async function legBAfter(run: Run): Promise<number> {
+  const taskId = await file(run, word("[split:2:600] split it"));
+  if (!(await run.h.until(() => waitsOnOpenPieces(run, taskId), 10_000))) {
+    run.failures.push(`b:waiting-while-open — wanted the task running, waiting on its pieces with no lease, while one is open; read ${show(await run.h.byId(taskId))}`);
+  }
+  await run.h.idle();
+  const row = await run.h.byId(taskId);
+  const pieces = (await run.h.rows()).filter((r) => r.filedByTask === taskId);
+  const woken = run.tell.over("b · the turns the pieces' endings woke", proofsOf(taskId, "woken"));
+  const lastWoken = woken.at(-1);
+  const piecesDone = pieces.length === 2 && pieces.every((p) => p.status === "completed");
+  if (row?.status !== "completed" || !piecesDone || row.output !== lastWoken?.answer || row.attempts !== 1) {
+    run.failures.push(`b:last-turns-answer — wanted it completed once with the last woken turn's answer, both pieces completed; it is ${row?.status}, output ${show(row?.output)}, last woken ${show(lastWoken?.answer)}, pieces ${show(pieces.map((p) => p.status))}`);
+  }
+  const running = (await run.h.rows()).filter((r) => r.status === "in_progress");
+  const told = await heard(run, taskId);
+  if (told.length !== 1 || running.length !== 0) {
+    run.failures.push(`b:once — wanted one ending heard and no running row left; heard ${show(told)}, running ${show(running.map((r) => r.id))}`);
+  }
+  return woken.length;
+}
+
+/** b, variant: the last piece ends while the task's own request still runs. */
+async function legBDuring(run: Run): Promise<unknown> {
+  const taskId = await file(run, word("[split:1:50][after:1500] split it and keep working"));
+  await run.h.idle();
+  const own = proofsOf(taskId, "turn")[0];
+  const row = await run.h.byId(taskId);
+  const piece = (await run.h.rows()).find((r) => r.filedByTask === taskId);
+  const woken = proofsOf(taskId, "woken").at(-1);
+  const work = await requestIn(run, taskId, own?.requestId);
+  if (piece?.completedAt === undefined || own === undefined || piece.completedAt > own.at) {
+    run.failures.push(`b:piece-ends-during-request — wanted the piece to end while the task's own turn ran; the piece ended ${piece?.completedAt}, the turn answered ${own?.at}`);
+  }
+  const fromWoken = row?.output === woken?.answer && row?.output !== own?.answer;
+  if (row?.status !== "completed" || !fromWoken || work?.status !== "completed") {
+    run.failures.push(`b:settles-after-woken-turn — wanted the task's own check to leave it running and the woken turn's answer to be the output; it is ${row?.status}, output ${show(row?.output)}, woken ${show(woken?.answer)}, own ${show(own?.answer)}`);
+  }
+  return row?.output;
+}
+
+async function legB(run: Run): Promise<void> {
+  const woken = await legBAfter(run);
+  const variant = await legBDuring(run);
+  run.notes.push(`b: ${woken} woken turns, output from the last; variant output ${show(variant)}`);
+}
+
+/** c, one message: its request ends before the settle, and its answer is never the output. */
+async function legCOne(run: Run, mark: string, wantCheckpoint: boolean): Promise<void> {
+  const taskId = await file(run, word(`${mark} a message arrives while you work`));
+  await run.h.idle();
+  const row = await run.h.byId(taskId);
+  const own = proofsOf(taskId, "turn")[0];
+  const said = proofsOf(taskId, "message")[0];
+  const request = await requestIn(run, taskId, said?.requestId);
+  const ended = request?.updatedAt ?? request?.completedAtMs;
+  const endedFirst = request?.status === "completed" && ended !== undefined && row?.completedAt !== undefined && ended <= row.completedAt;
+  if (said === undefined || !endedFirst) {
+    run.failures.push(`c:message-ends-first — wanted the message's request (${mark}) to end before the task settled; it ${request?.status} at ${ended}, the task ${row?.status} at ${row?.completedAt}`);
+  }
+  const want = wantCheckpoint ? `checkpoint ${said?.requestId}` : own?.answer;
+  if (row?.status !== "completed" || row.output !== want || row.output === said?.answer) {
+    run.failures.push(`c:output — wanted ${mark}'s task completed with ${wantCheckpoint ? "the message's checkpoint" : "the work's answer"}, never the message's answer; it is ${row?.status}, output ${show(row?.output)}`);
+  }
+  const told = await heard(run, taskId);
+  if (told.length !== 1) run.failures.push(`c:once — ${mark}'s task heard ${show(told)}`);
+}
+
+async function legC(run: Run): Promise<void> {
+  await legCOne(run, "[message]", false);
+  await legCOne(run, "[message-checkpoint]", true);
+  run.notes.push(`c: both settled after their messages' requests`);
+}
+
+const STOPS = [
+  ["human_input", "person"],
+  ["external_event", "wait"]
+] as const;
+
+/**
+ * Resolve a task's pending stop and continue its request. A task's request
+ * arrived on the `task` source, which no public route re-enters, so the stop
+ * is resolved and resumed through the engine, as a host's own answer surface
+ * would (FIX-2058's Inbox).
+ */
+async function resumeStop(run: Run, taskId: string, reason: string): Promise<void> {
+  const session = (await sessionOf(run, taskId))!;
+  const pending = (await run.h.runtime.stores.suspensions.list({ sessionId: session, status: "pending" } as never)) as Array<{ suspensionId: string; requestId: string }>;
+  const suspension = pending[0];
+  if (suspension === undefined) {
+    run.failures.push(`d:resumes — the ${reason} stop had no pending suspension to resume`);
+    return;
+  }
+  const action = reason === "human_input" ? "submit" : "approve";
+  const provider = run.h.runtime.runtimeConfig.durabilityProvider!;
+  const record = await provider.loadSuspension(suspension.requestId, suspension.suspensionId);
+  await provider.suspend({ ...record!, status: action === "submit" ? "submitted" : "approved", resolvedAt: Date.now(), resumeData: { reason } } as never);
+  try {
+    const { finished } = await continueRequest({
+      requestId: suspension.requestId,
+      stores: run.h.runtime.stores,
+      flowRegistry: run.h.runtime.registry,
+      resumeContext: { suspensionId: suspension.suspensionId, action, data: { reason }, resumedBy: USER },
+      runtimeConfig: run.h.runtime.runtimeConfig
+    } as never);
+    const ended = await finished;
+    if (ended.error !== undefined) run.failures.push(`d:resumes — the ${reason} resume ended with ${ended.error.message}`);
+  } catch (error) {
+    run.failures.push(`d:resumes — the ${reason} resume threw: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** d. A wait and a person's stop keep their claim past the lease, and settle on attempt 1 after the resume. */
+async function legD(run: Run): Promise<void> {
+  const ids = await Promise.all(STOPS.map(([reason]) => file(run, word(`[stop:${reason}] wait for it`))));
+  await run.h.idle();
+  const claimedAt = Math.max(...(await Promise.all(ids.map(async (id) => (await run.h.byId(id))?.startedAt ?? Date.now()))));
+  for (const [i, [reason, waitingOn]] of STOPS.entries()) {
+    const row = await run.h.byId(ids[i]!);
+    if (row?.status !== "in_progress" || row.waitingOn !== waitingOn || row.leaseUntil !== undefined) {
+      run.failures.push(`d:keeps-its-claim — wanted the ${reason} stop running, waiting on "${waitingOn}", with no lease; read ${show(row && { status: row.status, waitingOn: row.waitingOn, leaseUntil: row.leaseUntil })}`);
+    }
+  }
+  // Past the lease the claim committed to, then a pass of the board that filed them.
+  await sleep(Math.max(0, claimedAt + LEASE_MS + 2000 - Date.now()));
+  await run.h.act(run.conversation, "listTasks_tasks", {});
+  await run.h.idle();
+  for (const [i, [reason]] of STOPS.entries()) {
+    const row = await run.h.byId(ids[i]!);
+    if (row?.status !== "in_progress" || row.attempts !== 1 || proofsOf(ids[i]!, "turn").length !== 0) {
+      run.failures.push(`d:not-run-twice — wanted the ${reason} stop still running on attempt 1 after the lease, its work not run again; it is ${row?.status} on attempt ${row?.attempts}`);
+    }
+  }
+  for (const [i, [reason]] of STOPS.entries()) await resumeStop(run, ids[i]!, reason);
+  await run.h.idle();
+  for (const [i, [reason]] of STOPS.entries()) {
+    const row = await run.h.byId(ids[i]!);
+    if (row?.status !== "completed" || row.attempts !== 1 || !String(row.output).startsWith("resumed")) {
+      run.failures.push(`d:done-after-resume — wanted the ${reason} stop completed on attempt 1 with the resumed answer; it is ${row?.status} on attempt ${row?.attempts}, output ${show(row?.output)}`);
+    }
+  }
+  run.notes.push(`d: both stops held their claim past the lease and completed on attempt 1 after the resume`);
+}
+
+const LEGS: Record<string, (run: Run) => Promise<void>> = { a: legA, b: legB, c: legC, d: legD };
+
 await runGoal(async (failures, tell) => {
   writeFileSync(PROOFS, "", "utf8");
   const host = buildHost(join(SCRATCH, `main-${RUN_STAMP}.sqlite`));
-  const notes: string[] = [];
-  const leg = async (name: string, body: () => Promise<void>) => {
-    if (!legs.has(name)) return;
-    try {
-      await body();
-    } catch (error) {
-      failures.push(`${name}:threw — ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
   try {
     const h = await host.connect();
-    const conversation = await h.http.open("desk", { workerId: "lead" });
-    const file = async (goal: string): Promise<string> => {
-      const filed = await h.act(conversation, "dispatchTask_tasks", { goal, assignee: "eng.doer" });
-      if (filed?.ok !== true) throw new Error(`filing "${goal}" was refused: ${JSON.stringify(filed)}`);
-      return filed.taskId as string;
-    };
-    const proofsOf = (taskId: string, kind?: Proof["kind"]) => readProofs().filter((p) => p.taskId === taskId && (kind === undefined || p.kind === kind));
-    /** The notices the desk acted on for a task's completion. */
-    const heard = async (taskId: string) => {
-      const session = (await h.runtime.stores.session.get(conversation)) as { state?: { taskNotices?: string[] } } | null;
-      return (session?.state?.taskNotices ?? []).filter((key) => key.startsWith(`${taskId}:`));
-    };
-    /** The task session a row ran in. */
-    const sessionOf = async (taskId: string) => (await h.byId(taskId))?.run?.sessionId;
-
-    // ---- a. background work ------------------------------------------------------
-    await leg("a", async () => {
-      const taskId = await file(word("[background] write after you return"));
-      await h.idle();
-      const row = await h.byId(taskId);
-      const turn = proofsOf(taskId, "turn")[0];
-      const writes = readProofs().filter((p) => p.requestId === turn?.requestId && (p.kind === "background" || p.kind === "on-finished"));
-      tell.over("a · the background writes of the task's request", writes);
-      const last = Math.max(...writes.map((p) => p.at));
-      if (row?.status !== "completed" || writes.length !== 2 || row.completedAt === undefined || row.completedAt < last) {
-        failures.push(
-          `a:after-the-side-chains — wanted the task completed after the last write of its request's side chain and of the one onFinished starts; it is ${row?.status} at ${row?.completedAt}, the writes ${JSON.stringify(writes.map((p) => [p.kind, p.at]))}`
-        );
-      }
-      if (row?.output !== turn?.answer || (await heard(taskId)).length !== 1) {
-        failures.push(`a:once — wanted one ending, heard once, with the work's answer; output ${JSON.stringify(row?.output)}, heard ${JSON.stringify(await heard(taskId))}`);
-      }
-      notes.push(`a: completed ${(row?.completedAt ?? 0) - last} ms after the last background write`);
-    });
-
-    // ---- b. pieces ---------------------------------------------------------------
-    await leg("b", async () => {
-      // The pieces end after the task's own request ended.
-      const taskId = await file(word("[split:2:600] split it"));
-      const waiting = await h.until(async () => {
-        const row = await h.byId(taskId);
-        const open = (await h.rows()).filter((r) => r.filedByTask === taskId && r.status !== "completed");
-        return row?.status === "in_progress" && row.waitingOn === "filed" && row.leaseUntil === undefined && open.length > 0;
-      }, 10_000);
-      if (!waiting) failures.push(`b:waiting-while-open — wanted the task running, waiting on its pieces with no lease, while one is open; read ${JSON.stringify(await h.byId(taskId))}`);
-      await h.idle();
-      const row = await h.byId(taskId);
-      const pieces = (await h.rows()).filter((r) => r.filedByTask === taskId);
-      const woken = proofsOf(taskId, "woken");
-      tell.over("b · the turns the pieces' endings woke", woken);
-      const lastWoken = woken.at(-1);
-      const running = (await h.rows()).filter((r) => r.status === "in_progress");
-      if (row?.status !== "completed" || pieces.length !== 2 || pieces.some((p) => p.status !== "completed") || row.output !== lastWoken?.answer || row.attempts !== 1) {
-        failures.push(`b:last-turns-answer — wanted it completed once with the last woken turn's answer, both pieces completed; it is ${row?.status}, output ${JSON.stringify(row?.output)}, last woken ${JSON.stringify(lastWoken?.answer)}, pieces ${JSON.stringify(pieces.map((p) => p.status))}`);
-      }
-      if ((await heard(taskId)).length !== 1 || running.length !== 0) {
-        failures.push(`b:once — wanted one ending heard and no running row left; heard ${JSON.stringify(await heard(taskId))}, running ${JSON.stringify(running.map((r) => r.id))}`);
-      }
-
-      // Variant: the last piece ends while the task's own request still runs.
-      const during = await file(word("[split:1:50][after:1500] split it and keep working"));
-      await h.idle();
-      const own = proofsOf(during, "turn")[0];
-      const vRow = await h.byId(during);
-      const vPiece = (await h.rows()).find((r) => r.filedByTask === during);
-      const vWoken = proofsOf(during, "woken").at(-1);
-      const workRequest = (await h.requests((await sessionOf(during)) ?? "")).find((r) => r.id === own?.requestId);
-      if (vPiece?.completedAt === undefined || own === undefined || vPiece.completedAt > own.at) {
-        failures.push(`b:piece-ends-during-request — wanted the piece to end while the task's own turn ran; the piece ended ${vPiece?.completedAt}, the turn answered ${own?.at}`);
-      }
-      if (vRow?.status !== "completed" || vRow.output !== vWoken?.answer || vRow.output === own?.answer || workRequest?.status !== "completed") {
-        failures.push(`b:settles-after-woken-turn — wanted the task's own check to leave it running and the woken turn's answer to be the output; it is ${vRow?.status}, output ${JSON.stringify(vRow?.output)}, woken ${JSON.stringify(vWoken?.answer)}, own ${JSON.stringify(own?.answer)}`);
-      }
-      notes.push(`b: ${woken.length} woken turns, output from the last; variant output ${JSON.stringify(vRow?.output)}`);
-    });
-
-    // ---- c. a message queued mid-task ---------------------------------------------
-    await leg("c", async () => {
-      for (const [mark, wantCheckpoint] of [["[message]", false], ["[message-checkpoint]", true]] as const) {
-        const taskId = await file(word(`${mark} a message arrives while you work`));
-        await h.idle();
-        const row = await h.byId(taskId);
-        const own = proofsOf(taskId, "turn")[0];
-        const said = proofsOf(taskId, "message")[0];
-        const session = await sessionOf(taskId);
-        const messageRequest = (await h.requests(session ?? "")).find((r) => r.id === said?.requestId);
-        const messageEnded = messageRequest?.updatedAt ?? messageRequest?.completedAtMs;
-        if (said === undefined || messageRequest?.status !== "completed" || row?.completedAt === undefined || messageEnded === undefined || messageEnded > row.completedAt) {
-          failures.push(`c:message-ends-first — wanted the message's request (${mark}) to end before the task settled; it ${messageRequest?.status} at ${messageEnded}, the task ${row?.status} at ${row?.completedAt}`);
-        }
-        const want = wantCheckpoint ? `checkpoint ${said?.requestId}` : own?.answer;
-        if (row?.status !== "completed" || row.output !== want || row.output === said?.answer) {
-          failures.push(`c:output — wanted ${mark}'s task completed with ${wantCheckpoint ? "the message's checkpoint" : "the work's answer"}, never the message's answer; it is ${row?.status}, output ${JSON.stringify(row?.output)}`);
-        }
-        if ((await heard(taskId)).length !== 1) failures.push(`c:once — ${mark}'s task heard ${JSON.stringify(await heard(taskId))}`);
-      }
-      notes.push(`c: both settled after their messages' requests`);
-    });
-
-    // ---- d. a wait and a person's stop --------------------------------------------
-    await leg("d", async () => {
-      const stops = [
-        ["human_input", "person"],
-        ["external_event", "wait"]
-      ] as const;
-      const ids = await Promise.all(stops.map(([reason]) => file(word(`[stop:${reason}] wait for it`))));
-      await h.idle();
-      const claimedAt = Math.max(...(await Promise.all(ids.map(async (id) => (await h.byId(id))?.startedAt ?? Date.now()))));
-      for (const [i, [reason, waitingOn]] of stops.entries()) {
-        const row = await h.byId(ids[i]!);
-        if (row?.status !== "in_progress" || row.waitingOn !== waitingOn || row.leaseUntil !== undefined) {
-          failures.push(`d:keeps-its-claim — wanted the ${reason} stop running, waiting on "${waitingOn}", with no lease; read ${JSON.stringify(row && { status: row.status, waitingOn: row.waitingOn, leaseUntil: row.leaseUntil })}`);
-        }
-      }
-      // Past the lease the claim committed to, then a pass of the board that filed them.
-      const wait = claimedAt + LEASE_MS + 2000 - Date.now();
-      if (wait > 0) await sleep(wait);
-      await h.act(conversation, "listTasks_tasks", {});
-      await h.idle();
-      for (const [i, [reason]] of stops.entries()) {
-        const row = await h.byId(ids[i]!);
-        if (row?.status !== "in_progress" || row.attempts !== 1 || proofsOf(ids[i]!, "turn").length !== 0) {
-          failures.push(`d:not-run-twice — wanted the ${reason} stop still running on attempt 1 after the lease, its work not run again; it is ${row?.status} on attempt ${row?.attempts}`);
-        }
-      }
-      // Resume both.
-      for (const [i, [reason]] of stops.entries()) {
-        const session = (await sessionOf(ids[i]!))!;
-        // The pending suspension, read from the store; the resume goes over the HTTP route, as an app's does.
-        const pending = (await h.runtime.stores.suspensions.list({ sessionId: session, status: "pending" } as never)) as Array<{ suspensionId: string; requestId: string }>;
-        const suspension = pending[0];
-        if (suspension === undefined) {
-          failures.push(`d:resumes — the ${reason} stop had no pending suspension to resume`);
-          continue;
-        }
-        // A task's request arrived on the `task` source, which no public route
-        // re-enters, so the stop is resolved and resumed through the engine,
-        // as a host's own answer surface would (FIX-2058's Inbox).
-        const action = reason === "human_input" ? "submit" : "approve";
-        const provider = h.runtime.runtimeConfig.durabilityProvider!;
-        const record = await provider.loadSuspension(suspension.requestId, suspension.suspensionId);
-        await provider.suspend({ ...record!, status: action === "submit" ? "submitted" : "approved", resolvedAt: Date.now(), resumeData: { reason } } as never);
-        try {
-          const { finished } = await continueRequest({
-            requestId: suspension.requestId,
-            stores: h.runtime.stores,
-            flowRegistry: h.runtime.registry,
-            resumeContext: { suspensionId: suspension.suspensionId, action, data: { reason }, resumedBy: USER },
-            runtimeConfig: h.runtime.runtimeConfig
-          } as never);
-          const ended = await finished;
-          if (ended.error !== undefined) failures.push(`d:resumes — the ${reason} resume ended with ${ended.error.message}`);
-        } catch (error) {
-          failures.push(`d:resumes — the ${reason} resume threw: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-      await h.idle();
-      for (const [i, [reason]] of stops.entries()) {
-        const row = await h.byId(ids[i]!);
-        if (row?.status !== "completed" || row.attempts !== 1 || !String(row.output).startsWith("resumed")) {
-          failures.push(`d:done-after-resume — wanted the ${reason} stop completed on attempt 1 with the resumed answer; it is ${row?.status} on attempt ${row?.attempts}, output ${JSON.stringify(row?.output)}`);
-        }
-      }
-      notes.push(`d: both stops held their claim past the lease and completed on attempt 1 after the resume`);
-    });
-
-    return { failures, evidence: notes.join("\n") };
+    const run: Run = { h, conversation: await h.http.open("desk", { workerId: "lead" }), failures, notes: [], tell };
+    for (const name of ALL_LEGS) {
+      if (!legs.has(name)) continue;
+      // A throw is that leg's failure, and the next leg still runs.
+      await LEGS[name]!(run).catch((error: unknown) => failures.push(`${name}:threw — ${error instanceof Error ? error.message : String(error)}`));
+    }
+    return { failures, evidence: run.notes.join("\n") };
   } finally {
     await host.state.dispose();
   }
