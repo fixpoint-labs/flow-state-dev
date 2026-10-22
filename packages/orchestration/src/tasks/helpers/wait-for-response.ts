@@ -370,7 +370,9 @@ export function notDispatchableMessage(
           ? "it is a follow-up, which runs with the worker of the task it follows, so it keeps its assignee"
           : declined.reason === "awaiting-answer"
             ? "it was just answered and picks up again with its worker, so it keeps its assignee"
-            : `it is ${declined.status}; only a recorded task that hasn't started and isn't waited on can be dispatched`;
+            : declined.reason === "started"
+              ? "it has already started, so it keeps its worker: send it without assignee, or cancel it and file it again"
+              : `it is ${declined.status}; only a recorded task that hasn't started and isn't waited on can be dispatched`;
   return `task "${taskId}" can't be dispatched: ${why}. Nothing was written.`;
 }
 

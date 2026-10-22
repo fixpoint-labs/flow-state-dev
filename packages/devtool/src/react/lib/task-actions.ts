@@ -3,10 +3,11 @@
  *
  * The DevTool changes a task only through the flow's own actions, so a row
  * offers exactly what the flow exposes. The signal is the input: an action
- * whose input requires a string `id` or `taskId` acts on one task
- * ({@link taskIdField}). That covers the framework's task tools
- * (`updateTask`, `getTask`, `answerTask`) and an app's own actions (an
- * `answer` for a parked row) alike. A board's generated `dispatchTask`, whose
+ * whose input requires a string `taskId` acts on one task, and so does a
+ * board's generated `getTask_<board>` or `updateTask_<board>`, which names it
+ * `id` ({@link taskIdField}). That covers the framework's task tools and an
+ * app's own actions (an `answer` for a parked row) alike, and leaves an app's
+ * unrelated `{ id }` action, such as a `deleteProject`, off task rows. A board's generated `dispatchTask`, whose
  * `taskId` is optional, is offered too: on a row it starts that row.
  *
  * A board's task tools carry the board in their name, `<tool>_<suffix>`, and
@@ -27,22 +28,42 @@ export function taskToolSuffix(collectionId: string): string {
   return collectionId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+/** The generated task tools that name their task `id` (FIX-2081): `getTask_<board>`, `updateTask_<board>`. */
+const ID_TOOLS = ["getTask", "updateTask"] as const;
+
 /**
- * The field an action names its task in: `id` (the task tools since FIX-2081,
- * `updateTask({ id })`), else `taskId` (`answerTask`, `dispatchTask`, and an
- * app's own). `undefined` when it names none, required unless `optional`.
+ * Whether `action` is a board's generated `getTask` or `updateTask`: one of
+ * {@link ID_TOOLS} on a board in `generated` when given, else on any suffix.
  */
-export function taskIdField(schema: ActionInputSchema | undefined, optional = false): "id" | "taskId" | undefined {
-  if (schema === undefined || schema.type !== "object") return undefined;
-  for (const name of ["id", "taskId"] as const) {
-    const field = schema.fields[name];
-    if (field !== undefined && field.type === "string" && (field.required || optional)) return name;
-  }
-  return undefined;
+function isIdTool(action: string, generated?: ReadonlySet<string>): boolean {
+  const tool = ID_TOOLS.find((name) => action.startsWith(`${name}_`));
+  if (tool === undefined) return false;
+  return generated === undefined || generated.has(action.slice(tool.length + 1));
 }
 
-function takesTaskId(schema: ActionInputSchema | undefined, optional = false): boolean {
-  return taskIdField(schema, optional) !== undefined;
+/**
+ * The field `action` names its task in: `taskId` (`answerTask`,
+ * `dispatchTask`, and an app's own), which wins when both are present; else
+ * `id`, only for a board's generated `getTask` or `updateTask`. `undefined`
+ * when it names none, required unless `optional`.
+ *
+ * @param generated The board suffixes the flow's generated families name;
+ *   omitted, any `getTask_` or `updateTask_` action counts.
+ */
+export function taskIdField(
+  action: string,
+  schema: ActionInputSchema | undefined,
+  optional = false,
+  generated?: ReadonlySet<string>
+): "id" | "taskId" | undefined {
+  if (schema === undefined || schema.type !== "object") return undefined;
+  const takes = (name: "id" | "taskId"): boolean => {
+    const field = schema.fields[name];
+    return field !== undefined && field.type === "string" && (field.required || optional);
+  };
+  if (takes("taskId")) return "taskId";
+  if (takes("id") && isIdTool(action, generated)) return "id";
+  return undefined;
 }
 
 /**
@@ -105,7 +126,7 @@ export function taskActionsFor(
   const generated = new Set(generatedSuffixes(actions));
   return actions.filter((name) => {
     const dispatches = name.startsWith(DISPATCH_PREFIX) && generated.has(name.slice(DISPATCH_PREFIX.length));
-    if (!takesTaskId(schemas?.[name], dispatches)) return false;
+    if (taskIdField(name, schemas?.[name], dispatches, generated) === undefined) return false;
     const owner = suffixes
       .filter((suffix) => name.endsWith(`_${suffix}`))
       .reduce<string | undefined>((best, suffix) => (best === undefined || suffix.length > best.length ? suffix : best), undefined);

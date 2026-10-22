@@ -83,7 +83,7 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
   const picked = pickedState !== null && actions.includes(pickedState) ? pickedState : null;
   const schema = picked === null ? undefined : schemas?.[picked];
   // The field the picked action names its task in (`id` or `taskId`).
-  const idField = taskIdField(schema, true) ?? "taskId";
+  const idField = (picked === null ? undefined : taskIdField(picked, schema, true)) ?? "taskId";
   const locked = { [idField]: taskId };
 
   const pick = (action: string) => {

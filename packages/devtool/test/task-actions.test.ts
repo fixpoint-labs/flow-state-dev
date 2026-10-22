@@ -1,14 +1,16 @@
 /**
  * Which of the viewed flow's actions a Tasks-tab row offers.
  *
- * The signal is the input, not the name: an action whose input requires a
- * string `id` or `taskId` acts on one task, so an app's own `answer` qualifies
- * beside the framework's task tools (`updateTask({ id })`, `getTask({ id })`). A board's task tools carry the board in their
- * name, and are offered only on that board's rows.
+ * The signal is the input: an action whose input requires a string `taskId`
+ * acts on one task, so an app's own `answer` qualifies beside the framework's
+ * task tools. `id` counts only for a board's generated `getTask` and
+ * `updateTask` (`updateTask({ id })`), so an app's unrelated `{ id }` action
+ * stays off task rows. A board's task tools carry the board in their name,
+ * and are offered only on that board's rows.
  */
 import { describe, expect, it } from "vitest";
 import type { ActionInputSchema } from "@flow-state-dev/client";
-import { outcomeOf, taskActionsFor, taskToolSuffix, type RequestOutcomeSource } from "../src/react/lib/task-actions";
+import { outcomeOf, taskActionsFor, taskIdField, taskToolSuffix, type RequestOutcomeSource } from "../src/react/lib/task-actions";
 
 const takesTaskId: ActionInputSchema = {
   type: "object",
@@ -38,9 +40,31 @@ const familySchemas = (suffix: string): Record<string, ActionInputSchema> => ({
 });
 
 describe("taskActionsFor", () => {
-  it("offers an action whose input requires a string id or taskId, and no other", () => {
-    const schemas = { answer: takesTaskId, edit: takesId, maybe: optionalTaskId, numeric: numericTaskId, file: noTaskId };
-    expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer", "edit"]);
+  it("offers an action whose input requires a string taskId, and no other", () => {
+    const schemas = { answer: takesTaskId, maybe: optionalTaskId, numeric: numericTaskId, file: noTaskId };
+    expect(taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"])).toEqual(["answer"]);
+  });
+
+  it("keeps an app's unrelated { id } action off task rows, and offers a board's generated getTask and updateTask", () => {
+    // `deleteProject({ id })` names a project, not a task: offered on a row,
+    // it would be sent the task's id.
+    const schemas = { ...familySchemas("issues"), deleteProject: takesId, getTask_other: takesId };
+    const offered = taskActionsFor(Object.keys(schemas), schemas, "issues", ["issues"]);
+    expect(offered).not.toContain("deleteProject");
+    // `getTask_other` has no family behind it, so it is no board's getTask.
+    expect(offered).not.toContain("getTask_other");
+    expect(offered).toEqual(expect.arrayContaining(["getTask_issues", "updateTask_issues", "answerTask_issues"]));
+  });
+
+  it("sends taskId, not id, to an action whose input names both", () => {
+    const both: ActionInputSchema = {
+      type: "object",
+      fields: { id: { type: "string", required: true }, taskId: { type: "string", required: true } },
+    };
+    expect(taskIdField("answer", both)).toBe("taskId");
+    expect(taskIdField("updateTask_issues", both)).toBe("taskId");
+    expect(taskIdField("updateTask_issues", takesId)).toBe("id");
+    expect(taskIdField("deleteProject", takesId)).toBeUndefined();
   });
 
   it("offers a board's generated dispatchTask on its rows, though a new task makes its taskId optional", () => {

@@ -146,33 +146,28 @@ describe("reportProgress off a task turn, and once the task has finished", () =>
     expect(collection.get("t")).toMatchObject({ status: "pending", output: "partial", checkpointed: true });
   });
 
-  it("a later attempt that completes without a checkpoint of its own writes its result, not the failed attempt's checkpoint", async () => {
-    // A failed attempt's partial work must not outlive the answer of the
-    // attempt that succeeded: only the completing attempt's own checkpoint
-    // beats its result.
-    const collection = boardCollection("progress-retry-wins");
+  it("keeps a failed attempt's checkpoint as the output when a later attempt completes without one (D3)", async () => {
+    // The owner's rule, literally: the latest checkpoint is the output, and the
+    // final answer counts only when no checkpoint was ever made.
+    const collection = boardCollection("progress-retry-literal");
     await collection.addTask({ id: "t", goal: "g", maxAttempts: 2 });
     const first = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
     await collection.reportProgress!("t", { output: "partial" }, { claim: first });
     await collection.fail("t", "boom", { claim: first });
     const second = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
-    // The retry still reads the earlier checkpoint while it runs.
-    expect(collection.get("t")).toMatchObject({ status: "in_progress", output: "partial" });
     await collection.complete("t", "the full answer", { claim: second });
-    const done = collection.get("t");
-    expect(done).toMatchObject({ status: "completed", output: "the full answer" });
-    expect(done?.checkpointed).toBeUndefined();
+    expect(collection.get("t")).toMatchObject({ status: "completed", output: "partial", checkpointed: true });
   });
 
-  it("a later attempt that checkpoints keeps its own checkpoint over its result", async () => {
-    const collection = boardCollection("progress-retry-own");
-    await collection.addTask({ id: "t", goal: "g", maxAttempts: 2 });
+  it("keeps a checkpoint through a park and an answer: a re-entry claims again but makes no new rule", async () => {
+    const collection = boardCollection("progress-park");
+    await collection.addTask({ id: "t", goal: "g" });
     const first = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
-    await collection.reportProgress!("t", { output: "partial" }, { claim: first });
-    await collection.fail("t", "boom", { claim: first });
+    await collection.reportProgress!("t", { output: "draft" }, { claim: first });
+    await collection.awaitReview("t", "which region?", { claim: first });
+    await collection.unpark("t", "EU");
     const second = ticketForClaim(collection.collectionId, (await collection.claim("w"))!);
-    await collection.reportProgress!("t", { output: "second draft" }, { claim: second });
     await collection.complete("t", "the final answer", { claim: second });
-    expect(collection.get("t")).toMatchObject({ status: "completed", output: "second draft", checkpointed: true });
+    expect(collection.get("t")).toMatchObject({ status: "completed", output: "draft" });
   });
 });

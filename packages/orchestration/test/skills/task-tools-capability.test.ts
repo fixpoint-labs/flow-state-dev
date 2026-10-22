@@ -9,6 +9,7 @@ import {
 } from "../../src/skills/task-tools-capability";
 import { BOARD_FIELD, buildDelegationCtx, ownStateResolver } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
+import { notDispatchableMessage } from "../../src/tasks/helpers/wait-for-response";
 
 const taskTools = createTaskToolsCapability(ownStateResolver);
 
@@ -451,16 +452,41 @@ describe("updateTask — a release with a reassignment", () => {
     expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "writer" });
   });
 
-  it("releases a held row that already ran, as a legacy blocked row reads, but edits nothing on it", async () => {
+  it("releases a legacy blocked row that already ran, but edits nothing on it", async () => {
     // BP-030: a row stored `blocked` after a retry reads as held with attempts
-    // spent. A release alone is how it runs again; any edit is still locked.
-    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher" });
+    // spent, marked `heldFromBlocked` by the read boundary. A release alone is
+    // how it runs again; any edit is still locked.
+    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher", heldFromBlocked: true });
     const edit = (await runForTest(findTool("updateTask"), { id: "a", status: "pending", assignee: "writer" }, ctx)) as { ok: boolean; error: string };
     expect(edit.ok).toBe(false);
     expect(edit.error).toContain("field_locked_after_start");
     expect(boardOf(ctx).a).toMatchObject({ status: "held", assignee: "researcher" });
     expect(await runForTest(findTool("updateTask"), { id: "a", status: "pending" }, ctx)).toEqual({ ok: true });
     expect(boardOf(ctx).a).toMatchObject({ status: "pending", assignee: "researcher" });
+    // The mark serves that one release: a later hold is an ordinary one.
+    expect((boardOf(ctx).a as Record<string, unknown>).heldFromBlocked).toBeUndefined();
+  });
+
+  it("names the next move when a dispatch reassigns a started row", async () => {
+    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher", heldFromBlocked: true });
+    const ref = (await ownStateResolver(ctx as never))!;
+    const outcome = await ref.dispatch!("a", { call: "c1", assignee: "writer" });
+    expect(outcome).toMatchObject({ outcome: "declined", reason: "started" });
+    expect(notDispatchableMessage("a", outcome as never)).toContain("send it without assignee");
+    expect(boardOf(ctx).a).toMatchObject({ status: "held", assignee: "researcher" });
+  });
+
+  it("refuses to release a started held row that isn't a legacy blocked one, by updateTask or by dispatchTask", async () => {
+    // No current path holds a started row; if one ever appears, the field
+    // table's rule for a hold or release holds: until the task first starts.
+    const ctx = ctxWithTask("held", { attempts: 1, assignee: "researcher" });
+    const released = (await runForTest(findTool("updateTask"), { id: "a", status: "pending" }, ctx)) as { ok: boolean; error: string };
+    expect(released.ok).toBe(false);
+    expect(released.error).toContain("field_locked_after_start");
+    expect(boardOf(ctx).a).toMatchObject({ status: "held" });
+    const ref = (await ownStateResolver(ctx as never))!;
+    expect(await ref.dispatch!("a", { call: "c1" })).toMatchObject({ outcome: "declined", reason: "started" });
+    expect(boardOf(ctx).a).toMatchObject({ status: "held" });
   });
 });
 

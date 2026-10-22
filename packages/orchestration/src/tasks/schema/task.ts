@@ -309,15 +309,12 @@ export const taskSchema = z.object({
   /**
    * `output` is a checkpoint its worker reported while it ran (FIX-2081,
    * `reportProgress`), not a result handed back at the end. The latest
-   * checkpoint is the task's output: completing the task keeps it when the
-   * completing attempt reported it, and that attempt's own result replaces a
-   * checkpoint an earlier, failed attempt left. A failed attempt or a
-   * reclaimed lease keeps it for the retry to read. **Absent** when the
-   * output is no checkpoint (BP-030).
+   * checkpoint is the task's output: completing the task keeps it, and the
+   * worker's final result is written only when no checkpoint was made. A
+   * failed attempt or a reclaimed lease keeps it. **Absent** when the worker
+   * never checkpointed (BP-030).
    */
   checkpointed: z.literal(true).optional(),
-  /** The attempt that reported the checkpoint in `output` (FIX-2081). Absent with `checkpointed`. */
-  checkpointAttempt: z.number().int().nonnegative().optional(),
   /**
    * The one-line note its worker last reported while it ran (FIX-2081,
    * `reportProgress`), for task views. Never the task's status: done still
@@ -332,6 +329,14 @@ export const taskSchema = z.object({
    * named no source: a cascade, a substrate write-back, an older row.
    */
   cancelledVia: z.enum(["tool", "action"]).optional(),
+  /**
+   * The row was stored `blocked` and read as `held` (FIX-2080, BP-030). Set
+   * only at the read boundary, and persisted with the row when it is next
+   * written; a release clears it. Such a row may have started before it was
+   * blocked, and a release alone is how it runs again; no current path holds
+   * a row that has started (FIX-2081).
+   */
+  heldFromBlocked: z.literal(true).optional(),
   error: z.string().optional(),
   feedback: z.string().optional(),
 

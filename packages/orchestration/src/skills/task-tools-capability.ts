@@ -1385,16 +1385,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const edits: TaskEditField[] = [...fields, ...(input.status !== undefined ? (["held"] as const) : [])];
       // Refused before anything is checked when the state already rules it
       // out; decided again inside the write, so a start in between is refused too.
-      // A release alone of a held row is never refused as started: a legacy
-      // row stored `blocked` after a retry reads as held with attempts spent
-      // (BP-030), and releasing it is how it runs again.
-      const releaseOnly = current.status === "held" && input.status === "pending" && fields.length === 0;
       // Two rules hold in every state and name their own refusal, so they go
       // to the write: a step's hold (`step_cannot_be_held`) and a
       // conversation-result task's attempts (`conversation_result_one_attempt`).
       const ownRule =
         input.status !== undefined || (input.maxAttempts !== undefined && current.resultTo === "conversation");
-      const locked = releaseOnly || ownRule ? [] : lockedFields(current, edits);
+      // A hold or release is decided by the write, which also knows the one
+      // release a started held row may take (a legacy blocked row, BP-030).
+      const locked = ownRule ? [] : lockedFields(current, edits);
       if (locked.length > 0) return lockedError(current, locked);
       if (input.assignee !== undefined && input.assignee !== current.assignee) {
         if (current.answered === true) return awaitingAnswerError(input.id);
