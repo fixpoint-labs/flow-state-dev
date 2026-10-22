@@ -1,29 +1,8 @@
 /**
  * A task's steers (FIX-2086): words sent into an open task, kept on the task.
  *
- * A steer is written by one collection verb (`TaskCollectionRef.steer`), which
- * `updateTask({ id, message })` and a line typed in an open task's session
- * both reach. It joins the brief: every later attempt reads every steer, so a
- * retry never runs the task as first filed. A finished task refuses it, so its
- * output never changes; a correction to a finished task is a follow-up.
- *
- * Each steer carries the attempt that took it (`takenBy`), and the read that
- * took it (`takenIn`):
- *
- * - **The claim** marks every steer taken by the attempt it starts, with no
- *   `takenIn`: the brief that attempt is handed carries them all.
- * - **A running request** takes the steers that arrived since (`takeSteers`,
- *   fenced to its claim), naming the read: a context entry re-read before each
- *   model call, the extra turn a late steer owes, a coding run's next step. A
- *   steer already taken by this attempt in that read still counts as its own,
- *   so a step that re-runs after a crash reads it again.
- * - **The claim gate's check** (rule 6) settles a task only when no steer is
- *   untaken by its attempt ({@link untakenSteers}); one that is gets one more
- *   turn first (D2).
- *
- * This module is a leaf: the schema, the cap and the pure decisions both
- * backings share. A steer is no ending: it changes no status, no claim and no
- * attempt count.
+ * The schema, the cap, and the pure decisions both backings share. A steer
+ * changes no status, no claim, and no attempt count.
  */
 import { z } from "zod";
 import type { Task } from "./schema/task";
@@ -74,7 +53,7 @@ export interface SteerInput {
   readonly key?: string;
 }
 
-/** The steers on `task` no request of its current attempt has taken. */
+/** The steers on `task` no request of its current attempt has taken. Rule 6 settles only when this is empty. */
 export function untakenSteers(task: Pick<Task, "steers" | "attempts">): TaskSteer[] {
   return (task.steers ?? []).filter((steer) => steer.takenBy !== task.attempts);
 }
@@ -116,7 +95,8 @@ export function steerWrite(
 
 /**
  * The steers after `takenBy` attempt took every untaken one in the read named
- * `takenIn`, or `undefined` when none was untaken.
+ * `takenIn`, or `undefined` when none was untaken. One this attempt already
+ * took is left, so the same read after a crash still finds it.
  */
 export function takeSteersPatch(task: Task, takenIn: string): Partial<Task> | undefined {
   const steers = task.steers ?? [];

@@ -1,18 +1,7 @@
 /**
  * `updateTask`'s `message` and the task view's `current` (FIX-2086).
- *
- * - A message steers an open task: it is kept on the row and uses no
- *   attempt, records no ending and changes no status. A finished task refuses
- *   it, naming the rule and the move, so its output never changes. A call that
- *   edits fields and steers runs every check before any write, so it never
- *   half-applies.
- * - A finished task takes a follow-up instead, and the task view reads the
- *   latest completed follow-up as `current` (D3): `getTask` with its output,
- *   cut as the task's own; `listTasks` with its id only. The original's
- *   `output` stays its own.
- *
- * Each case reads both the tool's answer and the row the board holds, so a
- * refusal that wrote anything anyway fails here.
+ * Each case reads the tool's answer and the row, so a refusal that wrote
+ * anything anyway fails here.
  */
 import { describe, expect, it } from "vitest";
 import type { GeneratorTool } from "@flow-state-dev/core";

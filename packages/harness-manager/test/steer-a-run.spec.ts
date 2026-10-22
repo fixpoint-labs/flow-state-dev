@@ -1,16 +1,7 @@
 /**
- * Steering a coding run (FIX-2086).
- *
- * A steer is kept on the task. The first prompt of an attempt carries every
- * steer; one that arrives while a harness step runs gives the same request
- * one more step, resuming the coding session the step confirmed, with the
- * steer in its prompt, on the same attempt. A harness whose abort waits for
- * its process (`stopsOnAbort`) is stopped for the steer; any other runs to
- * its own end first.
- *
- * Driven end to end, in process: a real `createFlowState`, a real board and
- * its same-flow dispatch, real fenced settlement and a real git checkout. Only
- * the harness is a stub, and it records what each step was handed.
+ * Steering a coding run (FIX-2086), in process: a real `createFlowState`, a
+ * real board, real fenced settlement and a real git checkout. Only the
+ * harness is a stub, and it records what each step was handed.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { heard } from "./heard";

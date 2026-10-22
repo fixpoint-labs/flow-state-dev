@@ -1,14 +1,7 @@
 /**
- * Steers on a worker's task turn (FIX-2086): a context entry the worker's
- * model re-reads before every model call, so a steer sent while the task runs
- * reaches the request running it before its next call, with no stop and no
- * attempt used.
- *
- * Orchestration owns the entry and the take (`createSteerContext`). This
- * module answers where the task's row lives: on the conversation ledger at
- * the partition the task session was born for, its readonly
- * `filingSessionId`. An inline plan step runs in its task's request, so it
- * reads its task's steers; a step takes none of its own.
+ * The worker's steer context (FIX-2086). The row is the conversation ledger
+ * at the partition the task session was born for (`filingSessionId`). An
+ * inline plan step reads its task's steers; a step takes none of its own.
  */
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -23,10 +16,7 @@ const steerContext = createSteerContext({
   }
 });
 
-/**
- * The steers a running task took, in the worker's context, read before each
- * model call. One instance per turn: compose it once, beside the task tools.
- */
+/** One instance per turn: compose it once, beside the task tools. */
 export const taskSteers = defineCapability({
   name: "taskSteers",
   resources: { ...conversationLedgerResources },

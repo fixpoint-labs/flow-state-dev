@@ -1,13 +1,4 @@
-/**
- * A steer (FIX-2086): words sent into an open task, kept on the task.
- *
- * `steer` appends to the row's `steers` and touches nothing else: it uses no
- * attempt, records no ending, changes no status and no claim, and never
- * cancels. A finished task refuses it, so its output never changes. A task
- * takes at most {@link MAX_STEERS}. Every later attempt reads every steer: the
- * claim marks them all taken by the attempt it starts, and a running request
- * takes the ones that arrived since (`takeSteers`), fenced to its claim.
- */
+/** `steer` and `takeSteers` on both backings (FIX-2086). */
 import { describe, expect, it } from "vitest";
 import {
   createResourceBackedTaskCollection,

@@ -113,16 +113,6 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
 export const READ_OUTPUT_LIMIT = 20_000;
 
 /**
- * The latest follow-up in `task`'s chain that **completed** (FIX-2086 D3), or
- * `undefined` when none did or `task` is that one. A chain is a task and the
- * follow-ups filed on it (`followUpOf` names the root), so one pass over the
- * board finds it; nothing is stored, and the original's output never changes.
- */
-function currentOf(task: Task, rows: readonly Task[]): Task | undefined {
-  return latestCompletedByRoot(rows).get(task.followUpOf ?? task.id) ?? undefined;
-}
-
-/**
  * Each chain's latest completed follow-up, by its root's id, in one pass over
  * the board (`listTasks` reads every row's from this, not a walk per row).
  */
@@ -1691,7 +1681,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       const taskInput = t.input === undefined ? undefined : readable(t.input);
       const output = t.output === undefined ? undefined : readable(t.output);
       const metadata = t.metadata === undefined ? undefined : readable(t.metadata);
-      const current = currentFor(t, currentOf(t, collection.list()));
+      const current = currentFor(t, latestCompletedByRoot(collection.list()).get(t.followUpOf ?? t.id));
       const currentOutput = current?.output === undefined ? undefined : readable(current.output);
       return {
         ok: true as const,

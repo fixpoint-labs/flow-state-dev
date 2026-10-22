@@ -1,18 +1,7 @@
 /**
- * A line typed in a task's session (FIX-2086): a steer while the task is
- * open, talk once it has finished.
- *
- * - **Open.** The line is written onto the task as a steer from the user. It
- *   runs no reply of its own: the request working the task takes it before its
- *   next model call, or, when it lands after that request's last model call,
- *   the task gets one more turn before it settles (D2). No attempt is used.
- * - **Finished.** The line is talk: the worker's ordinary turn answers it with
- *   the session's history, and the task, its output and its attempts don't
- *   change. A correction is a follow-up.
- *
- * The host is the conversation board's (`./conversation-board-harness`): a
- * coordinator conversation filing for `otto`, an `agent` worker, whose model
- * is scripted. What each model call was SENT is read off the mock's calls.
+ * A line in a task's session (FIX-2086). The host is the conversation board's
+ * (`./conversation-board-harness`): scripted models, and what each call was
+ * sent is read off the mock.
  */
 import { describe, expect, it } from "vitest";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
