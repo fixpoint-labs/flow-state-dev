@@ -351,6 +351,20 @@ describe.each(BACKINGS)("filing settings (%s)", (_name, makeBacking) => {
     });
   });
 
+  describe("a row filed skipped", () => {
+    it("keeps the cause and the reason only on a row filed cancelled: a live row names no cause", async () => {
+      const { tasks } = await makeBacking();
+      await tasks.addTasks([
+        { id: "skipped", goal: "skipped", status: "cancelled", causedBy: "gone", error: "dep gone failed" },
+        { id: "live", goal: "live", causedBy: "gone", error: "dep gone failed" },
+      ]);
+      expect(tasks.get("skipped")).toMatchObject({ status: "cancelled", causedBy: "gone", error: "dep gone failed" });
+      expect(tasks.get("live")?.status).toBe("pending");
+      expect(tasks.get("live")?.causedBy).toBeUndefined();
+      expect(tasks.get("live")?.error).toBeUndefined();
+    });
+  });
+
   describe("attempts", () => {
     it("fails a task filed with three attempts after its third failure", async () => {
       const { tasks } = await makeBacking();

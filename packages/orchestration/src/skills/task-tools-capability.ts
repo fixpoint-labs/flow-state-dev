@@ -1481,12 +1481,17 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           // than started under the worker it was meant to leave. Whether the
           // release will decline is decided here, before any write, on the
           // row as it stands, so its decline too means nothing was written.
-          // A row that moves between this read and the release (a claim in
-          // between) still declines there, after the other writes.
+          // A row that isn't held has nothing to release (the backing would
+          // answer `unchanged`), so the release is skipped: a claim landing
+          // mid-call is not reported as a refusal. Only a release by another
+          // caller, then a claim, before this release can still decline it
+          // after the other writes.
+          let releases = false;
           if (patch.status === "pending") {
             const row = c.get(input.taskId);
             const reason = row === undefined ? undefined : releaseDecline(row);
             if (reason !== undefined) return { outcome: "declined", reason, status: row!.status };
+            releases = row?.status === "held";
           }
           if (patch.status === "held") {
             const outcome: TaskWriteOutcome | undefined = await c.hold(input.taskId);
@@ -1503,7 +1508,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
           if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
           if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
-          if (patch.status === "pending") {
+          if (releases) {
             const outcome: TaskWriteOutcome | undefined = await c.release(input.taskId);
             if (outcome != null && outcome.outcome === "declined") return outcome;
           }

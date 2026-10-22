@@ -205,6 +205,25 @@ export function assertUniqueIds(batch: readonly { readonly id?: string }[]): voi
 }
 
 /**
+ * Refuse a batch that names a task id already filed. A board adds a batch's
+ * rows one at a time, so the collision would surface at that row's add, after
+ * the rows before it were filed.
+ *
+ * @param filed The row already filed under an id, on any ledger the batch writes to.
+ * @throws {TaskFilingRefusedError} with rule `duplicate_task_id`.
+ */
+export function assertIdsFree(batch: readonly { readonly id?: string }[], filed: (id: string) => unknown): void {
+  for (const { id } of batch) {
+    if (id === undefined || filed(id) === undefined) continue;
+    throw new TaskFilingRefusedError({
+      rule: "duplicate_task_id",
+      taskId: id,
+      detail: `task "${id}" is already filed. Give each task its own id. Nothing was written.`,
+    });
+  }
+}
+
+/**
  * Refuse a batch of filings whose dependencies this board can't run: an id
  * that names no task on this board or in the batch, a dependency already
  * failed or cancelled, or a loop. Ids filed in the same batch count.

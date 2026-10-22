@@ -1241,10 +1241,10 @@ export function taskBoard<
         // is never claimable, so on `onIdle: "complete"` it would keep the
         // drain waiting to `maxIterations`, and on the default the completion
         // item would report it pending. Here, once nothing is claimable, on
-        // the ref this worker already holds, and only when its rows show
-        // something owed: paying before the first claim, or on every idle
-        // turn, reads the store and holds back the board's starts.
-        if (owesATouch(cell.collection.list())) await cell.collection.payOwedCascades?.();
+        // the ref this worker already holds, and only when the payer would
+        // cancel one of its rows now: paying before the first claim, or on
+        // every idle turn, reads the store and holds back the board's starts.
+        if (owesATouch(cell.collection.list(), cell.collection.now())) await cell.collection.payOwedCascades?.();
       })
       .waitForCondition(
         (items) =>

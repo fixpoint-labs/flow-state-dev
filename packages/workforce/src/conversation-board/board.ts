@@ -81,6 +81,7 @@ import {
   assertFilingCallerContext,
   assertFilingSettings,
   assertFollowUpHasRun,
+  assertIdsFree,
   assertUniqueIds,
   hasStarted,
   isClaimable,
@@ -763,10 +764,12 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       },
       async addTasks(inits) {
         // A refused batch files nothing (FIX-2080): every row's checks, the
-        // batch's dependencies (its own ids count) and every row's place in
-        // the chain come first. A reservation a later refusal strands lapses
-        // with its lease. Then each row is added after the rows it depends on.
+        // batch's ids (unique, and none already filed), its dependencies (its
+        // own ids count) and every row's place in the chain come first. A
+        // reservation a later refusal strands lapses with its lease. Then each
+        // row is added after the rows it depends on.
         assertUniqueIds(inits);
+        assertIdsFree(inits, (id) => ref.get(id));
         const batch = dependencyOrder(inits.map((init) => ({ ...init, id: init.id ?? newTaskId() })));
         const filedWith = new Map(batch.map((init) => [init.id, init]));
         for (const init of batch) checkFiling(init, filedWith);
@@ -894,9 +897,9 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
      * task nor a delegate's task waiting on a step would ever start. Refused
      * at filing, before anything is written.
      */
-    const depsOnOneLedger = (init: TaskInit, step: boolean): void => {
+    const depsOnOneLedger = (init: TaskInit, step: boolean, otherInBatch: ReadonlySet<string> = new Set()): void => {
       const other = step ? board : plan;
-      const across = (init.deps ?? []).filter((dep) => other.get(dep) !== undefined);
+      const across = (init.deps ?? []).filter((dep) => other.get(dep) !== undefined || otherInBatch.has(dep));
       if (across.length === 0) return;
       throw new TaskWriteRefusedError(
         "deps_across_ledgers",
@@ -938,19 +941,23 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
       ...board,
       addTask,
       async addTasks(inits) {
-        // A refused batch files nothing (FIX-2080). Before the first add: each
-        // row's ledger, and for the steps everything the plan ledger's own add
-        // would check (the step rules, the settings, the dependencies, where
-        // the batch's steps count) and every step's place in the chain. The
-        // delegates' tasks go to the board as one batch, which checks them
-        // whole before its first add; then the steps are added, each after
-        // the steps it depends on. A reservation a later refusal strands
-        // lapses with its lease.
+        // A refused batch files nothing (FIX-2080). Before the first add: the
+        // batch's ids (unique, and none already on either ledger), each row's
+        // ledger (the batch's rows for the other ledger count), and for the
+        // steps everything the plan ledger's own add would check (the step
+        // rules, the settings, the dependencies, where the batch's steps
+        // count) and every step's place in the chain. The delegates' tasks go
+        // to the board as one batch, which checks them whole before its first
+        // add; then the steps are added, each after the steps it depends on.
+        // A reservation a later refusal strands lapses with its lease.
         assertUniqueIds(inits);
+        assertIdsFree(inits, (id) => plan.get(id) ?? board.get(id));
         const batch = inits.map((init) => ({ ...init, id: init.id ?? newTaskId() }));
+        const stepIds = new Set(batch.filter(isStepFiling).map((init) => init.id));
+        const taskIds = new Set(batch.filter((init) => !isStepFiling(init)).map((init) => init.id));
         for (const init of batch) {
           const step = isStepFiling(init);
-          depsOnOneLedger(init, step);
+          depsOnOneLedger(init, step, step ? taskIds : stepIds);
           if (step) checkStep(init);
         }
         const stepInits = dependencyOrder(batch.filter(isStepFiling));

@@ -80,8 +80,9 @@ export type TaskInit<TInput = unknown> = {
   /**
    * For a row filed already cancelled because a dependency ended: why, and
    * that dependency (see `Task.error`, `Task.causedBy`), as a cascade's cancel
-   * writes them. Set only by a replan filing a task skipped. Never from model
-   * input: the task tools build a row's init field by field and leave both out.
+   * writes them, kept only when `status` is `"cancelled"`. Set by a replan
+   * filing a task skipped. Never from model input: the task tools build a
+   * row's init field by field and leave both out.
    */
   error?: string;
   causedBy?: string;

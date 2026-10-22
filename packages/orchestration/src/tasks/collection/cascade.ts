@@ -156,10 +156,7 @@ async function cancelDeadDependents(writes: CascadeWrites, now: number): Promise
   for (let pass = true; pass; ) {
     pass = false;
     for (const row of writes.list()) {
-      if (row.status !== "pending" && row.status !== "held") continue;
-      const dead = (row.deps ?? [])
-        .map((id) => writes.get(id))
-        .find((dep) => (dep?.status === "errored" || dep?.status === "cancelled") && !(dep.cascadeOwed != null && dep.cascadeOwed.due > now));
+      const dead = deadDependencyOf(row, (id) => writes.get(id), now);
       if (dead === undefined) continue;
       await writes.cancelDependent(row.id, dead);
       // A cancel that declined leaves the row as it was: don't pass again on it.
@@ -173,24 +170,42 @@ async function cancelDeadDependents(writes: CascadeWrites, now: number): Promise
 }
 
 /**
- * Whether the rows a caller already holds show something a touch would pay: a
- * recorded debt, or an unstarted row (pending or held) behind a failed or
- * cancelled dependency. An in-memory read, so a hot path (a drain's idle
- * worker) calls {@link payOwedCascades} only when this is `true` and costs
- * nothing extra otherwise. It can't see a row another process filed that
- * these rows don't include; whoever needs those pays unconditionally.
+ * The one rule for which unstarted row a touch cancels, and for what: a row
+ * (pending or held) whose dependency has failed or been cancelled, unless that
+ * dependency's own debt isn't due yet (the ending's own pass is paying it).
+ * A due debt's dependents meet it too, so {@link cancelDeadDependents},
+ * {@link payOwedCascades}'s dependents half and {@link owesATouch} all read
+ * this one predicate.
+ *
+ * @returns The dependency the row is cancelled for, or `undefined`.
  */
-export function owesATouch(rows: readonly Pick<Task, "id" | "deps" | "status" | "cascadeOwed">[]): boolean {
+function deadDependencyOf<T extends Pick<Task, "deps" | "status" | "cascadeOwed">>(
+  row: Pick<Task, "deps" | "status">,
+  get: (id: string) => T | undefined,
+  now: number
+): T | undefined {
+  if (row.status !== "pending" && row.status !== "held") return undefined;
+  for (const id of row.deps ?? []) {
+    const dep = get(id);
+    if (dep === undefined || (dep.status !== "errored" && dep.status !== "cancelled")) continue;
+    if (dep.cascadeOwed != null && dep.cascadeOwed.due > now) continue;
+    return dep;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a touch at `now` would cancel a row the caller already holds, by
+ * {@link deadDependencyOf}. An in-memory read, so a hot path (a drain's idle
+ * worker, before its exit check) calls {@link payOwedCascades} only when this
+ * is `true`. A debt not yet due, or one with no dependent left to cancel (its
+ * filed half only, which a touch after the workers pays), opens nothing. It
+ * can't see a row another process filed that these rows don't include;
+ * whoever needs those pays unconditionally.
+ */
+export function owesATouch(rows: readonly Pick<Task, "id" | "deps" | "status" | "cascadeOwed">[], now: number): boolean {
   const byId = new Map(rows.map((row) => [row.id, row]));
-  return rows.some(
-    (row) =>
-      row.cascadeOwed != null ||
-      ((row.status === "pending" || row.status === "held") &&
-        (row.deps ?? []).some((id) => {
-          const dep = byId.get(id)?.status;
-          return dep === "errored" || dep === "cancelled";
-        }))
-  );
+  return rows.some((row) => deadDependencyOf(row, (id) => byId.get(id), now) !== undefined);
 }
 
 /**

@@ -818,6 +818,24 @@ describe("taskTools — updateTask that releases and reassigns at once", () => {
     expect(taskA(ctx)).toMatchObject({ status: "pending", assignee: "writer" });
   });
 
+  it("doesn't release a task that wasn't held, so a claim landing mid-call isn't reported as a refusal", async () => {
+    // Pending, never started: there is nothing to release. A worker claims it
+    // between the priority write and the end of the call.
+    const ctx = ctxWithTask("pending", { assignee: "researcher", priority: 1 });
+    const parent = (ctx as { parent: { state: Record<string, unknown>; atomicState: (fn: never) => Promise<void> } }).parent;
+    const write = parent.atomicState.bind(parent);
+    parent.atomicState = (async (fn: never) => {
+      await write(fn);
+      const board = parent.state[BOARD_FIELD] as Record<string, Record<string, unknown>>;
+      if (board.a!.priority === 9) board.a = { ...board.a, status: "in_progress", attempts: 1, startedAt: Date.now() };
+    }) as typeof parent.atomicState;
+
+    const result = await runForTest(findTool("updateTask"), { taskId: "a", patch: { status: "pending", priority: 9 } }, ctx);
+
+    expect(result).toEqual({ ok: true });
+    expect(taskA(ctx)).toMatchObject({ status: "in_progress", priority: 9 });
+  });
+
   it("writes nothing when the release is refused: a retried task has started", async () => {
     // The release would decline last, after the reassignment and the priority
     // landed, while the tool reports that the assignee won't change.
