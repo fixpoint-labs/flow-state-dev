@@ -10,7 +10,9 @@
  *    before any notice, so a resent notice names what its ending cancelled.
  * 3. **Resumes owed** (`Task.resumeOwed`): the turn parked on a waited-on row.
  * 4. **Wait slots lapsed** for a request that has since ended (FIX-2082):
- *    released, so an ending held for it is owed to the filer's notice.
+ *    released, so an ending held for it is owed to the filer's notice. A slot
+ *    whose request still runs or is parked is looked at again less and less
+ *    often, and no more once it is past the maximum age.
  * 5. **Notices owed** past their due time, sent again to this session's notice
  *    entry. A send turned away (the 32-notice cap among them) stays owed.
  *
@@ -21,7 +23,8 @@
  *
  * A debt still outstanding past the host's maximum age (`maxDebtAgeMs`,
  * counted from its due time) ends: a notice is settled undeliverable, a marker
- * is cleared, and it is logged. So every wake clears.
+ * is cleared, a lapsed wait slot is no longer looked at (counted from its
+ * lapse), and it is logged. So every wake clears.
  */
 import type { BlockContext, WakeView } from "@flow-state-dev/core/types";
 import { dispatchThroughSeam } from "@flow-state-dev/core/types";
@@ -102,7 +105,7 @@ export async function payBoardDebts(
   // ending a slot held is owed, then sent at its due time.
   let lapsedCheck: number | undefined;
   try {
-    lapsedCheck = await releaseEndedWaits(ctx, ref, now);
+    lapsedCheck = await releaseEndedWaits(ctx, ref, now, maxAge);
   } catch (error) {
     log("a pass's lapsed wait slots stay for the next pass", { error: (error as Error).message });
     lapsedCheck = now + NOTICE_DUE_MS;

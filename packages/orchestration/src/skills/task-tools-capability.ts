@@ -798,7 +798,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   /** How a cancel through this block was made: a model's tool, or a public action (server-set, BP-031). */
   const via = claimless ? ("action" as const) : ("tool" as const);
 
-  // How to wait on a colleague's result (FIX-2082): a model told to "ask them and wait" otherwise sends a message.
+  // How to wait on a colleague's result (FIX-2082), said once, on createTask: a model told to
+  // "ask them and wait" otherwise sends a message.
   const waitHow = wait
     ? " To wait on a colleague's result in this turn, file the task with createTask, then call " +
       "getTask({ id, wait: true }). A message can't be waited on."
@@ -814,8 +815,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "at once and how many it may hold in total: enqueued_task_cap_exceeded means too many tasks " +
     "are already waiting to run, and total_task_cap_exceeded is the lifetime ceiling, which " +
     "draining does not reset. Working a task yourself, end your turn once you have filed its " +
-    "pieces: each piece's ending wakes you with its result" +
-    (wait ? ", or wait on one with getTask({ id, wait: true }) when your next step needs its result." : ".") +
+    "pieces: each piece's ending wakes you with its result." +
     waitHow;
   const createTaskFields = {
     goal: z.string(),
@@ -1046,8 +1046,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "createTask takes, or taskId to start a task held earlier on this board. " +
     "assignee names the worker; leave it unset only when there is a single worker to " +
     "give it to. Returns the task id at once, without waiting for the task to run, and " +
-    "you hear when it ends." +
-    waitHow;
+    "you hear when it ends.";
   const dispatchFields = {
     ...createTaskFields,
     goal: z.string().optional().describe("What the new task is for. Omit it when you give taskId."),

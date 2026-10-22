@@ -106,15 +106,29 @@ describe("a host's wait deadline bounds", () => {
 });
 
 describe("whether a request has stopped running its own work", () => {
-  const records: Record<string, { status: string; sessionId: string }> = {
-    done: { status: "completed", sessionId: "s" },
-    died: { status: "interrupted", sessionId: "s" },
-    parked: { status: "suspended", sessionId: "s" },
-    running: { status: "in_progress", sessionId: "s" },
-    elsewhere: { status: "completed", sessionId: "s_other" }
+  // The last gate on a request's log, as the sweep reads it to re-drive an interrupted request.
+  const parkedOn = (gateId: string) => [{ type: "suspension", suspensionId: gateId }];
+  const records: Record<string, { id: string; status: string; sessionId: string; items?: unknown[] }> = {
+    done: { id: "done", status: "completed", sessionId: "s" },
+    // Died while it ran, with no gate after: nothing drives it again.
+    died: { id: "died", status: "interrupted", sessionId: "s" },
+    // Died in the run after a resolved wait: the sweep re-drives it from that gate.
+    redriven: { id: "redriven", status: "interrupted", sessionId: "s", items: parkedOn("g-wait") },
+    // Died behind a gate still pending: its resume drives it.
+    behindPending: { id: "behindPending", status: "interrupted", sessionId: "s", items: parkedOn("g-pending") },
+    // Died behind an approval that expired with no reject allowed: nothing continues it.
+    behindDeadGate: { id: "behindDeadGate", status: "interrupted", sessionId: "s", items: parkedOn("g-form") },
+    parked: { id: "parked", status: "suspended", sessionId: "s" },
+    running: { id: "running", status: "in_progress", sessionId: "s" },
+    elsewhere: { id: "elsewhere", status: "completed", sessionId: "s_other" }
+  };
+  const gates: Record<string, unknown> = {
+    "g-wait": { suspensionId: "g-wait", reason: "wait", status: "submitted", allow: ["submit"] },
+    "g-pending": { suspensionId: "g-pending", reason: "approval", status: "pending", allow: ["approve", "reject"] },
+    "g-form": { suspensionId: "g-form", reason: "input", status: "expired", allow: ["submit"] }
   };
   const waits = createRequestWaits({
-    provider: provider([]),
+    provider: { ...provider([]), loadSuspension: async (_requestId: string, gateId: string) => (gates[gateId] ?? null) as never },
     deadlines: { defaultMs: 1, minMs: 1, maxMs: 1 },
     userId: "u",
     requestId: "r",
@@ -123,14 +137,22 @@ describe("whether a request has stopped running its own work", () => {
     readRequest: async (id) => records[id] as never
   });
 
-  it("is true for an end or an interruption, false while it runs or is parked, and never for another session", async () => {
-    expect(await waits.ended!(["done", "died", "parked", "running", "elsewhere", "gone"])).toEqual({
+  it("is true for an end, and for an interruption nothing will drive again", async () => {
+    expect(await waits.ended!(["done", "died", "behindDeadGate", "gone"])).toEqual({
       done: true,
       died: true,
+      behindDeadGate: true,
+      gone: true
+    });
+  });
+
+  it("is false for an interruption the sweep re-drives or a resume drives, while it runs or is parked, and for another session", async () => {
+    expect(await waits.ended!(["redriven", "behindPending", "parked", "running", "elsewhere"])).toEqual({
+      redriven: false,
+      behindPending: false,
       parked: false,
       running: false,
-      elsewhere: false,
-      gone: true
+      elsewhere: false
     });
   });
 });

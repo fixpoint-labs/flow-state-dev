@@ -2,8 +2,7 @@
  * A drain's claim is kept with the request so a replay after a park reads it
  * back instead of claiming again (FIX-2082). What is kept is the row's id and
  * the attempt it was claimed on, never the row itself (BP-042): the replay
- * reads the row again and shows it as claimed. A record kept whole by an
- * earlier shape is read as it is.
+ * reads the row again and shows it as claimed.
  */
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
@@ -66,21 +65,27 @@ describe("the claim a drain keeps with its request", () => {
     expect(replay).toMatchObject({ claimed: true, task: { id: filed.id, status: "in_progress", attempts: 1, goal: "outline" } });
   });
 
-  it("reads a claim kept whole by an earlier shape as it is, and a kept no-claim as none", async () => {
+  it("keeps a claim that found nothing as none, and a replay claims nothing either", async () => {
     const memo = new Map<string, unknown>();
     const board = await boardOf(ctxWith(memo));
+    let claims = 0;
     const block = createClaimTask({
       name: "claim",
       collection: async () => board,
-      dispatcher: { claim: async () => null } as never,
+      dispatcher: {
+        claim: async () => {
+          claims += 1;
+          return null;
+        }
+      } as never,
       workerId: () => "w"
     });
     const run = (ctx: BlockContext) => asRuntime(block).run(undefined, ctx) as Promise<{ claimed: boolean; task?: Task }>;
     expect(await run(ctxWith(memo))).toEqual({ claimed: false });
     expect([...memo.values()]).toEqual([null]);
-
-    const whole = { id: "t_old", goal: "kept whole", status: "in_progress", attempts: 2 };
-    memo.set([...memo.keys()][0]!, whole);
-    expect(await run(ctxWith(memo))).toMatchObject({ claimed: true, task: whole });
+    // A row filed since doesn't change what the replay of this pass claimed.
+    await board.addTask({ goal: "later", assignee: "writer" });
+    expect(await run(ctxWith(memo))).toEqual({ claimed: false });
+    expect(claims).toBe(1);
   });
 });

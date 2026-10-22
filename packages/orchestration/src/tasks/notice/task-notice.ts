@@ -95,9 +95,17 @@ export const NOTICE_DUE_MS = 2_000;
  * pass after that request ends, so an ending held for it is never stranded.
  * The release at the request's end in its own process comes first; this is
  * what pays it when that process is gone. Thirty seconds, the age at which a
- * request whose process died is marked interrupted.
+ * request whose process died is marked interrupted. The first look; later
+ * ones come less often ({@link LAPSED_SLOT_CHECK_CAP_MS}).
  */
 export const LAPSED_SLOT_CHECK_MS = 30_000;
+
+/**
+ * The longest the filer's pass goes between looks at a lapsed wait slot whose
+ * request still runs or is parked: one hour. The gap grows with the slot's
+ * age, from {@link LAPSED_SLOT_CHECK_MS}, until it reaches this.
+ */
+export const LAPSED_SLOT_CHECK_CAP_MS = 3_600_000;
 
 /** The marker each owed notice is kept under, in the row's metadata. */
 const OWED_PREFIX = "noticeOwed:";

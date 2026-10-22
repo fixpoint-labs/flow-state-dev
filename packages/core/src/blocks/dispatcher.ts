@@ -117,7 +117,7 @@ import {
   type TaskSessionPolicy
 } from "../types/dispatch";
 import { handler } from "./handler";
-import { parseBlockInstanceId } from "./internal/block-instance-id";
+import { logicalBlockIdOf } from "./internal/block-instance-id";
 
 /** What a dispatcher returns: enough to find the work it started. */
 export const dispatchHandleSchema = z.object({
@@ -483,7 +483,8 @@ async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<
     );
   }
   const once = ctx.runOnce.bind(ctx);
-  const key = logicalKeyOf(ctx) ?? name;
+  // A context with no block identity (a hand-built one) keys by the block's name.
+  const key = logicalBlockIdOf(ctx) ?? name;
   const handle = await once(`fsd.dispatch.send:${key}`, async () => {
     const depth = await waits.depth({});
     if (depth > MAX_WAIT_DEPTH) {
@@ -513,20 +514,6 @@ async function sendAndWait(name: string, ctx: BlockContext, send: () => Promise<
     return { status: "running", requestId };
   }
   return { status: "failed", error: outcome.error.message, requestId };
-}
-
-/**
- * The block's logical id: the same on every attempt of the block and on the
- * replay after a resume, so a retry after the send reads back the dispatch it
- * sent. The runtime's `ctx.idempotencyKey` when the context carries it, else
- * the block instance id without its attempt (`${requestId}:${path}`).
- */
-function logicalKeyOf(ctx: BlockContext): string | undefined {
-  if (ctx.idempotencyKey !== undefined) return ctx.idempotencyKey;
-  const instanceId = ctx._blockIdentity?.blockInstanceId;
-  if (instanceId === undefined) return undefined;
-  const parsed = parseBlockInstanceId(instanceId);
-  return parsed === undefined ? instanceId : `${parsed.requestId}:${parsed.path}`;
 }
 
 function handleOf(outcome: { sessionId: string; requestId: string; adopted: boolean }): DispatchHandle {

@@ -19,7 +19,7 @@
  * block surfaces the claim outcome to the pattern layer; it adds no
  * arbitration of its own.
  */
-import { handler, parseBlockInstanceId } from "@flow-state-dev/core";
+import { handler, logicalBlockIdOf } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Task, TaskCollectionRef, TaskDispatcher } from "../../tasks";
@@ -42,19 +42,6 @@ export interface ClaimTaskOptions {
 }
 
 export type ClaimTaskOutput = ClaimResult;
-
-/**
- * The running block's logical id, `${requestId}:${path}`: the same on every
- * replay of the request, and distinct per worker and per loop pass. The
- * runtime's `idempotencyKey` when it carries one, else derived from the
- * block's instance id to the same value.
- */
-function logicalIdOf(ctx: BlockContext): string | undefined {
-  if (ctx.idempotencyKey !== undefined) return ctx.idempotencyKey;
-  const instanceId = ctx._blockIdentity?.blockInstanceId;
-  const parsed = instanceId === undefined ? undefined : parseBlockInstanceId(instanceId);
-  return parsed === undefined ? undefined : `${parsed.requestId}:${parsed.path}`;
-}
 
 export function createClaimTask(options: ClaimTaskOptions) {
   const { name, collection: collectionFactory, dispatcher, workerId } = options;
@@ -79,7 +66,8 @@ export function createClaimTask(options: ClaimTaskOptions) {
       // logical path, which names this worker and this pass of its loop.
       // Only the row's id and the attempt it was claimed on are kept (BP-042):
       // the replay reads the rest off the row.
-      const key = logicalIdOf(ctx);
+      // No logical id (a context with no block identity): claimed afresh, kept nowhere.
+      const key = logicalBlockIdOf(ctx);
       const task =
         ctx.runOnce !== undefined && key !== undefined
           ? await claimedOnce(ctx, `fsd.board.claim:${key}`, claim, collectionFactory)
@@ -104,8 +92,7 @@ type KeptClaim = { readonly claimedId: string; readonly attempts: number } | nul
 /**
  * Claim once per logical block, kept with the request (`runOnce`). The first
  * run claims and keeps the row's id and attempt; a replay reads the row again
- * and shows it as it was claimed: running, on that attempt. A record kept
- * whole (an earlier shape of this memo) is read as it is (BP-030).
+ * and shows it as it was claimed: running, on that attempt.
  */
 async function claimedOnce(
   ctx: BlockContext,
@@ -114,13 +101,12 @@ async function claimedOnce(
   collectionFactory: (ctx: BlockContext) => Promise<TaskCollectionRef>
 ): Promise<Task | null> {
   let claimedNow: Task | null | undefined;
-  const kept = await ctx.runOnce!<KeptClaim | Task>(memoKey, async () => {
+  const kept = await ctx.runOnce!<KeptClaim>(memoKey, async () => {
     claimedNow = await claim();
     return claimedNow === null ? null : { claimedId: claimedNow.id, attempts: claimedNow.attempts };
   });
   if (claimedNow !== undefined) return claimedNow;
   if (kept === null) return null;
-  if (!("claimedId" in kept)) return kept;
   const collection = await collectionFactory(ctx);
   await collection.refresh?.(kept.claimedId);
   const row = collection.get(kept.claimedId);

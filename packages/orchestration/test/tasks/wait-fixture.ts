@@ -58,14 +58,14 @@ export function toolResults(messages: unknown[]): string {
   return out.join(" | ");
 }
 
-export const waitCall = (id: string, question = "Is ACME's SOC 2 current?", deadline?: number): StepFn => () => ({
+export const waitCall = (id: string, question = "Is ACME's SOC 2 current?", deadline?: number): StepFn => (_options) => ({
   toolCalls: [{ toolCallId: id, toolName: "wait_on_colleague", args: { question, ...(deadline !== undefined ? { deadline } : {}) } }],
   finishReason: "tool-calls"
 });
 export const finalAnswer: StepFn = (opts) => ({ text: `final: ${toolResults(opts.messages)}`, finishReason: "stop" });
 
 /** A step that waits on a task already filed, by id, as `getTask({ id, wait: true })` does. */
-export const waitAgain = (callId: string, id: () => string, deadline?: number): StepFn => () => ({
+export const waitAgain = (callId: string, id: () => string, deadline?: number): StepFn => (_options) => ({
   toolCalls: [{ toolCallId: callId, toolName: "wait_again", args: { id: id(), ...(deadline !== undefined ? { deadline } : {}) } }],
   finishReason: "tool-calls"
 });

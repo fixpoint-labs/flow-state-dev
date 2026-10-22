@@ -48,6 +48,8 @@ import {
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import type { DurabilityProvider } from "./types";
 import { resumeWaitGate, type WaitResumeDeps } from "./resume-wait-gate";
+import { latestGateIdOf } from "./resume-under-lease";
+import { owesRedrive } from "./stop-suspended";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
 import { TASK_SOURCE } from "../execution/transport-sources";
 
@@ -214,7 +216,7 @@ export async function waitChainDepth(
 
 /** Build the running request's `RequestHost.waits`. */
 export function createRequestWaits(inputs: {
-  readonly provider: Pick<DurabilityProvider, "listSuspended">;
+  readonly provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
   readonly deadlines: WaitDeadlines;
   readonly userId: string;
   readonly requestId: string;
@@ -224,8 +226,8 @@ export function createRequestWaits(inputs: {
   readonly waitedBy?: WaiterOf;
   /** The running request's session: `ended` answers only for requests in it. */
   readonly sessionId: string;
-  /** A request's record, from the request store. */
-  readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "status" | "sessionId"> | undefined>;
+  /** A request's record, with its item log, from the request store. */
+  readonly readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
 }): RequestWaits {
   return {
     deadlines: inputs.deadlines,
@@ -235,21 +237,42 @@ export function createRequestWaits(inputs: {
       const answers: Record<string, boolean> = {};
       for (const requestId of new Set(requestIds)) {
         const record = await inputs.readRequest(requestId);
+        if (record === undefined) {
+          answers[requestId] = true;
+          continue;
+        }
         // A request of another session is never answered as ended: not this session's to release.
-        answers[requestId] = record === undefined || (record.sessionId === inputs.sessionId && WORK_OVER.has(record.status));
+        if (record.sessionId !== inputs.sessionId) {
+          answers[requestId] = false;
+          continue;
+        }
+        answers[requestId] =
+          WORK_OVER.has(record.status) || (record.status === "interrupted" && !(await drivenAgain(inputs.provider, record)));
       }
       return answers;
     }
   };
 }
 
+/** Request statuses after which a request runs no more of its own work. */
+const WORK_OVER: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);
+
 /**
- * Request statuses after which a request runs no more of its own work: an end,
- * or `interrupted` (its process died while it ran). A request interrupted
- * behind a resolved gate may be driven again; what it reads then is the row as
- * it stands.
+ * Whether an `interrupted` request will run again: the last gate on its log is
+ * still pending (a resume drives it), or resolved and owed a re-drive, which
+ * the durability sweep gives it (step 2b). An interrupted request with no such
+ * gate died while it ran, and nothing drives it again: its work is over.
  */
-const WORK_OVER: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted", "interrupted"]);
+async function drivenAgain(
+  provider: Pick<DurabilityProvider, "loadSuspension">,
+  record: Pick<RequestRecord, "id" | "items">
+): Promise<boolean> {
+  const gateId = latestGateIdOf(record);
+  if (gateId === undefined) return false;
+  const gate = await provider.loadSuspension(record.id, gateId);
+  if (gate === null) return false;
+  return gate.status === "pending" || isWaitGate(gate) || owesRedrive(gate);
+}
 
 /** Request statuses after which a request does no more work. */
 const ENDED: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);

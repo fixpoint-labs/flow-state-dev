@@ -255,6 +255,7 @@ export {
   blockPathTool,
   extendBlockPath,
   parseBlockInstanceId,
+  logicalBlockIdOf,
   ROOT_BLOCK_PATH
 } from "./blocks/internal/block-instance-id";
 export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";

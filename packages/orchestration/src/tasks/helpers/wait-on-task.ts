@@ -50,6 +50,7 @@
  */
 import {
   canHoldWait,
+  logicalBlockIdOf,
   MAX_WAIT_DEPTH,
   parkOnWait,
   parseBlockInstanceId,
@@ -64,7 +65,7 @@ import type { TaskCollectionRef } from "../collection/types";
 import type { TaskClaimTicket } from "../claim-ticket";
 import { resolveResourceCollection } from "../collection/resolve-resource-collection";
 import { getOrCreateTaskCollection } from "../collection/get-or-create";
-import { holdsAnEnding, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
+import { holdsAnEnding, LAPSED_SLOT_CHECK_CAP_MS, LAPSED_SLOT_CHECK_MS } from "../notice/task-notice";
 // The running request's own task, as the claim and the gate know it. Reached by
 // path, not through the task-board barrel, which imports this module.
 import { currentWorkerClaim } from "../../task-board/flow-policy-wiring";
@@ -94,10 +95,10 @@ export { canHoldWait };
  */
 export function toolCallOf(ctx: BlockContext): { logicalId: string; stepKey: string } | undefined {
   const instanceId = ctx._blockIdentity?.blockInstanceId;
-  if (instanceId === undefined) return undefined;
-  const parsed = parseBlockInstanceId(instanceId);
-  if (parsed === undefined) return undefined;
-  const logicalId = ctx.idempotencyKey ?? `${parsed.requestId}:${parsed.path}`;
+  const parsed = instanceId === undefined ? undefined : parseBlockInstanceId(instanceId);
+  const logicalId = logicalBlockIdOf(ctx);
+  // No identity that parses: not a tool call this can key, and the caller refuses the wait.
+  if (parsed === undefined || logicalId === undefined) return undefined;
   // A generator's tool runs at `<generator>/tool[<name>][<step>%3A<call>]`.
   // Calls in one step share the generator and the step number. Anything else
   // (a tool called outside a generator's loop) is its own step.
@@ -573,34 +574,69 @@ function arm(ctx: BlockContext, requestId: string, entry: { readonly tasks: Map<
   else if (lapsedByRequest.get(requestId) === entry) lapsedByRequest.delete(requestId);
 }
 
+/** This process no longer holds `taskId`'s lapsed slot for `requestId`; a request left with none is forgotten. */
+function forgetLapsed(requestId: string, taskId: string): void {
+  const entry = lapsedByRequest.get(requestId);
+  if (entry === undefined) return;
+  entry.tasks.delete(taskId);
+  if (entry.tasks.size === 0) lapsedByRequest.delete(requestId);
+}
+
 /**
  * Release every slot on `collection` that lapsed for a request that has since
  * stopped running its work (`RequestWaits.ended`): the durable half of the
  * release at a request's end, run by the filer's pass. An ending held for such
  * a request goes to the filer's notice, once.
  *
+ * Only a crash needs this: a request that ends in a process that runs it
+ * releases its slots itself, and one resumed after a park arms that release
+ * again. So the pass looks again at a slot whose request still runs or is
+ * parked less and less often, from {@link LAPSED_SLOT_CHECK_MS} up to
+ * {@link LAPSED_SLOT_CHECK_CAP_MS}, as the slot ages, and stops looking once
+ * it is `maxAgeMs` past its lapse (the wait's deadline), as every other debt
+ * of the pass ends. A slot it stops looking at is still released by its
+ * request's end, or by a later pass that finds the request ended.
+ *
  * @returns When the pass should look again: the earliest check-in for a slot
- *   whose request still runs or is parked, or `undefined` when none is left.
+ *   whose request still runs or is parked, or `undefined` when none is owed.
  */
-export async function releaseEndedWaits(ctx: BlockContext, collection: TaskCollectionRef, now: number): Promise<number | undefined> {
+export async function releaseEndedWaits(
+  ctx: BlockContext,
+  collection: TaskCollectionRef,
+  now: number,
+  maxAgeMs: number = Infinity
+): Promise<number | undefined> {
   const lapsed = collection.list().filter((row) => row.wait?.lapsed === true && row.wait.requestId !== undefined);
   if (lapsed.length === 0) return undefined;
   const ended = ctx.requestHost?.waits?.ended;
   if (ended === undefined || collection.releaseWait === undefined) return undefined;
   const answers = await ended(lapsed.map((row) => row.wait!.requestId!));
   let next: number | undefined;
+  // Look again at this slot later, unless it is past the age every debt ends at.
+  const lookAgain = (row: Task): void => {
+    const age = Math.max(0, now - row.wait!.deadline);
+    if (age > maxAgeMs) {
+      console.warn(
+        `[orchestration] wait "${row.id}": its request still runs or is parked ${Math.round(age / 1000)} s past the lapse; ` +
+          "the pass stops looking at its slot, which the request's end releases"
+      );
+      return;
+    }
+    const at = now + Math.min(Math.max(age, LAPSED_SLOT_CHECK_MS), LAPSED_SLOT_CHECK_CAP_MS);
+    next = Math.min(next ?? Infinity, at);
+  };
   for (const row of lapsed) {
     const requestId = row.wait!.requestId!;
     if (answers[requestId] !== true) {
-      next = Math.min(next ?? Infinity, now + LAPSED_SLOT_CHECK_MS);
+      lookAgain(row);
       continue;
     }
     try {
       await collection.releaseWait(row.id, { requestId, read: false });
-      lapsedByRequest.get(requestId)?.tasks.delete(row.id);
+      forgetLapsed(requestId, row.id);
     } catch (error) {
       console.warn(`[orchestration] wait "${row.id}": its lapsed slot stays for the next pass: ${(error as Error).message}`);
-      next = Math.min(next ?? Infinity, now + LAPSED_SLOT_CHECK_MS);
+      lookAgain(row);
     }
   }
   return next;
@@ -619,7 +655,7 @@ export async function deliverHeldEnding(ctx: BlockContext, collection: TaskColle
   if (requestId === undefined || task.wait?.lapsed !== true || task.wait.requestId !== requestId) return;
   if (!isTerminalStatus(task.status) && !holdsAnEnding(task)) return;
   await collection.releaseWait?.(task.id, { requestId, read: true });
-  lapsedByRequest.get(requestId)?.tasks.delete(task.id);
+  forgetLapsed(requestId, task.id);
 }
 
 /**

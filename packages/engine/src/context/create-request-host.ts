@@ -174,14 +174,14 @@ export type RequestHostInputs = {
    * `wakes`: a wait parks durably, and its deadline is a wake.
    */
   waits?: {
-    provider: Pick<DurabilityProvider, "listSuspended">;
+    provider: Pick<DurabilityProvider, "listSuspended" | "loadSuspension">;
     deadlines: WaitDeadlines;
     requestId: string;
     own: WaitRow | undefined;
     /** The request that dispatched this one and waits on it, read off its trusted dispatch stamp. */
     waitedBy?: WaiterOf;
-    /** A request's record, for `waits.ended`. */
-    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "status" | "sessionId"> | undefined>;
+    /** A request's record with its item log, for `waits.ended`. */
+    readRequest: (requestId: string) => Promise<Pick<RequestRecord, "id" | "status" | "sessionId" | "items"> | undefined>;
   };
   /**
    * The running request's trusted dispatch stamp, already read through
