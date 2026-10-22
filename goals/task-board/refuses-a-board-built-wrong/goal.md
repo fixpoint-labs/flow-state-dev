@@ -37,3 +37,5 @@ FIX-2080's refusal of a plan row filed held joins this leg when that issue lands
 |------|--------|-------|---------|-------|
 | 2026-10-21 | fix/FIX-2076, uncommitted goal | n/a | PASS | 5 boards refused at build, each naming its setting and fix; the right-built pair built |
 | 2026-10-21 | fix/FIX-2076, uncommitted goal | n/a | FAIL (control `no-fence`, expected) | `b:refused` for all five: each built with no refusal |
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a | PASS | 6 boards refused at build, each naming its setting and fix; the plan board now holds a dispatcher that won't wait, and a delegation board whose dispatcher waits is new |
+| 2026-10-22 | fix/FIX-2082 13088b0a5 | n/a | FAIL (control `no-fence`, expected) | `b:refused` for all six: each built with no refusal |
