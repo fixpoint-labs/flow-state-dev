@@ -13,7 +13,15 @@ import { DEFAULT_ORG_ID, defineFlow, handler, sequencer } from "@flow-state-dev/
 import { onRequestEnded } from "@flow-state-dev/core/types";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores, detectInterruptedRequests, disposeFlowApiRouter, runAction } from "../src";
+import {
+  continueRequest,
+  createFlowApiRouter,
+  createFlowRegistry,
+  createInMemoryStores,
+  detectInterruptedRequests,
+  disposeFlowApiRouter,
+  runAction
+} from "../src";
 import type { StoreRegistry } from "../src";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -86,8 +94,7 @@ const terminalsIn = (body: string) =>
 const sequencesIn = (body: string) => [...body.matchAll(/^id: [^\n]*:(\d+)$/gm)].map((match) => Number(match[1]));
 
 describe.each([
-  // On: a beat faster than the sweep threshold below, as a real deployment keeps it.
-  ["heartbeats on", 5],
+  ["heartbeats on", undefined],
   ["heartbeats off", 0]
 ] as const)("a held request's stream (%s)", (_label, heartbeatIntervalMs) => {
   it("a GET stream attached while the hooks run ends once, with the final status", async () => {
@@ -143,11 +150,13 @@ describe.each([
     await running;
   });
 
-  it("a stale sweep during the hooks: the reader's terminal is the persisted one, and no sequence number repeats", async () => {
-    // The sweep reaps a held run's entry while its hook still runs: with
-    // heartbeats off its entry never beats, and with heartbeats on a sweep
-    // threshold below the beat does the same. The reader must still wait for
-    // the run's own terminal event, not end on a status the hook then changes.
+  // Heartbeats off only: its entry never beats, so a sweep reaps a live held
+  // run's entry while its hook still runs. A beating run is reaped only by a
+  // sweep threshold below its beat, which is a misconfiguration (the sweep
+  // then stamps it finalized as dead; `streaming.md`, Known limits).
+  it.runIf(heartbeatIntervalMs === 0)("a stale sweep during the hooks: the reader's terminal is the persisted one, and no sequence number repeats", async () => {
+    // The reader must still wait for the run's own terminal event, not end on
+    // a status the hook then changes.
     let open!: () => void;
     const gate = { started: false, open: new Promise<void>((resolve) => (open = resolve)) };
     const stores = createInMemoryStores();
@@ -178,20 +187,33 @@ describe.each([
     }
   });
 
-  it("a run the stale sweep stamped interrupted, with no terminal event in its log, replays ending interrupted", async () => {
+  // Once: it doesn't depend on the heartbeat.
+  it.runIf(heartbeatIntervalMs === 0)("a run the stale sweep stamped interrupted replays ending interrupted after its last event, and its continuation never reuses that number", async () => {
     let open!: () => void;
     const gate = new Promise<void>((resolve) => (open = resolve));
+    let calls = 0;
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "request-end-stream",
       actions: {
         run: {
           inputSchema: z.any(),
-          block: handler({ name: "hang", inputSchema: z.any(), execute: async () => void (await gate) })
+          // The first run hangs, as a run whose process died; a continuation finishes.
+          block: handler({
+            name: "hang-once",
+            inputSchema: z.any(),
+            execute: async () => {
+              calls += 1;
+              if (calls === 1) await gate;
+              return "done";
+            }
+          })
         }
       }
     })({ id: FLOW_ID });
-    const router = hostFor(stores, flow as never);
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const router = createFlowApiRouter({ registry, stores });
     const running = run(flow as never, stores);
     try {
       let record;
@@ -202,10 +224,22 @@ describe.each([
       // Its process died: the sweep stamps it interrupted, and nothing writes its event.
       await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
       expect((await stores.request.get(record!.id))?.status).toBe("interrupted");
+      const lastReal = Math.max(...(await stores.request.getEvents(record!.id)).map((event) => event.sequence_number ?? 0));
 
-      const body = await Promise.race([streamOf(router, record!.id), sleep(2_000).then(() => "still open")]);
+      const body = await Promise.race([streamOf(router as never, record!.id), sleep(2_000).then(() => "still open")]);
 
       expect(terminalsIn(body)).toEqual(["request.interrupted"]);
+      // The rule for a synthetic nothing can follow: one past the last real event.
+      const synthetic = sequencesIn(body).at(-1);
+      expect(synthetic).toBe(lastReal + 1);
+
+      // Continued under its own id (DevTool's Continue, a re-drive): its events
+      // must never take the number a reader already got for the synthetic.
+      const continued = await continueRequest({ requestId: record!.id, stores, flowRegistry: registry, runtimeConfig: {} });
+      await continued.finished;
+      const persisted = (await stores.request.getEvents(record!.id)).map((event) => event.sequence_number);
+      expect(persisted).not.toContain(synthetic);
+      expect(new Set(persisted).size).toBe(persisted.length);
     } finally {
       open();
       await running.catch(() => undefined);

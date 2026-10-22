@@ -24,6 +24,7 @@ import { runAction } from "./runAction";
 import { stripResumeMetadata } from "./resume-metadata";
 import { hasLiveRequestAttempt } from "./request-attempts";
 import { resolveRecordOwner } from "../context/record-owner";
+import { isTerminalRequestStreamEvent } from "../stores/subscribe-helpers";
 
 export interface ContinueRequestOptions {
   /** The suspended/interrupted request to continue, re-entered under this id. */
@@ -107,7 +108,13 @@ export async function continueRequest(
   // owns the prior id, so sourcing the seed here (not from caller options) is
   // correct.
   const priorEvents = await stores.request.getEvents(requestId);
-  const lastSeq = priorEvents.reduce((m, e) => Math.max(m, e.sequence_number), 0);
+  const priorLast = priorEvents.reduce((m, e) => Math.max(m, e.sequence_number), 0);
+  // A prior log with no terminal event (a run the stale sweep stamped
+  // interrupted) may have been replayed with a synthetic terminal at its last
+  // sequence number plus one (FIX-2077, `streaming.md`). Skip that slot, so
+  // this run's first event never lands on a number a reader already took. A
+  // gap is harmless: resume reads past a cursor with `>`.
+  const lastSeq = priorEvents.some(isTerminalRequestStreamEvent) ? priorLast : priorLast + 1;
 
   // Continue the per-request ITEM index too (FIX-811). The re-entry emitter
   // starts empty, so without a seed its first item (`suspension_resume`) and
