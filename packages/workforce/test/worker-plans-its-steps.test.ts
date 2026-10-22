@@ -99,6 +99,8 @@ function stepperFlow(installation: WorkerInstallation, controls: Controls) {
         await refused(() => ref!.complete(first.id, "done by hand"));
         await refused(() => ref!.fail(first.id, "failed by hand"));
         await refused(() => ref!.setAssignee(first.id, "someone.else"));
+        // A step runs after this turn, in this request: a wait on it would never end (FIX-2082).
+        await refused(() => ref!.markWait!(first.id, { gateId: "probe", deadline: Date.now() + 60_000, requestId: "probe" }));
       }
       return `${worker} planned`;
     }
@@ -440,14 +442,14 @@ describe("a step's own turn files no step: further work goes in its answer", () 
 });
 
 describe("a step is the worker's: the tools settle no step, and nothing else files one (rule 18)", () => {
-  it("refuses completing, failing or reassigning a step by a call: the drain records its turn's return", async () => {
+  it("refuses completing, failing, reassigning or waiting on a step by a call: the drain records its turn's return", async () => {
     const h = host();
     try {
       h.controls.plans.writer = [outline[0]!];
       h.controls.probes.add("writer");
       const talk = await h.open("alice", "writer");
       expect((await h.act("alice", talk, "run", { message: "outline it" }, "stepper")).error).toBeUndefined();
-      expect(h.controls.refusals.map((r) => r.error)).toEqual(["step_settles_itself", "step_settles_itself", "step_and_task_filed_apart"]);
+      expect(h.controls.refusals.map((r) => r.error)).toEqual(["step_settles_itself", "step_settles_itself", "step_and_task_filed_apart", "step_cannot_wait"]);
       const [row] = await h.steps("alice");
       expect(row).toMatchObject({ id: "s-outline", status: "completed", output: "Outline the post#done", assignee: "writer" });
     } finally {

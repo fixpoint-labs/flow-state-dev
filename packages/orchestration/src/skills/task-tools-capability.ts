@@ -1595,14 +1595,21 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (t === undefined) return taskNotFoundError(input.id);
       if (input.wait === true) {
         const call = toolCallOf(ctx);
-        const waited =
-          call === undefined
-            ? undefined
-            : await waitOnTask(ctx, collection, t.id, {
-                key: call.logicalId,
-                step: call.stepKey,
-                ...(typeof input.deadline === "number" ? { deadlineMs: input.deadline } : {}),
-              });
+        let waited: Awaited<ReturnType<typeof waitOnTask>> | undefined;
+        try {
+          waited =
+            call === undefined
+              ? undefined
+              : await waitOnTask(ctx, collection, t.id, {
+                  key: call.logicalId,
+                  step: call.stepKey,
+                  ...(typeof input.deadline === "number" ? { deadlineMs: input.deadline } : {}),
+                });
+        } catch (err) {
+          // A wrapping ref's own refusal of the slot (FIX-2076's steps).
+          if (err instanceof TaskWriteRefusedError) return refusedError(err);
+          throw err;
+        }
         if (waited === undefined) {
           return {
             ok: false as const,

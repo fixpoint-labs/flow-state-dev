@@ -272,6 +272,15 @@ const stepNotHeld = (taskId: string) =>
     taskId
   );
 
+/** The refusal for a wait on a step: it runs after the waiting turn, in its request (FIX-2082). */
+const stepCannotWait = (taskId: string) =>
+  new TaskWriteRefusedError(
+    "step_cannot_wait",
+    `task "${taskId}" is a step for yourself: it runs after this turn, in this request, so this turn can't wait on it. ` +
+      "End the turn, and you hear how it ended when it has. Nothing was written.",
+    taskId
+  );
+
 /** The refusal for an assignee change that crosses the worker itself. */
 const filedApart = (taskId: string) =>
   new TaskWriteRefusedError(
@@ -996,12 +1005,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
           "your steps have ended and this turn gives your answer: do the work yourself, or answer. A task for a delegate is still dispatched. Nothing was filed."
         );
       }
-      if (init.wait != null) {
-        throw new TaskWriteRefusedError(
-          "step_cannot_wait",
-          "a step for yourself runs after this turn, in this request, so this turn can't wait on it. File it without wait, and you hear how it ended when it has. Nothing was filed."
-        );
-      }
       if (init.followUpOf !== undefined) {
         throw new TaskWriteRefusedError(
           "step_follows_nothing",
@@ -1133,6 +1136,23 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
         return board.hold(id);
       },
       release: byRow("release") as TaskCollectionRef["release"],
+      // A step runs after this turn, in this request: a wait on it would never end.
+      ...(board.markWait === undefined
+        ? {}
+        : {
+            async markWait(id: string, slot: Parameters<NonNullable<TaskCollectionRef["markWait"]>>[1]) {
+              if (isStep(id)) throw stepCannotWait(id);
+              return board.markWait!(id, slot);
+            }
+          }),
+      ...(board.refresh === undefined && plan.refresh === undefined
+        ? {}
+        : {
+            async refresh(id: string) {
+              await board.refresh?.(id);
+              await plan.refresh?.(id);
+            }
+          }),
       unpark: byRow("unpark") as TaskCollectionRef["unpark"],
       reopen: byRow("reopen") as TaskCollectionRef["reopen"],
       setPriority: byRow("setPriority") as TaskCollectionRef["setPriority"],
@@ -1160,13 +1180,6 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
               if (!isStep(id)) {
                 if (dispatchOptions.assignee === self) throw filedApart(id);
                 return board.dispatch!(id, dispatchOptions);
-              }
-              if (dispatchOptions.wait != null) {
-                throw new TaskWriteRefusedError(
-                  "step_cannot_wait",
-                  `task "${id}" is a step for yourself: it runs after this turn, in this request, so this turn can't wait on it. Dispatch it without wait. Nothing was written.`,
-                  id
-                );
               }
               if (dispatchOptions.assignee !== undefined && dispatchOptions.assignee !== self) throw filedApart(id);
               if (plan.dispatch === undefined) {
@@ -1307,21 +1320,16 @@ export function defineConversationBoard(options: ConversationBoardOptions) {
    * `controlTools`, as Orchestration's capability carries them, so a worker's
    * `tools:` line doesn't fence them out.
    */
-  // Chosen per turn: a wait is offered only where the host can hold one
-  // (FIX-1816). This board resumes waits: its pass resumes the turns owed a
-  // resume when their task ends. And it dispatches (FIX-1875): its ref's filings and
-  // dispatches wake a run of it, so `dispatchTask` starts work now.
+  // Chosen per turn: `getTask`'s wait is offered only where the host can hold
+  // one (FIX-1816, FIX-2082). This board resumes waits: its pass resumes the
+  // requests owed a resume when their task ends. A task session's request may
+  // wait too, up to five deep. And it dispatches (FIX-1875): its ref's filings
+  // and dispatches wake a run of it, so `dispatchTask` starts work now.
   // On a turn routing a post (FIX-1872), `dispatchTask` also takes its post
   // form; a session that files no task gets that one tool alone.
-  // A task session's turn can't wait, but its task can: a piece filed without
-  // `wait` leaves the task waiting on it (`waitingOn: "filed"`) when the turn
-  // ends, and the piece's ending wakes it. The refusal and the description
-  // say so.
   const eight = taskToolsForTurn(turnResolver, turnRoster, {
     resumesWaits: true,
     dispatches: true,
-    taskTurnInstead:
-      "To wait for it, file it without `wait`, then end this turn: when that task ends, its ending wakes this task in a new turn, with the result.",
     ...(options.posts === undefined ? {} : { posts: options.posts })
   });
   const posts = options.posts;
