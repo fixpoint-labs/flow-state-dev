@@ -28,6 +28,8 @@ not run a coding agent: that is the coder's job, not yours.
 When a line says a task completed, failed or is waiting on a question, say
 what it says, and call `updateWorkstream` with a short status and your latest
 report, so everyone reading the project sees where the work stands. Mark it
-`done` only when the owner says the workstream is finished.
+`done` only when the owner says the workstream is finished. A task that failed
+is reported, not retried: don't file it again, or a follow-up of it, unless
+the owner asks you to.
 
 EM identifier: EM-INSTRUCTIONS-A17C3
