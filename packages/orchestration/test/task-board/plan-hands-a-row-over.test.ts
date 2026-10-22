@@ -87,7 +87,7 @@ function planFlow(): FlowInstance {
         .map((row) => ({ id: row.id, status: row.status, output: row.output, resumeOwed: row.resumeOwed }))
   });
   return defineFlow({
-    kind: "plan-hand-off",
+    kind: "plan-hands-over",
     // The filer's pass resumes the drain: it reaches the ledger at flow level.
     resources: { "plan-steps": ledger },
     internal: {
@@ -110,7 +110,7 @@ function planFlow(): FlowInstance {
       rows: { block: rows }
     },
     task: { actions: { work: { block: ownSession } } }
-  } as never)({ id: "plan-hand-off" });
+  } as never)({ id: "plan-hands-over" });
 }
 
 type Row = { id: string; status: string; output?: string; resumeOwed?: boolean };
@@ -127,7 +127,7 @@ describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
   async function boot(waitDeadlines?: { defaultMs: number; minMs: number }) {
     const flow = planFlow();
     state = createFlowState({
-      flows: { "plan-hand-off": flow },
+      flows: { "plan-hands-over": flow },
       stores: { default: { primary: inMemoryStores() } },
       durable: true,
       durabilityRetention: { sweepIntervalMs: 100 },
@@ -157,7 +157,7 @@ describe("a plan board's row filed session: \"new\" (FIX-2082 D2)", () => {
     const rowsNow = async () => (await act("rows")).output as Row[];
     /** How many times the request parked: each wait, and each wait again. */
     const parks = async (requestId: string) =>
-      ((await runtime.stores.request.get(requestId, { withItems: true } as never)) as { items?: Array<{ type: string }> })?.items?.filter(
+      ((await runtime.stores.request.get(requestId)) as { items?: Array<{ type: string }> })?.items?.filter(
         (item) => item.type === "suspension"
       ).length ?? 0;
     return { act, statusOf, until, rowsNow, parks };

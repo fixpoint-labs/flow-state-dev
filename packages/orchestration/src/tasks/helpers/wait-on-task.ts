@@ -296,6 +296,7 @@ async function waitChecked(
   options: WaitOnTaskOptions,
   { row, deadlineMs, binding, own }: Checked
 ): Promise<TaskWaitResult> {
+  const drain = options.ownBoard === true;
   for (let round = 0; ; round += 1) {
     const roundKey = round === 0 ? options.key : `${options.key}#${round}`;
     // The gate carries a nonce of this wait's own, so a resume names this
@@ -326,13 +327,13 @@ async function waitChecked(
       if (recorded !== undefined && "stopped" in recorded) return endStopped(ctx, collection, taskId);
       // The replay after a resume reaches here once the row has ended: the
       // request's own task may have ended first (a cancel that cascaded to it).
-      if (await ownTaskEnded(ctx)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
+      if (await ownTaskEnded(ctx, drain)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
       return ended(ctx, collection, taskId);
     }
 
     const outcome: WaitOutcome = await parkOnWait(ctx, park);
     if ("stopped" in outcome) return endStopped(ctx, collection, taskId);
-    if (await ownTaskEnded(ctx)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
+    if (await ownTaskEnded(ctx, drain)) return endQuietly(ctx, collection, taskId, "its own task ended while it waited");
     // The ending, an error naming one, or (on a gate parked before FIX-2082,
     // replayed) the old timeout: read the row, whichever it was.
     if (!("deadline" in outcome) && !isLegacyTimeout(outcome)) return ended(ctx, collection, taskId);
@@ -375,18 +376,21 @@ function ownRowOf(ctx: BlockContext, drain = false): WaitRow | undefined {
  * waited. Read as committed, not as this request first read it: the cancel
  * was another request's write. The task is the one the request was admitted
  * for in this process, or, on the request resumed after its park (whose
- * admission was its first run's), the claim its gate left on the state.
+ * admission was its first run's), the claim its gate left on the state. A
+ * drain's claim is the row it waits on, not its own task, so a drain reads
+ * only the task it was admitted for.
  */
-async function ownTaskEnded(ctx: BlockContext): Promise<boolean> {
+async function ownTaskEnded(ctx: BlockContext, drain: boolean): Promise<boolean> {
   const admitted = admittedTaskOf(ctx);
   if (admitted !== undefined) {
     await admitted.ref.refresh?.(admitted.taskId);
     const row = admitted.ref.get(admitted.taskId);
     return row !== undefined && isTerminalStatus(row.status);
   }
+  if (drain) return false;
   const ticket = (ctx.sequencer?.state as { currentClaim?: TaskClaimTicket } | undefined)?.currentClaim ?? currentWorkerClaim(ctx);
   if (ticket === undefined) return false;
-  const collection = resolveResourceCollection(ctx, ticket.collectionId);
+  const collection = claimBoardOf(ctx, ticket.collectionId);
   if (collection === undefined) return false;
   const ref = await getOrCreateTaskCollection({
     ctx,
@@ -398,6 +402,19 @@ async function ownTaskEnded(ctx: BlockContext): Promise<boolean> {
   await ref.refresh?.(ticket.taskId);
   const row = ref.get(ticket.taskId);
   return row !== undefined && isTerminalStatus(row.status);
+}
+
+/**
+ * The claim's board, when this flow declares it. The resource registry throws
+ * on a key it doesn't hold, and a claim on a board this request can't read
+ * has no ending for it to act on.
+ */
+function claimBoardOf(ctx: BlockContext, collectionId: string) {
+  try {
+    return resolveResourceCollection(ctx, collectionId);
+  } catch {
+    return undefined;
+  }
 }
 
 /** The waited-on row ended: clear what it owes the resume, and return it. */

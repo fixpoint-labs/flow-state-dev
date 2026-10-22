@@ -1000,7 +1000,7 @@ export function taskBoard<
   let floorDispatch: TaskWorker | undefined;
   let newSessionDispatch: TaskWorker | undefined;
   // A plan board's drain waits on every row it hands over (FIX-2082 D2).
-  const waitsOnHandOff = mode === "plan" ? { collection: collectionFactory } : undefined;
+  const planWaits = mode === "plan" ? { collection: collectionFactory } : undefined;
   // The entry the filer's pass runs in, which its flow must declare: a plan
   // board's rows owe no notice, only the drain's resume, paid by the pass its
   // ledger names (FIX-2082); every other board's by `onTaskSettled`.
@@ -1028,7 +1028,7 @@ export function taskBoard<
       if (assignee.kind === "newSession") {
         newSessionDispatch = createRowDispatch({
           // A wire value, kept: a router's recorded decision names it.
-          name: `${name}-hand-off-new-session`,
+          name: `${name}-to-new-session`,
           boardId,
           address: assignee.dispatch,
           // An entry that reads its tasks off a ledger by id (a worker's own
@@ -1038,7 +1038,7 @@ export function taskBoard<
           // without the pass the drain still reads the ending at its next
           // deadline.
           binding: { boardId, gate, viaEntrySource: true },
-          ...(waitsOnHandOff !== undefined ? { wait: waitsOnHandOff } : {}),
+          ...(planWaits !== undefined ? { wait: planWaits } : {}),
         });
         continue;
       }
@@ -1052,7 +1052,7 @@ export function taskBoard<
           boardId,
           address: assignee.dispatch,
           binding: { boardId, gate, requiresInternal: [passEntry] },
-          ...(waitsOnHandOff !== undefined ? { wait: waitsOnHandOff } : {}),
+          ...(planWaits !== undefined ? { wait: planWaits } : {}),
         });
         continue;
       }
@@ -1065,7 +1065,7 @@ export function taskBoard<
           assignee: assignee.name,
           address: assignee.dispatch,
           binding: { boardId, gate, requiresInternal: [passEntry] },
-          ...(waitsOnHandOff !== undefined ? { wait: waitsOnHandOff } : {}),
+          ...(planWaits !== undefined ? { wait: planWaits } : {}),
         })
       );
     }

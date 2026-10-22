@@ -118,145 +118,145 @@ export function createRowDispatch(options: RowDispatchOptions): TaskWorker {
   const { name, boardId, assignee: named, address, binding, wait } = options;
 
   const handOver = async (payload: TaskWorkerInput, ctx: BlockContext) => {
-      const claim = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim;
-      if (claim === undefined) {
-        // Unreachable through the drain, which mints the ticket in the tap
-        // before any route runs. Named because reaching here would otherwise
-        // dispatch a request with no row behind it.
-        throw new Error(
-          `[task-board] "${boardId}" cannot dispatch assignee "${named ?? "(fallback)"}": no claim is on the ` +
-            `worker body state. This block must run inside the board's drain, after the claim.`
-        );
-      }
-      // The fallback hands each row over under the assignee it was claimed
-      // with, so the receiving gate's assignee check holds. A row with none has
-      // nothing to address the hand-over by: refused with the claim still held,
-      // so the row fails through the board's ordinary error path.
-      const assignee = named ?? claim.assignee;
-      if (assignee === undefined) {
-        throw new DispatchRefusedError(
-          name,
-          address,
-          "flow-not-found",
-          `[task-board] "${boardId}" could not dispatch task "${claim.taskId}": it names no ` +
-            `assignee, and the fallback hands a row over by the name on it.`
-        );
-      }
+    const claim = (ctx.sequencer!.state as z.infer<typeof taskBoardWorkerBodyStateSchema>).currentClaim;
+    if (claim === undefined) {
+      // Unreachable through the drain, which mints the ticket in the tap
+      // before any route runs. Named because reaching here would otherwise
+      // dispatch a request with no row behind it.
+      throw new Error(
+        `[task-board] "${boardId}" cannot dispatch assignee "${named ?? "(fallback)"}": no claim is on the ` +
+          `worker body state. This block must run inside the board's drain, after the claim.`
+      );
+    }
+    // The fallback hands each row over under the assignee it was claimed
+    // with, so the receiving gate's assignee check holds. A row with none has
+    // nothing to address the hand-over by: refused with the claim still held,
+    // so the row fails through the board's ordinary error path.
+    const assignee = named ?? claim.assignee;
+    if (assignee === undefined) {
+      throw new DispatchRefusedError(
+        name,
+        address,
+        "flow-not-found",
+        `[task-board] "${boardId}" could not dispatch task "${claim.taskId}": it names no ` +
+          `assignee, and the fallback hands a row over by the name on it.`
+      );
+    }
 
-      // The load-bearing validation. `packWorkerInput` folds in dependency
-      // outputs and flow-policy `priorWork` AFTER the claim — both typed
-      // `unknown` and authored by a different worker — so this is the likelier
-      // source of a value that cannot cross a process boundary, and it fails
-      // here, after ownership was acquired, rather than at admission.
-      assertJsonSafe(payload, {
-        label: `[task-board] "${boardId}" dispatch payload for task "${claim.taskId}"`,
-      });
+    // The load-bearing validation. `packWorkerInput` folds in dependency
+    // outputs and flow-policy `priorWork` AFTER the claim — both typed
+    // `unknown` and authored by a different worker — so this is the likelier
+    // source of a value that cannot cross a process boundary, and it fails
+    // here, after ownership was acquired, rather than at admission.
+    assertJsonSafe(payload, {
+      label: `[task-board] "${boardId}" dispatch payload for task "${claim.taskId}"`,
+    });
 
-      // Take the round trip HERE, so both deployment modes send the same value:
-      // an external dispatcher serializes the envelope, the in-process path
-      // hands the child the very object graph this block is holding, and a
-      // payload referencing one object from two places is observable either
-      // way. Snapshotting also makes the value that was checked the value that
-      // is sent.
-      const snapshot = JSON.parse(JSON.stringify(payload)) as TaskWorkerInput;
+    // Take the round trip HERE, so both deployment modes send the same value:
+    // an external dispatcher serializes the envelope, the in-process path
+    // hands the child the very object graph this block is holding, and a
+    // payload referencing one object from two places is observable either
+    // way. Snapshotting also makes the value that was checked the value that
+    // is sent.
+    const snapshot = JSON.parse(JSON.stringify(payload)) as TaskWorkerInput;
 
-      const envelope: TaskDispatchInput = {
-        boardId,
-        assignee,
-        taskId: claim.taskId,
-        // The claim's identity, carried so the child's gate can VERIFY it
-        // against the row — not so it can trust it. Every field comes off the
-        // ticket the board minted from the row it claimed.
-        attempt: claim.attempt,
-        createdAt: claim.createdAt,
-        // Spread conditionally: the payload beside it has to clear a gate that
-        // rejects a present key holding `undefined` by name.
-        ...(claim.incarnationId !== undefined
-          ? { incarnationId: claim.incarnationId }
-          : {}),
-        // The partition the claim was taken in, on a partitioned ledger: the
-        // child's gate reads the row there, never where its own context would.
-        ...(claim.partition !== undefined ? { partition: claim.partition } : {}),
-        payload: snapshot,
-      };
+    const envelope: TaskDispatchInput = {
+      boardId,
+      assignee,
+      taskId: claim.taskId,
+      // The claim's identity, carried so the child's gate can VERIFY it
+      // against the row — not so it can trust it. Every field comes off the
+      // ticket the board minted from the row it claimed.
+      attempt: claim.attempt,
+      createdAt: claim.createdAt,
+      // Spread conditionally: the payload beside it has to clear a gate that
+      // rejects a present key holding `undefined` by name.
+      ...(claim.incarnationId !== undefined
+        ? { incarnationId: claim.incarnationId }
+        : {}),
+      // The partition the claim was taken in, on a partitioned ledger: the
+      // child's gate reads the row there, never where its own context would.
+      ...(claim.partition !== undefined ? { partition: claim.partition } : {}),
+      payload: snapshot,
+    };
 
-      // Everything about where this row goes is looked up now, per row, from
-      // the row as it was claimed: the entry, the session, the flow, and the
-      // child's initial state. A bad answer refuses here, before anything is
-      // dispatched and with the claim still held, like the seam's own
-      // refusals below. All of it reads the packed row, never a store.
-      const task: TaskTargetQuery = {
-        assignee,
-        taskId: claim.taskId,
-        input: snapshot,
-        ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
-      };
-      const action = await resolveTaskAction(name, address, task, ctx);
-      // A keyed child, or an existing session by id when the assignee's
-      // policy chooses one. An id is delivered into, never created: the seam
-      // refuses a missing session `session-not-found` and one this request's
-      // principal cannot reach `session-not-addressable`, before dispatching.
-      const session = await resolveTaskSessionTarget(name, address, envelope, task, ctx);
-      const flowKind = await resolveTaskFlowKind(name, address, task, ctx);
+    // Everything about where this row goes is looked up now, per row, from
+    // the row as it was claimed: the entry, the session, the flow, and the
+    // child's initial state. A bad answer refuses here, before anything is
+    // dispatched and with the claim still held, like the seam's own
+    // refusals below. All of it reads the packed row, never a store.
+    const task: TaskTargetQuery = {
+      assignee,
+      taskId: claim.taskId,
+      input: snapshot,
+      ...(claim.createdBy !== undefined ? { filedBy: claim.createdBy } : {}),
+    };
+    const action = await resolveTaskAction(name, address, task, ctx);
+    // A keyed child, or an existing session by id when the assignee's
+    // policy chooses one. An id is delivered into, never created: the seam
+    // refuses a missing session `session-not-found` and one this request's
+    // principal cannot reach `session-not-addressable`, before dispatching.
+    const session = await resolveTaskSessionTarget(name, address, envelope, task, ctx);
+    const flowKind = await resolveTaskFlowKind(name, address, task, ctx);
 
-      // Release BEFORE the point of no return — see the file header.
-      await ctx.sequencer!.patchState({ currentClaim: undefined });
+    // Release BEFORE the point of no return — see the file header.
+    await ctx.sequencer!.patchState({ currentClaim: undefined });
 
-      const outcome = await dispatchThroughSeam(ctx, {
-        type: "task",
-        action,
-        session,
-        payload: envelope,
-        from: name,
-        // Stamped onto the dispatched REQUEST record, so a run can be correlated
-        // back to the row it came from without opening this board's ledger.
-        // Same source as every other field here: the claim ticket the board
-        // minted from the row it had already claimed.
-        provenance: { taskId: claim.taskId },
-        // An assignee may name another flow. The author-facing dispatcher() already
-        // forwards this; omitting it here made the seam resolve on the sender
-        // and refuse `no-entry` against the wrong map.
-        ...(flowKind !== undefined ? { flowKind } : {}),
-      });
+    const outcome = await dispatchThroughSeam(ctx, {
+      type: "task",
+      action,
+      session,
+      payload: envelope,
+      from: name,
+      // Stamped onto the dispatched REQUEST record, so a run can be correlated
+      // back to the row it came from without opening this board's ledger.
+      // Same source as every other field here: the claim ticket the board
+      // minted from the row it had already claimed.
+      provenance: { taskId: claim.taskId },
+      // An assignee may name another flow. The author-facing dispatcher() already
+      // forwards this; omitting it here made the seam resolve on the sender
+      // and refuse `no-entry` against the wrong map.
+      ...(flowKind !== undefined ? { flowKind } : {}),
+    });
 
-      if (!outcome.ok) {
-        // A refusal is decided before anything is dispatched, so the claim is
-        // still this request's to fail. Hand it back, then throw: `recordError`
-        // fails the row against it, which is the honest outcome for work that
-        // was claimed and could not be started.
-        await ctx.sequencer!.patchState({ currentClaim: claim });
-        // The same error a `dispatcher()` block throws, so a `.rescue()` can
-        // branch on `refused` whichever block sent the dispatch; the board
-        // and row are named in the detail.
-        throw new DispatchRefusedError(
-          name,
-          address,
-          outcome.refused,
-          `[task-board] "${boardId}" could not dispatch task "${claim.taskId}" from assignee ` +
-            `"${assignee}": ${outcome.detail}`
-        );
-      }
+    if (!outcome.ok) {
+      // A refusal is decided before anything is dispatched, so the claim is
+      // still this request's to fail. Hand it back, then throw: `recordError`
+      // fails the row against it, which is the honest outcome for work that
+      // was claimed and could not be started.
+      await ctx.sequencer!.patchState({ currentClaim: claim });
+      // The same error a `dispatcher()` block throws, so a `.rescue()` can
+      // branch on `refused` whichever block sent the dispatch; the board
+      // and row are named in the detail.
+      throw new DispatchRefusedError(
+        name,
+        address,
+        outcome.refused,
+        `[task-board] "${boardId}" could not dispatch task "${claim.taskId}" from assignee ` +
+          `"${assignee}": ${outcome.detail}`
+      );
+    }
 
-      // Past this point the child owns the row, and nothing fallible remains:
-      // stop asserting a lease this request no longer holds, and return.
-      //
-      // Nobody renews the lease between here and the child's gate — with an
-      // external dispatcher or under flow-level `queue` concurrency the start
-      // is deferred past this call by design, so a queue deeper than the lease
-      // TTL leaves the row lapsed when the child arrives. That is no longer a
-      // refusal: the gate takes the row back with a fenced renewal on the same
-      // attempt and proceeds, and only a reclaim that actually won the write
-      // stops it (FIX-1305, `task-entry.ts`).
-      currentLeaseRenewal()?.stop();
+    // Past this point the child owns the row, and nothing fallible remains:
+    // stop asserting a lease this request no longer holds, and return.
+    //
+    // Nobody renews the lease between here and the child's gate — with an
+    // external dispatcher or under flow-level `queue` concurrency the start
+    // is deferred past this call by design, so a queue deeper than the lease
+    // TTL leaves the row lapsed when the child arrives. That is no longer a
+    // refusal: the gate takes the row back with a fenced renewal on the same
+    // attempt and proceeds, and only a reclaim that actually won the write
+    // stops it (FIX-1305, `task-entry.ts`).
+    currentLeaseRenewal()?.stop();
 
-      return {
-        dispatched: true as const,
-        taskId: claim.taskId,
-        sessionId: outcome.sessionId,
-        requestId: outcome.requestId,
-        /** True when the child session already existed. */
-        adopted: outcome.adopted,
-      };
+    return {
+      dispatched: true as const,
+      taskId: claim.taskId,
+      sessionId: outcome.sessionId,
+      requestId: outcome.requestId,
+      /** True when the child session already existed. */
+      adopted: outcome.adopted,
+    };
   };
 
   const block = handler({
