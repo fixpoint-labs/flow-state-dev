@@ -126,6 +126,8 @@ The request stream carries these event types:
 | `session.metadata.changed` | Session title/description/tags/metadata updated |
 | `request.completed` / `.incomplete` / `.failed` | Terminal status |
 
+A request that owes request-end hooks (FIX-2077: the claim gate registers one for a dispatched task's run) holds back its terminal status until `onFinished`'s drain and those hooks have run. It then emits the status they leave it with: `request.failed` when a hook hands back a failure (`RequestEndVerdict`), never `request.completed` first. Readers that end on the first terminal event need no change. A request that owes none emits its terminal status where it always has, after its record settles and before `onFinished`.
+
 ### Event Envelope
 
 Every event includes:

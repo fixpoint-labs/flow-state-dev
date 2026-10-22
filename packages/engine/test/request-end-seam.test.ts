@@ -17,6 +17,10 @@ import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The terminal request statuses in a stored event list, in order: what a stream client is told. */
+const terminalTypes = (events: ReadonlyArray<{ type: string }>) =>
+  events.map((event) => event.type).filter((type) => type === "request.completed" || type === "request.failed");
+
 /** A tap that registers a hook recording how the request ended, and what had happened by then. */
 function registering(log: string[], endings: RequestEnding[]) {
   return handler({
@@ -370,6 +374,96 @@ describe("request-end seam", () => {
     expect(result.error?.message).toContain("the result could not be recorded");
     const record = await stores.request.get(result.requestId!);
     expect(record?.status).toBe("failed");
+  });
+
+  it("a stream client sees one terminal status, `failed`, when a hook hands back a failure: no `completed` before it", async () => {
+    const flow = defineFlow({
+      kind: "request-end-verdict-stream",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "run" })
+            .tap(
+              handler({
+                name: "register",
+                inputSchema: z.any(),
+                execute: (_input, ctx) => {
+                  onRequestEnded(ctx, () => ({ fail: new Error("the result could not be recorded") }));
+                }
+              })
+            )
+            .step(handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }))
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u1",
+      sessionId: "s1",
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(terminalTypes(await stores.request.getEvents(result.requestId!))).toEqual(["request.failed"]);
+  });
+
+  it("a request that owes no hook emits `completed` where it did, before `onFinished` runs; one that owes a hook emits it after", async () => {
+    const seenAtOnFinished: Record<string, string[]> = {};
+    const stores = createInMemoryStores();
+    const flowWith = (kind: string, hook: boolean) =>
+      defineFlow({
+        kind,
+        actions: {
+          run: {
+            inputSchema: z.any(),
+            block: sequencer({ name: "run" })
+              .tap(
+                handler({
+                  name: "register",
+                  inputSchema: z.any(),
+                  execute: (_input, ctx) => {
+                    if (hook) onRequestEnded(ctx, () => {});
+                  }
+                })
+              )
+              .step(handler({ name: "answer", inputSchema: z.any(), execute: () => "fine" }))
+          }
+        },
+        request: {
+          onFinished: handler({
+            name: "finished",
+            inputSchema: z.any(),
+            execute: async (input: { requestId: string }) => {
+              seenAtOnFinished[kind] = terminalTypes(await stores.request.getEvents(input.requestId));
+            }
+          })
+        }
+      })();
+
+    const results: Record<string, string> = {};
+    for (const [kind, hook] of [["no-hook", false], ["owes-hook", true]] as const) {
+      const result = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow: flowWith(kind, hook),
+        actionName: "run",
+        input: {},
+        userId: "u1",
+        sessionId: `s-${kind}`,
+        stores,
+        runtimeConfig: {}
+      });
+      results[kind] = result.requestId!;
+    }
+
+    expect(seenAtOnFinished["no-hook"]).toEqual(["request.completed"]);
+    expect(seenAtOnFinished["owes-hook"]).toEqual([]);
+    expect(terminalTypes(await stores.request.getEvents(results["no-hook"]!))).toEqual(["request.completed"]);
+    expect(terminalTypes(await stores.request.getEvents(results["owes-hook"]!))).toEqual(["request.completed"]);
   });
 
   it("a hook that throws leaves the request's outcome as it was", async () => {

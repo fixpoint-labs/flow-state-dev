@@ -2573,10 +2573,16 @@ async function runActionAttempt<
     ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
 
-    await response.emitRequestStatus(terminalStatus);
-
-    // Persist the final event list (includes terminal status event)
-    await options.stores.request.flushEvents(requestId);
+    // A request that owes request-end hooks (FIX-2077: a dispatched task's
+    // run) holds back its terminal status until they have run, and then emits
+    // the status they leave it with: a stream ends once, matching the record.
+    // Every other request emits it here, as before.
+    const holdsTerminalStatus = requestEndRegistryOf(ctx)?.owes() === true;
+    if (!holdsTerminalStatus) {
+      await response.emitRequestStatus(terminalStatus);
+      // Persist the final event list (includes terminal status event)
+      await options.stores.request.flushEvents(requestId);
+    }
 
     // Durable completion: clean up THIS request's own durability artifacts
     // (suspension records + lease) when it completes.
@@ -2682,6 +2688,10 @@ async function runActionAttempt<
       );
       ctx.requestRuntime.status = "failed";
       endError = normalized;
+    }
+    if (holdsTerminalStatus) {
+      await response.emitRequestStatus(endError !== undefined ? "failed" : terminalStatus);
+      await options.stores.request.flushEvents(requestId);
     }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 

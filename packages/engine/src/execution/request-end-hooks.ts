@@ -27,6 +27,8 @@ export interface RequestEndRegistry {
    * @returns the first failure a hook handed back, for the caller to record as the request's own.
    */
   run(ending: RequestEnding, context: { requestId: string; logger?: RuntimeLogger }): Promise<Error | undefined>;
+  /** Whether a hook is added and has not run yet: the request then holds back its terminal status until they have. */
+  owes(): boolean;
 }
 
 /**
@@ -64,6 +66,7 @@ export function createRequestEndRegistry(): RequestEndRegistry {
         if (release === undefined) owed.set(registry, new Promise<void>((resolve) => (release = resolve)));
       }
     },
+    owes: () => hooks.length > 0,
     async run(ending, context) {
       try {
         return await runHooks(hooks, ending, context);

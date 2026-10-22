@@ -470,6 +470,8 @@ The task's output is the latest checkpoint its worker reported with `reportProgr
 
 If the board can't record the result, the dispatch run's request reports `failed`. See [When the board cannot record a result](#when-the-board-cannot-record-a-result).
 
+A stream following the dispatch run's request gets its terminal status only after that check, so it ends when the task's outcome is recorded: `request.completed`, or `request.failed` when the board couldn't record the result. It never sees `completed` first. The answer itself still streams as the run produces it, and `onFinished` still runs before the check, with the request's own status.
+
 Before it closes the stores, stopping the host waits for a request working a dispatched task, until it has recorded that task's outcome (settled, failed, or waiting on something). It shares the `shutdownDrainMs` budget (default 10 seconds) it gives requests that [wakes](../advanced/durable-execution.md#wakes) started. Past that budget the host shuts down anyway and logs how many such requests hadn't recorded an outcome.
 
 #### Requests that work on a waiting task

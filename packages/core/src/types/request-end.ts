@@ -33,6 +33,13 @@ export interface RequestEnding {
  * On a request that completed, the runtime then records the request as failed
  * with this error (the record it already wrote is patched), so its status
  * never reads as success for work a framework package could not record.
+ *
+ * A request with a hook still owed holds back its terminal status event until
+ * its hooks have run, and then emits the status they leave it with, so a
+ * stream client is told once: `failed` here, never `completed` first.
+ * `onFinished` and the lifecycle seams run before the hooks (the hooks wait
+ * for what `onFinished` starts), so they report the request's own end; the
+ * recorded status may then be failed by a request-end hook.
  */
 export interface RequestEndVerdict {
   readonly fail: Error;
