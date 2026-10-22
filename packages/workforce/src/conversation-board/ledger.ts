@@ -11,12 +11,12 @@
  *
  * ## What a row owes, and how durably
  *
- * - **A notice** is a marker the ending's own write puts on the row: every
- *   ending written here goes through orchestration's `recordEnding` (its notice module), so the
- *   ending and the debt to tell the conversation land together or not at all.
- *   Only the notice's delivery clears it.
- * - **A report** the Error Reporter is owed for a task that ended errored is a
- *   marker beside it, written by the same recorder (`./report-owed`).
+ * - **A notice** is a marker the ending's own write puts on the row:
+ *   orchestration records it for every row a board hands out, so the ending
+ *   and the debt to tell its filer land together or not at all, and delivers
+ *   it (`./delivery`). Only the filer's delivery clears it (FIX-2078).
+ * - **A report** the Error Reporter is owed for a task that failed for good
+ *   rides that notice (`./report-owed`): no marker of its own.
  * - **A start** is no marker at all: it is the row's own state. A row that is
  *   pending, assigned and claimable is owed a board run, so whatever wrote it
  *   that way (an add, an assign, a retry, an answered park) wrote the debt in
@@ -28,8 +28,8 @@
  *   by orchestration in the ending's own write and paid by the ending's own
  *   pass, or by the board's next touch once past due.
  *
- * Both are sent on the board's next touch when the dispatch that should have
- * sent them was lost (`./board`).
+ * Each is a debt with a due time: the ending's writer owes the filer's wake
+ * first, and the filer's pass pays what its fast path missed (`./board`).
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
@@ -37,7 +37,6 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
-  recordEnding,
   type TaskCollectionRef,
   type TaskPartitionContext,
   type TaskSettingsSupport,
@@ -46,7 +45,8 @@ import {
 import { FILED_MARKER, PIECE_OF, RETRY_OF, SPLIT_MARKER } from "./board-entries";
 import { filedCascadeOver } from "./cascade";
 import { filingSessionIdOf } from "./filing-session";
-import { markReportOwed, withoutReportMarkers } from "./report-owed";
+import { withoutReportMarkers } from "./report-owed";
+import { conversationDelivery } from "./delivery";
 
 /**
  * The ledger's id: its resource key, and the board id its tasks are handed
@@ -118,9 +118,9 @@ export const conversationLedger = Object.assign(
     id: CONVERSATION_LEDGER_ID,
     scope: "user",
     partitionBy: conversationPartition,
-    // The notice the filer is owed, and, for an errored ending, the report the
-    // Error Reporter is owed (FIX-1983), in the ending's one write.
-    recordEnding: (row, ending) => markReportOwed(recordEnding(row, ending), ending),
+    // Each ending reaches the session that filed it (FIX-2078): orchestration
+    // records the notice in the ending's write and delivers it.
+    delivery: conversationDelivery(CONVERSATION_LEDGER_ID),
     settings: CONVERSATION_BOARD_SETTINGS,
     // The tasks a task's session filed are cancelled with its failure, retry
     // or cancel (FIX-2080 D2).

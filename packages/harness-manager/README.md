@@ -255,9 +255,27 @@ The recorded session is the one the harness *confirmed* it was in. If the agent 
 `manager.messageDoor({ drain })` builds a public action a coding flow declares. `drain` names the flow's `internal` entry that runs the drain of the board whose rows the manager works:
 
 ```ts
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
+import { z } from "zod";
+
+// `manager` is this package's harnessManager(); `board` is the taskBoard whose rows it works.
+const onEnding = handler({
+  name: "on-coder-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
+
 defineFlow({
   kind: "coder",
-  internal: { actions: { resume: { block: board.drain } } },
+  internal: {
+    actions: {
+      resume: { block: board.drain },
+      // Required of a flow holding a board that hands rows out: where the filer hears each task end.
+      onTaskSettled: taskSettledEntry({ block: onEnding }),
+    },
+  },
   actions: { message: manager.messageDoor({ drain: "resume" }) },
   task: { actions: { work: { block: manager } } },
 });

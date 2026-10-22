@@ -8,7 +8,8 @@
  *   where, which attempt, as whom) and does what the task's goal says:
  *   `[fail]` throws, `[fail-until:N]` throws on every attempt below N,
  *   `[park:<question>]` parks the task on its question on the first attempt,
- *   `[slow:<ms>]` takes that long, and anything else is done.
+ *   `[slow:<ms>]` takes that long, `[hold:<name>]` waits until the test
+ *   releases the gate of that name (`holds`), and anything else is done.
  * - `helper` takes delegated posts and no task.
  * - `agent` is the built-in worker flow, scripted by its generator's block name
  *   (`agent-answer`).
@@ -81,7 +82,7 @@ const doorInput = z.object({ message: z.string() });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
+function taskerFlow(installation: WorkerInstallation, runs: TaskRun[], holds: ReadonlyMap<string, Promise<void>>) {
   const turn = handler({
     name: "tasker-turn",
     inputSchema: doorInput,
@@ -107,6 +108,12 @@ function taskerFlow(installation: WorkerInstallation, runs: TaskRun[]) {
       const message = input.message;
       const slow = /\[slow:(\d+)\]/.exec(message);
       if (slow !== null) await sleep(Number(slow[1]));
+      const hold = /\[hold:([^\]]+)\]/.exec(message);
+      if (hold !== null) {
+        const gate = holds.get(hold[1]!);
+        if (gate === undefined) throw new Error(`[hold:${hold[1]}] names no gate the test passed in holds`);
+        await gate;
+      }
       if (message.includes("[fail]")) throw new Error(`${worker.id} could not do it`);
       const until = /\[fail-until:(\d+)\]/.exec(message);
       if (until !== null && attempt < Number(until[1])) throw new Error(`${worker.id} failed attempt ${attempt}`);
@@ -170,6 +177,8 @@ export type BoardHostOptions = {
   afterModelCall?: (blockName: string | undefined) => Promise<void>;
   /** Durable execution, so a turn can park (FIX-1816's asks). Off by default. */
   durable?: boolean;
+  /** The gates a `[hold:<name>]` task waits on, by name, until the test releases them. */
+  holds?: ReadonlyMap<string, Promise<void>>;
   /**
    * A step model for the judgment turn, in place of `judgment`'s script: one
    * the generator drives step by step, so a turn parked in a tool call resumes
@@ -246,7 +255,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     standardWorkers: options.standard ?? boardWorkers(),
     workerFlows: () => flows as never
   });
-  const tasker = taskerFlow(installation, runs);
+  const tasker = taskerFlow(installation, runs, options.holds ?? new Map());
   const helper = helperFlow(installation);
   const agent = defineAgentWorkerFlow({ installation, ...(options.agent ?? {}) });
   const coordinator = defineCoordinatorFlow({

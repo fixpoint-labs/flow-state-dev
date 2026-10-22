@@ -145,6 +145,7 @@ import {
 } from "./resource-registry";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { createReactiveDispatcher, createCascadeController } from "./reactive-dispatch";
+import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 
 
 function ensureJournalDefaults(record: SessionRecord): void {
@@ -942,6 +943,18 @@ export async function createExecutionContext<
           parentTask: options.requestHost.parentTask,
           waitResume: options.requestHost.waitResume,
           waitSweeper: options.requestHost.waitSweeper,
+          dispatchRunsHere: options.requestHost.dispatchRunsHere,
+          ...(options.requestHost.wakes !== undefined && stores.wakes !== undefined
+            ? {
+                wakes: {
+                  store: stores.wakes,
+                  maxDebtAgeMs: options.requestHost.wakes.maxDebtAgeMs,
+                  // A write this request owes has landed by the time the request
+                  // would count as dead: its lease.
+                  fenceMs: options.requestHost.staleThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS
+                }
+              }
+            : {}),
           effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           dispatchStamp: readDispatchStamp(options.source, options.metadata),
           liveness: {

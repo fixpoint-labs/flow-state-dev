@@ -101,6 +101,7 @@ import {
   type ErrorReporterOptions,
   type ProjectBlocks,
   type WorkstreamBlocks,
+  backfillBoardWakes,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -1222,6 +1223,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // After the logger is set, so the router the door probes run through is
   // built with it too.
   const router = await state.getRouter();
+
+  // A notice, report or split settle a board owed before its debts had wakes
+  // (FIX-2078) gets one now, so its conversation's pass pays it without a touch.
+  // A no-op on a store that keeps no wakes, and on a Lab that owes nothing.
+  await backfillBoardWakes(runtime.stores, {
+    userCell: (userId, orgId) => resolveUserStorageKey(userId, orgId, { id: "", isolateUserState: false }),
+  });
 
   // The Error Reporter, bound to this runtime: it runs as the Lab's user, and
   // restarts whatever report the store says is still owed.

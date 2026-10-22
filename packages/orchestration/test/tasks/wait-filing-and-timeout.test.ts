@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core";
 import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { defineTaskCollection, getOrCreateTaskCollection, type TaskCollectionRef } from "../../src/tasks";
-import { dispatchAndWait, resumeOwedWaits } from "../../src/tasks/helpers/wait-for-response";
+import { dispatchAndWait, payOwedResumes } from "../../src/tasks/helpers/wait-for-response";
 import { createFakeResourceCollection, createFakeSequencerState } from "../helpers";
 
 function boardCtx(): BlockContext {
@@ -304,7 +304,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
           const [left] = board.list();
           expect(left).toMatchObject({ status: "pending", cancelOwed: true });
 
-          const touched = await resumeOwedWaits(turnCtx(new Map(), "park"), blip);
+          const touched = await payOwedResumes(turnCtx(new Map(), "park"), blip);
           const [row] = board.list();
           expect(row).toMatchObject({ status: "cancelled" });
           // The wait is over, so its ending owes the turn nothing, and the debt is paid.
@@ -329,7 +329,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
       it("a touch with no cancel owed leaves an open wait alone", async () => {
         const board = await build();
         await expect(dispatchAndWait(turnCtx(new Map(), "park"), board, init)).rejects.toThrow("parked");
-        await resumeOwedWaits(turnCtx(new Map(), "park"), board);
+        await payOwedResumes(turnCtx(new Map(), "park"), board);
         expect(board.list()[0]).toMatchObject({ status: "pending" });
         expect(board.list()[0]?.cancelOwed).toBeUndefined();
       });
@@ -340,7 +340,7 @@ for (const [backing, build] of Object.entries(BACKINGS)) {
         const unfiltered = Object.assign(Object.create(Object.getPrototypeOf(board)), board, {
           list: () => board.list()
         }) as TaskCollectionRef;
-        await resumeOwedWaits(turnCtx(new Map(), "park"), unfiltered);
+        await payOwedResumes(turnCtx(new Map(), "park"), unfiltered);
         expect(board.list()[0]).toMatchObject({ status: "pending" });
       });
     });

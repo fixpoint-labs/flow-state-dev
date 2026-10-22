@@ -34,6 +34,8 @@ import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
+import { fireWakeThrough } from "../durability/request-wakes";
+import type { WakeRecord } from "../stores/types";
 import type { MatchFunction } from "path-to-regexp";
 import {
   compileTransportPattern,
@@ -112,6 +114,14 @@ export type CreateFlowApiRouterOptions = {
    * results, causing stream 404s and lost data.
    */
   onBackgroundWork?: (promise: Promise<unknown>) => void;
+  /**
+   * How long disposing the router waits for the requests its due wakes
+   * started (FIX-2078) before it aborts them and goes on. Default 10 s. An
+   * aborted pass leaves its wake, which the sweeper had already moved on, so
+   * the next host fires it again. `disposeFlowApiRouter(router, { drainMs })`
+   * overrides it per call, for a host whose shutdown grace is partly spent.
+   */
+  shutdownDrainMs?: number;
   /**
    * Additional inbound transport adapters mounted alongside the built-in
    * HTTP adapter. Routes from every adapter merge into the returned
@@ -349,6 +359,12 @@ const DEDICATED_ROUTE_DISPATCHER = Symbol.for(
 );
 const ROUTER_DISPOSER = Symbol.for("@flow-state-dev/engine/routerDisposer");
 
+/** How long disposing a router waits for the requests its wakes started, by default. */
+const DEFAULT_SHUTDOWN_DRAIN_MS = 10_000;
+
+/** How long an aborted wake's request gets to unwind before the stores close. */
+const SHUTDOWN_ABORT_UNWIND_MS = 1_000;
+
 /**
  * Tear down a router by invoking each adapter's `bindings.stop()` in
  * reverse order. Best-effort — failures are logged but don't abort the
@@ -358,13 +374,13 @@ const ROUTER_DISPOSER = Symbol.for("@flow-state-dev/engine/routerDisposer");
  * tear down by killing the process. It's intended for long-running
  * servers (custom Node HTTP, Deno, Bun) and tests.
  */
-export async function disposeFlowApiRouter(router: FlowApiRouter): Promise<void> {
+export async function disposeFlowApiRouter(router: FlowApiRouter, options?: { drainMs?: number }): Promise<void> {
   const holder = router as Record<symbol, unknown>;
-  const dispose = holder[ROUTER_DISPOSER] as (() => Promise<void>) | undefined;
+  const dispose = holder[ROUTER_DISPOSER] as ((options?: { drainMs?: number }) => Promise<void>) | undefined;
   if (dispose === undefined) return;
   // Clear before awaiting so a concurrent second call is a no-op.
   delete holder[ROUTER_DISPOSER];
-  await dispose();
+  await dispose(options);
 }
 
 /**
@@ -492,6 +508,35 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // grouped (the provider is read by runAction too).
   const durabilityProvider = runtimeConfig.durabilityProvider;
   const durabilityRetention = runtimeConfig.durabilityRetention;
+  // Requests a fired wake started, held so `dispose` lets them finish, up to
+  // its drain budget, before the caller closes the stores they write to.
+  const firedWakes = new Map<Promise<unknown>, () => void>();
+  const holdFiredWake = (run: { finished: Promise<unknown>; abort(): void }): void => {
+    const held = run.finished.catch(() => undefined);
+    firedWakes.set(held, run.abort);
+    void held.finally(() => firedWakes.delete(held));
+  };
+  /**
+   * Let the requests fired wakes started finish, for at most `budgetMs`; then
+   * abort the rest, give them a moment to unwind, and say how many.
+   */
+  const drainFiredWakes = async (budgetMs: number): Promise<void> => {
+    if (firedWakes.size === 0) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outOfTime = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => resolve("late"), Math.max(0, budgetMs));
+    });
+    const settled = await Promise.race([Promise.all([...firedWakes.keys()]).then(() => "done" as const), outOfTime]);
+    clearTimeout(timer);
+    if (settled === "done" || firedWakes.size === 0) return;
+    const abandoned = [...firedWakes];
+    runtimeConfig.logger?.warn?.(
+      `[flow-state] shutdown aborted ${abandoned.length} request(s) a due wake started; each wake stays and fires again on the next host`,
+      { aborted: abandoned.length, drainMs: budgetMs }
+    );
+    for (const [, abort] of abandoned) abort();
+    await Promise.race([Promise.all(abandoned.map(([held]) => held)), new Promise((resolve) => setTimeout(resolve, SHUTDOWN_ABORT_UNWIND_MS))]);
+  };
   const durabilitySweeper =
     durabilityProvider !== undefined
       ? createDurabilitySweeper({
@@ -502,7 +547,13 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
           logger: runtimeConfig.logger,
           // Lets the sweep resume an overdue wait with `wait_timed_out`
           // through this router's host (FIX-1816).
-          continueRequest: (opts) => handlers.host.continueRequest(opts)
+          continueRequest: (opts) => handlers.host.continueRequest(opts),
+          // A due wake's entry runs through this router's host, as a dispatched
+          // internal request in its session, as its owner (FIX-2078 D1). Off
+          // where the host offers no wakes, a store that can't read them included.
+          ...(runtimeConfig.requestHost?.wakes !== undefined
+            ? { fireWake: (wake: WakeRecord) => fireWakeThrough(handlers.host, wake, holdFiredWake) }
+            : {})
         })
       : { dispose: () => {}, timesOutWaits: () => false };
   // Requests this router serves are offered a wait only while its own sweeper
@@ -642,13 +693,14 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // of the rest. Stored in a WeakMap keyed by the router so `dispose` is
   // not part of the router's public shape (keeps `keyof typeof router`
   // narrow for consumers that index by HTTP method).
-  const dispose = async (): Promise<void> => {
+  const dispose = async (disposeOptions?: { drainMs?: number }): Promise<void> => {
     // Stop the sweepers first so their ticks can't race with adapter teardown,
     // and let a stale-request pass already running finish before the caller
     // goes on to close the stores it reads.
     const staleSweepSettled = sweeper.dispose();
     durabilitySweeper.dispose();
     await staleSweepSettled;
+    await drainFiredWakes(disposeOptions?.drainMs ?? options.shutdownDrainMs ?? DEFAULT_SHUTDOWN_DRAIN_MS);
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

@@ -18,18 +18,9 @@ import { owedNotices, type Task, type TaskNotice } from "@flow-state-dev/orchest
 import { isPostRow } from "../coordinator/delegated-post";
 import { CONVERSATION_LEDGER_ID } from "./ledger";
 
-/**
- * The internal entry a task's notice arrives on in the conversation that
- * filed it. **Pinned** (FIX-1780): a goal check reads notices by it.
- */
-export const TASK_SETTLED_ENTRY = "onTaskSettled";
-
-/**
- * The internal entry a post row's notice arrives on instead: a delegate's
- * answer lands while the coordinator's reply runs, as it did before posts
- * were rows. Only a task's notice waits for the reply.
- */
-export const POST_SETTLED_ENTRY = "onPostSettled";
+// The two entries a notice arrives on, by name (`./board-entries`).
+export { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
+import { POST_SETTLED_ENTRY, TASK_SETTLED_ENTRY } from "./board-entries";
 
 /** Where a notice goes: the conversation's session, and its flow when it isn't the sender's own. */
 export interface NoticeAddress {

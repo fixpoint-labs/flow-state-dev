@@ -166,6 +166,12 @@ export type RequestHostConstructionInputs = {
    */
   dispatchOperation?: DispatchOperation;
   /**
+   * Whether `dispatchOperation` runs what it starts in this process, read as
+   * each request starts (`RequestHost.dispatchRunsHere`). Absent → no request
+   * is told so.
+   */
+  dispatchRunsHere?: () => boolean;
+  /**
    * Resolves another registered flow instance by its exact address (its id),
    * for a cross-instance dispatch address. Wired from the host's flow
    * registry. Absent → every cross-flow address refuses `flow-not-found`, the
@@ -192,6 +198,12 @@ export type RequestHostConstructionInputs = {
    * execution. Absent → a parked request answers `"already-finished"`.
    */
   parkedStop?: SuspendedStopDeps;
+  /**
+   * Debts' due times (FIX-2078 D1, `RequestHost.wakes`). Installed beside
+   * `waitResume`, only when the host has durable execution and its stores keep
+   * wakes. Absent → the verb is absent, and debts are paid on fast paths only.
+   */
+  wakes?: { readonly maxDebtAgeMs: number };
   /** The stale-request sweeper's threshold. */
   staleThresholdMs?: number;
   /** The sweeper's cadence. Undefined or 0 → liveness is refused. */

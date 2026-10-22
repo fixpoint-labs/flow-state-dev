@@ -617,6 +617,28 @@ const LEASES_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_leases_expires_at ON leases(expires_at)"
 ];
 
+// FIX-2078 D1: wakes, a debt's due time kept until a pass in its session
+// clears it. One row per (tenant, session, entry); `tenant_key` is '' for no
+// tenant so the key has no NULL. `due_at` is indexed for the sweeper's read.
+const WAKES_TABLE = `
+CREATE TABLE IF NOT EXISTS wakes (
+  tenant_key TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  entry      TEXT NOT NULL,
+  flow_kind  TEXT NOT NULL,
+  user_id    TEXT NOT NULL,
+  org_id     TEXT NOT NULL,
+  due_at     BIGINT NOT NULL,
+  land_by    BIGINT NOT NULL,
+  version    BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (tenant_key, session_id, entry)
+);
+`;
+
+const WAKES_INDEXES = ["CREATE INDEX IF NOT EXISTS idx_wakes_due_at ON wakes(due_at)"];
+
 /**
  * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
@@ -737,7 +759,8 @@ function getSchemaDDL(): {
       SEQUENCER_CHECKPOINTS_TABLE,
       SCHEDULE_INDEX_TABLE,
       SUSPENSION_RECORDS_TABLE,
-      LEASES_TABLE
+      LEASES_TABLE,
+      WAKES_TABLE
     ],
     indexes: [
       ...SESSIONS_INDEXES,
@@ -753,7 +776,8 @@ function getSchemaDDL(): {
       ...SEQUENCER_CHECKPOINTS_INDEXES,
       ...SCHEDULE_INDEX_INDEXES,
       ...SUSPENSION_RECORDS_INDEXES,
-      ...LEASES_INDEXES
+      ...LEASES_INDEXES,
+      ...WAKES_INDEXES
     ],
     concurrentIndexes: CONCURRENT_INDEXES
   };

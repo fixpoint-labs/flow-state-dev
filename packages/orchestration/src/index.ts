@@ -34,10 +34,16 @@ export { splitFrontmatter, parseFrontmatterYaml } from "./shared/frontmatter";
 // reads is an async-context stamp.
 export { isTaskTurn, TASK_SESSION_TASK_KEY } from "./task-board/task-turn";
 
-// The board touch that resumes a turn waiting on a task (FIX-1816),
-// for a layer that runs its own board. The rest of the wait mechanism is on
-// the `./task-board` subpath.
-export { resumeOwedWaits, type ResumeOwedReport } from "./tasks/helpers/wait-for-response";
+// How a filer hears a delegated task end (FIX-2078): the `onTaskSettled`
+// entry any flow that hands rows out declares, and the repairs a board's pass
+// runs in the filer's session (resumes, cascades, notices past due).
+export {
+  taskSettledEntry,
+  taskSettledInputSchema,
+  type TaskSettledEntryOptions,
+  type TaskSettledInput
+} from "./tasks/notice/task-settled-entry";
+export { payBoardDebts, settlePassWake, type BoardDebts, type PayBoardDebtsOptions } from "./tasks/notice/pass";
 
 // The lease-renewal async-context seam. Deliberately NOT on the `./tasks`
 // subpath: it needs `node:async_hooks`, and that subpath is published

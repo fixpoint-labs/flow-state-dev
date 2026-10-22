@@ -14,7 +14,10 @@
  * - **The ending.** The gate settles the row through the ledger, whose ending
  *   recorder marks the notice owed in that same write (orchestration's notice
  *   module).
- * - **The notice.** After the gate, on success or failure, each notice the
+ * - **The notice** (FIX-2078). The gate's ending is delivered by
+ *   orchestration in that write's own pass: the filer's wake first, then the
+ *   notice to the session that filed the task. Before FIX-2078, after the gate,
+ *   on success or failure, each notice the
  *   session's task still owes (the task the hand-over named at the session's
  *   birth, and the follow-ups that run after it in the same session, one at
  *   a time) goes to the session that dispatched
@@ -34,11 +37,10 @@
  *   on them again. The entry holds the session's reply line while it runs,
  *   so a piece's notice waits for the turn, and the park, to end.
  */
-import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
-import type { BlockContext, BlockDefinition, DispatchRefusal, TaskDispatchInput } from "@flow-state-dev/core/types";
+import { defineCapability, sequencer } from "@flow-state-dev/core";
+import type { BlockContext, BlockDefinition, TaskDispatchInput } from "@flow-state-dev/core/types";
 import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
-  clearNotice,
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
@@ -47,13 +49,10 @@ import { z } from "zod";
 import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
-import { sendOwedNotices } from "./notice-delivery";
-import { sendOwedReports } from "./report-owed";
 import { sessionIdOfFiling } from "./filing-session";
 import { hasPieces, parkOnPieces } from "./split";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
-import { isPostRow } from "../coordinator/delegated-post";
 import { taskMessage } from "./task-message";
 
 // A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
@@ -111,13 +110,6 @@ export function filingFlowOf(ctx: BlockContext): string | undefined {
   const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
   return typeof flow === "string" ? flow : undefined;
 }
-
-/**
- * The refusals that say the conversation that filed a task can't be told,
- * now or later: its session is gone, or no longer this user's. Every other
- * refusal leaves the notice owed.
- */
-const CONVERSATION_GONE: ReadonlySet<DispatchRefusal> = new Set(["session-not-found", "session-not-addressable"]);
 
 /**
  * The claim the gate verified for the task a `block` entry runs: the ledger
@@ -275,52 +267,5 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
    */
   const userMessage = (dispatch: TaskDispatchInput) => taskTurnMessage(dispatch.payload as TaskWorkerInput);
 
-  /** Send what the session's task owes, to the conversation that filed it. */
-  const tell = handler({
-    name: `${name}-tell`,
-    inputSchema: z.unknown(),
-    outputSchema: z.object({ sent: z.number() }),
-    resources: { ...conversationLedgerResources },
-    execute: async (_input, ctx) => ({ sent: await tellFiler(ctx as never) })
-  });
-
-  const tellFiler = async (ctx: BlockContext): Promise<number> => {
-    const taskId = sessionTaskOf(ctx);
-    const partition = filingPartitionOf(ctx);
-    const flowKind = filingFlowOf(ctx);
-    // A session that names no filing conversation owes no notice.
-    if (partition === undefined || flowKind === undefined) return 0;
-    const ref = await conversationLedgerAt(ctx, partition);
-    if (ref === undefined) return 0;
-    const address = { session: { from: true }, flowKind, from: `${name}-tell` } as const;
-    const sessionId = ctx.session.identity.id;
-    // The session's task and its follow-ups (FIX-1817): each runs here, so
-    // each ending this session recorded is told from here. In the delegate's
-    // ongoing session, which works no one task, each task that ran here
-    // (FIX-2080). A post row's ending is its own entry's to tell.
-    let sent = 0;
-    const own = ref
-      .list()
-      .filter((task) =>
-        taskId !== undefined ? (task.followUpOf ?? task.id) === taskId : task.run?.sessionId === sessionId && !isPostRow(task)
-      );
-    // What an errored ending owes the Error Reporter goes out first, from here (FIX-1983).
-    await sendOwedReports(ctx, ref, own, { boardId: CONVERSATION_LEDGER_ID, partition }, `${name}-report`);
-    for (const row of own) {
-      sent += await sendOwedNotices(ctx, row, address, async (notice, refusal) => {
-        // Any other refusal (the host turned it away, the store was down) may
-        // pass: the marker stays for the conversation's next touch.
-        if (!CONVERSATION_GONE.has(refusal.refused)) return;
-        // The conversation can't be told (it was deleted): the notice is
-        // dropped and said here. The task's ending stands.
-        await ref.patchMetadata(row.id, clearNotice(notice));
-        ctx.emit.message(
-          `The conversation that filed task "${row.title ?? row.goal}" couldn't be told it ${notice.ending}: ${refusal.detail}`
-        );
-      });
-    }
-    return sent;
-  };
-
-  return { block, from, userMessage, onCompleted: tell, onErrored: tell, concurrency: REPLY_CONCURRENCY };
+  return { block, from, userMessage, concurrency: REPLY_CONCURRENCY };
 }

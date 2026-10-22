@@ -10,6 +10,7 @@
  * of the board by the user, is what resumes the turn.
  */
 import { describe, expect, it } from "vitest";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core/types";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { runAction } from "@flow-state-dev/engine";
@@ -110,31 +111,22 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     }
   });
 
-  it("a notice lost after the ending is paid by the user's next touch of the board, once (BR-11)", async () => {
+  it("a waited-on task's ending starts no onTaskSettled: the conversation's pass resumes the turn, once (FIX-2078)", async () => {
     const judgment = waitingJudgment("Count workers", (results) =>
       results.includes("eng.tasker did: Count workers") ? "Forty workers." : `unexpected: ${results}`
     );
     const host = await waitingHost(judgment.model);
     try {
       const conv = await host.conversation("alice", "lead");
-      // Every notice's send is lost, as a process dying after the ending's write would lose it.
-      const lost = await host.loseDispatches("onTaskSettled");
       const waiting = await host.act("alice", conv, "run", { message: "how many workers?" });
-      expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
+      expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed", 8_000)).toBe(true);
       await host.settled();
-      expect(lost.lost()).toBeGreaterThan(0);
-      expect(await statusOf(host, waiting.requestId!)).toBe("suspended");
-      expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
-      lost.restore();
-
-      // The user looks at the conversation's task list: a touch of the board.
-      expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
-      expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed")).toBe(true);
-      await host.settled();
-      // And again: nothing is owed, nothing resumes twice.
+      // A touch after: nothing is owed, nothing resumes twice.
       expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
       await host.settled();
 
+      const settled = (await host.requestsOf(conv)).filter((r) => r.actionName === "onTaskSettled");
+      expect(settled).toEqual([]);
       expect(judgment.seen).toHaveLength(2);
       expect((await host.messages(conv)).filter((m) => m.text === "Forty workers.")).toHaveLength(1);
       expect((await host.rows("alice"))[0]!.resumeOwed ?? false).toBe(false);
@@ -147,7 +139,7 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
     ["throws", (): Promise<never> => Promise.reject(new Error("the store blinked"))],
     ["is turned away as busy", () => Promise.resolve({ ok: false as const, refused: "busy" as const, detail: "another resume holds the turn" })]
   ] as const) {
-    it(`a resume that ${label} on the notice is retried by the user's next touch, once (BR-11)`, async () => {
+    it(`a resume that ${label} is retried at its due time, with no touch, once (BR-11, FIX-2078)`, async () => {
       const judgment = waitingJudgment("Count desks", (results) =>
         results.includes("eng.tasker did: Count desks") ? "Thirty desks." : `unexpected: ${results}`
       );
@@ -162,14 +154,11 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
         const conv = await host.conversation("alice", "lead");
         const waiting = await host.act("alice", conv, "run", { message: "how many desks?" });
         expect(await until(async () => (await host.rows("alice"))[0]?.status === "completed")).toBe(true);
-        await host.settled();
-        expect(calls).toBeGreaterThanOrEqual(1);
-        expect(await statusOf(host, waiting.requestId!)).toBe("suspended");
-        expect((await host.rows("alice"))[0]!.resumeOwed).toBe(true);
+        expect(await until(() => calls >= 1)).toBe(true);
 
-        // The user looks at the task list: a touch of the board, never a turn.
-        expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
-        expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed")).toBe(true);
+        // Nothing touches the board: the pass's wake, moved to the resume's due
+        // time, fires again and the second resume works. Never a turn.
+        expect(await until(async () => (await statusOf(host, waiting.requestId!)) === "completed", 8_000)).toBe(true);
         await host.settled();
         expect((await host.act("alice", conv, "listTasks_tasks", {})).error).toBeUndefined();
         await host.settled();
@@ -214,7 +203,9 @@ describe("a waited-on task's ending resumes the turn that waits on it (V7)", { t
         );
       expect(await owedOn(tables)).toHaveLength(1);
 
-      // A run of the board, with no touch before it: its after-run step resumes, which throws, and then replays.
+      // A run of the board, with no touch before it, once the lost notice is past
+      // due: its repairs resume, which throws, and then resend it (FIX-2078).
+      await new Promise((resolve) => setTimeout(resolve, NOTICE_DUE_MS + 200));
       const runtime = await host.state.getRuntime();
       const run = await runAction({
         flow: host.instances.coordinator!,

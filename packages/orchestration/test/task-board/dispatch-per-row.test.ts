@@ -20,6 +20,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { defineTaskCollection, type Task, type TaskWorkerInput } from "../../src/tasks";
 import { taskBoard, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_per_row";
 const FLOW = "per-row-board";
@@ -64,7 +65,7 @@ function boardFlow(ran: Ran[], rows: Array<{ id: string; input: RowInput }>, amo
     },
     initialTasks: rows.map((row) => ({ id: row.id, goal: `do ${row.id}`, assignee: "em", input: row.input })),
   });
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: FLOW,
     actions: { start: { block: board.drain } },
     task: { actions: { work: { block: entry("work", ran) }, post: { block: entry("post", ran) } } },

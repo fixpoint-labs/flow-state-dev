@@ -61,6 +61,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import {
   assertBaseRefExists,
   assertCheckoutRootUsable,
@@ -1046,6 +1047,17 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     // one beneath it. Gated like `wake`; not reachable from outside.
     internal: {
       actions: {
+        // Each ending of a phase the board handed out is sent here. The
+        // conductor takes nothing from the notice: its decide arms read the
+        // settled row from the board.
+        onTaskSettled: taskSettledEntry({
+          block: handler({
+            name: "conductor-task-settled",
+            inputSchema: z.unknown(),
+            outputSchema: z.object({}),
+            execute: () => ({}),
+          }),
+        }),
         resume: {
           block: sequencer({
             name: "conductor-resume",

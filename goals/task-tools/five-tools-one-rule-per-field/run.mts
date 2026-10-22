@@ -200,7 +200,9 @@ function modelResolver() {
     const record = (options: any) => {
       const message = lastUser(options.messages);
       seen.push({ block: blockName, tag: tagOf(message), tools: (options.tools ?? []).map((t: { name: string }) => t.name), message });
-      const slow = /\[slow:(\d+)\]/.exec(message);
+      // Only a turn whose message opens with its own tag sleeps, as only it makes
+      // calls: a notice that quotes a task's goal neither calls nor sleeps.
+      const slow = message.startsWith("#") ? /\[slow:(\d+)\]/.exec(message) : null;
       return slow === null ? undefined : sleep(Number(slow[1]));
     };
     const wrapTools = (options: any) => {

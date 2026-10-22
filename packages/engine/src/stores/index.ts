@@ -13,6 +13,7 @@ import { createFilesystemTraceStore } from "./filesystem/trace-store";
 export type { FilesystemTraceStoreOptions } from "./filesystem/trace-store";
 import { createFilesystemSuspensionStore } from "./filesystem/suspension-store";
 import { createFilesystemLeaseStore } from "./filesystem/lease-store";
+import { createFilesystemWakeStore } from "./filesystem/wake-store";
 import { createFilesystemUserStore } from "./filesystem/user-store";
 import { createInMemoryActiveRequestRegistry } from "./memory/active-request-registry";
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
@@ -33,6 +34,7 @@ import {
 import { createInMemoryUserStore } from "./memory/user-store";
 import { createInMemorySuspensionStore } from "./memory/suspension-store";
 import { createInMemoryLeaseStore } from "./memory/lease-store";
+import { createInMemoryWakeStore } from "./memory/wake-store";
 import { ScopeMutationTimeoutError } from "./scope-lock";
 import { createScopeStateOps, createStateContainer } from "./state-container";
 import type { PersistErrorHandler, StoreRegistry } from "./types";
@@ -51,6 +53,10 @@ export type {
   StorageScopeType,
   ContentStore,
   LeaseStore,
+  WakeInput,
+  WakeKey,
+  WakeRecord,
+  WakeStore,
   ResourceStateStore,
   VersionedResourceState,
   ExpectedVersion,
@@ -110,6 +116,7 @@ export {
   createFilesystemSessionStore,
   createFilesystemSuspensionStore,
   createFilesystemLeaseStore,
+  createFilesystemWakeStore,
   createFilesystemTraceStore,
   createFilesystemUserStore,
   createInMemoryActiveRequestRegistry,
@@ -125,6 +132,7 @@ export {
   createInMemoryUserStore,
   createInMemorySuspensionStore,
   createInMemoryLeaseStore,
+  createInMemoryWakeStore,
   runWithCAS
 };
 
@@ -197,7 +205,8 @@ export function createInMemoryStores(options: CreateStoreOptions = {}): StoreReg
       maxRequests: resolveTraceMaxRequests(options.traceStore?.maxRequests)
     }),
     suspensions: createInMemorySuspensionStore(),
-    leases: createInMemoryLeaseStore()
+    leases: createInMemoryLeaseStore(),
+    wakes: createInMemoryWakeStore()
   };
 }
 
@@ -251,7 +260,8 @@ export function createFilesystemStores(
       onPersistError
     }),
     suspensions: createFilesystemSuspensionStore(path.join(options.rootDir, "suspensions")),
-    leases: createFilesystemLeaseStore(path.join(options.rootDir, "leases"))
+    leases: createFilesystemLeaseStore(path.join(options.rootDir, "leases")),
+    wakes: createFilesystemWakeStore(path.join(options.rootDir, "wakes"))
   };
 }
 

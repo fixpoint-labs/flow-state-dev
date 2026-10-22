@@ -59,6 +59,7 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `maxChildSessionListLimit` | `number` | `100` | Largest `limit` the child-session listing route accepts. The listing is all-time history, so it outgrows any fixed page a client would ask for. |
 | `durable` | `boolean` | `false` | Install the default checkpoint provider so actions with `durable: true` can recover and `ctx.suspend()`. Needs a persistent store to survive a process restart. |
 | `durabilityRetention` | retention object | — | Sweeper for expired suspensions, leases, and orphaned checkpoints. Only with durability on. |
+| `maxDebtAgeMs` | `number` | `86400000` (24 h) | How long past its due time work a [wake](/docs/advanced/durable-execution#wakes) guards, such as a task board's notice, may stay owed before it is given up on and logged. Only with durability on and a store that keeps wakes. |
 | `worker` | `WorkerAdapter` | — | Execution backend (for example `bullmqWorker(...)`). Mutually exclusive with `dispatcher`. |
 | `dispatcher` | `FlowDispatcher` | in-process | Low-level "where actions run" hook. Prefer `worker`. |
 | `adapters` | inbound adapters | — | Custom transports forwarded to the router. |

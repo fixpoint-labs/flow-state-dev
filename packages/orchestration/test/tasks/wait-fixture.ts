@@ -19,7 +19,7 @@ import {
   resolveResourceCollection,
   type TaskCollectionRef
 } from "../../src/tasks";
-import { dispatchAndWait, resumeOwedWaits } from "../../src/tasks/helpers/wait-for-response";
+import { dispatchAndWait, payOwedResumes } from "../../src/tasks/helpers/wait-for-response";
 
 export const USER = "u_asker";
 export const SESSION = "s_conversation";
@@ -169,7 +169,7 @@ export function waitFlow(
     name: "touch",
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.any(),
-    execute: async (_input, ctx) => resumeOwedWaits(ctx, await boardOf(ctx))
+    execute: async (_input, ctx) => payOwedResumes(ctx, await boardOf(ctx))
   });
   const list = handler({
     name: "list",

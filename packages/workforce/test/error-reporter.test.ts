@@ -6,7 +6,7 @@ import { ensureSessionRecord, runAction } from "@flow-state-dev/engine";
 import { mockGenerator } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { callerMetadata } from "../src/conversation-board/ledger";
-import { markReportOwed, owedReports } from "../src/conversation-board/report-owed";
+import { owedReports } from "../src/conversation-board/report-owed";
 import {
   createErrorReporter,
   defineErrorReporterFlow,
@@ -624,10 +624,26 @@ describe("a user reporting a problem", () => {
 describe("the ledger's owed report", () => {
   const row = { id: "t1", attempts: 2, metadata: {} } as never;
 
-  it("is marked on an errored ending only", () => {
-    expect(owedReports(markReportOwed(row, { kind: "errored", error: "x" }))).toEqual([{ key: "reportOwed:2", marker: { attempt: 2, error: "x" } }]);
-    expect(owedReports(markReportOwed(row, { kind: "completed", output: 1 }))).toEqual([]);
-    expect(owedReports(markReportOwed(row, { kind: "retried", error: "x" }))).toEqual([]);
+  it("is read off a row stored before FIX-2078 only: nothing writes one now", () => {
+    expect(owedReports(row)).toEqual([]);
+    const stored = { id: "t1", attempts: 2, metadata: { "reportOwed:2": { attempt: 2, error: "x" } } } as never;
+    expect(owedReports(stored)).toEqual([{ key: "reportOwed:2", marker: { attempt: 2, error: "x" } }]);
+  });
+
+  it("stored before FIX-2078 is sent on the board's next touch and dropped once no reporter will take it", async () => {
+    const host = bootBoardHost();
+    open = host;
+    const conv = await host.conversation("alice");
+    await host.act("alice", conv, "dispatchTask_tasks", { goal: "doomed [fail]", assignee: "eng.tasker" });
+    await host.settled();
+    const filing = await host.filingOf("alice", conv);
+    const [failed] = (await host.rows("alice")).filter((r) => r.status === "errored");
+    const { partition: _p, ...stored } = failed!;
+    await host.writeRow("alice", filing, { ...(stored as never), metadata: { ...(stored.metadata ?? {}), "reportOwed:1": { attempt: 1, error: "x" } } } as never);
+    await host.act("alice", conv, "listTasks_tasks", {});
+    await host.settled();
+    const after = (await host.rows("alice")).find((r) => r.id === failed!.id)!;
+    expect(owedReports(after)).toEqual([]);
   });
 
   it("can't be forged or cleared by a caller's metadata", () => {

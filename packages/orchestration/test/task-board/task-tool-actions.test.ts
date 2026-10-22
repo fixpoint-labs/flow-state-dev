@@ -31,6 +31,7 @@ import {
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "../../src/task-board";
 import { openWorkerClaimScope, stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
+import { heard } from "../fixtures/heard";
 
 const TOOLS = ["createTask", "getTask", "listTasks", "updateTask", "answerTask"] as const;
 
@@ -88,7 +89,7 @@ async function host(options: { declareResource?: boolean } = {}) {
     },
   });
 
-  const flow = defineFlow({
+  const flow = defineFlow({ internal: { actions: { ...heard } },
     kind: `ops${seq}`,
     ...(options.declareResource === false ? {} : { resources: { [id]: todos } }),
     actions: {

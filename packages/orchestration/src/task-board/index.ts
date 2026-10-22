@@ -166,6 +166,7 @@ import { boardExitsConnector } from "./exits-connector";
 import { assertBoardModeSupported, runsElsewhereFor, type TaskBoardMode } from "./board-mode";
 import { createTaskGate } from "./task-entry";
 import { createRowDispatch } from "./blocks/dispatch-row";
+import { markDelegating, TASK_SETTLED_ENTRY } from "../tasks/notice/delivery";
 import { recordBoardResolver } from "./board-resolver";
 
 // ---------------------------------------------------------------------------
@@ -984,6 +985,9 @@ export function taskBoard<
   const dispatchByAssignee = new Map<string, TaskWorker>();
   let floorDispatch: TaskWorker | undefined;
   if (boardId !== undefined && dispatchers.length > 0) {
+    // A board that hands rows out delivers each ending to its filer (FIX-2078),
+    // whose flow must declare `onTaskSettled` (named on the binding below).
+    if (collectionDeclaration !== undefined) markDelegating(collectionDeclaration);
     const gate = createTaskGate({
       name,
       boardId,
@@ -1006,7 +1010,7 @@ export function taskBoard<
           name: `${name}-hand-off-fallback`, // retired-name-refusal: durable route name
           boardId,
           address: assignee.dispatch,
-          binding: { boardId, gate },
+          binding: { boardId, gate, requiresInternal: [TASK_SETTLED_ENTRY] },
         });
         continue;
       }
@@ -1018,7 +1022,7 @@ export function taskBoard<
           boardId,
           assignee: assignee.name,
           address: assignee.dispatch,
-          binding: { boardId, gate },
+          binding: { boardId, gate, requiresInternal: [TASK_SETTLED_ENTRY] },
         })
       );
     }

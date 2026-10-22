@@ -33,6 +33,7 @@
  * the child session sees completed items, not tokens arriving.
  */
 import { dispatcher, generator, handler, sequencer } from "@flow-state-dev/core";
+import { taskSettledEntry } from "@flow-state-dev/orchestration";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorker, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
@@ -62,6 +63,21 @@ export const backgroundWorkLedger = defineTaskCollection({
   scope: "session",
   sharedToLineage: true,
   stateSchema: briefRequestSchema,
+});
+
+/**
+ * The flow's `onTaskSettled` entry: each ending of a background row is sent
+ * here, in the conversation that filed it. A board that hands rows out needs
+ * one. The conversation takes nothing from the notice: a later turn's report
+ * reads the finished row from the ledger.
+ */
+export const backgroundWorkSettled = taskSettledEntry({
+  block: handler({
+    name: "background-work-settled",
+    inputSchema: z.unknown(),
+    outputSchema: z.object({}),
+    execute: () => ({}),
+  }),
 });
 
 /**

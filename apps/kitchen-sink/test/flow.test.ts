@@ -9,7 +9,7 @@ import {
   testBlock,
   testRouter
 } from "@flow-state-dev/testing";
-import { backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
+import { backgroundWorkSettled, backgroundWorkTasks, thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
 import { userStateSchema } from "../flows/chat-agent/shared/schemas";
 
@@ -48,6 +48,7 @@ const testFlow = defineFlow({
   // The router reaches the background-work board, whose dispatching worker
   // addresses a task entry; a flow that reaches it must declare the entries.
   task: { actions: backgroundWorkTasks },
+  internal: { actions: { onTaskSettled: backgroundWorkSettled } },
   actions: {
     run: {
       inputSchema: z.object({

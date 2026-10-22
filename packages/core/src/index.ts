@@ -136,8 +136,11 @@ export type {
   RequestHost,
   ResumeWaitInput,
   ResumeWaitResult,
+  RequestWakes,
   SettleParentTaskInput,
-  SettleParentTaskResult
+  SettleParentTaskResult,
+  WakeSettleResult,
+  WakeView
 } from "./types/request-host";
 
 /**

@@ -152,16 +152,33 @@ A user can send a running coding run a message. The run stops where it is, and i
 The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
 
 ```ts
+import { handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
+import { z } from "zod";
+
 const manager = harnessManager({ /* … */ });
 const board = taskBoard({ /* … the board whose rows the manager works */ });
+const onEnding = handler({
+  name: "on-coder-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async () => ({}),
+});
 
 defineFlow({
   kind: "coder",
-  internal: { actions: { resume: { block: board.drain } } },
+  internal: {
+    actions: {
+      resume: { block: board.drain },
+      onTaskSettled: taskSettledEntry({ block: onEnding }), // hears each task end; see the task board page
+    },
+  },
   actions: { message: manager.messageDoor({ drain: "resume" }) },
   task: { actions: { work: { block: manager } } },
 });
 ```
+
+`onTaskSettled` is the entry every flow holding a board that hands tasks out declares: see [Hearing how a task ended](./task-board.md#hearing-how-a-task-ended).
 
 If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its flow kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
 

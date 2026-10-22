@@ -400,6 +400,15 @@ export interface TaskTransitionOptions {
    * as "your write did not land".
    */
   write?: TaskWriteToken;
+  /**
+   * A cancel made through a model's `updateTask` tool (FIX-2078 D2). Set by
+   * the task tools only, from how the block was built, never from input: the
+   * tools are blocks for a model's turn, and an app's or a person's cancel goes
+   * through `taskToolActions`, which never sets it. When the running
+   * session is the row's filer, the call's result is how it hears the cancel,
+   * so the cancel owes it no notice.
+   */
+  viaTool?: boolean;
 }
 
 /**
@@ -941,6 +950,13 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * On a ref without it, a failed cancel leaves the row open, as before.
    */
   markCancelOwed?(id: string): Promise<TaskWriteOutcome>;
+  /**
+   * The session that filed `row`, by the ledger's delivery rule (FIX-2078):
+   * `Task.filer`, or, for a row filed before it, the ledger's legacy filer
+   * (BP-030). Present on a ledger a board hands rows out from; absent
+   * elsewhere, where `Task.filer` is the whole answer.
+   */
+  filerOf?(row: Task): string | undefined;
   /**
    * Release a held row for a dispatch (FIX-1875; a release since FIX-2080):
    * `held → pending` in one conditional write, recording the call that made

@@ -75,6 +75,8 @@ import type { FlowDispatcher } from "../transports/dispatcher";
 import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createWaitResumeOperation } from "../context/wait-resume-operation";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
+import { installWakes } from "../durability/request-wakes";
+import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 
 export type RequestContext = {
@@ -209,7 +211,12 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     checkpoints: partial?.checkpoints ?? fallback.checkpoints,
     traces: partial?.traces ?? fallback.traces,
     suspensions: partial?.suspensions ?? fallback.suspensions,
-    leases: partial?.leases ?? fallback.leases
+    leases: partial?.leases ?? fallback.leases,
+    // Optional (FIX-2078 D1), and never filled in for stores that were given:
+    // an in-memory stand-in beside a durable store would claim debts survive
+    // a crash when they don't. Only a host given no stores at all keeps them
+    // in memory, with everything else.
+    ...(partial === undefined ? { wakes: fallback.wakes } : partial.wakes !== undefined ? { wakes: partial.wakes } : {})
   };
 }
 
@@ -314,6 +321,15 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // And whether a sweeper bounds a wait here, so the turn is offered one.
   if (runtimeConfig.requestHost !== undefined && runtimeConfig.durabilityProvider !== undefined) {
     installWaitSweeperFact(runtimeConfig.requestHost, runtimeConfig.durabilityProvider);
+  }
+  // Debts' due times (FIX-2078 D1), on the same last-resort terms.
+  if (runtimeConfig.requestHost !== undefined) {
+    installWakes(runtimeConfig.requestHost, {
+      stores,
+      durable: runtimeConfig.durabilityProvider !== undefined,
+      ...(runtimeConfig.maxDebtAgeMs !== undefined ? { maxDebtAgeMs: runtimeConfig.maxDebtAgeMs } : {}),
+      logger: runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER
+    });
   }
   // How this router stops a parked request (FIX-1816), with durable
   // execution only: for the abort route, and, on the same last-resort terms,

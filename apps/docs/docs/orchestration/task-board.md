@@ -315,6 +315,8 @@ A task that fails for good, or is cancelled, takes its open dependents with it. 
 
 The cascade is paid in the same call as the ending. If the process dies between the two, the debt is on the stored row, and the board's next drain pays it before it claims anything. A task that is retried owes nothing yet, because the retry may still succeed.
 
+On a board that [dispatches](#assignees-that-dispatch), the failed or cancelled task's notice to the session that filed it lists the dependents it cancelled, in `cancelled`. See [Hearing how a task ended](#hearing-how-a-task-ended).
+
 ## Dispatcher modes
 
 The dispatcher decides which `pending` task gets claimed next. No dispatcher claims a task whose `deps` aren't all `completed`; that rule lives on the collection's `claim`. So the built-in modes differ only in how they order the tasks that are already ready:
@@ -381,7 +383,8 @@ A dispatch run is an ordinary session — of this flow, or of the flow the assig
 An assignee dispatches when it holds a `dispatcher({ action, session })` instead of a worker block. The worker is declared once on the flow, under `task.actions`, and the assignee names it by `action`. The stamped address is `type: "task"` — do not set `type` on the assignee. Every assignee on the board dispatches; work that should run inline goes on a plan board of its own:
 
 ```ts
-import { defineFlow, dispatcher } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
+import { taskSettledEntry, taskSettledInputSchema } from "@flow-state-dev/orchestration";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -407,9 +410,27 @@ const board = taskBoard({
   },
 });
 
+// Runs in this session each time a task the board handed out ends.
+const onEnding = handler({
+  name: "on-issue-ending",
+  inputSchema: taskSettledInputSchema,
+  outputSchema: z.object({}),
+  execute: async (notice) => {
+    if (notice.ending === "errored") {
+      // notice.error says why; notice.cancelled lists the dependents it took with it
+    }
+    return {};
+  },
+});
+
 export default defineFlow({
   kind: "issues",
   actions: { drain: { block: board.drain } },
+  internal: {
+    actions: {
+      onTaskSettled: taskSettledEntry({ block: onEnding }),   // required: see below
+    },
+  },
   task: {
     actions: {
       implement: { block: implementBlock },   // what runs in the dispatch run
@@ -417,6 +438,8 @@ export default defineFlow({
   },
 })();
 ```
+
+The `onTaskSettled` entry is where the flow [hears how each task ended](#hearing-how-a-task-ended). `defineFlow()` refuses a flow that holds a board like this one without it.
 
 `implementBlock` receives the same `TaskWorkerInput` an inline worker would (`taskId`, `goal`, `input`, `metadata`, and so on). A task entry accepts the same fields as an action, `inputSchema`, `concurrency`, `onCompleted`, `onErrored`, and the rest, minus the client-facing `description` and `mcp`. No client can call it; the assignee is the only way in.
 
@@ -607,7 +630,7 @@ An entry with `from` that a board in the same flow also dispatches to is refused
 - **A `session`-scoped collection declares `sharedToLineage: true`.** Without it the run resolves an empty ledger and never finds its row. Its assignees dispatch within this flow; to hand rows to another flow, use a partitioned `user`-scoped collection ([A board per conversation](#a-board-per-conversation-worked-on-another-flow)). `user` and `org` scope need nothing extra.
 - **The dispatcher is a named registry entry or `defaultWorker`.** A uniform `workers` block has no assignee to route by, so it can't be a dispatcher. `defaultWorker` can: it hands each task over under the assignee the task names.
 
-`defineFlow()` throws for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board dispatches to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards dispatching to the same entry, for an entry with `from` that a board in the same flow also dispatches to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a dispatched worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
+`defineFlow()` throws for a flow that holds the board and declares no [`onTaskSettled`](#hearing-how-a-task-ended) internal entry, for a dispatcher assignee whose `action` the flow does not declare under `task.actions`, for a `task.actions` entry no board dispatches to and no `from` serves, for a task dispatcher reachable from an action without sitting on a board, for two boards dispatching to the same entry, for an entry with `from` that a board in the same flow also dispatches to, and for an entry block that declares `sessionStateSchema`, at its root or in any composed child. Keep a dispatched worker's state on the task. An entry with `from` can accept session state with `allowSessionState`; see [A task entry served by many boards](#a-task-entry-served-by-many-boards).
 
 A board that dispatches tasks fixes a task's assignee while an attempt holds it: `setAssignee` on an *in progress* or *parked* task declines with reason `immutable-assignee`. A pending or held task can change hands. To move a parked task, `unpark` it first. The rule belongs to the collection, so a second board over the same `defineTaskCollection` value follows it too.
 
@@ -662,6 +685,36 @@ Read it as "which run", not "is it running". Whether work is live is the task's 
 
 Nothing a caller or a model sets can write `run`. Naming a session doesn't grant access to it: opening the session or aborting the request still goes through the server's owner check.
 
+### Hearing how a task ended
+
+When a task the board handed out ends, the session that filed it is told, once. The notice arrives as a request to that session's `onTaskSettled` internal entry. Every flow that holds a board that dispatches declares one, built with `taskSettledEntry({ block })` from `@flow-state-dev/orchestration`, as in [the example above](#assignees-that-dispatch). `block` is your handling of one ending; give it `taskSettledInputSchema` as its input schema, and it receives:
+
+| Field | What it holds |
+|---|---|
+| `boardId` | The board the task is on |
+| `taskId` | The task that ended |
+| `attempt` | The attempt that ended |
+| `ending` | `"completed"`, `"errored"` (failed for good), `"parked"` (stopped on its worker's question) or `"cancelled"` |
+| `output` | On `completed`: what the task returned |
+| `error` | On `errored`: why it failed |
+| `question` | On `parked`: what the worker asked. Answer it with [`answerTask`](#when-a-task-stops-on-a-question) |
+| `cancelled` | On `errored` or `cancelled`: the ids of the dependents this ending [cancelled](#when-a-dependency-fails) that the same session filed. Those dependents send no notice of their own |
+
+A task that fails and is retried sends nothing until its last attempt ends. These endings send no notice either:
+
+- A task the filer [waited on](#giving-another-worker-work) with `dispatchTask({ wait: true })`. The waiting call gets the result instead.
+- A cancel the filer's own model made with its `updateTask` tool (`status: "cancelled"`), in its own turn. The tool's result already told it, and names the dependents the cancel took along.
+
+A cancel from anywhere else does send one: a person, an app calling the board's actions, or a cascade from a task another session filed.
+
+Your block runs once per ending. If it throws, the notice stays owed and is sent again, so the same ending can reach the block a second time after a failure. The entry queues on the session by default, so two notices run one after the other; pass `concurrency` to `taskSettledEntry` to change that.
+
+A notice that can't be sent when the task ends, because the process died first or the send failed, is sent about two seconds later, or as soon as the server is running again if it was down then. The [durability sweeper](../advanced/durable-execution.md#retention-and-cleanup) runs `onTaskSettled` in the filing session with an empty input, which sends whatever the session's boards still owe. You may see an extra `onTaskSettled` request with empty input in the session; your block isn't called for it. This needs a host with durable execution (`durable: true` on `createFlowState`) and a store that keeps wakes, which every built-in store does. Without them, a notice is sent once, when the task ends, and a lost one isn't sent again.
+
+If the filing session no longer exists, the notice can't be delivered. The task records that in its `metadata`, under `noticeUndeliverable:<attempt>:<ending>`, as `{ at, detail }`. A notice still owed a day after it fell due is given up the same way; the host's [`maxDebtAgeMs`](../advanced/durable-execution.md#retention-and-cleanup) sets that limit.
+
+The entry belongs on the flow that holds the board, even when the board hands its tasks to another flow. Without it, `defineFlow()` throws, naming the flow and the board, and says how to add the entry.
+
 ### Giving another worker work
 
 `dispatchTask` is on a board that dispatches: one that starts a ready task as soon as it's
@@ -678,7 +731,7 @@ dispatchTask({ goal: "Draft the release note", assignee: "writer" })
 ```
 
 The work starts at once, and the call returns the task's id without waiting for it. When the
-task ends, you hear about it the same way you hear about any task you filed. To release a task
+task ends, you [hear about it](#hearing-how-a-task-ended) the same way you hear about any task you filed. To release a task
 you filed held, name it instead of describing a new one:
 
 ```ts
@@ -707,10 +760,13 @@ wakes a waiting turn, and a server with durable execution and the
 [durability sweeper](/docs/advanced/durable-execution#retention-and-cleanup). Where it can't
 wait, `wait` isn't offered. For a board of your own, pass `{ dispatches: true }` to
 `createTaskToolsCapability` only when something starts a ready row as soon as it's written,
-the way a Workforce conversation does, and add `resumesWaits: true` only when that also calls
-`resumeOwedWaits(ctx, collection)` each time it touches the board outside a turn, for example
-when it runs the board or handles a task's notice. Without that call, a waiting turn isn't woken
-when its task ends and sits out its whole `timeoutMs`.
+the way a Workforce conversation does, and add `resumesWaits: true` only when the board also
+hands its tasks out, so the flow holding it declares [`onTaskSettled`](#hearing-how-a-task-ended).
+When a waited-on task ends, the filing session's `onTaskSettled` request resumes the waiting
+turn; after a crash, the [wake](/docs/advanced/durable-execution#wakes) sends it again. On any other
+board, a waiting turn isn't woken when its task ends and sits out its whole `timeoutMs`.
+
+**Moving from `resumeOwedWaits`.** `resumeOwedWaits` is no longer exported. The filing session's `onTaskSettled` request resumes owed waits itself, so drop the call and declare `onTaskSettled` on the flow that holds the board.
 
 | Input | |
 |---|---|

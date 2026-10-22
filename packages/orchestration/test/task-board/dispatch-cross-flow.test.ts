@@ -32,6 +32,7 @@ import {
   type TaskWorkerInput,
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskWorkerInputSchema } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 const USER_ID = "u_cross_dispatch";
 const SENDER = "task-sender";
@@ -77,7 +78,7 @@ function recipientFlow(ran: string[]) {
     },
   });
 
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: RECIPIENT,
     actions: { drain: { block: board.drain } },
     task: { actions: { work: { block: worker } } },
@@ -108,7 +109,7 @@ function senderFlow() {
     ],
   });
 
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: SENDER,
     actions: { start: { block: board.drain } },
   })({ id: SENDER });
@@ -130,7 +131,7 @@ async function until(predicate: () => boolean | Promise<boolean>, label: string)
 describe("a cross-flow task-board dispatch", () => {
   it("still refuses a recipient that only declares the remotely addressed task entry", () => {
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: RECIPIENT,
         actions: {},
         task: { actions: { work: { block: workWorker([]) } } },
@@ -293,7 +294,7 @@ function partitionCoordinator(sameFlow = false, isolated = false) {
     },
   });
 
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: COORD,
     ...(isolated ? { isolateUserState: true } : {}),
     actions: {
@@ -359,7 +360,7 @@ function partitionAgent() {
     },
   });
 
-  return defineFlow({
+  return defineFlow({ internal: { actions: { ...heard } },
     kind: AGENT,
     actions: { drain: { block: board.drain } },
     task: { actions: { work: { block: worker } } },

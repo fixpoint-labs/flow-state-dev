@@ -15,6 +15,7 @@
  * was actually handed, never from an action's own say-so.
  */
 import { describe, expect, it } from "vitest";
+import { NOTICE_DUE_MS } from "@flow-state-dev/orchestration/tasks";
 import type { GeneratorTool } from "@flow-state-dev/core";
 import { encodeUserSegment } from "@flow-state-dev/core/types";
 import { createTaskToolsCapability } from "@flow-state-dev/orchestration";
@@ -359,7 +360,7 @@ describe("a notice to an `agent` worker that arrives mid-reply", () => {
 });
 
 describe("a session that lost its grant still pays what its rows owe (BR-5)", () => {
-  it("replays a lost notice on its next touch, though its board answers no_delegation_board", async () => {
+  it("replays a lost notice on its next touch once it is past due, though its board answers no_delegation_board", async () => {
     const h = host();
     try {
       const talk = await agentSession(h, "alice", "solo");
@@ -371,6 +372,8 @@ describe("a session that lost its grant still pays what its rows owe (BR-5)", ()
       lost.restore();
       expect((await h.act("alice", talk, "removeDelegate", { worker: "eng.tasker" }, "agent")).error).toBeUndefined();
 
+      // A touch resends only what is past due (FIX-2078).
+      await new Promise((resolve) => setTimeout(resolve, NOTICE_DUE_MS + 200));
       expect(await list(h, "alice", talk, "agent")).toMatchObject({ ok: false, error: "no_delegation_board" });
       await h.settled();
       const heard = (await h.requestsOf(talk)).filter((request) => request.actionName === "onTaskSettled");

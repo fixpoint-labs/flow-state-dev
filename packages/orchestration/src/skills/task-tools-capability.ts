@@ -66,6 +66,8 @@ import {
   type TaskSettingsPatch,
   type TaskStatus,
   type TaskWriteOutcome,
+  withoutNoticeMarkers,
+  cancelledDependents,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -886,7 +888,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.labels !== undefined ? { labels: input.labels } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        // A caller's metadata never carries a notice marker (BP-031).
+        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
         ...(input.held === true ? { held: true } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
@@ -1336,7 +1339,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       ...updateFields,
       status: z.enum(["held", "pending", "cancelled"]).optional(),
     }),
-    outputSchema: okOrError,
+    outputSchema: z.union([
+      // A cancel names the dependents it took along (FIX-2078 D2).
+      z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional() }),
+      z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
+    ]),
     execute: async (input, ctx) => {
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       if (input.status === "cancelled" && fields.length > 0) {
@@ -1364,7 +1371,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
       if (input.status === "cancelled") {
         try {
-          const outcome: TaskWriteOutcome | undefined = await collection.cancel(input.id, undefined, { via });
+          // A model's own cancel in its own turn: the call's result tells its filer, so it owes no notice (FIX-2078 D2).
+          const outcome: TaskWriteOutcome | undefined = await collection.cancel(input.id, undefined, {
+            via,
+            ...(via === "tool" ? { viaTool: true } : {}),
+          });
           if (outcome != null && outcome.outcome === "declined") {
             const now = collection.get(input.id) ?? { ...current, status: outcome.status };
             return isTerminalStatus(outcome.status)
@@ -1375,7 +1386,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           if (err instanceof TaskWriteRefusedError) return refusedError(err);
           throw err;
         }
-        return { ok: true as const };
+        // The dependents the cancel took along, which owe no notice of their own
+        // when the filer cancelled through its own tool (FIX-2078 D2): named here.
+        const cancelledRow = collection.get(input.id);
+        // By the board's own filer rule, the one the cascade suppressed their
+        // notices by, so a row filed before the upgrade is read right (BP-030).
+        const filerOf = collection.filerOf?.bind(collection);
+        const cancelled = cancelledRow === undefined ? [] : cancelledDependents(cancelledRow, collection.list(), filerOf);
+        return cancelled.length > 0 ? { ok: true as const, cancelled } : { ok: true as const };
       }
 
       const edits: TaskEditField[] = [...fields, ...(input.status !== undefined ? (["held"] as const) : [])];
@@ -1399,6 +1417,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.status === "held" ? { held: true } : {}),
         ...(input.status === "pending" ? { held: false } : {}),
         ...Object.fromEntries(fields.map((field) => [field, input[field]])),
+        // Nor can a patch forge, clear or settle a notice marker (BP-031, FIX-2078).
+        ...(input.metadata !== undefined ? { metadata: withoutNoticeMarkers(input.metadata) } : {}),
       };
       let outcome: TaskWriteOutcome | undefined;
       try {
@@ -1635,6 +1655,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 /**
  * Build the `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
+ *
+ * These are a model's tools: only a generator's turn should call them. A
+ * cancel through them counts as the model's own (FIX-2078 D2), so it owes the
+ * filing session no notice. An app's or a person's move goes through
+ * {@link taskToolActions}, whose cancel does owe one.
  *
  * @param roster Optional roster of the board's workers, fixed or read per call
  *   from the running context ({@link AssigneeRosterSource}). Supply it and

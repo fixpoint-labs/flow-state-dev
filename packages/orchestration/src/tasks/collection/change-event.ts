@@ -107,7 +107,7 @@ export function createTaskChangeEmitter<TInput, TOutput>(
  * which is the right answer: a required field cannot be omitted from the
  * payload without breaking the shape consumers parse.
  */
-export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy"] as const satisfies ReadonlyArray<
+export const SERVER_ONLY_TASK_FIELDS = ["claimedBy", "createdBy", "filer"] as const satisfies ReadonlyArray<
   keyof Task
 >;
 

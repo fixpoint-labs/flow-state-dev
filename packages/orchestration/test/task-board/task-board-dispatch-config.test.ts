@@ -32,6 +32,7 @@ import {
   taskBoard,
   taskWorkerInputSchema,
 } from "../../src/task-board";
+import { heard } from "../fixtures/heard";
 
 function worker(name: string, extra?: Record<string, unknown>): TaskWorker {
   return handler({
@@ -210,7 +211,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
       workers: { implement: assignee("implement") },
     });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "session-state",
         actions: { run: { block: board.drain } },
         task: { actions: {
@@ -238,7 +239,7 @@ describe("task dispatch — construction-time refusals (decision 11)", () => {
       workers: { implement: assignee("implement") },
     });
     expect(() =>
-      defineFlow({
+      defineFlow({ internal: { actions: { ...heard } },
         kind: "cap-session",
         actions: { run: { block: board.drain } },
         task: { actions: { implement: { block: worker("impl-cap", { uses: [memo] }) } } },
@@ -384,7 +385,7 @@ describe("the session-schema refusal sees composed children", () => {
       collection: durable,
       workers: { implement: assignee("implement") },
     });
-    return defineFlow({
+    return defineFlow({ internal: { actions: { ...heard } },
       kind,
       actions: { run: { block: board.drain } },
       task: { actions: { implement: { block } } },
