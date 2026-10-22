@@ -609,9 +609,9 @@ declaration order, with a `defaultWorker` dispatcher last (`kind: "floor"`, labe
 Each entry carries `kind` (`"named"` or `"floor"`) to branch on; `label` is for messages.
 
 **An entry served by many boards.** `taskLedgers({ name, resolve, uses?, onError?,
-allowSessionState?, taskTurn? })` returns a `TaskBinding` to pass as a task entry's `from`.
+allowSessionState? })` returns a `TaskBinding` to pass as a task entry's `from`.
 The entry then needs no board in its flow, and takes tasks from any board whose
-ledger `resolve(ledgerId, ctx, partition)` returns (`Promise<TaskCollectionRef | undefined>`).
+ledger `resolve(ledgerId, ctx, partition, taskId)` returns (`Promise<TaskCollectionRef | undefined>`).
 The ledger id is the `boardId` the sending board dispatches under, so a board over a
 shared ledger sets `boardId` to the ledger's id. `partition` is the partition the
 dispatch names when the sender's ledger keeps one per partition (`partitionBy`), and
@@ -621,16 +621,15 @@ row and again before its recorders settle it. An id `resolve` doesn't answer for
 throws `UnknownTaskLedgerError` (`code: "unknown-task-ledger"`, carrying `entry`,
 `taskId`, `ledgerId`) before any row is read; otherwise every check below runs on
 that ledger. The id arrives on the dispatch, so resolve it against `ctx`, never from
-a process-wide map. `uses` declares the ledgers' resources, `onError` defaults to
-`"skip"`, and `allowSessionState` accepts an entry whose blocks keep session state.
-`taskTurn` defaults to `true`, which makes each run of the entry a task turn
-(`isTaskTurn(ctx)`): `dispatchTask` with `wait: true` is refused, and the run gets
-`parkOnQuestion`, whose question goes to whoever filed the task. Set `taskTurn: false`
-for an entry whose run answers the user directly: it can wait on work it dispatches,
-and doesn't get `parkOnQuestion`. Either way, the entry runs only if its claim on the
+a process-wide map. `taskId` is the row the dispatch names, so a resolver can answer
+only when that row is one the running session may take; it arrives on the dispatch
+too, and the gate re-reads the row it names. `uses` declares the ledgers' resources,
+`onError` defaults to `"skip"`, and `allowSessionState` accepts an entry whose blocks
+keep session state. Each run of the entry is a task turn (`isTaskTurn(ctx)`):
+`dispatchTask` with `wait: true` is refused, and the run gets `parkOnQuestion`, whose
+question goes to whoever filed the task. The entry runs only if its claim on the
 task is still current, and task-tool writes from the run can touch only the task it
-holds. An entry set to `taskTurn: false` must not keep a string `taskId` in its session
-state; if it does, its runs are task turns anyway.
+holds.
 
 ```ts
 task: {

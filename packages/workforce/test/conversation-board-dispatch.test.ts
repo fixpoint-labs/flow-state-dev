@@ -291,7 +291,7 @@ describe("dispatchTask on a conversation's board (BR-8 to BR-13, BR-24)", () => 
         [{ taskId: "task_recorded", deps: ["a"] }, /^dispatch_ref_takes_no_task_fields: .*deps/],
         [{ taskId: "task_recorded", input: { a: 1 } }, /^dispatch_ref_takes_no_task_fields: .*input/],
         [{ taskId: "task_recorded", followUpOf: "t" }, /^dispatch_ref_takes_no_task_fields: .*followUpOf/],
-        [{ post: true }, /^post_unavailable: /]
+        [{ post: true }, /^dispatch_takes_no_post: /]
       ];
       for (const [input, error] of refusals) {
         expect(await act(host, conv, "dispatchTask_tasks", input), JSON.stringify(input)).toMatchObject({

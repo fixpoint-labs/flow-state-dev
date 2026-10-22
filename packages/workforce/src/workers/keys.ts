@@ -57,6 +57,18 @@ export const FILING_SESSION_STATE_KEY = "filingSessionId";
 export const WORKSTREAM_STATE_KEY = "workstreamId";
 
 /**
+ * The session-state field that names the conversation whose routed task a
+ * session that conversation doesn't own works (FIX-2083): a workstream's
+ * session, which a project coordinator's routed task targets by id. The
+ * `work` entry writes it from the claim the board's gate verified when it
+ * starts such a task, so the requests that follow (a piece's ending, a
+ * message) find the task on that conversation's board, as a delegate's
+ * session finds its tasks by {@link FILING_SESSION_STATE_KEY}. Server-owned,
+ * never a caller's to seed; absent on a session no routed task has targeted.
+ */
+export const ROUTED_FROM_STATE_KEY = "routedFrom";
+
+/**
  * The session-state field that links a worker session to one project: the
  * project's address, as `projectRef` writes it (`<visibility>/<projectId>`).
  * Set when the session is created, only on a session of the standard

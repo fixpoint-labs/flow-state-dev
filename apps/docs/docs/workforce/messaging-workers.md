@@ -76,7 +76,7 @@ To answer, the recipient calls `messageWorker` again, back to the sender, with t
 
 `replyTo` must name a message the `to` worker sent this worker. Anything else is refused.
 
-The answer goes back to the session the first message was sent from, as a `From chief-of-staff: …` line, and wakes the sender there. If the sender sent the message while working a task, or while answering a coordinator's post, the answer lands in the sender's own conversation with you instead, and wakes it there.
+The answer goes back to the session the first message was sent from, as a `From chief-of-staff: …` line, and wakes the sender there. If the sender sent the message while working a task, a coordinator's routed task included, the answer lands in the sender's own conversation with you instead, and wakes it there.
 
 If the recipient's turn ends without messaging the sender, the turn's final text goes to the sender as the answer, exactly as if it had been sent with `messageWorker` and `replyTo`. Final text over 8,000 characters is cut to fit. A turn that did message the sender sends nothing more, and a turn that ends with no text sends nothing at all. Nothing waits on an answer.
 
@@ -217,5 +217,5 @@ In a conversation, a sent message is a `tool_output` item for the tool named `ME
 ## Related pages
 
 - [Delegating work](./delegating-work.md): filing tasks for a worker's delegates.
-- [Coordinators](./coordinators.md): a worker that hands each post to its delegates.
+- [Coordinators](./coordinators.md): a worker that hands each message to its delegates.
 - [Workers on disk](./workers-on-disk.md): `WORKER.md`, worker flows and `hireWorkforce`.

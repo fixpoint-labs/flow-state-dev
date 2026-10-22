@@ -26,7 +26,7 @@
 
 **Controls:** on the same command. Each is applied by the check around the host, never inside the package.
 
-- `GOAL_CONTROL=no-wake`: the coordinator flow is registered with no flow a delegate takes a post on. Must FAIL at **woken** and **answers**, and at nothing else.
+- `GOAL_CONTROL=no-wake`: the `agent` flow is registered as one that takes no task, so no worker on it is a delegate (FIX-2083). Must FAIL at **woken** and **answers**, and at nothing else.
 - `GOAL_CONTROL=answers-go-on`: the coordinator's file is read with `rounds: 1`, so each round's answers go back out to the other delegates. Must FAIL at **answers** (each delegate answers the other's answer too) and **quiet**, and at nothing else.
 
 - `GOAL_CONTROL=no-org`: the host's `resolvePrincipal` left out, so nothing names its org. Must FAIL at **org** (every session carries `__fsd_default_org__`), and at nothing else.
@@ -54,3 +54,5 @@ The **import** and **source** legs have no control: a checkout without the expor
 | 2026-10-09 | same | scripted | FAIL (expected) | `GOAL_CONTROL=no-org`: **org** only — the conversation and both delegate sessions carry `__fsd_default_org__`. `no-wake` (**woken**, **answers**) and `answers-go-on` (**answers**, **quiet**) re-taken: each its own legs only, **org** green. |
 | 2026-10-10 | `fix/FIX-1792-p1` on 4b54c9df9 (`main` at 30edb4cb7 merged), uncommitted | scripted | **PASS** | Re-taken after the merge (the coordinator now carries a conversation's recent lines to best fit and its delegates). Every leg green. `no-wake` (**woken**, **answers**), `answers-go-on` (**answers**, **quiet**) and `no-org` (**org**) each failed at its own legs only. |
 | 2026-10-11 | FIX-1792 P4 on 617aeabb + uncommitted | scripted | **PASS** | Re-run after the mailbox code was removed, unchanged. Every leg green: `defineCoordinatorFlow` resolves from Workforce; `host.mts` imports only public entries and builds no dispatcher or router; `desk.front` routes to everyone; kitchen-sink registers the coordinator flow and builds neither; `desk.amy` and `desk.oz` each one conversation under `desk.front`'s, each post heard once and answered; the conversation and its delegate sessions carry `org_fresh_host`. |
+| 2026-10-22 | `fix/FIX-2083` on b43150fea, uncommitted | scripted | PASS | Routed tasks: desk.amy and desk.oz each hold one conversation of desk.front and answer each post once; desk.ned (on `note`, which takes no task) holds none. |
+| 2026-10-22 | the same | scripted | FAIL (control `no-wake`, expected) | The `agent` flow read as taking no task: no conversation under the person's for desk.amy or desk.oz (**woken**), and no answer line (**answers**). Nothing else. |

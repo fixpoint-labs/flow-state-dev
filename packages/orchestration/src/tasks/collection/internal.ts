@@ -111,6 +111,8 @@ export function buildInitialTask<TInput, TOutput>(
     ...(init.filedByTask !== undefined ? { filedByTask: init.filedByTask } : {}),
     ...(init.session !== undefined ? { session: init.session } : {}),
     ...(init.resultTo !== undefined ? { resultTo: init.resultTo } : {}),
+    ...(init.target !== undefined ? { target: init.target } : {}),
+    ...(init.targetSessionId !== undefined ? { targetSessionId: init.targetSessionId } : {}),
     ...(init.wait !== undefined ? { wait: { gateId: init.wait.gateId, deadline: init.wait.deadline } } : {}),
     ...(init.dispatchCall !== undefined ? { dispatchCall: init.dispatchCall } : {}),
     ...(init.sealed !== undefined ? { sealed: init.sealed } : {}),

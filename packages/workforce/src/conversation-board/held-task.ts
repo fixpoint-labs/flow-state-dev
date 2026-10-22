@@ -5,7 +5,8 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { Task, TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
-import { FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { TASK_ID_STATE_KEY } from "../workers/keys";
+import { boardAboveOf } from "./board-above";
 import { conversationLedgerAt } from "./ledger";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
 
@@ -19,12 +20,13 @@ function stringAt(ctx: BlockContext, key: string): string | undefined {
  * run link names this request (the gate wrote it, fenced by the ticket it
  * minted, before the turn ran), or, in a request admitted for a waiting task
  * (a notice of its piece's ending, FIX-2077), the row whose claim it holds. A
- * task session runs a task and its follow-ups one at a time, so this is the
- * one running now.
+ * session runs one task at a time (a task session its task and follow-ups,
+ * a delegate's ongoing session or a workstream's its routed tasks, FIX-2083), so this is the
+ * one running now. None in a request that holds no task.
  */
 export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task; partition: string } | undefined> {
-  const partition = stringAt(ctx, FILING_SESSION_STATE_KEY);
-  if (partition === undefined || stringAt(ctx, TASK_ID_STATE_KEY) === undefined) return undefined;
+  const partition = boardAboveOf(ctx);
+  if (partition === undefined) return undefined;
   const requestId = (ctx as { request?: { identity?: { id?: string } } }).request?.identity?.id;
   if (requestId === undefined) return undefined;
   const ref = await conversationLedgerAt(ctx, partition);
@@ -38,10 +40,10 @@ export async function heldTask(ctx: BlockContext): Promise<{ ref: TaskCollection
 /**
  * The task a piece filed now in the running session is a piece of: the task
  * this request holds (its turn, or a turn a piece's ending woke, filed it),
- * else the session's own task. None outside a task session.
+ * else a task session's own task. In a delegate's ongoing session (FIX-2083),
+ * only the routed task this request holds: a turn there that works no task
+ * files plain tasks.
  */
 export async function pieceOwnerOf(ctx: BlockContext): Promise<string | undefined> {
-  const own = stringAt(ctx, TASK_ID_STATE_KEY);
-  if (own === undefined) return undefined;
-  return (await heldTask(ctx))?.row.id ?? own;
+  return (await heldTask(ctx))?.row.id ?? stringAt(ctx, TASK_ID_STATE_KEY);
 }

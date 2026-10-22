@@ -26,14 +26,14 @@ import { afterTaskCheck, taskRequestAdmission, type TaskEndRules } from "@flow-s
 import { filedWorkHolds, holdsItsFiler, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
 import { messageLogOf } from "../messages/message-log";
 import { WORKER_MESSAGES_SEEN_STATE } from "../messages/keys";
-import { FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { boardAboveOf } from "./board-above";
 import { CHECK_TASK_ENTRY, PIECE_OF } from "./board-entries";
 import { conversationLedgerAt, ownConversationLedger } from "./ledger";
 
-/** The running row this session works, on the ledger of the conversation it was opened for, or none. */
+/** The running row this session works, on the board above it (`./board-above`), or none. */
 async function ownTaskRow(ctx: BlockContext): Promise<{ ref: TaskCollectionRef; row: Task } | undefined> {
-  const filing = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
-  if (typeof filing !== "string") return undefined;
+  const filing = boardAboveOf(ctx);
+  if (filing === undefined) return undefined;
   const ref = await conversationLedgerAt(ctx, filing);
   const sessionId = ctx.session.identity.id;
   const row = ref?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);

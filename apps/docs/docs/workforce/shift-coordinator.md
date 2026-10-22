@@ -49,9 +49,10 @@ When someone asks who works here, look it up with `discover` and answer
 from what it returns.
 
 When they ask who your delegates are, call `listDelegates` and answer from
-what it returns. When they ask for work a delegate does, call `dispatchTask` with
-`post: true` and that delegate as `assignee`. Its answer lands in this
-conversation under its name, so don't answer for it. When no delegate does the work, hire a worker for it,
+what it returns. When they ask for work a delegate does, call `createTask` with
+that delegate as `assignee`, a short `goal`, `session: "ongoing"` and
+`resultTo: "conversation"`. Its answer lands in this conversation under its
+name, so don't answer for it. When no delegate does the work, hire a worker for it,
 add it with `addDelegate`, and hand it on.
 
 To add a worker for the user, call `hire`. It lands at once. To remove one
@@ -145,7 +146,6 @@ const agent = defineAgentWorkerFlow({ installation, ...agentTurn });
 // The Shift Coordinator's flow. Its own turn reads `tools:` against `agentTurn.catalog`.
 const coordinator = defineCoordinatorFlow({
   installation,
-  delegateFlows: [agent, emFlow],
   routeModel: "openai/gpt-6-luna",
   agent: agentTurn,
 });
@@ -153,7 +153,7 @@ const coordinator = defineCoordinatorFlow({
 export const flows = hireWorkforce(installation);
 ```
 
-`emFlow` is a worker flow of your own that takes a delegated post, as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so it goes in `delegateFlows`. `coderFlow` is a flow of yours that takes tasks, not posts. Build its `work` entry with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks) so `eng.coder` can take the tasks the Shift Coordinator files. A post handed to it is skipped, and the [routing record](./coordinators.md#what-it-records) says why. `routeModel` is one value for the coordinator flow, shared by every coordinator on it. It is required even when the Shift Coordinator routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
+`emFlow` and `coderFlow` are worker flows of your own. Build each one's `work` entry with [`workerTaskEntry`](./coordinators.md#taking-a-conversations-tasks), as [Making your own flow a delegate](./coordinators.md#making-your-own-flow-a-delegate) shows, so `eng.em` and `eng.coder` take the messages the Shift Coordinator routes to them and the tasks it files. A worker on a flow that takes no task can't be one of its delegates. `routeModel` is one value for the coordinator flow, shared by every coordinator on it. It is required even when the Shift Coordinator routes by judgment; only a coordinator on `best-fit` calls it. Set it to `typesafe-ai/jev` to route by best fit with a floor, as the next section shows.
 
 The capabilities each add one part:
 
@@ -192,12 +192,11 @@ Route it by best fit, with Jev (`typesafe-ai/jev` through Vercel's AI Gateway, a
 ```diff
   const coordinator = defineCoordinatorFlow({
     installation,
-    delegateFlows: [agent, emFlow],
 -   routeModel: "openai/gpt-6-luna",
 +   routeModel: "typesafe-ai/jev",
 ```
 
-The description is what best fit picks the Shift Coordinator by, so name its jobs there. Anything Jev isn't sure of, below `minConfidence:`, also goes to its turn, which can still hand it on. The trade: a post that turns out to be the Shift Coordinator's own job costs one evaluator call before the turn, and a request sent while a delegate is still working your last one goes to that delegate. [Picking the coordinator, and a confidence floor](./coordinators.md#picking-the-coordinator-and-a-confidence-floor) has the details.
+The description is what best fit picks the Shift Coordinator by, so name its jobs there. Anything Jev isn't sure of, below `minConfidence:`, also goes to its turn, which can still hand it on. The trade: a message that turns out to be the Shift Coordinator's own job costs one evaluator call before the turn, and a request sent while a delegate is still working your last one goes to that delegate. [Picking the coordinator, and a confidence floor](./coordinators.md#picking-the-coordinator-and-a-confidence-floor) has the details.
 
 ## Starting projects
 
@@ -245,7 +244,6 @@ const mem = system({
 
 const coordinator = defineCoordinatorFlow({
   installation,
-  delegateFlows: [agent, emFlow],
   routeModel: "openai/gpt-6-luna",
   agent: {
     ...agentTurn,

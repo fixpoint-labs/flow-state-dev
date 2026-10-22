@@ -184,7 +184,7 @@ async function askFor(user: User, setup: ProjectSetup, id: string, message: stri
   judgmentCalls = [
     { toolName: "listLeads", args: {} },
     { toolName: "openWorkstream", args: { project: APOLLO, id, title: `The ${id}`, lead, objectives: [message] } },
-    { toolName: "dispatchTask", args: { post: true, assignee: lead, target: `shared/apollo/${id}` } },
+    { toolName: "createTask", args: { goal: message, assignee: lead, target: `shared/apollo/${id}`, session: "ongoing", resultTo: "conversation" } },
   ];
   const pc = await projectCoordinator(user, setup);
   await runAction(user.clients, "coordinator", pc, "run", { message });
@@ -263,7 +263,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
     await eventually(async () => ((await holds(alice, entry.sessionId!, "PERIWINKLE-7319")) ? true : undefined), "the ask in the workstream session");
   });
 
-  it("opens a second with the same lead as a second session and record, and a post to one lands only there (BR-40)", async () => {
+  it("opens a second with the same lead as a second session and record, and a message routed to one lands only there (BR-40)", async () => {
     const { setup, as } = await open();
     const alice = await as(ALICE);
     await askFor(alice, setup, "checkout", "Please add guest checkout.");
@@ -323,7 +323,7 @@ describe("opening a workstream by asking the project coordinator (V8b: BR-38 to 
       { toolName: "listLeads", args: {} },
       { toolName: "openWorkstream", args: { ...research, lead: EM } },
       { toolName: "openWorkstream", args: { ...research, lead: GENERAL_LEAD } },
-      { toolName: "dispatchTask", args: { post: true, assignee: GENERAL_LEAD, target: "shared/apollo/research" } },
+      { toolName: "createTask", args: { goal: "Research what to build next", assignee: GENERAL_LEAD, target: "shared/apollo/research", session: "ongoing", resultTo: "conversation" } },
     ];
     const pc = await projectCoordinator(alice, setup);
     await runAction(alice.clients, "coordinator", pc, "run", { message: "Open a workstream to research what to build next, SAFFRON-2207." });

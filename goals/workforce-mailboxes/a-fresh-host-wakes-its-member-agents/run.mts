@@ -35,7 +35,7 @@
  * so renamed folders grade the same way.
  *
  * Run:      pnpm --dir goals exec tsx workforce-mailboxes/a-fresh-host-wakes-its-member-agents/run.mts
- * Controls: GOAL_CONTROL=no-wake        (no flow takes a delegated post: must FAIL at woken and answers, and nothing else)
+ * Controls: GOAL_CONTROL=no-wake        (the agent flow takes no task: must FAIL at woken and answers, and nothing else)
  *           GOAL_CONTROL=answers-go-on  (the coordinator read with `rounds: 1`: must FAIL at answers and quiet, and nothing else)
  *           GOAL_CONTROL=no-org         (the host's resolvePrincipal left out: must FAIL at org, and nothing else)
  */
@@ -53,7 +53,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, string[]> = {
-  // No flow takes a delegated post: the post reaches no delegate, and nothing answers.
+  // No flow takes a task, so no worker is a delegate: the message reaches none, and nothing answers.
   "no-wake": ["woken", "answers"],
   // Each round's answers go back out: each delegate hears the other's answer and answers it.
   "answers-go-on": ["answers", "quiet"],
@@ -68,7 +68,13 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 function controlSeams(): HostSeams {
   switch (CONTROL) {
     case "no-wake":
-      return { adaptDelegateFlows: () => [] };
+      // The agent flow read as declaring no task entry (FIX-2083: a delegate is a worker whose flow takes tasks).
+      return {
+        adaptAgentFlow: <T extends object>(agent: T): T =>
+          Object.assign((...args: unknown[]) => (agent as unknown as (...a: unknown[]) => unknown)(...args), agent, {
+            task: { actions: {} },
+          }) as unknown as T,
+      };
     case "answers-go-on":
       return {
         adaptWorkers: (workers: WorkerManifest[]) =>

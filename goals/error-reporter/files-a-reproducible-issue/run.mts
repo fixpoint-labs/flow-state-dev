@@ -147,7 +147,7 @@ const CHIEF = "chief-of-staff";
  * The coordinator most planted failures are sent to: Sandbox's project
  * coordinator. Its routing is `judgment`, so a failure in its turn fails the
  * request. Leg C sends them to the chief of staff, whose `best-fit` routing
- * answers a crash in its own turn with "Nobody took this post".
+ * answers a crash in its own turn with "Nobody took this message".
  */
 const PROJECT_COORDINATOR = "project-coordinator";
 const CODER = "eng.coder";
@@ -668,7 +668,7 @@ await runGoal(async (failures) => {
       }, 120_000);
       say(`leg C: ${own === undefined ? "no report" : `report ${own.id}, ${own.status}`} for the chief of staff's crash`);
       if (!(await inInbox(own))) fail("C", "the chief of staff's own crash reaches Inbox: it did not");
-      else evidence.push("leg C: the chief of staff's crash, answered with \"Nobody took this post\", reached Inbox as a report");
+      else evidence.push("leg C: the chief of staff's crash, answered with \"Nobody took this message\", reached Inbox as a report");
 
       await lab.addDelegate(POST_TAKER);
       const posted = await lab.tellChief(`post to ${POST_TAKER}: Summarize the Sandbox notes [post-bug]`);

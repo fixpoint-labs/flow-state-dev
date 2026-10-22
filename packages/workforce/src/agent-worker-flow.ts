@@ -80,8 +80,7 @@ import {
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "./worker-task-entry";
-import { DELEGATED_POST_ENTRY } from "./worker-task-entry";
-import { delegatedPostEntry, delegatedPostHistory, delegatedPostOnFinished } from "./coordinator/delegated-post";
+import { routedTaskHistory } from "./coordinator/routed-brief";
 import { workerTaskEntry } from "./conversation-board/task-entry";
 import { defineSessionBoard, type SessionBoard } from "./conversation-board/session-board";
 import { REPLY_CONCURRENCY } from "./conversation-board/task-settled";
@@ -339,7 +338,7 @@ export interface AgentWorkerFlowOptions {
   installation?: WorkerInstallation;
 }
 
-/** The coordinator's tool that handed a post on before `dispatchTask` did, refused by name at load. */
+/** The coordinator's tool that once handed a message on, refused by name at load. */
 const RETIRED_HAND_OFF = "handOff"; // retired-name-refusal
 
 /**
@@ -390,15 +389,15 @@ function settingsSchema(
         const known = Object.keys(catalog);
         for (const name of names ?? []) {
           if (Object.hasOwn(catalog, name)) continue;
-          // A coordinator hands a post on with `dispatchTask` and `post: true` now.
+          // A coordinator hands a message on with `createTask` and the routing settings now.
           if (name === RETIRED_HAND_OFF) { // retired-name-refusal: FIX-1872
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message:
-                `names tool "${RETIRED_HAND_OFF}", which no longer exists. A coordinator hands the post it is ` + // retired-name-refusal
-                `routing to a delegate with \`dispatchTask\` and \`post: true\`, which every coordinator turn ` +
-                `carries: drop "${RETIRED_HAND_OFF}" from this worker's \`tools:\` line, and name ` + // retired-name-refusal
-                `\`dispatchTask\` in its instructions instead.`
+                `names tool "${RETIRED_HAND_OFF}", which no longer exists. A coordinator hands the message it is ` + // retired-name-refusal
+                `routing to a delegate with \`createTask\` and the routing settings (\`session: "ongoing"\`, ` +
+                `\`resultTo: "conversation"\`), which every coordinator turn carries: drop "${RETIRED_HAND_OFF}" ` + // retired-name-refusal
+                `from this worker's \`tools:\` line, and name \`createTask\` in its instructions instead.`
             });
             continue;
           }
@@ -790,7 +789,7 @@ export interface AgentTurnShare {
    */
   readonly board?: SessionBoard;
   /**
-   * The answer's history, in place of {@link delegatedPostHistory}: the
+   * The answer's history, in place of {@link routedTaskHistory}: the
    * coordinator's says each delegate's answer as a line from that delegate.
    */
   readonly history?: (input: unknown, ctx: BlockContext) => Promise<LLMMessage[]>;
@@ -981,12 +980,12 @@ export function agentWorkerTurn(given: AgentWorkerFlowOptions = {}, share: Agent
       // subject. A conversation is one session: a worker has one per
       // conversation, so nothing said in one reaches another. Bounded by the
       // session's history window (the framework's default, 50 turns); older turns fall out rather than being summarized.
-      // On a coordinator's delivery, the delivering conversation's recent
-      // lines join it as one user-role message before the post, for this
+      // On a coordinator's routed task, the routing conversation's recent
+      // lines join it as one user-role message before the message, for this
       // call only; on any other turn it is `history: true` unchanged. A
       // sharing flow may read it its own way (the coordinator's says who
       // wrote each delegate's answer).
-      history: share.history ?? delegatedPostHistory,
+      history: share.history ?? routedTaskHistory,
       // What the app's catalog tools declare, declared here so `defineFlow`'s
       // static walk installs it — see `catalogDeclaredResources`. Omitted
       // entirely when the catalog declares nothing, so a flow built without one
@@ -1280,7 +1279,7 @@ type AgentTurnBinding = {
   request?: { onStarted: BlockDefinition<any, any> };
 };
 
-/** The built-in `agent` flow: the agent's turn behind its door, its delegated-post and workstream entries, and its task entry. */
+/** The built-in `agent` flow: the agent's turn behind its door, its workstream entries, and its task entry. */
 function defineAgentFlowAround(
   options: AgentWorkerFlowOptions,
   settings: ReturnType<typeof agentWorkerTurn>["settings"],
@@ -1300,7 +1299,7 @@ function defineAgentFlowAround(
    */
   const taskEntry = workerTaskEntry({ name: "agent-task-turn", turn: run });
 
-  // Only this door marks a user turn. Task, delegated-post, notice and workstream entries run `run` unmarked.
+  // Only this door marks a user turn. Task, notice and workstream entries run `run` unmarked.
   const userTurn = sequencer({ name: "agent-user-turn", inputSchema }).tap(markUserTurnStep).step(run);
 
   const flow = defineFlow({
@@ -1314,9 +1313,6 @@ function defineAgentFlowAround(
     isolateUserState: options.isolateUserState ?? false,
     configSchema: settings,
     ...bound,
-    // A delegated post's run that is cancelled tells the coordinator the
-    // ending its row owes, so its round doesn't wait for the deadline.
-    request: { ...(bound.request ?? {}), onFinished: delegatedPostOnFinished },
     // `userMessage` keeps the caller's message as their turn, so a worker's
     // conversation holds both sides and survives a reload.
     // On an installation copy the session names its worker, so a turn whose
@@ -1348,11 +1344,9 @@ function defineAgentFlowAround(
     },
     task: {
       actions: {
-        [WORKER_TASK_ENTRY]: taskEntry,
-        // A coordinator's post row: one turn of `run` on the post, behind the
-        // claim gate, its reply the row's result. That is what makes an agent
-        // worker a delegate that takes posts.
-        [DELEGATED_POST_ENTRY]: delegatedPostEntry(run)
+        // A task, a coordinator's routed message among them (FIX-2083): one
+        // turn of `run`, behind the claim gate, its answer the task's result.
+        [WORKER_TASK_ENTRY]: taskEntry
       }
     }
   });

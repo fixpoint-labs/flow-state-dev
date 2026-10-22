@@ -214,11 +214,17 @@ export interface TaskLedgersOptions {
    * the ledger at it (`getOrCreateTaskCollection({ ..., partition })`). It is
    * read at the running user's scope, so it reaches only that user's rows, and
    * a ledger resolved at any other partition is refused before a row is read.
+   *
+   * `taskId` is the row the dispatch (or the claim being settled) names, so a
+   * resolver can answer for a ledger only when that row is one the running
+   * session may take: it is untrusted too, and the row it names is re-read
+   * and checked on the returned ledger.
    */
   resolve: (
     ledgerId: string,
     ctx: BlockContext,
-    partition: string | undefined
+    partition: string | undefined,
+    taskId: string
   ) => Promise<TaskCollectionRef | undefined>;
   /** Declarations the resolved ledgers need in scope (their resources). */
   uses?: readonly DefinedCapability[];
@@ -232,18 +238,6 @@ export interface TaskLedgersOptions {
    * state is the entry's own, the same shape for every task.
    */
   allowSessionState?: boolean;
-  /**
-   * Whether a turn this entry serves is a task turn (`isTaskTurn`). Default
-   * `true`. A task turn may not wait on another task, so waits never nest,
-   * and it is the turn offered the question park, whose question goes back to
-   * whoever filed the task.
-   *
-   * Set `false` for an entry whose turn answers the user directly rather than
-   * its filer, such as Workforce's delegated post: it can wait on work it
-   * dispatches, and it has no filer to ask. The claim is still stamped, so
-   * task-tool writes from the turn stay fenced to the row it holds.
-   */
-  taskTurn?: boolean;
   /** What else holds a task open at a request's end (FIX-2077, rule 6). See {@link TaskEndRules}. */
   endRules?: TaskEndRules;
 }
@@ -272,7 +266,6 @@ export function taskLedgers(options: TaskLedgersOptions): TaskBinding {
       ...(options.uses !== undefined ? { uses: options.uses } : {}),
       onError: options.onError ?? "skip",
       allowSessionState: options.allowSessionState === true,
-      taskTurn: options.taskTurn !== false,
       ...(options.endRules !== undefined ? { endRules: options.endRules } : {}),
       ledger: { kind: "by-id", resolve },
     }),
@@ -300,8 +293,6 @@ function buildTaskGate(options: {
   uses?: readonly DefinedCapability[];
   onError: "skip" | "fail";
   allowSessionState?: boolean;
-  /** See {@link TaskLedgersOptions.taskTurn}; a board's own gate always serves task turns. */
-  taskTurn?: boolean;
   endRules?: TaskEndRules;
 }): TaskBinding["gate"] {
   const { name, boardId, ledger, uses, onError } = options;
@@ -337,7 +328,7 @@ function buildTaskGate(options: {
   // a refusal decided before any row is read.
   const ledgerFor = async (ctx: BlockContext, dispatch: TaskDispatchInput): Promise<TaskCollectionRef> => {
     if (ledger.kind === "board") return boardLedgerAt(ledger, ctx, dispatch.taskId, dispatch.partition);
-    const resolved = await ledger.resolve(dispatch.boardId, ctx, dispatch.partition);
+    const resolved = await ledger.resolve(dispatch.boardId, ctx, dispatch.partition, dispatch.taskId);
     if (resolved === undefined) {
       throw new UnknownTaskLedgerError(name, dispatch.taskId, dispatch.boardId);
     }
@@ -374,7 +365,9 @@ function buildTaskGate(options: {
     }
     const ledgerId = ctx.sequencer!.state.currentLedger as string | undefined;
     const resolved =
-      ledgerId === undefined ? undefined : await ledger.resolve(ledgerId, ctx, claim?.partition);
+      ledgerId === undefined || claim === undefined
+        ? undefined
+        : await ledger.resolve(ledgerId, ctx, claim.partition, claim.taskId);
     if (resolved === undefined) {
       throw new Error(
         `[task-board] "${name}" cannot settle its claim: the ledger it was read from ` +
@@ -501,7 +494,7 @@ function buildTaskGate(options: {
           });
 
           ctx._markTaskScope?.(held.id);
-          stampCurrentClaim(ticket, ctx, { taskTurn: options.taskTurn !== false });
+          stampCurrentClaim(ticket, ctx);
           // ADMISSION (FIX-2077): a row waiting on something (a stop, filed
           // work, a queued message) gets a lease again, renewed until this
           // request ends, and the task is checked at that end.

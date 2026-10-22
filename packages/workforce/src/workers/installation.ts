@@ -50,6 +50,7 @@ import {
   FILING_SESSION_STATE_KEY,
   FILING_WORKSTREAM_STATE_KEY,
   PROJECT_STATE_KEY,
+  ROUTED_FROM_STATE_KEY,
   STANDARD_WORKERS_RESOURCE,
   TASK_CHAIN_STATE_KEY,
   TASK_FLOW_STATE_KEY,
@@ -211,11 +212,12 @@ export class WorkerTurnRefusedError extends Error {
   }
 }
 
-/** The readonly session-state fields every worker flow declares. */
+/** The session-state fields every worker flow declares: readonly birth fields, and the server-owned routed-from. */
 export type WorkerSessionStateShape = {
   readonly [WORKER_ID_STATE_KEY]: z.ZodReadonly<z.ZodString>;
   readonly [FILING_SESSION_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [WORKSTREAM_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+  readonly [ROUTED_FROM_STATE_KEY]: z.ZodOptional<z.ZodString>;
   readonly [TASK_ID_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [FILING_FLOW_STATE_KEY]: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
   readonly [TASK_CHAIN_STATE_KEY]: z.ZodOptional<z.ZodReadonly<typeof taskChainSchema>>;
@@ -445,6 +447,8 @@ export function createWorkerInstallation(options: WorkerInstallationOptions = {}
     [WORKER_ID_STATE_KEY]: z.string().min(1).readonly(),
     [FILING_SESSION_STATE_KEY]: z.string().min(1).readonly().optional(),
     [WORKSTREAM_STATE_KEY]: z.string().min(1).readonly().optional(),
+    // Written by the `work` entry when it starts a routed task here (FIX-2083): server-owned.
+    [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional(),
     [TASK_ID_STATE_KEY]: z.string().min(1).readonly().optional(),
     [FILING_FLOW_STATE_KEY]: z.string().min(1).readonly().optional(),
     [TASK_CHAIN_STATE_KEY]: taskChainSchema.readonly().optional(),

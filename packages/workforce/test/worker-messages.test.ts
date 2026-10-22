@@ -514,8 +514,8 @@ describe("the hop count through a delegation", () => {
       await h.settled();
       const rows = await logRows(h, "alice");
       expect(rows.map((row) => `${row.from}>${row.to}@${row.hop}`)).toEqual(["otto>chief@1"]);
-      // A post is filed only from a user's line, which starts the count at 0 anyway.
-      expect(JSON.stringify(await toolOutputs(h, rows[0]!.toSession))).toMatch(/post_unavailable/);
+      // No post form is left to restart a chain through (FIX-2083): the call is refused by name.
+      expect(JSON.stringify(await toolOutputs(h, rows[0]!.toSession))).toMatch(/dispatch_takes_no_post/);
       expect(await h.rows("alice")).toEqual([]);
     } finally {
       await h.dispose();

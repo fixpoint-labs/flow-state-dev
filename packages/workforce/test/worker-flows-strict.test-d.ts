@@ -1,7 +1,7 @@
 /**
  * Compile-time check that the documented way to register a worker flow of your
  * own typechecks in an app on `strict: true`: a `defineFlow(...)` value returned
- * from a `workerFlows` function, and the same flow named in `delegateFlows`.
+ * from a `workerFlows` function, taking a coordinator's routed tasks on `work`.
  *
  * The repo's own configs leave `strictFunctionTypes` off, so this file is also
  * compiled by `tsconfig.test-d-strict.json`, which turns `strict` on and reads
@@ -17,13 +17,11 @@ import { z } from "zod";
 import {
   createWorkerInstallation,
   defineCoordinatorFlow,
-  DELEGATED_POST_ENTRY,
-  delegatedPostEntry,
-  delegatedPostHistory,
-  delegatedPostOnFinished,
   hireWorkforce,
+  WORKER_TASK_ENTRY,
   workerConfigOf,
   workerConfigSchema,
+  workerTaskEntry,
 } from "@flow-state-dev/workforce";
 
 const inputSchema = z.object({ message: z.string() });
@@ -44,7 +42,7 @@ const researchAnswer = generator({
   name: "research-answer",
   inputSchema,
   model: "openai/gpt-5.4-mini",
-  history: delegatedPostHistory,
+  history: true,
   prompt: (_input, ctx) => {
     const { instructions } = workerConfigOf(ctx);
     return typeof instructions === "string" ? instructions : "You answer research questions in two or three sentences.";
@@ -57,9 +55,9 @@ const researchFlow = defineFlow({
   configSchema: workerConfigSchema(),
   session: installation.session(),
   resources: { ...installation.resources },
-  request: { onStarted: loadWorker, onFinished: delegatedPostOnFinished },
+  request: { onStarted: loadWorker },
   actions: { run: { inputSchema, block: researchAnswer, userMessage: (input) => input.message } },
-  task: { actions: { [DELEGATED_POST_ENTRY]: delegatedPostEntry(researchAnswer) } },
+  task: { actions: { [WORKER_TASK_ENTRY]: workerTaskEntry({ name: "research", turn: researchAnswer }) } },
 });
 
 /** A worker flow that declares no settings of its own. */
@@ -72,7 +70,6 @@ const plainFlow = defineFlow({
 
 const coordinatorFlow = defineCoordinatorFlow({
   installation,
-  delegateFlows: [researchFlow],
   routeModel: "typesafe-ai/jev",
 });
 

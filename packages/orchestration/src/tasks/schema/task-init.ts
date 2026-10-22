@@ -73,6 +73,19 @@ export type TaskInit<TInput = unknown> = {
    */
   resultTo?: TaskResultSetting;
   /**
+   * The workstream record the task goes to, by its target (see `Task.target`):
+   * a filing setting, for an assignee that is a workstream's lead. A board
+   * whose filer has no such record refuses it.
+   */
+  target?: string;
+  /**
+   * The session `target` resolved to when the task was filed (see
+   * `Task.targetSessionId`). Written by the board's filing path, never from
+   * model input: the task tools build a row's init field by field and leave
+   * it out.
+   */
+  targetSessionId?: string;
+  /**
    * The call that filed this row ready (see `Task.dispatchCall`), so the same
    * call replayed finds its own row. Set only by the dispatch path.
    */

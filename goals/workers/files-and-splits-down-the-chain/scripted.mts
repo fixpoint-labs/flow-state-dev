@@ -168,7 +168,7 @@ export async function scriptedLegs(o: { origin: string; store: string; shipped: 
       out.b = { conv, word: w, turn, quietAt };
     });
 
-  // c: a routing coordinator whose one delegate takes only posts, and a worker
+  // c: a routing coordinator whose one delegate takes no task, and a worker
   // with no delegates: each turn says which tools it was handed and tries to
   // file; the app tries to file on each conversation.
   if (o.legs.has("c"))

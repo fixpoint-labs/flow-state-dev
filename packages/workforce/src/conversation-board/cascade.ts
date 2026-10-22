@@ -34,7 +34,7 @@ import {
   type TaskCollectionRef
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { boardAboveOf } from "./board-above";
 import { FILED_MARKER, PIECE_OF } from "./board-entries";
 import { filingSessionIdOf } from "./filing-session";
 
@@ -59,8 +59,8 @@ function filedMarkerOf(row: Pick<Task, "metadata"> | undefined): FiledMarker | u
  * costs a no-op; the reverse order could leave a piece no cascade reaches.
  */
 export async function stampFiledMarker(ctx: BlockContext, taskId: string, ledgerAt: LedgerAt): Promise<void> {
-  const above = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
-  if (typeof above !== "string") return;
+  const above = boardAboveOf(ctx);
+  if (above === undefined) return;
   const ref = await ledgerAt(ctx, above);
   const row = ref?.get(taskId);
   if (ref === undefined || row === undefined) return;
@@ -85,8 +85,8 @@ export async function cancelIfParentEnded(
   pieceId: string,
   ledgerAt: LedgerAt
 ): Promise<boolean> {
-  const above = ((ctx.session.state ?? {}) as Record<string, unknown>)[FILING_SESSION_STATE_KEY];
-  if (typeof above !== "string") return false;
+  const above = boardAboveOf(ctx);
+  if (above === undefined) return false;
   const parent = (await ledgerAt(ctx, above))?.get(taskId);
   if (parent === undefined || (parent.status !== "errored" && parent.status !== "cancelled")) return false;
   const outcome = await board.cancel(pieceId, cancelReason(parent));

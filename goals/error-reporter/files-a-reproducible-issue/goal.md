@@ -7,7 +7,7 @@
 - a worker's harness run throws for `[harness-bug]`, throws once for `[flaky]`, and does nothing for `[gives-up]`;
 - a `burst: <word>` message fails with an error naming the word.
 
-Most planted failures go to Sandbox's project coordinator. Its routing is `judgment`, so a failure in its turn fails the request. Leg C sends them to the chief of staff: its `best-fit` routing answers a crash in its own turn with "Nobody took this post", and the request completes. The trigger is held out: any message that names a project with no repository trips the same bug.
+Most planted failures go to Sandbox's project coordinator. Its routing is `judgment`, so a failure in its turn fails the request. Leg C sends them to the chief of staff: its `best-fit` routing answers a crash in its own turn with "Nobody took this message", and the request completes. The trigger is held out: any message that names a project with no repository trips the same bug.
 **Signal:**
 - **Leg 1.** The message fails the turn. One report reaches Inbox and nothing is filed. Its request, session and user ids equal the store's, in the row and in the draft. The operator answers File with *"Label it P1 and say which model the coordinator ran."* Exactly one issue is filed, and it says P1 and the project coordinator's model. A second Claude Code run, given only the issue, names a worker and message. Sent in a clean Lab, that message trips the same fingerprint.
 - **Leg 2.** The same failure 10 more times gives one report with count 11 and no second Inbox card.

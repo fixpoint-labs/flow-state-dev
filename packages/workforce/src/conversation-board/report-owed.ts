@@ -6,7 +6,7 @@
  * intake takes it as the task occurrence it already dedupes.
  *
  * A notice nobody can take (its conversation is gone) sends the report where
- * that refusal is handled. A post's report goes on `onPostSettled`.
+ * that refusal is handled. A routed task's report goes the same way (FIX-2083).
  *
  * **Upgrade (BP-030).** A row stored before FIX-2078 may carry a report-owed
  * marker (`reportOwed:<attempt>`) whose notice is already acknowledged. The

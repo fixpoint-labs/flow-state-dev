@@ -2,10 +2,11 @@
  * The retired-shape map (FIX-2080, epic D3): one read for every task row
  * stored in a shape the epic retires, one test per shape.
  *
- * Two entries are on (`blocked`, `recorded`): their rows read in the current
- * shape at every read boundary. Four are built here and turned on by the
- * issue that stops writing their shape; until then the boundary reads them as
- * stored, and the entry's own read shows what they will read as.
+ * Four entries are on (`blocked`, `recorded`, `post`, `parked-split`): their
+ * rows read in the current shape at every read boundary. The rest are built
+ * here and turned on by the issue that stops writing their shape; until then
+ * the boundary reads them as stored, and the entry's own read shows what they
+ * will read as.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -22,7 +23,7 @@ describe("the retired-shape map", () => {
     const on = Object.entries(RETIRED_SHAPES)
       .filter(([, entry]) => entry.on)
       .map(([shape]) => shape);
-    expect(on.sort()).toEqual(["blocked", "parked-split", "recorded"]);
+    expect(on.sort()).toEqual(["blocked", "parked-split", "post", "recorded"]);
   });
 
   it("returns a row in no retired shape as the same object", () => {
@@ -55,10 +56,23 @@ describe("the retired-shape map", () => {
     expect(read).not.toHaveProperty("undispatched");
   });
 
-  it("post (off until FIX-2083): read as stored; its entry routes it to the delegate's ongoing session", () => {
-    const post = { ...row, status: "pending", sealed: { kind: "post", session: { key: "delegate:x" } } };
-    expect(withRetiredShapes(post)).toBe(post);
-    expect(readRetiredShape("post", post)).toMatchObject({ session: "ongoing", sealed: post.sealed });
+  it("post (on, FIX-2083): a post row reads as a routed task in the delegate's ongoing session, its result to the conversation", () => {
+    // Stored by a coordinator before FIX-2083: the post in its payload, the
+    // session it is worked in keyed for the delegate.
+    const post = { ...row, status: "pending", assignee: "writer", maxAttempts: 1, sealed: { kind: "post", body: "hi", session: { key: "delegate:x" } } };
+    const read = withRetiredShapes(post) as Record<string, unknown>;
+    expect(read).toMatchObject({ session: "ongoing", resultTo: "conversation", sealed: post.sealed, assignee: "writer" });
+    // A keyed session is the delegate's own: no workstream session to carry.
+    expect(read).not.toHaveProperty("targetSessionId");
+    // A fixed point: read again, unchanged.
+    expect(withRetiredShapes(read)).toBe(read);
+  });
+
+  it("post (on, FIX-2083): a workstream post's session, by id, is the session its filing resolved", () => {
+    const post = { ...row, status: "pending", sealed: { kind: "post", session: { id: "ws-session" } } };
+    const read = withRetiredShapes(post) as Record<string, unknown>;
+    expect(read).toMatchObject({ session: "ongoing", resultTo: "conversation", targetSessionId: "ws-session" });
+    expect(withRetiredShapes(read)).toBe(read);
   });
 
   it("parked-split (on, FIX-2077): a split parked on its pieces reads as running, waiting on them, with no lease", () => {

@@ -49,7 +49,7 @@ export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./wo
 export { type HireOptions, type WorkerFlowEntry } from "./hire";
 export { workerFlowProblems } from "./worker-flow-contract";
 export { sharedResource, writeShared, type SharedWriteContext, type WrittenBy } from "./shared-resource";
-export { DELEGATED_POST_ENTRY, WORKER_TASK_ENTRY } from "./worker-task-entry";
+export { WORKER_TASK_ENTRY } from "./worker-task-entry";
 export {
   conversationLedgers,
   filingConversationBoard,

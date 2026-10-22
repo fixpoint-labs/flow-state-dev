@@ -162,7 +162,7 @@ const DROP_KEY = "goal-drop-user-message";
  * the action streams that talk to it, and the live session stream, which
  * Playwright's routing cannot filter because it never ends. What the page sees
  * when the server keeps no person turn. Scoped to leg c's conversation: a
- * seat hears a delegated post as a `user` turn too, and the person's posts to
+ * seat hears a routed task as a `user` turn too, and the person's posts to
  * the coordinator are `user` messages.
  *
  * Plain JavaScript in a string: a function handed to Playwright is compiled

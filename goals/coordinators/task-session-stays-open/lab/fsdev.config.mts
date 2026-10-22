@@ -79,7 +79,7 @@ const drawTicket = handler({
 let flows: Record<string, unknown> = {};
 const installation = wf.createWorkerInstallation({ standardWorkers: tree.workers, workerFlows: () => flows });
 const agent = wf.defineAgentWorkerFlow({ installation, catalog: { drawTicket } });
-const coordinator = wf.defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: "scripted/route" });
+const coordinator = wf.defineCoordinatorFlow({ installation, routeModel: "scripted/route" });
 flows = { agent, coordinator };
 const copies = wf.hireWorkforce(installation) as Array<{ id: string }>;
 

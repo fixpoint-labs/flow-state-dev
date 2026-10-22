@@ -318,8 +318,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   });
   const coordinator = defineCoordinatorFlow({
     installation,
-    // The builders take tasks, not posts, so no post is routed to a flow.
-    delegateFlows: [],
     routeModel: model,
     agent: { catalog: { [NOTE_TOOL]: noteTool() } as never, model },
   });

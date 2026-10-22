@@ -9,7 +9,7 @@
  * by a fixture or written to a store. Every grade is read back as that
  * person: the conversation's items (its routing records and the turn's tool
  * outputs) and the delegate's own session through the install's routes, and
- * the conversation's record (its delegates, and its post rows) from the
+ * the conversation's record (its delegates, and its routed tasks) from the
  * install's store file, from the rows that person owns. The session
  * route sends a client only the state a flow exposes, and the coordinator
  * exposes neither field. A reply's words are graded only in leg d, and only
@@ -23,7 +23,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { postDeliveries, type PostDelivery } from "../../lib/post-rows.mts";
+import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 
 /** One person the run acts as. */
@@ -187,10 +187,10 @@ async function talk(turns: Turn[], leg: string, who: Connected, session: Session
   return turn;
 }
 
-type Delivery = PostDelivery;
+type Delivery = RoutedDelivery;
 
 /**
- * A conversation's record (its delegates, its post rows and best fit's hold),
+ * A conversation's record (its delegates, its routed tasks and best fit's hold),
  * read from the SQLite file the install writes, from the rows `who` owns. Not
  * through the session route: that sends a client only the state a flow
  * exposes, and the coordinator exposes neither its delegates nor its hold. A
@@ -209,7 +209,7 @@ async function recordOf(
       .prepare("SELECT data FROM sessions WHERE (id = ? OR id = tenant_id || ':' || ?) AND user_id = ?")
       .get(sessionId, sessionId, who.person.userId) as { data: string } | undefined;
     const state = row === undefined ? undefined : (JSON.parse(row.data) as { state?: Record<string, any> }).state;
-    return { delegates: state?.delegates ?? null, ledger: postDeliveries(store, who.person.userId, sessionId), hold: state?.bestFitHold ?? null };
+    return { delegates: state?.delegates ?? null, ledger: routedDeliveries(store, who.person.userId, sessionId), hold: state?.bestFitHold ?? null };
   } finally {
     db.close();
   }

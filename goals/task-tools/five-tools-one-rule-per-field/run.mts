@@ -262,7 +262,7 @@ function buildHost(filename: string) {
   let flows: Record<string, unknown> = {};
   const installation = createWorkerInstallation({ standardWorkers: WORKERS, workerFlows: () => flows as never });
   const agent = defineAgentWorkerFlow({ installation });
-  const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [agent], routeModel: "typesafe-ai/jev" });
+  const coordinator = defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" });
   flows = { agent, coordinator };
   const copies = hireWorkforce(installation);
   const instances = Object.fromEntries(copies.map((copy) => [copy.id, copy]));

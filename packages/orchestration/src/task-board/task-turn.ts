@@ -10,9 +10,7 @@
  *
  * - **The claim.** The gate (and an inline drain's worker body) stamps the
  *   claim it holds into the turn's async scope before the turn runs
- *   (`currentWorkerClaim`). Nothing else stamps it. An entry declared
- *   `taskTurn: false` (a delegated post) stamps it without making the turn a
- *   task turn.
+ *   (`currentWorkerClaim`). Nothing else stamps it.
  * - **The task session.** A board's hand-over opens a task session born
  *   naming its task in session state under {@link TASK_SESSION_TASK_KEY}, a
  *   field the session's flow declares readonly and refuses at create from any

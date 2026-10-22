@@ -24,7 +24,7 @@
  * reload, so only a run the server kept can pass.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/run.mts
- * Controls: GOAL_CONTROL=no-delivery    (no flow takes a delegated post, so nobody runs: must FAIL at support.accounts, and nothing else)
+ * Controls: GOAL_CONTROL=no-delivery    (the agent flow takes no task, so nobody runs: must FAIL at support.accounts, and nothing else)
  *           GOAL_CONTROL=no-route       (best fit read as `everyone`, so every delegate hears: must FAIL at others, and nothing else)
  *           GOAL_CONTROL=answers-go-on  (agent-replies-in-the-mailbox's control: must leave every leg here green)
  */

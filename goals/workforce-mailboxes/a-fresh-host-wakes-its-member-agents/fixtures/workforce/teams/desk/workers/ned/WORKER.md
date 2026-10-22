@@ -1,5 +1,5 @@
 ---
-description: Takes notes when asked directly. A post runs nothing here.
+description: Takes notes when asked directly. A routed message runs nothing here.
 flow: note
 ---
 

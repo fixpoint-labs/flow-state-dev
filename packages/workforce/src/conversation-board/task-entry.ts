@@ -7,7 +7,12 @@
  *   conversation ledger at the partition the hand-over names, at the running
  *   user's scope only. Every check a board's gate runs (row, attempt, identity,
  *   status, assignee, lease, run link) runs on the ledger the hand-over names.
- *   A task session takes tasks only from the conversation it was opened for.
+ *   A session takes tasks only from the conversation it was opened for, and a
+ *   workstream's session the routed tasks filed for it there (FIX-2083).
+ * - **A routed task** (FIX-2083). Its turn reads the message it hands on, as
+ *   written (`../coordinator/routed-brief`), and its model is shown the
+ *   conversation's recent lines for that turn when the flow's generator reads
+ *   `routedTaskHistory`.
  * - **The message** (FIX-1817). The task as filed is the turn's user item,
  *   so it is part of the session's history; on the attempt an answer to the
  *   worker's question re-queued, the answer is, labelled as one.
@@ -37,22 +42,23 @@
  *   entry holds the session's reply line while it runs, so a piece's notice
  *   waits for the turn to end.
  */
-import { defineCapability, sequencer } from "@flow-state-dev/core";
+import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition, TaskDispatchInput } from "@flow-state-dev/core/types";
-import { taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import { currentWorkerClaim, taskLedgers, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import {
   type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
+import { FILING_FLOW_STATE_KEY, FILING_SESSION_STATE_KEY, ROUTED_FROM_STATE_KEY, TASK_ID_STATE_KEY } from "../workers/keys";
 import { RUN_BOARD_ENTRY } from "./board-entries";
 import { CONVERSATION_LEDGER_ID, conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { sessionIdOfFiling } from "./filing-session";
 import { conversationEndRules } from "./task-admission";
 import { REPLY_CONCURRENCY } from "./task-settled";
 import { markConversationTaskDoor } from "../worker-task-entry";
+import { noteRoutedLines } from "../coordinator/routed-brief";
 import { taskMessage } from "./task-message";
 
 // A leaf module, so the plan (`./plan`) reads a task the same way without importing this one.
@@ -152,25 +158,56 @@ export type WorkerTaskEntryOptions = {
 /**
  * The ledger resolver a `work` entry's gate uses for a conversation's board,
  * and the one a harness manager takes for boards it resolves per claim: the
- * conversation ledger at `partition`, at the running user's scope, and only
- * for the conversation the running task session was opened for. `undefined`
- * for any other ledger, a missing partition, or another conversation's.
+ * conversation ledger at `partition`, at the running user's scope, for the
+ * conversation the running session was opened for; or, for another
+ * conversation's, only when the row it names was filed for this very session
+ * (a routed task for a workstream, whose filing resolved its session:
+ * `Task.targetSessionId`, server-written). `undefined` for any other ledger, a
+ * missing partition, or any other conversation's row.
  *
  * @param ledgerId The ledger the claim names.
  * @param ctx The running block's context. Its flow must declare the
  *   conversation ledger (`workerTaskEntry` installs it).
  * @param partition The partition the claim names.
+ * @param taskId The row the claim names.
  */
 export async function conversationLedgers(
   ledgerId: string,
   ctx: BlockContext,
-  partition: string | undefined
+  partition: string | undefined,
+  taskId?: string
 ): Promise<TaskCollectionRef | undefined> {
-  if (ledgerId !== CONVERSATION_LEDGER_ID) return undefined;
+  if (ledgerId !== CONVERSATION_LEDGER_ID || partition === undefined) return undefined;
   // A task session works only the conversation it was opened for.
-  if (partition === undefined || filingPartitionOf(ctx) !== partition) return undefined;
-  return conversationLedgerAt(ctx, partition);
+  if (filingPartitionOf(ctx) === partition) return conversationLedgerAt(ctx, partition);
+  // A workstream's session works the routed tasks filed for it, and no other row there.
+  if (taskId === undefined) return undefined;
+  const ref = await conversationLedgerAt(ctx, partition);
+  const row = ref?.get(taskId);
+  return row !== undefined && row.targetSessionId === ctx.session.identity.id ? ref : undefined;
 }
+
+/**
+ * In a session no conversation owns (a workstream's), name the conversation
+ * whose task the gate just let in, from the claim it verified, so the
+ * requests that follow find that task on its board (`./board-above`). A
+ * session opened for a conversation names it at birth, and writes nothing.
+ */
+const noteRoutedFrom = handler({
+  name: "worker-task-note-routed-from",
+  inputSchema: z.unknown(),
+  outputSchema: z.object({}),
+  sessionStateSchema: z.object({ [ROUTED_FROM_STATE_KEY]: z.string().min(1).optional() }),
+  execute: async (_task: unknown, ctx) => {
+    const state = (ctx.session.state ?? {}) as Record<string, unknown>;
+    if (typeof state[FILING_SESSION_STATE_KEY] === "string") return {};
+    const claim = currentWorkerClaim(ctx as never);
+    const partition = claim?.collectionId === CONVERSATION_LEDGER_ID ? claim.partition : undefined;
+    if (partition === undefined || state[ROUTED_FROM_STATE_KEY] === partition) return {};
+    await ctx.session.patchState({ [ROUTED_FROM_STATE_KEY]: partition });
+    return {};
+  }
+});
 
 /**
  * The claim the gate put on its state, as a `block` entry hands it on. The
@@ -246,14 +283,17 @@ export function workerTaskEntry(options: WorkerTaskEntryOptions) {
   // the task's message. A task that filed pieces stays running when the turn
   // ends, and the turn their endings wake decides it (FIX-2077): the gate's
   // check at the end of each request for it.
-  const base = sequencer({ name, inputSchema: taskWorkerInputSchema });
+  const base = sequencer({ name, inputSchema: taskWorkerInputSchema }).tap(noteRoutedFrom);
   const block =
     options.block !== undefined
       ? base.step(
           (task: TaskWorkerInput, ctx): WorkerTaskBlockInput => ({ ...task, claim: verifiedClaimOf(ctx as never, name) }),
           options.block
         )
-      : base.step((task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!);
+      : base
+          // A routed task's lines, for its model to be shown on this turn only.
+          .tap(noteRoutedLines)
+          .step((task: TaskWorkerInput) => ({ message: taskTurnMessage(task) }), options.turn!);
 
   /**
    * The turn's message as the session's user item, so the task as filed (or

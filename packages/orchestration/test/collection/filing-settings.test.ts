@@ -428,13 +428,14 @@ describe.each(BACKINGS)("retired rows in the store at upgrade (%s)", (_name, mak
     expect((await tasks.claim("w"))?.id).toBe("t");
   });
 
-  it("reads the shapes whose entries are still off as stored, and a stored split as running", async () => {
+  it("reads the shapes whose entries are still off as stored, a stored split as running, and a stored post as a routed task", async () => {
     const { seed } = await makeBacking();
     await seed({ ...stored, id: "p", goal: "p", status: "pending", sealed: { kind: "post" } } as unknown as Task);
     await seed({ ...stored, id: "s", goal: "s", status: "parked", metadata: { splitInto: { session: "x", flow: "f" } } } as unknown as Task);
     await seed({ ...stored, id: "r", goal: "r", status: "pending", reopened: true } as unknown as Task);
     const tasks = await seed({ ...stored, id: "q", goal: "q", status: "parked", parkedForTurn: true } as unknown as Task);
-    expect(tasks.get("p")?.session).toBeUndefined();
+    // On since FIX-2083: a stored post row reads as a task in the delegate's ongoing session, its result to the conversation.
+    expect(tasks.get("p")).toMatchObject({ session: "ongoing", resultTo: "conversation" });
     // On since FIX-2077: a stored split reads as running, waiting on its pieces, with no lease.
     expect(tasks.get("s")).toMatchObject({ status: "in_progress", waitingOn: "filed" });
     expect(tasks.get("r")?.reopened).toBe(true);

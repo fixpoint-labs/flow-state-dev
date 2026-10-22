@@ -1,7 +1,9 @@
 /**
- * A delegate's failed post tells its coordinator it ended even when its error
- * report isn't taken (a store error, say): a post's report is best effort,
- * sent on its notice (FIX-2010, FIX-2078), and leaves no marker.
+ * A delegate's failed routed task whose error report isn't taken (a store
+ * error, say): the report rides the task's ending like any task's (FIX-2078,
+ * epic decision (f)), so the notice stays owed on the task, and the report
+ * goes again with it, rather than the conversation hearing an ending its
+ * report never reached. No separate report marker is written.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,17 +14,18 @@ vi.mock("../src/conversation-board/report-owed", async (original) => ({
 
 import { bootHost } from "./coordinator-harness";
 
-describe("a delegate's failed post whose report can't be sent", () => {
-  it("still tells the coordinator the post ended, and writes no report marker", async () => {
+describe("a delegate's failed routed task whose report can't be sent", () => {
+  it("keeps its ending owed for the board's next touch, and writes no report marker", async () => {
     const host = bootHost();
     const id = await host.conversation("alice", "desk");
     await host.act("alice", id, "run", { message: "[route:eng.em] [conf:0.9] [fail:eng.em] plan the release" });
     const requests = await host.settled();
-    const [row] = await host.postRows("alice");
+    const [row] = await host.routedRows("alice");
     expect(row).toMatchObject({ status: "errored", assignee: "eng.em" });
-    // The notice was sent: its mark is cleared, and the coordinator heard the ending.
-    expect(row.metadata["noticeOwed:1:errored"]).toBeNull();
-    expect(requests.some((r) => r.flowKind === "coordinator" && r.actionName === "onPostSettled")).toBe(true);
+    // The conversation's notice entry ran, and stopped on the report: the ending stays owed.
+    expect(requests.some((r) => r.flowKind === "coordinator" && r.actionName === "onTaskSettled" && r.status === "failed")).toBe(true);
+    expect(row.metadata["noticeOwed:1:errored"]).not.toBeNull();
+    expect(row.metadata["noticeOwed:1:errored"]).toBeDefined();
     expect(Object.keys(row.metadata ?? {}).filter((key) => key.startsWith("reportOwed:"))).toEqual([]);
   });
 });

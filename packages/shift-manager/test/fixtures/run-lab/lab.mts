@@ -284,7 +284,7 @@ export async function openRunLab(options: { asking?: boolean; holdAsk?: boolean 
       actions: { ...hearingDoor },
       task: { actions: { work: workerTaskEntry({ name: `run-lab-${flow}-task`, turn: scriptedRun }) } },
     } as never);
-  const coordinator = defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: ROUTE_MODEL });
+  const coordinator = defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL });
 
   workerFlows = {
     [leadFlow]: leadWorkerFlow,

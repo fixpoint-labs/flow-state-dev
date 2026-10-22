@@ -54,7 +54,14 @@ export function plantedCoordinatorModel(modelId: string, projects: readonly Know
       const post = /^post to ([a-z.-]+):/i.exec(said);
       if (post !== null) {
         return {
-          toolCalls: [{ toolCallId: `t-${Date.now()}`, toolName: "dispatchTask", args: { post: true, assignee: post[1]! } }],
+          // Routed as a task (FIX-2083): the delegate reads the message as written.
+          toolCalls: [
+            {
+              toolCallId: `t-${Date.now()}`,
+              toolName: "createTask",
+              args: { goal: "Answer this message", assignee: post[1]!, session: "ongoing", resultTo: "conversation" },
+            },
+          ],
           finishReason: "tool-calls",
         };
       }

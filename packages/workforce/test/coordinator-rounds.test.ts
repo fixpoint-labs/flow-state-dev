@@ -4,8 +4,8 @@
  *
  * What is graded is who heard what (the `helper` flow records every delivery
  * it hears), what landed in the conversation, the `coordinator-route`
- * records, and the post rows on the conversation's board, never a router's
- * internal decision.
+ * records, and the routed tasks on the conversation's board, never a
+ * router's internal decision.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1791/BUSINESS-RULES.md`, V3 and V5):
  *   BR-17  round robin: the next delegate in list order takes each user's post, skipping one
@@ -17,14 +17,14 @@
  *          everyone hands each delegate the others' answers when the round closes; judgment wakes
  *          the coordinator's turn once per closed round;
  *   BR-24a a judgment dispatch in a wake is the next round's, once per delegate;
- *   BR-24b a round closes without a delegate whose turn failed or whose run was cancelled, at once,
- *          and without a slow one at its deadline; the late answer lands once and goes no further;
- *          a round whose delegate says nothing closes on the conversation's next wake after its
- *          deadline, once; past 50 open rounds the oldest is no longer tracked;
+ *   BR-24b a round closes without a delegate whose turn failed or whose task the user cancelled, at
+ *          once, and without a slow one at its deadline; the late answer lands once and goes no
+ *          further; a round whose delegate says nothing closes at its deadline, on the wake its
+ *          conversation owes then (FIX-2083 D2), once; past 50 open rounds the oldest is no longer
+ *          tracked;
  *   BR-25  at the limit an answer goes nowhere and wakes nothing;
- *   BR-21, BR-22  an ending sent twice goes back out once; a cancel reported under a claim the row
- *          doesn't hold changes nothing;
- *   BR-27  a post and a dispatch can't carry a round; no caller reaches the route-on entry;
+ *   BR-21, BR-22  an ending sent twice goes back out once;
+ *   BR-27  a message and a filing can't carry a round; no caller reaches the route-on entry;
  *   BR-28  every decision, in every round, is one `coordinator-route` record.
  */
 import { describe, expect, it } from "vitest";
@@ -129,7 +129,7 @@ describe("round robin (V3)", () => {
     expect(records).toEqual([
       expect.objectContaining({ by: "unplaced", policy: "round-robin", none: "no delegate in this conversation can be reached" })
     ]);
-    expect(messages.at(-1)!.text).toBe("Nobody took this post: no delegate in this conversation can be reached.");
+    expect(messages.at(-1)!.text).toBe("Nobody took this message: no delegate in this conversation can be reached.");
   });
 });
 
@@ -171,7 +171,7 @@ describe("everyone (V3)", () => {
     const { records, messages } = await host.items(id);
     expect(records).toEqual([expect.objectContaining({ by: "unplaced", policy: "everyone", delegates: [] })]);
     expect(records[0].none).toMatch(/no delegate in this conversation can be reached/);
-    expect(messages.at(-1)!.text).toMatch(/^Nobody took this post: /);
+    expect(messages.at(-1)!.text).toMatch(/^Nobody took this message: /);
   });
 });
 
@@ -378,15 +378,15 @@ describe("rounds (V5)", () => {
       script: [
         {
           toolCalls: [
-            { toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } },
-            { toolCallId: "h2", toolName: "dispatchTask", args: { post: true, assignee: "eng.coder" } }
+            { toolCallId: "h1", toolName: "createTask", args: { goal: "Plan it", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } },
+            { toolCallId: "h2", toolName: "createTask", args: { goal: "Plan it", assignee: "eng.coder", session: "ongoing", resultTo: "conversation" } }
           ]
         },
         { text: "Asked both." },
         {
           toolCalls: [
-            { toolCallId: "h3", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } },
-            { toolCallId: "h4", toolName: "dispatchTask", args: { post: true, assignee: "eng.em" } }
+            { toolCallId: "h3", toolName: "createTask", args: { goal: "Merge them", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } },
+            { toolCallId: "h4", toolName: "createTask", args: { goal: "Merge them", assignee: "eng.em", session: "ongoing", resultTo: "conversation" } }
           ]
         },
         { text: "Passed the answers to the EM." }
@@ -424,7 +424,7 @@ describe("rounds (V5)", () => {
         "judgment",
         expect.arrayContaining([
           { worker: "eng.em", outcome: "delivered" },
-          { worker: "eng.em", outcome: "skipped", reason: "it was already handed this post in this round" }
+          { worker: "eng.em", outcome: "skipped", reason: "it was already handed this message in this round" }
         ])
       ]
     ]);
@@ -452,7 +452,7 @@ describe("rounds (V5)", () => {
       { worker: "eng.coder", outcome: "delivered" },
       { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
     ]);
-    const failed = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    const failed = (await host.routedRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
     expect(failed).toMatchObject({ status: "errored", error: expect.stringMatching(/eng\.coder could not answer/) });
   });
 
@@ -481,33 +481,41 @@ describe("rounds (V5)", () => {
     expect(roundOne).toBeLessThan(coderLine);
     // The EM's answer, the coder's late one, then the coder's to round 1: each once.
     expect((await answers(host, id)).map((line) => line.agentName)).toEqual(["eng.em", "eng.coder", "eng.coder"]);
-    const late = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    const late = (await host.routedRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
     expect(late).toMatchObject({ status: "completed" });
   });
 
-  it("goes back out once for an ending sent twice, and a cancel reported under a claim the row doesn't hold changes nothing (BR-21, BR-22)", async () => {
+  it("goes back out once for an ending sent twice (BR-21, BR-22)", async () => {
     const host = bootHost({ standard: standardWorkers({ desk: { rounds: 1 } }) });
     const id = await host.conversation("alice", "desk");
     await post(host, id, "who owns it? [route:eng.em] [route:eng.coder]");
     await quiet(host);
-    const first = (await host.postRows("alice")).find((row) => row.sealed.round === 0)!;
+    const first = (await host.routedRows("alice")).find((row) => row.sealed.round === 0)!;
 
     const notice = { boardId: "tasks", taskId: first.id, attempt: first.attempts, ending: "completed", output: "again" };
-    expect((await host.act("alice", id, "onPostSettled", notice, "coordinator", "internal")).error).toBeUndefined();
-    // A forged claim: the right row, a ticket nobody was handed.
-    const claim = { collectionId: "tasks", taskId: first.id, attempt: first.attempts, createdAt: first.createdAt, incarnationId: "made-up" };
-    const forged = await host.act("alice", id, "postCancelled", { taskId: first.id, claim }, "coordinator", "internal");
-    expect(forged.error).toBeUndefined();
-    expect((await host.postRows("alice")).find((row) => row.id === first.id)).toMatchObject({ status: "completed" });
+    expect((await host.act("alice", id, "onTaskSettled", notice, "coordinator", "internal")).error).toBeUndefined();
+    expect((await host.routedRows("alice")).find((row) => row.id === first.id)).toMatchObject({ status: "completed" });
+    // A post's cancel report has no entry left to forge (FIX-2083).
+    await expect(host.act("alice", id, "postCancelled", { taskId: first.id }, "coordinator", "internal")).rejects.toThrow(
+      /does not define action "postCancelled"/
+    );
     await quiet(host);
     expect(host.heard.map((h) => h.worker)).toEqual(["eng.em", "eng.coder"]);
     expect((await host.items(id)).records).toHaveLength(2);
   });
 
-  it("never takes a round from a post or a dispatch, and no caller reaches the route-on entry (BR-27)", async () => {
+  it("never takes a round from a message or a filing, and no caller reaches the route-on entry (BR-27)", async () => {
     const judgment = mockGenerator({
       script: [
-        { toolCalls: [{ toolCallId: "h1", toolName: "dispatchTask", args: { post: true, assignee: "eng.em", round: 1 } }] },
+        {
+          toolCalls: [
+            {
+              toolCallId: "h1",
+              toolName: "createTask",
+              args: { goal: "go", assignee: "eng.em", session: "ongoing", resultTo: "conversation", round: 1 }
+            }
+          ]
+        },
         { text: "Tried." }
       ]
     });
@@ -515,15 +523,11 @@ describe("rounds (V5)", () => {
     const id = await host.conversation("alice", "chief");
     const forgedPost = await host.act("alice", id, "run", { message: "go", round: 2 });
     expect(messageOf(forgedPost.error)).toMatch(/round/);
-    // The dispatch's extra field is refused by the tool, so nothing is filed.
-    const forgedDispatch = await host.act("alice", id, "run", { message: "go" });
-    expect(forgedDispatch.error).toBeUndefined();
-    const refused = (await host.items(id)).all.filter((item: any) => item.type === "tool_output").map((item: any) => item.output);
-    expect(refused).toEqual([{ ok: false, error: expect.stringMatching(/^post_takes_assignee_and_target: .*\(not round\)/) }]);
-    expect(await host.postRows("alice")).toEqual([]);
+    // The filing's extra field reaches nothing: the task is the turn's own round's, round 0.
+    const forgedFiling = await host.act("alice", id, "run", { message: "go" });
+    expect(forgedFiling.error).toBeUndefined();
     await quiet(host);
-    // Neither reached a delegate.
-    expect(host.heard).toEqual([]);
+    expect((await host.routedRows("alice")).map((row) => row.sealed.round)).toEqual([0]);
     await expect(
       host.act("alice", id, "routeOn", { postId: "p", round: 1, answers: [{ worker: "eng.em", body: "x" }] })
     ).rejects.toThrow(/does not define action "routeOn"/);
@@ -542,27 +546,22 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
   const recordsOf = async (host: Host, id: string, postId: string) =>
     (await host.items(id)).records.filter((record: any) => record.postId === postId);
 
+  /**
+   * The EM's answer to the message went on to the coder in round 1: a routed
+   * task for it, filed. While the coder's round-0 task is still stuck in its
+   * session (its run stopped and said nothing), this one waits behind it, as
+   * a session works one task at a time (FIX-2080, rule 5).
+   */
+  const routedOnToCoder = async (host: Host) =>
+    (await host.routedRows("alice")).filter((row) => row.sealed.round === 1 && row.assignee === "eng.coder" && row.sealed.from === "eng.em");
+
   /** The coder heard the EM's answer to `post`, passed on in round 1. */
   const passedToCoder = (host: Host, post: string) =>
     host.heard.filter(
       (h) => h.worker === "eng.coder" && h.message.startsWith(`eng.em, through desk: eng.em heard: alice, through desk: ${post}`)
     );
 
-  it("reports a cancelled run, so its round closes at once and the other answer goes on", async () => {
-    // A deadline far off: only the report can close the round in time.
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 60_000 });
-    const id = await host.conversation("alice", "desk");
-    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
-    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
-    await quiet(host);
-
-    const cancelled = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
-    expect(cancelled).toMatchObject({ status: "cancelled", error: "its run was cancelled" });
-    expect(passedToCoder(host, "status?")).toHaveLength(1);
-    expect((await host.sessionState(id)).openRounds).toEqual([]);
-  });
-
-  it("closes a round at once when the user cancels a post's row from the board, while its delegate still works", async () => {
+  it("closes a round at once when the user cancels a routed task from the board, while its delegate still works", async () => {
     // A deadline far off: only the cancel can close the round in time. eng.lead takes
     // tasks, so this conversation's board answers the task tools.
     const host = bootHost({
@@ -575,7 +574,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     for (let i = 0; i < 200 && !host.heard.some((h) => h.worker === "eng.coder"); i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    const row = (await host.postRows("alice")).find((r) => r.sealed.round === 0 && r.assignee === "eng.coder")!;
+    const row = (await host.routedRows("alice")).find((r) => r.sealed.round === 0 && r.assignee === "eng.coder")!;
     const cancelled = await host.act("alice", id, "updateTask_tasks", { id: row.id, status: "cancelled" });
     expect(cancelled.error, messageOf(cancelled.error)).toBeUndefined();
     // Closed before the coder's turn ends.
@@ -587,19 +586,19 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     }
     expect(open).toEqual([]);
     await quiet(host);
-    expect((await host.postRows("alice")).find((r) => r.id === row.id)).toMatchObject({ status: "cancelled" });
+    expect((await host.routedRows("alice")).find((r) => r.id === row.id)).toMatchObject({ status: "cancelled" });
     expect(await answers(host, id)).toEqual([]);
   });
 
   for (const wake of ["roundDeadline"] as const) {
     it("closes an overdue round when the deadline wake wakes the conversation", async () => {
-      const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
+      const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
       const id = await host.conversation("alice", "desk");
       expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
       expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
       await quiet(host);
       expect(passedToCoder(host, "status?")).toHaveLength(0);
-      const answered = (await host.postRows("alice")).find((row) => row.assignee === "eng.em")!;
+      const answered = (await host.routedRows("alice")).find((row) => row.assignee === "eng.em")!;
 
       await untilOverdue(host, id);
       // The EM's row has already ended, so this writes nothing of its own; it only wakes.
@@ -609,13 +608,54 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
           : { boardId: "tasks", taskId: answered.id, attempt: answered.attempts, ending: "completed", output: "again" };
       expect((await host.act("alice", id, wake, input, "coordinator", "internal")).error).toBeUndefined();
       await quiet(host);
-      expect(passedToCoder(host, "status?")).toHaveLength(1);
+      expect(await routedOnToCoder(host)).toEqual([expect.objectContaining({ status: "pending" })]);
       expect((await host.sessionState(id)).openRounds).toEqual([]);
     });
   }
 
+  it("owes a wake on the conversation at the round's deadline, which closes the round with nothing else to wake it (FIX-2083 D2)", async () => {
+    // A host that keeps wakes: the deadline is a due time the engine keeps, not a timer in a delegate's run.
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, durable: true });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
+    const [open] = (await host.sessionState(id)).openRounds as OpenRound[];
+    const wakes = (await host.state.getRuntime()).stores.wakes!;
+    expect(await wakes.get({ sessionId: id, entry: "roundDeadline" })).toMatchObject({ dueAt: open!.deadlineAt });
+
+    // Nothing else wakes the conversation: the wake closes the round, within a second or so of its deadline.
+    for (let i = 0; i < 400 && (await host.sessionState(id)).openRounds.some((r: OpenRound) => r.postId === open!.postId); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const closedBy = Date.now();
+    expect((await host.sessionState(id)).openRounds).toEqual([]);
+    expect(closedBy - open!.deadlineAt!).toBeLessThan(2_000);
+    await quiet(host);
+    expect(await routedOnToCoder(host)).toEqual([expect.objectContaining({ status: "pending" })]);
+    // Settled once every round is closed: cleared, or, before the fence its writer's lease
+    // set, moved to that fence (FIX-2078), never left due at the deadline it paid.
+    const left = await wakes.get({ sessionId: id, entry: "roundDeadline" });
+    if (left !== null) expect(left.dueAt).toBe(left.landBy);
+    expect(left?.dueAt ?? Number.POSITIVE_INFINITY).toBeGreaterThan(open!.deadlineAt!);
+  });
+
+  it("closes the round at its deadline on an in-process timer, on a host that keeps no wakes (FIX-2083 D2)", async () => {
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
+    const id = await host.conversation("alice", "desk");
+    expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
+    expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
+    await quiet(host);
+    const [open] = (await host.sessionState(id)).openRounds as OpenRound[];
+    for (let i = 0; i < 400 && (await host.sessionState(id)).openRounds.length > 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect((await host.sessionState(id)).openRounds).toEqual([]);
+    expect(Date.now() - open!.deadlineAt!).toBeLessThan(2_000);
+  });
+
   it("closes an overdue round when the user's post is the only wake", async () => {
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -637,7 +677,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
 
   it("closes an overdue round on the conversation's next wake, once, and the new post routes as well", async () => {
     // The coder's run is cancelled and says nothing, as one whose process stopped would.
-    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000, reportCancel: false });
+    const host = bootHost({ standard: pairDesk("everyone", 1), roundDeadlineMs: 2_000 });
     const id = await host.conversation("alice", "desk");
     expect((await host.act("alice", id, "run", { message: "status? [hang:eng.coder]" })).error).toBeUndefined();
     expect(await host.cancelDelegate("alice", "eng.coder")).toBe(204);
@@ -646,7 +686,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     expect(first).toMatchObject({ round: 0 });
     // Nothing reported, so round 0 waits: nothing has gone on.
     expect(passedToCoder(host, "status?")).toHaveLength(0);
-    const silent = (await host.postRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
+    const silent = (await host.routedRows("alice")).find((row) => row.sealed.round === 0 && row.assignee === "eng.coder");
     expect(silent).toMatchObject({ status: "in_progress" });
 
     // Past the deadline, the user posts again.
@@ -655,7 +695,7 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
     await quiet(host);
 
     // The overdue round closed once, and its one delivery went on: the coder got the EM's answer.
-    expect(passedToCoder(host, "status?")).toHaveLength(1);
+    expect(await routedOnToCoder(host)).toEqual([expect.objectContaining({ status: "pending" })]);
     const stale = await recordsOf(host, id, first.postId);
     expect(stale.map((record: any) => [record.round, record.by])).toEqual([
       [0, "everyone"],
@@ -665,13 +705,16 @@ describe("a delegate that never answers (V5, BR-24b)", () => {
       { worker: "eng.coder", outcome: "delivered" },
       { worker: "eng.em", outcome: "skipped", reason: "no other delegate answered in round 0" }
     ]);
-    // The new post routed as usual: both delegates, then each the other's answer.
+    // The new post routed as usual, to both delegates. The coder's session still holds its
+    // stuck task, so the new one for it waits behind it (FIX-2080, rule 5), and the new
+    // round waits for its answer, or its own deadline.
     const fresh = (await host.items(id)).records.filter((record: any) => record.postId !== first.postId);
-    expect(fresh.map((record: any) => [record.round, record.by, record.delegates.length])).toEqual([
-      [0, "everyone", 2],
-      [1, "everyone", 2]
-    ]);
-    expect((await host.sessionState(id)).openRounds).toEqual([]);
+    expect(fresh.map((record: any) => [record.round, record.by, record.delegates.length])).toEqual([[0, "everyone", 2]]);
+    const freshCoder = (await host.routedRows("alice")).filter(
+      (row) => row.sealed.postId !== first.postId && row.sealed.round === 0 && row.assignee === "eng.coder"
+    );
+    expect(freshCoder).toEqual([expect.objectContaining({ status: "pending" })]);
+    expect((await host.sessionState(id)).openRounds.map((open: OpenRound) => open.postId)).not.toContain(first.postId);
   });
 
   it(`refuses a round past ${MAX_OPEN_ROUNDS} open ones, keeping the open ones as they were`, () => {

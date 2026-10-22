@@ -3,12 +3,12 @@
  * per user per project, of the standard coordinator worker the installation
  * names, linked to its project when it is created. Its delegates are one
  * record per workstream its user has open in the project, written only by the
- * workstream's open and done paths; a post hands work to one of them, into
- * that workstream's own session.
+ * workstream's open and done paths; a routed task hands work to one of them,
+ * naming its record by `target`, into that workstream's own session.
  *
  * On the real engine and the real HTTP router, as users of two organizations
  * named by verified headers. Each user hires their own leads on the `lead`
- * flow, which takes a delegated post and leads a workstream. The coordinator's
+ * flow, which takes a conversation's tasks and leads a workstream. The coordinator's
  * judgment turn is scripted.
  */
 import { describe, expect, it } from "vitest";
@@ -23,11 +23,11 @@ import {
   defineCoordinatorFlow,
   defineProjectBlocks,
   defineWorkstreamBlocks,
-  delegatedPostEntry,
   MAX_DELEGATES,
   projectCoordinatorTools,
   WORKSTREAM_DELEGATE_ACTION,
   WORKSTREAM_OPENED_ENTRY,
+  workerTaskEntry,
   workstreamOpenedEntry
 } from "../src/index";
 import type { WorkerManifest } from "../src/manifest";
@@ -81,7 +81,7 @@ const scripted = (calls: Array<{ toolName: string; args: Record<string, unknown>
     ]
   });
 
-/** One delegated post a lead heard: who, what, and in which session. */
+/** One routed task a lead heard: who, what, and in which session. */
 type Heard = { worker: string; message: string; sessionId: string };
 
 async function boot(
@@ -90,7 +90,7 @@ async function boot(
   const heard: Heard[] = [];
   const counting = options.counted === true ? countingStores() : undefined;
   const projects = defineProjectBlocks();
-  const leadFlowRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } }, task: { actions: { onDelegatedPost: {} } } };
+  const leadFlowRef = { kind: "lead", internal: { actions: { [WORKSTREAM_OPENED_ENTRY]: {} } } };
   const h = await bootProjectsHost(
     {
       standardWorkers:
@@ -125,7 +125,7 @@ async function boot(
       leadInternal: () => ({ [WORKSTREAM_OPENED_ENTRY]: workstreamOpenedEntry() }),
       leadTask: (installation) => {
         const turn = handler({
-          name: "lead-delegated-turn",
+          name: "lead-task-turn",
           inputSchema: z.object({ message: z.string() }),
           resources: { ...installation.resources },
           execute: async (input, ctx) => {
@@ -134,12 +134,11 @@ async function boot(
             return `${worker.id} on it: ${input.message}`;
           }
         });
-        return { onDelegatedPost: delegatedPostEntry(turn) };
+        return { work: workerTaskEntry({ name: "lead-task", turn }) };
       },
       flows: (installation) => ({
         [COORDINATOR_FLOW]: defineCoordinatorFlow({
           installation,
-          delegateFlows: [leadFlowRef],
           routeModel: "typesafe-ai/jev",
           agent: { catalog: openingTools(installation, options.leadFit !== undefined) }
         })
@@ -372,9 +371,9 @@ describe("its delegates (BR-21a, BR-21b)", () => {
   }, 60_000);
 });
 
-describe("a post (BR-24 to BR-27, V5)", () => {
+describe("a routed task (BR-24 to BR-27, V5)", () => {
   it("hands work to her own workstream's lead, delivered once into that workstream's session, and its answer comes back (BR-25)", async () => {
-    const judgment = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }]);
+    const judgment = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "alice-lead", target: "shared/apollo/checkout", session: "ongoing", resultTo: "conversation" } }]);
     const h = await boot({ judgment });
     const opened = await h.open("alice", "checkout", "alice-lead");
     await h.open("alice", "search", "alice-lead");
@@ -395,8 +394,26 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     expect(messages.some((message) => message.agentName === "alice-lead" && message.text.includes("on it"))).toBe(true);
   });
 
-  it("refuses Bob's workstream like a missing delegate, and records it (BR-26)", async () => {
-    const judgment = scripted([{ toolName: "dispatchTask", args: { post: true, assignee: "bob-lead", target: "shared/apollo/billing" } }]);
+  it("hands her next ask to the same workstream once the lead answered the first (FIX-2083)", async () => {
+    const take = { toolName: "createTask", args: { goal: "Take this", assignee: "alice-lead", target: "shared/apollo/checkout", session: "ongoing", resultTo: "conversation" } };
+    const judgment = mockGenerator({
+      script: [{ toolCalls: [{ toolCallId: "c0", ...take }] }, { text: "Handed on." }, { toolCalls: [{ toolCallId: "c1", ...take }] }, { text: "Handed on." }]
+    });
+    const h = await boot({ judgment });
+    const opened = await h.open("alice", "checkout", "alice-lead");
+    const id = await h.coordinator("alice");
+    expect((await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "Please add guest checkout." })).settled).toBe("completed");
+    await h.settled();
+    expect((await h.act("alice", COORDINATOR_FLOW, id, "run", { message: "And a gift note." })).settled).toBe("completed");
+    await h.settled();
+    expect(h.heard.map((heard) => [heard.message.includes("gift") ? "second" : "first", heard.sessionId])).toEqual([
+      ["first", opened.workstream.sessionId],
+      ["second", opened.workstream.sessionId]
+    ]);
+  });
+
+  it("refuses Bob's workstream like a missing delegate (BR-26)", async () => {
+    const judgment = scripted([{ toolName: "createTask", args: { goal: "Take this", assignee: "bob-lead", target: "shared/apollo/billing", session: "ongoing", resultTo: "conversation" } }]);
     const h = await boot({ judgment });
     await h.open("bob", "billing", "bob-lead");
     await h.open("alice", "checkout", "alice-lead");
@@ -405,10 +422,12 @@ describe("a post (BR-24 to BR-27, V5)", () => {
     await h.settled();
     expect(h.heard).toEqual([]);
     const [record] = (await h.items(id)).records;
-    expect(record).toMatchObject({ by: "judgment", none: "the coordinator handed it to no delegate" });
-    expect(record.delegates).toEqual([
-      expect.objectContaining({ worker: "bob-lead", outcome: "skipped", reason: expect.stringContaining("isn't a delegate") })
-    ]);
+    expect(record).toMatchObject({ by: "judgment", delegates: [], none: "the coordinator handed it to no delegate" });
+    // Refused by the filing's own check, before anything is routed.
+    const outputs = (await h.runtime.stores.request.list({ sessionId: id, withItems: true }))
+      .flatMap((request: unknown) => (request as { items?: any[] }).items ?? [])
+      .filter((item) => item.type === "tool_output" && item.blockName === "createTask");
+    expect(outputs.map((item) => item.output.error)).toEqual([expect.stringMatching(/^unknown_assignee: "bob-lead"/)]);
   });
 
   it("reads every entry, Bob's included, and has nobody to hand work to when she owns no workstream there (BR-24, BR-27)", async () => {
@@ -452,7 +471,7 @@ describe("a post (BR-24 to BR-27, V5)", () => {
   it("lists the project's entries at most once in a turn, for its delegates and its read tool together (V5)", async () => {
     const judgment = scripted([
       { toolName: "readProject", args: {} },
-      { toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }
+      { toolName: "createTask", args: { goal: "Take this", assignee: "alice-lead", target: "shared/apollo/checkout", session: "ongoing", resultTo: "conversation" } }
     ]);
     const h = await boot({ judgment, counted: true });
     await h.open("alice", "checkout", "alice-lead");
@@ -490,7 +509,7 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
       { toolName: "listLeads", args: {} },
       // No project: the open lands in the project this conversation is linked to.
       { toolName: "openWorkstream", args: { id: "checkout", title: "Guest checkout", lead: "alice-lead", objectives: ["Ship it"] } },
-      { toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/checkout" } }
+      { toolName: "createTask", args: { goal: "Take this", assignee: "alice-lead", target: "shared/apollo/checkout", session: "ongoing", resultTo: "conversation" } }
     ]);
     const h = await boot({ judgment, counted: true });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);
@@ -529,11 +548,11 @@ describe("opening a workstream from the coordinator (BR-38, BR-39, BR-40, BR-42)
     });
   });
 
-  it("opens a second with the same lead as a second session and record, and a post to one lands only there (BR-40)", async () => {
+  it("opens a second with the same lead as a second session and record, and a routed task to one lands only there (BR-40)", async () => {
     const judgment = scripted([
       { toolName: "openWorkstream", args: { project: apollo, id: "checkout", title: "Checkout", lead: "alice-lead" } },
       { toolName: "openWorkstream", args: { project: apollo, id: "search", title: "Search", lead: "alice-lead" } },
-      { toolName: "dispatchTask", args: { post: true, assignee: "alice-lead", target: "shared/apollo/search" } }
+      { toolName: "createTask", args: { goal: "Take this", assignee: "alice-lead", target: "shared/apollo/search", session: "ongoing", resultTo: "conversation" } }
     ]);
     const h = await boot({ judgment });
     await hireOn(h, "alice", "alice-lead", "lead", ["alice-lead.helper"]);

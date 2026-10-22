@@ -23,12 +23,6 @@ export const CHECK_TASK_ENTRY = "checkWaitingTask";
 export const TASK_SETTLED_ENTRY = "onTaskSettled";
 
 /**
- * The internal entry a post row's notice arrives on instead: a delegate's
- * answer lands while the coordinator's reply runs. Until FIX-2083.
- */
-export const POST_SETTLED_ENTRY = "onPostSettled";
-
-/**
  * The metadata key a split row parked on its pieces carried (FIX-1802 S4).
  * Retired by FIX-2077, which no longer parks a split: a row stored with it
  * reads as running (orchestration's retired-shape map), and a caller's filing

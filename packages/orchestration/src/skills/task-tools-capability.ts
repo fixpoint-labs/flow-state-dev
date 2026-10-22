@@ -19,8 +19,8 @@
  * ## Dispatching (FIX-1875)
  *
  * On a board that starts a ready row at once (`TaskToolsOptions.dispatches`,
- * a conversation's board), `dispatchTask` stays beside them until FIX-2082 and
- * FIX-2083 replace its wait and its post form: a new row (`goal`, with
+ * a conversation's board), `dispatchTask` stays beside them until FIX-2082
+ * replaces its wait: a new row (`goal`, with
  * `createTask`'s fields and checks), or a held row (`taskId`), released by the
  * collection's one conditional `dispatch` write. With `wait`, the turn parks
  * on it until the task ends. Exactly one of `goal` and `taskId`, and no owner
@@ -718,18 +718,12 @@ interface BuildTaskToolsOptions {
    * `createTask` files each row once per call, since filing starts it.
    */
   readonly dispatches?: boolean;
-  /**
-   * Offer `dispatchTask`'s post form: `post: true`, with `assignee` and
-   * `target`, handed to this form to file ({@link TaskToolsOptions.posts}).
-   * Only the per-turn list sets it, on a turn the form says is routing one.
-   */
-  readonly posting?: DispatchPostForm;
   /** What a task turn is told to do instead of waiting ({@link TaskToolsOptions.taskTurnInstead}). */
   readonly taskTurnInstead?: string;
 }
 
 function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskToolsOptions = {}) {
-  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, posting, taskTurnInstead } = options;
+  const { roster, nameSuffix, uses, claimless = false, wait = false, dispatches = false, taskTurnInstead } = options;
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
    * The tool names, optionally board-qualified.
@@ -797,6 +791,14 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .enum(["filer", "conversation"])
       .optional()
       .describe("Who hears its result: you (filer, the default), or the conversation, under the delegate's name."),
+    target: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "For an assignee that leads a workstream here: the workstream, by the target its delegate record names. " +
+          "The task runs in that workstream's session. Set only when filing.",
+      ),
     maxAttempts: z.number().int().positive().optional().describe("How many tries the task gets in all."),
     // Every field `updateTask` edits is one a filing sets, plus the filing-only keys above.
   } satisfies Record<TaskUpdateField, z.ZodTypeAny> & Record<string, z.ZodTypeAny>;
@@ -894,6 +896,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         ...(input.held === true ? { held: true } : {}),
         ...(input.session !== undefined ? { session: input.session } : {}),
         ...(input.resultTo !== undefined ? { resultTo: input.resultTo } : {}),
+        ...(input.target !== undefined ? { target: input.target } : {}),
         ...(input.maxAttempts !== undefined ? { maxAttempts: input.maxAttempts } : {}),
         ...(filedByTask !== undefined ? { filedByTask } : {}),
       },
@@ -1011,16 +1014,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       .optional()
       .describe("A task held earlier on this board that hasn't started, to start instead of a new one."),
   };
-  const dispatchPostFields = {
-    post: z
-      .literal(true)
-      .optional()
-      .describe("Hand on the post being routed on this turn, instead of a new task. Send only assignee and target with it."),
-    target: z
-      .string()
-      .optional()
-      .describe("With post: where the post is worked, for an assignee that names one. Only with post."),
-  };
   const dispatchWaitFields = {
     wait: z.boolean().optional().describe("Wait for the task to end and return its output as answer."),
     timeoutMs: z
@@ -1035,11 +1028,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     taskId?: string;
     wait?: unknown;
     timeoutMs?: unknown;
-    post?: unknown;
-    target?: unknown;
   };
-  /** The fields a post takes: everything else describes a task, which a post isn't. */
-  const POST_FIELDS = new Set(["post", "assignee", "target"]);
   /** The fields only a new task takes, refused beside `taskId` (BR-13): change a held task with updateTask first. */
   const NEW_TASK_ONLY = [
     "title",
@@ -1053,6 +1042,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
     "held",
     "session",
     "resultTo",
+    "target",
     "maxAttempts",
   ] as const;
 
@@ -1096,17 +1086,13 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
 
   const dispatchTask = defineTool({
     name: named("dispatchTask"),
-    description:
-      (wait ? dispatchDescription + dispatchWaitDescription : dispatchDescription) +
-      (posting !== undefined ? ` ${posting.description}` : ""),
-    // Not `.strict()`: FIX-1872 adds its post form to this schema. Passthrough,
-    // so a field this board doesn't offer reaches `execute` to be refused by
-    // name rather than stripped by the parse (BR-18).
+    description: wait ? dispatchDescription + dispatchWaitDescription : dispatchDescription,
+    // Passthrough, so a field this board doesn't offer reaches `execute` to be
+    // refused by name rather than stripped by the parse (BR-18).
     inputSchema: z
       .object({
         ...dispatchFields,
         ...(wait ? dispatchWaitFields : {}),
-        ...(posting !== undefined ? dispatchPostFields : {}),
       })
       .passthrough(),
     outputSchema: z.union([
@@ -1130,43 +1116,15 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
             "Dispatch without them, and you hear when the task ends. Nothing was filed.",
         };
       }
-      if (posting === undefined && (input.post !== undefined || input.target !== undefined)) {
-        return {
-          ok: false as const,
-          error: "post_unavailable: there is no post being routed on this turn to hand on. Nothing was filed.",
-        };
-      }
-      if (posting !== undefined && input.post !== undefined) {
-        const extra = Object.keys(input).filter(
-          (field) => !POST_FIELDS.has(field) && (input as Record<string, unknown>)[field] !== undefined,
-        );
-        if (input.post !== true || extra.length > 0) {
-          return {
-            ok: false as const,
-            error:
-              `post_takes_assignee_and_target: a post is handed on as it was written, so send ` +
-              `post: true with assignee and, where it names one, target, and nothing else` +
-              (extra.length > 0 ? ` (not ${extra.join(", ")})` : "") +
-              ". Nothing was filed.",
-          };
-        }
-        if (input.assignee !== undefined && typeof input.assignee !== "string") {
-          return { ok: false as const, error: "post_takes_assignee_and_target: assignee is a name. Nothing was filed." };
-        }
-        if (input.target !== undefined && typeof input.target !== "string") {
-          return { ok: false as const, error: "post_takes_assignee_and_target: target is a name. Nothing was filed." };
-        }
-        return posting.file(ctx, {
-          ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
-          ...(input.target !== undefined ? { target: input.target as string } : {}),
-        });
-      }
-      if (input.target !== undefined) {
+      // The post form is gone (FIX-2083): a routed message is a task filed
+      // with createTask and the routing settings. Refused by name, so a caller
+      // isn't handed a plain task it thinks passed a message on (BP-030).
+      if ((input as Record<string, unknown>).post !== undefined) { // retired-name-refusal: FIX-2083
         return {
           ok: false as const,
           error:
-            "target_without_post: target says where a post is worked, and this call files a task. " +
-            "Send post: true to hand the post on, or drop target. Nothing was filed.",
+            "dispatch_takes_no_post: dispatchTask has no post form. To hand the message being routed to a " +
+            'delegate, call createTask with assignee, session: "ongoing" and resultTo: "conversation". Nothing was filed.',
         };
       }
       const hasGoal = input.goal !== undefined;
@@ -1293,6 +1251,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
   } as const satisfies Record<TaskUpdateField, z.ZodTypeAny>;
   type UpdateField = keyof typeof updateFields;
   const UPDATE_FIELDS = Object.keys(updateFields) as UpdateField[];
+  /** The filing settings: chosen when a task is filed, and refused by name on an update. */
+  const FILING_SETTINGS = ["session", "resultTo", "target"] as const;
 
   /** The fields a refusal names: the table's words, a status read as a hold or a release. */
   const fieldNames = (fields: readonly TaskEditField[]): string =>
@@ -1335,17 +1295,32 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "your delegates) and maxAttempts; and status: \"held\" holds it, \"pending\" releases a held " +
       "task. status: \"cancelled\" cancels it, any time until it finishes, and is sent alone. " +
       "A finished task changes no more: file a follow-up instead. A refusal names the rule.",
-    inputSchema: z.object({
-      id: z.string(),
-      ...updateFields,
-      status: z.enum(["held", "pending", "cancelled"]).optional(),
-    }),
+    // Passthrough, so a filing setting reaches `execute` to be refused by name
+    // rather than stripped by the parse.
+    inputSchema: z
+      .object({
+        id: z.string(),
+        ...updateFields,
+        status: z.enum(["held", "pending", "cancelled"]).optional(),
+      })
+      .passthrough(),
     outputSchema: z.union([
       // A cancel names the dependents it took along (FIX-2078 D2).
       z.object({ ok: z.literal(true), cancelled: z.array(z.string()).optional() }),
       z.object({ ok: z.literal(false), error: z.string(), taskId: z.string().optional() }),
     ]),
     execute: async (input, ctx) => {
+      const settings = FILING_SETTINGS.filter((field) => (input as Record<string, unknown>)[field] !== undefined);
+      if (settings.length > 0) {
+        return {
+          ok: false as const,
+          taskId: input.id,
+          error:
+            `filing_setting_fixed: ${settings.join(", ")} ${settings.length === 1 ? "is" : "are"} chosen when a task ` +
+            `is filed and never ${settings.length === 1 ? "changes" : "change"}. To change ${settings.length === 1 ? "it" : "them"}, ` +
+            `cancel the task and file it again. Nothing was written.`,
+        };
+      }
       const fields = UPDATE_FIELDS.filter((field) => input[field] !== undefined);
       if (input.status === "cancelled" && fields.length > 0) {
         return {
@@ -1538,6 +1513,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           metadataCut: z.literal(true).optional(),
           attempts: z.number(),
           maxAttempts: z.number().optional(),
+          /** Its filing settings, when it was filed with any (FIX-2080, FIX-2083). */
+          session: z.enum(["new", "ongoing"]).optional(),
+          resultTo: z.enum(["filer", "conversation"]).optional(),
+          target: z.string().optional(),
           input: z.unknown().optional(),
           /** True when `input` was cut to {@link READ_OUTPUT_LIMIT} characters. */
           inputCut: z.literal(true).optional(),
@@ -1583,6 +1562,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           ...(metadata !== undefined ? { metadata: metadata.value, ...(metadata.cut ? { metadataCut: true as const } : {}) } : {}),
           attempts: t.attempts,
           ...(t.maxAttempts !== undefined ? { maxAttempts: t.maxAttempts } : {}),
+          ...(t.session !== undefined ? { session: t.session } : {}),
+          ...(t.resultTo !== undefined ? { resultTo: t.resultTo } : {}),
+          ...(t.target !== undefined ? { target: t.target } : {}),
           ...(taskInput !== undefined ? { input: taskInput.value, ...(taskInput.cut ? { inputCut: true as const } : {}) } : {}),
           ...(output !== undefined ? { output: output.value, ...(output.cut ? { outputCut: true as const } : {}) } : {}),
           ...(t.checkpointed === true ? { checkpoint: true as const } : {}),
@@ -1744,15 +1726,6 @@ export interface TaskToolsOptions {
    */
   readonly dispatches?: boolean;
   /**
-   * `dispatchTask`'s post form (`post: true`), for a layer that routes posts
-   * through this board. On a turn {@link DispatchPostForm.routing} answers
-   * true, `dispatchTask` takes `post` and `target`, and a call with
-   * `post: true` is handed to {@link DispatchPostForm.file}; on any other turn
-   * neither field is in the schema, and either is refused `post_unavailable`.
-   * Has no effect without `dispatches`.
-   */
-  readonly posts?: DispatchPostForm;
-  /**
    * What a task turn that asks `dispatchTask` to wait is told to do instead,
    * in the `wait_unavailable` refusal and the tool's description: for a layer
    * that wakes a task turn's task when a task it dispatched ends. Omitted, it
@@ -1762,28 +1735,8 @@ export interface TaskToolsOptions {
 }
 
 /**
- * The post form of `dispatchTask`, supplied by the layer that knows what a post
- * is. The board files nothing for it: `file` files the row itself, through
- * the board's ref, with whatever server-written fields it needs.
- */
-export interface DispatchPostForm {
-  /** Whether the running turn is routing a post it can hand on. */
-  routing(ctx: BlockContext): boolean;
-  /** Appended to `dispatchTask`'s description on a routing turn. */
-  readonly description: string;
-  /**
-   * Hand the post on to `assignee` (and `target`). Its answer is the tool's:
-   * `ok` with the filed row's id, or a `note` saying why none was filed.
-   */
-  file(
-    ctx: BlockContext,
-    call: { assignee?: string; target?: string },
-  ): Promise<{ ok: true; taskId?: string; note?: string } | { ok: false; error: string }>;
-}
-
-/**
  * The task tools as a turn gets them: a list of the same names per kind of
- * turn (waiting or not, routing a post or not), each built once, and the one
+ * turn (waiting or not), each built once, and the one
  * the turn can use. The filer's four and `answerTask`, and `dispatchTask` on a board
  * that dispatches (`options.dispatches`). `dispatchTask` carries `wait` and
  * `timeoutMs` only on a board that also resumes waits (`options.resumesWaits`)
@@ -1803,31 +1756,21 @@ export function taskToolsForTurn(
     dispatches: options.dispatches === true,
     ...(options.taskTurnInstead !== undefined ? { taskTurnInstead: options.taskTurnInstead } : {}),
   };
-  const posts = options.dispatches === true ? options.posts : undefined;
   // Only `dispatchTask` waits, so a board without it has no waiting list.
   const waits = options.resumesWaits === true && options.dispatches === true;
   // One list per kind of turn, built once, the first time a turn needs it.
-  const lists = new Map<string, GeneratorTool[]>();
-  const listFor = (wait: boolean, posting: DispatchPostForm | undefined): GeneratorTool[] => {
-    const key = `${wait}:${posting !== undefined}`;
-    let list = lists.get(key);
+  const lists = new Map<boolean, GeneratorTool[]>();
+  const listFor = (wait: boolean): GeneratorTool[] => {
+    let list = lists.get(wait);
     if (list === undefined) {
-      list = buildTaskTools(resolveCollection, {
-        ...base,
-        ...(wait ? { wait: true } : {}),
-        ...(posting !== undefined ? { posting } : {}),
-      });
-      lists.set(key, list);
+      list = buildTaskTools(resolveCollection, { ...base, ...(wait ? { wait: true } : {}) });
+      lists.set(wait, list);
     }
     return list;
   };
   // The plain list now, so a board that can't build its tools fails at wiring.
-  listFor(false, undefined);
-  return (ctx) =>
-    listFor(
-      waits && canHoldWait(ctx as Pick<BlockContext, "requestHost">),
-      posts !== undefined && posts.routing(ctx as BlockContext) ? posts : undefined,
-    );
+  listFor(false);
+  return (ctx) => listFor(waits && canHoldWait(ctx as Pick<BlockContext, "requestHost">));
 }
 
 

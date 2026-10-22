@@ -1076,14 +1076,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [EM_FLOW]: emFlow as never,
     [CODER_FLOW]: coderFlow as never,
     [AGENT_FLOW]: agentFlow as never,
-    // The chief of staff's flow. A delivery reaches a delegate on a flow that
-    // takes a delegated post: here, `agent` and the EM's `em`, so the chief of
-    // staff can hand feature work to its EM delegate. `coder` takes tasks, not
-    // posts. Best fit's evaluator runs on Jev, through the AI Gateway: it
-    // reports the confidence the chief of staff's `minConfidence:` reads.
+    // The chief of staff's flow. A routed task reaches a delegate on any flow
+    // that takes a conversation's tasks: here the chief of staff hands feature
+    // work to its EM delegate. Best fit's evaluator runs on Jev, through the
+    // AI Gateway: it reports the confidence the chief of staff's
+    // `minConfidence:` reads.
     [COORDINATOR_FLOW]: defineCoordinatorFlow({
       installation,
-      delegateFlows: [agentFlow, emFlow as never],
       routeModel: "typesafe-ai/jev",
       agent: coordinatorMemory(agentTurn, {
         model: "openai/gpt-6-luna",

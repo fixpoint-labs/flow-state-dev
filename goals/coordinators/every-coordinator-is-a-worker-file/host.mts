@@ -60,7 +60,7 @@ export async function startConvertedDesk(tree: string, dbFile: string): Promise<
   const agent = defineAgentWorkerFlow({ installation });
   flows = {
     agent,
-    coordinator: defineCoordinatorFlow({ installation, delegateFlows: [agent] as never, routeModel: ROUTE_MODEL })
+    coordinator: defineCoordinatorFlow({ installation, routeModel: ROUTE_MODEL })
   };
   const copies = hireWorkforce(installation);
 

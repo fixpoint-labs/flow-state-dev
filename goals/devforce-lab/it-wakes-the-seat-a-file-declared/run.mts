@@ -43,7 +43,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { runBoardSegment } from "@flow-state-dev/harness-manager";
 import { checkoutPathFor } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { DELEGATED_POST_ENTRY } from "@flow-state-dev/workforce";
+import { WORKER_TASK_ENTRY } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
 import {
@@ -430,17 +430,18 @@ await runGoal(async (failures) => {
       }
 
       // BR-4, on the KIND rather than on behaviour. "It did not run a harness"
-      // is a fact about one run; "its only task entry is the delegated post" is
-      // a fact about what the seat can ever do. That entry runs the EM's own
-      // turn, which files rows for others to work (FIX-1872 D1): dispatching,
-      // not running a harness. Any other task entry is a route to one.
+      // is a fact about one run; "its only task entry is `work`, on its own
+      // turn" is a fact about what the seat can ever do. That entry runs the
+      // EM's own turn on a coordinator's routed task (FIX-2083), which files
+      // rows for others to work: dispatching, not running a harness. Any other
+      // task entry is a route to one.
       const entriesOf = (seatId: string): string[] =>
         Object.keys((lab.workers[seatId] as { task?: { actions?: object } } | undefined)?.task?.actions ?? {});
       const emEntries = entriesOf(fixture.coordinatorSeat);
-      if (!sameSet(emEntries, [DELEGATED_POST_ENTRY])) {
+      if (!sameSet(emEntries, [WORKER_TASK_ENTRY])) {
         note(
           `${fixture.coordinatorSeat} declares task entries ${JSON.stringify(emEntries)}, wanted only ` +
-            `${DELEGATED_POST_ENTRY} — the coordinator seat must have no route to a harness at all`,
+            `${WORKER_TASK_ENTRY} — the coordinator seat must have no route to a harness at all`,
         );
       }
       if (entriesOf(fixture.assignedSeat).length === 0) {
@@ -448,7 +449,7 @@ await runGoal(async (failures) => {
       }
       // And in the source, so the claim survives a refactor that moves the
       // slot somewhere the flow shape does not show, or runs a harness from
-      // inside the post entry's turn.
+      // inside the task entry's turn.
       const emSource = readFileSync(join(LAB_ROOT, "workforce/flows/workers/em.mts"), "utf8");
       if (emSource.includes("harnessManager")) {
         note(`the em kind's own file names harnessManager`);
@@ -463,7 +464,7 @@ await runGoal(async (failures) => {
       evidence.push(
         `each of the ${Object.keys(fixture.seats).length} seats reported its own instructions, ` +
           `document ref and exact skill union from inside a running block; the coordinator kind ` +
-          `declares only its delegated-post task entry, and its file never names the manager ` +
+          `declares only its own-turn task entry, and its file never names the manager ` +
           `or imports a harness`,
       );
     }

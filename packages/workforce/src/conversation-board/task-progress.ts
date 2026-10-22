@@ -14,7 +14,7 @@ import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { createReportProgress } from "@flow-state-dev/orchestration";
 import { currentWorkerClaim } from "@flow-state-dev/orchestration/task-board";
-import { FILING_SESSION_STATE_KEY } from "../workers/keys";
+import { boardAboveOf } from "./board-above";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
 import { PLAN_LEDGER_ID, planLedgerAt, planLedgerResources } from "./plan";
 
@@ -25,9 +25,9 @@ const progress = createReportProgress({
     if (claim?.collectionId === PLAN_LEDGER_ID && claim.partition !== undefined) {
       return planLedgerAt(ctx, claim.partition);
     }
-    // A dispatched task: the conversation this task session was born for.
-    const filing = (ctx.session.state as Record<string, unknown> | undefined)?.[FILING_SESSION_STATE_KEY];
-    return typeof filing === "string" ? conversationLedgerAt(ctx, filing) : undefined;
+    // A dispatched task: the board this session's task is on (`./board-above`).
+    const filing = boardAboveOf(ctx);
+    return filing !== undefined ? conversationLedgerAt(ctx, filing) : undefined;
   }
 });
 

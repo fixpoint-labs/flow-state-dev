@@ -336,8 +336,6 @@ export interface TaskRequestAdmissionOptions {
   readonly answerCounts: boolean;
   /** What else holds the task open, as on the gate. */
   readonly endRules?: TaskEndRules;
-  /** Whether the turn this request runs is a task turn (`isTaskTurn`). Default `true`. */
-  readonly taskTurn?: boolean;
 }
 
 /**
@@ -376,7 +374,7 @@ export function taskRequestAdmission(options: TaskRequestAdmissionOptions) {
           own: false,
           ...(options.endRules !== undefined ? { rules: options.endRules } : {}),
         });
-        stampCurrentClaim(ticket, ctx as never, { taskTurn: options.taskTurn !== false });
+        stampCurrentClaim(ticket, ctx as never);
         if (renewal !== undefined) stampLeaseRenewal(renewal);
       });
     },

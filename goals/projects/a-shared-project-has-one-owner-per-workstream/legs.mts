@@ -19,7 +19,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { createWorkforceClient, projectProgress } from "@flow-state-dev/workforce/browser";
-import { postDeliveries, type PostDelivery } from "../../lib/post-rows.mts";
+import { routedDeliveries, type RoutedDelivery } from "../../lib/routed-tasks.mts";
 import { labRoutes, type LabRoutes, type StoredItem } from "../../lib/shift-manager.mts";
 import { ENTRY_WRITER_KIND } from "./controls/patches.mts";
 import { ENTRY_WRITER_ACTION } from "./flows/entry-writer.mts";
@@ -227,14 +227,14 @@ async function talk(who: Connected, kind: string, sessionId: string, words: stri
 
 const calls = (name: string, tool: string) => name === tool || [`/${tool}`, `.${tool}`, `_${tool}`].some((s) => name.endsWith(s));
 
-type Delivery = PostDelivery;
+type Delivery = RoutedDelivery;
 
 /**
- * A coordinator session's post rows, from the store file, from the rows `who`
+ * A coordinator session's routed tasks, from the store file, from the rows `who`
  * owns. No route exposes them with their server-written payload.
  */
 function ledgerOf(store: string, who: Connected, sessionId: string): Delivery[] {
-  return postDeliveries(store, who.person.userId, sessionId);
+  return routedDeliveries(store, who.person.userId, sessionId);
 }
 
 /** What each leg found: failures by assertion name, and notes. */

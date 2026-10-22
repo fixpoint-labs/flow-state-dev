@@ -130,7 +130,7 @@ async function boot(options: { checkouts?: readonly ProjectCheckout[] } = {}) {
     flows: (installation) => ({
       filer: filerFlow(installation),
       taker: takerFlow(installation, asked, source),
-      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, delegateFlows: [], routeModel: "typesafe-ai/jev" })
+      [COORDINATOR_FLOW]: defineCoordinatorFlow({ installation, routeModel: "typesafe-ai/jev" })
     }),
     models: { generators: { "coordinator-judgment": judgment } }
   });

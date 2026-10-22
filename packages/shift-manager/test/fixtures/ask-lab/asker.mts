@@ -5,9 +5,9 @@
  * Two doors, both durable, both ending in the framework's stock
  * `human_approval` suspension:
  *
- * - `onDelegatedPost` — the task entry a coordinator's post row is handed to
- *   (Workforce's `delegatedPostEntry`), in a session of the delegate's own
- *   that the hand-over opens. So an ask raised here lives in a
+ * - `work` — the task entry a coordinator's routed task is handed to
+ *   (Workforce's `workerTaskEntry`), in the delegate's own session for that
+ *   conversation, which the hand-over opens. So an ask raised here lives in a
  *   dispatch-run session, which is what Shift Manager's listing has to ask
  *   for. Its answer, once a user decides, goes back to the coordinator.
  * - `ask` — a public action a test calls directly, in a session a user
@@ -30,11 +30,11 @@
  */
 import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import {
-  DELEGATED_POST_ENTRY,
   defineProjectBlocks,
   defineWorkerInventoryCollection,
-  delegatedPostEntry,
+  WORKER_TASK_ENTRY,
   workerConfigSchema,
+  workerTaskEntry,
   type WorkerInstallation,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -178,7 +178,7 @@ export function defineAskerFlow(
     },
     task: {
       actions: {
-        [DELEGATED_POST_ENTRY]: { ...delegatedPostEntry(onPost), durable: true },
+        [WORKER_TASK_ENTRY]: { ...workerTaskEntry({ name: "asker-task", turn: onPost }), durable: true },
       },
     },
   } as never);

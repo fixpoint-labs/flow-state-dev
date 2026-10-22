@@ -1,11 +1,11 @@
 /**
- * The names the coordinator pins: its flow, its record, the entry a
- * delegate's flow declares, and its routing's server-written session state.
+ * The names the coordinator pins: its flow, its record, its internal
+ * entries, and its routing's server-written session state.
  * The delegate actions and the delegate list's state are any worker's
  * (`../delegates/delegate-keys`).
  *
- * A leaf with no imports, so the flow, the delegated-post entry and the
- * delegate modules share one spelling of each.
+ * A leaf with no imports, so the flow, its rounds and the delegate modules
+ * share one spelling of each.
  */
 
 /** The coordinator flow's name. **Pinned**: a worker's `flow:` names it. */
@@ -25,18 +25,13 @@ export const COORDINATOR_JUDGMENT = "coordinator-judgment";
 export const COORDINATOR_ROUTE_ASK = "coordinator-route-ask";
 
 /**
- * The internal entry a delegate still working on a post wakes its
- * conversation on when the post's round reaches its deadline. It carries
- * nothing: the conversation closes every round past its deadline.
+ * The internal entry a round's deadline wakes its conversation on (D2): the
+ * entry of the wake the conversation owes at its earliest open deadline, or,
+ * on a host that keeps no wakes, of its in-process timer. It carries nothing:
+ * the conversation closes every round past its deadline. **Pinned**: a wake
+ * stores it by name.
  */
 export const ROUND_DEADLINE_ACTION = "roundDeadline";
-
-/**
- * The internal entry a delegate whose run on a post was cancelled tells its
- * conversation on, with the claim it worked the row under: a cancelled run
- * can't write, so the conversation ends the row for it, fenced by that claim.
- */
-export const POST_CANCELLED_ACTION = "postCancelled";
 
 /**
  * The internal entry a conversation sends answers back out on, in the round

@@ -148,6 +148,7 @@ describe("where dispatchTask offers wait (BR-5, D1)", () => {
     "priority",
     "resultTo",
     "session",
+    "target",
     "taskId",
     "title"
   ];
