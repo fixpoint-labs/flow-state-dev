@@ -69,6 +69,7 @@ import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../exe
 import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { ownRowOf } from "../durability/wait-chain";
 import { ensureSessionRecord, refuseReadonlyStateChange } from "./session-birth";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 import { resolveActionCore } from "../execution/resolve-action-core";
@@ -953,6 +954,17 @@ export async function createExecutionContext<
                   // A write this request owes has landed by the time the request
                   // would count as dead: its lease.
                   fenceMs: options.requestHost.staleThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS
+                }
+              }
+            : {}),
+          ...(options.requestHost.waits !== undefined
+            ? {
+                waits: {
+                  provider: options.requestHost.waits.provider,
+                  deadlines: options.requestHost.waits.deadlines,
+                  requestId: options.requestId,
+                  // The row a task dispatch started this request for (FIX-2082).
+                  own: ownRowOf(options.source, options.metadata, options.input)
                 }
               }
             : {}),

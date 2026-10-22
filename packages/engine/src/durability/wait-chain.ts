@@ -1,0 +1,245 @@
+/**
+ * The engine's half of a wait (FIX-2082): the depth a chain of waits reaches,
+ * the host's deadline bounds, and the resume a waited-on request's parent is
+ * owed when that request ends.
+ *
+ * ## The depth
+ *
+ * A request may wait on work whose own request waits, and so on: a chain of
+ * parked waits. One count bounds it (`MAX_WAIT_DEPTH`), read live from the
+ * wait gates parked now, from both ends:
+ *
+ * - **Above** the running request: the gate parked on its own work (a row it
+ *   works, or the request itself for a dispatched child), then the gate parked
+ *   on that waiter's own work, and so on up.
+ * - **Below** the work a new wait would wait on: a gate whose waiting request
+ *   works that row (or is that request), then what that gate waits on, and so
+ *   on down, the deepest branch.
+ *
+ * Nothing is copied when a request starts: a chain built below a task nobody
+ * waits on, then waited on late, counts the same as one built top down. Rows
+ * are matched by task id: task ids are unique, and a board's id can differ
+ * from its ledger's (a dispatch names the board, a wait the ledger).
+ *
+ * ## The parent's resume
+ *
+ * A `dispatcher({ wait: true })` parks its request on a gate bound to the
+ * request it dispatched. When that request ends, the engine finds the gate in
+ * the sender's session and resumes it with the request's result. A child that
+ * ended before its parent parked is caught as the parent parks.
+ */
+import {
+  isWaitGate,
+  taskDispatchInputSchema,
+  waitGateDataOf,
+  type RequestWaits,
+  type SuspensionRecord,
+  type WaitDeadlines,
+  type WaitGateBinding,
+  type WaitOutcome,
+  type WaitRow
+} from "@flow-state-dev/core/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
+import type { DurabilityProvider } from "./types";
+import { resumeWaitGate, type WaitResumeDeps } from "./resume-wait-gate";
+import { readDispatchStamp } from "../execution/dispatch-metadata";
+import { TASK_SOURCE } from "../execution/transport-sources";
+
+/** A wait that names no deadline waits this long: five minutes. */
+export const DEFAULT_WAIT_DEADLINE_MS = 5 * 60_000;
+
+/**
+ * The shortest deadline a wait may name: the durability sweep's resolution
+ * (its shortest tick). A shorter one can't come due sooner, and would only
+ * spin park and resume.
+ */
+export const MIN_WAIT_DEADLINE_MS = 1_000;
+
+/** The longest deadline a wait may name: 24 hours. */
+export const MAX_WAIT_DEADLINE_MS = 86_400_000;
+
+/** A host's wait deadline settings, each optional. */
+export type WaitDeadlineSettings = {
+  readonly defaultMs?: number;
+  readonly minMs?: number;
+  readonly maxMs?: number;
+};
+
+/** The bounds a host holds waits to, its settings over the defaults. */
+export function resolveWaitDeadlines(settings: WaitDeadlineSettings = {}): WaitDeadlines {
+  const minMs = settings.minMs ?? MIN_WAIT_DEADLINE_MS;
+  const maxMs = settings.maxMs ?? MAX_WAIT_DEADLINE_MS;
+  const defaultMs = settings.defaultMs ?? DEFAULT_WAIT_DEADLINE_MS;
+  if (!(minMs > 0) || !(maxMs >= minMs) || !(defaultMs >= minMs && defaultMs <= maxMs)) {
+    throw new Error(
+      `[flow-state] wait deadlines must satisfy 0 < min <= default <= max; got min ${minMs}, ` +
+        `default ${defaultMs}, max ${maxMs}.`
+    );
+  }
+  return { defaultMs, minMs, maxMs };
+}
+
+/**
+ * Install the waits' construction input on a host's request-host inputs: the
+ * provider the depth is read from and the deadline bounds. Only where the host
+ * keeps wakes, since a wait's deadline is a wake (D1): a host with none offers
+ * no wait. Call after the wakes are installed.
+ */
+export function installWaits(
+  requestHost: { wakes?: unknown; waits?: { provider: DurabilityProvider; deadlines: WaitDeadlines } },
+  provider: DurabilityProvider | undefined,
+  settings: WaitDeadlineSettings | undefined
+): void {
+  if (requestHost.waits !== undefined || provider === undefined || requestHost.wakes === undefined) return;
+  requestHost.waits = { provider, deadlines: resolveWaitDeadlines(settings) };
+}
+
+/**
+ * The row a request works, as the engine can tell it: a request a task
+ * dispatch started (its trusted source is `task`) carries the claim envelope
+ * the board minted as its input. `undefined` for any other request; a caller
+ * that knows more (a later request working the same task) says so itself.
+ */
+export function ownRowOf(source: string | undefined, metadata: unknown, input: unknown): WaitRow | undefined {
+  if (source !== TASK_SOURCE || readDispatchStamp(source, metadata) === undefined) return undefined;
+  const parsed = taskDispatchInputSchema.safeParse(input);
+  return parsed.success ? { board: parsed.data.boardId, taskId: parsed.data.taskId } : undefined;
+}
+
+/** One parked wait, as the depth count reads it. */
+type ParkedWait = {
+  readonly requestId: string;
+  readonly binding: WaitGateBinding;
+  readonly own: WaitRow | undefined;
+};
+
+/** The deepest a walk goes before it stops counting: past this the answer is "too deep" whatever it is. */
+const WALK_LIMIT = 64;
+
+/**
+ * Count the chain a new wait would join (see the module header): the parked
+ * waits above the running request, the new wait, and the parked waits below
+ * the work it waits on. `binding` omitted is new work with nothing below it
+ * yet (a request about to be dispatched).
+ */
+export async function waitChainDepth(
+  provider: Pick<DurabilityProvider, "listSuspended">,
+  userId: string,
+  running: { readonly requestId: string; readonly own: WaitRow | undefined },
+  binding: WaitGateBinding | undefined
+): Promise<number> {
+  // One user's parked waits: a chain stays within one user's work.
+  const parked: ParkedWait[] = [];
+  for (const record of await provider.listSuspended({ userId, status: "pending" })) {
+    if (!isWaitGate(record)) continue;
+    const data = waitGateDataOf(record);
+    if (data === undefined) continue;
+    parked.push({ requestId: record.requestId, binding: data.binding, own: data.own });
+  }
+  const waitsOn = (wait: ParkedWait, work: { taskId?: string; requestId?: string }): boolean =>
+    "taskId" in wait.binding
+      ? work.taskId !== undefined && wait.binding.taskId === work.taskId
+      : work.requestId !== undefined && wait.binding.requestId === work.requestId;
+
+  // Above: whoever waits on this request's work, then on theirs.
+  let above = 0;
+  const seen = new Set<string>([running.requestId]);
+  for (let at: { requestId: string; own: WaitRow | undefined } = running; above < WALK_LIMIT; ) {
+    const waiter = parked.find((wait) => waitsOn(wait, { requestId: at.requestId, ...(at.own ? { taskId: at.own.taskId } : {}) }));
+    if (waiter === undefined || seen.has(waiter.requestId)) break;
+    seen.add(waiter.requestId);
+    above += 1;
+    at = waiter;
+  }
+
+  // Below: the deepest chain of waits under the work.
+  const below = (work: WaitGateBinding, depth: number, path: ReadonlySet<string>): number => {
+    if (depth >= WALK_LIMIT) return depth;
+    let deepest = 0;
+    for (const wait of parked) {
+      const works = "taskId" in work ? wait.own?.taskId === work.taskId : wait.requestId === work.requestId;
+      if (!works || path.has(wait.requestId)) continue;
+      deepest = Math.max(deepest, 1 + below(wait.binding, depth + 1, new Set([...path, wait.requestId])));
+    }
+    return deepest;
+  };
+
+  return above + 1 + (binding === undefined ? 0 : below(binding, 0, seen));
+}
+
+/** Build the running request's `RequestHost.waits`. */
+export function createRequestWaits(inputs: {
+  readonly provider: Pick<DurabilityProvider, "listSuspended">;
+  readonly deadlines: WaitDeadlines;
+  readonly userId: string;
+  readonly requestId: string;
+  /** The row this request works, as the engine reads it off its own dispatch. */
+  readonly own: WaitRow | undefined;
+}): RequestWaits {
+  return {
+    deadlines: inputs.deadlines,
+    depth: ({ binding, own }) =>
+      waitChainDepth(inputs.provider, inputs.userId, { requestId: inputs.requestId, own: own ?? inputs.own }, binding)
+  };
+}
+
+/** Request statuses after which a request does no more work. */
+const ENDED: ReadonlySet<RequestRecord["status"]> = new Set(["completed", "incomplete", "failed", "aborted"]);
+
+/** How a waited-on request's ending resumes the request waiting on it. */
+export function outcomeOfRequest(record: Pick<RequestRecord, "status" | "result">): WaitOutcome | undefined {
+  if (!ENDED.has(record.status)) return undefined;
+  if (record.status === "completed") return { answered: true, answer: record.result?.output };
+  if (record.status === "aborted") {
+    return { answered: false, error: { code: "wait_task_cancelled", message: "The request was stopped." } };
+  }
+  return {
+    answered: false,
+    error: {
+      code: "wait_task_failed",
+      message: record.result?.error?.message ?? `The request ended ${record.status}.`
+    }
+  };
+}
+
+/**
+ * Resume what waits on `child` now that it has ended: the gates parked on it
+ * (`{ requestId }`) in the session that dispatched it. A no-op for a request
+ * nobody dispatched, one that has not ended, or one nothing waits on. A gate
+ * whose request is not parked yet is caught as it parks
+ * ({@link resumeIfChildEnded}), and one whose resume is refused `busy` by the
+ * deadline sweep, which looks again.
+ */
+export async function resumeRequestWaiters(
+  deps: WaitResumeDeps & { stores: Pick<StoreRegistry, "request"> },
+  child: Pick<RequestRecord, "id" | "status" | "result" | "source" | "metadata" | "userId">
+): Promise<void> {
+  const outcome = outcomeOfRequest(child);
+  if (outcome === undefined) return;
+  const stamp = readDispatchStamp(child.source, child.metadata);
+  if (stamp === undefined) return;
+  const gates = await deps.provider.listSuspended({ userId: child.userId, sessionId: stamp.from.sessionId, status: "pending" });
+  for (const gate of gates) {
+    if (!isWaitGate(gate)) continue;
+    const data = waitGateDataOf(gate);
+    if (data === undefined || !("requestId" in data.binding) || data.binding.requestId !== child.id) continue;
+    await resumeWaitGate(deps, gate, outcome, `request:${child.id}`);
+  }
+}
+
+/**
+ * As a request parks on a gate bound to another request: if that request has
+ * already ended, resume the gate now. Its own ending found no gate to resume.
+ */
+export async function resumeIfChildEnded(
+  deps: WaitResumeDeps & { stores: Pick<StoreRegistry, "request"> },
+  gate: SuspensionRecord
+): Promise<void> {
+  if (!isWaitGate(gate)) return;
+  const data = waitGateDataOf(gate);
+  if (data === undefined || !("requestId" in data.binding)) return;
+  const child = await deps.stores.request.get(data.binding.requestId);
+  const outcome = child === undefined ? undefined : outcomeOfRequest(child);
+  if (outcome === undefined) return;
+  await resumeWaitGate(deps, gate, outcome, `request:${data.binding.requestId}`);
+}

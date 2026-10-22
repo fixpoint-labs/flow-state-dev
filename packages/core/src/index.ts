@@ -136,30 +136,36 @@ export type {
   RequestHost,
   ResumeWaitInput,
   ResumeWaitResult,
+  RequestWaits,
   RequestWakes,
   SettleParentTaskInput,
   SettleParentTaskResult,
+  WaitDeadlines,
   WakeSettleResult,
   WakeView
 } from "./types/request-host";
 
 /**
- * The wait gate — what a turn parks on while a colleague answers, and how the
- * answer comes back as the result of the call that parked.
+ * The wait gate — what a request parks on while work it started runs
+ * elsewhere, and how the wait ends: the work's ending, its deadline, or a stop.
  */
 export {
+  MAX_WAIT_DEPTH,
+  WAIT_DEADLINE_ENTRY,
+  WAIT_DEADLINE_OUTCOME,
   WAIT_GATE_REASON,
-  WaitEndedError,
-  WaitStoppedError,
   isWaitGate,
   parkOnWait,
   parseWaitOutcome,
-  recordedWaitOutcome
+  recordedWaitOutcome,
+  waitGateDataOf
 } from "./types/wait-gate";
 export type {
   WaitEndingErrorCode,
   WaitGateBinding,
+  WaitGateData,
   WaitOutcome,
+  WaitRow,
   ParkOnWaitInput
 } from "./types/wait-gate";
 

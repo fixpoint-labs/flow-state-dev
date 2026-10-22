@@ -81,10 +81,10 @@ import { claimRequestRecord, principalOwnsRequest } from "../context/request-pri
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
-import { noteWaitDeadline } from "../durability/wait-deadlines";
+import { resumeIfChildEnded, resumeRequestWaiters } from "../durability/wait-chain";
 import { stopSuspendedRequest } from "../durability/stop-suspended";
 import { requestEndRegistryOf } from "./request-end-hooks";
-import { isWaitGate, isExpiredApproval } from "@flow-state-dev/core/types";
+import { WAIT_DEADLINE_ENTRY, isWaitGate, isExpiredApproval, waitGateDataOf } from "@flow-state-dev/core/types";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -992,6 +992,29 @@ export async function runActionInternal<
 }
 
 /**
+ * A request that ended may be one a `dispatcher({ wait: true })` waits on
+ * (FIX-2082): resume the request parked on it, in the session that dispatched
+ * it. Best-effort, read off the settled record: a resume this misses is caught
+ * by the deadline sweep, which looks at what each waited-on request came to.
+ */
+async function resumeWaitingParent(
+  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig">,
+  requestId: string,
+  logger: RuntimeLogger
+): Promise<void> {
+  const deps = options.runtimeConfig.requestHost?.parkedStop;
+  if (deps === undefined) return;
+  try {
+    const record = await options.stores.request.get(requestId);
+    if (record !== undefined) await resumeRequestWaiters(deps, record);
+  } catch (err) {
+    logRuntimeEvent(logger, "warn", "[flow-state] the request waiting on this one was not resumed: the deadline sweep looks again", {
+      requestId, error: String(err)
+    });
+  }
+}
+
+/**
  * Stamp and deregister for the last attempt of a request when it ended by
  * throwing. Best-effort: the run's own error is what propagates, and a
  * record left unstamped stays registered for the stale-request sweep.
@@ -1004,6 +1027,7 @@ async function finalizeAfterLastAttempt(
   const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
   try {
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    await resumeWaitingParent(options, requestId, logger);
     const finalized =
       writesSettled &&
       (await finalizeRequestRecord(options.stores, requestId, incarnation, logger));
@@ -2277,11 +2301,22 @@ async function runActionAttempt<
               ? Date.now() + suspendError.timeoutMs
               : undefined
           };
-          await provider.suspend(record);
-          // A wait's deadline can bring this host's sweep forward (FIX-1816).
-          if (isWaitGate(record) && record.expiresAt !== undefined) {
-            noteWaitDeadline(provider, record.expiresAt);
+          // A wait's deadline is a wake on this session (FIX-2082 D1), owed
+          // before the gate is written: a crash between the two leaves a wake
+          // that resumes nothing, never a gate with no deadline.
+          const waitDeadline = isWaitGate(record) ? waitGateDataOf(record)?.deadline : undefined;
+          if (waitDeadline !== undefined) {
+            const wakes = ctx.requestHost?.wakes;
+            if (wakes === undefined) {
+              logRuntimeEvent(logger, "warn", "[flow-state] a wait parked on a host that keeps no wakes: nothing resumes it at its deadline", {
+                requestId,
+                suspensionId: record.suspensionId
+              });
+            } else {
+              await wakes.owe({ entry: WAIT_DEADLINE_ENTRY, dueAt: waitDeadline });
+            }
           }
+          await provider.suspend(record);
         }
 
         const suspItem: SuspensionItem = {
@@ -2379,11 +2414,24 @@ async function runActionAttempt<
           }
         }
 
+        const parkedStop = options.runtimeConfig.requestHost?.parkedStop;
+        // A request this turn waits on that ended while the turn was being
+        // written parked found no gate to resume (FIX-2082): resume it now.
+        if (parkedStop !== undefined && provider !== undefined && isWaitGate({ reason: suspendError.reason })) {
+          try {
+            const gate = await provider.loadSuspension(requestId, suspendError.suspensionId);
+            if (gate !== null) await resumeIfChildEnded(parkedStop, gate);
+          } catch (err) {
+            logRuntimeEvent(logger, "warn", "[flow-state] a wait on a request that already ended was not resumed as it parked", {
+              requestId, error: String(err)
+            });
+          }
+        }
+
         // A stop accepted while this turn was being written parked found it
         // still running, so it only recorded its intent, and nothing runs now
         // to read it (FIX-1816). Carry it onto the gate, as a stop of a parked
         // turn does. After the lease release, which the stop takes.
-        const parkedStop = options.runtimeConfig.requestHost?.parkedStop;
         if (parkedStop !== undefined) {
           try {
             const parked = await options.stores.request.get(requestId);
@@ -2703,6 +2751,7 @@ async function runActionAttempt<
       }
     }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    await resumeWaitingParent(options, requestId, logger);
 
     // The run has nothing left to write under this id.
     stopHeartbeatTimer();
@@ -3014,6 +3063,7 @@ async function runActionAttempt<
       });
     }
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    await resumeWaitingParent(options, requestId, logger);
 
     // As on the success path: only the last live attempt stamps.
     const lastAttempt = attempt.end();

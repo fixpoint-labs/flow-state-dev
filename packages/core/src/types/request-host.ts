@@ -25,15 +25,16 @@
  * parent session. Another user's session is not a value a capability can produce,
  * and neither is another parent session's child.
  *
- * The seam is **closed at six verbs**. The fifth, `resumeWait`, was added by a
- * reviewed decision (a wait: a dispatched task the caller waits on), with one
+ * The seam is **closed at seven verbs**. The fifth, `resumeWait`, was added by
+ * a reviewed decision (a wait: a dispatched task the caller waits on), with one
  * fact beside it, `hasWaitSweeper`, which says whether a wait can be bounded
  * here. The sixth, `wakes`, by another (FIX-2078 D1: a debt's due time is a
- * wake the engine keeps). Adding a seventh verb is a decision someone reviews,
- * not a surface that grows by transitivity.
+ * wake the engine keeps). The seventh, `waits`, by FIX-2082 (one wait gate:
+ * its deadline bounds and the depth the engine counts). Adding an eighth verb
+ * is a decision someone reviews, not a surface that grows by transitivity.
  */
 
-import type { WaitOutcome } from "./wait-gate";
+import type { WaitGateBinding, WaitOutcome, WaitRow } from "./wait-gate";
 
 /** How a parent-board row is being settled. */
 export type ParentTaskOutcome = "complete" | "fail";
@@ -151,6 +152,39 @@ export interface RequestWakes {
   readonly maxDebtAgeMs: number;
 }
 
+/** A wait's deadline, as the host bounds it (FIX-2082): milliseconds from the call. */
+export type WaitDeadlines = {
+  /** A wait that names none waits this long: five minutes unless the host sets it. */
+  readonly defaultMs: number;
+  /** The shortest a wait may name: the sweep's resolution, since a shorter one can't come due sooner. */
+  readonly minMs: number;
+  /** The longest a wait may name: 24 hours unless the host sets it. */
+  readonly maxMs: number;
+};
+
+/**
+ * Waits on this host (FIX-2082): every wait parks on the one wait gate, and
+ * each passes the same two checks before it does.
+ */
+export interface RequestWaits {
+  /** The deadline bounds a wait is held to. */
+  readonly deadlines: WaitDeadlines;
+  /**
+   * How many waits the chain a new wait joins would hold, the new one
+   * included: the live waits above the running request (what waits on its own
+   * work, and on that waiter's work, and so on up) plus the new wait plus the
+   * live waits below the work it would wait on (the work's own request waiting,
+   * and so on down). Read from the waits parked now, never from a count copied
+   * when a request started. A wait whose chain would pass `MAX_WAIT_DEPTH` is
+   * refused before anything is written.
+   *
+   * @param input.binding What the new wait would wait on.
+   * @param input.own The row the running request works, when it works one:
+   *   server-derived by the caller (its claim), never input.
+   */
+  depth(input: { readonly binding: WaitGateBinding; readonly own?: WaitRow }): Promise<number>;
+}
+
 /**
  * Request-bound operations the engine binds to the running request and attaches
  * to the block context. Every verb closes over the caller's identity.
@@ -222,9 +256,9 @@ export interface RequestHost {
 
   /**
    * Whether a wait parked on this host is bounded: `true` when this process
-   * runs a durability sweeper that resumes a pending wait at its deadline with
-   * `wait_timed_out`. A wait is offered only where this is `true`, so no turn
-   * waits forever. Absent or `false` otherwise: no durable execution, no
+   * runs a durability sweeper that resumes a pending wait at its deadline
+   * (`waitDeadline` wakes). A wait is offered only where this is `true`, so no
+   * request waits forever. Absent or `false` otherwise: no durable execution, no
    * sweeper (a host that never built one, or one whose sweep is turned off).
    *
    * A fact read when the request starts, not a verb; the waker side
@@ -248,6 +282,13 @@ export interface RequestHost {
    * fast path or is refused when its flow is built.
    */
   readonly wakes?: RequestWakes;
+
+  /**
+   * Waits (FIX-2082): their deadline bounds and the depth count. **Absent when
+   * the host can't hold a wait**: no durable execution, or stores that keep no
+   * wakes, since a wait's deadline is a wake.
+   */
+  readonly waits?: RequestWaits;
 }
 
 /**

@@ -6,7 +6,8 @@ import type {
   ModelResolver,
   RequestStatus,
   ResponseEmitterHandle,
-  ResumeContext
+  ResumeContext,
+  WaitDeadlines
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
@@ -16,6 +17,7 @@ import type { ParentTaskBinding } from "./create-request-host";
 import type { DispatchOperation } from "./dispatch-operation";
 import type { WaitResumeOperation } from "./wait-resume-operation";
 import type { SuspendedStopDeps } from "../durability/stop-suspended";
+import type { DurabilityProvider } from "../durability/types";
 import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
@@ -204,6 +206,13 @@ export type RequestHostConstructionInputs = {
    * wakes. Absent → the verb is absent, and debts are paid on fast paths only.
    */
   wakes?: { readonly maxDebtAgeMs: number };
+  /**
+   * Waits (FIX-2082, `RequestHost.waits`): the provider the depth of a chain of
+   * waits is read from, and the deadline bounds. Installed beside `wakes`, only
+   * when the host keeps them, since a wait's deadline is a wake. Absent → the
+   * verb is absent, and no wait is offered.
+   */
+  waits?: { readonly provider: DurabilityProvider; readonly deadlines: WaitDeadlines };
   /** The stale-request sweeper's threshold. */
   staleThresholdMs?: number;
   /** The sweeper's cadence. Undefined or 0 → liveness is refused. */

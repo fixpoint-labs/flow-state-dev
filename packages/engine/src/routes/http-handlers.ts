@@ -76,6 +76,7 @@ import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { createWaitResumeOperation } from "../context/wait-resume-operation";
 import { installWaitSweeperFact } from "../durability/wait-deadlines";
 import { installWakes } from "../durability/request-wakes";
+import { installWaits } from "../durability/wait-chain";
 import { DEFAULT_RUNTIME_LOGGER } from "../execution/logging";
 import { createParkedStopDeps } from "../durability/stop-suspended";
 
@@ -330,6 +331,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       ...(runtimeConfig.maxDebtAgeMs !== undefined ? { maxDebtAgeMs: runtimeConfig.maxDebtAgeMs } : {}),
       logger: runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER
     });
+    // Waits (FIX-2082), where the wakes are: a wait's deadline is one.
+    installWaits(runtimeConfig.requestHost, runtimeConfig.durabilityProvider, runtimeConfig.waitDeadlines);
   }
   // How this router stops a parked request (FIX-1816), with durable
   // execution only: for the abort route, and, on the same last-resort terms,
