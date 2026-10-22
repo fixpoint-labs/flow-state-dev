@@ -203,6 +203,10 @@ function startHost(db: string) {
     modelResolver,
     // A restart stops at once: leg 3's stop lands between B's ending and A's woken turn.
     dispatchDrainTimeoutMs: 0,
+    // Durable, so it keeps wakes: after leg 3's restart, the notice the stop cut
+    // off is delivered again. A host without wakes has no crash recovery for a
+    // notice (FIX-2078), and the split task would stay running.
+    durable: true,
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-user");
       return typeof user === "string" ? { userId: user, orgId: ORG_ID } : null;

@@ -226,6 +226,8 @@ your conversation ── task ──▶ lead's task session ── pieces ──
 
 A worker on a task can't wait for a piece inside its turn: `dispatchTask` with `wait` is refused there. It files the piece without `wait` and ends its turn, and the piece's ending wakes it.
 
+On a host without durable execution, a crash between a piece's ending and the turn that ending wakes leaves the split task running, so run workforces that delegate on a durable host.
+
 Every session in the chain is yours, and only your own workers appear in it.
 
 ## How far it goes
