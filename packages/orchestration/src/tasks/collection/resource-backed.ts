@@ -1365,6 +1365,16 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         : wrap(readTaskState<TInput, TOutput>(taskRef));
     },
 
+    async getCommitted(id) {
+      // A request reads a resource as the snapshot it first took; another
+      // request's write (a steer, say) lands in the store, not in that
+      // snapshot. A read that changes nothing brings this one up to date.
+      const taskRef = mirror.get(id);
+      if (taskRef === undefined) return undefined;
+      await readCommitted(taskRef, () => undefined);
+      return wrap(readTaskState<TInput, TOutput>(taskRef));
+    },
+
     list(filter?: TaskFilter) {
       return listTasks(listAll(), filter).map(wrap);
     },

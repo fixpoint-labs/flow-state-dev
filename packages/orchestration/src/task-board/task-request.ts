@@ -292,8 +292,11 @@ async function checkAnswered(record: Admitted, row: Task): Promise<Error | undef
     if (record.prior !== undefined) return waitOn(record, row, record.prior, undefined);
     return undefined;
   }
-  // A steer no request of this attempt took: one more turn first (D2).
-  if (untakenSteers(row).length > 0 && (await oweSteerTurn(record, row))) return undefined;
+  // A steer no request of this attempt took: one more turn first (D2). Read
+  // as stored: a steer is another request's write, which this one's
+  // snapshot doesn't hold.
+  const stored = (await ref.getCommitted?.(row.id)) ?? row;
+  if (untakenSteers(stored).length > 0 && (await oweSteerTurn(record, row))) return undefined;
   const holding = await holdingWork(record, row);
   if (holding !== undefined) {
     if (ref.setWaitingOn !== undefined) return waitOn(record, row, holding, record.answer);

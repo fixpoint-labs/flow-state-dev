@@ -1,0 +1,282 @@
+/**
+ * Steering a task a worker runs (FIX-2086): a line in its session, and the
+ * turn a late steer is owed.
+ *
+ * Orchestration keeps a steer on the task (`TaskCollectionRef.steer`) and
+ * holds the task open while one is untaken (rule 6). This module answers what
+ * orchestration can't:
+ *
+ * - **A line typed in a task's session** ({@link steerOrTalk}, a worker
+ *   flow's door). While the session's task is open (the task the session was
+ *   opened for, or the latest of its follow-ups, which run there one at a
+ *   time) the line is a steer, written as the user: it joins the brief, and
+ *   the request running the task takes it before its next model call. It is
+ *   not a separate reply. Once the task has finished, the line is talk: the
+ *   worker's ordinary turn answers it with the session's history, and the
+ *   task doesn't change.
+ * - **The turn a late steer is owed** ({@link steerTurnEntry}, the internal
+ *   entry {@link STEER_TURN_ENTRY}): a steer no request took gets one more
+ *   turn of the task's attempt before the task settles (D2). The entry admits
+ *   its request for the task, takes the steers, and runs the worker's turn
+ *   (or its block) with them as the message; the task is checked again at the
+ *   request's end.
+ * - **Starting that turn** ({@link startOwedSteerTurn}): a wake owed in the
+ *   task's session first, then the entry started there at once. The claim
+ *   gate's check starts it for a steer that lands after a request's last
+ *   model call; a steer to a task with no request on it (waiting on its
+ *   filed work) starts it from the write.
+ *
+ * Every choice reads server-set state: the session's birth fields, the row
+ * whose run link names the session, the claim an admission stamped. Nothing
+ * in a line picks a task (BP-031).
+ */
+import { handler, router, sequencer } from "@flow-state-dev/core";
+import { dispatchThroughSeam, type BlockContext, type BlockDefinition, type ConcurrencyConfig } from "@flow-state-dev/core/types";
+import { renderSteers, runningTaskOf, takeRunningSteers, type ShownSteer } from "@flow-state-dev/orchestration";
+import { afterTaskCheck, noteTaskAnswer, packWorkerInput, STEER_TURN_DUE_MS } from "@flow-state-dev/orchestration/task-board";
+import { isTerminalStatus, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import { z, type ZodTypeAny } from "zod";
+import { STEER_TURN_ENTRY } from "./board-entries";
+import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
+import { admitOwnTask } from "./task-admission";
+import { filingPartitionOf, sessionTaskOf } from "./task-entry";
+
+export { STEER_TURN_ENTRY } from "./board-entries";
+
+/** The lead the turn a late steer is owed opens with. */
+export const STEERED_AFTER_ANSWER =
+  "You were sent the messages below about this task after your last model call. Act on them, then answer again. " +
+  "A checkpoint you reported stands as the task's output unless you report a new one.";
+
+/** The ledger a task session's task is on: the conversation it was opened for. */
+async function sessionLedger(ctx: BlockContext): Promise<TaskCollectionRef | undefined> {
+  const partition = filingPartitionOf(ctx);
+  return partition === undefined ? undefined : conversationLedgerAt(ctx, partition);
+}
+
+/**
+ * The open task this session works: the task it was opened for, or the
+ * latest of its follow-ups, when that one has not finished. `undefined`
+ * outside a task session, and once the latest has finished.
+ */
+export async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollectionRef; row: Task } | undefined> {
+  const taskId = sessionTaskOf(ctx);
+  if (taskId === undefined) return undefined;
+  const ledger = await sessionLedger(ctx);
+  if (ledger === undefined) return undefined;
+  const rows = ledger.list().filter((task) => (task.followUpOf ?? task.id) === taskId) as Task[];
+  if (rows.length === 0) return undefined;
+  const latest = rows.reduce((last, task) => (task.createdAt > last.createdAt ? task : last));
+  return isTerminalStatus(latest.status) ? undefined : { ledger, row: latest };
+}
+
+/**
+ * Start the turn owed to `row`'s untaken steer (D2), in the session its run
+ * link names: the wake first, so a lost start is still paid, then the entry at
+ * once. A row with no run in a session yet has no turn to start: its next
+ * attempt's brief carries the steer.
+ *
+ * @param flowKind The flow that session runs on, when it isn't the running one.
+ */
+export async function startOwedSteerTurn(ctx: BlockContext, row: Task, flowKind?: string): Promise<void> {
+  const sessionId = row.run?.sessionId;
+  if (sessionId === undefined) return;
+  const wakes = ctx.requestHost?.wakes;
+  try {
+    await wakes?.owe({ entry: STEER_TURN_ENTRY, dueAt: Date.now() + STEER_TURN_DUE_MS, sessionId });
+  } catch (error) {
+    console.warn(`[workforce] the wake for task "${row.id}"'s steer turn couldn't be written; its start runs now only`, {
+      error: (error as Error).message
+    });
+  }
+  try {
+    await dispatchThroughSeam(ctx, {
+      type: "internal",
+      action: STEER_TURN_ENTRY,
+      ...(flowKind !== undefined ? { flowKind } : {}),
+      session: { id: sessionId },
+      payload: {},
+      from: "workforce-steer-turn"
+    });
+  } catch {
+    // Not definitive: the wake starts it.
+  }
+}
+
+/** What a line steering the session's task answers: the task it steered. */
+const steeredSchema = z.object({ steered: z.string() });
+
+/** The user's id, from the request's server-set identity. */
+function userOf(ctx: BlockContext): string | undefined {
+  return (ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId;
+}
+
+/** Thrown when the line can't steer: the task finished first, or took its last steer. The request fails, naming why. */
+export class SteerRefused extends Error {
+  readonly code = "steer-refused";
+}
+
+/**
+ * Write the line as a steer on the session's open task, from the user, keyed
+ * by this request so a replay adds nothing, and start the turn it is owed when
+ * the task runs nothing now. The router read the task, and this reads it
+ * again: a route takes only the router's input.
+ */
+const steerSessionTask = handler({
+  name: "worker-steer-session-task",
+  inputSchema: z.object({ message: z.string() }).passthrough(),
+  outputSchema: steeredSchema,
+  resources: { ...conversationLedgerResources },
+  execute: async (input, ctx) => {
+    const open = await sessionOpenTask(ctx as never);
+    if (open === undefined) throw new SteerRefused("The task finished before your message reached it. Send it again to talk about it.");
+    const by = userOf(ctx as never);
+    const outcome = await open.ledger.steer!(open.row.id, {
+      message: input.message,
+      from: "user",
+      ...(by !== undefined ? { by } : {}),
+      key: `line:${ctx.request.identity.id}`
+    });
+    if (outcome.outcome === "declined") {
+      throw new SteerRefused(
+        outcome.reason === "steer-limit"
+          ? "This task has taken as many messages as it can. Cancel it and file it again, or file a follow-up once it ends."
+          : "The task finished before your message reached it. Send it again to talk about it."
+      );
+    }
+    const row = open.ledger.get(open.row.id);
+    // In this session already: the turn runs on this flow.
+    if (row?.waitingOn === "steer") await startOwedSteerTurn(ctx as never, row);
+    return { steered: open.row.id };
+  }
+});
+
+/**
+ * A worker's door in a session: a steer while the session's task is open,
+ * else `turn`, the worker's ordinary reply.
+ *
+ * @param turn The worker's turn for one line: what the door ran before.
+ */
+export function steerOrTalk<TInputSchema extends ZodTypeAny>(
+  turn: BlockDefinition<TInputSchema, ZodTypeAny>
+): BlockDefinition<TInputSchema, ZodTypeAny> {
+  const steer = steerSessionTask as unknown as BlockDefinition<TInputSchema, ZodTypeAny>;
+  // The two routes answer different shapes (the turn's reply, or the task it
+  // steered), so the router's output is left open rather than one of them.
+  return router({
+    name: "worker-steer-or-talk",
+    inputSchema: turn.inputSchema,
+    routes: [turn, steer],
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, ctx) => ((await sessionOpenTask(ctx)) === undefined ? turn : steer)
+  });
+}
+
+/** What the steer turn's take hands on: the steers, with the task they are on, or nothing to do. Plain data: it is recorded. */
+type Taken = { readonly steers: ShownSteer[]; readonly taskId: string } | { readonly skip: true };
+
+const SKIP: Taken = { skip: true };
+
+/** Whether a value is the take's "nothing to do". */
+const skipped = (value: unknown): boolean => (value as { skip?: unknown } | undefined)?.skip === true;
+
+/** The steer turn's options: the worker's turn, or a block that takes the task itself. Exactly one. */
+export type SteerTurnEntryOptions = {
+  /** Names the entry's blocks. */
+  readonly name: string;
+} & (
+  | { readonly turn: BlockDefinition<any, any>; readonly block?: never }
+  | { readonly block: BlockDefinition<any, any>; readonly turn?: never }
+);
+
+/**
+ * Build the internal entry that runs the turn a late steer is owed (D2):
+ * spread it as `internal: { actions: { [STEER_TURN_ENTRY]: steerTurnEntry({ ... }) } }`
+ * on every flow whose `work` entry is a `workerTaskEntry`, with the same
+ * `turn` or `block`.
+ *
+ * Admitted for the session's waiting task, it takes every steer no request of
+ * the attempt has taken and runs one turn on them: a `turn` gets them as its
+ * message; a `block` gets the task as the board packs it, which carries every
+ * steer, with the claim it runs under. Its answer is the task's result, as a
+ * woken turn's is. A start that finds nothing to do (the wake and the fast
+ * path both ran, say) runs nothing. The wake is cleared once the task no
+ * longer waits on a steer.
+ *
+ * @param concurrency The entry's line: the session's notices'.
+ */
+export function steerTurnEntry(options: SteerTurnEntryOptions & { readonly concurrency: ConcurrencyConfig }) {
+  const { name } = options;
+  const take = handler({
+    name: `${name}-take-steers`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, ctx): Promise<Taken> => {
+      // Admitted, the claim is stamped and names the row; otherwise there is nothing to run.
+      const running = await runningTaskOf(sessionLedger, ctx as never);
+      if (running === undefined) return SKIP;
+      const steers = await takeRunningSteers(running, `turn:${ctx.request.identity.id}`);
+      if (steers.length === 0) return SKIP;
+      return { steers, taskId: running.row.id };
+    }
+  });
+
+  // A turn gets the steers as its message; a block, the task as the board
+  // packs it (every steer in it) with the claim it runs under.
+  const runInput = handler({
+    name: `${name}-input`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    resources: { ...conversationLedgerResources },
+    execute: async (value, ctx) => {
+      const taken = value as Exclude<Taken, { skip: true }>;
+      if (options.turn !== undefined) return { message: renderSteers(taken.steers, STEERED_AFTER_ANSWER) };
+      const running = await runningTaskOf(sessionLedger, ctx as never);
+      if (running === undefined) throw new Error(`"${name}" lost the claim it was admitted with before its block ran.`);
+      const { claim, ledger } = running;
+      const row = ledger.get(taken.taskId) ?? running.row;
+      return {
+        ...(await packWorkerInput(row, ledger)),
+        claim: {
+          collectionId: claim.collectionId,
+          ...(claim.partition === undefined ? {} : { partition: claim.partition }),
+          ...(claim.incarnationId === undefined ? {} : { incarnationId: claim.incarnationId })
+        }
+      };
+    }
+  });
+  const run = sequencer({ name: `${name}-run`, inputSchema: z.unknown() })
+    .step(runInput as BlockDefinition<any, any>)
+    .step((options.turn ?? options.block) as BlockDefinition<any, any>);
+
+  // Cleared after the check, and only once the task no longer waits on a
+  // steer: a crash, or a turn that never ran, leaves the wake to start it.
+  const settleWake = handler({
+    name: `${name}-settle-wake`,
+    inputSchema: z.unknown(),
+    resources: { ...conversationLedgerResources },
+    execute: async (_input, ctx) => {
+      await afterTaskCheck(ctx as never, async () => {
+        const ledger = await sessionLedger(ctx as never);
+        const sessionId = ctx.session.identity.id;
+        const row = ledger?.list({ status: "in_progress" }).find((task) => task.run?.sessionId === sessionId);
+        if (row?.waitingOn === "steer") return;
+        const wakes = ctx.requestHost?.wakes;
+        const read = await wakes?.read(STEER_TURN_ENTRY);
+        if (wakes !== undefined && read !== undefined) await wakes.settle(STEER_TURN_ENTRY, read, null);
+      });
+    }
+  });
+
+  return {
+    inputSchema: z.object({}).passthrough(),
+    block: sequencer({ name, inputSchema: z.unknown() })
+      .tap(admitOwnTask(`${name}-admission`, true))
+      .step(take as BlockDefinition<any, any>)
+      .stepIf((taken: unknown) => !skipped(taken), run as BlockDefinition<any, any>)
+      .tapIf((answer: unknown) => !skipped(answer), noteTaskAnswer)
+      .tap(settleWake),
+    concurrency: options.concurrency
+  };
+}

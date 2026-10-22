@@ -1044,6 +1044,13 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
       return task === undefined ? undefined : wrap(task);
     },
 
+    // Request or sequencer state: every write of this ledger is this run's, so
+    // the committed row is the one `get` reads.
+    async getCommitted(id) {
+      const task = ownTask(readTasks(), id);
+      return task === undefined ? undefined : wrap(task);
+    },
+
     list(filter?: TaskFilter) {
       return listTasks(Object.values(readTasks()), filter).map(wrap);
     },

@@ -1026,6 +1026,13 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;
+  /**
+   * The row as stored now (FIX-2086), where {@link get} reads it as this
+   * request first did: another request's write (a steer sent while this one
+   * runs) is read here. Optional, so a ref written before it keeps compiling
+   * (BP-030); a caller falls back to `get`.
+   */
+  getCommitted?(id: string): Promise<TaskHandle<TInput, TOutput> | undefined>;
   list(filter?: TaskFilter): TaskHandle<TInput, TOutput>[];
   count(filter?: TaskFilter): number;
 }
