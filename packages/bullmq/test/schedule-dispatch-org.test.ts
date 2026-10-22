@@ -29,7 +29,7 @@ import {
 import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const captured = vi.hoisted(() => ({
-  processor: undefined as undefined | ((job: { data: unknown; timestamp?: number }) => Promise<void>),
+  processor: undefined as undefined | ((job: { data: unknown; timestamp?: number; opts?: { prevMillis?: number } }) => Promise<void>),
 }));
 
 vi.mock("bullmq", () => ({
@@ -45,6 +45,17 @@ import { createBullmqScheduleIndex } from "../src/schedule-index";
 import { createScheduleDispatchWorker } from "../src/schedules";
 
 const SECRET = "scheduler-secret";
+
+/** The latest Monday 09:00 UTC already due: a time of "0 9 * * MON" that isn't stale. */
+function latestMondayNine(now = Date.now()): number {
+  const d = new Date(now);
+  const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9);
+  const back = (d.getUTCDay() + 6) % 7; // days since Monday
+  let slot = day - back * 86_400_000;
+  if (slot > now) slot -= 7 * 86_400_000;
+  return slot;
+}
+
 const BASE = "http://localhost";
 
 function boot() {
@@ -155,6 +166,30 @@ describe("the BullMQ dispatch worker", () => {
       }
     }
   );
+
+  // The scheduler computes each job's slot (`opts.prevMillis`); the job's own
+  // `timestamp` is when it was created, which is no scheduled time. The
+  // endpoint fires a scheduled time once, so the slot is what is sent.
+  it("fires a job for its scheduler slot, once, however late or often it is processed", async () => {
+    const h = boot();
+    try {
+      await h.planIn("globex");
+      // The latest Monday 09:00 UTC: a slot of "0 9 * * MON".
+      const slot = latestMondayNine();
+      const job = { data: h.jobs[0], timestamp: slot - 7 * 86_400_000 + 1_234, opts: { prevMillis: slot } };
+      await h.processor(job);
+      // The same slot again, as a retried or second worker's job: answered
+      // as a duplicate, which the worker takes as done.
+      await h.processor(job);
+      expect(h.statuses).toEqual([202, 200]);
+      const fired = await h.fired();
+      expect((fired?.metadata as { schedule?: { nominalFireTime?: string } }).schedule?.nominalFireTime).toBe(
+        new Date(slot).toISOString()
+      );
+    } finally {
+      await disposeFlowApiRouter(h.router);
+    }
+  });
 
   it("does not fire the same row under another org's dispatch", async () => {
     const h = boot();

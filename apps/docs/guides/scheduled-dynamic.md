@@ -275,7 +275,8 @@ setInterval(async () => {
             authorization: `Bearer ${process.env.FSDEV_SCHEDULER_SECRET}`,
             "content-type": "application/json"
           },
-          body: JSON.stringify({ nominalFireTime: new Date(now).toISOString() })
+          // The scheduled time the row was due at, not the tick's clock.
+          body: JSON.stringify({ nominalFireTime: new Date(row.nextFireAt).toISOString() })
         }
       );
       if (res.ok) {
@@ -288,11 +289,10 @@ setInterval(async () => {
 ```
 
 This is an at-least-once shape: `advanceIndex` runs only on 2xx, so a
-failed dispatch re-fires next tick. The framework's 60-second
-idempotency window dedupes `(scheduleId, nominalFireTime)` within
-that window. Tradeoff vs. the helper: more code to maintain, and
-multi-process safety is your problem to solve (leader election,
-row-level locks, etc.).
+failed dispatch re-fires next tick. The endpoint fires each scheduled time
+at most once, so a re-fire of a time that already dispatched answers
+`200 { status: "duplicate" }`, and two ticks on two processes that claim the
+same row file once. Tradeoff vs. the helper: more code to maintain.
 
 ### External scheduler API
 

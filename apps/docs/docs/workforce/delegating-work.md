@@ -249,6 +249,74 @@ const flows = hireWorkforce(installation, { taskChainLimit: 250 });
 
 `taskChainLimit` must be a whole number of at least 1, or `hireWorkforce` throws. The depth of five doesn't change.
 
+## Recurring work
+
+Work that comes round on a schedule, like refreshing the adoption numbers every Monday, is a schedule in the user's schedule collection. Each time it is due, it files an ordinary task on the board of the worker it names, in the user's own conversation with that worker, as the user. The task runs, retries, reports and cancels like any task filed there, and the worker hears it end. No model turn decides what to file: the schedule says what lands.
+
+Save one through the roster flow's `saveSchedule` action, on the user's roster session (`workforce-roster`), with an action client for that flow:
+
+```ts
+import { createClient } from "@flow-state-dev/client";
+
+const actions = createClient({ flowKind: "workforce-roster", userId, baseUrl });
+// rosterSessionId: a session of workforce-roster that the user owns, the one
+// your app already reads their roster through.
+await actions.sendAction(
+  "saveSchedule",
+  {
+    key: "adoption-numbers",
+    cron: "0 9 * * 1",
+    timezone: "Europe/London",
+    input: {
+      filer: "launch", // whose board the task lands on
+      goal: "Refresh the adoption numbers",
+      assignee: "researcher", // one of launch's delegates
+    },
+  },
+  { sessionId: rosterSessionId },
+);
+```
+
+`input` takes the task's `goal`, and optionally `assignee`, `title`, `priority`, `input` and `metadata`. With no `assignee`, the task goes to the filer's delegate when it has exactly one. Saving an existing `key` replaces it, and `enabled: false` keeps the schedule without firing it. The cron must be exactly five fields (minute hour day-of-month month day-of-week), and the time zone a known IANA zone. Anything else is refused, and nothing is saved:
+
+```json
+{ "ok": false, "error": "invalid_schedule: cron \"every monday\" in UTC doesn't parse. …" }
+```
+
+`deleteSchedule({ key })` removes one, with the record of the times it fired, so a schedule saved again under the same key starts fresh. `listSchedules({})` returns the user's schedules, each with `nextRunAt`, when it is next due, worked out from its cron and time zone as the list is read:
+
+```json
+{
+  "schedules": [
+    {
+      "key": "adoption-numbers",
+      "cron": "0 9 * * 1",
+      "timezone": "Europe/London",
+      "kind": "task",
+      "enabled": true,
+      "input": { "filer": "launch", "goal": "Refresh the adoption numbers", "assignee": "researcher" },
+      "nextRunAt": "2026-10-26T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+`nextRunAt` says when the schedule is due, not that your host will fire it: on a host whose cron isn't running it still shows a time. It is `null` for a schedule that is off, and for a row whose cron doesn't parse.
+
+### Firing them
+
+Add `createScheduledTransportAdapter()` from `@flow-state-dev/scheduled` to the host's `adapters`. A schedule fires when your scheduler POSTs its dispatch endpoint on the roster flow, `/api/flows/workforce-roster/schedules/<id>/dispatch`, where `<id>` is `encodeURIComponent(formatScheduleId(orgId, userId, key))`. The endpoint fires each scheduled time at most once across retries, restarts and hosts that share a SQLite or Postgres store. See [At most once per scheduled time](../server/scheduled.md#at-most-once-per-scheduled-time).
+
+To fire every user's schedules from one polling tick, give `hireWorkforce` a [schedule index](../server/schedule-index.md). Every saved schedule is mirrored into it:
+
+```ts
+const flows = hireWorkforce(installation, { schedules: { index: scheduleIndex } });
+```
+
+Without one, your scheduler POSTs each schedule's endpoint itself.
+
+A fire files each time, even while last week's task is still open. A fire whose filing is refused files nothing, and isn't retried: a `filer` that isn't on the user's roster, an `assignee` that is the filer itself or isn't among its delegates, or a filer whose flow keeps no board. The fire's request on the roster flow fails, naming why. A schedule can't skip or reshape a week's work; to change it, save the schedule again.
+
 ## Related pages
 
 - [Coordinators](./coordinators.md): a worker that hands each post to its delegates, and how a filed task runs and reports back.

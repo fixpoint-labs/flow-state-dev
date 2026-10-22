@@ -186,6 +186,8 @@ export type BoardHostOptions = {
   plainFlows?: Record<string, FlowInstance>;
   /** The engine's `errorCapture` handler (FIX-1983's reporter). */
   errorCapture?: (event: any) => void;
+  /** Inbound transport adapters for the router, such as the scheduled-dispatch one. */
+  adapters?: unknown[];
 };
 
 /**
@@ -273,6 +275,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     stores: { default: { primary: stores } },
     ...(options.durable === true ? { durable: true } : {}),
     ...(options.errorCapture === undefined ? {} : { errorCapture: options.errorCapture }),
+    ...(options.adapters === undefined ? {} : { adapters: options.adapters }),
     modelResolver: withJudgmentModel(
       options.observeTools === undefined && options.afterModelCall === undefined
         ? models
@@ -473,6 +476,7 @@ export function bootBoardHost(options: BoardHostOptions = {}) {
     fire,
     loseDispatches,
     writeRow,
+    router,
     dispose: () => state.dispose()
   };
 }

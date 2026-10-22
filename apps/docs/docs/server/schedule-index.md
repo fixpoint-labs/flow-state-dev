@@ -41,6 +41,13 @@ organizations without touching each other's row. Each cron tick claims rows wher
 returns them. The contract is at-most-once: a row that has been advanced
 and then fails to dispatch is dropped, not retried.
 
+The index only finds which rows are due. Whether a scheduled time fires is
+decided at the dispatch endpoint, which fires each time at most once
+whichever path POSTed it (see [At most once per scheduled
+time](./scheduled.md#at-most-once-per-scheduled-time)). Two ticks that
+claim the same row on two processes still fire it once, on a SQLite or
+Postgres store.
+
 ## Interface
 
 ```ts

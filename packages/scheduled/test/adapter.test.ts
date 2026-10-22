@@ -8,12 +8,17 @@ import {
 import {
   ConcurrencyRejectedError,
   PrincipalResolutionError,
+  createInMemoryResourceStateStore,
   type ActiveRequestRegistry
 } from "@flow-state-dev/engine";
 import {
   createScheduledTransportAdapter,
   SCHEDULED_TRANSPORT_SOURCE
 } from "../src";
+import { recentTimes } from "./recent-times";
+
+/** The latest time of the flows' monthly cron ("0 0 1 * *") already due. */
+const MONTH_START = recentTimes("0 0 1 * *").latest;
 
 const noopBlock = handler({
   name: "noop",
@@ -94,8 +99,11 @@ function withActiveRegistry(
   host: ReturnType<typeof createMockTransportHost>,
   registry: ActiveRequestRegistry
 ) {
+  // A resource-state store too: the endpoint records each schedule's last
+  // fired time there.
   (host as unknown as { stores: { activeRequests: ActiveRequestRegistry } }).stores = {
     ...(host.stores ?? {}),
+    resourceState: host.stores?.resourceState ?? createInMemoryResourceStateStore(),
     activeRequests: registry
   } as unknown as typeof host.stores;
   return host;
@@ -162,7 +170,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     );
     const route = adapter.createBindings(host).routes!.find((r) => r.method === "POST")!;
     const { request, ctx } = postRequest("billing", "monthly-invoices", {
-      nominalFireTime: "2026-06-01T00:00:00Z"
+      nominalFireTime: MONTH_START
     });
     const response = await route.handler(request, ctx);
     expect(response.status).toBe(202);
@@ -175,8 +183,9 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(envelope?.action).toBe("noop");
     expect(schedMeta(envelope).scheduleId).toBe("monthly-invoices");
     expect(schedMeta(envelope).origin).toBe("static");
+    // The scheduled time the fire counts against, as the endpoint writes it.
     expect(schedMeta(envelope).nominalFireTime).toBe(
-      "2026-06-01T00:00:00Z"
+      MONTH_START
     );
   });
 
@@ -282,6 +291,24 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(json.error).toBe("invalid_schedule");
   });
 
+  it("refuses a resolved schedule in an unknown time zone as invalid, not as no scheduled time", async () => {
+    const flow = buildFlow({
+      kind: "reminders",
+      actions: { sendDigest: { inputSchema: z.object({}), block: noopBlock } },
+      schedules: {
+        resolve: () => ({ cron: "0 0 * * *", timezone: "Europe/Atlantis", block: noopBlock })
+      }
+    });
+    const host = withFlow(withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()), flow);
+    const route = createScheduledTransportAdapter().createBindings(host).routes!.find((r) => r.method === "POST")!;
+    const { request, ctx } = postRequest("reminders", "u_1/anything");
+    const response = await route.handler(request, ctx);
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { error: string; message: string };
+    expect(json.error).toBe("invalid_schedule");
+    expect(json.message).toContain("unknown time zone");
+  });
+
   it("returns 401 when the gateway resolver throws PrincipalResolutionError", async () => {
     const adapter = createScheduledTransportAdapter();
     const host = withFlow(
@@ -301,7 +328,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     expect(response.status).toBe(401);
   });
 
-  it("dedupe: same idempotency key within window returns 200 duplicate", async () => {
+  it("answers a scheduled time already fired 200 duplicate", async () => {
     const adapter = createScheduledTransportAdapter();
     const host = withFlow(
       withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
@@ -312,7 +339,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const first = await route.handler(
       ...Object.values(
         postRequest("billing", "monthly-invoices", {
-          nominalFireTime: "2026-06-01T00:00:00Z"
+          nominalFireTime: MONTH_START
         })
       ).slice(0, 2) as [Request, { params: Record<string, string> }]
     );
@@ -321,7 +348,7 @@ describe("createScheduledTransportAdapter — dispatch", () => {
     const second = await route.handler(
       ...Object.values(
         postRequest("billing", "monthly-invoices", {
-          nominalFireTime: "2026-06-01T00:00:00Z"
+          nominalFireTime: MONTH_START
         })
       ).slice(0, 2) as [Request, { params: Record<string, string> }]
     );
@@ -629,7 +656,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     const route = createScheduledTransportAdapter()
       .createBindings(host)
       .routes!.find((r) => r.method === "POST")!;
-    const body = { nominalFireTime: "2026-06-01T00:00:00Z" };
+    const body = { nominalFireTime: MONTH_START };
 
     const first = await route.handler(
       ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
@@ -659,7 +686,7 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     const route = createScheduledTransportAdapter()
       .createBindings(host)
       .routes!.find((r) => r.method === "POST")!;
-    const body = { nominalFireTime: "2026-06-01T00:00:00Z" };
+    const body = { nominalFireTime: MONTH_START };
 
     const first = await route.handler(
       ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
