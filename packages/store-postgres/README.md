@@ -279,6 +279,8 @@ const stores = await createPostgresStores({
 });
 ```
 
+A host that passes `skipSchemaInit` and hasn't created the `wakes` table yet logs a one-time warning at start and runs without wakes until the migration has run and the host restarts.
+
 Migrations are still idempotent if you forget — `skipSchemaInit` is a performance optimization, not a correctness requirement. See `apps/kitchen-sink/scripts/migrate.mjs` in the flow-state-dev repo for a full example.
 
 ## Schedule index

@@ -270,7 +270,7 @@ Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an om
 
 ### Wakes
 
-`StoreRegistry.wakes` is optional. A store without one still loads, and its host logs once at start that it keeps no wakes. A task board on that host sends each notice once, when the task ends, and doesn't send a lost one again. To keep wakes, implement `WakeStore` from `@flow-state-dev/engine` and check it with `createWakeStoreConformanceTests({ name, createStore })` from `@flow-state-dev/engine/testing`. The SQLite and Postgres adapters create their `wakes` table when they open, unless you pass `skipSchemaInit` and run the schema step yourself.
+`StoreRegistry.wakes` is optional. A store without one still loads, and its host logs once at start that it keeps no wakes. A task board on that host sends each notice once, when the task ends, and doesn't send a lost one again. To keep wakes, implement `WakeStore` from `@flow-state-dev/engine` and check it with `createWakeStoreConformanceTests({ name, createStore })` from `@flow-state-dev/engine/testing`. The SQLite and Postgres adapters create their `wakes` table when they open, unless you pass `skipSchemaInit` and run the schema step yourself. A host that passes `skipSchemaInit` and hasn't created the `wakes` table yet logs a one-time warning at start and runs without wakes until the migration has run and the host restarts.
 
 ### Deleting requests
 
