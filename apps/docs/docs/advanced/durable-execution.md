@@ -353,7 +353,7 @@ export const flowstate = createFlowState({
 
 A notice given up on is recorded on its task as undeliverable, and logged.
 
-Before it closes the stores, `dispose()` waits for any request a wake started to finish.
+Before it closes the stores, `dispose()` waits up to 10 seconds for any request a wake started to finish. Past that, it aborts the ones still running and logs how many; each aborted request's wake stays, and fires again on the next host. On `createFlowApiRouter`, `shutdownDrainMs` sets the limit, and `disposeFlowApiRouter(router, { drainMs })` overrides it for one call. `serve()` from `@flow-state-dev/node` passes in whatever is left of its shutdown grace.
 
 ## Managing suspensions in the DevTool
 
