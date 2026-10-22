@@ -762,6 +762,20 @@ describe("taskTools — writes to a terminal task are refused, not silently acce
     expect(result).toEqual({ ok: true, cancelled: ["b"] });
   });
 
+  it("cancelTask names every dependent down the chain its cancel took, not only the first level", async () => {
+    const now = Date.now();
+    const ctx = buildCtx({
+      preTasks: {
+        a: { id: "a", goal: "x", status: "pending", attempts: 0, createdAt: now, updatedAt: now },
+        b: { id: "b", goal: "y", status: "pending", attempts: 0, deps: ["a"], createdAt: now, updatedAt: now },
+        c: { id: "c", goal: "z", status: "pending", attempts: 0, deps: ["b"], createdAt: now, updatedAt: now },
+      },
+    }).ctx;
+    const result = (await runForTest(findTool("cancelTask"), { taskId: "a" }, ctx)) as { ok: boolean; cancelled?: string[] };
+    expect(result.ok).toBe(true);
+    expect([...(result.cancelled ?? [])].sort()).toEqual(["b", "c"]);
+  });
+
   it("assignTask still succeeds on a live task", async () => {
     const ctx = ctxWithTask("pending", { assignee: "researcher" });
     const result = await runForTest(

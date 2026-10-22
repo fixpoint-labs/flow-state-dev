@@ -250,8 +250,10 @@ export function resentRecord(row: Task, notice: Pick<TaskNotice, "attempt" | "en
 }
 
 /**
- * The dependents `row`'s ending cancelled that share its filer, by id: the
- * rows whose cascaded cancel names it (`causedBy`), filed by the same session.
+ * The dependents `row`'s ending cancelled that share its filer, by id, all
+ * the way down: the rows whose cascaded cancel names it (`causedBy`), filed by
+ * the same session, and theirs in turn. Each owes no notice of its own (its
+ * cause shares its filer), so this notice is the only one that names it.
  *
  * @param filerOf Who filed a row, by the same rule the cascade decided "shares
  *   the filer" by, when it owed the dependent no notice of its own: the board's
@@ -264,9 +266,20 @@ export function cancelledDependents(
   filerOf: (row: Task) => string | undefined = (task) => task.filer?.sessionId
 ): string[] {
   const filer = filerOf(row);
-  return rows
-    .filter((other) => other.status === "cancelled" && other.causedBy === row.id && filerOf(other) === filer)
-    .map((other) => other.id);
+  const found: string[] = [];
+  const seen = new Set([row.id]);
+  for (let level = [row.id]; level.length > 0; ) {
+    const causes = new Set(level);
+    level = [];
+    for (const other of rows) {
+      if (seen.has(other.id) || other.status !== "cancelled" || other.causedBy === undefined || !causes.has(other.causedBy)) continue;
+      if (filerOf(other) !== filer) continue;
+      seen.add(other.id);
+      found.push(other.id);
+      level.push(other.id);
+    }
+  }
+  return found;
 }
 
 /** Whether `row` still owes `notice`: its marker is there and not cleared. */

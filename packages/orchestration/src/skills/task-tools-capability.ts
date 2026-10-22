@@ -85,6 +85,7 @@ import {
   type TaskTransitionOptions,
   type TaskWriteOutcome,
   withoutNoticeMarkers,
+  cancelledDependents,
 } from "../tasks";
 // The board's per-worker claim seam. A deep import for the same reason
 // `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
@@ -1462,10 +1463,8 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       if (!result.ok || board === undefined) return result;
       // The dependents the cancel took along, which owe no notice of their own
       // when the filer cancelled through its own tool (FIX-2078 D2): named here.
-      const cancelled = board
-        .list()
-        .filter((row) => row.causedBy === input.taskId && row.status === "cancelled")
-        .map((row) => row.id);
+      const cancelledRow = board.get(input.taskId);
+      const cancelled = cancelledRow === undefined ? [] : cancelledDependents(cancelledRow, board.list());
       return cancelled.length > 0 ? { ok: true as const, cancelled } : result;
     },
   });
