@@ -6,7 +6,7 @@ import { renderSteers } from "@flow-state-dev/orchestration";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 
 /** The lead a worker reads the steers in its brief under (FIX-2086). */
-export const STEERED_SINCE_FILED =
+const STEERED_SINCE_FILED =
   "Since this task was filed, you were also sent the messages below about it, oldest first. They are part of the task: follow them.";
 
 /**

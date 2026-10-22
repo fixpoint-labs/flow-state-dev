@@ -599,25 +599,6 @@ export async function openRunRow(
   });
 }
 
-/**
- * The row of the run that last opened an attempt in `sessionId`, within one
- * board's topics, or `undefined` when none did.
- *
- * `epic` is the board's run segment (`runBoardSegment` in `./workspace`): a
- * fixed board's id as it is, or a ledger id and its partition's digest for a
- * board read from a claim, so two conversations' runs are never confused.
- */
-export async function findRunRowBySession(
-  ctx: CollectionHoldingContext,
-  epic: string,
-  sessionId: string,
-): Promise<RunRecordState | undefined> {
-  const rows = await collectionRef(ctx, RUNS).list(`${epic}/`);
-  return rows
-    .map((ref) => ref.state as RunRecordState | undefined)
-    .find((state) => state?.childSessionId === sessionId);
-}
-
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */
 export async function readRunRow(
   ctx: CollectionHoldingContext,
@@ -633,7 +614,7 @@ export async function readRunRow(
  * by clearing it, so until then the attempt has confirmed nothing. A record
  * written before attempts were recorded counts its session as the current one.
  */
-export function sessionConfirmedBy(
+function sessionConfirmedBy(
   record: { sessionId?: string | null; attempt?: number | null } | undefined,
   attempt: number,
 ): string | null {

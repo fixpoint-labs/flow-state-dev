@@ -19,8 +19,7 @@
  * topic leads with (`runBoardSegment`).
  */
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { encodeUserSegment } from "@flow-state-dev/core/types";
-import { isTerminalStatus, MAX_STEERS, type TaskStatus } from "@flow-state-dev/orchestration/tasks";
+import { isTerminalStatus, steerWrite, type Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { runBoardSegment } from "./workspace";
 
@@ -98,7 +97,6 @@ export async function upgradeKeptTurns(stores: KeptTurnUpgradeStores, options: K
       const rows = await stores.resourceState.getByPrefix("user", cell, `${ledger}/`);
       for (const [key, stored] of Object.entries(rows)) {
         const located = locate(ledger, key);
-        if (located === undefined) continue;
         const segment = runBoardSegment(ledger, located.partition);
         const mine = untaken.filter((turn) => {
           const record = runs[`${RUNS_PREFIX}${segment}/${turn.issue}/${turn.phase}`]?.state as { taskId?: unknown } | undefined;
@@ -113,7 +111,7 @@ export async function upgradeKeptTurns(stores: KeptTurnUpgradeStores, options: K
 }
 
 /** A ledger row's key, read back to its partition and task id: `<ledger>/<partition segment>/<task id>` or `<ledger>/<task id>`. */
-function locate(ledger: string, key: string): { partition: string | undefined; taskId: string } | undefined {
+function locate(ledger: string, key: string): { partition: string | undefined; taskId: string } {
   const rest = key.slice(ledger.length + 1);
   const slash = rest.indexOf("/");
   if (slash < 0) return { partition: undefined, taskId: rest };
@@ -137,8 +135,10 @@ async function untakenTurns(stores: KeptTurnUpgradeStores, cell: string): Promis
 
 /**
  * Append `turns` to the row stored at `key` as steers, each keyed by its turn,
- * skipping a key already there, a finished row, and any past the steer limit.
- * One conditional write, read again on a conflict.
+ * through the same decision a live steer takes (`steerWrite`): a key already
+ * there adds nothing, the limit stops it, and a row waiting on its filed work
+ * waits on the steer. A finished row takes none. One conditional write, read
+ * again on a conflict.
  */
 async function writeSteers(
   stores: KeptTurnUpgradeStores,
@@ -150,27 +150,26 @@ async function writeSteers(
 ): Promise<number> {
   let current = stored;
   for (let tries = 0; tries < 3; tries += 1) {
-    const row = (current.state ?? {}) as Record<string, unknown>;
-    if (typeof row.status !== "string" || isTerminalStatus(row.status as TaskStatus)) return 0;
-    const steers = Array.isArray(row.steers) ? (row.steers as Array<{ id?: unknown }>) : [];
-    const have = new Set(steers.map((steer) => steer.id));
-    const adding = turns
-      .filter((turn) => !have.has(`turn:${turn.key}`))
-      .slice(0, Math.max(0, MAX_STEERS - steers.length))
-      .map((turn) => ({ id: `turn:${turn.key}`, message: turn.message, from: "user", by: userId, at: turn.keptAt }));
-    if (adding.length === 0) return 0;
-    const result = (await stores.resourceState.set("user", cell, key, { ...row, steers: [...steers, ...adding] }, current.version)) as {
+    const stored = (current.state ?? {}) as Task;
+    if (typeof stored.status !== "string" || isTerminalStatus(stored.status)) return 0;
+    let row = stored;
+    let added = 0;
+    for (const turn of turns) {
+      const id = `turn:${turn.key}`;
+      const decided = steerWrite(row, { message: turn.message, from: "user", by: userId, key: id }, id, turn.keptAt);
+      if (decided === "limit") break;
+      if (decided === "unchanged") continue;
+      row = { ...row, ...decided.patch };
+      added += 1;
+    }
+    if (added === 0) return 0;
+    const result = (await stores.resourceState.set("user", cell, key, row as unknown as Record<string, unknown>, current.version)) as {
       ok?: boolean;
     };
-    if (result.ok !== false) return adding.length;
+    if (result.ok !== false) return added;
     const fresh = (await stores.resourceState.getByPrefix("user", cell, key))[key];
     if (fresh === undefined) return 0;
     current = fresh;
   }
   return 0;
-}
-
-/** For a test: a row's storage key on `ledger` at `partition`, as orchestration lays it out. */
-export function ledgerRowKey(ledger: string, partition: string | undefined, taskId: string): string {
-  return partition === undefined ? `${ledger}/${taskId}` : `${ledger}/${encodeUserSegment(partition)}/${taskId}`;
 }

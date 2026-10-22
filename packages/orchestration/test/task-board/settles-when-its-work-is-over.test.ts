@@ -130,6 +130,8 @@ async function harness(options: { queued?: () => boolean; steerTurn?: boolean } 
   let steerTurn: (steers: ShownSteer[], ctx: BlockContext, ledger: TaskCollectionRef) => Promise<unknown> = async (steers) =>
     `answered: ${steers.map((s) => s.message).join(", ")}`;
   const steerTurns: string[][] = [];
+  // Whether the steer turn takes its steers: an entry that doesn't is the no-progress case.
+  let steerTurnTakes = true;
   const steerEntry = sequencer({ name: "steer-turn", inputSchema: z.object({}) })
     .tap(
       taskRequestAdmission({
@@ -150,7 +152,8 @@ async function harness(options: { queued?: () => boolean; steerTurn?: boolean } 
         outputSchema: z.unknown(),
         execute: async (_input, ctx) => {
           const running = await runningTaskOf(async () => ledger(), ctx as never);
-          const steers = running === undefined ? [] : await takeRunningSteers(running, `turn:${ctx.request.identity.id}`);
+          const steers =
+            running === undefined || !steerTurnTakes ? [] : await takeRunningSteers(running, `turn:${ctx.request.identity.id}`);
           steerTurns.push(steers.map((s) => s.message));
           return steerTurn(steers, ctx as never, await ledger());
         },
@@ -267,6 +270,9 @@ async function harness(options: { queued?: () => boolean; steerTurn?: boolean } 
     },
     setLaterTurn: (next: Behaviour) => {
       laterTurn = next;
+    },
+    setSteerTurnTakes: (takes: boolean) => {
+      steerTurnTakes = takes;
     },
     setSteerTurn: (next: typeof steerTurn) => {
       steerTurn = next;
@@ -532,6 +538,26 @@ describe("a steer no request took gives the task one more turn before it settles
 
     expect(h.steerTurns).toEqual([["first"], ["second"]]);
     expect(await h.row()).toMatchObject({ status: "completed", output: "turn for second", attempts: 1 });
+  });
+
+  it("a steer turn that takes none of its steers settles the task instead of owing another turn", async () => {
+    const h = await harness({ steerTurn: true });
+    h.setBehaviour(async (_ctx, ledger) => {
+      await steer(ledger, "never read");
+      return "first answer";
+    });
+    // An entry that is admitted but never takes: each turn would owe the next.
+    h.setSteerTurnTakes(false);
+
+    await h.run();
+    await h.runLater("steerTurn");
+
+    expect(h.steerTurns).toEqual([[]]);
+    const row = await h.row();
+    expect(row).toMatchObject({ status: "completed", attempts: 1 });
+    expect(row?.steers).toEqual([expect.objectContaining({ message: "never read" })]);
+    expect(row?.steers?.[0]?.takenBy).toBeUndefined();
+    expect(h.events.filter((e) => e.kind === "completed")).toHaveLength(1);
   });
 
   it("a flow that declares no steer entry settles as before", async () => {

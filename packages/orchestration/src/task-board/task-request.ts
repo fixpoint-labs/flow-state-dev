@@ -45,6 +45,7 @@ import { z } from "zod";
 import {
   DEFAULT_LEASE_DURATION_MS,
   filedWorkHolds,
+  readCommittedTask,
   ticketForClaim,
   untakenSteers,
   type Task,
@@ -268,6 +269,14 @@ async function checkTask(record: Admitted, ending: RequestEnding): Promise<Error
   return checkAnswered(record, row);
 }
 
+/**
+ * Whether request `requestId` took any of `task`'s steers on its attempt:
+ * every read that takes one names the request in its `takenIn`.
+ */
+function tookSteers(task: Task, requestId: string): boolean {
+  return (task.steers ?? []).some((steer) => steer.takenBy === task.attempts && steer.takenIn?.includes(requestId) === true);
+}
+
 /** A task whose own request stopped (a person, a wait) and has not ended. */
 function waitsOnItsOwnRequest(prior: TaskWaitingOn | undefined): boolean {
   return prior === "person" || prior === "wait";
@@ -295,8 +304,16 @@ async function checkAnswered(record: Admitted, row: Task): Promise<Error | undef
   // A steer no request of this attempt took: one more turn first (D2). Read
   // as stored: a steer is another request's write, which this one's
   // snapshot doesn't hold.
-  const stored = (await ref.getCommitted?.(row.id)) ?? row;
-  if (untakenSteers(stored).length > 0 && (await oweSteerTurn(record, row))) return undefined;
+  const stored = (await readCommittedTask(ref, row.id)) ?? row;
+  if (untakenSteers(stored).length > 0) {
+    if (record.prior === "steer" && !tookSteers(stored, requestKey(record.ctx))) {
+      // The turn owed for a steer took none: owing another would loop with
+      // no end, so the task settles and the steers stay on it, untaken.
+      console.warn(`[task-board] task "${row.id}"'s steer turn took none of its steers; it settles without another turn`);
+    } else if (await oweSteerTurn(record, row)) {
+      return undefined;
+    }
+  }
   const holding = await holdingWork(record, row);
   if (holding !== undefined) {
     if (ref.setWaitingOn !== undefined) return waitOn(record, row, holding, record.answer);

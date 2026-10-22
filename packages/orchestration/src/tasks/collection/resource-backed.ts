@@ -89,6 +89,7 @@ import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import {
+  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -137,8 +138,6 @@ import {
   type TaskSettingsPatch,
   parkPatch,
   unparkPatch,
-  assertEdgeAllowed,
-  type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
@@ -551,7 +550,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: EdgeSource,
+    requireFrom?: TaskStatus,
     quiet?: boolean
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
@@ -590,7 +589,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           throw new WriteDeclined(reason, task.status);
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertEdgeAllowed(task.status, targetStatus, id);
+        assertTransitionAllowed(task.status, targetStatus, id);
         // Stamped here, inside the serialized write, off the `task` this
         // invocation read. Since FIX-992 this updater is re-run against
         // refreshed state on a version conflict, so a stamp derived from
@@ -1137,13 +1136,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async steer(id, input) {
-      // Minted once, outside the write, so a retried write keeps one id.
+      // Minted once, outside the write, so a retried write keeps one id and one time.
       const steerId = generateId("steer");
+      const at = now();
       return patchRef(
         id,
         "steered",
         (task) => {
-          const decided = steerWrite(task as Task, input, steerId, now());
+          const decided = steerWrite(task as Task, input, steerId, at);
           if (decided === "limit") throw new WriteDeclined("steer-limit", task.status);
           return decided === "unchanged" ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
         },

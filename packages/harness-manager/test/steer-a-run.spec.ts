@@ -113,11 +113,20 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
   const starts: Array<() => void> = [];
   const started = () => starts.shift()?.();
   const stepStarted = () => new Promise<void>((resolve) => starts.push(resolve));
+  // Run inside the phase's done-condition, one per call: what lands while the verdict is read.
+  const duringVerdict: Array<() => Promise<void>> = [];
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
-    phase: { phase: PHASE, buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`, isDone: () => true },
+    phase: {
+      phase: PHASE,
+      buildPrompt: async (run) => `Work on ${run.issue}, attempt ${run.attempt}.`,
+      isDone: async () => {
+        await duringVerdict.shift()?.();
+        return true;
+      },
+    },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
@@ -216,7 +225,7 @@ function host(options: { script: Step[]; stopsOnAbort: boolean }) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
-  return { act, row, until, seen, stepStarted, dispose: () => state.dispose() };
+  return { act, row, until, seen, stepStarted, duringVerdict, dispose: () => state.dispose() };
 }
 
 describe("a steer reaches a coding run", () => {
@@ -264,6 +273,29 @@ describe("a steer reaches a coding run", () => {
       expect(h.seen[1]!.prompt).not.toContain("stopped");
       expect(h.seen[1]!.request).toBe(h.seen[0]!.request);
       expect(done).toMatchObject({ attempts: 1 });
+    } finally {
+      await h.dispose();
+    }
+  }, 60_000);
+
+  it("runs one more step for a steer that lands while the verdict is read, on a board with no late-steer turn of its own", async () => {
+    // This board names no turn for a late steer, so a steer the run never
+    // took would be settled over: the manager takes it before it settles.
+    const h = host({ script: ["finished", "finished"], stopsOnAbort: false });
+    try {
+      h.duringVerdict.push(async () => {
+        await h.act("steer", { message: "Also bump the version." });
+      });
+      await h.act("seed");
+      await h.act("drain");
+      const done = await h.until((t) => t.status === "completed", "the run to complete");
+
+      expect(h.seen).toHaveLength(2);
+      expect(h.seen[0]!.prompt).not.toContain("Also bump the version.");
+      expect(h.seen[1]!.prompt).toContain("Also bump the version.");
+      expect(h.seen[1]).toMatchObject({ resume: "sess_1", request: h.seen[0]!.request });
+      expect(done).toMatchObject({ attempts: 1 });
+      expect(done.steers).toEqual([expect.objectContaining({ takenBy: 1 })]);
     } finally {
       await h.dispose();
     }

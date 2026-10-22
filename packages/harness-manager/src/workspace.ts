@@ -56,7 +56,7 @@ import {
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
-export { isStrictlyInside, sleep } from "@flow-state-dev/workspace";
+export { isStrictlyInside } from "@flow-state-dev/workspace";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {

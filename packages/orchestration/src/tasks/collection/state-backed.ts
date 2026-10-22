@@ -20,6 +20,7 @@ import { withOutcome } from "@flow-state-dev/core/helpers";
 import { withMigratedWait, type Task, type TaskClaimIdentity, type TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import {
+  assertTransitionAllowed,
   isTerminalStatus,
   withMigratedStatus,
 } from "../schema/task-status";
@@ -68,8 +69,6 @@ import {
   type EndingRecording,
   parkPatch,
   unparkPatch,
-  assertEdgeAllowed,
-  type EdgeSource,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import { generateId } from "../generate-id";
@@ -302,7 +301,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
-    requireFrom?: EdgeSource
+    requireFrom?: TaskStatus
   ): Promise<TaskWriteOutcome> {
     return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
@@ -319,7 +318,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
     /** The one source status this verb may run from — see `assertTransitionFrom`. */
-    requireFrom?: EdgeSource;
+    requireFrom?: TaskStatus;
   }
 
   /**
@@ -389,7 +388,7 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
           };
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
-        assertEdgeAllowed(task.status, targetStatus, id);
+        assertTransitionAllowed(task.status, targetStatus, id);
         // Provenance is stamped here, inside the CAS, off the `task` this
         // invocation read — so a replay against a fresher map stamps off that
         // map and there is nothing to reset (FIX-989).
@@ -863,19 +862,26 @@ export function createStateBackedTaskCollection<TInput = unknown, TOutput = unkn
     },
 
     async steer(id, input) {
-      // Minted once, outside the write, so a CAS replay keeps one id.
+      // Minted once, outside the write, so a CAS replay keeps one id and one time.
       const steerId = generateId("steer");
+      const at = now();
+      // Decided once per row read: the decline and the patch see the same row.
+      let decidedFor: { task: unknown; decided: ReturnType<typeof steerWrite> } | undefined;
+      const decide = (task: unknown) => {
+        if (decidedFor?.task !== task) decidedFor = { task, decided: steerWrite(task as Task, input, steerId, at) };
+        return decidedFor.decided;
+      };
       return patchOne(
         id,
         "steered",
         (task) => {
-          const decided = steerWrite(task as Task, input, steerId, now());
+          const decided = decide(task);
           return typeof decided === "string" ? undefined : (decided.patch as Partial<Task<TInput, TOutput>>);
         },
         {
           // A finished task takes no steer: its output never changes (FIX-2086).
           declineOnTerminal: true,
-          decline: (task) => (steerWrite(task as Task, input, steerId, now()) === "limit" ? "steer-limit" : undefined),
+          decline: (task) => (decide(task) === "limit" ? "steer-limit" : undefined),
         }
       );
     },

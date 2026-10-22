@@ -86,34 +86,29 @@ describe("updateTask's message (FIX-2086)", () => {
     }
   );
 
-  it("edits and steers a task that hasn't started in one call", async () => {
+  it.each([
+    ["an edit", { goal: "count every row" }, "goal"],
+    ["a hold", { status: "held" }, "status"],
+  ] as const)("never half-applies: a message sent with %s is refused, and neither is written", async (_label, edit, named) => {
+    // Two writes can't be one: the edit could land and the steer be refused
+    // (a finish or the limit in between), so the pair is refused up front.
     const b = await board();
     await b.ref.addTask({ id: "t", goal: "count the rows" });
-
-    expect(await b.call("updateTask", { id: "t", goal: "count every row", message: "and the totals" })).toEqual({ ok: true });
-
-    expect(b.get("t")).toMatchObject({ goal: "count every row", steers: [expect.objectContaining({ message: "and the totals" })] });
-  });
-
-  it("never half-applies: an edit a started task refuses keeps the message off it too", async () => {
-    const b = await board();
-    await b.ref.addTask({ id: "t", goal: "count the rows" });
-    await b.ref.claim("w");
     const before = JSON.stringify(b.get("t"));
 
-    const out = await b.call("updateTask", { id: "t", goal: "something else", message: "and the totals" });
+    const out = await b.call("updateTask", { id: "t", ...edit, message: "and the totals" });
 
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/^field_locked_after_start: goal/) });
+    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(new RegExp(`^message_takes_no_edits: .*${named}`)) });
     expect(JSON.stringify(b.get("t"))).toBe(before);
   });
 
-  it(`refuses a message past ${MAX_STEERS}, naming the limit, and applies no edit beside it`, async () => {
+  it(`refuses a message past ${MAX_STEERS}, naming the limit, and writes nothing`, async () => {
     const b = await board();
     await b.ref.addTask({ id: "t", goal: "count the rows" });
     for (let i = 0; i < MAX_STEERS; i += 1) await b.call("updateTask", { id: "t", message: `steer ${i}` });
     const before = JSON.stringify(b.get("t"));
 
-    const out = await b.call("updateTask", { id: "t", priority: 3, message: "one more" });
+    const out = await b.call("updateTask", { id: "t", message: "one more" });
 
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/^steer_limit: /);

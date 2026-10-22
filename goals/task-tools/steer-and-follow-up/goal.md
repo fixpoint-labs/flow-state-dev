@@ -25,7 +25,7 @@
 **Controls:** each is a scratch patch to the code under test, applied as it loads (`goals/lib/module-patch.mts`), printed by the run (a patch spanning lines, `reopen`'s on the resource backing, is not printed), and refused when it never reached the code.
 
 - `GOAL_CONTROL=drop-late-steer`: the claim gate's check (rule 6) settles a task over a steer no request took (`packages/orchestration/src/task-board/task-request.ts`). Must fail leg `b` on **"one more turn before the settle"**.
-- `GOAL_CONTROL=reopen`: a message on a finished task is taken, as before FIX-2086: it puts the task back in the queue, where the next attempt replaces its output (`task-tools-capability.ts`, `steers.ts`, the transition check in `collection/internal.ts`, and the resource backing the conversation board writes through). Must fail leg `d` on **"byte-identical"**.
+- `GOAL_CONTROL=reopen`: a message on a finished task is taken, as before FIX-2086: it puts the task back in the queue, where the next attempt replaces its output (`task-tools-capability.ts`, `steers.ts`, and the resource backing the conversation board writes through). Must fail leg `d` on **"byte-identical"**.
 
 On `main` before FIX-2086 the check cannot build its host (not run, read from the code): `harnessSessionDoor`, `steerTurnEntry` and `STEER_TURN_ENTRY` do not exist there, and `updateTask` takes no `message`.
 

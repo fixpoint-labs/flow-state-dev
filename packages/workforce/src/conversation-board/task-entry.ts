@@ -102,7 +102,7 @@ export function sessionTaskOf(ctx: BlockContext): string | undefined {
  * board's hand-over named it at birth (a readonly field): where the task's
  * notice goes.
  */
-export function filingFlowOf(ctx: BlockContext): string | undefined {
+function filingFlowOf(ctx: BlockContext): string | undefined {
   const flow = (ctx.session.state as Record<string, unknown>)[FILING_FLOW_STATE_KEY];
   return typeof flow === "string" ? flow : undefined;
 }

@@ -57,9 +57,14 @@ export {
   taskSteerSchema,
   untakenSteers,
   steersTakenIn,
+  steerWrite,
+  steerFromLine,
+  LINE_STEER_REFUSALS,
+  type LineSteerRefusal,
   type TaskSteer,
   type SteerInput,
 } from "./steers";
+export { readCommittedTask } from "./collection/read-committed";
 // The field table (FIX-2081): each field `updateTask` changes, with its one rule.
 export {
   TASK_FIELD_RULES,

@@ -1371,9 +1371,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
       "title, context, input, deps, priority, labels (the full list), metadata, assignee (one of " +
       "your delegates) and maxAttempts; and status: \"held\" holds it, \"pending\" releases a held " +
       "task. status: \"cancelled\" cancels it, any time until it finishes, and is sent alone. " +
-      "message steers the task until it finishes: the words join its brief, and a running " +
-      "task's worker reads them before its next model call. It uses none of the task's tries " +
-      "and never cancels it. A finished task changes no more, and takes no message: file a " +
+      "message steers the task until it finishes, and is sent alone: the words join its brief, " +
+      "and a running task's worker reads them before its next model call. It uses none of the " +
+      "task's tries and never cancels it. A finished task changes no more, and takes no message: file a " +
       "follow-up instead. A refusal names the rule.",
     inputSchema: z.object({
       id: z.string(),
@@ -1383,7 +1383,7 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
         .string()
         .min(1)
         .optional()
-        .describe("Words for the task while it is open: they join its brief. Uses no try, never cancels."),
+        .describe("Words for the task while it is open, sent alone: they join its brief. Uses no try, never cancels."),
     }),
     outputSchema: z.union([
       // A cancel names the dependents it took along (FIX-2078 D2).
@@ -1401,6 +1401,18 @@ function buildTaskTools(resolve: TaskCollectionResolver, options: BuildTaskTools
           error:
             `cancel_takes_no_edits: a cancel is sent alone, and this one came with ${sent.join(", ")}. ` +
             `Cancel it, or edit it, not both. Nothing was written.`,
+        };
+      }
+      // A message is its own write: sent with an edit or a hold, one could land
+      // and the other be refused, so the pair is refused before either is written.
+      if (message !== undefined && input.status !== "cancelled" && (fields.length > 0 || input.status !== undefined)) {
+        const sent = [...fields, ...(input.status !== undefined ? ["status"] : [])];
+        return {
+          ok: false as const,
+          taskId: input.id,
+          error:
+            `message_takes_no_edits: a message is sent alone, and this one came with ${sent.join(", ")}. ` +
+            `Send the edit and the message as two calls. Nothing was written.`,
         };
       }
       if (input.status === undefined && fields.length === 0 && message === undefined) {

@@ -113,11 +113,6 @@ const PATCHES: Record<string, ModulePatch[]> = {
       to: '...(task.status === "completed" ? { status: "pending", attempts: 0 } : {}), $1'
     },
     {
-      module: "packages/orchestration/src/tasks/collection/internal.ts",
-      from: String.raw`  assertTransitionAllowed\(from, to, taskId\);`,
-      to: '  if (!(from === "completed" && to === "pending")) assertTransitionAllowed(from, to, taskId);'
-    },
-    {
       module: "packages/orchestration/src/tasks/collection/resource-backed.ts",
       from: String.raw`(const decided = steerWrite\(task(?: as Task)?, input, steerId, now\(\)\);[\s\S]{0,600}?)\{ declineOnTerminal: true \}`,
       to: "$1{ declineOnTerminal: false }"

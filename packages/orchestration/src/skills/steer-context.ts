@@ -21,7 +21,15 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 import { isTaskTurn } from "../task-board/task-turn";
-import { steersTakenIn, ticketForClaim, type Task, type TaskClaimTicket, type TaskCollectionRef } from "../tasks";
+import {
+  readCommittedTask,
+  steersTakenIn,
+  ticketForClaim,
+  untakenSteers,
+  type Task,
+  type TaskClaimTicket,
+  type TaskCollectionRef,
+} from "../tasks";
 
 /** One steer as a worker is shown it: the words, and who sent them. */
 export interface ShownSteer {
@@ -93,6 +101,11 @@ export async function runningTaskOf(
 export async function takeRunningSteers(running: RunningTask, takenIn: string): Promise<ShownSteer[]> {
   const { ledger, claim, row } = running;
   if (ledger.takeSteers === undefined || row.status !== "in_progress") return [];
+  // Nothing new as stored (a steer is another request's write, so the row
+  // this request first read can't say): a read, no write. A steer that lands
+  // after it is taken before the next model call, or by the gate's check.
+  const stored = (await readCommittedTask(ledger, row.id)) ?? row;
+  if (untakenSteers(stored).length === 0) return steersTakenIn(stored, takenIn).map(({ message, from }) => ({ message, from }));
   const outcome = await ledger.takeSteers(row.id, { claim, takenIn });
   if (outcome.outcome === "declined") return [];
   const now = ledger.get(row.id);

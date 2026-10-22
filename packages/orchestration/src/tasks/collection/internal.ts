@@ -14,7 +14,6 @@ import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
-  assertTransitionAllowed,
   IllegalTaskTransitionError,
   isTerminalStatus,
   isTransitionAllowed,
@@ -182,27 +181,6 @@ export function unparkPatch(task: Task, feedback: string | undefined, answer = f
     answered: answer ? true : undefined,
     ...(answer ? { turnReentries: readTurnReentries(task) + 1 } : {}),
   };
-}
-
-/**
- * The one status a verb that owns one edge may run from. Nothing owns an edge
- * out of a finished row: a finished task's output never changes (FIX-2086),
- * and a correction is a follow-up.
- */
-export type EdgeSource = TaskStatus;
-
-/** Whether `status` is a source of the edge `source` names. */
-export function onEdgeSource(status: TaskStatus, source: EdgeSource): boolean {
-  return status === source;
-}
-
-/**
- * The status table's check.
- *
- * @throws {IllegalTaskTransitionError} when the table forbids the edge.
- */
-export function assertEdgeAllowed(from: TaskStatus, to: TaskStatus, taskId: string): void {
-  assertTransitionAllowed(from, to, taskId);
 }
 
 /**
@@ -757,7 +735,7 @@ export function transitionDeclineReason(
   options: TaskTransitionOptions | undefined,
   collectionId: string,
   now: number,
-  requireFrom?: EdgeSource,
+  requireFrom?: TaskStatus,
   changeKind?: TaskChangeKind
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
@@ -768,7 +746,7 @@ export function transitionDeclineReason(
   if (
     options.ifAllowed === true &&
     requireFrom !== undefined &&
-    !onEdgeSource(task.status, requireFrom)
+    task.status !== requireFrom
   ) {
     return "disallowed";
   }
@@ -840,11 +818,11 @@ export function transitionDeclineReason(
  */
 export function assertTransitionFrom(
   task: Task,
-  requireFrom: EdgeSource | undefined,
+  requireFrom: TaskStatus | undefined,
   targetStatus: TaskStatus,
   taskId: string
 ): void {
-  if (requireFrom !== undefined && !onEdgeSource(task.status, requireFrom)) {
+  if (requireFrom !== undefined && task.status !== requireFrom) {
     throw new IllegalTaskTransitionError({ taskId, from: task.status, to: targetStatus });
   }
 }

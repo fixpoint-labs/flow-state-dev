@@ -54,6 +54,7 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   MAX_STEERS,
+  readCommittedTask,
   resolveResourceCollection,
   steersTakenIn,
   ticketForClaim,
@@ -1503,7 +1504,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     const taskId = managerState(harnessCtxState(ctx)).taskId;
     if (taskId === null) return undefined;
     const board = await runBoard(ctx);
-    return (await board.getCommitted?.(taskId)) ?? board.get(taskId);
+    return readCommittedTask(board, taskId);
   };
 
   /**
@@ -2758,10 +2759,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     steerWatches.set(requestId, watch);
     return controller.signal;
   };
+  // A watch that stopped its step stays until the rescue reads it; any other
+  // goes when its step ends, so the map holds only steps still running.
   const stopWatching = (ctx: BlockContext): void => {
-    const watch = steerWatches.get(ctx.request.identity.id);
-    if (watch?.timer !== undefined) clearTimeout(watch.timer);
-    if (watch !== undefined) watch.timer = undefined;
+    const requestId = ctx.request.identity.id;
+    const watch = steerWatches.get(requestId);
+    if (watch === undefined) return;
+    if (watch.timer !== undefined) clearTimeout(watch.timer);
+    watch.timer = undefined;
+    if (!watch.stopped) steerWatches.delete(requestId);
   };
 
   // The harness step, with what a steer's stop does to it: a step stopped for
@@ -2794,8 +2800,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           outputSchema: z.unknown(),
           execute: (error: unknown, ctx) => {
             const watch = steerWatches.get(ctx.request.identity.id);
+            steerWatches.delete(ctx.request.identity.id);
             if (watch?.stopped !== true) throw error;
-            watch.stopped = false;
             return STOPPED_FOR_STEER;
           },
         }),
@@ -2803,13 +2809,46 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     ]);
 
   /**
-   * After a harness step: a steer no request of the attempt took gives the
-   * request one more step (FIX-2086), resuming the coding session this
-   * attempt's harness confirmed, with the steers as its prompt. The checkout
-   * is taken again for it. With no steer, the step's handle goes on to the
-   * verdict. A harness that confirmed no session can't continue: the steer is
-   * left for the task's next turn.
+   * Whether the request runs one more harness step for a steer (FIX-2086),
+   * and its prompt: the steers no request of the attempt took, taken now,
+   * resuming the coding session this attempt's harness confirmed, with the
+   * checkout taken again. `undefined` when there is no step to run: no steer
+   * is owed and the step wasn't stopped, or nothing was taken from a step
+   * that ended on its own (the gate's check reads the row and owes the task
+   * a turn if a steer is still untaken), or the harness confirmed no session
+   * to resume.
+   *
+   * Every step it grants takes at least one steer, or follows a stop that one
+   * caused, so the cap on a task's steers bounds the steps; past it the
+   * attempt fails, naming why, rather than looping.
    */
+  const stepForSteer = async (ctx: BlockContext, stopped: boolean): Promise<{ prompt: string; again: true } | undefined> => {
+    const state = managerState(harnessCtxState(ctx));
+    const row = await committedRow(ctx);
+    const owed = row !== undefined && row.status === "in_progress" && untakenSteers(row).length > 0;
+    if (!owed && !stopped) return undefined;
+    const session = await readConfirmedSession(ctx, state.topic!, state.attempt!);
+    if (session === null) {
+      if (!stopped) return undefined;
+      throw new HarnessAttemptFailed(
+        `[harness-manager] the run was stopped for a steer, and its harness confirmed no coding session to continue.`,
+      );
+    }
+    const loop = (state.steerSteps ?? 0) + 1;
+    if (loop > MAX_STEERS) {
+      throw new HarnessAttemptFailed(
+        `[harness-manager] the run has already taken ${MAX_STEERS} steps for steers, the most a task's steers can ask for.`,
+      );
+    }
+    const steers = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, (now, takenIn) => steersTakenIn(now, takenIn));
+    if (steers.length === 0 && !stopped) return undefined;
+    const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
+    await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
+    const lead = stopped ? STOPPED_LEAD : ARRIVED_LEAD;
+    return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
+  };
+
+  /** After a harness step: one more step for a steer, or the step's handle on to the verdict. */
   const steerNext = handler({
     name: `${name}-steer-next`,
     inputSchema: z.unknown(),
@@ -2817,26 +2856,35 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     sequencerStateSchema: managerStateSchema,
     uses: [managerCapability],
     execute: async (value: unknown, ctx: BlockContext) => {
-      const stopped = value === STOPPED_FOR_STEER;
-      const state = managerState(harnessCtxState(ctx));
-      const row = await committedRow(ctx);
-      const owed = row !== undefined && row.status === "in_progress" && untakenSteers(row).length > 0;
-      if (!owed && !stopped) return value;
-      const session = await readConfirmedSession(ctx, state.topic!, state.attempt!);
-      if (session === null) {
-        if (!stopped) return value;
-        throw new HarnessAttemptFailed(
-          `[harness-manager] the run was stopped for a steer, and its harness confirmed no coding session to continue.`,
-        );
-      }
-      const loop = (state.steerSteps ?? 0) + 1;
-      const steers = await takeSteersFor(ctx, `step:${ctx.request.identity.id}:${loop}`, (now, takenIn) => steersTakenIn(now, takenIn));
-      const lease = await acquireCheckout(state.workspacePath!, `${state.taskId}#${state.attempt}`, ownership, Date.now, ctx.signal);
-      await ctx.sequencer!.patchState({ lockPath: lease.lockPath, leaseToken: lease.token, previousSessionId: session, steerSteps: loop });
-      const lead = stopped ? STOPPED_LEAD : ARRIVED_LEAD;
-      return { prompt: steers.length === 0 ? CONTINUE_AFTER_STOP : renderSteers(steers, lead), again: true };
+      // A step that ended on its own after its watch stopped it leaves the watch: it goes here.
+      steerWatches.delete(ctx.request.identity.id);
+      return (await stepForSteer(ctx, value === STOPPED_FOR_STEER)) ?? value;
     },
   });
+
+  /**
+   * Before the settle: a steer that landed while the verdict, the judge or
+   * this check ran gets one more step too, so a board with no late-steer turn
+   * of its own never completes a task over a steer its run didn't take. A run
+   * that parked on a question settles as parked: its next turn takes the steer.
+   */
+  const steerBeforeSettle = handler({
+    name: `${name}-steer-before-settle`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: managerStateSchema,
+    uses: [managerCapability],
+    execute: async (value: unknown, ctx: BlockContext) => {
+      if (managerState(harnessCtxState(ctx)).decided?.settle !== "complete") return value;
+      return (await stepForSteer(ctx, false)) ?? value;
+    },
+  });
+
+  /** Back to the harness step when a steer step was granted. The steer cap fails the attempt first. */
+  const steerLoop = {
+    when: (value: unknown) => (value as { again?: unknown } | null)?.again === true,
+    maxIterations: MAX_STEERS + 1,
+  };
 
   const chain = sequencer({
     name,
@@ -2848,8 +2896,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .step(prepare)
     .step(harnessStep)
     .step(steerNext)
-    // One more step per steer at most: the cap on a task's steers bounds it.
-    .loopBack(harnessStep.name, { when: (value) => (value as { again?: unknown } | null)?.again === true, maxIterations: MAX_STEERS })
+    .loopBack(harnessStep.name, steerLoop)
     .step(decide);
   const worker = (
     judgeStep === undefined
@@ -2863,6 +2910,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
           { abortSignal: () => AbortSignal.timeout(NETWORK_CALL_TIMEOUT_MS) },
         )
   )
+    .step(steerBeforeSettle)
+    .loopBack(harnessStep.name, steerLoop)
     .step(settle)
     .rescue([{ block: recordFailure }]);
 
@@ -2988,28 +3037,6 @@ function refusedMessage(by: "source" | "host", refusal: { reason: string; messag
   return `[harness-manager] the workspace ${by} refused this run (${refusal.reason}): ${refusal.message}`;
 }
 
-/**
- * **The one convergence point: release the checkout from state alone.**
- *
- * Called from both exits — the harness step's `onSettled` and the chain's
- * rescue — and neither of them passes anything but a context. That is what
- * forces the lease to be a value: `onSettled` is synchronous and gets only a
- * context, so a live handle had nowhere to live except a process-wide map, and
- * the map existed only because a completion hook could not reach the run that
- * took the lock.
- *
- * It reads `(lockPath, token)` off the run's own state and nothing else. **A
- * second release path that read anything else is the defect this shape
- * removes, coming back** — so if a third exit ever needs to release, it calls
- * this.
- *
- * Idempotent: `releaseCheckout` removes a lock only when the token still
- * matches, so a second call after the first succeeded finds nothing of ours and
- * does nothing.
- *
- * No module-level state remains, so two managers in one process cannot touch
- * each other's lock by construction rather than by keying a table correctly.
- */
 /** How often a running step's row is read for a steer (FIX-2086). */
 export const STEER_POLL_MS = 1_000;
 
@@ -3040,6 +3067,28 @@ const ARRIVED_LEAD =
 const CONTINUE_AFTER_STOP =
   "You were stopped while you were working. The checkout keeps everything you wrote. Carry on from where you were.";
 
+/**
+ * **The one convergence point: release the checkout from state alone.**
+ *
+ * Called from both exits — the harness step's `onSettled` and the chain's
+ * rescue — and neither of them passes anything but a context. That is what
+ * forces the lease to be a value: `onSettled` is synchronous and gets only a
+ * context, so a live handle had nowhere to live except a process-wide map, and
+ * the map existed only because a completion hook could not reach the run that
+ * took the lock.
+ *
+ * It reads `(lockPath, token)` off the run's own state and nothing else. **A
+ * second release path that read anything else is the defect this shape
+ * removes, coming back** — so if a third exit ever needs to release, it calls
+ * this.
+ *
+ * Idempotent: `releaseCheckout` removes a lock only when the token still
+ * matches, so a second call after the first succeeded finds nothing of ours and
+ * does nothing.
+ *
+ * No module-level state remains, so two managers in one process cannot touch
+ * each other's lock by construction rather than by keying a table correctly.
+ */
 function releaseLeaseFromState(ctx: {
   sequencer?: { state?: unknown } | undefined;
 }): void {

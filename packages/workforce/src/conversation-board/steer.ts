@@ -34,7 +34,13 @@ import { handler, router, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, type BlockContext, type BlockDefinition, type ConcurrencyConfig } from "@flow-state-dev/core/types";
 import { renderSteers, runningTaskOf, takeRunningSteers, type ShownSteer } from "@flow-state-dev/orchestration";
 import { afterTaskCheck, noteTaskAnswer, packWorkerInput, STEER_TURN_DUE_MS } from "@flow-state-dev/orchestration/task-board";
-import { isTerminalStatus, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import {
+  isTerminalStatus,
+  LINE_STEER_REFUSALS,
+  steerFromLine,
+  type Task,
+  type TaskCollectionRef
+} from "@flow-state-dev/orchestration/tasks";
 import { z, type ZodTypeAny } from "zod";
 import { STEER_TURN_ENTRY } from "./board-entries";
 import { conversationLedgerAt, conversationLedgerResources } from "./ledger";
@@ -45,7 +51,7 @@ import { filingPartitionOf, sessionTaskOf } from "./task-entry";
 export { STEER_TURN_ENTRY } from "./board-entries";
 
 /** The lead the turn a late steer is owed opens with. */
-export const STEERED_AFTER_ANSWER =
+const STEERED_AFTER_ANSWER =
   "You were sent the messages below about this task after your last model call. Act on them, then answer again. " +
   "A checkpoint you reported stands as the task's output unless you report a new one.";
 
@@ -60,7 +66,7 @@ async function sessionLedger(ctx: BlockContext): Promise<TaskCollectionRef | und
  * latest of its follow-ups, when that one has not finished. `undefined`
  * outside a task session, and once the latest has finished.
  */
-export async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollectionRef; row: Task } | undefined> {
+async function sessionOpenTask(ctx: BlockContext): Promise<{ ledger: TaskCollectionRef; row: Task } | undefined> {
   const taskId = sessionTaskOf(ctx);
   if (taskId === undefined) return undefined;
   const ledger = await sessionLedger(ctx);
@@ -107,13 +113,8 @@ export async function startOwedSteerTurn(ctx: BlockContext, row: Task, flowKind?
 /** What a line steering the session's task answers: the task it steered. */
 const steeredSchema = z.object({ steered: z.string() });
 
-/** The user's id, from the request's server-set identity. */
-function userOf(ctx: BlockContext): string | undefined {
-  return (ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId;
-}
-
 /** Thrown when the line can't steer: the task finished first, or took its last steer. The request fails, naming why. */
-export class SteerRefused extends Error {
+class SteerRefused extends Error {
   readonly code = "steer-refused";
 }
 
@@ -130,21 +131,9 @@ const steerSessionTask = handler({
   resources: { ...conversationLedgerResources },
   execute: async (input, ctx) => {
     const open = await sessionOpenTask(ctx as never);
-    if (open === undefined) throw new SteerRefused("The task finished before your message reached it. Send it again to talk about it.");
-    const by = userOf(ctx as never);
-    const outcome = await open.ledger.steer!(open.row.id, {
-      message: input.message,
-      from: "user",
-      ...(by !== undefined ? { by } : {}),
-      key: `line:${ctx.request.identity.id}`
-    });
-    if (outcome.outcome === "declined") {
-      throw new SteerRefused(
-        outcome.reason === "steer-limit"
-          ? "This task has taken as many messages as it can. Cancel it and file it again, or file a follow-up once it ends."
-          : "The task finished before your message reached it. Send it again to talk about it."
-      );
-    }
+    if (open === undefined) throw new SteerRefused(LINE_STEER_REFUSALS.finished);
+    const refused = await steerFromLine(open.ledger, open.row.id, input.message, ctx as never);
+    if (refused !== undefined) throw new SteerRefused(LINE_STEER_REFUSALS[refused]);
     const row = open.ledger.get(open.row.id);
     // In this session already: the turn runs on this flow.
     if (row?.waitingOn === "steer") await startOwedSteerTurn(ctx as never, row);

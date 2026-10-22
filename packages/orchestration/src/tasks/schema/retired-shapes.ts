@@ -33,7 +33,7 @@ import { isTerminalStatus, type TaskStatus } from "./task-status";
  * The steer a row reopened before FIX-2086 reads with: the person's line is
  * already the latest in the task's session, so it points there.
  */
-export const REOPENED_STEER =
+const REOPENED_STEER =
   "The user wrote to you about this task after you had finished it; their message is the latest line in this session. Pick the task up again from there.";
 
 /** The retired shapes, one entry each. */

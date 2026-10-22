@@ -17,7 +17,14 @@
  */
 import { defineCapability, handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext, HarnessBlock } from "@flow-state-dev/core/types";
-import { isTerminalStatus, type Task, type TaskCollectionRef } from "@flow-state-dev/orchestration/tasks";
+import {
+  isTerminalStatus,
+  LINE_STEER_REFUSALS,
+  steerFromLine,
+  type LineSteerRefusal,
+  type Task,
+  type TaskCollectionRef,
+} from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import type { HarnessSlot } from "./manager";
 import { readRunRow, RUNS, runRecordCollection, runTopic } from "./run-record";
@@ -33,19 +40,21 @@ export const sessionDoorOutputSchema = z.union([
 ]);
 
 /** Why the door refused, in stable terms. */
-export type SessionDoorRefusalReason = "not-started" | "cannot-continue" | "steer-refused";
+/**
+ * Why the door refused a line. The steer refusals (`steer-limit`, `finished`,
+ * `not-supported`) read as they do on every door that takes a line.
+ */
+export type SessionDoorRefusalReason = "not-started" | "cannot-continue" | LineSteerRefusal;
 
 /** What a person reads for each refusal. */
 const REFUSAL_TEXT: Record<SessionDoorRefusalReason, string> = {
   "not-started": "This task hasn't started here, so there's no session to write into.",
   "cannot-continue": "This run's harness confirmed no coding session, so it can't take a message once finished.",
-  "steer-refused": "This task can't take your message now. Cancel it and file it again, or file a follow-up once it ends.",
+  ...LINE_STEER_REFUSALS,
 };
 
 /** The door refused. The request fails with this, so nothing reads as delivered. */
 export class SessionDoorRefused extends Error {
-  readonly code = "session-door-refused";
-
   constructor(readonly reason: SessionDoorRefusalReason) {
     super(REFUSAL_TEXT[reason]);
     this.name = "SessionDoorRefused";
@@ -138,14 +147,8 @@ export function harnessSessionDoor(options: HarnessSessionDoorOptions) {
       const row = board === undefined ? undefined : sessionRow(board.tasks, ctx.session.identity.id);
       if (board === undefined || row === undefined) throw new SessionDoorRefused("not-started");
       if (!isTerminalStatus(row.status)) {
-        const userId = (ctx as { user?: { identity?: { userId?: string } } }).user?.identity?.userId;
-        const outcome = await board.tasks.steer?.(row.id, {
-          message: input.message,
-          from: "user",
-          ...(userId !== undefined ? { by: userId } : {}),
-          key: `line:${ctx.request.identity.id}`,
-        });
-        if (outcome === undefined || outcome.outcome === "declined") throw new SessionDoorRefused("steer-refused");
+        const refused = await steerFromLine(board.tasks, row.id, input.message, ctx as never);
+        if (refused !== undefined) throw new SessionDoorRefused(refused);
         const after = board.tasks.get(row.id);
         if (after?.waitingOn === "steer") await options.onSteered?.(ctx, after);
         return { steered: row.id };

@@ -134,3 +134,52 @@ export function steersForAttempt(steers: Task["steers"], attempt: number): Task[
   if (steers === undefined || steers.length === 0) return steers;
   return steers.map(({ takenIn: _read, ...steer }) => ({ ...steer, takenBy: attempt }));
 }
+
+/** Why a person's line couldn't steer its task: the limit, the task finished first, or a board that keeps no steer. */
+export type LineSteerRefusal = "steer-limit" | "finished" | "not-supported";
+
+/**
+ * What a person reads for each refusal, the same words on every door that
+ * takes a line typed in a task's session.
+ */
+export const LINE_STEER_REFUSALS: Readonly<Record<LineSteerRefusal, string>> = {
+  "steer-limit": "This task has taken as many messages as it can. Cancel it and file it again, or file a follow-up once it ends.",
+  finished: "The task finished before your message reached it. Send it again to talk about it.",
+  "not-supported": "This task's board takes no message.",
+};
+
+/** The board a line steers: its `steer` verb, which a board that keeps no steers lacks. */
+interface LineSteerLedger {
+  readonly steer?: (id: string, input: SteerInput) => Promise<{ outcome: string; reason?: string } | undefined | void>;
+}
+
+/** The request a line arrived on: its verified user and its id, never its input (BP-031). */
+interface LineRequest {
+  readonly user?: { readonly identity?: { readonly userId?: string } };
+  readonly request: { readonly identity: { readonly id: string } };
+}
+
+/**
+ * Write a person's line, typed in an open task's session, as a steer on
+ * `taskId`: from the user the request was verified as, keyed by the request
+ * so a replayed request adds nothing.
+ *
+ * @returns `undefined` once the steer is kept (or was already), else why not.
+ */
+export async function steerFromLine(
+  ledger: LineSteerLedger,
+  taskId: string,
+  message: string,
+  ctx: LineRequest
+): Promise<LineSteerRefusal | undefined> {
+  if (ledger.steer === undefined) return "not-supported";
+  const by = ctx.user?.identity?.userId;
+  const outcome = await ledger.steer(taskId, {
+    message,
+    from: "user",
+    ...(by !== undefined ? { by } : {}),
+    key: `line:${ctx.request.identity.id}`,
+  });
+  if (outcome == null || outcome.outcome !== "declined") return undefined;
+  return outcome.reason === "steer-limit" ? "steer-limit" : "finished";
+}
