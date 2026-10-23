@@ -28,6 +28,8 @@ export interface Turn {
   replyItemId: string | null;
   /** The request's items, by type and id, when it stored no assistant message. */
   items?: string[];
+  /** Set when a coordinator routed the post and `reply` is this delegate's answer, which lands after the turn's own request. */
+  answeredBy?: string;
   /** Set when a provider error re-ran the turn once (QR-10). */
   providerRetry?: string;
 }
