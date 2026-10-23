@@ -14,7 +14,7 @@ import { describeFailure, PROJECT_READER_FLOW, readerSessionId, type Failure } f
 import type { LabClients } from "./connection";
 
 /** The query's name, on whichever of the Lab's flows answers it. */
-export const HARNESS_USAGE_ACTION = "harnessUsage";
+const HARNESS_USAGE_ACTION = "harnessUsage";
 
 /** One window as the query returns it. */
 export type UsageWindow = {

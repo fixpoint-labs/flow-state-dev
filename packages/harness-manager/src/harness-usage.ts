@@ -63,7 +63,7 @@ export const USAGE_READ_TIMEOUT_MS = 10_000;
  * arrived. `origin` is `"read"` for an on-demand read; a run-time writer adds
  * its own value.
  */
-export const storedUsageWindowSchema = harnessUsageWindowSchema.extend({
+const storedUsageWindowSchema = harnessUsageWindowSchema.extend({
   checkedAt: z.number(),
   origin: z.string().default("read"),
 });
