@@ -107,7 +107,9 @@ worker.
 
 <a name="where-a-thread-works"></a>**Where a thread works.** The same rule as FIX-2153's session mode (its D3), stated here too. A
 session works in a project you pick when you create it: *New session* asks before the composer
-opens, and needs [FIX-2161](#gaps) to open an ordinary session on a project. A project with a repository the operator maps
+opens, and the adapter's `openSession` calls `setWorkProject(worker, project, { sessionId })`
+after `createSession`, which writes the server-owned `workProjectId` and checks membership
+([FIX-2161](#gaps)). A project with a repository the operator maps
 in `checkouts` is a repository on this machine; each run works in a worktree of it, cut by the
 workspace host (`local-host.ts`), as Claude Code's own threads do, never in the checkout itself.
 A thread inherits it: the hand-over copies the
@@ -182,7 +184,7 @@ table](DECISIONS.md#columns); the lab adds no status of its own.
 | Gap | Blocks |
 |---|---|
 | **A harness run that produced changes waits on a person's review before it completes**: in `harnessManager`'s settle step, where a judge's `ask` already parks a run today, a run with commits parks on a review wait (FIX-2129's kind `review`), with the verdict in its prompt; an accepted answer completes it without running the harness again, and a revision is a steer the next attempt takes (FIX-2086's door). Medium: one issue in harness-manager, a few days with tests, after FIX-2129 lands | **Step 6** ([D5](DECISIONS.md#d5)). Filed when this spec merges |
-| **[FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161): an ordinary session of any worker can open on a project.** Today only the project coordinator's session carries a `projectId`, at its derived id (`projectLinkCheck`, `workforce/src/workers/installation.ts`) | **The whole script**: every session opens on a project. Filed; blocks FIX-2153 too |
+| **[FIX-2161](https://linear.app/fixpoint-labs/issue/FIX-2161): an ordinary session of any worker can open on a project.** `setWorkProject(worker, project, { sessionId })` after `createSession` writes a server-owned `workProjectId`, membership-checked, and tasks filed from it inherit it as `filingProjectId`. Today only the project coordinator's session carries a `projectId`, at its derived id (`projectLinkCheck`, `workforce/src/workers/installation.ts`); spec #3805 | **The whole script**: every session opens on a project. Filed; blocks FIX-2153 too |
 | Checked at wiring: **a session opened on a project passes it to the tasks its coordinator files** (`filingProjectId`) | Step 6; a gap only if it doesn't |
 | **A task row carries its step progress** (done of total) | Nothing; without it *Working* shows the last progress note, not *2/7*. Filed in the project. Checked first at wiring: if the thread's run session's plan rows are readable, no gap |
 | Checked at wiring: **the thread worker's model has FIX-2131's `waitForUser({ kind: "review" })` and `askQuestion` on its task turn** (`agent-worker-flow.ts` composes `board.questions`) | Steps 3 to 5; a gap only if they're missing |
