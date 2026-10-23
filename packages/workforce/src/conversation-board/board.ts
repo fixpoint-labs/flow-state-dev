@@ -114,7 +114,7 @@ import {
 } from "@flow-state-dev/orchestration/tasks";
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import { dispatchThroughSeam, markDispatcher } from "@flow-state-dev/core/types";
-import { carriedHopState, hopMarkOf, sessionChainOf, turnHopMark } from "../messages/hop";
+import { carriedHopState, hopMarkOf, sessionUserLinesOf, turnHopMark } from "../messages/hop";
 import type { BlockContext, BlockDefinition, DispatchAddress } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { WORKER_TASK_ENTRY } from "../worker-task-entry";
@@ -472,8 +472,8 @@ async function takeTargetSessions(ctx: BlockContext, collection: TaskCollectionR
  * Claims only rows that may start: an unassigned row, or one whose session is
  * busy, on this board or (a session by id) on another, waits on the board. A
  * row for a session by id is claimed only once this board holds that session
- * for it. A claimed row's filed hop count is kept only while its chain is
- * still the filer's ({@link keepFiledHopInChain}).
+ * for it. A claimed row's filed hop count is kept until a user's line in the
+ * filer's conversation ({@link keepFiledHopInChain}).
  */
 const startableOnly: TaskDispatcher = {
   claim: async (collection, workerId, ctx) => {
@@ -489,15 +489,16 @@ const startableOnly: TaskDispatcher = {
 
 /**
  * At the claim, in the filer's own pass (FIX-2106): a row's filed hop count
- * (`FILED_HOP`) stands only while its chain is still the filer session's
- * current chain. A user's line in the filer's conversation since the filing
- * started a new chain there, so the record is cleared, server-side, and the
+ * (`FILED_HOP`) stands until a user's line in the filer's conversation. The
+ * record keeps how many user's lines the filer's session had taken at the
+ * filing; one more since, and the record is cleared, server-side, and the
  * task's turn runs as a row with none would: at its born-with count, which
- * is the filer's now, or its session's.
+ * is the filer's now, or its session's. A message from another chain that
+ * moved the filer's session elsewhere is no user's line, and leaves it.
  */
 async function keepFiledHopInChain(ctx: BlockContext, collection: TaskCollectionRef, task: Task): Promise<Task> {
   const mark = hopMarkOf(task.metadata?.[FILED_HOP]);
-  if (mark === undefined || mark.chain === (sessionChainOf(ctx.session.state) ?? null)) return task;
+  if (mark === undefined || sessionUserLinesOf(ctx.session.state) <= mark.lines) return task;
   await collection.patchMetadata(task.id, { [FILED_HOP]: null });
   return collection.get(task.id) ?? task;
 }

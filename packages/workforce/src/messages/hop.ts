@@ -13,12 +13,13 @@
  *   chain fields the hand-over sets;
  * - a task's turn is at its filing turn's count, which the filing records on
  *   the row (FIX-2106), so a task run in an existing session (an ongoing one,
- *   or a follow-up's) counts on from its filer too. The record stands only
- *   while its chain is still the filer session's current chain when the
- *   board claims the row: a user's line in the filer's conversation since the
- *   filing ended that chain, so the claim clears the record and the turn runs
- *   as a row with none. A row with none (one filed before rows recorded it)
- *   reads its born-with count, or its session's;
+ *   or a follow-up's) counts on from its filer too. The record stands until
+ *   a user's line in the filer's conversation: the record keeps how many user
+ *   lines that session had seen at the filing, and a claim that finds more
+ *   clears it, so the turn runs as a row with none. A message from another
+ *   chain moving the filer's session elsewhere leaves it standing. A row with
+ *   none (one filed before rows recorded it) reads its born-with count, or
+ *   its session's;
  * - every other turn (a notice's, a post's) reads the session's.
  *
  * The limit is the whole exchange's, not one path's: everything descending
@@ -40,6 +41,13 @@ export const MESSAGE_HOP_STATE = "workforceMessageHop";
 /** The session-state field the chain id a session's count belongs to is kept in. Server-owned. */
 export const MESSAGE_CHAIN_STATE = "workforceMessageChain";
 
+/**
+ * The session-state field counting the user's lines a session has taken, one
+ * per user's turn (`markUserTurn`), so a filed task's record can tell whether
+ * the user wrote there since (FIX-2106). Server-owned. Absent reads 0.
+ */
+export const USER_LINES_STATE = "workforceUserLines";
+
 /** The request-state field a turn's chain id is copied to. */
 export const TURN_CHAIN_STATE = "workforceTurnChain";
 
@@ -52,7 +60,8 @@ export const TURN_MESSAGED_STATE = "workforceMessagedWorkers";
 /** The session state a flow that takes messages declares. */
 export const messageHopStateShape = {
   [MESSAGE_HOP_STATE]: z.number().int().nonnegative().default(0),
-  [MESSAGE_CHAIN_STATE]: z.string().nullable().default(null)
+  [MESSAGE_CHAIN_STATE]: z.string().nullable().default(null),
+  [USER_LINES_STATE]: z.number().int().nonnegative().default(0)
 } as const;
 
 /** The request state the hop and the per-turn count are kept in. */
@@ -74,6 +83,12 @@ export function turnHopOf(ctx: Pick<BlockContext, "request" | "session">): numbe
   const value = (ctx.request?.state as Record<string, unknown> | undefined)?.[TURN_HOP_STATE];
   if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
   return sessionHopOf(ctx.session.state);
+}
+
+/** How many user's lines a session has taken: 0 for one that counts none. */
+export function sessionUserLinesOf(state: unknown): number {
+  const value = (state as Record<string, unknown> | undefined)?.[USER_LINES_STATE];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 /** A new chain id, for a user's turn. */
@@ -102,18 +117,26 @@ export function carriedHopState(state: unknown): Record<string, unknown> {
   return { [MESSAGE_HOP_STATE]: sessionHopOf(state), [MESSAGE_CHAIN_STATE]: sessionChainOf(state) ?? null };
 }
 
-/** Where a turn stands in its exchange: its hop count, and the chain it belongs to. */
+/**
+ * Where a turn stands in its exchange: its hop count, the chain it belongs to,
+ * and how many user's lines its session had taken.
+ */
 export interface HopMark {
   readonly hop: number;
   readonly chain: string | null;
+  readonly lines: number;
 }
 
-/** The running turn's count and chain, for a filing to record on its row (FIX-2106). */
+/** The running turn's count and chain, and its session's user lines, for a filing to record on its row (FIX-2106). */
 export function turnHopMark(ctx: Pick<BlockContext, "request" | "session">): HopMark {
-  return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null };
+  return { hop: turnHopOf(ctx), chain: turnChainOf(ctx) ?? null, lines: sessionUserLinesOf(ctx.session.state) };
 }
 
-const hopMarkSchema = z.object({ hop: z.number().int().nonnegative(), chain: z.string().min(1).nullable() });
+const hopMarkSchema = z.object({
+  hop: z.number().int().nonnegative(),
+  chain: z.string().min(1).nullable(),
+  lines: z.number().int().nonnegative()
+});
 
 /** A recorded {@link HopMark}, or `undefined` for anything else (a row filed before rows recorded one). */
 export function hopMarkOf(value: unknown): HopMark | undefined {

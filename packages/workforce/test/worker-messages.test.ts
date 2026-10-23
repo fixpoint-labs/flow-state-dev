@@ -646,6 +646,49 @@ describe("the hop count through a delegation", () => {
     }
   });
 
+  // A message from another chain moves the filer's session to that chain, but
+  // no user's line came in: the task keeps the count of the chain it was filed in.
+  it.each([
+    ["in a session of its own", {}],
+    ['in the delegate\'s ongoing session (session: "ongoing")', { session: "ongoing" }]
+  ])("keeps a task filed %s in its filing's chain when a message from another chain wakes its filer before it is handed over", async (_where, setting) => {
+    const quietAfterPing: MockGeneratorScriptEntry = { when: (input) => textOf(input).includes("Just a ping"), then: { text: "" } };
+    const h = boot({
+      standard: teamWorkers(),
+      agentAnswer: mockGenerator({
+        script: [
+          quietAfterPing,
+          ...callOnce("Please ping helper-a", "messageWorker", { to: "helper-a", text: "Just a ping." }, ""),
+          ...relayThroughTask({ ...setting, held: true })
+        ]
+      })
+    });
+    try {
+      const alice = h.client("alice");
+      const otto = await alice.ensureWorkerSession({ worker: "otto" });
+      await h.post("alice", otto.id, "run", { message: "Please ask helper-a" }, "agent");
+      await h.settled();
+      const [held] = await h.rows("alice");
+      expect(held!.status).toBe("held");
+      const filedIn = (held!.metadata?.[FILED_HOP] as { chain: string }).chain;
+
+      // A new line to otto starts chain W there; otto's message moves helper-a's session to W.
+      await h.post("alice", otto.id, "run", { message: "Please ping helper-a" }, "agent");
+      await h.settled();
+      const helperA = await alice.ensureWorkerSession({ worker: "helper-a" });
+      expect((await h.session(helperA.id)).state.workforceMessageChain, "helper-a's session is in chain W now").not.toBe(filedIn);
+
+      const released = await h.act("alice", helperA.id, "updateTask_tasks", { id: held!.id, status: "pending" }, "agent");
+      expect(released.error, messageOf(released.error)).toBeUndefined();
+      await h.settled();
+      expect((await h.rows("alice")).map((row) => row.status)).toEqual(["completed"]);
+      const fromTask = (await logRows(h, "alice")).find((row) => row.from === "helper-b")!;
+      expect([fromTask.hop, fromTask.chain === filedIn]).toEqual([2, true]);
+    } finally {
+      await h.dispose();
+    }
+  });
+
   it("runs an ongoing-session task filed before rows recorded a count at its session's count, as it did", async () => {
     const h = boot({ standard: teamWorkers(), agentAnswer: mockGenerator({ script: relayThroughTask({ session: "ongoing", held: true }) }) });
     try {

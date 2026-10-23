@@ -266,7 +266,7 @@ describe("what a filing can't name (BR-8)", () => {
       const filing = await host.filingOf("alice", conv);
       const row = await host.row("alice", filing, filed.taskId!);
       // The one marker on it is the board's own: the filing turn's hop count (FIX-2106).
-      expect(row?.metadata).toEqual({ note: "kept", [FILED_HOP]: { hop: 0, chain: null } });
+      expect(row?.metadata).toEqual({ note: "kept", [FILED_HOP]: { hop: 0, chain: null, lines: 0 } });
       // No start was owed, so nothing ran: the row has no assignee.
       await host.settled();
       expect(host.runs).toEqual([]);
@@ -275,7 +275,7 @@ describe("what a filing can't name (BR-8)", () => {
         id: filed.taskId,
         metadata: { "noticeOwed:1:errored": { attempt: 1, ending: "errored" }, extra: 1 }
       });
-      expect((await host.row("alice", filing, filed.taskId!))?.metadata).toEqual({ note: "kept", extra: 1, [FILED_HOP]: { hop: 0, chain: null } });
+      expect((await host.row("alice", filing, filed.taskId!))?.metadata).toEqual({ note: "kept", extra: 1, [FILED_HOP]: { hop: 0, chain: null, lines: 0 } });
     } finally {
       await host.dispose();
     }
